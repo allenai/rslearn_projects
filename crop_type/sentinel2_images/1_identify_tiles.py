@@ -1,0 +1,174 @@
+"""
+We want to have images in the same year and location as the labels, with one image per calendar month.
+
+We will first identify a list of (tile, year) that are needed.
+The tiles will be in WebMercator at zoom 7, with resolution of each tile at 32768x32768.
+
+For now there are three datasets:
+
+- CDL consists of .tif files. We'll split it up into a grid and just download the grid cells with non-zero label. Only use 2017-2023 due to Sentinel-2 time range.
+- NCCM is similar but only three .tif files.
+- EuroCrops consists of shapefiles. Each shapefile covers a certain country and has a specific year, we'll iterate over the polygons and add the (tile, year) tuples.
+
+Assumption is that this torchgeo code has been run:
+
+from torchgeo import CDL, EuroCrops, NCCM
+CDL(paths='./data/cdl/', download=True, checksum=True, years=[2023, 2022, 2021, 2020, 2019, 2018, 2017])
+EuroCrops(paths='./data/eurocrops/', download=True, checksum=True)
+NCCM(paths="./data/nccm/", download=True, checksum=True)
+"""
+
+import glob
+import json
+import multiprocessing
+import os
+
+import fiona
+import fiona.transform
+import math
+import numpy as np
+import rasterio
+import rasterio.warp
+import shapely
+import tqdm
+
+CHIP_SIZE = 128
+
+data_paths = [
+    ("data/cdl/", "data/sentinel2/crop_type_tiles_cdl.json"),
+    ("data/eurocrops/", "data/sentinel2/crop_type_tiles_eurocrops.json"),
+    ("data/nccm/", "data/sentinel2/crop_type_tiles_nccm.json"),
+]
+years = range(2017, 2024)
+
+def get_year(fname):
+    for year in years:
+        if str(year) in fname:
+            return year
+    raise ValueError(f"no year found in {fname}")
+
+webmercator_fiona_crs = fiona.crs.from_epsg(3857)
+webmercator_rasterio_crs = rasterio.crs.CRS.from_epsg(3857)
+
+webmercator_m = 2 * math.pi * 6378137
+zoom = 7
+pixels_per_tile = 32768
+pixel_size = webmercator_m / (2**zoom) / pixels_per_tile
+
+def get_shp_tiles(fname):
+    year = get_year(fname)
+    print(f"processing {fname} with detected year {year}")
+    tiles = set()
+    with fiona.open(fname, "r") as src:
+        xs = []
+        ys = []
+        for feature in src:
+            shp = shapely.geometry.shape(feature["geometry"])
+            center = shp.centroid
+            xs.append(center.x)
+            ys.append(center.y)
+        xs, ys = fiona.transform.transform(src.crs, webmercator_fiona_crs, xs, ys)
+        for x, y in zip(xs, ys):
+            tile = (int(x/pixel_size)//pixels_per_tile, int(y/pixel_size)//pixels_per_tile)
+            tiles.add((tile, year))
+
+    print(f"found {len(tiles)} tiles in {fname}")
+    return tiles
+
+def get_tif_tiles(data_path, fname):
+    year = get_year(fname)
+    print(f"processing {fname} with detected year {year}")
+    tiles = set()
+    with rasterio.open(fname) as src:
+        data = src.read(1)
+
+        if 'cdl' in data_path:
+            # fallow / idle cropland
+            data[data == 61] = 0
+            # forest
+            data[data == 63] = 0
+            # shrubland
+            data[data == 64] = 0
+            # barren
+            data[data == 65] = 0
+            # clouds / no data
+            data[data == 81] = 0
+            # developed
+            data[data == 82] = 0
+            # water
+            data[data == 83] = 0
+            # wetlands
+            data[data == 87] = 0
+            # nonag / undefined
+            data[data == 88] = 0
+            # aquaculture
+            data[data == 92] = 0
+            # open water
+            data[data == 111] = 0
+            # ice/snow
+            data[data == 112] = 0
+            # more land cover
+            data[data == 121] = 0
+            data[data == 122] = 0
+            data[data == 123] = 0
+            data[data == 124] = 0
+            data[data == 131] = 0
+            data[data == 141] = 0
+            data[data == 142] = 0
+            data[data == 143] = 0
+            data[data == 152] = 0
+            data[data == 176] = 0
+            data[data == 190] = 0
+            data[data == 195] = 0
+
+        if 'nccm' in data_path:
+            # paddy rice - keep
+            data[data == 0] = 4
+            # nodata - ignore
+            data[data == 15] = 0
+
+        rows = []
+        cols = []
+        for row in range(0, src.height, CHIP_SIZE):
+            for col in range(0, src.width, CHIP_SIZE):
+                crop = data[row:row+CHIP_SIZE, col:col+CHIP_SIZE]
+                if np.count_nonzero(crop) < 512:
+                    continue
+                rows.append(row)
+                cols.append(col)
+        xs, ys = src.xy(rows, cols)
+        xs, ys = rasterio.warp.transform(src.crs, webmercator_rasterio_crs, xs, ys)
+        for x, y in zip(xs, ys):
+            tile = (int(x/pixel_size)//pixels_per_tile, int(y/pixel_size)//pixels_per_tile)
+            tiles.add((tile, year))
+
+    print(f"found {len(tiles)} tiles in {fname}")
+    return tiles
+
+def get_tiles(job):
+    data_path, fname = job
+    if fname.endswith(".shp"):
+        return get_shp_tiles(fname)
+    elif fname.endswith(".tif"):
+        return get_tif_tiles(data_path, fname)
+    else:
+        raise Exception("bad fname " + fname)
+
+p = multiprocessing.Pool(64)
+
+for data_path, out_fname in data_paths:
+    print(data_path)
+    tiles = set()
+
+    shp_fnames = glob.glob(os.path.join(data_path, "**/*.shp"), recursive=True)
+    tif_fnames = glob.glob(os.path.join(data_path, "**/*.tif"), recursive=True)
+    fnames = shp_fnames + tif_fnames
+    jobs = [(data_path, fname) for fname in fnames]
+    outputs = p.imap_unordered(get_tiles, jobs)
+    for cur_tiles in tqdm.tqdm(outputs, total=len(jobs)):
+        tiles = tiles.union(cur_tiles)
+
+    with open(out_fname, "w") as f:
+        json.dump(list(tiles), f)
+
+p.close()
