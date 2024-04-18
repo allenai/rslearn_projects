@@ -17,9 +17,12 @@ needed = set()
 for image_id in tqdm.tqdm(os.listdir(naip_tile_dir), desc="Identifying needed Sentinel-2 tiles"):
     image_dir = os.path.join(naip_tile_dir, image_id)
     parts = image_id.split('_')
-    crs_str = parts[-2]
-    date_str = parts[-3]
-    date = datetime.strptime(date_str, "%Y%m%d")
+    crs_str = parts[-3]
+    date_str = parts[-4]
+    try:
+        date = datetime.strptime(date_str, "%Y%m%d")
+    except Exception as e:
+        print(e, image_id)
 
     # Get year/month within 60 days of this date.
     year_months = set()
