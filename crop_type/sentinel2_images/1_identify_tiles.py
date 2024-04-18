@@ -2,7 +2,7 @@
 We want to have images in the same year and location as the labels, with one image per calendar month.
 
 We will first identify a list of (tile, year) that are needed.
-The tiles will be in WebMercator at zoom 7, with resolution of each tile at 32768x32768.
+The tiles will be in WebMercator at 10 m/pixel (not any particular zoom level), with resolution of each tile at 32768x32768.
 
 For now there are three datasets:
 
@@ -12,10 +12,11 @@ For now there are three datasets:
 
 Assumption is that this torchgeo code has been run:
 
-from torchgeo import CDL, EuroCrops, NCCM
+from torchgeo.datasets import CDL, EuroCrops, NCCM, SouthAmericaSoybean
 CDL(paths='./data/cdl/', download=True, checksum=True, years=[2023, 2022, 2021, 2020, 2019, 2018, 2017])
 EuroCrops(paths='./data/eurocrops/', download=True, checksum=True)
 NCCM(paths="./data/nccm/", download=True, checksum=True)
+SouthAmericaSoybean(paths="./data/sas/", download=True, checksum=True)
 """
 
 import glob
@@ -25,19 +26,19 @@ import os
 
 import fiona
 import fiona.transform
-import math
 import numpy as np
 import rasterio
 import rasterio.warp
 import shapely
 import tqdm
 
-CHIP_SIZE = 128
+CHIP_SIZE = 32
 
 data_paths = [
-    ("data/cdl/", "data/sentinel2/crop_type_tiles_cdl.json"),
-    ("data/eurocrops/", "data/sentinel2/crop_type_tiles_eurocrops.json"),
-    ("data/nccm/", "data/sentinel2/crop_type_tiles_nccm.json"),
+#    ("data/cdl/", "data/sentinel2/crop_type_tiles_cdl.json"),
+#    ("data/eurocrops/", "data/sentinel2/crop_type_tiles_eurocrops.json"),
+#    ("data/nccm/", "data/sentinel2/crop_type_tiles_nccm.json"),
+    ("data/sas/", "data/sentinel2/crop_type_tiles_sas.json"),
 ]
 years = range(2017, 2024)
 
@@ -50,10 +51,8 @@ def get_year(fname):
 webmercator_fiona_crs = fiona.crs.from_epsg(3857)
 webmercator_rasterio_crs = rasterio.crs.CRS.from_epsg(3857)
 
-webmercator_m = 2 * math.pi * 6378137
-zoom = 7
-pixels_per_tile = 32768
-pixel_size = webmercator_m / (2**zoom) / pixels_per_tile
+pixels_per_tile = 256
+pixel_size = 10
 
 def get_shp_tiles(fname):
     year = get_year(fname)
@@ -83,43 +82,8 @@ def get_tif_tiles(data_path, fname):
         data = src.read(1)
 
         if 'cdl' in data_path:
-            # fallow / idle cropland
-            data[data == 61] = 0
-            # forest
-            data[data == 63] = 0
-            # shrubland
-            data[data == 64] = 0
-            # barren
-            data[data == 65] = 0
-            # clouds / no data
-            data[data == 81] = 0
-            # developed
-            data[data == 82] = 0
-            # water
-            data[data == 83] = 0
-            # wetlands
-            data[data == 87] = 0
-            # nonag / undefined
-            data[data == 88] = 0
-            # aquaculture
-            data[data == 92] = 0
-            # open water
-            data[data == 111] = 0
-            # ice/snow
-            data[data == 112] = 0
-            # more land cover
-            data[data == 121] = 0
-            data[data == 122] = 0
-            data[data == 123] = 0
-            data[data == 124] = 0
-            data[data == 131] = 0
-            data[data == 141] = 0
-            data[data == 142] = 0
-            data[data == 143] = 0
-            data[data == 152] = 0
-            data[data == 176] = 0
-            data[data == 190] = 0
-            data[data == 195] = 0
+            data = (data == 1) | (data == 3) | (data == 5) | (data == 12) | (data == 13) | (data == 22) | (data == 23) | (data == 24)
+            data = data.astype(np.uint8)
 
         if 'nccm' in data_path:
             # paddy rice - keep
@@ -130,12 +94,13 @@ def get_tif_tiles(data_path, fname):
         rows = []
         cols = []
         for row in range(0, src.height, CHIP_SIZE):
+            print(f"{fname} {row}/{src.height}")
             for col in range(0, src.width, CHIP_SIZE):
                 crop = data[row:row+CHIP_SIZE, col:col+CHIP_SIZE]
-                if np.count_nonzero(crop) < 512:
+                if np.count_nonzero(crop) < 128:
                     continue
-                rows.append(row)
-                cols.append(col)
+                rows.append(row + CHIP_SIZE//2)
+                cols.append(col + CHIP_SIZE//2)
         xs, ys = src.xy(rows, cols)
         xs, ys = rasterio.warp.transform(src.crs, webmercator_rasterio_crs, xs, ys)
         for x, y in zip(xs, ys):
@@ -172,3 +137,45 @@ for data_path, out_fname in data_paths:
         json.dump(list(tiles), f)
 
 p.close()
+
+"""
+old list of ignored classes:
+
+# fallow / idle cropland
+data[data == 61] = 0
+# forest
+data[data == 63] = 0
+# shrubland
+data[data == 64] = 0
+# barren
+data[data == 65] = 0
+# clouds / no data
+data[data == 81] = 0
+# developed
+data[data == 82] = 0
+# water
+data[data == 83] = 0
+# wetlands
+data[data == 87] = 0
+# nonag / undefined
+data[data == 88] = 0
+# aquaculture
+data[data == 92] = 0
+# open water
+data[data == 111] = 0
+# ice/snow
+data[data == 112] = 0
+# more land cover
+data[data == 121] = 0
+data[data == 122] = 0
+data[data == 123] = 0
+data[data == 124] = 0
+data[data == 131] = 0
+data[data == 141] = 0
+data[data == 142] = 0
+data[data == 143] = 0
+data[data == 152] = 0
+data[data == 176] = 0
+data[data == 190] = 0
+data[data == 195] = 0
+"""

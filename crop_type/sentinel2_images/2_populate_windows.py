@@ -21,10 +21,8 @@ with open(tile_fname) as f:
     tile_years = json.load(f)
 
 webmercator_crs = CRS.from_epsg(3857)
-webmercator_m = 2 * math.pi * 6378137
-zoom = 7
-pixels_per_tile = 32768
-pixel_size = webmercator_m / (2**zoom) / pixels_per_tile
+pixels_per_tile = 256
+pixel_size = 10
 
 def make_window(tile_year):
     tile, year = tile_year
@@ -32,7 +30,7 @@ def make_window(tile_year):
     row = -tile[1] - 1
     window_name = f"{col}_{row}_{year}"
     projection = Projection(webmercator_crs, pixel_size, -pixel_size)
-    bounds = (col*32768, row*32768, (col+1)*32768, (row+1)*32768)
+    bounds = (col*pixels_per_tile, row*pixels_per_tile, (col+1)*pixels_per_tile, (row+1)*pixels_per_tile)
     time_range = (datetime(year, 7, 1, tzinfo=timezone.utc), datetime(year, 8, 1, tzinfo=timezone.utc))
     window = Window(
         window_root=os.path.join(out_dir, group, window_name),
