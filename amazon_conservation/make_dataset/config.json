@@ -54,6 +54,78 @@
 				"time_offset": "-240d"
 			}
 		},
+		"pre_3": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "/data/favyenb/rslearn_amazon_conservation/cache/sentinel2_gcp/",
+				"max_time_delta": "1d",
+				"sort_by": "cloud_cover",
+				"query_config": {
+					"max_matches": 1
+				},
+				"time_offset": "-270d"
+			}
+		},
+		"pre_4": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "/data/favyenb/rslearn_amazon_conservation/cache/sentinel2_gcp/",
+				"max_time_delta": "1d",
+				"sort_by": "cloud_cover",
+				"query_config": {
+					"max_matches": 1
+				},
+				"time_offset": "-300d"
+			}
+		},
+		"pre_5": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "/data/favyenb/rslearn_amazon_conservation/cache/sentinel2_gcp/",
+				"max_time_delta": "1d",
+				"sort_by": "cloud_cover",
+				"query_config": {
+					"max_matches": 1
+				},
+				"time_offset": "-330d"
+			}
+		},
+		"pre_6": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "/data/favyenb/rslearn_amazon_conservation/cache/sentinel2_gcp/",
+				"max_time_delta": "1d",
+				"sort_by": "cloud_cover",
+				"query_config": {
+					"max_matches": 1
+				},
+				"time_offset": "-360d"
+			}
+		},
 		"post_0": {
 			"type": "raster",
 			"band_sets": [{
@@ -106,6 +178,78 @@
 					"max_matches": 1
 				},
 				"time_offset": "270d"
+			}
+		},
+		"post_3": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "/data/favyenb/rslearn_amazon_conservation/cache/sentinel2_gcp/",
+				"max_time_delta": "1d",
+				"sort_by": "cloud_cover",
+				"query_config": {
+					"max_matches": 1
+				},
+				"time_offset": "300d"
+			}
+		},
+		"post_4": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "/data/favyenb/rslearn_amazon_conservation/cache/sentinel2_gcp/",
+				"max_time_delta": "1d",
+				"sort_by": "cloud_cover",
+				"query_config": {
+					"max_matches": 1
+				},
+				"time_offset": "330d"
+			}
+		},
+		"post_5": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "/data/favyenb/rslearn_amazon_conservation/cache/sentinel2_gcp/",
+				"max_time_delta": "1d",
+				"sort_by": "cloud_cover",
+				"query_config": {
+					"max_matches": 1
+				},
+				"time_offset": "360d"
+			}
+		},
+		"post_6": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "/data/favyenb/rslearn_amazon_conservation/cache/sentinel2_gcp/",
+				"max_time_delta": "1d",
+				"sort_by": "cloud_cover",
+				"query_config": {
+					"max_matches": 1
+				},
+				"time_offset": "390d"
 			}
 		}
 	},

@@ -83,17 +83,21 @@ for i in range(0, len(arg_dates), 2):
 # Load MultiPolygon from the existing_dirs.
 # It should contain examples like feat_idx_col_row_...
 # So we just use the column/row.
-existing_shape = None
+existing_points = []
 if args.existing_dirs:
-    existing_shapes = []
     for existing_dir in args.existing_dirs.split(","):
         for example_id in os.listdir(existing_dir):
             parts = example_id.split('_')
             point = (int(parts[2]), int(parts[3]))
             point = rsdh.util.mercator_to_geo(point, zoom=13, pixels=512)
-            shp = shapely.Point(point).buffer(existing_distance_threshold)
-            existing_shapes.append(shp)
-    existing_shape = shapely.unary_union(existing_shapes)
+            existing_points.append(point)
+
+def is_existing(point):
+    for existing_point in existing_points:
+        distance = math.sqrt((point[0] - existing_point[0])**2 + (point[1] - existing_point[1])**2)
+        if distance <= existing_distance_threshold:
+            return True
+    return False
 
 print('read confidences')
 conf_raster = rasterio.open(conf_fname)
@@ -135,7 +139,8 @@ for days1, days2 in date_ranges:
         projection_shp = shapely.Point(projection_pos[0], projection_pos[1])
         projection_geom = STGeometry(Projection(conf_raster.crs, 1, 1), projection_shp, None)
         wgs84_geom = projection_geom.to_projection(WGS84_PROJECTION)
-        if wgs84_geom.shp.distance(existing_shape) < existing_distance_threshold:
+        cur_point = (wgs84_geom.shp.centroid.x, wgs84_geom.shp.centroid.y)
+        if is_existing(cur_point):
             continue
         web_mercator_shp = wgs84_geom.to_projection(web_mercator_projection).shp
 
@@ -189,12 +194,15 @@ for days1, days2 in date_ranges:
             points[:, 0] -= bounds[0]
             points[:, 1] -= bounds[1]
             return points
-        pixel_shp = shapely.transform(shp, to_out_pixel)
+        pixel_shp = shapely.transform(web_mercator_shp, to_out_pixel)
         mask_im = rasterio.features.rasterize(
             [(pixel_shp, 255)],
             out_shape=(args.window_size, args.window_size),
         )
         Image.fromarray(mask_im).save(os.path.join(window.window_root, "mask.png"))
+
+        # Add to existing points so we don't add duplicate.
+        existing_points.append(cur_point)
 
         num_processed += 1
         if num_processed >= args.count:
