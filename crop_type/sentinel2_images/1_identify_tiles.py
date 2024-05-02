@@ -38,7 +38,9 @@ data_paths = [
 #    ("data/cdl/", "data/sentinel2/crop_type_tiles_cdl.json"),
 #    ("data/eurocrops/", "data/sentinel2/crop_type_tiles_eurocrops.json"),
 #    ("data/nccm/", "data/sentinel2/crop_type_tiles_nccm.json"),
-    ("data/sas/", "data/sentinel2/crop_type_tiles_sas.json"),
+#    ("data/sas/", "data/sentinel2/crop_type_tiles_sas.json"),
+    ("data/agrifieldnet/field_ids/", "data/sentinel2/crop_type_tiles_agrifieldnet.json"),
+    ("data/southafrica/field_ids/", "data/sentinel2/crop_type_tiles_southafrica.json"),
 ]
 years = range(2017, 2024)
 
@@ -46,6 +48,10 @@ def get_year(fname):
     for year in years:
         if str(year) in fname:
             return year
+    if "agrifieldnet" in fname:
+        return 2021
+    if "southafrica" in fname:
+        return 2017
     raise ValueError(f"no year found in {fname}")
 
 webmercator_fiona_crs = fiona.crs.from_epsg(3857)
@@ -97,7 +103,7 @@ def get_tif_tiles(data_path, fname):
             print(f"{fname} {row}/{src.height}")
             for col in range(0, src.width, CHIP_SIZE):
                 crop = data[row:row+CHIP_SIZE, col:col+CHIP_SIZE]
-                if np.count_nonzero(crop) < 128:
+                if np.count_nonzero(crop) < 128 and 'agrifieldnet' not in fname and 'southafrica' not in fname:
                     continue
                 rows.append(row + CHIP_SIZE//2)
                 cols.append(col + CHIP_SIZE//2)

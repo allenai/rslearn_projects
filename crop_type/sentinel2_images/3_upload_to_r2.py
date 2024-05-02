@@ -13,7 +13,7 @@ import boto3
 import tqdm
 
 root_dir = "/data/favyenb/rslearn_crop_type/windows/"
-group = "cdl_2018"
+group = "agrifieldnet"
 
 s3 = boto3.resource('s3',
     endpoint_url = os.environ['CLOUDFLARE_R2_ENDPOINT'],
