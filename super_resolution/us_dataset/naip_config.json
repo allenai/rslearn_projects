@@ -5,7 +5,7 @@
 			"band_sets": [{
 				"dtype": "uint8",
 				"bands": ["R", "G", "B"],
-				"format": "png",
+				"format": {"name": "single_image", "format": "png"},
 				"zoom_offset": 3
 			}],
 			"data_source": {
