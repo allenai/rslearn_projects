@@ -81,6 +81,11 @@ def handle(example_id):
         int(dst_polygon.bounds[2]),
         int(dst_polygon.bounds[3]),
     ]
+    # Make the bounds multiple of two since some bands are 1/2 the resolution.
+    if (bounds[2] - bounds[0]) % 2 == 1:
+        bounds[2] += 1
+    if (bounds[3] - bounds[1]) % 2 == 1:
+        bounds[3] += 1
     ts = window_id_to_time[window_id]
     time_range = (
         ts - timedelta(minutes=1),
