@@ -1,0 +1,36 @@
+{
+	"layers": {
+		"sentinel1": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint16",
+				"bands": ["VV", "VH"],
+				"format": "geotiff"
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.google_earth_engine.GEE",
+				"collection_name": "COPERNICUS/S1_GRD",
+				"gcs_bucket_name": "gsnlq",
+				"index_fname": "/mnt/sentinel1_2/cache/sentinel1_index",
+				"service_account_name": "remote-sensing-data-hub-admin",
+				"service_account_credentials": "/home/ubuntu/gee_key.json",
+				"filters": [
+					["transmitterReceiverPolarisation", ["VV", "VH"]],
+					["instrumentMode", "IW"]
+				],
+				"query_config": {
+					"max_matches": 1
+				},
+				"dtype": "float32"
+			}
+		}
+	},
+	"tile_store": {
+		"name": "file",
+		"root_dir": "/mnt/sentinel1_2/tiles",
+		"raster_format": {
+			"name": "image_tile",
+			"format": "geotiff"
+		}
+	}
+}
