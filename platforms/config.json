@@ -98,9 +98,9 @@
 				}
                         }],
 			"data_source": {
-				"name": "rslearn.data_sources.aws_open_data.Sentinel2",
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
 				"modality": "L1C",
-				"metadata_cache_dir": "/data/favyenb/rslearn_sentinel2_platforms/cache/sentinel2",
+				"index_cache_dir": "/data/favyenb/rslearn_sentinel2_platforms/cache/sentinel2",
 				"max_time_delta": "1d",
 				"query_config": {
 					"max_matches": 1
