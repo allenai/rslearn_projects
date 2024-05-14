@@ -1,3 +1,12 @@
+"""
+This is a quick script to visualize the outputs from create_windows.py
+(after running prepare/ingest/materialize in rslearn to get the images).
+
+Just visualizing the ground truth data.
+- Heading, length in the image.
+- Ship type in the filename.
+"""
+
 import json
 import math
 import os
