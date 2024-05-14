@@ -1,0 +1,24 @@
+{
+	"layers": {
+		"sentinel2": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "cache/sentinel2/",
+				"max_time_delta": "1d",
+				"query_config": {
+					"max_matches": 1
+				}
+			}
+		}
+	},
+	"tile_store": {
+		"name": "file",
+		"root_dir": "tiles"
+	}
+}
