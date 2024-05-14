@@ -28,7 +28,7 @@ with open(in_fname) as f:
     reader = csv.DictReader(f)
     csv_rows = list(reader)
 
-csv_rows = [csv_row for csv_row in csv_rows if csv_row["length"] and csv_row["cog"] and csv_row["width"] and csv_row["ship_type"]]
+csv_rows = [csv_row for csv_row in csv_rows if csv_row["length"] and csv_row["cog"] and csv_row["width"] and csv_row["ship_type"] and csv_row["sog"] and float(csv_row["sog"]) > 5 and float(csv_row["sog"]) < 50]
 csv_rows = random.sample(csv_rows, 100)
 for idx, csv_row in enumerate(tqdm.tqdm(csv_rows)):
     ts = datetime.fromisoformat(csv_row["timestamp"])
