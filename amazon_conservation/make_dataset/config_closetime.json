@@ -1,0 +1,48 @@
+{
+	"layers": {
+		"pre": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "cache/sentinel2_gcp/",
+				"max_time_delta": "1d",
+				"sort_by": "cloud_cover",
+				"query_config": {
+					"max_matches": 6,
+					"space_mode": "CONTAINS"
+				},
+				"time_offset": "-360d",
+				"duration": "180d"
+			}
+		},
+		"post": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+				"index_cache_dir": "cache/sentinel2_gcp/",
+				"max_time_delta": "1d",
+				"sort_by": "cloud_cover",
+				"query_config": {
+					"max_matches": 6,
+					"space_mode": "CONTAINS"
+				},
+				"time_offset": "30d",
+				"duration": "180d"
+			}
+		}
+	},
+	"tile_store": {
+		"name": "file",
+		"root_dir": "tiles"
+	}
+}

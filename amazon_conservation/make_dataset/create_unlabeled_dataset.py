@@ -42,8 +42,8 @@ regions = {
 # Dates in the GDAL GeoTIFF are measured in days since 2019-01-01.
 date_base = datetime(2019, 1, 1, tzinfo=timezone.utc)
 # Minimum distance from sampled alert to an existing example.
-# This is roughly 10 km away, in degrees lat/lon.
-existing_distance_threshold = 10000 / 111111
+# This is roughly 5 km away, in degrees lat/lon.
+existing_distance_threshold = 5000 / 111111
 # Confidence threshold for the GLAD alert confidence GeoTIFF.
 # 2 corresponds to low confidence.
 min_confidence = 2
@@ -157,9 +157,10 @@ for days1, days2 in date_ranges:
             int(web_mercator_shp.x) + args.window_size // 2,
             int(web_mercator_shp.y) + args.window_size // 2,
         )
+        center_date = date_base + timedelta(days=(days1+days2)//2)
         time_range = (
-            date_base + timedelta(days=days1),
-            date_base + timedelta(days=days1 + args.window_days),
+            center_date,
+            center_date + timedelta(days=args.window_days),
         )
 
         # Create the new rslearn windows.
