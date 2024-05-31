@@ -21,7 +21,7 @@ import tqdm
 
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection, STGeometry, get_utm_ups_projection
+from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 
 in_dir = "/data/favyenb/landsat8-data/multisat_vessel_labels_fixed/"
 image_db_fname = "/data/favyenb/landsat8-data/siv.sqlite3"
@@ -69,7 +69,7 @@ def handle(example_id):
     src_geom = STGeometry(src_projection, src_polygon, None)
     wgs84_geom = src_geom.to_projection(WGS84_PROJECTION)
     # We apply abs() on the latitude because Landsat only uses northern UTM zones.
-    dst_crs = get_utm_ups_projection(wgs84_geom.shp.centroid.x, abs(wgs84_geom.shp.centroid.y))
+    dst_crs = get_utm_ups_crs(wgs84_geom.shp.centroid.x, abs(wgs84_geom.shp.centroid.y))
     dst_projection = Projection(dst_crs, dst_pixel_size, -dst_pixel_size)
     dst_geom = src_geom.to_projection(dst_projection)
     dst_polygon = dst_geom.shp

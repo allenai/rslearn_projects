@@ -14,7 +14,7 @@ import shapely
 
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection, STGeometry, get_utm_ups_projection
+from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 
 geojson_fnames = [
     "/tmp/observation_research.geojson",
@@ -66,7 +66,7 @@ for geojson_fname in geojson_fnames:
 
         for time_range in time_ranges:
             geom = STGeometry(WGS84_PROJECTION, shapely.Point(lon, lat), time_range)
-            utm_crs = get_utm_ups_projection(lon, lat)
+            utm_crs = get_utm_ups_crs(lon, lat)
             utm_projection = Projection(utm_crs, 10 ,-10)
             geom = geom.to_projection(utm_projection)
             bounds = [

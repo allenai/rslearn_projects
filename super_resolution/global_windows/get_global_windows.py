@@ -11,7 +11,7 @@ import shapely
 
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection, STGeometry, get_utm_ups_projection
+from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 
 zoom13_tiles = [
     [1845, 3650],
@@ -64,7 +64,7 @@ for col, row, zoom in all_tiles:
     # Get appropriate UTM geometry and write window.
     wgs84_geom = src_geom.to_projection(WGS84_PROJECTION)
     print(wgs84_geom)
-    utm_crs = get_utm_ups_projection(wgs84_geom.shp.x, wgs84_geom.shp.y)
+    utm_crs = get_utm_ups_crs(wgs84_geom.shp.x, wgs84_geom.shp.y)
     utm_projection = Projection(utm_crs, utm_pixel_size, -utm_pixel_size)
     utm_geom = src_geom.to_projection(utm_projection)
 

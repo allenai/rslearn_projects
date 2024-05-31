@@ -8,7 +8,7 @@ from rasterio.crs import CRS
 
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection, STGeometry, get_utm_ups_projection
+from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 
 
 out_dir = "/data/favyenb/rslearn_landsat/windows/"
@@ -22,7 +22,7 @@ for window_name in os.listdir(os.path.join(out_dir, IN_GROUP)):
     point = shapely.Point((window.bounds[0] + window.bounds[2]) // 2, (window.bounds[1] + window.bounds[3]) // 2)
     geom1 = STGeometry(window.projection, point, None)
     geom2 = geom1.to_projection(WGS84_PROJECTION)
-    utm_crs = get_utm_ups_projection(geom2.shp.x, geom2.shp.y)
+    utm_crs = get_utm_ups_crs(geom2.shp.x, geom2.shp.y)
     dst_projection = Projection(utm_crs, pixel_size, -pixel_size)
     geom3 = geom1.to_projection(dst_projection)
     bounds = [

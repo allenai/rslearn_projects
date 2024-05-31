@@ -16,7 +16,7 @@ import shapely.geometry
 import tqdm
 
 from remsen.dataset.window import Window
-from remsen.utils import get_utm_ups_projection
+from remsen.utils import get_utm_ups_crs
 
 # Meters per degree at equator (maximum).
 DEGREE_METERS = 111111
@@ -49,7 +49,7 @@ def get_batch_tiles(batch):
         if not polygon.contains(point):
             continue
 
-        utm_crs = get_utm_ups_projection(lon, lat)
+        utm_crs = get_utm_ups_crs(lon, lat)
         utm_point = rasterio.warp.transform_geom(src_crs, utm_crs, point)
         utm_x, utm_y = utm_point["coordinates"]
         tile = (
