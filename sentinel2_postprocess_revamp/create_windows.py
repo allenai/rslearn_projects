@@ -1,5 +1,24 @@
 """
-Hunter sent a CSV with heading, length, width, ship type, and other attributes.
+This script creates rslearn windows to get vessel crops based on a CSV with columns:
+- timestamp
+- latitude
+- longitude
+- ship_type
+- length
+- width
+- cog
+- sog
+
+Or with columns:
+- event_id
+- event_time
+- lat
+- lon
+- vessel_type
+- vessel_length
+- vessel_width
+- ais_course
+- ais_speed
 Here we just want to create rslearn windows to get the vessel crops (it also has time/lat/lon).
 And then also write some of the metadata from the CSV into a file in the window dirs.
 """
@@ -7,51 +26,68 @@ import csv
 from datetime import datetime, timedelta
 import json
 import os
-import random
+import sys
 
 import shapely
 import tqdm
 
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection, STGeometry, get_utm_ups_projection
+from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 
 from ship_types import ship_types
 
-in_fname = "/home/favyenb/sentinel2_vessel_labels_with_metadata.csv"
-out_dir = "/data/favyenb/rslearn_sentinel2_vessel_postprocess"
+in_fname = sys.argv[1]
+out_dir = sys.argv[2]
+group = sys.argv[3]
+
 pixel_size = 10
-group = "vessels"
 window_size = 64
 
 with open(in_fname) as f:
     reader = csv.DictReader(f)
     csv_rows = list(reader)
 
-csv_rows = [csv_row for csv_row in csv_rows if csv_row["length"] and csv_row["cog"] and csv_row["width"] and csv_row["ship_type"] and csv_row["sog"] and float(csv_row["sog"]) > 5 and float(csv_row["sog"]) < 50]
-csv_rows = random.sample(csv_rows, 100)
 for idx, csv_row in enumerate(tqdm.tqdm(csv_rows)):
-    ts = datetime.fromisoformat(csv_row["timestamp"])
-    lat = float(csv_row["latitude"])
-    lon = float(csv_row["longitude"])
-    if csv_row["ship_type"]:
-        ship_type = ship_types.get(int(csv_row["ship_type"]), "unknown")
-    else:
-        ship_type = "unknown"
-
     def get_optional_float(k):
         if csv_row[k]:
             return float(csv_row[k])
         else:
             return None
-    vessel_length = get_optional_float("length")
-    vessel_width = get_optional_float("width")
-    vessel_cog = get_optional_float("cog")
-    vessel_sog = get_optional_float("sog")
+
+    if "event_time" in csv_row:
+        event_id = csv_row["event_id"]
+        ts = datetime.fromisoformat(csv_row["event_time"])
+        lat = float(csv_row["lat"])
+        lon = float(csv_row["lon"])
+        if csv_row["vessel_category"]:
+            ship_type = csv_row["vessel_category"]
+        else:
+            ship_type = "unknown"
+        vessel_length = get_optional_float("vessel_length")
+        vessel_width = get_optional_float("vessel_width")
+        vessel_cog = get_optional_float("ais_course")
+        vessel_cog_avg = get_optional_float("course")
+        vessel_sog = get_optional_float("ais_speed")
+    else:
+        ts = datetime.fromisoformat(csv_row["timestamp"])
+        lat = float(csv_row["latitude"])
+        lon = float(csv_row["longitude"])
+        if csv_row["ship_type"]:
+            ship_type = ship_types.get(int(csv_row["ship_type"]), "unknown")
+        else:
+            ship_type = "unknown"
+
+        vessel_length = get_optional_float("length")
+        vessel_width = get_optional_float("width")
+        vessel_cog = get_optional_float("cog")
+        vessel_cog_avg = None
+        vessel_sog = get_optional_float("sog")
+        event_id = f"{csv_row['timestamp']}_{csv_row['longitude']}_{csv_row['latitude']}"
 
     src_point = shapely.Point(lon, lat)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
-    dst_crs = get_utm_ups_projection(lon, lat)
+    dst_crs = get_utm_ups_crs(lon, lat)
     dst_projection = Projection(dst_crs, pixel_size, -pixel_size)
     dst_geometry = src_geometry.to_projection(dst_projection)
 
@@ -63,7 +99,7 @@ for idx, csv_row in enumerate(tqdm.tqdm(csv_rows)):
     )
     time_range = (ts - timedelta(hours=1), ts + timedelta(hours=1))
 
-    window_name = f"vessel_{idx}"
+    window_name = event_id
     window_root = os.path.join(out_dir, "windows", group, window_name)
     window = Window(
         window_root=window_root,
@@ -78,8 +114,11 @@ for idx, csv_row in enumerate(tqdm.tqdm(csv_rows)):
     # Save metadata.
     with open(os.path.join(window_root, "info.json"), "w") as f:
         json.dump({
+            "event_id": event_id,
             "length": vessel_length,
             "width": vessel_width,
             "cog": vessel_cog,
+            "cog_avg": vessel_cog_avg,
+            "sog": vessel_sog,
             "type": ship_type,
         }, f)
