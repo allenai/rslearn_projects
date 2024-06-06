@@ -25,9 +25,9 @@ out_dir = "/data/favyenb/rslearn_crop_type/windows/"
 in_dir = "/data/yichiac/agrifieldnet_harmonized/train_labels/"
 group = "agrifieldnet"
 time_ranges = [
-    ("2021-02", (datetime(2021, 6, 1, tzinfo=timezone.utc), datetime(2021, 7, 1, tzinfo=timezone.utc))),
-    ("2021-03", (datetime(2021, 7, 1, tzinfo=timezone.utc), datetime(2021, 8, 1, tzinfo=timezone.utc))),
-    ("2021-04", (datetime(2021, 8, 1, tzinfo=timezone.utc), datetime(2021, 9, 1, tzinfo=timezone.utc))),
+    ("2021-06", (datetime(2021, 6, 1, tzinfo=timezone.utc), datetime(2021, 7, 1, tzinfo=timezone.utc))),
+    ("2021-07", (datetime(2021, 7, 1, tzinfo=timezone.utc), datetime(2021, 8, 1, tzinfo=timezone.utc))),
+    ("2021-08", (datetime(2021, 8, 1, tzinfo=timezone.utc), datetime(2021, 9, 1, tzinfo=timezone.utc))),
 ]
 
 pixel_size = 10
