@@ -25,6 +25,7 @@ And then also write some of the metadata from the CSV into a file in the window 
 import csv
 from datetime import datetime, timedelta
 import json
+import multiprocessing
 import os
 import sys
 
@@ -33,7 +34,7 @@ import tqdm
 
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
+from rslearn.utils import Feature, Projection, STGeometry, get_utm_ups_crs
 
 from ship_types import ship_types
 
@@ -43,12 +44,13 @@ group = sys.argv[3]
 
 pixel_size = 10
 window_size = 64
+vessel_categories = ["cargo", "tanker", "passenger", "service", "pleasure", "fishing", "enforcement", "sar"]
 
 with open(in_fname) as f:
     reader = csv.DictReader(f)
     csv_rows = list(reader)
 
-for idx, csv_row in enumerate(tqdm.tqdm(csv_rows)):
+def process_row(csv_row):
     def get_optional_float(k):
         if csv_row[k]:
             return float(csv_row[k])
@@ -122,3 +124,32 @@ for idx, csv_row in enumerate(tqdm.tqdm(csv_rows)):
             "sog": vessel_sog,
             "type": ship_type,
         }, f)
+
+    info_dir = os.path.join(window_root, "layers", "info")
+    gt_layer_fname = os.path.join(info_dir, "data.geojson")
+    os.makedirs(info_dir, exist_ok=True)
+    properties = {
+        "event_id": event_id,
+    }
+    if vessel_length and vessel_length >= 5 and vessel_length < 460:
+        properties["length"] = vessel_length
+    if vessel_width and vessel_width >= 2 and vessel_width < 120:
+        properties["width"] = vessel_width
+    if vessel_cog and vessel_sog and vessel_sog > 5 and vessel_sog < 50 and vessel_cog >= 0 and vessel_cog < 360:
+        properties["cog"] = vessel_cog
+    if vessel_sog and vessel_sog > 0 and vessel_sog < 60:
+        properties["sog"] = vessel_sog
+    if ship_type and ship_type in vessel_categories:
+        properties["type"] = ship_type
+    feat = Feature(dst_geometry, properties)
+    with open(gt_layer_fname, "w") as f:
+        json.dump({
+            "type": "FeatureCollection",
+            "features": [feat.to_geojson()],
+        }, f)
+
+p = multiprocessing.Pool(32)
+outputs = p.imap_unordered(process_row, csv_rows)
+for _ in tqdm.tqdm(outputs, total=len(csv_rows)):
+    pass
+p.close()

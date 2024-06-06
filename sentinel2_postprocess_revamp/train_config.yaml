@@ -1,0 +1,70 @@
+model:
+  model:
+    class_path: rslearn.models.multitask.MultiTask
+    init_args:
+      encoder:
+        - class_path: rslearn.models.swin.Swin
+          init_args:
+            pretrained: true
+            output_layers: [7]
+      decoders:
+        width:
+          - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            init_args:
+              in_channels: 1024
+              out_channels: 1
+              num_conv_layers: 1
+              num_fc_layers: 2
+          - class_path: rslearn.train.tasks.regression.RegressionHead
+  metrics:
+    width:
+      metrics:
+        class_path: rslearn.train.tasks.regression.RegressionMetric
+        init_args:
+          mode: "l1"
+  lr: 0.0001
+  plateau_factor: 0.1
+  plateau_patience: 10
+  plateau_min_lr: 0
+  plateau_cooldown: 0
+data:
+  tasks:
+    width:
+      class_path: rslearn.train.tasks.regression.RegressionTask
+      init_args:
+        property_name: "length"
+        allow_invalid: true
+        scale_factor: 0.01
+        remap_values: [[0.2, 0.5], [0, 255]]
+  transforms:
+    - class_path: rslearn.train.transforms.normalize.Normalize
+      init_args:
+        mean: 0
+        std: 255
+  task_config:
+    inputs:
+      - name: "image"
+        data_type: "raster"
+    targets:
+      - name: "width"
+        data_type: "vector"
+  dataset_config:
+    root_dir: "/data/favyenb/rslearn_sentinel2_vessel_postprocess/"
+    inputs:
+      image:
+        layers: ["sentinel2"]
+        bands: ["B04", "B03", "B02"]
+    targets:
+      width:
+        layers: ["info"]
+    splits:
+      train:
+        groups: ["detections"]
+      val:
+        groups: ["detections_val"]
+      test:
+        groups: ["detections_val"]
+  batch_size: 64
+  num_workers: 16
+#trainer:
+#  limit_train_batches: 64
