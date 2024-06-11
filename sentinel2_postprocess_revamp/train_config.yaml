@@ -1,6 +1,6 @@
 model:
   model:
-    class_path: rslearn.models.multitask.MultiTask
+    class_path: rslearn.models.multitask.MultiTaskModel
     init_args:
       encoder:
         - class_path: rslearn.models.swin.Swin
@@ -8,6 +8,14 @@ model:
             pretrained: true
             output_layers: [7]
       decoders:
+        length:
+          - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            init_args:
+              in_channels: 1024
+              out_channels: 1
+              num_conv_layers: 1
+              num_fc_layers: 2
+          - class_path: rslearn.train.tasks.regression.RegressionHead
         width:
           - class_path: rslearn.models.pooling_decoder.PoolingDecoder
             init_args:
@@ -16,55 +24,104 @@ model:
               num_conv_layers: 1
               num_fc_layers: 2
           - class_path: rslearn.train.tasks.regression.RegressionHead
-  metrics:
-    width:
-      metrics:
-        class_path: rslearn.train.tasks.regression.RegressionMetric
-        init_args:
-          mode: "l1"
+        speed:
+          - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            init_args:
+              in_channels: 1024
+              out_channels: 1
+              num_conv_layers: 1
+              num_fc_layers: 2
+          - class_path: rslearn.train.tasks.regression.RegressionHead
+        heading:
+          - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            init_args:
+              in_channels: 1024
+              out_channels: 1
+              num_conv_layers: 1
+              num_fc_layers: 2
+          - class_path: rslearn.train.tasks.regression.RegressionHead
+        ship_type:
+          - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            init_args:
+              in_channels: 1024
+              out_channels: 8
+              num_conv_layers: 1
+              num_fc_layers: 2
+          - class_path: rslearn.train.tasks.classification.ClassificationHead
   lr: 0.0001
   plateau_factor: 0.1
   plateau_patience: 10
   plateau_min_lr: 0
   plateau_cooldown: 0
 data:
-  tasks:
-    width:
-      class_path: rslearn.train.tasks.regression.RegressionTask
-      init_args:
-        property_name: "length"
-        allow_invalid: true
-        scale_factor: 0.01
-        remap_values: [[0.2, 0.5], [0, 255]]
-  transforms:
-    - class_path: rslearn.train.transforms.normalize.Normalize
-      init_args:
-        mean: 0
-        std: 255
-  task_config:
-    inputs:
-      - name: "image"
-        data_type: "raster"
-    targets:
-      - name: "width"
-        data_type: "vector"
-  dataset_config:
-    root_dir: "/data/favyenb/rslearn_sentinel2_vessel_postprocess/"
-    inputs:
-      image:
-        layers: ["sentinel2"]
-        bands: ["B04", "B03", "B02"]
-    targets:
-      width:
-        layers: ["info"]
-    splits:
-      train:
-        groups: ["detections"]
-      val:
-        groups: ["detections_val"]
-      test:
-        groups: ["detections_val"]
-  batch_size: 64
+  root_dir: "/data/favyenb/rslearn_sentinel2_vessel_postprocess/"
+  inputs:
+    image:
+      data_type: "raster"
+      layers: ["sentinel2"]
+      bands: ["B04", "B03", "B02"]
+      passthrough: true
+    info:
+      data_type: "vector"
+      layers: ["info"]
+  task:
+    class_path: MyMultiTask
+    init_args:
+      tasks:
+        length:
+          class_path: rslearn.train.tasks.regression.RegressionTask
+          init_args:
+            property_name: "length"
+            allow_invalid: true
+            scale_factor: 0.01
+        width:
+          class_path: rslearn.train.tasks.regression.RegressionTask
+          init_args:
+            property_name: "width"
+            allow_invalid: true
+            scale_factor: 0.01
+        speed:
+          class_path: rslearn.train.tasks.regression.RegressionTask
+          init_args:
+            property_name: "sog"
+            allow_invalid: true
+            scale_factor: 0.01
+        heading:
+          class_path: rslearn.train.tasks.regression.RegressionTask
+          init_args:
+            property_name: "cog"
+            allow_invalid: true
+            scale_factor: 0.01
+        ship_type:
+          class_path: rslearn.train.tasks.classification.ClassificationTask
+          init_args:
+            property_name: "type"
+            allow_invalid: true
+            classes: ["cargo", "tanker", "passenger", "service", "pleasure", "fishing", "enforcement", "sar"]
+      input_mapping:
+        length:
+          info: "targets"
+        width:
+          info: "targets"
+        speed:
+          info: "targets"
+        heading:
+          info: "targets"
+        ship_type:
+          info: "targets"
+  batch_size: 32
   num_workers: 16
+  default_config:
+    transforms:
+      - class_path: rslearn.train.transforms.normalize.Normalize
+        init_args:
+          mean: 0
+          std: 255
+  train_config:
+    groups: ["detections"]
+  val_config:
+    groups: ["detections_val"]
+  test_config:
+    groups: ["detections_val"]
 #trainer:
 #  limit_train_batches: 64
