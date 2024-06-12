@@ -26,3 +26,20 @@ Then use rslearn to prepare, ingest, and materialize the dataset:
     python -m rslearn.main dataset prepare --root /data/favyenb/rslearn_sentinel2_vessel_postprocess/ --workers 64 --group detections --batch-size 8
     python -m rslearn.main dataset ingest --root /data/favyenb/rslearn_sentinel2_vessel_postprocess/ --workers 64 --group detections --no-use-initial-job --jobs-per-process 1
     python -m rslearn.main dataset materialize --root /data/favyenb/rslearn_sentinel2_vessel_postprocess/ --workers 64 --group detections --no-use-initial-job --jobs-per-process 1
+
+The materialized dataset as of 2024-06-12 (17K vessels) is available here:
+
+    gs://satlas-explorer-data/rslearn_labels/rslearn_sentinel2_vessel_postprocess_2024-06-12.tar
+
+
+Training
+--------
+
+`train_config.yaml` provides the configuration to train the model with rslearn.
+The only custom component needed is a visualization function provided by `rslearn_entrypoint.py`.
+
+Train the model:
+
+    PYTHONPATH=/path/to/rslearn python rslearn_entrypoint.py model fit --config ../rslearn_projects/sentinel2_postprocess_revamp/train_config.yaml
+    mkdir vis
+    PYTHONPATH=/path/to/rslearn python rslearn_entrypoint.py model test --config ../rslearn_projects/sentinel2_postprocess_revamp/train_config.yaml --ckpt_path lightning_logs/version_0/checkpoints/... --model.visualize_dir vis/
