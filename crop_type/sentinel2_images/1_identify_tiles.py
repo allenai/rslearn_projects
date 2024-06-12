@@ -35,10 +35,10 @@ import tqdm
 CHIP_SIZE = 32
 
 data_paths = [
-#    ("data/cdl/", "data/sentinel2/crop_type_tiles_cdl.json"),
-#    ("data/eurocrops/", "data/sentinel2/crop_type_tiles_eurocrops.json"),
-#    ("data/nccm/", "data/sentinel2/crop_type_tiles_nccm.json"),
-#    ("data/sas/", "data/sentinel2/crop_type_tiles_sas.json"),
+    ("data/cdl/", "data/sentinel2/crop_type_tiles_cdl.json"),
+    ("data/eurocrops/", "data/sentinel2/crop_type_tiles_eurocrops.json"),
+    ("data/nccm/", "data/sentinel2/crop_type_tiles_nccm.json"),
+    ("data/sas/", "data/sentinel2/crop_type_tiles_sas.json"),
     ("data/agrifieldnet/field_ids/", "data/sentinel2/crop_type_tiles_agrifieldnet.json"),
     ("data/southafrica/field_ids/", "data/sentinel2/crop_type_tiles_southafrica.json"),
 ]
@@ -143,45 +143,3 @@ for data_path, out_fname in data_paths:
         json.dump(list(tiles), f)
 
 p.close()
-
-"""
-old list of ignored classes:
-
-# fallow / idle cropland
-data[data == 61] = 0
-# forest
-data[data == 63] = 0
-# shrubland
-data[data == 64] = 0
-# barren
-data[data == 65] = 0
-# clouds / no data
-data[data == 81] = 0
-# developed
-data[data == 82] = 0
-# water
-data[data == 83] = 0
-# wetlands
-data[data == 87] = 0
-# nonag / undefined
-data[data == 88] = 0
-# aquaculture
-data[data == 92] = 0
-# open water
-data[data == 111] = 0
-# ice/snow
-data[data == 112] = 0
-# more land cover
-data[data == 121] = 0
-data[data == 122] = 0
-data[data == 123] = 0
-data[data == 124] = 0
-data[data == 131] = 0
-data[data == 141] = 0
-data[data == 142] = 0
-data[data == 143] = 0
-data[data == 152] = 0
-data[data == 176] = 0
-data[data == 190] = 0
-data[data == 195] = 0
-"""
