@@ -32,7 +32,15 @@ model:
               num_conv_layers: 1
               num_fc_layers: 2
           - class_path: rslearn.train.tasks.regression.RegressionHead
-        heading:
+        heading_x:
+          - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            init_args:
+              in_channels: 1024
+              out_channels: 1
+              num_conv_layers: 1
+              num_fc_layers: 2
+          - class_path: rslearn.train.tasks.regression.RegressionHead
+        heading_y:
           - class_path: rslearn.models.pooling_decoder.PoolingDecoder
             init_args:
               in_channels: 1024
@@ -74,24 +82,33 @@ data:
             property_name: "length"
             allow_invalid: true
             scale_factor: 0.01
+            metric_mode: l1
         width:
           class_path: rslearn.train.tasks.regression.RegressionTask
           init_args:
             property_name: "width"
             allow_invalid: true
             scale_factor: 0.01
+            metric_mode: l1
         speed:
           class_path: rslearn.train.tasks.regression.RegressionTask
           init_args:
             property_name: "sog"
             allow_invalid: true
             scale_factor: 0.01
-        heading:
+            metric_mode: l1
+        heading_x:
           class_path: rslearn.train.tasks.regression.RegressionTask
           init_args:
-            property_name: "cog"
+            property_name: "cog_x"
             allow_invalid: true
-            scale_factor: 0.01
+            metric_mode: l1
+        heading_y:
+          class_path: rslearn.train.tasks.regression.RegressionTask
+          init_args:
+            property_name: "cog_y"
+            allow_invalid: true
+            metric_mode: l1
         ship_type:
           class_path: rslearn.train.tasks.classification.ClassificationTask
           init_args:
@@ -105,7 +122,9 @@ data:
           info: "targets"
         speed:
           info: "targets"
-        heading:
+        heading_x:
+          info: "targets"
+        heading_y:
           info: "targets"
         ship_type:
           info: "targets"
@@ -119,6 +138,12 @@ data:
           std: 255
   train_config:
     groups: ["detections"]
+    transforms:
+      - class_path: rslearn.train.transforms.normalize.Normalize
+        init_args:
+          mean: 0
+          std: 255
+      - class_path: MyFlip
   val_config:
     groups: ["detections_val"]
   test_config:
