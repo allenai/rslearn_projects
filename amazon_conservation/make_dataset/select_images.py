@@ -1,7 +1,6 @@
 """
 Picks which images are least cloudy based on RGB and writes them to JSON file in the window dir.
 """
-from datetime import datetime, timedelta
 import glob
 import json
 import multiprocessing
@@ -12,6 +11,7 @@ from PIL import Image
 import tqdm
 
 ds_root = "/data/favyenb/rslearn_amazon_conservation_closetime/"
+group = "brazil_interesting"
 num_outs = 3
 min_choices = 5
 
@@ -25,6 +25,8 @@ def handle_example(window_dir):
         item_data = json.load(f)
         for layer_data in item_data:
             layer_name = layer_data["layer_name"]
+            if "planet" in layer_name:
+                continue
             for group_idx, group in enumerate(layer_data["serialized_item_groups"]):
                 if group_idx == 0:
                     cur_layer_name = layer_name
@@ -54,7 +56,7 @@ def handle_example(window_dir):
     with open(os.path.join(window_dir, "good_images.json"), "w") as f:
         json.dump(best_images, f)
 
-window_dirs = glob.glob(os.path.join(ds_root, "windows/*/*"))
+window_dirs = glob.glob(os.path.join(ds_root, "windows", group, "*"))
 p = multiprocessing.Pool(64)
 outputs = p.imap_unordered(handle_example, window_dirs)
 for _ in tqdm.tqdm(outputs, total=len(window_dirs)):

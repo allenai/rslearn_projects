@@ -41,7 +41,7 @@ tasks = {
         [],
     ],
 }
-group = "brazil"
+group = "peru"
 conf_fname, date_fname, label_dir, annotation_fnames = tasks[group]
 
 # Dates in the GDAL GeoTIFF are measured in days since 2019-01-01.

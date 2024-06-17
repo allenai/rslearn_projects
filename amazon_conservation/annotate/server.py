@@ -64,6 +64,8 @@ def get_example(idx):
 def get_image_fname(example_id, band, image_idx):
     if band == "mask":
         return "mask.png"
+    if "planet" in band:
+        return f"layers/{band}_{image_idx+1}/R_G_B/image.png"
 
     # Determine the layer names to use based on good_images.json.
     with open(os.path.join(window_dir, example_id, "good_images.json")) as f:
@@ -72,7 +74,7 @@ def get_image_fname(example_id, band, image_idx):
 
 @app.route("/image/<example_idx>/<band>/<image_idx>")
 def get_image(example_idx, band, image_idx):
-    assert band in ["pre", "post", "mask"]
+    assert band in ["pre", "post", "mask", "planet_pre", "planet_post"]
     example_id = example_ids[int(example_idx)]
     image_idx = int(image_idx)
 

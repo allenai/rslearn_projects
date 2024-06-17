@@ -81,6 +81,8 @@ let image_names = [
 	'pre',
 	'post',
 	'mask',
+	'planet_pre',
+	'planet_post',
 ];
 
 $.get('/examples', examples => {
@@ -96,8 +98,8 @@ $.get('/examples', examples => {
 				$('#image-container' + i).empty();
 				let image_name = image_names[image_name_idx];
 				$('<img>').height(384).attr('src', '/image/' + cur_idx + '/' + image_name + '/' + i).appendTo($('#image-container' + i));
-				if(image_name == 'mask') {
-				$('<span>').text('N/A').appendTo($('#image-container' + i));
+				if(image_name == 'mask' || image_name.includes('planet')) {
+					$('<span>').text('N/A').appendTo($('#image-container' + i));
 				} else {
 					$('<span>').text(metadata["good_images"][image_name][i][1].substring(0, 7)).appendTo($('#image-container' + i));
 				}

@@ -8,15 +8,14 @@ create_unlabeled_dataset.json.
 from datetime import datetime, timedelta, timezone
 import json
 import math
-import multiprocessing
 import os
 
 import fiona
+from PIL import Image
 import rasterio
 from rasterio.crs import CRS
 import rasterio.features
 import shapely.geometry
-import shutil
 import tqdm
 
 from rslearn.const import WGS84_PROJECTION
@@ -31,12 +30,12 @@ tasks = {
         "shp_fname": "/multisat/datasets/amazon_conservation/2024-02-01-nadia/3_Training-data_2021-2022_GLAD-S2_Polygons_WGS84_v2.shp",
     },
 }
-group = "peru"
+group = "nadia2"
 task = tasks[group]
 shp_fname = task["shp_fname"]
 
 crop_size = 128
-out_dir = "/data/favyenb/rslearn_amazon_conservation/"
+out_dir = "/data/favyenb/rslearn_amazon_conservation_closetime/"
 
 web_mercator_crs = CRS.from_epsg(3857)
 web_mercator_m = 2 * math.pi * 6378137
@@ -62,7 +61,7 @@ categories = [
 
 with fiona.open(shp_fname) as src:
     for feat_idx, feat in enumerate(tqdm.tqdm(src)):
-        date_parts = feat.properties["Date"].split('/')
+        date_parts = feat.properties["Date"].split('-')
         ts = datetime(int(date_parts[0]), int(date_parts[1]), int(date_parts[2]), tzinfo=timezone.utc)
         category = categories[feat.properties["Level_2"]]
 
@@ -84,10 +83,9 @@ with fiona.open(shp_fname) as src:
             rslearn_center[0] + crop_size//2,
             rslearn_center[1] + crop_size//2,
         ]
-        first_of_month = datetime(ts.year, ts.month, 1, tzinfo=ts.tzinfo)
         time_range = (
-            first_of_month,
-            first_of_month + timedelta(days=30),
+            ts,
+            ts + timedelta(days=30),
         )
         window = Window(
             window_root=os.path.join(out_dir, "windows", group, window_name),
@@ -100,7 +98,16 @@ with fiona.open(shp_fname) as src:
         window.save()
 
         # Create mask.png.
-
+        def to_out_pixel(points):
+            points[:, 0] -= bounds[0]
+            points[:, 1] -= bounds[1]
+            return points
+        pixel_shp = shapely.transform(geom.shp, to_out_pixel)
+        mask_im = rasterio.features.rasterize(
+            [(pixel_shp, 255)],
+            out_shape=(crop_size, crop_size),
+        )
+        Image.fromarray(mask_im).save(os.path.join(window.window_root, "mask.png"))
 
         # Create label.json.
         with open(os.path.join(window.window_root, "label.json"), "w") as f:

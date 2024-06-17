@@ -1,4 +1,5 @@
 import glob
+import json
 import multiprocessing
 import os
 
@@ -7,8 +8,8 @@ from PIL import Image
 import shutil
 import tqdm
 
-in_dir = "/data/favyenb/rslearn_amazon_conservation/windows/peru3/"
-out_dir = "/data/favyenb/multisat/labels/amazon_conservation_peru3/amazon_conservation/"
+in_dir = "/data/favyenb/rslearn_amazon_conservation_closetime/windows/brazil/"
+out_dir = "/data/favyenb/multisat/labels/amazon_conservation_new/"
 num_outs = 3
 min_choices = 5
 
@@ -16,35 +17,37 @@ def handle_example(example_id):
     cur_in_dir = os.path.join(in_dir, example_id)
     cur_out_dir = os.path.join(out_dir, example_id)
 
-    # Find best pre and post images.
-    image_lists = {"pre": [], "post": []}
-    options = glob.glob(os.path.join(cur_in_dir, "layers/*/R_G_B/image.png"))
-    for fname in options:
-        # "pre" or "post"
-        k = fname.split("/")[-3].split("_")[0]
-        im = np.array(Image.open(fname))
-        image_lists[k].append(im)
-    best_images = {}
-    for k, image_list in image_lists.items():
-        if len(image_list) < min_choices:
-            return
-        image_list.sort(key=lambda im: np.count_nonzero((im.max(axis=2) == 0) | (im.min(axis=2) > 230)))
-        best_images[k] = image_list[0:num_outs]
+    label_fname = os.path.join(cur_in_dir, "label.json")
+    if os.path.exists(label_fname):
+        with open(label_fname) as f:
+            category = json.load(f)["new_label"]
+    else:
+        category = "unknown"
+    if category in ["agriculture-generic", "agriculture-small", "agriculture-rice", "agriculture-mennonite", "coca"]:
+        category = "agriculture"
+    if category == "flood":
+        category = "river"
+    if category not in ["mining", "agriculture", "airstrip", "road", "logging", "burned", "landslide", "hurricane", "river", "none"]:
+        return
+
+    # Use images selected by "select_images.py".
+    with open(os.path.join(cur_in_dir, "good_images.json")) as f:
+        best_images = json.load(f)
 
     # Write images.
     for idx in range(num_outs):
         cur_img_dir = os.path.join(cur_out_dir, "images", f"image_{idx}")
-        os.makedirs(cur_img_dir)
-        Image.fromarray(best_images["pre"][idx]).save(os.path.join(cur_img_dir, "pre.png"))
-        Image.fromarray(best_images["post"][idx]).save(os.path.join(cur_img_dir, "post.png"))
+        os.makedirs(cur_img_dir, exist_ok=True)
+        Image.open(os.path.join(cur_in_dir, best_images["pre"][idx][0])).save(os.path.join(cur_img_dir, "pre.png"))
+        Image.open(os.path.join(cur_in_dir, best_images["post"][idx][0])).save(os.path.join(cur_img_dir, "post.png"))
         shutil.copyfile(
             os.path.join(cur_in_dir, "mask.png"),
             os.path.join(cur_img_dir, "mask.png"),
         )
 
-    # Create gt.json.
-    with open(os.path.join(cur_out_dir, "gt.json"), "w") as f:
-        f.write("0")
+    # Create gt.txt.
+    with open(os.path.join(cur_out_dir, "gt.txt"), "w") as f:
+        f.write(category)
 
 example_ids = os.listdir(in_dir)
 p = multiprocessing.Pool(64)
