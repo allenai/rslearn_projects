@@ -5,6 +5,38 @@ This project is a collaboration with Amazon Conservation Association to develop 
 that can classify what caused a forest loss event detected by the GLAD Sentinel-2
 system (e.g. mining, agriculture, hurricane/wind, river shift, etc.).
 
+The model currently inputs 6 Sentinel-2 images: 3 from before the forest loss and 3
+after the forest loss. In general, it can input any public domain images before/after
+the forest loss event.
+
+The categories are:
+- mining
+- agriculture
+- airstrip
+- road
+- logging
+- burned
+- landslide
+- hurricane
+- river
+- none
+
+The last category indicates that, although the GLAD system detected forest loss, we
+don't think there's really any forest loss there.
+
+There are four fine-grained agriculture categories that some labels use, but we
+currently treat them all as generic "agriculture" since it was difficult to label it:
+- agriculture-generic
+- agriculture-small
+- agriculture-rice
+- agriculture-mennonite
+- coca
+
+There is also a "flood" category but we currently merge that into "river".
+
+Other labels include "unknown" and "unlabeled" which indicate that example should not
+be used for training.
+
 
 Dataset Setup
 -------------
@@ -47,3 +79,18 @@ Each window has some layers:
 - best_post_X: same but for after the forest loss event.
 - label: the label. It has `new_label` property which indicates the label. `old_label`
   is used for various things like showing model output.
+
+The duration of the window is the time range that the forest loss was thought to have
+happened. So the pre images are taken before this time range while the post images are
+taken after the time range. If you want to add more images, keep in mind that the
+`config_closetime2.json` enforces a 150 day gap between the most recent pre image and
+the start of the time range, so use the same gap to ensure maximum compatibility
+between the existing labels and any additional images.
+
+
+Other Scripts
+-------------
+
+- `reformat_images.py`: reformat from rslearn dataset to a format compatibile with the
+  old multisat codebase.
+-
