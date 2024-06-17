@@ -1,4 +1,4 @@
-from flask import Flask, abort, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file
 import glob
 import hashlib
 import json
@@ -54,11 +54,17 @@ def get_example(idx):
         window_properties = json.load(f)
         metadata["date"] = window_properties["time_range"][0][0:7]
 
-    with open(os.path.join(window_dir, example_id, "good_images.json")) as f:
-        metadata["good_images"] = json.load(f)
+    with open(os.path.join(window_dir, example_id, "best_times.json")) as f:
+        metadata["best_times"] = json.load(f)
 
-    with open(os.path.join(window_dir, example_id, "label.json")) as f:
-        metadata.update(json.load(f))
+    with open(os.path.join(window_dir, example_id, "layers", "label", "data.geojson")) as f:
+        wanted = ["old_label", "new_label"]
+        for feat in json.load(f)["features"]:
+            props = feat["properties"]
+            for k in wanted:
+                if k in props:
+                    metadata[k] = props[k]
+
     return jsonify(metadata)
 
 def get_image_fname(example_id, band, image_idx):
@@ -66,11 +72,7 @@ def get_image_fname(example_id, band, image_idx):
         return "mask.png"
     if "planet" in band:
         return f"layers/{band}_{image_idx+1}/R_G_B/image.png"
-
-    # Determine the layer names to use based on good_images.json.
-    with open(os.path.join(window_dir, example_id, "good_images.json")) as f:
-        good_images = json.load(f)
-    return good_images[band][image_idx][0]
+    return f"layers/best_{band}_{image_idx}/R_G_B/image.png"
 
 @app.route("/image/<example_idx>/<band>/<image_idx>")
 def get_image(example_idx, band, image_idx):
@@ -84,12 +86,13 @@ def get_image(example_idx, band, image_idx):
 @app.route('/update/<idx>', methods=['POST'])
 def update(idx):
     example_id = example_ids[int(idx)]
-    label_fname = os.path.join(window_dir, example_id, "label.json")
+    label_fname = os.path.join(window_dir, example_id, "layers", "label", "data.geojson")
     with open(label_fname) as f:
-        cur_label = json.load(f)
-    cur_label["new_label"] = request.json
+        fc = json.load(f)
+    for feat in fc["features"]:
+        feat["properties"]["new_label"] = request.json
     with open(label_fname + ".tmp", 'w') as f:
-        json.dump(cur_label, f)
+        json.dump(fc, f)
     os.rename(label_fname + ".tmp", label_fname)
     return jsonify(True)
 

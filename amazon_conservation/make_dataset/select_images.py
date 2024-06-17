@@ -1,17 +1,19 @@
 """
-Picks which images are least cloudy based on RGB and writes them to JSON file in the window dir.
+Picks which images are least cloudy based on RGB and write them to a separate layer.
+The new layers are prefixed with "best_" like "best_pre_0".
 """
 import glob
 import json
 import multiprocessing
 import os
+import shutil
 
 import numpy as np
 from PIL import Image
 import tqdm
 
-ds_root = "/data/favyenb/rslearn_amazon_conservation_closetime/"
-group = "brazil_interesting"
+ds_root = "/multisat/datasets/rslearn_amazon_conservation_closetime/"
+group = "peru_interesting"
 num_outs = 3
 min_choices = 5
 
@@ -40,21 +42,33 @@ def handle_example(window_dir):
     for fname in options:
         # "pre" or "post"
         k = fname.split("/")[-3].split(".")[0].split("_")[0]
+        if "planet" in k:
+            continue
         im = np.array(Image.open(os.path.join(window_dir, fname)))[32:96, 32:96, :]
         image_lists[k].append((im, fname))
-    best_images = {}
+
+    # Copy the images to new "best" layer.
+    # Keep track of the timestamps and write them to a separate file.
+    best_times = {}
     for k, image_list in image_lists.items():
         if len(image_list) < min_choices:
             return
         image_list.sort(key=lambda t: np.count_nonzero((t[0].max(axis=2) == 0) | (t[0].min(axis=2) > 140)))
-        best_images[k] = []
-        for im, fname in image_list[0:num_outs]:
-            layer_name = fname.split("/")[-3]
-            layer_time = layer_times[layer_name]
-            best_images[k].append((fname, layer_time))
+        for idx, (im, fname) in enumerate(image_list[0:num_outs]):
+            dst_layer = f"best_{k}_{idx}"
+            dst_dir = os.path.join(window_dir, "layers", dst_layer, "R_G_B")
+            os.makedirs(dst_dir, exist_ok=True)
+            shutil.copyfile(
+                os.path.join(window_dir, fname),
+                os.path.join(dst_dir, "image.png"),
+            )
 
-    with open(os.path.join(window_dir, "good_images.json"), "w") as f:
-        json.dump(best_images, f)
+            src_layer = fname.split("/")[-3]
+            layer_time = layer_times[src_layer]
+            best_times[dst_layer] = layer_time
+
+    with open(os.path.join(window_dir, "best_times.json"), "w") as f:
+        json.dump(best_times, f)
 
 window_dirs = glob.glob(os.path.join(ds_root, "windows", group, "*"))
 p = multiprocessing.Pool(64)

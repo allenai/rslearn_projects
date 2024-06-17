@@ -101,7 +101,7 @@ $.get('/examples', examples => {
 				if(image_name == 'mask' || image_name.includes('planet')) {
 					$('<span>').text('N/A').appendTo($('#image-container' + i));
 				} else {
-					$('<span>').text(metadata["good_images"][image_name][i][1].substring(0, 7)).appendTo($('#image-container' + i));
+					$('<span>').text(metadata["best_times"]["best_" + image_name + "_" + i].substring(0, 7)).appendTo($('#image-container' + i));
 				}
 			}
 			$('.counter-top').text(cur_idx + 1);
