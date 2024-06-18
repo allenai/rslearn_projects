@@ -2,19 +2,23 @@
 Adds a custom task so that we get nicer visualizations.
 Also Flip augmentation that doesn't mess up the heading.
 """
+import math
+import os
 from typing import Any, Optional, Union
 
-import math
 import numpy as np
 import numpy.typing as npt
 from PIL import Image, ImageDraw
-
 import torch
+import wandb
 
 import rslearn.main
+from rslearn.train.lightning_module import RslearnLightningModule
 from rslearn.train.tasks.task import BasicTask
 from rslearn.train.tasks.multi_task import MultiTask
 from rslearn.utils import Feature
+
+SHIP_TYPE_CATEGORIES = ["cargo", "tanker", "passenger", "service", "pleasure", "fishing", "enforcement", "sar"]
 
 class MyMultiTask(MultiTask):
     def process_inputs(
@@ -56,11 +60,10 @@ class MyMultiTask(MultiTask):
                 s += f" ({gt_cog:.1f})"
             lines.append(s)
 
-        categories = ["cargo", "tanker", "passenger", "service", "pleasure", "fishing", "enforcement", "sar"]
         for task in ["ship_type"]:
-            s = f"{task}: {categories[output[task].argmax()]}"
+            s = f"{task}: {SHIP_TYPE_CATEGORIES[output[task].argmax()]}"
             if target_dict[task]["valid"]:
-                s += f" ({categories[target_dict[task]['class']]})"
+                s += f" ({SHIP_TYPE_CATEGORIES[target_dict[task]['class']]})"
             lines.append(s)
 
         text = "\n".join(lines)
@@ -70,6 +73,80 @@ class MyMultiTask(MultiTask):
         return {
             "image": np.array(image),
         }
+
+
+class MyLightningModule(RslearnLightningModule):
+    def on_validation_epoch_start(self) -> None:
+        self.probs = []
+        self.y_true = []
+
+    def validation_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
+        # Code below is copied from RslearnLightningModule.validation_step.
+        inputs, targets = batch
+        batch_size = len(inputs)
+        outputs, loss_dict = self(inputs, targets)
+        val_loss = sum(loss_dict.values())
+        self.log_dict(
+            {"val_" + k: v for k, v in loss_dict.items()}, batch_size=batch_size, on_step=False, on_epoch=True
+        )
+        self.log("val_loss", val_loss, batch_size=batch_size, prog_bar=True, on_step=False, on_epoch=True)
+        self.val_metrics(outputs, targets)
+        self.log_dict(self.val_metrics, batch_size=batch_size, on_step=False, on_epoch=True)
+
+        # Now we hook in part to compute confusion matrix.
+        for output, target in zip(outputs, targets):
+            if not target["ship_type"]["valid"]:
+                continue
+            self.probs.append(output["ship_type"].cpu().numpy())
+            self.y_true.append(target["ship_type"]["class"].cpu().numpy())
+
+    def on_validation_epoch_end(self) -> None:
+        self.logger.experiment.log({"val_type_cm": wandb.plot.confusion_matrix(
+            probs=np.stack(self.probs),
+            y_true=np.stack(self.y_true),
+            class_names=SHIP_TYPE_CATEGORIES,
+        )})
+
+    def on_test_epoch_start(self) -> None:
+        self.probs = []
+        self.y_true = []
+
+    def test_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
+        # Code below is copied from RslearnLightningModule.test_step.
+        inputs, targets = batch
+        batch_size = len(inputs)
+        outputs, loss_dict = self(inputs, targets)
+        test_loss = sum(loss_dict.values())
+        self.log_dict(
+            {"test_" + k: v for k, v in loss_dict.items()}, batch_size=batch_size, on_step=False, on_epoch=True
+        )
+        self.log("test_loss", test_loss, batch_size=batch_size, on_step=False, on_epoch=True)
+        self.test_metrics(outputs, targets)
+        self.log_dict(self.test_metrics, batch_size=batch_size, on_step=False, on_epoch=True)
+
+        if self.visualize_dir:
+            for idx, (inp, target, output) in enumerate(zip(inputs, targets, outputs)):
+                images = self.task.visualize(inp, target, output)
+                for image_suffix, image in images.items():
+                    out_fname = os.path.join(
+                        self.visualize_dir, f"{batch_idx}_{idx}_{image_suffix}.png"
+                    )
+                    Image.fromarray(image).save(out_fname)
+
+        # Now we hook in part to compute confusion matrix.
+        for output, target in zip(outputs, targets):
+            if not target["ship_type"]["valid"]:
+                continue
+            self.probs.append(output["ship_type"].cpu().numpy())
+            self.y_true.append(target["ship_type"]["class"].cpu().numpy())
+
+    def on_test_epoch_end(self) -> None:
+        self.logger.experiment.log({"test_type_cm": wandb.plot.confusion_matrix(
+            probs=np.stack(self.probs),
+            y_true=np.stack(self.y_true),
+            class_names=SHIP_TYPE_CATEGORIES,
+        )})
+
 
 class MyFlip(torch.nn.Module):
     """Flip inputs horizontally and/or vertically.

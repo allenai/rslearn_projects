@@ -21,9 +21,12 @@ Or with columns:
 - ais_speed
 Here we just want to create rslearn windows to get the vessel crops (it also has time/lat/lon).
 And then also write some of the metadata from the CSV into a file in the window dirs.
+
+We assign some images to validation split based on their MD5 hash.
 """
 import csv
 from datetime import datetime, timedelta
+import hashlib
 import json
 import multiprocessing
 import os
@@ -43,7 +46,7 @@ out_dir = sys.argv[2]
 group = sys.argv[3]
 
 pixel_size = 10
-window_size = 64
+window_size = 128
 vessel_categories = ["cargo", "tanker", "passenger", "service", "pleasure", "fishing", "enforcement", "sar"]
 
 with open(in_fname) as f:
@@ -102,7 +105,11 @@ def process_row(csv_row):
     time_range = (ts - timedelta(hours=1), ts + timedelta(hours=1))
 
     window_name = event_id
-    window_root = os.path.join(out_dir, "windows", group, window_name)
+    # Check if train or val.
+    cur_group = group
+    if hashlib.md5(window_name.encode()).hexdigest()[0] in ["0", "1"]:
+        cur_group = f"{group}_val"
+    window_root = os.path.join(out_dir, "windows", cur_group, window_name)
     window = Window(
         window_root=window_root,
         group=group,
