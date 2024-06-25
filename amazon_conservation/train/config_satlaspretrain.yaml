@@ -105,12 +105,16 @@ data:
           init_args:
             mode: "center"
             size: 64
+      groups: ["peru_interesting", "peru3", "peru3_flagged_in_peru", "nadia2", "nadia3", "brazil_interesting"]
     train_config:
-      groups: ["nadia2", "nadia3", "brazil_interesting"]
+      tags:
+        oldsplit: train
     val_config:
-      groups: ["peru_interesting", "peru3", "peru3_flagged_in_peru"]
+      tags:
+        oldsplit: val
     test_config:
-      groups: ["peru_interesting", "peru3", "peru3_flagged_in_peru"]
+      tags:
+        oldsplit: val
 trainer:
   logger:
     class_path: lightning.pytorch.loggers.WandbLogger
