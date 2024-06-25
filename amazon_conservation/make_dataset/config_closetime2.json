@@ -531,6 +531,65 @@
 				"time_offset": "210d",
 				"duration": "30d"
 			}
+		},
+		"mask": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["mask"],
+				"format": {"name": "single_image", "format": "png"}
+			}]
+		},
+		"label": {
+			"type": "vector"
+		},
+		"best_pre_0": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}]
+		},
+		"best_pre_1": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}]
+		},
+		"best_pre_2": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}]
+		},
+		"best_post_0": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}]
+		},
+		"best_post_1": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}]
+		},
+		"best_post_2": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"}
+			}]
 		}
 	},
 	"tile_store": {
