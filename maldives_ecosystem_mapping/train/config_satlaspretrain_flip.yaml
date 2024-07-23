@@ -1,0 +1,77 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.satlaspretrain.SatlasPretrain
+            init_args:
+              model_identifier: "Aerial_SwinB_SI"
+        decoders:
+          segment:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
+                out_channels: 6
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+    lr: 0.0001
+    plateau_factor: 0.1
+    plateau_patience: 10
+    plateau_min_lr: 0
+    plateau_cooldown: 0
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    root_dir: /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["maxar"]
+        bands: ["R", "G", "B"]
+        passthrough: true
+      targets:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["label"]
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          segment:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 6
+              remap_values: [[0, 1], [0, 255]]
+        input_mapping:
+          segment:
+            targets: "targets"
+    batch_size: 32
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 255
+        - class_path: rslearn.train.transforms.crop.Crop
+          init_args:
+            crop_size: 256
+            image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
+      groups: ["crops"]
+trainer:
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      project: rslearn-maldives-ecosystem-mapping
+      log_model: "all"
+      name: satlaspretrain_flip
+  max_epochs: 50
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+#  limit_train_batches: 64

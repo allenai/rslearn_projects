@@ -1,0 +1,24 @@
+{
+	"layers": {
+		"maxar": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "geotiff"}
+			}]
+		},
+		"label": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["label"],
+				"format": {"name": "geotiff"}
+			}]
+		}
+	},
+	"tile_store": {
+		"name": "file",
+		"root_dir": "tiles"
+	}
+}
