@@ -19,8 +19,24 @@ rslearn dataset, for prediction.
 
 The dataset pre-processing is in preprocess/.
 
--
+- retrieve_dataset.py: just copies the images and labels from GCS to local storage.
+- create_rslearn_data.py: populates an rslearn dataset. The dataset will have two
+  groups: images will contain the full GeoTIFF images, while crops will contain just the
+  patches of the images that have annotations.
+
+To pre-process the data:
+
+    cd preprocess
+    python retrieve_dataset.py --out_dir /data/favyenb/maldives_ecosystem_mapping_data/original/
+    PYTHONPATH=/path/to/rslearn python create_rslearn_data.py --in_dir /data/favyenb/maldives_ecosystem_mapping_data/original/ --out_dir /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/
 
 
 Model Training
 --------------
+
+Currently there's no project-specific training code, just an rslearn configuration
+file that sets the training up.
+
+    cd /path/to/rslearn
+    python -m rslearn.main model fit --config /path/to/rslearn_projects/maldives_ecosystem_mapping/train/config_satlaspretrain_flip.yaml
+    python -m rslearn.main model test --config /path/to/rslearn_projects/maldives_ecosystem_mapping/train/config_satlaspretrain_flip.yaml --wandb_run_id=[RUN ID] --model.init_args.visualize_dir ~/vis/
