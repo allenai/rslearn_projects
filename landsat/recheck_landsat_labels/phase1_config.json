@@ -1,0 +1,48 @@
+{
+	"layers": {
+		"landsat": {
+            "type": "raster",
+            "band_sets": [{
+                "dtype": "uint8",
+                "bands": ["R", "G", "B"],
+                "format": {"name": "single_image", "format": "png"}
+            }, {
+                "dtype": "uint8",
+                "bands": ["B2"],
+                "format": {"name": "single_image", "format": "png"}
+            }, {
+                "dtype": "uint8",
+                "bands": ["B3"],
+                "format": {"name": "single_image", "format": "png"}
+            }, {
+                "dtype": "uint8",
+                "bands": ["B4"],
+                "format": {"name": "single_image", "format": "png"}
+            }, {
+                "dtype": "uint8",
+                "bands": ["B5"],
+                "format": {"name": "single_image", "format": "png"}
+            }, {
+                "dtype": "uint8",
+                "bands": ["B6"],
+                "format": {"name": "single_image", "format": "png"}
+            }, {
+                "dtype": "uint8",
+                "bands": ["B7"],
+                "format": {"name": "single_image", "format": "png"}
+            }, {
+                "dtype": "uint8",
+                "bands": ["B8"],
+                "format": {"name": "single_image", "format": "png"}
+            }]
+		},
+        "label": {
+            "type": "vector",
+            "format": {"name": "geojson"}
+        }
+	},
+	"tile_store": {
+		"name": "file",
+		"root_dir": "/data/favyenb/rslearn_landsat/tiles"
+	}
+}
