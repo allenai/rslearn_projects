@@ -15,6 +15,14 @@
 				"bands": ["label"],
 				"format": {"name": "geotiff"}
 			}]
+		},
+		"output": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["output"],
+				"format": {"name": "geotiff"}
+			}]
 		}
 	},
 	"tile_store": {

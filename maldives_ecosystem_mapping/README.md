@@ -26,17 +26,30 @@ The dataset pre-processing is in preprocess/.
 
 To pre-process the data:
 
-    cd preprocess
+    cd rslearn_projects/maldives_ecosystem_mapping/preprocess
     python retrieve_dataset.py --out_dir /data/favyenb/maldives_ecosystem_mapping_data/original/
     PYTHONPATH=/path/to/rslearn python create_rslearn_data.py --in_dir /data/favyenb/maldives_ecosystem_mapping_data/original/ --out_dir /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/
+
+You may need to add missing classes to `create_rslearn_data.py`.
 
 
 Model Training
 --------------
 
-Currently there's no project-specific training code, just an rslearn configuration
-file that sets the training up.
+First assign crops to train/val as desired, the second argument is the number of validation images (others are training):
+
+    cd rslearn_projects/maldives_ecosystem_mapping/train
+    python assign_split.py /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ 1
+
+Then train the model:
 
     cd /path/to/rslearn
     python -m rslearn.main model fit --config /path/to/rslearn_projects/maldives_ecosystem_mapping/train/config_satlaspretrain_flip.yaml
+
+Get visualizations of validation crops:
+
     python -m rslearn.main model test --config /path/to/rslearn_projects/maldives_ecosystem_mapping/train/config_satlaspretrain_flip.yaml --wandb_run_id=[RUN ID] --model.init_args.visualize_dir ~/vis/
+
+Write predictions of the whole images:
+
+    python -m rslearn.main model predict --config /path/to/rslearn_projects/maldives_ecosystem_mapping/train/config_satlaspretrain_flip.yaml --wandb_run_id=[RUN ID]

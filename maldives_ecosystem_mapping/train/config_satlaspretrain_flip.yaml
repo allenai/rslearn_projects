@@ -13,13 +13,15 @@ model:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
                 in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
-                out_channels: 6
+                out_channels: 8
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     plateau_factor: 0.1
     plateau_patience: 10
     plateau_min_lr: 0
     plateau_cooldown: 0
+    freeze_configs:
+      - prefixes: ["model.encoder."]
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
@@ -34,6 +36,7 @@ data:
         data_type: "raster"
         layers: ["label"]
         bands: ["label"]
+        is_target: true
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
@@ -41,7 +44,7 @@ data:
           segment:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 6
+              num_classes: 8
               remap_values: [[0, 1], [0, 255]]
         input_mapping:
           segment:
@@ -54,14 +57,34 @@ data:
           init_args:
             mean: 0
             std: 255
-        - class_path: rslearn.train.transforms.crop.Crop
+    train_config:
+      patch_size: 64
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
-            crop_size: 256
-            image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
+            mean: 0
+            std: 255
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
       groups: ["crops"]
+      tags:
+        split: train
+    val_config:
+      patch_size: 256
+      groups: ["crops"]
+      tags:
+        split: val
+    test_config:
+      patch_size: 256
+      groups: ["crops"]
+      tags:
+        split: val
+    predict_config:
+      groups: ["images"]
+      load_all_patches: true
+      skip_targets: true
+      patch_size: 512
 trainer:
   logger:
     class_path: lightning.pytorch.loggers.WandbLogger
@@ -74,4 +97,9 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        root_dir: /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/
+        output_layer: output
+        selector: ["segment"]
 #  limit_train_batches: 64
