@@ -13,15 +13,14 @@ model:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
                 in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
-                out_channels: 8
+                out_channels: 17
+                conv_layers_per_resolution: 2
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     plateau_factor: 0.1
     plateau_patience: 10
     plateau_min_lr: 0
     plateau_cooldown: 0
-    freeze_configs:
-      - prefixes: ["model.encoder."]
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
@@ -44,12 +43,12 @@ data:
           segment:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 8
+              num_classes: 17
               remap_values: [[0, 1], [0, 255]]
         input_mapping:
           segment:
             targets: "targets"
-    batch_size: 32
+    batch_size: 8
     num_workers: 32
     default_config:
       transforms:
@@ -58,7 +57,7 @@ data:
             mean: 0
             std: 255
     train_config:
-      patch_size: 64
+      patch_size: 512
       transforms:
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
@@ -71,12 +70,12 @@ data:
       tags:
         split: train
     val_config:
-      patch_size: 256
+      patch_size: 512
       groups: ["crops"]
       tags:
         split: val
     test_config:
-      patch_size: 256
+      patch_size: 512
       groups: ["crops"]
       tags:
         split: val
@@ -84,15 +83,9 @@ data:
       groups: ["images"]
       load_all_patches: true
       skip_targets: true
-      patch_size: 512
+      patch_size: 2048
 trainer:
-  logger:
-    class_path: lightning.pytorch.loggers.WandbLogger
-    init_args:
-      project: rslearn-maldives-ecosystem-mapping
-      log_model: "all"
-      name: satlaspretrain_flip
-  max_epochs: 50
+  max_epochs: 500
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -102,4 +95,11 @@ trainer:
         root_dir: /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/
         output_layer: output
         selector: ["segment"]
-#  limit_train_batches: 64
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        every_n_epochs: 50
+        monitor: val_segment/accuracy
+        mode: max
+rslp_project: maldives_ecosystem_mapping
+rslp_experiment: data_20240730_satlaspretrain_flip_crop512_00

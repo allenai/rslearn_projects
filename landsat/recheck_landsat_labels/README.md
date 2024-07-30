@@ -33,3 +33,16 @@ prioritizing which parts of the dataset should be explored, so probably we will 
 the 1000 annotations that Joe labeled with annotations over model predictions and then
 retrain the classification model, but directly deploy it (to post-process the object
 detections) rather than use it to fix the training data.
+
+
+Phase 2
+-------
+
+Now the goal has changed, instead of validating the object detector training data, we
+instead want to train a classification model for deployment in
+sentinel-vessel-detection.
+
+So in the new Phase 2, we add some vessel detections and annotate those.
+
+- `phase2_get_3000.py`: get 3K/780K detections from those Patrick sent. Unlike Phase 1,
+  we need to ingest/materialize the images with rslearn.

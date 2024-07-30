@@ -127,4 +127,6 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
+rslp_project: amazon_conservation
+rslp_experiment: satlaspretrain_resnet50
 #  limit_train_batches: 64

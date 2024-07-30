@@ -66,7 +66,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    root_dir: "/data/favyenb/rslearn_sentinel2_vessel_postprocess/"
+    root_dir: "s3://satlas-explorer-data/rslearn_labels/sentinel2_vessel_postprocess/dataset_v1/live/?endpoint_url=https://storage.googleapis.com"
     inputs:
       image:
         data_type: "raster"

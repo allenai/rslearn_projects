@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import json
 import os
 import shutil
+import tqdm
 
 import numpy as np
 import rasterio
@@ -26,9 +27,18 @@ CATEGORIES = [
     "FM_1_3_INTERMITTENTLY_CLOSED_AND_OPEN_LAKES_AND_LAGOONS",
     "F_2_2_SMALL_PERMANENT_FRESHWATER_LAKES",
     "MFT_1_2_INTERTIDAL_FORESTS_AND_SHRUBLANDS",
+    "MFT_1_3_COASTAL_SALTMARSHES_AND_REEDBEDS",
+    "MT_1_1_ROCKY_SHORELINES",
     "MT_1_3_SANDY_SHORELINES",
     "MT_2_1_COASTAL_SHRUBLANDS_AND_GRASSLANDS",
+    "MT_3_1_ARTIFICIAL_SHORELINES",
+    "M_1_1_SEAGRASS_MEADOWS",
+    "M_1_3_PHOTIC_CORAL_REEFS",
+    "M_1_6_SUBTIDAL_ROCKY_REEFS",
+    "M_1_7_SUBTIDAL_SAND_BEDS",
+    "TF_1_3_PERMANENT_MARSHES",
     "T_7_1_ANNUAL_CROPLANDS",
+    "T_7_3_PLANTATIONS",
     "T_7_4_URBAN_AND_INDUSTRIAL_ECOSYSTEMS",
 ]
 
@@ -91,106 +101,84 @@ def process(job):
     with open(os.path.join(window_root, "layers", "maxar", "completed"), "w") as f:
         pass
 
-    # Second create windows for the annotated patches.
-    # We start by extracting the bounds of each patch.
-    # To do so, we cluster the annotations agglomeratively.
-    clusters = {}
+    # Second create a window just for the annotated patch.
+    # Start by reading the annotations and mapping polygon.
+    def convert_geom(bounding_poly):
+        # Convert the boundingPoly from the JSON file into an STGeometry in the
+        # coordinates of `projection`.
+        exterior = [(vertex["x"], vertex["y"]) for vertex in bounding_poly[0]["normalizedVertices"]]
+        interiors = []
+        for poly in bounding_poly[1:]:
+            interior = [(vertex["x"], vertex["y"]) for vertex in poly["normalizedVertices"]]
+            interiors.append(interior)
+        shp = shapely.Polygon(exterior, interiors)
+        src_geom = STGeometry(WGS84_PROJECTION, shp, None)
+        dst_geom = src_geom.to_projection(projection)
+        return dst_geom
+
     with open(job.prefix + "_labels.json") as f:
-        for idx, annot in enumerate(json.load(f)["annotations"]):
+        data = json.load(f)
+        proj_shapes = []
+        for annot in data["annotations"]:
             assert len(annot["categories"]) == 1
             category_id = CATEGORIES.index(annot["categories"][0]["name"])
-            bounding_poly = annot["boundingPoly"]
-            exterior = [(vertex["x"], vertex["y"]) for vertex in bounding_poly[0]["normalizedVertices"]]
-            interiors = []
-            for poly in bounding_poly[1:]:
-                interior = [(vertex["x"], vertex["y"]) for vertex in poly["normalizedVertices"]]
-                interiors.append(interior)
-            shp = shapely.Polygon(exterior, interiors)
-            src_geom = STGeometry(WGS84_PROJECTION, shp, None)
-            dst_geom = src_geom.to_projection(projection)
-            clusters[idx] = (
-                dst_geom.shp,
-                [(dst_geom.shp, category_id)],
-            )
-    distance_threshold = 5
-    while True:
-        # Merge up to one pair of clusters per iteration.
-        # If there's nothing to merge then that means we're done and can quit.
-        did_merge = False
-        cluster_keys = list(clusters.keys())
-        for idx1, k1 in enumerate(cluster_keys):
-            for k2 in cluster_keys[idx1+1:]:
-                c1 = clusters[k1]
-                c2 = clusters[k2]
-                if c1[0].distance(c2[0]) > distance_threshold:
-                    continue
-                # Merge these clusters.
-                # We use k1 for the new cluster key and remove k2.
-                clusters[k1] = (
-                    c1[0].union(c2[0]),
-                    c1[1] + c2[1],
-                )
-                del clusters[k2]
-                did_merge = True
-                break
+            dst_geom = convert_geom(annot["boundingPoly"])
+            proj_shapes.append((dst_geom.shp, category_id))
 
-            if did_merge:
-                break
+        dst_geom = convert_geom(data["mapping_area"][0]["boundingPoly"])
+        bounding_shp = dst_geom.shp
 
-        if not did_merge:
-            break
-
-    # Now we can create separate windows for each patch.
+    # Convert the bounding shp to int bounds.
+    # Also crop the raster.
     array = raster.read()
-    for bounding_shp, shps in clusters.values():
-        proj_bounds = [int(x) for x in bounding_shp.bounds]
-        pixel_bounds = [
-            proj_bounds[0] - raster_bounds[0],
-            proj_bounds[1] - raster_bounds[1],
-            proj_bounds[2] - raster_bounds[0],
-            proj_bounds[3] - raster_bounds[1],
-        ]
+    proj_bounds = [int(x) for x in bounding_shp.bounds]
+    pixel_bounds = [
+        proj_bounds[0] - raster_bounds[0],
+        proj_bounds[1] - raster_bounds[1],
+        proj_bounds[2] - raster_bounds[0],
+        proj_bounds[3] - raster_bounds[1],
+    ]
+    crop = array[:, pixel_bounds[1]:pixel_bounds[3], pixel_bounds[0]:pixel_bounds[2]]
 
-        # Create window.
-        window_name = f"{label}_{pixel_bounds[0]}_{pixel_bounds[1]}"
-        window_root = os.path.join(job.out_dir, "windows", "crops", window_name)
-        os.makedirs(window_root, exist_ok=True)
-        window = Window(
-            file_api=LocalFileAPI(window_root),
-            group="crops",
-            name=window_name,
-            projection=projection,
-            bounds=proj_bounds,
-            time_range=(ts - timedelta(minutes=1), ts + timedelta(minutes=1)),
-        )
-        window.save()
+    # Create window.
+    window_name = f"{label}_{pixel_bounds[0]}_{pixel_bounds[1]}"
+    window_root = os.path.join(job.out_dir, "windows", "crops", window_name)
+    os.makedirs(window_root, exist_ok=True)
+    window = Window(
+        file_api=LocalFileAPI(window_root),
+        group="crops",
+        name=window_name,
+        projection=projection,
+        bounds=proj_bounds,
+        time_range=(ts - timedelta(minutes=1), ts + timedelta(minutes=1)),
+    )
+    window.save()
 
-        # Write the GeoTIFF.
-        crop = array[:, pixel_bounds[1]:pixel_bounds[3], pixel_bounds[0]:pixel_bounds[2]]
-        file_api = window.file_api.get_folder("layers", "maxar", "R_G_B")
-        GeotiffRasterFormat().encode_raster(file_api, projection, proj_bounds, crop)
+    # Write the GeoTIFF.
+    file_api = window.file_api.get_folder("layers", "maxar", "R_G_B")
+    GeotiffRasterFormat().encode_raster(file_api, projection, proj_bounds, crop)
 
-        # Render the GeoJSON labels and write that too.
-        shapes = []
-        for shp, category_id in shps:
-            shp = shapely.transform(shp, lambda coords: coords - [proj_bounds[0], proj_bounds[1]])
-            shapes.append((shp, category_id))
-        mask = rasterio.features.rasterize(shapes, out_shape=(proj_bounds[3] - proj_bounds[1], proj_bounds[2] - proj_bounds[0]))
-        file_api = window.file_api.get_folder("layers", "label", "label")
-        GeotiffRasterFormat().encode_raster(file_api, projection, proj_bounds, mask[None, :, :])
+    # Render the GeoJSON labels and write that too.
+    pixel_shapes = []
+    for shp, category_id in proj_shapes:
+        shp = shapely.transform(shp, lambda coords: coords - [proj_bounds[0], proj_bounds[1]])
+        pixel_shapes.append((shp, category_id))
+    mask = rasterio.features.rasterize(pixel_shapes, out_shape=(proj_bounds[3] - proj_bounds[1], proj_bounds[2] - proj_bounds[0]))
+    file_api = window.file_api.get_folder("layers", "label", "label")
+    GeotiffRasterFormat().encode_raster(file_api, projection, proj_bounds, mask[None, :, :])
 
-        # Along with a visualization image.
-        label_vis = np.zeros((mask.shape[0], mask.shape[1], 3))
-        for category_id in range(len(CATEGORIES)):
-            color = COLORS[category_id % len(COLORS)]
-            label_vis[mask == category_id] = color
-        file_api = window.file_api.get_folder("layers", "label", "vis")
-        GeotiffRasterFormat().encode_raster(file_api, projection, proj_bounds, label_vis.transpose(2, 0, 1))
+    # Along with a visualization image.
+    label_vis = np.zeros((mask.shape[0], mask.shape[1], 3))
+    for category_id in range(len(CATEGORIES)):
+        color = COLORS[category_id % len(COLORS)]
+        label_vis[mask == category_id] = color
+    file_api = window.file_api.get_folder("layers", "label", "vis")
+    GeotiffRasterFormat().encode_raster(file_api, projection, proj_bounds, label_vis.transpose(2, 0, 1))
 
-        with open(os.path.join(window_root, "layers", "maxar", "completed"), "w") as f:
-            pass
-        with open(os.path.join(window_root, "layers", "label", "completed"), "w") as f:
-            pass
+    with open(os.path.join(window_root, "layers", "maxar", "completed"), "w") as f:
+        pass
+    with open(os.path.join(window_root, "layers", "label", "completed"), "w") as f:
+        pass
 
 
 if __name__ == "__main__":
@@ -206,5 +194,5 @@ if __name__ == "__main__":
         prefix = os.path.join(args.in_dir, fname.split(".tif")[0])
         job = ProcessJob(prefix, args.out_dir)
         jobs.append(job)
-    for job in jobs:
+    for job in tqdm.tqdm(jobs):
         process(job)
