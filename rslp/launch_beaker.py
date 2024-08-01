@@ -3,21 +3,25 @@ import uuid
 
 from beaker import Beaker, Constraints, DataMount, DataSource, EnvVar, ExperimentSpec, Priority, TaskResources
 
+from rslp import launcher_lib
+
 DEFAULT_WORKSPACE = "ai2/earth-systems"
 BUDGET = "ai2/prior"
 IMAGE_NAME = "favyen/rslearn"
 
 def launch_job(config_path: str, workspace: str):
+    project_id, experiment_id = launcher_lib.get_project_and_experiment(config_path)
+    launcher_lib.upload_code(project_id, experiment_id)
     beaker = Beaker.from_env(default_workspace=workspace)
 
     with beaker.session():
         spec = ExperimentSpec.new(
             budget=BUDGET,
-            description=config_path,
+            description=f"{project_id}/{experiment_id}",
             beaker_image=IMAGE_NAME,
             priority=Priority.high,
-            command=["python", "-m", "rslp.main"],
-            arguments=["model", "fit", "--config", config_path],
+            command=["python", "-m", "rslp.docker_entrypoint"],
+            arguments=["model", "fit", "--config", config_path, "--autoresume=true"],
             constraints=Constraints(cluster=["ai2/jupiter-cirrascale-2"]),
             preemptible=True,
             datasets=[
@@ -35,10 +39,31 @@ def launch_job(config_path: str, workspace: str):
                     name="GOOGLE_APPLICATION_CREDENTIALS",
                     value="/etc/credentials/gcp_credentials.json",
                 ),
+                EnvVar(
+                    name="GCLOUD_PROJECT",
+                    value="prior-satlas",
+                ),
+                EnvVar(
+                    name="S3_ACCESS_KEY_ID",
+                    secret="RSLEARN_WEKA_KEY",
+                ),
+                EnvVar(
+                    name="S3_SECRET_ACCESS_KEY",
+                    secret="RSLEARN_WEKA_SECRET",
+                ),
+                EnvVar(
+                    name="RSLP_PROJECT",
+                    value=project_id,
+                ),
+                EnvVar(
+                    name="RSLP_EXPERIMENT",
+                    value=experiment_id,
+                ),
             ],
             resources=TaskResources(gpu_count=1),
         )
-        beaker.experiment.create(config_path.replace("/", "_") + "-" + str(uuid.uuid4()), spec)
+        unique_id = str(uuid.uuid4())[0:8]
+        beaker.experiment.create(f"{project_id}_{experiment_id}_{unique_id}", spec)
 
 
 if __name__ == "__main__":

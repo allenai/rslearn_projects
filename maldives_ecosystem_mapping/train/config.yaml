@@ -24,7 +24,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    root_dir: /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/
+    root_dir: s3://prior-default/favyenb/rslearn-data/datasets/maldives_ecosystem_mapping/dataset_v1/20240730/?endpoint_url=https://weka-aus.beaker.org:9000
     inputs:
       image:
         data_type: "raster"
@@ -92,7 +92,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        root_dir: /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/
+        root_dir: s3://prior-default/favyenb/rslearn-data/datasets/maldives_ecosystem_mapping/dataset_v1/20240730/?endpoint_url=https://weka-aus.beaker.org:9000
         output_layer: output
         selector: ["segment"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
@@ -102,4 +102,4 @@ trainer:
         monitor: val_segment/accuracy
         mode: max
 rslp_project: maldives_ecosystem_mapping
-rslp_experiment: data_20240730_satlaspretrain_flip_crop512_00
+rslp_experiment: data_20240730_satlaspretrain_flip_crop512_02
