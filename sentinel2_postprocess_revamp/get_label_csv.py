@@ -1,14 +1,15 @@
-"""
-This creates CSV of timestamps, longitudes, and latitudes labeled as vessels.
+"""This creates CSV of timestamps, longitudes, and latitudes labeled as vessels.
 So I will send that to Hunter and he will get details from AIS then hopefully we can train on all that.
 
 This script works with the siv-l1c sqlite3 db at https://console.cloud.google.com/storage/browser/_details/satlas-explorer-data/siv-annotations/sentinel2.tar
 """
+
 import csv
-from datetime import datetime
 import math
+from datetime import datetime
 
 from siv.db import db
+
 
 def mercator_to_geo(p, zoom, pixels):
     n = 2**zoom
@@ -18,6 +19,7 @@ def mercator_to_geo(p, zoom, pixels):
     y = math.atan(math.sinh(math.pi * (1 - 2.0 * y / n)))
     y = y * 180 / math.pi
     return (x, y)
+
 
 db.execute("""
     SELECT im.time, l.column, l.row
@@ -33,8 +35,10 @@ with open("out.csv", "w") as f:
     for ts_str, col, row in db.fetchall():
         lon, lat = mercator_to_geo((col, row), zoom=13, pixels=512)
         ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S%z")
-        writer.writerow({
-            "timestamp": ts.isoformat(),
-            "longitude": str(lon),
-            "latitude": str(lat),
-        })
+        writer.writerow(
+            {
+                "timestamp": ts.isoformat(),
+                "longitude": str(lon),
+                "latitude": str(lat),
+            }
+        )

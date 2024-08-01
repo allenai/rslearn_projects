@@ -1,23 +1,22 @@
-"""
-This is based on 2024_03_27_recompute_masks in multisat amazon_conservation code.
+"""This is based on 2024_03_27_recompute_masks in multisat amazon_conservation code.
 
 This script will do a similar recompute process but instead of updating the mask,
 the output is rslearn windows with the info.json and mask.png similar to
 create_unlabeled_dataset.json.
 """
-from datetime import datetime, timedelta, timezone
+
 import json
 import math
 import os
+from datetime import datetime, timedelta, timezone
 
 import fiona
-from PIL import Image
 import rasterio
-from rasterio.crs import CRS
 import rasterio.features
 import shapely.geometry
 import tqdm
-
+from PIL import Image
+from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Projection, STGeometry
@@ -61,8 +60,13 @@ categories = [
 
 with fiona.open(shp_fname) as src:
     for feat_idx, feat in enumerate(tqdm.tqdm(src)):
-        date_parts = feat.properties["Date"].split('-')
-        ts = datetime(int(date_parts[0]), int(date_parts[1]), int(date_parts[2]), tzinfo=timezone.utc)
+        date_parts = feat.properties["Date"].split("-")
+        ts = datetime(
+            int(date_parts[0]),
+            int(date_parts[1]),
+            int(date_parts[2]),
+            tzinfo=timezone.utc,
+        )
         category = categories[feat.properties["Level_2"]]
 
         shp = shapely.geometry.shape(feat.geometry)
@@ -71,17 +75,17 @@ with fiona.open(shp_fname) as src:
         center = geom.shp.centroid
         rslearn_center = (int(center.x), int(center.y))
         multisat_center = (
-            rslearn_center[0] + web_mercator_total_pixels//2,
-            rslearn_center[1] + web_mercator_total_pixels//2,
+            rslearn_center[0] + web_mercator_total_pixels // 2,
+            rslearn_center[1] + web_mercator_total_pixels // 2,
         )
 
         window_name = f"feat_{feat_idx}_{multisat_center[0]}_{multisat_center[1]}"
 
         bounds = [
-            rslearn_center[0] - crop_size//2,
-            rslearn_center[1] - crop_size//2,
-            rslearn_center[0] + crop_size//2,
-            rslearn_center[1] + crop_size//2,
+            rslearn_center[0] - crop_size // 2,
+            rslearn_center[1] - crop_size // 2,
+            rslearn_center[0] + crop_size // 2,
+            rslearn_center[1] + crop_size // 2,
         ]
         time_range = (
             ts,
@@ -102,6 +106,7 @@ with fiona.open(shp_fname) as src:
             points[:, 0] -= bounds[0]
             points[:, 1] -= bounds[1]
             return points
+
         pixel_shp = shapely.transform(geom.shp, to_out_pixel)
         mask_im = rasterio.features.rasterize(
             [(pixel_shp, 255)],
@@ -111,7 +116,10 @@ with fiona.open(shp_fname) as src:
 
         # Create label.json.
         with open(os.path.join(window.window_root, "label.json"), "w") as f:
-            json.dump({
-                "old_label": category,
-                "new_label": category,
-            }, f)
+            json.dump(
+                {
+                    "old_label": category,
+                    "new_label": category,
+                },
+                f,
+            )

@@ -1,22 +1,20 @@
-"""
-Create rslearn data from the GCS dataset retrieved using retrieve_dataset.py.
+"""Create rslearn data from the GCS dataset retrieved using retrieve_dataset.py.
 Two groups of windows are created:
 - images: windows of the full original GeoTIFF images
 - crops: windows corresponding to image patches that are actually annotated
 """
 
 import argparse
-from datetime import datetime, timedelta
 import json
 import os
 import shutil
-import tqdm
+from datetime import datetime, timedelta
 
 import numpy as np
 import rasterio
 import rasterio.features
 import shapely
-
+import tqdm
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import LocalFileAPI, Projection, STGeometry
@@ -60,10 +58,12 @@ COLORS = [
     [128, 0, 0],
 ]
 
+
 class ProcessJob:
     def __init__(self, prefix, out_dir):
         self.prefix = prefix
         self.out_dir = out_dir
+
 
 def process(job):
     label = os.path.basename(job.prefix)
@@ -81,7 +81,9 @@ def process(job):
     # Extract datetime.
     parts = job.prefix.split("_")[-1].split("-")
     assert len(parts) == 5
-    ts = datetime(int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]))
+    ts = datetime(
+        int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
+    )
 
     # First create window for the entire GeoTIFF.
     window_root = os.path.join(job.out_dir, "windows", "images", label)
@@ -95,7 +97,9 @@ def process(job):
         time_range=(ts - timedelta(minutes=1), ts + timedelta(minutes=1)),
     )
     window.save()
-    dst_geotiff_fname = os.path.join(window_root, "layers", "maxar", "R_G_B", "geotiff.tif")
+    dst_geotiff_fname = os.path.join(
+        window_root, "layers", "maxar", "R_G_B", "geotiff.tif"
+    )
     os.makedirs(os.path.dirname(dst_geotiff_fname), exist_ok=True)
     shutil.copyfile(job.prefix + ".tif", dst_geotiff_fname)
     with open(os.path.join(window_root, "layers", "maxar", "completed"), "w") as f:
@@ -106,10 +110,15 @@ def process(job):
     def convert_geom(bounding_poly):
         # Convert the boundingPoly from the JSON file into an STGeometry in the
         # coordinates of `projection`.
-        exterior = [(vertex["x"], vertex["y"]) for vertex in bounding_poly[0]["normalizedVertices"]]
+        exterior = [
+            (vertex["x"], vertex["y"])
+            for vertex in bounding_poly[0]["normalizedVertices"]
+        ]
         interiors = []
         for poly in bounding_poly[1:]:
-            interior = [(vertex["x"], vertex["y"]) for vertex in poly["normalizedVertices"]]
+            interior = [
+                (vertex["x"], vertex["y"]) for vertex in poly["normalizedVertices"]
+            ]
             interiors.append(interior)
         shp = shapely.Polygon(exterior, interiors)
         src_geom = STGeometry(WGS84_PROJECTION, shp, None)
@@ -138,7 +147,9 @@ def process(job):
         proj_bounds[2] - raster_bounds[0],
         proj_bounds[3] - raster_bounds[1],
     ]
-    crop = array[:, pixel_bounds[1]:pixel_bounds[3], pixel_bounds[0]:pixel_bounds[2]]
+    crop = array[
+        :, pixel_bounds[1] : pixel_bounds[3], pixel_bounds[0] : pixel_bounds[2]
+    ]
 
     # Create window.
     window_name = f"{label}_{pixel_bounds[0]}_{pixel_bounds[1]}"
@@ -161,11 +172,18 @@ def process(job):
     # Render the GeoJSON labels and write that too.
     pixel_shapes = []
     for shp, category_id in proj_shapes:
-        shp = shapely.transform(shp, lambda coords: coords - [proj_bounds[0], proj_bounds[1]])
+        shp = shapely.transform(
+            shp, lambda coords: coords - [proj_bounds[0], proj_bounds[1]]
+        )
         pixel_shapes.append((shp, category_id))
-    mask = rasterio.features.rasterize(pixel_shapes, out_shape=(proj_bounds[3] - proj_bounds[1], proj_bounds[2] - proj_bounds[0]))
+    mask = rasterio.features.rasterize(
+        pixel_shapes,
+        out_shape=(proj_bounds[3] - proj_bounds[1], proj_bounds[2] - proj_bounds[0]),
+    )
     file_api = window.file_api.get_folder("layers", "label", "label")
-    GeotiffRasterFormat().encode_raster(file_api, projection, proj_bounds, mask[None, :, :])
+    GeotiffRasterFormat().encode_raster(
+        file_api, projection, proj_bounds, mask[None, :, :]
+    )
 
     # Along with a visualization image.
     label_vis = np.zeros((mask.shape[0], mask.shape[1], 3))
@@ -173,7 +191,9 @@ def process(job):
         color = COLORS[category_id % len(COLORS)]
         label_vis[mask == category_id] = color
     file_api = window.file_api.get_folder("layers", "label", "vis")
-    GeotiffRasterFormat().encode_raster(file_api, projection, proj_bounds, label_vis.transpose(2, 0, 1))
+    GeotiffRasterFormat().encode_raster(
+        file_api, projection, proj_bounds, label_vis.transpose(2, 0, 1)
+    )
 
     with open(os.path.join(window_root, "layers", "maxar", "completed"), "w") as f:
         pass
@@ -183,7 +203,9 @@ def process(job):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--in_dir", help="Input directory containing retrieved images and labels")
+    parser.add_argument(
+        "--in_dir", help="Input directory containing retrieved images and labels"
+    )
     parser.add_argument("--out_dir", help="Output directory")
     args = parser.parse_args()
 

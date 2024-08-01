@@ -1,14 +1,16 @@
 import glob
 import json
 import os
-
 import random
+
 import tqdm
 
 ds_root = "/multisat/datasets/rslearn_landsat/2024-07-18-joe-check-training-phase1/"
 val_fraction = 0.3
 
-window_metadatas = glob.glob(os.path.join(ds_root, "windows", "*", "*", "metadata.json"))
+window_metadatas = glob.glob(
+    os.path.join(ds_root, "windows", "*", "*", "metadata.json")
+)
 random.shuffle(window_metadatas)
 num_val = int(len(window_metadatas) * val_fraction)
 val_windows = window_metadatas[0:num_val]

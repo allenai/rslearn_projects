@@ -1,15 +1,17 @@
 import glob
 import json
 import os
+import random
 import sys
 
-import random
 import tqdm
 
 ds_root = sys.argv[1]
 num_val = int(sys.argv[2])
 
-window_metadatas = glob.glob(os.path.join(ds_root, "windows", "crops", "*", "metadata.json"))
+window_metadatas = glob.glob(
+    os.path.join(ds_root, "windows", "crops", "*", "metadata.json")
+)
 random.shuffle(window_metadatas)
 val_windows = window_metadatas[0:num_val]
 train_windows = window_metadatas[num_val:]

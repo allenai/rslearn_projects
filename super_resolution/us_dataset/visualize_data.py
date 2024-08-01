@@ -3,9 +3,9 @@ import os
 import sys
 
 import numpy as np
-from PIL import Image
 import rasterio
 import rasterio.features
+from PIL import Image
 
 label = sys.argv[1]
 root_dir = sys.argv[2]
@@ -15,7 +15,9 @@ out_dir = sys.argv[3]
 with rasterio.open(os.path.join(root_dir, "landsat", f"{label}_8.tif")) as src:
     array = src.read()
 for idx in range(16):
-    img = np.clip((array[idx, :, :].astype(np.float64) - 5000) / 20, 0, 255).astype(np.uint8)
+    img = np.clip((array[idx, :, :].astype(np.float64) - 5000) / 20, 0, 255).astype(
+        np.uint8
+    )
     img = img.repeat(axis=0, repeats=8).repeat(axis=1, repeats=8)
     Image.fromarray(img).save(os.path.join(out_dir, f"{label}_landsat{idx}.png"))
 
@@ -39,12 +41,16 @@ category_colors = {
     "solar": [128, 128, 128],
 }
 category_selectors = {
-    "leisure_park": lambda feat: feat["properties"]["category"] == "leisure" and feat["properties"].get("leisure") == "park",
-    "solar": lambda feat: feat["properties"]["category"] == "power_plant" and feat["properties"].get("plant:source") == "solar",
+    "leisure_park": lambda feat: feat["properties"]["category"] == "leisure"
+    and feat["properties"].get("leisure") == "park",
+    "solar": lambda feat: feat["properties"]["category"] == "power_plant"
+    and feat["properties"].get("plant:source") == "solar",
 }
 img = np.zeros((512, 512, 3), dtype=np.uint8)
 for category, color in category_colors.items():
-    selector = category_selectors.get(category, lambda feat: feat["properties"]["category"] == category)
+    selector = category_selectors.get(
+        category, lambda feat: feat["properties"]["category"] == category
+    )
     geometries = [feat["geometry"] for feat in data["features"] if selector(feat)]
     if len(geometries) == 0:
         continue
@@ -63,7 +69,11 @@ Image.fromarray(img).save(os.path.join(out_dir, f"{label}_sentinel1.png"))
 with rasterio.open(os.path.join(root_dir, "sentinel2", f"{label}_8.tif")) as src:
     array = src.read()
 for idx in range(8):
-    img = np.clip(array[(idx*4+2, idx*4+1, idx*4+0), :, :].transpose(1, 2, 0) / 10, 0, 255).astype(np.uint8)
+    img = np.clip(
+        array[(idx * 4 + 2, idx * 4 + 1, idx * 4 + 0), :, :].transpose(1, 2, 0) / 10,
+        0,
+        255,
+    ).astype(np.uint8)
     img = img.repeat(axis=0, repeats=8).repeat(axis=1, repeats=8)
     Image.fromarray(img).save(os.path.join(out_dir, f"{label}_sentinel2_{idx}.png"))
 

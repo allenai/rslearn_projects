@@ -1,10 +1,8 @@
-from datetime import datetime, timedelta, timezone
 import json
 import os
+from datetime import datetime, timedelta, timezone
 
-from rasterio import CRS
 import tqdm
-
 
 GROUP = "default"
 naip_tile_dir = "/mnt/data/rslearn_superres_dataset/tiles/"
@@ -14,9 +12,11 @@ sentinel2_window_dir = "/mnt/superres_sentinel2/windows/"
 # Set of (CRS, col, row, year, month).
 needed = set()
 
-for image_id in tqdm.tqdm(os.listdir(naip_tile_dir), desc="Identifying needed Sentinel-2 tiles"):
+for image_id in tqdm.tqdm(
+    os.listdir(naip_tile_dir), desc="Identifying needed Sentinel-2 tiles"
+):
     image_dir = os.path.join(naip_tile_dir, image_id)
-    parts = image_id.split('_')
+    parts = image_id.split("_")
     crs_str = parts[-3]
     date_str = parts[-4]
     try:
@@ -36,18 +36,20 @@ for image_id in tqdm.tqdm(os.listdir(naip_tile_dir), desc="Identifying needed Se
     for fname in os.listdir(image_dir):
         if not fname.endswith(".png"):
             continue
-        parts = fname.split('.')[0].split('_')
+        parts = fname.split(".")[0].split("_")
         col = int(parts[0])
         row = int(parts[1])
-        tiles.add((col//factor, row//factor))
+        tiles.add((col // factor, row // factor))
 
     for year, month in year_months:
         for tile in tiles:
             needed.add((crs_str, tile[0], tile[1], year, month))
 
 
-for crs_str, col, row, year, month in tqdm.tqdm(needed, desc="Creating Sentinel-2 windows"):
-    name = "{}_{}_{}_{}_{}".format(crs_str, col, row, year, month)
+for crs_str, col, row, year, month in tqdm.tqdm(
+    needed, desc="Creating Sentinel-2 windows"
+):
+    name = f"{crs_str}_{col}_{row}_{year}_{month}"
 
     if month == 12:
         next_year = year + 1
@@ -68,7 +70,7 @@ for crs_str, col, row, year, month in tqdm.tqdm(needed, desc="Creating Sentinel-
             "x_resolution": 10,
             "y_resolution": -10,
         },
-        "bounds": [col*512, row*512, (col+1)*512, (row+1)*512],
+        "bounds": [col * 512, row * 512, (col + 1) * 512, (row + 1) * 512],
         "time_range": time_range,
         "options": {},
     }

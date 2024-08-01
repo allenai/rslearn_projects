@@ -1,24 +1,23 @@
-"""
-This script prepares UTM rslearn windows corresponding to the existing WebMercator landsat windows.
+"""This script prepares UTM rslearn windows corresponding to the existing WebMercator landsat windows.
 But it also produces:
 1. File containing four corners of rectangle of original window in the new coordinate system.
    The image should be blacked out outside of this quadrilateral.
 2. File containing vessel positions in the new window.
 """
-from datetime import datetime, timedelta, timezone
+
 import json
 import math
 import multiprocessing
-import numpy as np
-import sqlite3
 import os
+import sqlite3
+from datetime import datetime, timedelta, timezone
 
-from PIL import Image
-from rasterio.crs import CRS
+import numpy as np
 import shapely
 import skimage.draw
 import tqdm
-
+from PIL import Image
+from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
@@ -42,7 +41,9 @@ image_conn.isolation_level = None
 image_db = image_conn.cursor()
 
 # Get mapping from window ID to image timestamp.
-image_db.execute("SELECT w.id, im.time FROM windows AS w, images AS im WHERE w.image_id = im.id")
+image_db.execute(
+    "SELECT w.id, im.time FROM windows AS w, images AS im WHERE w.image_id = im.id"
+)
 window_id_to_time = {}
 for w_id, im_time_str in image_db.fetchall():
     im_time = datetime.strptime(im_time_str.split("+")[0], "%Y-%m-%d %H:%M:%S")
@@ -51,6 +52,7 @@ for w_id, im_time_str in image_db.fetchall():
 
 example_ids = os.listdir(in_dir)
 
+
 def handle(example_id):
     # Extract polygon in source projection coordinates from the example folder name.
     parts = example_id.split("_")
@@ -58,12 +60,14 @@ def handle(example_id):
     row = int(parts[1]) - total_pixels // 2
     image_uuid = parts[2]
     window_id = int(parts[3])
-    src_polygon = shapely.Polygon([
-        [col, row],
-        [col + pixels_per_tile, row],
-        [col + pixels_per_tile, row + pixels_per_tile],
-        [col, row + pixels_per_tile],
-    ])
+    src_polygon = shapely.Polygon(
+        [
+            [col, row],
+            [col + pixels_per_tile, row],
+            [col + pixels_per_tile, row + pixels_per_tile],
+            [col, row + pixels_per_tile],
+        ]
+    )
 
     # Now identify the appropriate UTM projection for the polygon, and transform it.
     src_geom = STGeometry(src_projection, src_polygon, None)
@@ -115,13 +119,15 @@ def handle(example_id):
             dst_vessel = src_vessel.to_projection(dst_projection)
             cx = int(dst_vessel.shp.x) - bounds[0]
             cy = int(dst_vessel.shp.y) - bounds[1]
-            vessel_points.append([
-                cx - 10,
-                cy - 10,
-                cx + 10,
-                cy + 10,
-                category,
-            ])
+            vessel_points.append(
+                [
+                    cx - 10,
+                    cy - 10,
+                    cx + 10,
+                    cy + 10,
+                    category,
+                ]
+            )
     with open(os.path.join(window_root, "gt.json"), "w") as f:
         json.dump(vessel_points, f)
 
@@ -134,6 +140,7 @@ def handle(example_id):
     rr, cc = skimage.draw.polygon(polygon_rows, polygon_cols, shape=mask.shape)
     mask[rr, cc] = 255
     Image.fromarray(mask).save(os.path.join(window_root, "mask.png"))
+
 
 p = multiprocessing.Pool(64)
 outputs = p.imap_unordered(handle, example_ids)

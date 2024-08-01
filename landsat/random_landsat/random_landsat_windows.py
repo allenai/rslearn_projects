@@ -1,21 +1,18 @@
-"""
-Just pick a bunch of random Landsat windows.
+"""Just pick a bunch of random Landsat windows.
 In WebMercator projection since that's how the vessel detection model data is.
 Yeah this is for vessel detection, just testing to see how the model does elsewhere.
 """
 
-from datetime import datetime, timedelta, timezone
 import math
 import os
 import random
+from datetime import datetime, timedelta, timezone
+
 import shapely
-
 from rasterio.crs import CRS
-
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Projection, STGeometry
-
 
 out_dir = "/data/favyenb/rslearn_landsat/windows/"
 GROUP = "default"
@@ -49,7 +46,9 @@ while len(seen) < 1000:
         (tile_row + 1) * pixels_per_tile,
     )
 
-    start_time = datetime(random.choice(YEARS), random.randint(1, 12), 1, tzinfo=timezone.utc)
+    start_time = datetime(
+        random.choice(YEARS), random.randint(1, 12), 1, tzinfo=timezone.utc
+    )
     end_time = start_time + timedelta(days=30)
 
     window = Window(

@@ -1,7 +1,18 @@
+"""Launch train jobs on Beaker."""
+
 import argparse
 import uuid
 
-from beaker import Beaker, Constraints, DataMount, DataSource, EnvVar, ExperimentSpec, Priority, TaskResources
+from beaker import (
+    Beaker,
+    Constraints,
+    DataMount,
+    DataSource,
+    EnvVar,
+    ExperimentSpec,
+    Priority,
+    TaskResources,
+)
 
 from rslp import launcher_lib
 
@@ -9,7 +20,15 @@ DEFAULT_WORKSPACE = "ai2/earth-systems"
 BUDGET = "ai2/prior"
 IMAGE_NAME = "favyen/rslearn"
 
+
 def launch_job(config_path: str, workspace: str):
+    """Launch training for the specified config on Beaker.
+
+    Args:
+        config_path: the relative path from rslearn_projects/ to the YAML configuration
+            file.
+        workspace: the Beaker workspace to run the job in.
+    """
     project_id, experiment_id = launcher_lib.get_project_and_experiment(config_path)
     launcher_lib.upload_code(project_id, experiment_id)
     beaker = Beaker.from_env(default_workspace=workspace)

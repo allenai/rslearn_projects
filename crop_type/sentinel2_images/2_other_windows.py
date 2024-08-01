@@ -1,33 +1,50 @@
-"""
-Alternative script for populating windows for AgriFieldNet and South Africa.
+"""Alternative script for populating windows for AgriFieldNet and South Africa.
 We just copy the bounds from the 256x256 label files that YiChia cropped
 (after projecting the original 256x256 labels to WebMercator).
 """
-from datetime import datetime, timezone
+
 import os
+from datetime import datetime, timezone
 
 import rasterio
 import tqdm
-
 from rslearn.dataset import Window
 from rslearn.utils import Projection
 
 out_dir = "/data/favyenb/rslearn_crop_type/windows/"
 
-#in_dir = "/data/yichiac/sact_harmonized/train/labels/"
-#group = "sact"
-#time_ranges = [
+# in_dir = "/data/yichiac/sact_harmonized/train/labels/"
+# group = "sact"
+# time_ranges = [
 #    ("2017-02", (datetime(2017, 2, 1, tzinfo=timezone.utc), datetime(2017, 3, 1, tzinfo=timezone.utc))),
 #    ("2017-03", (datetime(2017, 3, 1, tzinfo=timezone.utc), datetime(2017, 4, 1, tzinfo=timezone.utc))),
 #    ("2017-04", (datetime(2017, 4, 1, tzinfo=timezone.utc), datetime(2017, 5, 1, tzinfo=timezone.utc))),
-#]
+# ]
 
 in_dir = "/data/yichiac/agrifieldnet_harmonized/train_labels/"
 group = "agrifieldnet"
 time_ranges = [
-    ("2021-06", (datetime(2021, 6, 1, tzinfo=timezone.utc), datetime(2021, 7, 1, tzinfo=timezone.utc))),
-    ("2021-07", (datetime(2021, 7, 1, tzinfo=timezone.utc), datetime(2021, 8, 1, tzinfo=timezone.utc))),
-    ("2021-08", (datetime(2021, 8, 1, tzinfo=timezone.utc), datetime(2021, 9, 1, tzinfo=timezone.utc))),
+    (
+        "2021-06",
+        (
+            datetime(2021, 6, 1, tzinfo=timezone.utc),
+            datetime(2021, 7, 1, tzinfo=timezone.utc),
+        ),
+    ),
+    (
+        "2021-07",
+        (
+            datetime(2021, 7, 1, tzinfo=timezone.utc),
+            datetime(2021, 8, 1, tzinfo=timezone.utc),
+        ),
+    ),
+    (
+        "2021-08",
+        (
+            datetime(2021, 8, 1, tzinfo=timezone.utc),
+            datetime(2021, 9, 1, tzinfo=timezone.utc),
+        ),
+    ),
 ]
 
 pixel_size = 10

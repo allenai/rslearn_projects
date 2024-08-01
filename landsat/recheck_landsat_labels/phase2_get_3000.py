@@ -1,17 +1,12 @@
-"""
-Get a sample of 3000 vessel labels.
-"""
+"""Get a sample of 3000 vessel labels."""
 
 import csv
-from datetime import datetime, timedelta, timezone
 import json
 import os
 import random
+from datetime import datetime, timedelta, timezone
 
-import numpy as np
-from PIL import Image
 import shapely
-
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import LocalFileAPI, Projection, STGeometry
@@ -49,7 +44,6 @@ for idx, lon, lat, ts in selected:
         int(dst_geom.shp.y) + 32,
     ]
 
-
     time_range = (ts - timedelta(minutes=20), ts + timedelta(minutes=20))
     format_string = "%Y-%m-%dT%H:%M:%SZ"
     from_time = time_range[0].strftime(format_string)
@@ -75,22 +69,27 @@ for idx, lon, lat, ts in selected:
         pass
     if not os.path.exists(os.path.join(label_layer_dir, "data.geojson")):
         with open(os.path.join(label_layer_dir, "data.geojson"), "w") as f:
-            json.dump({
-                "type": "FeatureCollection",
-                "features": [{
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [[32, 32]],
-                    },
-                    "properties": {
-                        "label": "unknown",
-                        "url": url,
-                        "idx": idx,
-                        "lon": lon,
-                        "lat": lat,
-                        "ts": ts.isoformat(),
-                    },
-                }],
-                "properties": window.projection.serialize(),
-            }, f)
+            json.dump(
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [[32, 32]],
+                            },
+                            "properties": {
+                                "label": "unknown",
+                                "url": url,
+                                "idx": idx,
+                                "lon": lon,
+                                "lat": lat,
+                                "ts": ts.isoformat(),
+                            },
+                        }
+                    ],
+                    "properties": window.projection.serialize(),
+                },
+                f,
+            )

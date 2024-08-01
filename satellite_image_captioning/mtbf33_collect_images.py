@@ -1,5 +1,4 @@
-"""
-After rslearn dataset is materialized, use this script to put all the images in one
+"""After rslearn dataset is materialized, use this script to put all the images in one
 folder while also including JSON specifying the longitude, latitude, and Google Maps
 URL of the center of the image.
 """
@@ -10,13 +9,11 @@ import os
 import shutil
 
 import numpy as np
-from PIL import Image
 import rasterio.features
 import shapely.geometry
-
+from PIL import Image
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection, STGeometry
 
 in_dir = "/data/favyenb/datasets_for_image_caption/rslearn_mtbf33/windows/"
 out_dir = "/data/favyenb/datasets_for_image_caption/rslearn_mtbf33/images/"
@@ -34,18 +31,28 @@ for group in os.listdir(in_dir):
         image_fnames = glob.glob(os.path.join(window_root, "layers/*/R_G_B/image.png"))
         for image_fname in image_fnames:
             year = image_fname.split("/")[-3]
-            shutil.copyfile(image_fname, os.path.join(out_dir, f"{out_label}_{year}.png"))
+            shutil.copyfile(
+                image_fname, os.path.join(out_dir, f"{out_label}_{year}.png")
+            )
 
         with open(os.path.join(out_dir, f"{out_label}.json"), "w") as f:
-            json.dump({
-                "longitude": lon,
-                "latitude": lat,
-                "google_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}",
-            }, f)
+            json.dump(
+                {
+                    "longitude": lon,
+                    "latitude": lat,
+                    "google_url": f"https://www.google.com/maps/search/?api=1&query={lat},{lon}",
+                },
+                f,
+            )
 
-        mask = np.zeros((window.bounds[3] - window.bounds[1], window.bounds[2] - window.bounds[0]), dtype=np.uint8)
+        mask = np.zeros(
+            (window.bounds[3] - window.bounds[1], window.bounds[2] - window.bounds[0]),
+            dtype=np.uint8,
+        )
         if os.path.exists(os.path.join(window_root, "layers/vector_mask/data.geojson")):
-            with open(os.path.join(window_root, "layers/vector_mask/data.geojson")) as f:
+            with open(
+                os.path.join(window_root, "layers/vector_mask/data.geojson")
+            ) as f:
                 fc = json.load(f)
             shapes = []
             for feat in fc["features"]:
@@ -59,7 +66,10 @@ for group in os.listdir(in_dir):
             if len(shapes) > 0:
                 mask = rasterio.features.rasterize(
                     shapes=shapes,
-                    out_shape=(window.bounds[3] - window.bounds[1], window.bounds[2] - window.bounds[0]),
+                    out_shape=(
+                        window.bounds[3] - window.bounds[1],
+                        window.bounds[2] - window.bounds[0],
+                    ),
                     dtype=np.uint8,
                 )
 

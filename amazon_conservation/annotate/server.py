@@ -1,10 +1,11 @@
-from flask import Flask, jsonify, request, send_file
 import glob
 import hashlib
 import json
 import math
 import os
 import sys
+
+from flask import Flask, jsonify, request, send_file
 
 # e.g. /multisat/datasets/rslearn_amazon_conservation/
 ds_root = sys.argv[1]
@@ -21,13 +22,16 @@ example_ids.sort(key=lambda example_id: hashlib.md5(example_id.encode()).hexdige
 
 app = Flask(__name__)
 
+
 @app.route("/")
 def index():
-    return send_file('index.html')
+    return send_file("index.html")
 
-@app.route('/examples')
+
+@app.route("/examples")
 def get_examples():
     return jsonify(example_ids)
+
 
 def mercator_to_geo(p, zoom=13, pixels=512):
     n = 2**zoom
@@ -38,6 +42,7 @@ def mercator_to_geo(p, zoom=13, pixels=512):
     y = y * 180 / math.pi
     return (x, y)
 
+
 @app.route("/metadata/<idx>")
 def get_example(idx):
     metadata = {}
@@ -45,7 +50,7 @@ def get_example(idx):
     example_id = example_ids[int(idx)]
     metadata["example_id"] = example_id
 
-    parts = example_id.split('_')
+    parts = example_id.split("_")
     point = (int(parts[2]), int(parts[3]))
     point = mercator_to_geo(point, zoom=13, pixels=512)
     metadata["point"] = point
@@ -57,7 +62,9 @@ def get_example(idx):
     with open(os.path.join(window_dir, example_id, "best_times.json")) as f:
         metadata["best_times"] = json.load(f)
 
-    with open(os.path.join(window_dir, example_id, "layers", "label", "data.geojson")) as f:
+    with open(
+        os.path.join(window_dir, example_id, "layers", "label", "data.geojson")
+    ) as f:
         wanted = ["old_label", "new_label"]
         for feat in json.load(f)["features"]:
             props = feat["properties"]
@@ -67,12 +74,14 @@ def get_example(idx):
 
     return jsonify(metadata)
 
+
 def get_image_fname(example_id, band, image_idx):
     if band == "mask":
         return "mask.png"
     if "planet" in band:
         return f"layers/{band}_{image_idx+1}/R_G_B/image.png"
     return f"layers/best_{band}_{image_idx}/R_G_B/image.png"
+
 
 @app.route("/image/<example_idx>/<band>/<image_idx>")
 def get_image(example_idx, band, image_idx):
@@ -83,18 +92,22 @@ def get_image(example_idx, band, image_idx):
     image_fname = get_image_fname(example_id, band, image_idx)
     return send_file(os.path.join(window_dir, example_id, image_fname))
 
-@app.route('/update/<idx>', methods=['POST'])
+
+@app.route("/update/<idx>", methods=["POST"])
 def update(idx):
     example_id = example_ids[int(idx)]
-    label_fname = os.path.join(window_dir, example_id, "layers", "label", "data.geojson")
+    label_fname = os.path.join(
+        window_dir, example_id, "layers", "label", "data.geojson"
+    )
     with open(label_fname) as f:
         fc = json.load(f)
     for feat in fc["features"]:
         feat["properties"]["new_label"] = request.json
-    with open(label_fname + ".tmp", 'w') as f:
+    with open(label_fname + ".tmp", "w") as f:
         json.dump(fc, f)
     os.rename(label_fname + ".tmp", label_fname)
     return jsonify(True)
 
+
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port)

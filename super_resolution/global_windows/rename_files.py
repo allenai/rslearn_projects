@@ -1,10 +1,9 @@
-"""
-Name it so it's a bit more consistent with the data previously sent to Piper.
-"""
+"""Name it so it's a bit more consistent with the data previously sent to Piper."""
+
 import glob
-import numpy as np
 import os
 
+import numpy as np
 import rasterio
 import tqdm
 
@@ -22,7 +21,9 @@ for window_name in tqdm.tqdm(os.listdir(in_dir)):
     epsg_id = parts[0].split(":")[1]
     out_name = f"{epsg_id}_{parts[1]}_{parts[2]}"
 
-    options = glob.glob(os.path.join(in_dir, window_name, f"layers/*/{bands[0][0]}/geotiff.tif"))
+    options = glob.glob(
+        os.path.join(in_dir, window_name, f"layers/*/{bands[0][0]}/geotiff.tif")
+    )
 
     for band, suffix in bands:
         profile = None

@@ -1,18 +1,18 @@
-"""
-Create tar files corresponding to 40 m/pixel tiles combining all the 1.25 m/pixel NAIP
+"""Create tar files corresponding to 40 m/pixel tiles combining all the 1.25 m/pixel NAIP
 images into the tar file.
 Then upload the tar files to Hugging Face.
 """
+
 import csv
 import glob
 import multiprocessing
 import os
+import random
 import tarfile
 
 import numpy as np
-from PIL import Image
-import random
 import tqdm
+from PIL import Image
 
 input_dirs = [
     "/mnt/naip_1/tiles/naip",
@@ -21,9 +21,12 @@ input_dirs = [
 num_workers = 64
 tar_dir = "/mnt/hfupload_naip/naip_tar/"
 
+
 # Pick best fname for each 1.25 m/pixel tile.
 def get_fnames(image_dir):
     return glob.glob(os.path.join(image_dir, "*/*.png"))
+
+
 jobs = []
 for input_dir in input_dirs:
     for image_name in os.listdir(input_dir):
@@ -45,11 +48,12 @@ for fname in image_fnames:
     col = int(parts[0])
     row = int(parts[1])
     tile = (projection, col, row)
-    big_tile = (projection, col//32, row//32)
+    big_tile = (projection, col // 32, row // 32)
     if big_tile not in info_by_big_tile:
         info_by_big_tile[big_tile] = []
     info_by_big_tile[big_tile].append((tile, fname))
 print(f"got {len(info_by_big_tile)} big tiles total")
+
 
 # Tar and upload the files corresponding to each 40 m/pixel tile.
 def process(job):
@@ -81,25 +85,28 @@ def process(job):
                 best_invalid = num_invalid
         best_by_tile[tile] = best_fname
 
-    with tarfile.open(tar_fname+".tmp", "w") as tar_file:
+    with tarfile.open(tar_fname + ".tmp", "w") as tar_file:
         for tile, src_fname in best_by_tile.items():
             dst_fname = f"naip/{tile[0]}_{tile[1]}_{tile[2]}.png"
             tar_file.add(src_fname, arcname=dst_fname)
-    os.rename(tar_fname+".tmp", tar_fname)
+    os.rename(tar_fname + ".tmp", tar_fname)
 
     # Write the best fnames to CSV so we can use it when doing Sentinel-2 stuff.
-    with open(csv_fname+".tmp", "w") as f:
+    with open(csv_fname + ".tmp", "w") as f:
         writer = csv.DictWriter(f, ["projection", "col", "row", "naip_scene"])
         writer.writeheader()
         for tile, fname in best_by_tile.items():
             naip_scene = fname.split("/")[-3]
-            writer.writerow({
-                "projection": tile[0],
-                "col": tile[1],
-                "row": tile[2],
-                "naip_scene": naip_scene,
-            })
-    os.rename(csv_fname+".tmp", csv_fname)
+            writer.writerow(
+                {
+                    "projection": tile[0],
+                    "col": tile[1],
+                    "row": tile[2],
+                    "naip_scene": naip_scene,
+                }
+            )
+    os.rename(csv_fname + ".tmp", csv_fname)
+
 
 jobs = list(info_by_big_tile.items())
 random.shuffle(jobs)

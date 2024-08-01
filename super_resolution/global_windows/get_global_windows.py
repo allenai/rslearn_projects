@@ -1,14 +1,13 @@
-"""
-This obtains Sentinel-2 images for a few non-US windows that Piper sent.
+"""This obtains Sentinel-2 images for a few non-US windows that Piper sent.
 To test super-resolution model that seemed to be working pretty well.
 """
-from datetime import datetime, timezone
+
 import math
 import os
+from datetime import datetime, timezone
 
-from rasterio.crs import CRS
 import shapely
-
+from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
@@ -37,7 +36,9 @@ zoom15_tiles = [
     [22995, 14225],
     [22998, 14209],
 ]
-all_tiles = [(tile[0], tile[1], 13) for tile in zoom13_tiles] + [(tile[0], tile[1], 15) for tile in zoom15_tiles]
+all_tiles = [(tile[0], tile[1], 13) for tile in zoom13_tiles] + [
+    (tile[0], tile[1], 15) for tile in zoom15_tiles
+]
 
 out_dir = "/data/favyenb/rslearn_superres_non_us/windows/"
 group = "default"
@@ -68,7 +69,10 @@ for col, row, zoom in all_tiles:
     utm_projection = Projection(utm_crs, utm_pixel_size, -utm_pixel_size)
     utm_geom = src_geom.to_projection(utm_projection)
 
-    tile = (int(utm_geom.shp.x) // pixels_per_tile, int(utm_geom.shp.y) // pixels_per_tile)
+    tile = (
+        int(utm_geom.shp.x) // pixels_per_tile,
+        int(utm_geom.shp.y) // pixels_per_tile,
+    )
     bounds = [
         tile[0] * pixels_per_tile,
         tile[1] * pixels_per_tile,

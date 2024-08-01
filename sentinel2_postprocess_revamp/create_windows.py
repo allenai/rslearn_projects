@@ -1,5 +1,4 @@
-"""
-This script creates rslearn windows to get vessel crops based on a CSV with columns:
+"""This script creates rslearn windows to get vessel crops based on a CSV with columns:
 - timestamp
 - latitude
 - longitude
@@ -24,21 +23,20 @@ And then also write some of the metadata from the CSV into a file in the window 
 
 We assign some images to validation split based on their MD5 hash.
 """
+
 import csv
-from datetime import datetime, timedelta
 import hashlib
 import json
 import multiprocessing
 import os
 import sys
+from datetime import datetime, timedelta
 
 import shapely
 import tqdm
-
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Feature, Projection, STGeometry, get_utm_ups_crs
-
 from ship_types import ship_types
 
 in_fname = sys.argv[1]
@@ -47,11 +45,21 @@ group = sys.argv[3]
 
 pixel_size = 10
 window_size = 128
-vessel_categories = ["cargo", "tanker", "passenger", "service", "pleasure", "fishing", "enforcement", "sar"]
+vessel_categories = [
+    "cargo",
+    "tanker",
+    "passenger",
+    "service",
+    "pleasure",
+    "fishing",
+    "enforcement",
+    "sar",
+]
 
 with open(in_fname) as f:
     reader = csv.DictReader(f)
     csv_rows = list(reader)
+
 
 def process_row(csv_row):
     def get_optional_float(k):
@@ -88,7 +96,9 @@ def process_row(csv_row):
         vessel_cog = get_optional_float("cog")
         vessel_cog_avg = None
         vessel_sog = get_optional_float("sog")
-        event_id = f"{csv_row['timestamp']}_{csv_row['longitude']}_{csv_row['latitude']}"
+        event_id = (
+            f"{csv_row['timestamp']}_{csv_row['longitude']}_{csv_row['latitude']}"
+        )
 
     src_point = shapely.Point(lon, lat)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
@@ -122,15 +132,18 @@ def process_row(csv_row):
 
     # Save metadata.
     with open(os.path.join(window_root, "info.json"), "w") as f:
-        json.dump({
-            "event_id": event_id,
-            "length": vessel_length,
-            "width": vessel_width,
-            "cog": vessel_cog,
-            "cog_avg": vessel_cog_avg,
-            "sog": vessel_sog,
-            "type": ship_type,
-        }, f)
+        json.dump(
+            {
+                "event_id": event_id,
+                "length": vessel_length,
+                "width": vessel_width,
+                "cog": vessel_cog,
+                "cog_avg": vessel_cog_avg,
+                "sog": vessel_sog,
+                "type": ship_type,
+            },
+            f,
+        )
 
     info_dir = os.path.join(window_root, "layers", "info")
     gt_layer_fname = os.path.join(info_dir, "data.geojson")
@@ -142,7 +155,14 @@ def process_row(csv_row):
         properties["length"] = vessel_length
     if vessel_width and vessel_width >= 2 and vessel_width < 120:
         properties["width"] = vessel_width
-    if vessel_cog and vessel_sog and vessel_sog > 5 and vessel_sog < 50 and vessel_cog >= 0 and vessel_cog < 360:
+    if (
+        vessel_cog
+        and vessel_sog
+        and vessel_sog > 5
+        and vessel_sog < 50
+        and vessel_cog >= 0
+        and vessel_cog < 360
+    ):
         properties["cog"] = vessel_cog
     if vessel_sog and vessel_sog > 0 and vessel_sog < 60:
         properties["sog"] = vessel_sog
@@ -150,10 +170,14 @@ def process_row(csv_row):
         properties["type"] = ship_type
     feat = Feature(dst_geometry, properties)
     with open(gt_layer_fname, "w") as f:
-        json.dump({
-            "type": "FeatureCollection",
-            "features": [feat.to_geojson()],
-        }, f)
+        json.dump(
+            {
+                "type": "FeatureCollection",
+                "features": [feat.to_geojson()],
+            },
+            f,
+        )
+
 
 p = multiprocessing.Pool(32)
 outputs = p.imap_unordered(process_row, csv_rows)

@@ -1,17 +1,15 @@
-"""
-We deleted the Sentinel-2 images from GCS so Viraj cannot get the images from there anymore.
+"""We deleted the Sentinel-2 images from GCS so Viraj cannot get the images from there anymore.
 So now need to get it from rslearn.
 This script takes GeoJSONs he sent and populates windows in rslearn dataset.
 """
 
-from datetime import datetime, timezone
 import json
 import math
 import os
+from datetime import datetime, timezone
 
-from rasterio import CRS
 import shapely
-
+from rasterio import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
@@ -22,9 +20,18 @@ geojson_fnames = [
     "/tmp/production_platform.geojson",
 ]
 time_ranges = [
-    [datetime(2023, 12, 1, tzinfo=timezone.utc), datetime(2023, 12, 31, tzinfo=timezone.utc)],
-    [datetime(2024, 1, 1, tzinfo=timezone.utc), datetime(2024, 1, 31, tzinfo=timezone.utc)],
-    [datetime(2024, 2, 1, tzinfo=timezone.utc), datetime(2024, 2, 29, tzinfo=timezone.utc)],
+    [
+        datetime(2023, 12, 1, tzinfo=timezone.utc),
+        datetime(2023, 12, 31, tzinfo=timezone.utc),
+    ],
+    [
+        datetime(2024, 1, 1, tzinfo=timezone.utc),
+        datetime(2024, 1, 31, tzinfo=timezone.utc),
+    ],
+    [
+        datetime(2024, 2, 1, tzinfo=timezone.utc),
+        datetime(2024, 2, 29, tzinfo=timezone.utc),
+    ],
 ]
 
 out_dir = "/data/favyenb/rslearn_sentinel2_platforms/windows/"
@@ -43,7 +50,9 @@ for geojson_fname in geojson_fnames:
         geometry = feat["geometry"]
         assert geometry["type"] == "Point" and len(geometry["coordinates"]) == 2
         lon, lat = geometry["coordinates"]
-        category = feat["properties"]["finer_category"].replace(" ", "_").replace("/", "_")
+        category = (
+            feat["properties"]["finer_category"].replace(" ", "_").replace("/", "_")
+        )
         for time_range in time_ranges:
             geom = STGeometry(WGS84_PROJECTION, shapely.Point(lon, lat), time_range)
             geom = geom.to_projection(web_mercator_projection)
@@ -67,7 +76,7 @@ for geojson_fname in geojson_fnames:
         for time_range in time_ranges:
             geom = STGeometry(WGS84_PROJECTION, shapely.Point(lon, lat), time_range)
             utm_crs = get_utm_ups_crs(lon, lat)
-            utm_projection = Projection(utm_crs, 10 ,-10)
+            utm_projection = Projection(utm_crs, 10, -10)
             geom = geom.to_projection(utm_projection)
             bounds = [
                 geom.shp.x - 32,

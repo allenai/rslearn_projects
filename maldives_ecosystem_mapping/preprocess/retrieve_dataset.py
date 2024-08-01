@@ -1,13 +1,11 @@
-"""
-Download the GeoTIFF and JSON file pairs from GCS.
-"""
+"""Download the GeoTIFF and JSON file pairs from GCS."""
 
 import argparse
 import multiprocessing
 import os
 
-from google.cloud import storage
 import tqdm
+from google.cloud import storage
 from unidecode import unidecode
 
 src_bucket = None
@@ -32,8 +30,7 @@ def download_file(src_fname, dst_fname):
 
 
 def retrieve_image(job):
-    """
-    job is tuple (prefix, out_dir).
+    """Job is tuple (prefix, out_dir).
     prefix is a path on src_bucket like maxar/mgp/x/y/abc.
     So then abc_labels.json and abc.tif should both exist.
     """
@@ -50,17 +47,23 @@ def retrieve_image(job):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--src_bucket", help="Name of source bucket", default="earthsystem-a1")
+    parser.add_argument(
+        "--src_bucket", help="Name of source bucket", default="earthsystem-a1"
+    )
     parser.add_argument("--src_prefix", help="Source prefix", default="maxar/")
     parser.add_argument("--out_dir", help="Output directory")
-    parser.add_argument("--workers", help="Number of worker threads", type=int, default=32)
+    parser.add_argument(
+        "--workers", help="Number of worker threads", type=int, default=32
+    )
     args = parser.parse_args()
 
     p = multiprocessing.Pool(args.workers)
 
     worker_init()
     jobs = []
-    for blob in src_bucket.list_blobs(prefix=args.src_prefix, match_glob="**/*_labels.json"):
+    for blob in src_bucket.list_blobs(
+        prefix=args.src_prefix, match_glob="**/*_labels.json"
+    ):
         prefix = blob.name.split("_labels.json")[0]
         jobs.append((prefix, args.out_dir))
     outputs = p.imap_unordered(retrieve_image, jobs)

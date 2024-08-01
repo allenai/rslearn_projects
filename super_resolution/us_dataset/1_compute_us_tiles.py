@@ -1,21 +1,19 @@
-"""
-Populate windows in remsen super-resolution dataset that span the entire continental US.
+"""Populate windows in remsen super-resolution dataset that span the entire continental US.
 1. Extract US polygon from Natural Earth shapefile.
 2. Sample points every 5 km.
 3. Find appropriate UTM projection and tile for each point.
 4. Get the set of distinct tiles and populate them.
 """
 
-import fiona
 import json
 import multiprocessing
+
+import fiona
 import numpy as np
-from rasterio.crs import CRS
 import rasterio.warp
 import shapely.geometry
 import tqdm
-
-from remsen.dataset.window import Window
+from rasterio.crs import CRS
 from remsen.utils import get_utm_ups_crs
 
 # Meters per degree at equator (maximum).
@@ -27,7 +25,9 @@ GRID_SIZE = 512
 METERS_PER_PIXEL = 10
 
 us_feature = None
-with fiona.open("/home/ubuntu/remsen/ne_10m_admin_0_countries/ne_10m_admin_0_countries.shp") as f:
+with fiona.open(
+    "/home/ubuntu/remsen/ne_10m_admin_0_countries/ne_10m_admin_0_countries.shp"
+) as f:
     for feat in f:
         if feat["properties"]["ADM0_ISO"] != "USA":
             continue
@@ -42,6 +42,8 @@ polygon = geom.geoms[0]
 # Sample points on 5 km grid.
 # For each point, find the appropriate UTM zone and tile.
 src_crs = CRS.from_epsg(4326)
+
+
 def get_batch_tiles(batch):
     tiles = set()
     for lon, lat in batch:
@@ -60,14 +62,19 @@ def get_batch_tiles(batch):
         tiles.add(tile)
     return tiles
 
+
 bounds = polygon.bounds
 points = []
-for lon in np.arange(bounds[0], bounds[2], GRID_SIZE * METERS_PER_PIXEL / DEGREE_METERS):
-    for lat in np.arange(bounds[1], bounds[3], GRID_SIZE * METERS_PER_PIXEL / DEGREE_METERS):
+for lon in np.arange(
+    bounds[0], bounds[2], GRID_SIZE * METERS_PER_PIXEL / DEGREE_METERS
+):
+    for lat in np.arange(
+        bounds[1], bounds[3], GRID_SIZE * METERS_PER_PIXEL / DEGREE_METERS
+    ):
         points.append((lon, lat))
 batches = []
 for i in range(0, len(points), 100):
-    batches.append(points[i:i+1000])
+    batches.append(points[i : i + 1000])
 p = multiprocessing.Pool(64)
 outputs = p.imap_unordered(get_batch_tiles, batches)
 tiles = set()

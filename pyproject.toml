@@ -1,0 +1,43 @@
+[project]
+name = "rslearn_projects"
+version = "0.0.1"
+description = "rslearn projects at Ai2"
+authors = [
+    {name = "Favyen Bastani", email = "favyenb@allenai.org"},
+    {name = "Patrick Beukema", email = "patrickb@allenai.org"},
+    {name = "Henry Herzog", email = "henryh@allenai.org"},
+]
+readme = "README.md"
+requires-python = ">=3.10"
+
+dynamic = ["dependencies"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["rslp*"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.ruff]
+fix = true
+
+[tool.ruff.lint]
+extend-select = ["D", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+addopts = [
+    "--import-mode=importlib",
+]

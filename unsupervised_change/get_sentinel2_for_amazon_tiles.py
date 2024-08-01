@@ -1,21 +1,16 @@
-"""
-I want to send the tiles with forest loss from Amazon Conservation project to the unsupervised change team.
+"""I want to send the tiles with forest loss from Amazon Conservation project to the unsupervised change team.
 But we can no longer download tiles using old method from GCS.
 So this script is similar to landsat/random_landsat_windows.py but instead for creating Sentinel-2 windows.
 """
 
-from datetime import datetime, timedelta, timezone
 import json
 import math
 import os
-import random
-import shapely
+from datetime import datetime, timezone
 
 from rasterio.crs import CRS
-
-from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection, STGeometry
+from rslearn.utils import Projection
 
 tiles_fname = "/data/favyenb/rslearn_change_amazon_images/tiles.json"
 out_dir = "/data/favyenb/rslearn_change_amazon_images/windows/"

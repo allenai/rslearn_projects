@@ -19,7 +19,10 @@ for fname in fnames:
     with open(os.path.join(example_dir, "gt.json"), "w") as f:
         f.write("[]")
     for band in ["B2", "B3", "B4", "B5", "B6", "B7", "B8"]:
-        shutil.copyfile(os.path.join(in_dir, fname.replace("B8", band)), os.path.join(image_dir, band.lower() + ".png"))
+        shutil.copyfile(
+            os.path.join(in_dir, fname.replace("B8", band)),
+            os.path.join(image_dir, band.lower() + ".png"),
+        )
 
 with open(split_fname, "w") as f:
     json.dump(example_ids, f)

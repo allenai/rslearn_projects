@@ -1,5 +1,4 @@
-"""
-Quick script to figure out how many items there are across the windows.
+"""Quick script to figure out how many items there are across the windows.
 Its done in parallel so it can be faster.
 """
 
@@ -11,11 +10,13 @@ import tqdm
 
 root_dir = "/mnt/landsat_1/windows/"
 
+
 def get_windows(group):
     paths = []
     for window_name in os.listdir(os.path.join(root_dir, group)):
         paths.append(os.path.join(root_dir, group, window_name, "items.json"))
     return paths
+
 
 def get_item_names(fname):
     if not os.path.exists(fname):
@@ -30,6 +31,7 @@ def get_item_names(fname):
         for item in group:
             item_names.add(item["name"])
     return item_names
+
 
 p = multiprocessing.Pool(64)
 

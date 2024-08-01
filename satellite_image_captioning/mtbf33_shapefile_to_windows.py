@@ -1,17 +1,17 @@
-"""
-Create GeoJSON containing all buildings from the MTBF-33 dataset that were constructed
+"""Create GeoJSON containing all buildings from the MTBF-33 dataset that were constructed
 in 2014 or later.
 """
 
-import fiona
 import json
 import multiprocessing
 import os
-import random
+
+import fiona
 import tqdm
 
 in_dir = "/data/favyenb/datasets_for_image_caption/mtbf33/"
 out_fname = "mtbf33_after_2014.geojson"
+
 
 def process(fname):
     features = []
@@ -19,12 +19,15 @@ def process(fname):
         for feat in src:
             if feat.properties["year_built"] < 2014:
                 continue
-            features.append({
-                "type": "Feature",
-                "geometry": dict(feat.geometry),
-                "properties": dict(feat.properties),
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": dict(feat.geometry),
+                    "properties": dict(feat.properties),
+                }
+            )
     return features
+
 
 fnames = [fname for fname in os.listdir(in_dir) if fname.endswith(".shp")]
 fc = {

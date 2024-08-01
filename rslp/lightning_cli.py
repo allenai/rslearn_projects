@@ -1,8 +1,9 @@
+"""Customized LightningCLI for rslearn_projects."""
+
 import fsspec
 import jsonargparse
 import wandb
 from lightning.pytorch.callbacks import Callback
-
 from rslearn.main import RslearnLightningCLI
 
 from rslp import launcher_lib
@@ -14,6 +15,12 @@ class SaveWandbRunIdCallback(Callback):
     """Callback to save the wandb run ID to GCS in case of resume."""
 
     def __init__(self, project_id: str, experiment_id: str):
+        """Create a new SaveWandbRunIdCallback.
+
+        Args:
+            project_id: the project ID.
+            experiment_id: the experiment ID.
+        """
         self.project_id = project_id
         self.experiment_id = experiment_id
 
@@ -69,10 +76,12 @@ class CustomLightningCLI(RslearnLightningCLI):
 
         # Add and configure WandbLogger as needed.
         if not c.trainer.logger:
-            c.trainer.logger = jsonargparse.Namespace({
-                "class_path": "lightning.pytorch.loggers.WandbLogger",
-                "init_args": jsonargparse.Namespace(),
-            })
+            c.trainer.logger = jsonargparse.Namespace(
+                {
+                    "class_path": "lightning.pytorch.loggers.WandbLogger",
+                    "init_args": jsonargparse.Namespace(),
+                }
+            )
         c.trainer.logger.init_args.project = c.rslp_project
         c.trainer.logger.init_args.name = c.rslp_experiment
 
@@ -81,7 +90,10 @@ class CustomLightningCLI(RslearnLightningCLI):
         upload_wandb_callback = None
         if "callbacks" in c.trainer:
             for existing_callback in c.trainer.callbacks:
-                if existing_callback.class_path == "lightning.pytorch.callbacks.ModelCheckpoint":
+                if (
+                    existing_callback.class_path
+                    == "lightning.pytorch.callbacks.ModelCheckpoint"
+                ):
                     checkpoint_callback = existing_callback
                 if existing_callback.class_path == "SaveWandbRunIdCallback":
                     upload_wandb_callback = existing_callback
@@ -89,26 +101,36 @@ class CustomLightningCLI(RslearnLightningCLI):
             c.trainer.callbacks = []
 
         if not checkpoint_callback:
-            checkpoint_callback = jsonargparse.Namespace({
-                "class_path": "lightning.pytorch.callbacks.ModelCheckpoint",
-                "init_args": jsonargparse.Namespace({
-                    "save_last": True,
-                    "save_top_k": 1,
-                    "monitor": "val_loss",
-                }),
-            })
+            checkpoint_callback = jsonargparse.Namespace(
+                {
+                    "class_path": "lightning.pytorch.callbacks.ModelCheckpoint",
+                    "init_args": jsonargparse.Namespace(
+                        {
+                            "save_last": True,
+                            "save_top_k": 1,
+                            "monitor": "val_loss",
+                        }
+                    ),
+                }
+            )
             c.trainer.callbacks.append(checkpoint_callback)
-        checkpoint_dir = CHECKPOINT_DIR.format(project_id=c.rslp_project, experiment_id=c.rslp_experiment)
+        checkpoint_dir = CHECKPOINT_DIR.format(
+            project_id=c.rslp_project, experiment_id=c.rslp_experiment
+        )
         checkpoint_callback.init_args.dirpath = checkpoint_dir
 
         if not upload_wandb_callback:
-            upload_wandb_callback = jsonargparse.Namespace({
-                "class_path": "SaveWandbRunIdCallback",
-                "init_args": jsonargparse.Namespace({
-                    "project_id": c.rslp_project,
-                    "experiment_id": c.rslp_experiment,
-                }),
-            })
+            upload_wandb_callback = jsonargparse.Namespace(
+                {
+                    "class_path": "SaveWandbRunIdCallback",
+                    "init_args": jsonargparse.Namespace(
+                        {
+                            "project_id": c.rslp_project,
+                            "experiment_id": c.rslp_experiment,
+                        }
+                    ),
+                }
+            )
             c.trainer.callbacks.append(upload_wandb_callback)
 
         # Check if there is an existing checkpoint.

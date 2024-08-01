@@ -1,16 +1,16 @@
-"""
-This script is for creating coverage figure showing where the crop type datasets are.
+"""This script is for creating coverage figure showing where the crop type datasets are.
 It uses OpenStreetMap for the background.
 """
+
 import math
-import numpy as np
 import os
 import subprocess
 
-from PIL import Image
+import numpy as np
 import rasterio
 import skimage.io
 import tqdm
+from PIL import Image
 
 zoom = 3
 dataset_colors = {
@@ -21,13 +21,15 @@ dataset_colors = {
     "sact_2017": [255, 0, 255],
     "sas_2021": [0, 255, 127],
 }
-dataset_path_template = "/data/yichiac/sentinel2_subsample/sentinel2_{dataset_name}_subsampled"
+dataset_path_template = (
+    "/data/yichiac/sentinel2_subsample/sentinel2_{dataset_name}_subsampled"
+)
 padding = 1
 
 # Compute m/pixel of the image.
 web_mercator_m = 2 * math.pi * 6378137
 num_tiles = 2**zoom
-total_pixels = num_tiles*256
+total_pixels = num_tiles * 256
 meters_per_pixel = web_mercator_m / total_pixels
 
 # Download OpenStreetMap data.
@@ -46,7 +48,7 @@ for x in range(num_tiles):
             os.rename(local_fname + ".tmp", local_fname)
         # Use skimage.io instead of PIL to handle color map.
         cur_im = skimage.io.imread(local_fname)
-        im[y*256:(y+1)*256, x*256:(x+1)*256, :] = cur_im
+        im[y * 256 : (y + 1) * 256, x * 256 : (x + 1) * 256, :] = cur_im
 
 # Add each dataset.
 # All the images should be in WebMercator already.
@@ -63,9 +65,13 @@ for dataset_name, color in dataset_colors.items():
             )
         # Transform to pixels.
         center = (
-            int(center[0] / meters_per_pixel) + total_pixels//2,
-            int(center[1] / -meters_per_pixel) + total_pixels//2,
+            int(center[0] / meters_per_pixel) + total_pixels // 2,
+            int(center[1] / -meters_per_pixel) + total_pixels // 2,
         )
-        im[center[1]-padding:center[1]+padding+1, center[0]-padding:center[0]+padding+1, :] = color
+        im[
+            center[1] - padding : center[1] + padding + 1,
+            center[0] - padding : center[0] + padding + 1,
+            :,
+        ] = color
 
 Image.fromarray(im).save("out.png")

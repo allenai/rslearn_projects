@@ -1,24 +1,27 @@
-"""
-Create tar files corresponding to 40 m/pixel tiles combining all the 1.25 m/pixel NAIP
+"""Create tar files corresponding to 40 m/pixel tiles combining all the 1.25 m/pixel NAIP
 images into the tar file.
 Then upload the tar files to Hugging Face.
 """
+
 import glob
 import json
 import multiprocessing
 import os
+import random
 import tarfile
 
-import random
 import tqdm
 
 input_dir = "/mnt/data/osm/tiles/openstreetmap/"
 num_workers = 32
 tar_dir = "/mnt/data/openstreetmap_tar/"
 
+
 # List the geojson fnames.
 def get_fnames(pbf_dir):
     return glob.glob(os.path.join(pbf_dir, "*/*.geojson"))
+
+
 jobs = []
 for pbf_name in os.listdir(input_dir):
     jobs.append(os.path.join(input_dir, pbf_name))
@@ -39,11 +42,12 @@ for fname in vector_fnames:
     col = int(parts[0])
     row = int(parts[1])
     tile = (projection, col, row)
-    big_tile = (projection, col//32, row//32)
+    big_tile = (projection, col // 32, row // 32)
     if big_tile not in info_by_big_tile:
         info_by_big_tile[big_tile] = []
     info_by_big_tile[big_tile].append((tile, fname))
 print(f"got {len(info_by_big_tile)} big tiles total")
+
 
 # Tar and upload the files corresponding to each 40 m/pixel tile.
 def process(job):
@@ -62,7 +66,7 @@ def process(job):
 
     # Add the GeoJSONs to the tarfile.
     # For tiles covered by multiple GeoJSONs, we concatenate the features.
-    with tarfile.open(tar_fname+".tmp", "w") as tar_file:
+    with tarfile.open(tar_fname + ".tmp", "w") as tar_file:
         for tile, src_fnames in fnames_by_tile.items():
             if len(src_fnames) == 1:
                 src_fname = src_fnames[0]
@@ -81,7 +85,8 @@ def process(job):
 
             dst_fname = f"openstreetmap/{tile[0]}_{tile[1]}_{tile[2]}.geojson"
             tar_file.add(src_fname, arcname=dst_fname)
-    os.rename(tar_fname+".tmp", tar_fname)
+    os.rename(tar_fname + ".tmp", tar_fname)
+
 
 jobs = list(info_by_big_tile.items())
 random.shuffle(jobs)

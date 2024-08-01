@@ -99,7 +99,8 @@ trainer:
       init_args:
         save_top_k: 1
         every_n_epochs: 50
+        save_last: true
         monitor: val_segment/accuracy
         mode: max
 rslp_project: maldives_ecosystem_mapping
-rslp_experiment: data_20240730_satlaspretrain_flip_crop512_02
+rslp_experiment: data_20240730_satlaspretrain_flip_crop512_03

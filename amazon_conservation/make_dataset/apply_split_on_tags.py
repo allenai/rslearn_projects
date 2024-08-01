@@ -1,7 +1,7 @@
-"""
-Supposing we have created a split.json file mapping from the window_name to split (train/val).
+"""Supposing we have created a split.json file mapping from the window_name to split (train/val).
 Then this will update the window tags to match this JSON file.
 """
+
 import glob
 import json
 import os
@@ -14,7 +14,9 @@ ds_root = "/multisat/datasets/rslearn_amazon_conservation_closetime/"
 with open(in_fname) as f:
     split_data = json.load(f)
 
-window_metadatas = glob.glob(os.path.join(ds_root, "windows", "*", "*", "metadata.json"))
+window_metadatas = glob.glob(
+    os.path.join(ds_root, "windows", "*", "*", "metadata.json")
+)
 
 for metadata_fname in tqdm.tqdm(window_metadatas):
     window_name = metadata_fname.split("/")[-2]

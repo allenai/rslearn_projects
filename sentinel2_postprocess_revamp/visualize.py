@@ -1,5 +1,4 @@
-"""
-This is a quick script to visualize the outputs from create_windows.py
+"""This is a quick script to visualize the outputs from create_windows.py
 (after running prepare/ingest/materialize in rslearn to get the images).
 
 Just visualizing the ground truth data.
@@ -12,8 +11,8 @@ import math
 import os
 
 import numpy as np
-from PIL import Image
 import tqdm
+from PIL import Image
 
 mask_size = 256
 pixel_size = 2.5
@@ -39,7 +38,7 @@ for example_id in tqdm.tqdm(example_ids):
             int(math.sin(radians) * info["length"] / pixel_size / 2),
         )
 
-        #mask = np.zeros((mask_size, mask_size, 3), dtype=np.uint8)
+        # mask = np.zeros((mask_size, mask_size, 3), dtype=np.uint8)
         center = mask_size // 2
         front = (
             center + vector[0],
@@ -49,8 +48,10 @@ for example_id in tqdm.tqdm(example_ids):
             center - vector[0],
             center - vector[1],
         )
-        im[front[1]-2:front[1]+2, front[0]-2:front[0]+2, :] = [255, 0, 0]
-        im[back[1]-2:back[1]+2, back[0]-2:back[0]+2, :] = [255, 255, 0]
-        im[center-2:center+2, center-2:center+2, :] = [255, 255, 255]
+        im[front[1] - 2 : front[1] + 2, front[0] - 2 : front[0] + 2, :] = [255, 0, 0]
+        im[back[1] - 2 : back[1] + 2, back[0] - 2 : back[0] + 2, :] = [255, 255, 0]
+        im[center - 2 : center + 2, center - 2 : center + 2, :] = [255, 255, 255]
 
-    Image.fromarray(im).save(f"out/{example_id}_im_{info["type"]}_{info["sog"]}_{info["event_id"]}.png")
+    Image.fromarray(im).save(
+        f"out/{example_id}_im_{info["type"]}_{info["sog"]}_{info["event_id"]}.png"
+    )

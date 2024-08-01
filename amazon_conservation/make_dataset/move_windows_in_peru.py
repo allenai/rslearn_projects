@@ -1,5 +1,4 @@
-"""
-Initial focus area is Peru.
+"""Initial focus area is Peru.
 But we sometimes get annotations in Ecuador, Brazil, etc. in the Peru set since we just
 do it based on GLAD alert grid.
 So here we move windows that are actually in Peru to a new group.
@@ -13,6 +12,7 @@ import sys
 import fiona
 import shapely.geometry
 
+
 def mercator_to_geo(p, zoom=13, pixels=512):
     n = 2**zoom
     x = p[0] / pixels
@@ -22,11 +22,14 @@ def mercator_to_geo(p, zoom=13, pixels=512):
     y = y * 180 / math.pi
     return (x, y)
 
+
 ds_root = sys.argv[1]
 src_group = sys.argv[2]
 dst_group = sys.argv[3]
 
-country_fname = "/multisat/datasets/natural_earth_countries/ne_10m_admin_0_countries.shp"
+country_fname = (
+    "/multisat/datasets/natural_earth_countries/ne_10m_admin_0_countries.shp"
+)
 
 peru_shp = None
 with fiona.open(country_fname) as src:

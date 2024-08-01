@@ -1,5 +1,4 @@
-"""
-We want to have images in the same year and location as the labels, with one image per calendar month.
+"""We want to have images in the same year and location as the labels, with one image per calendar month.
 
 We will first identify a list of (tile, year) that are needed.
 The tiles will be in WebMercator at 10 m/pixel (not any particular zoom level), with resolution of each tile at 32768x32768.
@@ -39,10 +38,14 @@ data_paths = [
     ("data/eurocrops/", "data/sentinel2/crop_type_tiles_eurocrops.json"),
     ("data/nccm/", "data/sentinel2/crop_type_tiles_nccm.json"),
     ("data/sas/", "data/sentinel2/crop_type_tiles_sas.json"),
-    ("data/agrifieldnet/field_ids/", "data/sentinel2/crop_type_tiles_agrifieldnet.json"),
+    (
+        "data/agrifieldnet/field_ids/",
+        "data/sentinel2/crop_type_tiles_agrifieldnet.json",
+    ),
     ("data/southafrica/field_ids/", "data/sentinel2/crop_type_tiles_southafrica.json"),
 ]
 years = range(2017, 2024)
+
 
 def get_year(fname):
     for year in years:
@@ -54,11 +57,13 @@ def get_year(fname):
         return 2017
     raise ValueError(f"no year found in {fname}")
 
+
 webmercator_fiona_crs = fiona.crs.from_epsg(3857)
 webmercator_rasterio_crs = rasterio.crs.CRS.from_epsg(3857)
 
 pixels_per_tile = 256
 pixel_size = 10
+
 
 def get_shp_tiles(fname):
     year = get_year(fname)
@@ -74,11 +79,15 @@ def get_shp_tiles(fname):
             ys.append(center.y)
         xs, ys = fiona.transform.transform(src.crs, webmercator_fiona_crs, xs, ys)
         for x, y in zip(xs, ys):
-            tile = (int(x/pixel_size)//pixels_per_tile, int(y/pixel_size)//pixels_per_tile)
+            tile = (
+                int(x / pixel_size) // pixels_per_tile,
+                int(y / pixel_size) // pixels_per_tile,
+            )
             tiles.add((tile, year))
 
     print(f"found {len(tiles)} tiles in {fname}")
     return tiles
+
 
 def get_tif_tiles(data_path, fname):
     year = get_year(fname)
@@ -87,11 +96,20 @@ def get_tif_tiles(data_path, fname):
     with rasterio.open(fname) as src:
         data = src.read(1)
 
-        if 'cdl' in data_path:
-            data = (data == 1) | (data == 3) | (data == 5) | (data == 12) | (data == 13) | (data == 22) | (data == 23) | (data == 24)
+        if "cdl" in data_path:
+            data = (
+                (data == 1)
+                | (data == 3)
+                | (data == 5)
+                | (data == 12)
+                | (data == 13)
+                | (data == 22)
+                | (data == 23)
+                | (data == 24)
+            )
             data = data.astype(np.uint8)
 
-        if 'nccm' in data_path:
+        if "nccm" in data_path:
             # paddy rice - keep
             data[data == 0] = 4
             # nodata - ignore
@@ -102,19 +120,27 @@ def get_tif_tiles(data_path, fname):
         for row in range(0, src.height, CHIP_SIZE):
             print(f"{fname} {row}/{src.height}")
             for col in range(0, src.width, CHIP_SIZE):
-                crop = data[row:row+CHIP_SIZE, col:col+CHIP_SIZE]
-                if np.count_nonzero(crop) < 128 and 'agrifieldnet' not in fname and 'southafrica' not in fname:
+                crop = data[row : row + CHIP_SIZE, col : col + CHIP_SIZE]
+                if (
+                    np.count_nonzero(crop) < 128
+                    and "agrifieldnet" not in fname
+                    and "southafrica" not in fname
+                ):
                     continue
-                rows.append(row + CHIP_SIZE//2)
-                cols.append(col + CHIP_SIZE//2)
+                rows.append(row + CHIP_SIZE // 2)
+                cols.append(col + CHIP_SIZE // 2)
         xs, ys = src.xy(rows, cols)
         xs, ys = rasterio.warp.transform(src.crs, webmercator_rasterio_crs, xs, ys)
         for x, y in zip(xs, ys):
-            tile = (int(x/pixel_size)//pixels_per_tile, int(y/pixel_size)//pixels_per_tile)
+            tile = (
+                int(x / pixel_size) // pixels_per_tile,
+                int(y / pixel_size) // pixels_per_tile,
+            )
             tiles.add((tile, year))
 
     print(f"found {len(tiles)} tiles in {fname}")
     return tiles
+
 
 def get_tiles(job):
     data_path, fname = job
@@ -124,6 +150,7 @@ def get_tiles(job):
         return get_tif_tiles(data_path, fname)
     else:
         raise Exception("bad fname " + fname)
+
 
 p = multiprocessing.Pool(64)
 

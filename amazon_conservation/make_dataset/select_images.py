@@ -1,7 +1,7 @@
-"""
-Picks which images are least cloudy based on RGB and write them to a separate layer.
+"""Picks which images are least cloudy based on RGB and write them to a separate layer.
 The new layers are prefixed with "best_" like "best_pre_0".
 """
+
 import glob
 import json
 import multiprocessing
@@ -9,13 +9,14 @@ import os
 import shutil
 
 import numpy as np
-from PIL import Image
 import tqdm
+from PIL import Image
 
 ds_root = "/multisat/datasets/rslearn_amazon_conservation_closetime/"
 group = "peru_interesting"
 num_outs = 3
 min_choices = 5
+
 
 def handle_example(window_dir):
     if not os.path.exists(os.path.join(window_dir, "items.json")):
@@ -53,7 +54,11 @@ def handle_example(window_dir):
     for k, image_list in image_lists.items():
         if len(image_list) < min_choices:
             return
-        image_list.sort(key=lambda t: np.count_nonzero((t[0].max(axis=2) == 0) | (t[0].min(axis=2) > 140)))
+        image_list.sort(
+            key=lambda t: np.count_nonzero(
+                (t[0].max(axis=2) == 0) | (t[0].min(axis=2) > 140)
+            )
+        )
         for idx, (im, fname) in enumerate(image_list[0:num_outs]):
             dst_layer = f"best_{k}_{idx}"
             dst_dir = os.path.join(window_dir, "layers", dst_layer, "R_G_B")
@@ -69,6 +74,7 @@ def handle_example(window_dir):
 
     with open(os.path.join(window_dir, "best_times.json"), "w") as f:
         json.dump(best_times, f)
+
 
 window_dirs = glob.glob(os.path.join(ds_root, "windows", group, "*"))
 p = multiprocessing.Pool(64)

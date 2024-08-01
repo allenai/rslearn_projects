@@ -98,5 +98,5 @@ ship_types = {
     96: "Other Type, Reserved for future use",
     97: "Other Type, Reserved for future use",
     98: "Other Type, Reserved for future use",
-    99: "Other Type, no additional information"
+    99: "Other Type, no additional information",
 }
