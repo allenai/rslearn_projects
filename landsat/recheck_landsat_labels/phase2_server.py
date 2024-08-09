@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import sys
+from pathlib import Path
 
 from flask import Flask, jsonify, request, send_file
 
@@ -15,7 +16,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return send_file("phase1_index.html")
+    return send_file("phase2_index.html")
 
 
 @app.route("/examples")
@@ -35,6 +36,8 @@ def get_example(idx):
         feat = json.load(f)["features"][0]
         metadata["label"] = feat["properties"]["label"]
         metadata["url"] = feat["properties"]["url"]
+        metadata["lon"] = feat["properties"]["lon"]
+        metadata["lat"] = feat["properties"]["lat"]
 
     return jsonify(metadata)
 
@@ -44,6 +47,36 @@ def get_image(example_idx):
     window_id = window_ids[int(example_idx)]
     image_fname = os.path.join(
         group_dir, window_id, "layers", "landsat", "R_G_B", "image.png"
+    )
+    return send_file(image_fname)
+
+
+@app.route("/256/<example_idx>")
+def get_256(example_idx):
+    window_id = window_ids[int(example_idx)]
+    image_fname = os.path.join(
+        Path(group_dir).parent,
+        "phase2a_zoomout",
+        f"{window_id}_zoomout",
+        "layers",
+        "256",
+        "R_G_B",
+        "image.png",
+    )
+    return send_file(image_fname)
+
+
+@app.route("/1024/<example_idx>")
+def get_1024(example_idx):
+    window_id = window_ids[int(example_idx)]
+    image_fname = os.path.join(
+        Path(group_dir).parent,
+        "phase2a_zoomout",
+        f"{window_id}_zoomout",
+        "layers",
+        "1024",
+        "R_G_B",
+        "image.png",
     )
     return send_file(image_fname)
 

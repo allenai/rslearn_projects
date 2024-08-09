@@ -1,5 +1,6 @@
 """Entrypoint when using rslp directly."""
 
+
 def main():
     """Main function when using rslp directly (outside of an automatic job).
 

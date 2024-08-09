@@ -32,45 +32,6 @@
                     "dst": [0, 255]
                 },
 				"zoom_offset": -1
-            }, {
-                "dtype": "uint8",
-                "bands": ["B5"],
-                "format": {"name": "single_image", "format": "png"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                },
-				"zoom_offset": -1
-            }, {
-                "dtype": "uint8",
-                "bands": ["B6"],
-                "format": {"name": "single_image", "format": "png"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                },
-				"zoom_offset": -1
-            }, {
-                "dtype": "uint8",
-                "bands": ["B7"],
-                "format": {"name": "single_image", "format": "png"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                },
-				"zoom_offset": -1
-            }, {
-                "dtype": "uint8",
-                "bands": ["B8"],
-                "format": {"name": "single_image", "format": "png"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                }
             }],
             "data_source": {
                 "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",

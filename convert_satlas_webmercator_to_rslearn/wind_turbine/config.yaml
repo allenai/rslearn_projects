@@ -1,0 +1,98 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.satlaspretrain.SatlasPretrain
+            init_args:
+              model_identifier: "Sentinel2_SwinB_MI_MS"
+              fpn: true
+        decoders:
+          detect:
+            - class_path: rslearn.models.faster_rcnn.FasterRCNN
+              init_args:
+                downsample_factors: [4, 8, 16, 32]
+                num_channels: 128
+                num_classes: 2
+                anchor_sizes: [[32, 64, 128, 256, 512], [32, 64, 128, 256, 512], [32, 64, 128, 256, 512], [32, 64, 128, 256, 512]]
+    lr: 0.0001
+    plateau_factor: 0.1
+    plateau_patience: 10
+    plateau_min_lr: 0
+    plateau_cooldown: 0
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    root_dir: /data/favyenb/rslearn_datasets_satlas/wind_turbine/
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A"]
+        passthrough: true
+        dtype: INT32
+      targets:
+        data_type: "vector"
+        layers: ["label"]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          detect:
+            class_path: rslearn.train.tasks.detection.DetectionTask
+            init_args:
+              property_name: "category"
+              classes: ["unknown", "turbine"]
+              box_size: 15
+        input_mapping:
+          detect:
+            targets: "targets"
+    batch_size: 8
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 10000
+    train_config:
+      patch_size: 256
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 10000
+      groups: ["label", "naip"]
+    val_config:
+      patch_size: 256
+      groups: ["label", "naip"]
+    test_config:
+      patch_size: 256
+      groups: ["label", "naip"]
+    predict_config:
+      groups: ["images"]
+      load_all_patches: true
+      skip_targets: true
+      patch_size: 512
+trainer:
+  max_epochs: 500
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        root_dir: /data/favyenb/rslearn_datasets_satlas/wind_turbine/
+        output_layer: output
+        selector: ["detect"]
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_detect/mAP
+        mode: max
+rslp_project: satlas_wind_turbine
+rslp_experiment: debug_20240806_satlaspretrain_patch256_noflip_01
