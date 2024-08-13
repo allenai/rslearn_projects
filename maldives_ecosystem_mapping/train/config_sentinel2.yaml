@@ -58,7 +58,7 @@ data:
             mean: 0
             std: 255
     train_config:
-      patch_size: 512
+      patch_size: 32
       transforms:
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
@@ -67,24 +67,24 @@ data:
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
-      groups: ["crops"]
+      groups: ["crops_sentinel2"]
       tags:
         split: train
     val_config:
-      patch_size: 512
-      groups: ["crops"]
+      patch_size: 32
+      groups: ["crops_sentinel2"]
       tags:
         split: val
     test_config:
-      patch_size: 512
-      groups: ["crops"]
+      patch_size: 32
+      groups: ["crops_sentinel2"]
       tags:
         split: val
     predict_config:
-      groups: ["images"]
+      groups: ["images_sentinel2"]
       load_all_patches: true
       skip_targets: true
-      patch_size: 2048
+      patch_size: 128
 trainer:
   max_epochs: 500
   callbacks:
@@ -104,4 +104,4 @@ trainer:
         monitor: val_segment/accuracy
         mode: max
 rslp_project: maldives_ecosystem_mapping
-rslp_experiment: maxar_data_20240813_satlaspretrain_flip_crop512_00
+rslp_experiment: sentinel2_data_20240813_satlaspretrain_flip_crop32_00

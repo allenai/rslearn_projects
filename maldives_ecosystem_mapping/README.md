@@ -31,6 +31,17 @@ To pre-process the data:
     PYTHONPATH=/path/to/rslearn python create_rslearn_data.py --in_dir /data/favyenb/maldives_ecosystem_mapping_data/original/ --out_dir /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/
 
 You may need to add missing classes to `create_rslearn_data.py`.
+Also you should copy `rslearn_projects/maldives_ecosystem_mapping/config.json` to the `rslearn_dataset` directory.
+
+Obtain Sentinel-2 images if desired:
+
+    cd /path/to/rslearn
+    python -m rslearn.main dataset prepare --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group crops_sentinel2
+    python -m rslearn.main dataset prepare --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group images_sentinel2
+    python -m rslearn.main dataset ingest --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group crops_sentinel2
+    python -m rslearn.main dataset ingest --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group images_sentinel2
+    python -m rslearn.main dataset materialize --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group crops_sentinel2
+    python -m rslearn.main dataset materialize --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group images_sentinel2
 
 
 Model Training
@@ -43,13 +54,16 @@ First assign crops to train/val as desired, the second argument is the number of
 
 Then train the model:
 
-    cd /path/to/rslearn
-    python -m rslearn.main model fit --config /path/to/rslearn_projects/maldives_ecosystem_mapping/train/config_satlaspretrain_flip.yaml
+    cd /path/to/rslearn_projects
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model fit --config maldives_ecosystem_mapping/train/config.yaml --autoresume=true
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model fit --config maldives_ecosystem_mapping/train/config_sentinel2.yaml --autoresume=true
 
 Get visualizations of validation crops:
 
-    python -m rslearn.main model test --config /path/to/rslearn_projects/maldives_ecosystem_mapping/train/config_satlaspretrain_flip.yaml --wandb_run_id=[RUN ID] --model.init_args.visualize_dir ~/vis/
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model test --config maldives_ecosystem_mapping/train/config.yaml --autoresume=true --model.init_args.visualize_dir ~/vis/
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model test --config maldives_ecosystem_mapping/train/config_sentinel2.yaml --autoresume=true --model.init_args.visualize_dir ~/vis/
 
 Write predictions of the whole images:
 
-    python -m rslearn.main model predict --config /path/to/rslearn_projects/maldives_ecosystem_mapping/train/config_satlaspretrain_flip.yaml --wandb_run_id=[RUN ID]
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model predict --config maldives_ecosystem_mapping/train/config.yaml --autoresume=true
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model predict --config maldives_ecosystem_mapping/train/config_sentinel2.yaml --autoresume=true

@@ -8,7 +8,7 @@ import argparse
 import json
 import os
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import rasterio
@@ -60,9 +60,30 @@ COLORS = [
 
 
 class ProcessJob:
-    def __init__(self, prefix, out_dir):
+    def __init__(self, prefix: str, out_dir: str, is_sentinel2: bool):
         self.prefix = prefix
         self.out_dir = out_dir
+        self.is_sentinel2 = is_sentinel2
+
+    def image_group_name(self):
+        if self.is_sentinel2:
+            return "images_sentinel2"
+        else:
+            return "images"
+
+    def crop_group_name(self):
+        if self.is_sentinel2:
+            return "crops_sentinel2"
+        else:
+            return "crops"
+
+
+def clip(value, lo, hi):
+    if value < lo:
+        return lo
+    if value > hi:
+        return hi
+    return value
 
 
 def process(job):
@@ -78,32 +99,47 @@ def process(job):
         start_row + raster.height,
     ]
 
+    if job.is_sentinel2:
+        projection = Projection(raster.crs, 10, -10)
+        raster_bounds = [
+            int(raster_bounds[0] * raster.transform.a / projection.x_resolution),
+            int(raster_bounds[1] * raster.transform.e / projection.y_resolution),
+            int(raster_bounds[2] * raster.transform.a / projection.x_resolution),
+            int(raster_bounds[3] * raster.transform.e / projection.y_resolution),
+        ]
+
     # Extract datetime.
     parts = job.prefix.split("_")[-1].split("-")
     assert len(parts) == 5
     ts = datetime(
-        int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4])
+        int(parts[0]), int(parts[1]), int(parts[2]), int(parts[3]), int(parts[4]), tzinfo=timezone.utc
     )
 
     # First create window for the entire GeoTIFF.
-    window_root = os.path.join(job.out_dir, "windows", "images", label)
+    if job.is_sentinel2:
+        window_name = label + "_sentinel2"
+    else:
+        window_name = label
+    window_root = os.path.join(job.out_dir, "windows", job.image_group_name(), window_name)
     os.makedirs(window_root, exist_ok=True)
     window = Window(
         file_api=LocalFileAPI(window_root),
-        group="images",
-        name=label,
+        group=job.image_group_name(),
+        name=window_name,
         projection=projection,
         bounds=raster_bounds,
         time_range=(ts - timedelta(minutes=1), ts + timedelta(minutes=1)),
     )
     window.save()
-    dst_geotiff_fname = os.path.join(
-        window_root, "layers", "maxar", "R_G_B", "geotiff.tif"
-    )
-    os.makedirs(os.path.dirname(dst_geotiff_fname), exist_ok=True)
-    shutil.copyfile(job.prefix + ".tif", dst_geotiff_fname)
-    with open(os.path.join(window_root, "layers", "maxar", "completed"), "w") as f:
-        pass
+
+    if not job.is_sentinel2:
+        dst_geotiff_fname = os.path.join(
+            window_root, "layers", "maxar", "R_G_B", "geotiff.tif"
+        )
+        os.makedirs(os.path.dirname(dst_geotiff_fname), exist_ok=True)
+        shutil.copyfile(job.prefix + ".tif", dst_geotiff_fname)
+        with open(os.path.join(window_root, "layers", "maxar", "completed"), "w") as f:
+            pass
 
     # Second create a window just for the annotated patch.
     # Start by reading the annotations and mapping polygon.
@@ -139,7 +175,6 @@ def process(job):
 
     # Convert the bounding shp to int bounds.
     # Also crop the raster.
-    array = raster.read()
     proj_bounds = [int(x) for x in bounding_shp.bounds]
     pixel_bounds = [
         proj_bounds[0] - raster_bounds[0],
@@ -147,17 +182,31 @@ def process(job):
         proj_bounds[2] - raster_bounds[0],
         proj_bounds[3] - raster_bounds[1],
     ]
-    crop = array[
-        :, pixel_bounds[1] : pixel_bounds[3], pixel_bounds[0] : pixel_bounds[2]
-    ]
+    crop = None
+    if not job.is_sentinel2:
+        array = raster.read()
+        clipped_pixel_bounds = [
+            clip(pixel_bounds[0], 0, array.shape[2]),
+            clip(pixel_bounds[1], 0, array.shape[1]),
+            clip(pixel_bounds[2], 0, array.shape[2]),
+            clip(pixel_bounds[3], 0, array.shape[1]),
+        ]
+        if pixel_bounds != clipped_pixel_bounds:
+            print(f"warning: {label}: clipping pixel bounds from {pixel_bounds} to {clipped_pixel_bounds}")
+        pixel_bounds = clipped_pixel_bounds
+        crop = array[
+            :, pixel_bounds[1] : pixel_bounds[3], pixel_bounds[0] : pixel_bounds[2]
+        ]
 
     # Create window.
     window_name = f"{label}_{pixel_bounds[0]}_{pixel_bounds[1]}"
-    window_root = os.path.join(job.out_dir, "windows", "crops", window_name)
+    if job.is_sentinel2:
+        window_name += "_sentinel2"
+    window_root = os.path.join(job.out_dir, "windows", job.crop_group_name(), window_name)
     os.makedirs(window_root, exist_ok=True)
     window = Window(
         file_api=LocalFileAPI(window_root),
-        group="crops",
+        group=job.crop_group_name(),
         name=window_name,
         projection=projection,
         bounds=proj_bounds,
@@ -166,8 +215,11 @@ def process(job):
     window.save()
 
     # Write the GeoTIFF.
-    file_api = window.file_api.get_folder("layers", "maxar", "R_G_B")
-    GeotiffRasterFormat().encode_raster(file_api, projection, proj_bounds, crop)
+    if not job.is_sentinel2:
+        file_api = window.file_api.get_folder("layers", "maxar", "R_G_B")
+        GeotiffRasterFormat().encode_raster(file_api, projection, proj_bounds, crop)
+        with open(os.path.join(window_root, "layers", "maxar", "completed"), "w") as f:
+            pass
 
     # Render the GeoJSON labels and write that too.
     pixel_shapes = []
@@ -194,9 +246,6 @@ def process(job):
     GeotiffRasterFormat().encode_raster(
         file_api, projection, proj_bounds, label_vis.transpose(2, 0, 1)
     )
-
-    with open(os.path.join(window_root, "layers", "maxar", "completed"), "w") as f:
-        pass
     with open(os.path.join(window_root, "layers", "label", "completed"), "w") as f:
         pass
 
@@ -214,7 +263,9 @@ if __name__ == "__main__":
         if not fname.endswith(".tif"):
             continue
         prefix = os.path.join(args.in_dir, fname.split(".tif")[0])
-        job = ProcessJob(prefix, args.out_dir)
+        job = ProcessJob(prefix, args.out_dir, is_sentinel2=True)
+        jobs.append(job)
+        job = ProcessJob(prefix, args.out_dir, is_sentinel2=False)
         jobs.append(job)
     for job in tqdm.tqdm(jobs):
         process(job)
