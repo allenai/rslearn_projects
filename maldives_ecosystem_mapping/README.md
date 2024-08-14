@@ -49,12 +49,12 @@ Model Training
 
 First assign crops to train/val as desired, the second argument is the number of validation images (others are training):
 
-    cd rslearn_projects/maldives_ecosystem_mapping/train
-    python assign_split.py /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ 1
+    cd rslearn_projects
+    python maldives_ecosystem_mapping/train/assign_split.py /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ crops 4
+    python maldives_ecosystem_mapping/train/assign_split.py /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ crops_sentinel2 4
 
 Then train the model:
 
-    cd /path/to/rslearn_projects
     PYTHONPATH=/path/to/rslearn:. python -m rslp.main model fit --config maldives_ecosystem_mapping/train/config.yaml --autoresume=true
     PYTHONPATH=/path/to/rslearn:. python -m rslp.main model fit --config maldives_ecosystem_mapping/train/config_sentinel2.yaml --autoresume=true
 

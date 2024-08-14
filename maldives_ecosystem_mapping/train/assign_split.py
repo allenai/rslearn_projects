@@ -7,10 +7,11 @@ import sys
 import tqdm
 
 ds_root = sys.argv[1]
-num_val = int(sys.argv[2])
+group = sys.argv[2]
+num_val = int(sys.argv[3])
 
 window_metadatas = glob.glob(
-    os.path.join(ds_root, "windows", "crops", "*", "metadata.json")
+    os.path.join(ds_root, "windows", group, "*", "metadata.json")
 )
 random.shuffle(window_metadatas)
 val_windows = window_metadatas[0:num_val]
