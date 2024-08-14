@@ -22,7 +22,6 @@ if __name__ == "__main__":
     ]
     big_crop_dir = "/multisat/datasets/dvim/outputs/big_crops_centered/"
     out_dir = "/multisat/datasets/dvim/rslearn_classify/"
-    group = "20240808"
 
     # We are just using fake projection for training this model.
     projection = Projection(CRS.from_epsg(3857), 1, -1)
@@ -41,6 +40,14 @@ if __name__ == "__main__":
         for example_id, label in tqdm.tqdm(annotations.items()):
             if label not in ["positive", "negative"]:
                 continue
+
+            if label == "positive":
+                weight = 1
+                group = "20240808_positives"
+            else:
+                weight = 5
+                group = "20240808_negatives"
+
             image_fname, crop_id = example_id.split("/")
             prefix = image_fname.split(".tif")[0]
 
@@ -68,7 +75,7 @@ if __name__ == "__main__":
                 projection=projection,
                 bounds=window_bounds,
                 time_range=time_range,
-                options={"split": split, "weight": 5},
+                options={"split": split, "weight": weight},
             )
             window.save()
 
@@ -83,7 +90,7 @@ if __name__ == "__main__":
             # Write the label.
             layer_file_api = window.file_api.get_folder("layers", "label")
             feature = Feature(
-                STGeometry(projection, shapely.Point(0, 0), None), {"label": "negative"}
+                STGeometry(projection, shapely.Point(0, 0), None), {"label": label}
             )
             vector_format.encode_vector(layer_file_api, projection, [feature])
             with layer_file_api.open("completed", "w") as f:

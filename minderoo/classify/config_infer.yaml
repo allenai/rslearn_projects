@@ -24,7 +24,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    root_dir: /data/favyenb/dvim/rslearn_classify/
+    root_dir: /data/favyenb/dvim/outputs.new/2024-08-11/2024-07-30_0.5/rslearn_dataset/
     inputs:
       image:
         data_type: "raster"
@@ -81,14 +81,14 @@ data:
         split: val
       skip_targets: true
 trainer:
-  max_epochs: 50
+  max_epochs: 100
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        root_dir: /data/favyenb/dvim/rslearn_classify/
+        root_dir: /data/favyenb/dvim/outputs.new/2024-08-11/2024-07-30_0.5/rslearn_dataset/
         output_layer: output
         selector: ["class"]
 rslp_project: minderoo_classify
