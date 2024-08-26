@@ -44,3 +44,7 @@ Create an environment for rslearn and setup with rslearn_projects requirements:
 Then run the launcher:
 
     python -m rslp.launch_beaker --config_path maldives_ecosystem_mapping/train/config.yaml
+
+Or manually run training:
+
+    python -m rslp.rslearn_main model fit --config_path maldives_ecosystem_mapping/train/config.yaml
