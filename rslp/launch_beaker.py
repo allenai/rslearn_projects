@@ -21,7 +21,7 @@ BUDGET = "ai2/prior"
 IMAGE_NAME = "favyen/rslearn"
 
 
-def launch_job(config_path: str, workspace: str):
+def launch_job(config_path: str, workspace: str = DEFAULT_WORKSPACE):
     """Launch training for the specified config on Beaker.
 
     Args:
