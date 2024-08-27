@@ -17,53 +17,38 @@ images in the rslearn dataset.
 It will also add the big images as unlabeled windows in a separate group in the same
 rslearn dataset, for prediction.
 
-The dataset pre-processing is in preprocess/.
-
-- retrieve_dataset.py: just copies the images and labels from GCS to local storage.
-- create_rslearn_data.py: populates an rslearn dataset. The dataset will have two
-  groups: images will contain the full GeoTIFF images, while crops will contain just the
-  patches of the images that have annotations.
-
 To pre-process the data:
 
-    cd rslearn_projects/maldives_ecosystem_mapping/preprocess
-    python retrieve_dataset.py --out_dir /data/favyenb/maldives_ecosystem_mapping_data/original/
-    PYTHONPATH=/path/to/rslearn python create_rslearn_data.py --in_dir /data/favyenb/maldives_ecosystem_mapping_data/original/ --out_dir /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/
+    python -m rslp.main maldives_ecosystem_mapping data --dp_config.workers 32
 
-You may need to add missing classes to `create_rslearn_data.py`.
-Also you should copy `rslearn_projects/maldives_ecosystem_mapping/config.json` to the `rslearn_dataset` directory.
+This yields an rslearn dataset with two groups: images will contain the full GeoTIFF
+images, while crops will contain just the patches of the images that have annotations.
 
-Obtain Sentinel-2 images if desired:
+There will also be two more groups for Sentinel-2 training: images_sentinel2 and
+crops_sentinel2. Ingesting the Sentinel-2 images can take quite a while; if you just
+want Maxar, then you can skip the ingestion:
 
-    cd /path/to/rslearn
-    python -m rslearn.main dataset prepare --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group crops_sentinel2
-    python -m rslearn.main dataset prepare --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group images_sentinel2
-    python -m rslearn.main dataset ingest --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group crops_sentinel2
-    python -m rslearn.main dataset ingest --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group images_sentinel2
-    python -m rslearn.main dataset materialize --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group crops_sentinel2
-    python -m rslearn.main dataset materialize --root /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ --workers 32 --group images_sentinel2
+    python -m rslp.main maldives_ecosystem_mapping data --dp_config.workers 32 --dp_config.skip_ingest true
+
+TODO: the config.json currently has an absolute path for cache directory. Need to
+address https://github.com/allenai/rslearn/issues/31 before this will work correctly.
+In the meantime, you can edit `config.json` manually or use `skip_ingest`.
 
 
 Model Training
 --------------
 
-First assign crops to train/val as desired, the second argument is the number of validation images (others are training):
+Train the model:
 
-    cd rslearn_projects
-    python maldives_ecosystem_mapping/train/assign_split.py /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ crops 4
-    python maldives_ecosystem_mapping/train/assign_split.py /data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/ crops_sentinel2 4
-
-Then train the model:
-
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model fit --config maldives_ecosystem_mapping/train/config.yaml --autoresume=true
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model fit --config maldives_ecosystem_mapping/train/config_sentinel2.yaml --autoresume=true
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model fit --config data/maldives_ecosystem_mapping/config.yaml --autoresume=true
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model fit --config data/maldives_ecosystem_mapping/config_sentinel2.yaml --autoresume=true
 
 Get visualizations of validation crops:
 
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model test --config maldives_ecosystem_mapping/train/config.yaml --autoresume=true --model.init_args.visualize_dir ~/vis/
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model test --config maldives_ecosystem_mapping/train/config_sentinel2.yaml --autoresume=true --model.init_args.visualize_dir ~/vis/
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model test --config data/maldives_ecosystem_mapping/config.yaml --autoresume=true --model.init_args.visualize_dir ~/vis/
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model test --config data/maldives_ecosystem_mapping/config_sentinel2.yaml --autoresume=true --model.init_args.visualize_dir ~/vis/
 
 Write predictions of the whole images:
 
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model predict --config maldives_ecosystem_mapping/train/config.yaml --autoresume=true
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.main model predict --config maldives_ecosystem_mapping/train/config_sentinel2.yaml --autoresume=true
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model predict --config data/maldives_ecosystem_mapping/config.yaml --autoresume=true
+    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model predict --config data/maldives_ecosystem_mapping/config_sentinel2.yaml --autoresume=true
