@@ -1,6 +1,5 @@
 """Data pipeline for Maldives ecosystem mapping project."""
 
-import argparse
 import functools
 import hashlib
 import io
@@ -9,6 +8,7 @@ import multiprocessing
 import os
 from datetime import datetime, timedelta, timezone
 
+import fsspec
 import numpy as np
 import rasterio
 import rasterio.features
@@ -16,7 +16,13 @@ import shapely
 import tqdm
 from google.cloud import storage
 from rslearn.const import WGS84_PROJECTION
-from rslearn.dataset import Window
+from rslearn.dataset import Dataset, Window
+from rslearn.main import (
+    IngestHandler,
+    MaterializeHandler,
+    PrepareHandler,
+    apply_on_windows,
+)
 from rslearn.utils import Projection, STGeometry, parse_file_api_string
 from rslearn.utils.raster_format import GeotiffRasterFormat
 
@@ -32,22 +38,24 @@ class DataPipelineConfig(BaseDataPipelineConfig):
         self,
         ds_root: str | None = None,
         workers: int = 1,
-        src_bucket: str = "earthsystem-a1",
-        src_prefix: str = "maxar/",
+        src_dir: str = "gs://earthsystem-a1/maxar",
+        skip_ingest: bool = False,
     ):
         """Create a new DataPipelineConfig.
 
         Args:
             ds_root: optional dataset root to write the dataset. This defaults to GCS.
             workers: number of workers.
-            src_bucket: source bucket to read images and labels from.
-            src_prefix: prefix within source bucket.
+            src_dir: the source directory to read from.
+            skip_ingest: whether to skip running prepare/ingest/materialize on the
+                dataset.
         """
         if ds_root is None:
-            ds_root = "s3://rslearn-data/datasets/maldives_ecosystem_mapping/dataset_v1/live/?endpoint_url=https://storage.googleapis.com"
+            rslp_bucket = os.environ["RSLP_BUCKET"]
+            ds_root = f"s3://{rslp_bucket}/datasets/maldives_ecosystem_mapping/dataset_v1/live/?endpoint_url=https://storage.googleapis.com"
         super().__init__(ds_root, workers)
-        self.src_bucket = src_bucket
-        self.src_prefix = src_prefix
+        self.src_dir = src_dir
+        self.skip_ingest = skip_ingest
 
 
 class ProcessJob:
@@ -130,10 +138,10 @@ def process(job: ProcessJob):
     else:
         split = "train"
 
-    src_bucket = get_bucket(job.config.src_bucket)
-    blob = src_bucket.blob(job.prefix + ".tif")
     buf = io.BytesIO()
-    blob.download_to_file(buf)
+    with fsspec.open(job.prefix + ".tif", "rb") as f:
+        buf.write(f.read())
+
     buf.seek(0)
     raster = rasterio.open(buf)
     projection = Projection(raster.crs, raster.transform.a, raster.transform.e)
@@ -211,8 +219,8 @@ def process(job: ProcessJob):
         dst_geom = src_geom.to_projection(projection)
         return dst_geom
 
-    blob = src_bucket.blob(job.prefix + "_labels.json")
-    data = json.loads(blob.download_as_string())
+    with fsspec.open(job.prefix + "_labels.json", "r") as f:
+        data = json.load(f)
     proj_shapes = []
     for annot in data["annotations"]:
         assert len(annot["categories"]) == 1
@@ -286,10 +294,12 @@ def process(job: ProcessJob):
         pixel_shapes,
         out_shape=(proj_bounds[3] - proj_bounds[1], proj_bounds[2] - proj_bounds[0]),
     )
-    file_api = window.file_api.get_folder("layers", "label", "label")
+    layer_dir = window_root.get_folder("layers", "label")
     GeotiffRasterFormat().encode_raster(
-        file_api, projection, proj_bounds, mask[None, :, :]
+        layer_dir.get_folder("label"), projection, proj_bounds, mask[None, :, :]
     )
+    with layer_dir.open("completed", "w") as f:
+        pass
 
     # Along with a visualization image.
     label_vis = np.zeros((mask.shape[0], mask.shape[1], 3))
@@ -302,27 +312,6 @@ def process(job: ProcessJob):
     )
     with layer_dir.open("completed", "w") as f:
         pass
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--in_dir", help="Input directory containing retrieved images and labels"
-    )
-    parser.add_argument("--out_dir", help="Output directory")
-    args = parser.parse_args()
-
-    jobs = []
-    for fname in os.listdir(args.in_dir):
-        if not fname.endswith(".tif"):
-            continue
-        prefix = os.path.join(args.in_dir, fname.split(".tif")[0])
-        job = ProcessJob(prefix, args.out_dir, is_sentinel2=True)
-        jobs.append(job)
-        job = ProcessJob(prefix, args.out_dir, is_sentinel2=False)
-        jobs.append(job)
-    for job in tqdm.tqdm(jobs):
-        process(job)
 
 
 def data_pipeline(dp_config: DataPipelineConfig):
@@ -339,16 +328,41 @@ def data_pipeline(dp_config: DataPipelineConfig):
         f.write(cfg_str)
 
     # Launch jobs to populate windows.
+    print("populate windows")
     p = multiprocessing.Pool(dp_config.workers)
-    src_bucket = get_bucket(dp_config.src_bucket)
     jobs: list[ProcessJob] = []
-    for blob in src_bucket.list_blobs(
-        prefix=dp_config.src_prefix, match_glob="**/*_labels.json"
-    ):
-        prefix = blob.name.split("_labels.json")[0]
+    fs, urlpath = fsspec.core.url_to_fs(dp_config.src_dir)
+    for fname in fs.glob(urlpath + "/**/*_labels.json"):
+        prefix = fs.unstrip_protocol(fname.split("_labels.json")[0])
         jobs.append(ProcessJob(dp_config, prefix, is_sentinel2=False))
         jobs.append(ProcessJob(dp_config, prefix, is_sentinel2=True))
     outputs = p.imap_unordered(process, jobs)
     for _ in tqdm.tqdm(outputs, total=len(jobs)):
         continue
     p.close()
+
+    if not dp_config.skip_ingest:
+        print("prepare, ingest, materialize")
+        dataset = Dataset(file_api=dst_fapi)
+        for group in ["images_sentinel2", "crops_sentinel2"]:
+            apply_on_windows(
+                PrepareHandler(force=False),
+                dataset,
+                workers=dp_config.workers,
+                group=group,
+            )
+            apply_on_windows(
+                IngestHandler(),
+                dataset,
+                workers=dp_config.workers,
+                use_initial_job=False,
+                jobs_per_process=1,
+                group=group,
+            )
+            apply_on_windows(
+                MaterializeHandler(),
+                dataset,
+                workers=dp_config.workers,
+                use_initial_job=False,
+                group=group,
+            )

@@ -1,5 +1,7 @@
 """Customized LightningCLI for rslearn_projects."""
 
+import os
+
 import fsspec
 import jsonargparse
 import wandb
@@ -8,7 +10,7 @@ from rslearn.main import RslearnLightningCLI
 
 from rslp import launcher_lib
 
-CHECKPOINT_DIR = "gs://rslearn-data/projects/{project_id}/{experiment_id}/checkpoints/"
+CHECKPOINT_DIR = "gs://{rslp_bucket}/projects/{project_id}/{experiment_id}/checkpoints/"
 
 
 class SaveWandbRunIdCallback(Callback):
@@ -115,7 +117,9 @@ class CustomLightningCLI(RslearnLightningCLI):
             )
             c.trainer.callbacks.append(checkpoint_callback)
         checkpoint_dir = CHECKPOINT_DIR.format(
-            project_id=c.rslp_project, experiment_id=c.rslp_experiment
+            rslp_bucket=os.environ["RSLP_BUCKET"],
+            project_id=c.rslp_project,
+            experiment_id=c.rslp_experiment,
         )
         checkpoint_callback.init_args.dirpath = checkpoint_dir
 

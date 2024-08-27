@@ -29,7 +29,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    root_dir: gs://rslearn-data/datasets/maldives_ecosystem_mapping/dataset_v1/live/
+    root_dir: s3://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/live/?endpoint_url=https://storage.googleapis.com
     inputs:
       sentinel2:
         data_type: "raster"
@@ -143,7 +143,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        root_dir: gs://rslearn-data/datasets/maldives_ecosystem_mapping/dataset_v1/live/
+        root_dir: s3://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/live/?endpoint_url=https://storage.googleapis.com
         output_layer: output
         selector: ["segment"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
