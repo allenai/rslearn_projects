@@ -1,5 +1,7 @@
 """Entrypoint when using rslp directly."""
 
+import multiprocessing
+
 
 def main():
     """Main function when using rslp directly (outside of an automatic job).
@@ -19,4 +21,5 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("forkserver")
     main()
