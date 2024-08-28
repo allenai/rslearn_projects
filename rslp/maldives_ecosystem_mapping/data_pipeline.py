@@ -8,7 +8,6 @@ import multiprocessing
 import os
 from datetime import datetime, timedelta, timezone
 
-import fsspec
 import numpy as np
 import rasterio
 import rasterio.features
@@ -23,8 +22,9 @@ from rslearn.main import (
     PrepareHandler,
     apply_on_windows,
 )
-from rslearn.utils import Projection, STGeometry, parse_file_api_string
+from rslearn.utils import Projection, STGeometry
 from rslearn.utils.raster_format import GeotiffRasterFormat
+from upath import UPath
 
 from rslp.config import BaseDataPipelineConfig
 
@@ -52,7 +52,7 @@ class DataPipelineConfig(BaseDataPipelineConfig):
         """
         if ds_root is None:
             rslp_bucket = os.environ["RSLP_BUCKET"]
-            ds_root = f"s3://{rslp_bucket}/datasets/maldives_ecosystem_mapping/dataset_v1/live/?endpoint_url=https://storage.googleapis.com"
+            ds_root = f"gcs://{rslp_bucket}/datasets/maldives_ecosystem_mapping/dataset_v1/live/"
         super().__init__(ds_root, workers)
         self.src_dir = src_dir
         self.skip_ingest = skip_ingest
@@ -66,17 +66,21 @@ class ProcessJob:
     (2) A small window corresponding to just the patch that has labels.
     """
 
-    def __init__(self, config: DataPipelineConfig, prefix: str, is_sentinel2: bool):
+    def __init__(
+        self, config: DataPipelineConfig, path: UPath, prefix: str, is_sentinel2: bool
+    ):
         """Create a new ProcessJob.
 
         Args:
             config: the DataPipelineConfig.
-            prefix: the prefix for the scene to process in this job.
+            path: the directory containing the scene to process in this job.
+            prefix: the filename prefix of the scene.
             is_sentinel2: whether to create a Sentinel-2 window. In this case, we
                 populate the scene at 10 m/pixel and without any raster, rather than
                 populating with the input Maxar image.
         """
         self.config = config
+        self.path = path
         self.prefix = prefix
         self.is_sentinel2 = is_sentinel2
 
@@ -130,8 +134,8 @@ def process(job: ProcessJob):
     Args:
         job: the ProcessJob.
     """
-    label = job.prefix.split("/")[-1]
-    dst_fapi = parse_file_api_string(job.config.ds_root)
+    label = job.prefix
+    dst_path = UPath(job.config.ds_root)
     is_val = hashlib.sha256(label.encode()).hexdigest()[0] in ["0", "1"]
     if is_val:
         split = "val"
@@ -139,7 +143,8 @@ def process(job: ProcessJob):
         split = "train"
 
     buf = io.BytesIO()
-    with fsspec.open(job.prefix + ".tif", "rb") as f:
+    tif_path = job.path / (job.prefix + ".tif")
+    with tif_path.open("rb") as f:
         buf.write(f.read())
 
     buf.seek(0)
@@ -180,9 +185,9 @@ def process(job: ProcessJob):
         window_name = label + "_sentinel2"
     else:
         window_name = label
-    window_root = dst_fapi.get_folder("windows", job.image_group_name(), window_name)
+    window_root = dst_path / "windows" / job.image_group_name() / window_name
     window = Window(
-        file_api=window_root,
+        path=window_root,
         group=job.image_group_name(),
         name=window_name,
         projection=projection,
@@ -193,10 +198,12 @@ def process(job: ProcessJob):
     window.save()
 
     if not job.is_sentinel2:
-        layer_dir = window_root.get_folder("layers", "maxar")
-        with layer_dir.get_folder("R_G_B").open("geotiff.tif", "wb") as f:
+        layer_dir = window_root / "layers" / "maxar"
+        out_fname = layer_dir / "R_G_B" / "geotiff.tif"
+        out_fname.parent.mkdir(parents=True, exist_ok=True)
+        with out_fname.open("wb") as f:
             f.write(buf.getvalue())
-        with layer_dir.open("completed", "w") as f:
+        with (layer_dir / "completed").open("w") as f:
             pass
 
     # Second create a window just for the annotated patch.
@@ -219,7 +226,8 @@ def process(job: ProcessJob):
         dst_geom = src_geom.to_projection(projection)
         return dst_geom
 
-    with fsspec.open(job.prefix + "_labels.json", "r") as f:
+    json_path = job.path / (job.prefix + "_labels.json")
+    with json_path.open("r") as f:
         data = json.load(f)
     proj_shapes = []
     for annot in data["annotations"]:
@@ -262,9 +270,9 @@ def process(job: ProcessJob):
     window_name = f"{label}_{pixel_bounds[0]}_{pixel_bounds[1]}"
     if job.is_sentinel2:
         window_name += "_sentinel2"
-    window_root = dst_fapi.get_folder("windows", job.crop_group_name(), window_name)
+    window_root = dst_path / "windows" / job.crop_group_name() / window_name
     window = Window(
-        file_api=window_root,
+        path=window_root,
         group=job.crop_group_name(),
         name=window_name,
         projection=projection,
@@ -276,11 +284,11 @@ def process(job: ProcessJob):
 
     # Write the GeoTIFF.
     if not job.is_sentinel2:
-        layer_dir = window_root.get_folder("layers", "maxar")
+        layer_dir = window_root / "layers" / "maxar"
         GeotiffRasterFormat().encode_raster(
-            layer_dir.get_folder("R_G_B"), projection, proj_bounds, crop
+            layer_dir / "R_G_B", projection, proj_bounds, crop
         )
-        with layer_dir.open("completed", "w") as f:
+        with (layer_dir / "completed").open("w") as f:
             pass
 
     # Render the GeoJSON labels and write that too.
@@ -294,11 +302,11 @@ def process(job: ProcessJob):
         pixel_shapes,
         out_shape=(proj_bounds[3] - proj_bounds[1], proj_bounds[2] - proj_bounds[0]),
     )
-    layer_dir = window_root.get_folder("layers", "label")
+    layer_dir = window_root / "layers" / "label"
     GeotiffRasterFormat().encode_raster(
-        layer_dir.get_folder("label"), projection, proj_bounds, mask[None, :, :]
+        layer_dir / "label", projection, proj_bounds, mask[None, :, :]
     )
-    with layer_dir.open("completed", "w") as f:
+    with (layer_dir / "completed").open("w") as f:
         pass
 
     # Along with a visualization image.
@@ -306,11 +314,11 @@ def process(job: ProcessJob):
     for category_id in range(len(CATEGORIES)):
         color = COLORS[category_id % len(COLORS)]
         label_vis[mask == category_id] = color
-    layer_dir = window_root.get_folder("layers", "label", "vis")
+    layer_dir = window_root / "layers" / "label"
     GeotiffRasterFormat().encode_raster(
-        layer_dir, projection, proj_bounds, label_vis.transpose(2, 0, 1)
+        layer_dir / "vis", projection, proj_bounds, label_vis.transpose(2, 0, 1)
     )
-    with layer_dir.open("completed", "w") as f:
+    with (layer_dir / "completed").open("w") as f:
         pass
 
 
@@ -321,21 +329,25 @@ def data_pipeline(dp_config: DataPipelineConfig):
         dp_config: the pipeline configuration.
     """
     # First copy config.json.
-    dst_fapi = parse_file_api_string(dp_config.ds_root)
+    dst_path = UPath(dp_config.ds_root)
     with open("data/maldives_ecosystem_mapping/config.json") as f:
         cfg_str = f.read()
-    with dst_fapi.open("config.json", "w") as f:
+    with (dst_path / "config.json").open("w") as f:
         f.write(cfg_str)
 
     # Launch jobs to populate windows.
     print("populate windows")
     p = multiprocessing.Pool(dp_config.workers)
     jobs: list[ProcessJob] = []
-    fs, urlpath = fsspec.core.url_to_fs(dp_config.src_dir)
-    for fname in fs.glob(urlpath + "/**/*_labels.json"):
-        prefix = fs.unstrip_protocol(fname.split("_labels.json")[0])
-        jobs.append(ProcessJob(dp_config, prefix, is_sentinel2=False))
-        jobs.append(ProcessJob(dp_config, prefix, is_sentinel2=True))
+    src_path = UPath(dp_config.src_dir)
+    for example_path in src_path.glob("**/*_labels.json"):
+        prefix = example_path.name.split("_labels.json")[0]
+        jobs.append(
+            ProcessJob(dp_config, example_path.parent, prefix, is_sentinel2=False)
+        )
+        jobs.append(
+            ProcessJob(dp_config, example_path.parent, prefix, is_sentinel2=True)
+        )
     outputs = p.imap_unordered(process, jobs)
     for _ in tqdm.tqdm(outputs, total=len(jobs)):
         continue
@@ -343,7 +355,7 @@ def data_pipeline(dp_config: DataPipelineConfig):
 
     if not dp_config.skip_ingest:
         print("prepare, ingest, materialize")
-        dataset = Dataset(file_api=dst_fapi)
+        dataset = Dataset(dst_path)
         for group in ["images_sentinel2", "crops_sentinel2"]:
             apply_on_windows(
                 PrepareHandler(force=False),
