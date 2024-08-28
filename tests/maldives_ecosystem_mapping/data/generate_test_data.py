@@ -2,16 +2,16 @@
 
 import json
 
-from affine import Affine
 import numpy as np
 import rasterio
-from rasterio.crs import CRS
 import shapely
-
+from affine import Affine
+from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
-from rslearn.utils import STGeometry, Projection
+from rslearn.utils import Projection, STGeometry
 
 tif_size = 32
+
 
 def create_tif(fname):
     profile = dict(
@@ -41,23 +41,35 @@ def create_json(fname):
     for vertex in src_vertices:
         src_geom = STGeometry(src_projection, shapely.Point(vertex[0], vertex[1]), None)
         dst_geom = src_geom.to_projection(dst_projection)
-        dst_vertices.append({
-            "x": dst_geom.shp.x,
-            "y": dst_geom.shp.y,
-        })
+        dst_vertices.append(
+            {
+                "x": dst_geom.shp.x,
+                "y": dst_geom.shp.y,
+            }
+        )
 
     json_data = {
-        "mapping_area": [{
-            "boundingPoly": [{
-                "normalizedVertices": dst_vertices,
-            }],
-        }],
-        "annotations": [{
-            "categories": [{"name": "FM_1_3_INTERMITTENTLY_CLOSED_AND_OPEN_LAKES_AND_LAGOONS"}],
-            "boundingPoly": [{
-                "normalizedVertices": dst_vertices,
-            }],
-        }],
+        "mapping_area": [
+            {
+                "boundingPoly": [
+                    {
+                        "normalizedVertices": dst_vertices,
+                    }
+                ],
+            }
+        ],
+        "annotations": [
+            {
+                "categories": [
+                    {"name": "FM_1_3_INTERMITTENTLY_CLOSED_AND_OPEN_LAKES_AND_LAGOONS"}
+                ],
+                "boundingPoly": [
+                    {
+                        "normalizedVertices": dst_vertices,
+                    }
+                ],
+            }
+        ],
     }
     with open(fname, "w") as f:
         json.dump(json_data, f)
