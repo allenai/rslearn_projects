@@ -1,0 +1,52 @@
+{
+  "layers": {
+    "chips": {
+      "type": "raster",
+      "band_sets": [
+        {
+          "dtype": "uint8",
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "format": {
+            "name": "png"
+          }
+        }
+      ]
+    },
+    "label": {
+      "type": "raster",
+      "band_sets": [
+        {
+          "dtype": "uint8",
+          "bands": [
+            "label"
+          ],
+          "format": {
+            "name": "geotiff"
+          }
+        }
+      ]
+    },
+    "output": {
+      "type": "raster",
+      "band_sets": [
+        {
+          "dtype": "uint8",
+          "bands": [
+            "output"
+          ],
+          "format": {
+            "name": "geotiff"
+          }
+        }
+      ]
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
+}
