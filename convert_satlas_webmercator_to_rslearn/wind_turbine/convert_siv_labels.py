@@ -6,6 +6,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import shapely
+from upath import UPath
 
 from ..lib import convert_window
 
@@ -48,7 +49,7 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
         labels.append((point, properties))
 
     convert_window(
-        root_dir=out_dir,
+        root_dir=UPath(out_dir),
         group=group,
         zoom=13,
         bounds=bounds,

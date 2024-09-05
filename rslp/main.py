@@ -2,6 +2,7 @@
 
 import argparse
 import importlib
+import multiprocessing
 import sys
 
 import dotenv
@@ -22,4 +23,5 @@ def main():
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("forkserver")
     main()
