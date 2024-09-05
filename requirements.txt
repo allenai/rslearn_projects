@@ -1,11 +1,2 @@
 beaker-py
-earthengine-api
-fsspec
-gcsfs
-google-cloud-storage
-mgrs
-osmium
 python-dotenv
-rtree
-satlaspretrain_models
-wandb
