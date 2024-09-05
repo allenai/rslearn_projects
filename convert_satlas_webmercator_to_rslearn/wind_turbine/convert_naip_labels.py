@@ -8,17 +8,18 @@ import random
 from datetime import datetime, timedelta, timezone
 
 import shapely
+from upath import UPath
 
 from ..lib import convert_window
 
 in_dir = "/multisat/labels/renewable_infra_point_naip_supervision/"
-out_dir = "/multisat/datasets/rslearn_datasets_satlas/wind_turbine/"
+out_path = UPath("/multisat/datasets/rslearn_datasets_satlas/wind_turbine/")
 group = "naip"
 
 # Get the existing labels in the label group.
 # We will only add windows in in_dir that don't already exist.
 existing = set()
-for window_name in os.listdir(os.path.join(out_dir, "windows", "label")):
+for window_name in os.listdir(os.path.join(out_path, "windows", "label")):
     parts = window_name.split("_")
     existing.add((int(parts[0]) // 512, int(parts[1]) // 512))
 
@@ -45,7 +46,7 @@ for fname in os.listdir(in_dir):
             labels.append((point, properties))
 
     convert_window(
-        root_dir=out_dir,
+        root_dir=out_path,
         group=group,
         zoom=13,
         bounds=bounds,
