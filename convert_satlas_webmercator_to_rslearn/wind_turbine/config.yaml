@@ -68,21 +68,21 @@ data:
           init_args:
             mean: 0
             std: 10000
-      groups: ["label"]
+      groups: ["label", "naip"]
       tags:
         split: train
     val_config:
       patch_size: 256
-      groups: ["label"]
+      groups: ["label", "naip"]
       tags:
         split: val
     test_config:
       patch_size: 256
-      groups: ["label"]
+      groups: ["label", "naip"]
       tags:
         split: val
     predict_config:
-      groups: ["images"]
+      groups: ["predict"]
       load_all_patches: true
       skip_targets: true
       patch_size: 512
@@ -104,4 +104,4 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 rslp_project: satlas_wind_turbine
-rslp_experiment: debug_20240806_satlaspretrain_patch256_noflip_08
+rslp_experiment: debug_20240806_satlaspretrain_patch256_noflip_18
