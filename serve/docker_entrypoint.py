@@ -5,7 +5,6 @@ import json
 import multiprocessing
 import os
 import shutil
-import sys
 from datetime import datetime
 
 from upath import UPath
@@ -19,17 +18,17 @@ if __name__ == "__main__":
     rslearn.main.RslearnLightningCLI = CustomLightningCLI
 
     parser = argparse.ArgumentParser(description="docker_entrypoint.py")
-    parser.add_argument("ds_cfg_fname", help="Dataset configuration filename")
-    parser.add_argument("model_cfg_fname", help="Model configuration filename")
-    parser.add_argument("projection", help="JSON-encoded window projection")
-    parser.add_argument("bounds", help="JSON-encoded window bounds")
-    parser.add_argument("start_time", help="Window start time")
-    parser.add_argument("end_time", help="Window end time")
+    parser.add_argument("--ds_cfg_fname", help="Dataset configuration filename")
+    parser.add_argument("--model_cfg_fname", help="Model configuration filename")
+    parser.add_argument("--projection", help="JSON-encoded window projection")
+    parser.add_argument("--bounds", help="JSON-encoded window bounds")
+    parser.add_argument("--start_time", help="Window start time")
+    parser.add_argument("--end_time", help="Window end time")
     parser.add_argument(
-        "workers", type=int, default=16, help="Workers to use in serving"
+        "--workers", type=int, default=16, help="Workers to use in serving"
     )
-    parser.add_argument("out_path", help="Where to write the output data")
-    args = parser.parse_args(args=sys.argv)
+    parser.add_argument("--out_path", help="Where to write the output data")
+    args = parser.parse_args()
 
     from rslearn.serve.request import Request, serve
     from rslearn.utils import Projection
