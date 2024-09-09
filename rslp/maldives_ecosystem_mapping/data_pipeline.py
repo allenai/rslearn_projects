@@ -52,7 +52,7 @@ class DataPipelineConfig(BaseDataPipelineConfig):
         """
         if ds_root is None:
             rslp_bucket = os.environ["RSLP_BUCKET"]
-            ds_root = f"gcs://{rslp_bucket}/datasets/maldives_ecosystem_mapping/dataset_v1/live/"
+            ds_root = f"gcs://{rslp_bucket}/datasets/maldives_ecosystem_mapping/dataset_v1/20240906/"
         super().__init__(ds_root, workers)
         self.src_dir = src_dir
         self.skip_ingest = skip_ingest
