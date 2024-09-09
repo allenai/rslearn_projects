@@ -37,5 +37,5 @@ python retrieve_dataset.py --token $token --feedback_csv feedback.sample.csv --c
 The `create_rslearn_data.py` script creates an rslearn dataset from the chips and labels.
 
 ```
-python create_rslearn_data.py --dataset_csv dataset.sample.csv --out_dir rslearn_dataset
+python create_rslearn_data.py --dataset_csv dataset.2rows-sample.csv  --out_dir rslearn_data
 ```
