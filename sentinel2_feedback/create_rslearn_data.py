@@ -61,19 +61,17 @@ def latlon_to_utm_zone(lat, lon):
 def calculate_bounds(
     record: Record, projection: Projection
 ) -> tuple[int, int, int, int]:
-    pixels_per_tile = 1024
+    window_size = 128
     point = shapely.Point(record.lon, record.lat)
     stgeometry = STGeometry(WGS84_PROJECTION, point, None)
     geometry = stgeometry.to_projection(projection)
-    tile_col = int(geometry.shp.x) // pixels_per_tile
-    tile_row = int(geometry.shp.y) // pixels_per_tile
 
-    bounds = (
-        tile_col * pixels_per_tile,
-        tile_row * pixels_per_tile,
-        (tile_col + 1) * pixels_per_tile,
-        (tile_row + 1) * pixels_per_tile,
-    )
+    bounds = [
+        int(geometry.shp.x) - window_size // 2,
+        int(geometry.shp.y) - window_size // 2,
+        int(geometry.shp.x) + window_size // 2,
+        int(geometry.shp.y) + window_size // 2,
+    ]
     return bounds
 
 
@@ -120,8 +118,8 @@ def create_rslearn_data(args: ArgsModel):
                 projection=projection,
                 bounds=bounds,
                 time_range=(
-                    timestamp - timedelta(minutes=1),
-                    timestamp + timedelta(minutes=1),
+                    timestamp - timedelta(minutes=20),
+                    timestamp + timedelta(minutes=20),
                 ),
             )
             window.save()

@@ -22,11 +22,8 @@
         "max_time_delta": "1d",
         "sort_by": "cloud_cover",
         "query_config": {
-          "max_matches": 6,
           "space_mode": "CONTAINS"
-        },
-        "time_offset": "-90d",
-        "duration": "180d"
+        }
       }
     },
     "label": {
