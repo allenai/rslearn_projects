@@ -8,7 +8,6 @@ import tempfile
 import yaml
 from google.cloud import storage
 
-BUCKET_NAME = "rslearn-data"
 CODE_BLOB_PATH = "projects/{project_id}/{experiment_id}/code.zip"
 WANDB_ID_BLOB_PATH = "projects/{project_id}/{experiment_id}/wandb_id"
 
@@ -19,7 +18,7 @@ def _get_bucket():
     global bucket
     if bucket is None:
         storage_client = storage.Client()
-        bucket = storage_client.bucket(BUCKET_NAME)
+        bucket = storage_client.bucket(os.environ["RSLP_BUCKET"])
     return bucket
 
 

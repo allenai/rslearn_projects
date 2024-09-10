@@ -1,5 +1,7 @@
 """Docker entrypoint for rslp."""
 
+import multiprocessing
+
 
 def main():
     """Docker entrypoint for rslp.
@@ -15,10 +17,11 @@ def main():
     from rslp.launcher_lib import download_code
 
     download_code(project_id, experiment_id)
-    import rslp.main
+    import rslp.rslearn_main
 
-    rslp.main.main()
+    rslp.rslearn_main.main()
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("forkserver")
     main()

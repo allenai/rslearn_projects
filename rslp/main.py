@@ -1,22 +1,27 @@
-"""Entrypoint when using rslp directly."""
+"""Main entrypoint for rslp."""
+
+import argparse
+import importlib
+import multiprocessing
+import sys
+
+import dotenv
+import jsonargparse
 
 
 def main():
-    """Main function when using rslp directly (outside of an automatic job).
+    """Main entrypoint function for rslp."""
+    dotenv.load_dotenv()
+    parser = argparse.ArgumentParser(description="rslearn")
+    parser.add_argument("project", help="The project to execute a workflow for.")
+    parser.add_argument("workflow", help="The name of the workflow.")
+    args = parser.parse_args(args=sys.argv[1:3])
 
-    Includes rslp tooling except the code upload/download steps. Credentials must also
-    be set either in environmental variables or in .env.
-    """
-    from dotenv import load_dotenv
-
-    load_dotenv()
-    import rslearn.main
-
-    from rslp.lightning_cli import CustomLightningCLI
-
-    rslearn.main.RslearnLightningCLI = CustomLightningCLI
-    rslearn.main.main()
+    module = importlib.import_module(f"rslp.{args.project}")
+    workflow_fn = module.workflows[args.workflow][1]
+    jsonargparse.CLI(workflow_fn, args=sys.argv[3:])
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("forkserver")
     main()

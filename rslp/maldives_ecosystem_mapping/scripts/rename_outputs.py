@@ -1,4 +1,6 @@
-"""After using `python rslp.main model predict`, this renames the outputs from the layers
+"""Rename outputs script.
+
+After using `python rslp.main model predict`, this renames the outputs from the layers
 directory to a flat directory.
 """
 

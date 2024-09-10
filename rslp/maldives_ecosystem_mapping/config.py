@@ -1,0 +1,39 @@
+"""Config/constants for Maldives ecosystem mapping project."""
+
+CATEGORIES = [
+    "unknown",
+    "FM_1_3_INTERMITTENTLY_CLOSED_AND_OPEN_LAKES_AND_LAGOONS",
+    "F_2_2_SMALL_PERMANENT_FRESHWATER_LAKES",
+    "MFT_1_2_INTERTIDAL_FORESTS_AND_SHRUBLANDS",
+    "MFT_1_3_COASTAL_SALTMARSHES_AND_REEDBEDS",
+    "MT_1_1_ROCKY_SHORELINES",
+    "MT_1_3_SANDY_SHORELINES",
+    "MT_2_1_COASTAL_SHRUBLANDS_AND_GRASSLANDS",
+    "MT_3_1_ARTIFICIAL_SHORELINES",
+    "M_1_1_SEAGRASS_MEADOWS",
+    "M_1_3_PHOTIC_CORAL_REEFS",
+    "M_1_6_SUBTIDAL_ROCKY_REEFS",
+    "M_1_7_SUBTIDAL_SAND_BEDS",
+    "TF_1_3_PERMANENT_MARSHES",
+    "T_7_1_ANNUAL_CROPLANDS",
+    "T_7_3_PLANTATIONS",
+    "T_7_4_URBAN_AND_INDUSTRIAL_ECOSYSTEMS",
+]
+
+COLORS = [
+    [255, 0, 0],
+    [0, 255, 0],
+    [0, 0, 255],
+    [255, 255, 0],
+    [0, 255, 255],
+    [255, 0, 255],
+    [0, 128, 0],
+    [255, 160, 122],
+    [139, 69, 19],
+    [128, 128, 128],
+    [255, 255, 255],
+    [143, 188, 143],
+    [95, 158, 160],
+    [255, 200, 0],
+    [128, 0, 0],
+]

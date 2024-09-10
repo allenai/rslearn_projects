@@ -11,6 +11,9 @@ model:
               fpn: true
         decoders:
           detect:
+            - class_path: rslearn.models.pick_features.PickFeatures
+              init_args:
+                indexes: [1, 2, 3, 4]
             - class_path: rslearn.models.faster_rcnn.FasterRCNN
               init_args:
                 downsample_factors: [4, 8, 16, 32]
@@ -25,7 +28,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    root_dir: /data/favyenb/rslearn_datasets_satlas/wind_turbine/
+    path: gs://rslearn-eai/datasets/wind_turbine/dataset_v1/live/
     inputs:
       image:
         data_type: "raster"
@@ -65,13 +68,19 @@ data:
           init_args:
             mean: 0
             std: 10000
-      groups: ["label", "naip"]
+      groups: ["label"]
+      tags:
+        split: train
     val_config:
       patch_size: 256
-      groups: ["label", "naip"]
+      groups: ["label"]
+      tags:
+        split: val
     test_config:
       patch_size: 256
-      groups: ["label", "naip"]
+      groups: ["label"]
+      tags:
+        split: val
     predict_config:
       groups: ["images"]
       load_all_patches: true
@@ -85,7 +94,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        root_dir: /data/favyenb/rslearn_datasets_satlas/wind_turbine/
+        path: gs://rslearn-eai/datasets/wind_turbine/dataset_v1/live/
         output_layer: output
         selector: ["detect"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
@@ -95,4 +104,4 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 rslp_project: satlas_wind_turbine
-rslp_experiment: debug_20240806_satlaspretrain_patch256_noflip_01
+rslp_experiment: debug_20240806_satlaspretrain_patch256_noflip_08

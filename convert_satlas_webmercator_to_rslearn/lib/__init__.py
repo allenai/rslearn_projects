@@ -4,9 +4,8 @@ window with UTM projection in an rslearn dataset.
 
 import json
 import math
-import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import shapely
@@ -15,14 +14,15 @@ from PIL import Image
 from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import LocalFileAPI, Projection, STGeometry, get_utm_ups_crs
+from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
+from upath import UPath
 
 src_crs = CRS.from_epsg(3857)
 web_mercator_m = 2 * math.pi * 6378137
 
 
 def convert_window(
-    root_dir: str,
+    root_dir: UPath,
     group: str,
     zoom: int,
     bounds: tuple[int, int, int, int],
@@ -81,10 +81,9 @@ def convert_window(
         int(dst_polygon.bounds[2]),
         int(dst_polygon.bounds[3]),
     ]
-    window_root = os.path.join(root_dir, "windows", group, window_name)
-    os.makedirs(window_root, exist_ok=True)
+    window_root = root_dir / "windows" / group / window_name
     window = Window(
-        file_api=LocalFileAPI(window_root),
+        path=window_root,
         group=group,
         name=window_name,
         projection=dst_projection,
@@ -109,10 +108,10 @@ def convert_window(
                 "properties": properties,
             }
         )
-    layer_dir = os.path.join(window_root, "layers", "label")
-    label_fname = os.path.join(layer_dir, "data.geojson")
-    os.makedirs(os.path.dirname(label_fname), exist_ok=True)
-    with open(label_fname, "w") as f:
+    layer_dir = window_root / "layers" / "label"
+    label_fname = layer_dir / "data.geojson"
+    layer_dir.mkdir(parents=True, exist_ok=True)
+    with label_fname.open("w") as f:
         json.dump(
             {
                 "type": "FeatureCollection",
@@ -121,7 +120,7 @@ def convert_window(
             },
             f,
         )
-    with open(os.path.join(layer_dir, "completed"), "w") as f:
+    with (layer_dir / "completed").open("w") as f:
         pass
 
     # (3) Write mask corresponding to old window projected onto new window.
@@ -132,13 +131,14 @@ def convert_window(
     polygon_cols = [coord[0] - bounds[0] for coord in dst_polygon.exterior.coords]
     rr, cc = skimage.draw.polygon(polygon_rows, polygon_cols, shape=mask.shape)
     mask[rr, cc] = 255
-    layer_dir = os.path.join(window_root, "layers", "mask")
-    mask_dir = os.path.join(layer_dir, "mask")
-    os.makedirs(mask_dir, exist_ok=True)
-    Image.fromarray(mask).save(os.path.join(mask_dir, "image.png"))
-    with open(os.path.join(mask_dir, "bounds.json"), "w") as f:
+    layer_dir = window_root / "layers" / "mask"
+    mask_fname = layer_dir / "mask" / "image.png"
+    mask_fname.parent.mkdir(parents=True, exist_ok=True)
+    with mask_fname.open("wb") as f:
+        Image.fromarray(mask).save(f)
+    with (mask_fname.parent / "bounds.json").open("w") as f:
         json.dump(bounds, f)
-    with open(os.path.join(layer_dir, "completed"), "w") as f:
+    with (layer_dir / "completed").open("w") as f:
         pass
 
     return window
