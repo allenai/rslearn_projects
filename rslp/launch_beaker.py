@@ -72,6 +72,10 @@ def launch_job(
                 name="RSLP_BUCKET",
                 value=os.environ["RSLP_BUCKET"],
             ),
+            EnvVar(
+                name="MKL_THREADING_LAYER",
+                value="GNU",
+            ),
         ]
         if username:
             env_vars.append(
