@@ -27,11 +27,49 @@
                 "harmonize": true
             }
         },
+		"sentinel2.1": {
+			"type": "raster",
+			"band_sets": [{
+                "dtype": "uint16",
+                "bands": ["B02", "B03", "B04", "B08"]
+            }, {
+                "dtype": "uint16",
+                "bands": ["B05", "B06", "B07", "B8A", "B11", "B12"],
+                "zoom_offset": -1
+            }, {
+                "dtype": "uint16",
+                "bands": ["B01", "B09", "B10"],
+                "zoom_offset": -2
+            }]
+		},
+		"sentinel2.2": {
+			"type": "raster",
+			"band_sets": [{
+                "dtype": "uint16",
+                "bands": ["B02", "B03", "B04", "B08"]
+            }, {
+                "dtype": "uint16",
+                "bands": ["B05", "B06", "B07", "B8A", "B11", "B12"],
+                "zoom_offset": -1
+            }, {
+                "dtype": "uint16",
+                "bands": ["B01", "B09", "B10"],
+                "zoom_offset": -2
+            }]
+		},
         "label": {
             "type": "vector"
         },
         "output": {
             "type": "vector"
+        },
+        "mask": {
+            "type": "raster",
+            "band_sets": [{
+                "dtype": "uint8",
+                "bands": ["mask"],
+                "format": {"name": "single_image", "format": "png"}
+            }]
         }
     },
     "tile_store": {
