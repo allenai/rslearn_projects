@@ -149,6 +149,6 @@ class CustomLightningCLI(RslearnLightningCLI):
             # TODO: additional logic here to continue the wandb run.
 
             wandb_id = launcher_lib.download_wandb_id(c.rslp_project, c.rslp_experiment)
-            if wandb_id:
+            if wandb_id and subcommand == "fit":
                 print(f"resuming wandb run {wandb_id}")
                 c.trainer.logger.init_args.id = wandb_id
