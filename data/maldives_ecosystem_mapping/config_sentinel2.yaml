@@ -29,7 +29,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    root_dir: s3://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/live/?endpoint_url=https://storage.googleapis.com
+    path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240906/
     inputs:
       sentinel2:
         data_type: "raster"
@@ -76,6 +76,8 @@ data:
               num_classes: 17
               remap_values: [[0, 1], [0, 255]]
               zero_is_invalid: true
+              metric_kwargs:
+                average: "micro"
         input_mapping:
           segment:
             targets: "targets"
@@ -143,7 +145,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        root_dir: s3://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/live/?endpoint_url=https://storage.googleapis.com
+        path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240906/
         output_layer: output
         selector: ["segment"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
@@ -154,4 +156,4 @@ trainer:
         monitor: val_segment/accuracy
         mode: max
 rslp_project: maldives_ecosystem_mapping
-rslp_experiment: sentinel2_data_20240826_satlaspretrain_flip_crop32_00
+rslp_experiment: sentinel2_data_20240906_satlaspretrain_flip_crop32_00

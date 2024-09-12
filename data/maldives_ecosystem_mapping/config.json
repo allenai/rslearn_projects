@@ -40,7 +40,7 @@
             }],
 			"data_source": {
 				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
-				"index_cache_dir": "/data/favyenb/maldives_ecosystem_mapping_data/rslearn_dataset/cache/sentinel2_gcp/",
+				"index_cache_dir": "cache/sentinel2",
 				"use_rtree_index": false,
 				"max_time_delta": "1d",
 				"sort_by": "cloud_cover",
