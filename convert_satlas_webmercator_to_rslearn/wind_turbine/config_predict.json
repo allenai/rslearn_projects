@@ -17,7 +17,8 @@
             "data_source": {
                 "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
                 "modality": "L1C",
-                "index_cache_dir": "/data/favyenb/rslearn_datasets_satlas/solar_farm/cache/sentinel2",
+                "index_cache_dir": "cache",
+                "use_rtree_index": false,
                 "max_time_delta": "1d",
                 "query_config": {
                     "max_matches": 3,
@@ -29,14 +30,6 @@
         },
         "label": {
             "type": "vector"
-        },
-        "mask": {
-            "type": "raster",
-            "band_sets": [{
-                "dtype": "uint8",
-                "bands": ["mask"],
-                "format": {"name": "single_image", "format": "png"}
-            }]
         },
         "output": {
             "type": "vector"
