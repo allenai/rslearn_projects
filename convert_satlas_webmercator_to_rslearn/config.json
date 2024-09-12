@@ -29,6 +29,17 @@
         },
         "label": {
             "type": "vector"
+        },
+        "mask": {
+            "type": "raster",
+            "band_sets": [{
+                "dtype": "uint8",
+                "bands": ["mask"],
+                "format": {"name": "single_image", "format": "png"}
+            }]
+        },
+        "output": {
+            "type": "vector"
         }
     },
     "tile_store": {

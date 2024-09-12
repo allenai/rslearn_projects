@@ -58,6 +58,12 @@ data:
         bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
         passthrough: true
         dtype: INT32
+      mask:
+        data_type: "raster"
+        layers: ["mask"]
+        bands: ["mask"]
+        passthrough: true
+        dtype: INT32
       targets:
         data_type: "vector"
         layers: ["label"]
@@ -73,6 +79,9 @@ data:
               classes: ["unknown", "turbine"]
               box_size: 15
               remap_values: [[0, 1], [0, 255]]
+              exclude_by_center: true
+              enable_map_metric: true
+              enable_f1_metric: true
         input_mapping:
           detect:
             targets: "targets"
@@ -91,6 +100,7 @@ data:
           init_args:
             mean: 0
             std: 3000
+        - class_path: rslp.transforms.mask.Mask
     train_config:
       patch_size: 256
       transforms:
@@ -105,6 +115,7 @@ data:
           init_args:
             mean: 0
             std: 3000
+        - class_path: rslp.transforms.mask.Mask
       groups: ["label", "naip"]
       tags:
         split: train
@@ -141,4 +152,4 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 rslp_project: satlas_wind_turbine
-rslp_experiment: debug_20240806_satlaspretrainold_patch256_noflip_satlasbands3000_3image_00
+rslp_experiment: debug_20240806_satlaspretrainold_patch256_noflip_satlasbands3000_3image_02
