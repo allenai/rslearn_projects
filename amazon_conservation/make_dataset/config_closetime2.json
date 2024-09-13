@@ -543,6 +543,9 @@
 		"label": {
 			"type": "vector"
 		},
+		"output": {
+			"type": "vector"
+		},
 		"best_pre_0": {
 			"type": "raster",
 			"band_sets": [{
