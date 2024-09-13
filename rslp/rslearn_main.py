@@ -22,4 +22,22 @@ def main():
 
 if __name__ == "__main__":
     multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_forkserver_preload(
+        [
+            "pickle",
+            "fiona",
+            "gcsfs",
+            "jsonargparse",
+            "numpy",
+            "PIL",
+            "torch",
+            "torch.multiprocessing",
+            "torchvision",
+            "upath",
+            "wandb",
+            "rslearn.main",
+            "rslearn.train.dataset",
+            "rslearn.train.data_module",
+        ]
+    )
     main()
