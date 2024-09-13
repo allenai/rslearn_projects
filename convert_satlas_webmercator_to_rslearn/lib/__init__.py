@@ -120,8 +120,7 @@ def convert_window(
             },
             f,
         )
-    with (layer_dir / "completed").open("w") as f:
-        pass
+    (layer_dir / "completed").touch()
 
     # (3) Write mask corresponding to old window projected onto new window.
     mask = np.zeros((bounds[3] - bounds[1], bounds[2] - bounds[0]), dtype=np.uint8)
@@ -138,7 +137,6 @@ def convert_window(
         Image.fromarray(mask).save(f)
     with (mask_fname.parent / "bounds.json").open("w") as f:
         json.dump(bounds, f)
-    with (layer_dir / "completed").open("w") as f:
-        pass
+    (layer_dir / "completed").touch()
 
     return window
