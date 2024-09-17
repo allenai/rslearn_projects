@@ -1,0 +1,155 @@
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+
+<div>
+	<div>
+		<div>
+			<div id="example-id-div"></div>
+			<div id="maps-link"></div>
+			<div style="display: flex; flex-direction: row; gap: 20px">
+				<div id="image-container0" style="display: flex; flex-direction: column; gap: 5px"></div>
+				<div id="image-container1" style="display: flex; flex-direction: column; gap: 5px"></div>
+				<div id="image-container2" style="display: flex; flex-direction: column; gap: 5px"></div>
+			</div>
+		</div>
+	</div>
+	<div style="margin-top: 3px">
+		<div style="margin-bottom: 3px">
+			Image Shown:
+			<span id="image-shown"></span>
+		</div>
+		<div style="margin-bottom: 3px">
+			Model Prediction:
+			<span id="label"></span>
+		</div>
+	</div>
+	<hr />
+	<div>
+		<button id="prev-btn">Previous</button>
+		<span id='counter'>
+			<span class='counter-top'></span> / <span class='counter-bottom'></span>
+		</span>
+		<button id="skip-btn">Skip</button>
+		<button id="next-btn">Next</button>
+	</div>
+	<div>
+		<form id="jump-form">
+			<input type="text" id="jump-counter" />
+			<button type="submit">Jump</button>
+		</form>
+	</div>
+</div>
+
+<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+<script type="text/javascript" src="https://unpkg.com/konva@6.0.0/konva.min.js"></script>
+
+<script>
+let image_names = [
+	'pre',
+	'post',
+	'mask',
+	'planet_pre',
+	'planet_post',
+];
+
+$.get('/examples', examples => {
+	let cur_idx = 0;
+	let image_name_idx = 0;
+	let stage = null;
+
+	let render = () => {
+		$('#image-shown').text(image_names[image_name_idx]);
+
+		$.get('/metadata/' + cur_idx, metadata => {
+			for(let i = 0; i < 3; i++) {
+				$('#image-container' + i).empty();
+				let image_name = image_names[image_name_idx];
+				$('<img>').height(384).attr('src', '/image/' + cur_idx + '/' + image_name + '/' + i).appendTo($('#image-container' + i));
+				if(image_name == 'mask' || image_name.includes('planet')) {
+					$('<span>').text('N/A').appendTo($('#image-container' + i));
+				} else {
+					$('<span>').text(metadata["best_times"]["best_" + image_name + "_" + i].substring(0, 7)).appendTo($('#image-container' + i));
+				}
+			}
+			$('.counter-top').text(cur_idx + 1);
+			$('.counter-bottom').text(examples.length);
+
+			$('#label').text(metadata['label'] + ' (' + metadata['prob_str'] + ')');
+
+			let lon = metadata['point'][0].toFixed(5);
+			let lat = metadata['point'][1].toFixed(5);
+			let date = metadata['date'];
+			$('#example-id-div').empty();
+			$('<span>').text(metadata['example_id']).appendTo($('#example-id-div'));
+
+			$('#maps-link').empty();
+			$('<span>').text(lat + ', ' + lon + ' (' + date + ')').appendTo($('#maps-link'));
+			$('<a>').attr('href', 'https://www.google.com/maps/search/?api=1&query='+lat+','+lon).attr('target', '_blank').text('[Google]').appendTo($('#maps-link'));
+			$('<a>').attr('href', 'https://www.openstreetmap.org/#map=18/'+lat+'/'+lon).attr('target', '_blank').text('[OSM]').appendTo($('#maps-link'));
+		});
+	};
+
+	let setIdx = (new_idx) => {
+		if(new_idx >= examples.length) {
+			new_idx = examples.length - 1;
+		}
+		if(new_idx < 0) {
+			new_idx = 0;
+		}
+		cur_idx = new_idx;
+		image_name_idx = 0;
+		render();
+	};
+
+	$('#prev-btn').click(() => {
+		setIdx(cur_idx - 1);
+	});
+	$('#next-btn').click(() => {
+		setIdx(cur_idx + 1);
+	});
+	$('#skip-btn').click(() => {
+		// Make sure label is empty for this image, then advance.
+		$.ajax({
+			type: 'POST',
+			url: '/update/'+cur_idx,
+			data: 'skip',
+			processData: false,
+			contentType: 'application/json',
+			success: () => {
+				setIdx(cur_idx + 1);
+			},
+		});
+	});
+	$('#jump-form').submit((e) => {
+		e.preventDefault();
+		let idx = parseInt($('#jump-counter').val());
+		setIdx(idx - 1);
+		$('#jump-counter').val('');
+	});
+
+	$(document).on('keydown', (e) => {
+		if(e.which == 37) { // left arrow
+			e.preventDefault();
+			image_name_idx = (image_name_idx - 1 + image_names.length) % image_names.length;
+			render();
+		} else if(e.which == 39) { // right arrow
+			e.preventDefault();
+			image_name_idx = (image_name_idx + 1) % image_names.length;
+			render();
+		} else if(e.which == 80) { // p
+			setIdx(cur_idx - 1);
+		} else if(e.which == 78) { // n
+			setIdx(cur_idx + 1);
+		}
+	});
+
+	render();
+});
+</script>
+
+</body>
+</html>

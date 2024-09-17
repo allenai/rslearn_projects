@@ -189,7 +189,7 @@ class ForestLossLightningModule(RslearnLightningModule):
             on_step=False,
             on_epoch=True,
         )
-        self.val_metrics(outputs, targets)
+        self.val_metrics.update(outputs, targets)
         self.log_dict(self.val_metrics, batch_size=batch_size, on_epoch=True)
 
         # Now we hook in part to compute confusion matrix.
@@ -238,7 +238,7 @@ class ForestLossLightningModule(RslearnLightningModule):
         self.log(
             "test_loss", test_loss, batch_size=batch_size, on_step=False, on_epoch=True
         )
-        self.test_metrics(outputs, targets)
+        self.test_metrics.update(outputs, targets)
         self.log_dict(self.test_metrics, batch_size=batch_size, on_epoch=True)
 
         if self.visualize_dir:

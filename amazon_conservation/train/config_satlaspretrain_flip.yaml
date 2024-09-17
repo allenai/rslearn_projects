@@ -120,4 +120,4 @@ trainer:
       init_args:
         logging_interval: "epoch"
 rslp_project: amazon_conservation
-rslp_experiment: data_20240912_satlaspretrain_swinb
+rslp_experiment: data_20240912_satlaspretrain_swinb_01
