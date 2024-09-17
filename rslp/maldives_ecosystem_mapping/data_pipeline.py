@@ -203,8 +203,7 @@ def process(job: ProcessJob):
         out_fname.parent.mkdir(parents=True, exist_ok=True)
         with out_fname.open("wb") as f:
             f.write(buf.getvalue())
-        with (layer_dir / "completed").open("w") as f:
-            pass
+        (layer_dir / "completed").touch()
 
     # Second create a window just for the annotated patch.
     # Start by reading the annotations and mapping polygon.
@@ -288,8 +287,7 @@ def process(job: ProcessJob):
         GeotiffRasterFormat().encode_raster(
             layer_dir / "R_G_B", projection, proj_bounds, crop
         )
-        with (layer_dir / "completed").open("w") as f:
-            pass
+        (layer_dir / "completed").touch()
 
     # Render the GeoJSON labels and write that too.
     pixel_shapes = []
@@ -306,8 +304,7 @@ def process(job: ProcessJob):
     GeotiffRasterFormat().encode_raster(
         layer_dir / "label", projection, proj_bounds, mask[None, :, :]
     )
-    with (layer_dir / "completed").open("w") as f:
-        pass
+    (layer_dir / "completed").touch()
 
     # Along with a visualization image.
     label_vis = np.zeros((mask.shape[0], mask.shape[1], 3))
@@ -318,8 +315,7 @@ def process(job: ProcessJob):
     GeotiffRasterFormat().encode_raster(
         layer_dir / "vis", projection, proj_bounds, label_vis.transpose(2, 0, 1)
     )
-    with (layer_dir / "completed").open("w") as f:
-        pass
+    (layer_dir / "completed").touch()
 
 
 def data_pipeline(dp_config: DataPipelineConfig):
