@@ -6,6 +6,7 @@ import os
 import tqdm
 
 ds_root = "/multisat/datasets/rslearn_amazon_conservation_closetime/"
+out_fname = "/multisat/datasets/rslearn_amazon_conservation_closetime/split.json"
 
 example_id_to_label = {}
 fnames = glob.glob(os.path.join(ds_root, "windows/*/*/layers/label/data.geojson"))
@@ -27,10 +28,6 @@ for group, example_id in example_id_to_label.keys():
             "1",
             "2",
             "3",
-            "4",
-            "5",
-            "6",
-            "7",
         ]
         if is_val:
             split_data[example_id] = "val"
@@ -38,3 +35,6 @@ for group, example_id in example_id_to_label.keys():
             split_data[example_id] = "train"
     elif group in ["nadia2", "nadia3", "brazil_interesting"]:
         split_data[example_id] = "train"
+
+with open(out_fname, "w") as f:
+    json.dump(split_data, f)
