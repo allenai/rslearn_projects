@@ -120,6 +120,10 @@ data:
             mean: 0
             std: 3000
         - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["image"]
+            box_selectors: ["target/detect"]
       groups: ["label", "naip"]
       tags:
         split: train
@@ -156,4 +160,4 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 rslp_project: satlas_wind_turbine
-rslp_experiment: debug_20240806_satlaspretrainold_patch256_noflip_satlasbands3000_3image_02
+rslp_experiment: debug_20240806_satlaspretrainold_patch256_noflip_satlasbands3000_3image_flip_01
