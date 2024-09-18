@@ -20,7 +20,7 @@ from rslp import launcher_lib
 
 DEFAULT_WORKSPACE = "ai2/earth-systems"
 BUDGET = "ai2/prior"
-IMAGE_NAME = "favyen/rslearn"
+IMAGE_NAME = "favyen/rslearn"  # Update image if needed
 
 
 def launch_job(
