@@ -12,6 +12,8 @@ def check_window(window_root):
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("forkserver")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--ds_path", help="Dataset root path", type=str, required=True)
     parser.add_argument(
