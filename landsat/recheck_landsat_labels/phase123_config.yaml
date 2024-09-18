@@ -29,7 +29,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gcs://rslearn-eai/datasets/landsat_vessel_detection/classifier/dataset_20240828/
+    path: gcs://rslearn-eai/datasets/landsat_vessel_detection/classifier/dataset_20240905/
     inputs:
       image:
         data_type: "raster"
@@ -39,6 +39,7 @@ data:
       label:
         data_type: "vector"
         layers: ["label"]
+        is_target: true
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
@@ -50,11 +51,12 @@ data:
               classes: ["correct", "incorrect"]
               allow_invalid: true
               skip_unknown_categories: true
+              prob_property: "prob"
         input_mapping:
           class:
             label: "targets"
-    batch_size: 64
-    num_workers: 32
+    batch_size: 4
+    num_workers: 16
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.normalize.Normalize
@@ -66,32 +68,35 @@ data:
             mode: "center"
             size: 32
         - class_path: rslearn.train.transforms.flip.Flip
-      groups: ["selected"]
+      groups: ["selected", "phase2a_completed", "phase3a"]
     train_config:
       tags:
         split: train
-      sampler:
-        class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
-        init_args:
-          option_key: "weight"
-          num_samples: 1000
+      # sampler:
+      #   class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
+      #   init_args:
+      #     option_key: "weight"
+      #     num_samples: 1000
     val_config:
       tags:
         split: val
     test_config:
       tags:
         split: val
+    predict_config:
+      tags:
+        split: val
 trainer:
-  max_epochs: 100
+  max_epochs: 64
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: gcs://rslearn-eai/datasets/landsat_vessel_detection/classifier/dataset_20240828/
+        path: gcs://rslearn-eai/datasets/landsat_vessel_detection/classifier/dataset_20240905/
         output_layer: output
         selector: ["class"]
 #  limit_train_batches: 64
 rslp_project: rslearn-landsat-recheck
-rslp_experiment: phase1_20240906_02_max_sample
+rslp_experiment: phase123_20240918_03
