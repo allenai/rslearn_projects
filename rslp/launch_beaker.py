@@ -24,13 +24,14 @@ IMAGE_NAME = "favyen/rslearn"
 
 
 def launch_job(
-    config_path: str, workspace: str = DEFAULT_WORKSPACE, username: str | None = None
+    config_path: str, mode: str, workspace: str = DEFAULT_WORKSPACE, username: str | None = None
 ):
     """Launch training for the specified config on Beaker.
 
     Args:
         config_path: the relative path from rslearn_projects/ to the YAML configuration
             file.
+        mode: Mode to run the model ('fit', 'validate', 'test', or 'predict').
         workspace: the Beaker workspace to run the job in.
         username: optional W&B username to associate with the W&B run for this job.
     """
@@ -91,7 +92,7 @@ def launch_job(
             beaker_image=IMAGE_NAME,
             priority=Priority.high,
             command=["python", "-m", "rslp.docker_entrypoint"],
-            arguments=["model", "fit", "--config", config_path, "--autoresume=true"],
+            arguments=["model", mode, "--config", config_path, "--autoresume=true"],
             constraints=Constraints(cluster=["ai2/jupiter-cirrascale-2"]),
             preemptible=True,
             datasets=[
@@ -119,6 +120,14 @@ if __name__ == "__main__":
         required=True,
     )
     parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["fit", "validate", "test", "predict"],
+        help="Mode to run the model ('fit', 'validate', 'test', or 'predict')",
+        required=False,
+        default="fit",
+    )
+    parser.add_argument(
         "--workspace",
         type=str,
         help="Which workspace to run the experiment in",
@@ -131,4 +140,4 @@ if __name__ == "__main__":
         default=None,
     )
     args = parser.parse_args()
-    launch_job(args.config_path, workspace=args.workspace, username=args.username)
+    launch_job(args.config_path, args.mode, workspace=args.workspace, username=args.username)
