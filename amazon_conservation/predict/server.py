@@ -5,21 +5,20 @@ import json
 import math
 import sys
 
-import tqdm
 from flask import Flask, jsonify, send_file
 from upath import UPath
 
 # e.g. gs://rslearn-eai/datasets/forest_loss_driver/prediction/dataset_20240828/
 ds_root = UPath(sys.argv[1])
 port = int(sys.argv[2])
+window_names_fname = sys.argv[3]
 
 group = "default"
 
 # Load example IDs.
 window_dir = ds_root / "windows" / group
-window_names = []
-for window_root in tqdm.tqdm(window_dir.iterdir(), desc="Loading window names"):
-    window_names.append(window_root.name)
+with open(window_names_fname) as f:
+    window_names = json.load(f)
 window_names.sort(
     key=lambda window_name: hashlib.sha256(window_name.encode()).hexdigest()
 )
