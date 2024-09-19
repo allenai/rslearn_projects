@@ -1,6 +1,5 @@
 """Webserver for showing the predictions."""
 
-import hashlib
 import json
 import math
 import sys
@@ -31,9 +30,6 @@ categories = [
 window_dir = ds_root / "windows" / group
 with open(window_names_fname) as f:
     window_names = json.load(f)
-window_names.sort(
-    key=lambda window_name: hashlib.sha256(window_name.encode()).hexdigest()
-)
 
 app = Flask(__name__)
 

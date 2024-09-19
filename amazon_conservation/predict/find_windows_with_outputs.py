@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import multiprocessing
 
@@ -47,6 +48,10 @@ if __name__ == "__main__":
             continue
         window_names.append(window_name)
     p.close()
+
+    window_names.sort(
+        key=lambda window_name: hashlib.sha256(window_name.encode()).hexdigest()
+    )
 
     with open(args.out_fname, "w") as f:
         json.dump(window_names, f)
