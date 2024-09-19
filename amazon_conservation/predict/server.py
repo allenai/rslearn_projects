@@ -14,6 +14,18 @@ port = int(sys.argv[2])
 window_names_fname = sys.argv[3]
 
 group = "default"
+categories = [
+    "agriculture",
+    "mining",
+    "airstrip",
+    "road",
+    "logging",
+    "burned",
+    "landslide",
+    "hurricane",
+    "river",
+    "none",
+]
 
 # Load example IDs.
 window_dir = ds_root / "windows" / group
@@ -69,7 +81,13 @@ def get_example(idx):
         fc = json.load(f)
         props = fc["features"][0]["properties"]
         metadata["label"] = props["new_label"]
-        metadata["prob_str"] = str(props["probs"])
+
+        categories_and_probs = list(zip(categories, props["probs"]))
+        categories_and_probs.sort(key=lambda el: -el[1])
+        parts = []
+        for category, prob in categories_and_probs[0:3]:
+            parts.append(f"{category}: {prob:.2f}")
+        metadata["prob_str"] = "; ".join(parts)
 
     return jsonify(metadata)
 
