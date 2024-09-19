@@ -1,0 +1,48 @@
+{
+	"layers": {
+		"maxar": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "geotiff"}
+			}]
+		},
+		"label": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["label"],
+				"format": {"name": "geotiff"}
+			}]
+		},
+		"output": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["output"],
+				"format": {"name": "geotiff"}
+			}]
+		},
+		"planet": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint16",
+				"bands": ["b01", "b02", "b03", "b04"]
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.planet.Planet",
+				"sort_by": "-clear_percent",
+				"time_offset": "-1095d",
+				"duration": "2190d",
+				"item_type_id": "SkySatCollect",
+				"asset_type_id": "ortho_analytic_sr",
+				"bands": ["b01", "b02", "b03", "b04"]
+			}
+		}
+	},
+	"tile_store": {
+		"name": "file",
+		"root_dir": "tiles"
+	}
+}
