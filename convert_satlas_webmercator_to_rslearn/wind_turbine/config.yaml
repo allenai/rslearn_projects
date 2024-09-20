@@ -5,35 +5,63 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.satlaspretrain.SatlasPretrain
+          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
             init_args:
-              model_identifier: "Sentinel2_SwinB_MI_MS"
-              fpn: true
+              encoder:
+                class_path: rslearn.models.swin.Swin
+                init_args:
+                  pretrained: true
+                  input_channels: 9
+                  output_layers: [1, 3, 5, 7]
+              image_channels: 9
+          - class_path: rslearn.models.fpn.Fpn
+            init_args:
+              in_channels: [128, 256, 512, 1024]
+              out_channels: 128
         decoders:
           detect:
-            - class_path: rslearn.models.pick_features.PickFeatures
-              init_args:
-                indexes: [1, 2, 3, 4]
             - class_path: rslearn.models.faster_rcnn.FasterRCNN
               init_args:
                 downsample_factors: [4, 8, 16, 32]
                 num_channels: 128
                 num_classes: 2
-                anchor_sizes: [[32, 64, 128, 256, 512], [32, 64, 128, 256, 512], [32, 64, 128, 256, 512], [32, 64, 128, 256, 512]]
+                anchor_sizes: [[32], [64], [128], [256]]
     lr: 0.0001
     plateau_factor: 0.1
     plateau_patience: 10
     plateau_min_lr: 0
     plateau_cooldown: 0
+    restore_config:
+      restore_path: https://ai2-public-datasets.s3.amazonaws.com/satlas/satlas-model-v1-lowres-band-multi.pth
+      remap_prefixes:
+        - ["backbone.backbone.backbone.", "encoder.0.encoder.model."]
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
     path: gs://rslearn-eai/datasets/wind_turbine/dataset_v1/live/
     inputs:
-      image:
+      image1:
         data_type: "raster"
         layers: ["sentinel2"]
-        bands: ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A"]
+        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        passthrough: true
+        dtype: INT32
+      image2:
+        data_type: "raster"
+        layers: ["sentinel2.1"]
+        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        passthrough: true
+        dtype: INT32
+      image3:
+        data_type: "raster"
+        layers: ["sentinel2.2"]
+        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        passthrough: true
+        dtype: INT32
+      mask:
+        data_type: "raster"
+        layers: ["mask"]
+        bands: ["mask"]
         passthrough: true
         dtype: INT32
       targets:
@@ -50,6 +78,14 @@ data:
               property_name: "category"
               classes: ["unknown", "turbine"]
               box_size: 15
+              remap_values: [[0, 1], [0, 255]]
+              exclude_by_center: true
+              enable_map_metric: true
+              enable_f1_metric: true
+              f1_metric_kwargs:
+                cmp_mode: "distance"
+                cmp_threshold: 15
+                flatten_classes: true
         input_mapping:
           detect:
             targets: "targets"
@@ -57,32 +93,48 @@ data:
     num_workers: 32
     default_config:
       transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              image1: []
+              image2: []
+              image3: []
+            output_selector: image
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
             mean: 0
-            std: 10000
+            std: 3000
+        - class_path: rslp.transforms.mask.Mask
     train_config:
       patch_size: 256
       transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              image1: []
+              image2: []
+              image3: []
+            output_selector: image
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
             mean: 0
-            std: 10000
-      groups: ["label"]
+            std: 3000
+        - class_path: rslp.transforms.mask.Mask
+      groups: ["label", "naip"]
       tags:
         split: train
     val_config:
       patch_size: 256
-      groups: ["label"]
+      groups: ["label", "naip"]
       tags:
         split: val
     test_config:
       patch_size: 256
-      groups: ["label"]
+      groups: ["label", "naip"]
       tags:
         split: val
     predict_config:
-      groups: ["images"]
+      groups: ["predict"]
       load_all_patches: true
       skip_targets: true
       patch_size: 512
@@ -104,4 +156,4 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 rslp_project: satlas_wind_turbine
-rslp_experiment: debug_20240806_satlaspretrain_patch256_noflip_08
+rslp_experiment: debug_20240806_satlaspretrainold_patch256_noflip_satlasbands3000_3image_02

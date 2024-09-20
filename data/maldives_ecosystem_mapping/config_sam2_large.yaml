@@ -5,14 +5,14 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.satlaspretrain.SatlasPretrain
+          - class_path: rslearn.models.sam2_enc.SAM2Encoder
             init_args:
-              model_identifier: "Aerial_SwinB_SI"
+              model_identifier: "large"
         decoders:
           segment:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
-                in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
+                in_channels: [[4, 144], [8, 288], [16, 576], [32, 1152]]
                 out_channels: 17
                 conv_layers_per_resolution: 2
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -106,4 +106,4 @@ trainer:
         monitor: val_segment/accuracy
         mode: max
 rslp_project: maldives_ecosystem_mapping
-rslp_experiment: maxar_data_20240906_satlaspretrain_flip_crop512_00
+rslp_experiment: maxar_data_20240906_sam2_large_flip_crop512_00

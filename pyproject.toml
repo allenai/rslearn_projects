@@ -31,6 +31,7 @@ extend-select = ["D", "I", "UP"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D"]
 "convert_satlas_webmercator_to_rslearn/**" = ["D"]
+"amazon_conservation/**" = ["D"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
