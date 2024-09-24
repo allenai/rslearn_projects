@@ -17,7 +17,7 @@
       ],
       "data_source": {
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
-        "index_cache_dir": "/Users/ai2/ai2-code/rslearn_projects/sentinel2_feedback/cache/",
+        "index_cache_dir": "/Users/mikej/ai2/rslearn_projects/sentinel2_feedback/cache/",
         "use_rtree_index": false,
         "max_time_delta": "1d",
         "sort_by": "cloud_cover",

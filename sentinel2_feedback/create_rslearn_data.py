@@ -124,11 +124,6 @@ def create_rslearn_data(args: ArgsModel):
             )
             window.save()
 
-            # Populate the sentinel2 layer
-            image_layer_dir = os.path.join(window_root, "layers", "sentinel2", "R_G_B")
-            os.makedirs(image_layer_dir, exist_ok=True)
-            Path(f"{image_layer_dir}/completed").touch()
-
             # Populate the label layer
             label_layer_dir = os.path.join(window_root, "layers", "label")
             os.makedirs(label_layer_dir, exist_ok=True)
