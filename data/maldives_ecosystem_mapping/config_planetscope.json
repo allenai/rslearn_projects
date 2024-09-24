@@ -24,7 +24,7 @@
 				"format": {"name": "geotiff"}
 			}]
 		},
-		"planet": {
+		"planetscope": {
 			"type": "raster",
 			"band_sets": [{
 				"dtype": "uint16",
