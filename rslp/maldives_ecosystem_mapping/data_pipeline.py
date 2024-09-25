@@ -537,7 +537,7 @@ def get_bare_jobs(
         fraction_contained = (
             label_shp.intersection(island_wgs84_shp).area / label_shp.area
         )
-        if fraction_contained < 0.25:
+        if fraction_contained < 0.1:
             continue
         matching_label = label
         break
