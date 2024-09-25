@@ -41,6 +41,9 @@
 				"range_filters": {
 					"cloud_cover": {
 						"lt": 0.3
+					},
+					"clear_percent": {
+						"gt": 0.7
 					}
 				},
 				"query_config": {
