@@ -83,11 +83,21 @@ def handle_window(window_root: UPath):
     # Put bounds file to landsat and mask layers.
     single_image_fnames = window_root.glob("layers/*/*/image.png")
     for fname in single_image_fnames:
+        # Determine the bounds for this image.
+        # B2-B7 are stored at 30 m/pixel instead of 15 m/pixel so we need to update the
+        # bands accordingly.
+        # But B8 and mask are stored at 15 m/pixel (same as window).
+        band_name = fname.parent.name
+        if band_name in ["B2", "B3", "B4", "B5", "B6", "B7"]:
+            cur_bounds = [value // 2 for value in window.bounds]
+        else:
+            cur_bounds = window.bounds
+
         metadata_fname = fname.parent / "metadata.json"
         if metadata_fname.exists():
             continue
         with metadata_fname.open("w") as f:
-            json.dump({"bounds": window.bounds}, f)
+            json.dump({"bounds": cur_bounds}, f)
 
 
 if __name__ == "__main__":
