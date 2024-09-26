@@ -17,14 +17,15 @@ model:
                 conv_layers_per_resolution: 2
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
-    plateau_factor: 0.1
-    plateau_patience: 10
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
     plateau_min_lr: 0
-    plateau_cooldown: 0
+    plateau_cooldown: 10
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240906/
+    path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/
     inputs:
       image:
         data_type: "raster"
@@ -95,7 +96,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240906/
+        path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/
         output_layer: output
         selector: ["segment"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
@@ -106,4 +107,4 @@ trainer:
         monitor: val_segment/accuracy
         mode: max
 rslp_project: maldives_ecosystem_mapping
-rslp_experiment: maxar_data_20240906_satlaspretrain_flip_crop512_00
+rslp_experiment: maxar_data_20240924_satlaspretrain_flip_crop512_00

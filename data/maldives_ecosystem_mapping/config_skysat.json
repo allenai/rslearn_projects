@@ -1,13 +1,5 @@
 {
 	"layers": {
-		"maxar": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["R", "G", "B"],
-				"format": {"name": "geotiff"}
-			}]
-		},
 		"label": {
 			"type": "raster",
 			"band_sets": [{
