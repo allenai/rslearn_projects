@@ -14,7 +14,7 @@ if __name__ == "__main__":
     ds_path = UPath(sys.argv[1])
     out_dir = sys.argv[2]
 
-    metadata_fnames = ds_path.glob("windows/*/*/metadata.json")
+    metadata_fnames = ds_path.glob("windows/default/*/metadata.json")
     window_roots = [fname.parent for fname in metadata_fnames]
 
     for window_root in window_roots:
