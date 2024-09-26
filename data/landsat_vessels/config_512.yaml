@@ -23,6 +23,7 @@ model:
                 num_classes: 2
                 anchor_sizes: [[32], [64], [128], [256]]
     lr: 0.0001
+    plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
     plateau_min_lr: 1e-6
@@ -60,6 +61,7 @@ data:
               classes: ["unknown", "vessel"]
               box_size: 15
               remap_values: [[0, 1], [0, 255]]
+              image_bands: [2, 1, 0]
               exclude_by_center: true
               enable_map_metric: true
               enable_f1_metric: true
@@ -129,4 +131,4 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 rslp_project: landsat_vessels
-rslp_experiment: data_20240924_model_20240924_imagenet_patch512_flip_00
+rslp_experiment: data_20240924_model_20240924_imagenet_patch512_flip_03
