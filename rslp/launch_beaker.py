@@ -24,7 +24,10 @@ IMAGE_NAME = "favyen/rslearn"  # Update image if needed
 
 
 def launch_job(
-    config_path: str, mode: str, workspace: str = DEFAULT_WORKSPACE, username: str | None = None
+    config_path: str,
+    mode: str,
+    workspace: str = DEFAULT_WORKSPACE,
+    username: str | None = None,
 ):
     """Launch training for the specified config on Beaker.
 
@@ -140,4 +143,6 @@ if __name__ == "__main__":
         default=None,
     )
     args = parser.parse_args()
-    launch_job(args.config_path, args.mode, workspace=args.workspace, username=args.username)
+    launch_job(
+        args.config_path, args.mode, workspace=args.workspace, username=args.username
+    )
