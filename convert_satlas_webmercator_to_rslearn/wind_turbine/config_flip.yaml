@@ -27,10 +27,11 @@ model:
                 num_classes: 2
                 anchor_sizes: [[32], [64], [128], [256]]
     lr: 0.0001
-    plateau_factor: 0.1
-    plateau_patience: 10
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
     plateau_min_lr: 0
-    plateau_cooldown: 0
+    plateau_cooldown: 10
     restore_config:
       restore_path: https://ai2-public-datasets.s3.amazonaws.com/satlas/satlas-model-v1-lowres-band-multi.pth
       remap_prefixes:
@@ -160,4 +161,4 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 rslp_project: satlas_wind_turbine
-rslp_experiment: debug_20240806_satlaspretrainold_patch256_noflip_satlasbands3000_3image_flip_01
+rslp_experiment: debug_20240806_newsplits_satlaspretrainold_patch256_noflip_satlasbands3000_3image_flip_02
