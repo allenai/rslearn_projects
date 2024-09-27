@@ -82,7 +82,7 @@ data:
             std: 255
         - class_path: rslp.transforms.mask.Mask
     train_config:
-      patch_size: 256
+      patch_size: 512
       transforms:
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
@@ -96,11 +96,11 @@ data:
       tags:
         split: train
     val_config:
-      patch_size: 256
+      patch_size: 512
       tags:
         split: val
     test_config:
-      patch_size: 256
+      patch_size: 512
       tags:
         split: val
     predict_config:
@@ -131,4 +131,4 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 rslp_project: landsat_vessels
-rslp_experiment: data_20240924_model_20240924_imagenet_patch256_flip_03
+rslp_experiment: data_20240924_model_20240924_imagenet_patch512_flip_03

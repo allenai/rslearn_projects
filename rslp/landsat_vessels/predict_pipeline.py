@@ -13,7 +13,7 @@ from upath import UPath
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
 
 DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
-DETECT_MODEL_CONFIG = "data/landsat_vessels/config_512.yaml"
+DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
 CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase2_config.yaml"
 
 CLASSIFY_WINDOW_SIZE = 64
