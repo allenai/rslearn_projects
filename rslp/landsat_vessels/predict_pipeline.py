@@ -6,19 +6,11 @@ from datetime import datetime
 import rasterio
 import rasterio.features
 import shapely
-from rslearn.dataset import Dataset, Window
-from rslearn.main import (
-    IngestHandler,
-    MaterializeHandler,
-    PrepareHandler,
-    apply_on_windows,
-)
-from rslearn.train.data_module import RslearnDataModule
-from rslearn.train.lightning_module import RslearnLightningModule
+from rslearn.dataset import Window
 from rslearn.utils import Projection
 from upath import UPath
 
-from rslp.lightning_cli import CustomLightningCLI
+from rslp.utils.rslearn import materialize_dataset, run_model_predict
 
 DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config_512.yaml"
@@ -77,44 +69,12 @@ def get_vessel_detections(
         time_range=time_range,
     ).save()
 
-    print("prepare, ingest, materialize")
-    dataset = Dataset(ds_path)
-    apply_on_windows(
-        PrepareHandler(force=False),
-        dataset,
-        workers=1,
-        group=group,
-    )
-    apply_on_windows(
-        IngestHandler(),
-        dataset,
-        workers=1,
-        group=group,
-    )
-    apply_on_windows(
-        MaterializeHandler(),
-        dataset,
-        workers=1,
-        group=group,
-    )
+    print("materialize dataset")
+    materialize_dataset(ds_path, group=group)
     assert (window_path / "layers" / "landsat" / "B8" / "geotiff.tif").exists()
 
     # Run object detector.
-    CustomLightningCLI(
-        model_class=RslearnLightningModule,
-        datamodule_class=RslearnDataModule,
-        args=[
-            "predict",
-            "--config",
-            DETECT_MODEL_CONFIG,
-            "--autoresume=true",
-            "--data.init_args.path",
-            str(ds_path),
-        ],
-        subclass_mode_model=True,
-        subclass_mode_data=True,
-        save_config_kwargs={"overwrite": True},
-    )
+    run_model_predict(DETECT_MODEL_CONFIG, ds_path)
 
     # Read the detections.
     output_fname = window_path / "layers" / "output" / "data.geojson"
@@ -177,45 +137,13 @@ def run_classifier(
         ).save()
         window_paths.append(window_path)
 
-    print("prepare, ingest, materialize")
-    dataset = Dataset(ds_path)
-    apply_on_windows(
-        PrepareHandler(force=False),
-        dataset,
-        workers=1,
-        group=group,
-    )
-    apply_on_windows(
-        IngestHandler(),
-        dataset,
-        workers=1,
-        group=group,
-    )
-    apply_on_windows(
-        MaterializeHandler(),
-        dataset,
-        workers=1,
-        group=group,
-    )
+    print("materialize dataset")
+    materialize_dataset(ds_path, group=group)
     for window_path in window_paths:
         assert (window_path / "layers" / "landsat" / "B8" / "geotiff.tif").exists()
 
     # Run classification model.
-    CustomLightningCLI(
-        model_class=RslearnLightningModule,
-        datamodule_class=RslearnDataModule,
-        args=[
-            "predict",
-            "--config",
-            CLASSIFY_MODEL_CONFIG,
-            "--autoresume=true",
-            "--data.init_args.path",
-            str(ds_path),
-        ],
-        subclass_mode_model=True,
-        subclass_mode_data=True,
-        save_config_kwargs={"overwrite": True},
-    )
+    run_model_predict(CLASSIFY_MODEL_CONFIG, ds_path)
 
     # Read the results.
     good_detections = []
