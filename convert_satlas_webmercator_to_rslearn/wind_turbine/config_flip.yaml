@@ -26,7 +26,7 @@ model:
                 num_channels: 128
                 num_classes: 2
                 anchor_sizes: [[32], [64], [128], [256]]
-    lr: 0.0001
+    lr: 0.00002
     plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
@@ -105,9 +105,10 @@ data:
           init_args:
             mean: 0
             std: 3000
+            valid_range: [0, 3000]
         - class_path: rslp.transforms.mask.Mask
     train_config:
-      patch_size: 256
+      patch_size: 384
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
@@ -120,6 +121,7 @@ data:
           init_args:
             mean: 0
             std: 3000
+            valid_range: [0, 3000]
         - class_path: rslp.transforms.mask.Mask
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
@@ -129,12 +131,12 @@ data:
       tags:
         split: train
     val_config:
-      patch_size: 256
+      patch_size: 384
       groups: ["label", "naip"]
       tags:
         split: val
     test_config:
-      patch_size: 256
+      patch_size: 384
       groups: ["label", "naip"]
       tags:
         split: val
@@ -160,5 +162,9 @@ trainer:
         save_last: true
         monitor: val_detect/mAP
         mode: max
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0, "encoder", "model"]
+        unfreeze_at_epoch: 2
 rslp_project: satlas_wind_turbine
-rslp_experiment: debug_20240806_newsplits_satlaspretrainold_patch256_noflip_satlasbands3000_3image_flip_02
+rslp_experiment: debug_20240806_newsplits_satlaspretrainold_patch256_noflip_satlasbands3000_3image_flip_freeze_00
