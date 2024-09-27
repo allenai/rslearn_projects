@@ -58,7 +58,7 @@ def run_model_predict(model_cfg_fname: str, ds_path: UPath, extra_args: list[str
             "predict",
             "--config",
             model_cfg_fname,
-            "--autoresume=true",
+            "--load_best=true",
             "--data.init_args.path",
             str(ds_path),
         ]
