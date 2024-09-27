@@ -167,4 +167,4 @@ trainer:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 2
 rslp_project: satlas_wind_turbine
-rslp_experiment: debug_20240806_newsplits_satlaspretrainold_patch256_noflip_satlasbands3000_3image_flip_freeze_00
+rslp_experiment: debug_20240806_newsplits_satlaspretrainold_patch256_noflip_satlasbands3000_3image_flip_freeze_01
