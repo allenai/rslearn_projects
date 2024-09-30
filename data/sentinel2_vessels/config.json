@@ -1,0 +1,38 @@
+{
+	"layers": {
+        "sentinel2": {
+            "type": "raster",
+            "band_sets": [{
+                "dtype": "uint8",
+                "bands": ["R", "G", "B"],
+                "format": {"name": "single_image", "format": "png"}
+            }],
+            "data_source": {
+                "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+                "modality": "L1C",
+                "index_cache_dir": "cache/sentinel2",
+                "use_rtree_index": false,
+                "max_time_delta": "1d",
+                "harmonize": true
+            }
+        },
+        "output": {
+            "type": "vector"
+        },
+        "label": {
+            "type": "vector"
+        },
+        "mask": {
+            "type": "raster",
+            "band_sets": [{
+                "dtype": "uint8",
+                "bands": ["mask"],
+                "format": {"name": "single_image", "format": "png"}
+            }]
+        }
+	},
+	"tile_store": {
+		"name": "file",
+		"root_dir": "tiles"
+	}
+}
