@@ -79,7 +79,7 @@ def process_example(
 
     # Label layer.
     features = []
-    with open(os.path.join(label_dir, fname)) as f:
+    with open(os.path.join(label_dir, f"{tile[0]}_{tile[1]}.json")) as f:
         for x1, y1, x2, y2, category in json.load(f):
             geom = STGeometry(projection, shapely.box(x1, y1, x2, y2), None)
             props = dict(category=category)

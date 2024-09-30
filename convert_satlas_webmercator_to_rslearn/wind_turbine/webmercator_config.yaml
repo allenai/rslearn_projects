@@ -77,7 +77,7 @@ data:
             class_path: rslearn.train.tasks.detection.DetectionTask
             init_args:
               property_name: "category"
-              classes: ["unknown", "turbine"]
+              classes: ["unknown", "wind_turbine"]
               box_size: 15
               remap_values: [[0, 1], [0, 255]]
               exclude_by_center: true
@@ -152,4 +152,4 @@ trainer:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 2
 rslp_project: satlas_wind_turbine
-rslp_experiment: data_20240927_satlaspretrainold_patch512_flip_4image_01
+rslp_experiment: data_20240927_satlaspretrainold_patch512_flip_4image_02
