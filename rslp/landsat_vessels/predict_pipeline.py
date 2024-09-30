@@ -6,8 +6,11 @@ from datetime import datetime
 import rasterio
 import rasterio.features
 import shapely
+from numpy import np
+from PIL import Image
+from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection
+from rslearn.utils import Projection, STGeometry
 from upath import UPath
 
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
@@ -23,7 +26,14 @@ CLASSIFY_WINDOW_SIZE = 64
 class VesselDetection:
     """A vessel detected in a Landsat scene."""
 
-    def __init__(self, col: int, row: int, projection: Projection, score: float):
+    def __init__(
+        self,
+        col: int,
+        row: int,
+        projection: Projection,
+        score: float,
+        crop_window_dir: UPath | None = None,
+    ):
         """Create a new VesselDetection.
 
         Args:
@@ -31,11 +41,13 @@ class VesselDetection:
             row: the row in projection coordinates.
             projection: the projection used.
             score: confidence score from object detector.
+            crop_window_dir: the path to the window used for classifying the crop.
         """
         self.col = col
         self.row = row
         self.projection = projection
         self.score = score
+        self.crop_window_dir = crop_window_dir
 
 
 def get_vessel_detections(
@@ -121,6 +133,7 @@ def run_classifier(
     for detection in detections:
         window_name = f"{detection.col}_{detection.row}"
         window_path = ds_path / "windows" / group / window_name
+        detection.crop_window_dir = window_path
         bounds = [
             detection.col - CLASSIFY_WINDOW_SIZE // 2,
             detection.row - CLASSIFY_WINDOW_SIZE // 2,
@@ -159,7 +172,7 @@ def run_classifier(
 
 
 def predict_pipeline(
-    image_files: dict[str, str], scratch_path: str, csv_path: str, crop_path: str
+    image_files: dict[str, str], scratch_path: str, json_path: str, crop_path: str
 ):
     """Run the Landsat vessel prediction pipeline.
 
@@ -171,7 +184,7 @@ def predict_pipeline(
         image_files: map from band name like "B8" to the path of the image. The path
             will be converted to UPath so it can include protocol like gs://...
         scratch_path: directory to use to store temporary dataset.
-        csv_path: path to write the CSV.
+        json_path: path to write vessel detections as JSON file.
         crop_path: path to write the vessel crop images.
     """
     ds_path = UPath(scratch_path)
@@ -201,13 +214,67 @@ def predict_pipeline(
             top = int(raster.transform.f / projection.y_resolution)
             scene_bounds = [left, top, left + raster.width, top + raster.height]
 
+    # Run pipeline.
     detections = get_vessel_detections(ds_path, projection, scene_bounds)
     detections = run_classifier(ds_path, detections)
 
+    # Write JSON and crops.
+    json_path = UPath(json_path)
+    crop_path = UPath(crop_path)
 
-"""
-then run model predict with the vessel detection model (may need to add some object detection post-processing to merge predictions or something; also stride for the patches that we read?).
-then create another dataset of windows based on the vessel positions.
-again run prepare/ingest/materialize (using the LocalFiles data source).
-and then run model predict with the vessel classification model.
-"""
+    json_data = []
+    for idx, detection in enumerate(detections):
+        # Load crops from the window directory.
+        images = {}
+        for band in ["B2", "B3", "B4", "B8"]:
+            image_fname = (
+                detection.crop_window_dir / "layers" / "landsat" / band / "geotiff.tif"
+            )
+            with image_fname.open("rb") as f:
+                with rasterio.open(f) as src:
+                    images[band] = src.read(1)
+
+        # Apply simple pan-sharpening for the RGB.
+        # This is just linearly scaling RGB bands to add up to B8, which is captured at
+        # a higher resolution.
+        for band in ["B2", "B3", "B4"]:
+            images[band + "_sharp"] = images[band].astype(np.int32)
+        total = np.clip(
+            (images["B2_sharp"] + images["B3_sharp"] + images["B4_sharp"]) // 3, 1, 255
+        )
+        for band in ["B2", "B3", "B4"]:
+            images[band + "_sharp"] = np.clip(
+                images[band + "_sharp"] * images["B8"] // total, 0, 255
+            ).astype(np.uint8)
+        rgb = np.stack(
+            [images["B4_sharp"], images["B3_sharp"], images["B2_sharp"]], axis=2
+        )
+
+        rgb_fname = crop_path / f"{idx}_rgb.png"
+        with rgb_fname.open("wb") as f:
+            Image.fromarray(rgb).save(f, format="PNG")
+
+        b8_fname = crop_path / f"{idx}_b8.png"
+        with b8_fname.open("wb") as f:
+            Image.fromarray(images["B8"]).save(f, format="PNG")
+
+        # Get longitude/latitude.
+        src_geom = STGeometry(
+            detection.projection, shapely.Point(detection.col, detection.row), None
+        )
+        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
+        lon = dst_geom.shp.x
+        lat = dst_geom.shp.y
+
+        json_data.append(
+            dict(
+                longitude=lon,
+                latitude=lat,
+                score=detection.score,
+                rgb_fname=rgb_fname,
+                b8_fname=b8_fname,
+            )
+        )
+
+    with json_path.open("w") as f:
+        json.dump(json_data, f)
