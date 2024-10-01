@@ -229,6 +229,108 @@
 				"bands": ["R", "G", "B"],
 				"format": {"name": "single_image", "format": "png"}
 			}]
+		},
+		"planet_pre_0": {
+			"type": "raster",
+			"alias": "planet_basemap",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"},
+				"zoom_offset": 2
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.planet_basemap.Planet",
+				"series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+				"bands": ["R", "G", "B"],
+				"time_offset": "-300d",
+				"duration": "1m"
+			}
+		},
+		"planet_pre_1": {
+			"type": "raster",
+			"alias": "planet_basemap",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"},
+				"zoom_offset": 2
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.planet_basemap.Planet",
+				"series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+				"bands": ["R", "G", "B"],
+				"time_offset": "-331d",
+				"duration": "1m"
+			}
+		},
+		"planet_pre_2": {
+			"type": "raster",
+			"alias": "planet_basemap",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"},
+				"zoom_offset": 2
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.planet_basemap.Planet",
+				"series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+				"bands": ["R", "G", "B"],
+				"time_offset": "-362d",
+				"duration": "1m"
+			}
+		},
+		"planet_post_0": {
+			"type": "raster",
+			"alias": "planet_basemap",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"},
+				"zoom_offset": 2
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.planet_basemap.Planet",
+				"series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+				"bands": ["R", "G", "B"],
+				"time_offset": "7d",
+				"duration": "1m"
+			}
+		},
+		"planet_post_1": {
+			"type": "raster",
+			"alias": "planet_basemap",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"},
+				"zoom_offset": 2
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.planet_basemap.Planet",
+				"series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+				"bands": ["R", "G", "B"],
+				"time_offset": "38d",
+				"duration": "1m"
+			}
+		},
+		"planet_post_2": {
+			"type": "raster",
+			"alias": "planet_basemap",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "single_image", "format": "png"},
+				"zoom_offset": 2
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.planet_basemap.Planet",
+				"series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+				"bands": ["R", "G", "B"],
+				"time_offset": "69d",
+				"duration": "1m"
+			}
 		}
 	},
 	"tile_store": {

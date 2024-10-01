@@ -92,7 +92,7 @@ def get_image_fname(example_id, band, image_idx):
     if band == "mask":
         return "layers/mask/mask/image.png"
     if "planet" in band:
-        return f"layers/{band}_{image_idx+1}/R_G_B/image.png"
+        return f"layers/{band}_{image_idx}/R_G_B/image.png"
     return f"layers/best_{band}_{image_idx}/R_G_B/image.png"
 
 
