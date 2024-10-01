@@ -9,15 +9,20 @@ import shapely
 from numpy import np
 from PIL import Image
 from rslearn.const import WGS84_PROJECTION
-from rslearn.dataset import Window
+from rslearn.data_sources import data_source_from_config
+from rslearn.data_sources.aws_landsat import LandsatOliTirs
+from rslearn.dataset import Dataset, Window
 from rslearn.utils import Projection, STGeometry
+from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from upath import UPath
 
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
 
-DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
+LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
+AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
 CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase2_config.yaml"
+LANDSAT_RESOLUTION = 15
 
 CLASSIFY_WINDOW_SIZE = 64
 """The size of windows expected by the classifier."""
@@ -127,6 +132,10 @@ def run_classifier(
     Returns:
         the subset of detections that pass the classifier.
     """
+    # Avoid error materializing empty group.
+    if len(detections) == 0:
+        return []
+
     # Create windows for applying classifier.
     group = "classify_predict"
     window_paths: list[UPath] = []
@@ -172,7 +181,11 @@ def run_classifier(
 
 
 def predict_pipeline(
-    image_files: dict[str, str], scratch_path: str, json_path: str, crop_path: str
+    scratch_path: str,
+    json_path: str,
+    crop_path: str,
+    image_files: dict[str, str] | None = None,
+    scene_id: str | None = None,
 ):
     """Run the Landsat vessel prediction pipeline.
 
@@ -181,38 +194,65 @@ def predict_pipeline(
     along with crops of each detection.
 
     Args:
-        image_files: map from band name like "B8" to the path of the image. The path
-            will be converted to UPath so it can include protocol like gs://...
         scratch_path: directory to use to store temporary dataset.
         json_path: path to write vessel detections as JSON file.
         crop_path: path to write the vessel crop images.
+        image_files: map from band name like "B8" to the path of the image. The path
+            will be converted to UPath so it can include protocol like gs://...
+        scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
+            specified.
     """
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
 
-    # Setup the dataset configuration file with the provided image files.
-    with open(DATASET_CONFIG) as f:
-        cfg = json.load(f)
-    item_spec = {
-        "fnames": [],
-        "bands": [],
-    }
-    for band, image_path in image_files.items():
-        cfg["src_dir"] = str(UPath(image_path).parent)
-        item_spec["fnames"].append(image_path)
-        item_spec["bands"].append([band])
-    cfg["layers"]["landsat"]["data_source"]["item_specs"] = [item_spec]
+    if image_files:
+        # Setup the dataset configuration file with the provided image files.
+        with open(LOCAL_FILES_DATASET_CONFIG) as f:
+            cfg = json.load(f)
+        item_spec = {
+            "fnames": [],
+            "bands": [],
+        }
+        for band, image_path in image_files.items():
+            cfg["src_dir"] = str(UPath(image_path).parent)
+            item_spec["fnames"].append(image_path)
+            item_spec["bands"].append([band])
+        cfg["layers"]["landsat"]["data_source"]["item_specs"] = [item_spec]
 
-    with (ds_path / "config.json").open("w") as f:
-        json.dump(cfg, f)
+        with (ds_path / "config.json").open("w") as f:
+            json.dump(cfg, f)
 
-    # Get the projection and scene bounds from the B8 image.
-    with UPath(image_files["B8"]).open("rb") as f:
-        with rasterio.open(f) as raster:
-            projection = Projection(raster.crs, raster.transform.a, raster.transform.e)
-            left = int(raster.transform.c / projection.x_resolution)
-            top = int(raster.transform.f / projection.y_resolution)
-            scene_bounds = [left, top, left + raster.width, top + raster.height]
+        # Get the projection and scene bounds from the B8 image.
+        with UPath(image_files["B8"]).open("rb") as f:
+            with rasterio.open(f) as raster:
+                projection = Projection(
+                    raster.crs, raster.transform.a, raster.transform.e
+                )
+                left = int(raster.transform.c / projection.x_resolution)
+                top = int(raster.transform.f / projection.y_resolution)
+                scene_bounds = [left, top, left + raster.width, top + raster.height]
+
+    else:
+        with open(AWS_DATASET_CONFIG) as f:
+            cfg = json.load(f)
+        with (ds_path / "config.json").open("w") as f:
+            json.dump(cfg, f)
+
+        # Get the projection and scene bounds using the Landsat data source.
+        dataset = Dataset(ds_path)
+        data_source: LandsatOliTirs = data_source_from_config(
+            dataset.layers["landsat"], dataset.path
+        )
+        item = data_source.get_item_by_name(scene_id)
+        wgs84_geom = item.geometry.to_projection(WGS84_PROJECTION)
+        projection = get_utm_ups_projection(
+            wgs84_geom.shp.centroid.x,
+            wgs84_geom.shp.centroid.y,
+            LANDSAT_RESOLUTION,
+            -LANDSAT_RESOLUTION,
+        )
+        dst_geom = item.geometry.to_projection(projection)
+        scene_bounds = [int(value) for value in dst_geom.bounds]
 
     # Run pipeline.
     detections = get_vessel_detections(ds_path, projection, scene_bounds)
@@ -271,8 +311,8 @@ def predict_pipeline(
                 longitude=lon,
                 latitude=lat,
                 score=detection.score,
-                rgb_fname=rgb_fname,
-                b8_fname=b8_fname,
+                rgb_fname=str(rgb_fname),
+                b8_fname=str(b8_fname),
             )
         )
 
