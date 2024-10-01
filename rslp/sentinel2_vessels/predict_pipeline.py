@@ -4,12 +4,14 @@ import json
 import shutil
 from datetime import datetime, timedelta
 
+import rasterio
 import shapely
+from PIL import Image
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import data_source_from_config
 from rslearn.data_sources.gcp_public_data import Sentinel2
 from rslearn.dataset import Dataset, Window
-from rslearn.utils import Projection
+from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from upath import UPath
 
@@ -18,6 +20,7 @@ from rslp.utils.rslearn import materialize_dataset, run_model_predict
 DATASET_CONFIG = "data/sentinel2_vessels/config.json"
 DETECT_MODEL_CONFIG = "data/sentinel2_vessels/config.yaml"
 SENTINEL2_RESOLUTION = 10
+CROP_WINDOW_SIZE = 64
 
 
 class VesselDetection:
@@ -73,8 +76,8 @@ def get_vessel_detections(
     ).save()
 
     print("materialize dataset")
-    materialize_dataset(ds_path, group=group)
-    assert (window_path / "layers" / "sentinel2" / "B02" / "geotiff.tif").exists()
+    materialize_dataset(ds_path, group=group, workers=1)
+    assert (window_path / "layers" / "sentinel2" / "R_G_B" / "geotiff.tif").exists()
 
     # Run object detector.
     run_model_predict(DETECT_MODEL_CONFIG, ds_path)
@@ -102,7 +105,7 @@ def get_vessel_detections(
     return detections
 
 
-def predict_pipeline(scene_id: str, scratch_path: str, csv_path: str, crop_path: str):
+def predict_pipeline(scene_id: str, scratch_path: str, json_path: str, crop_path: str):
     """Run the Sentinel-2 vessel prediction pipeline.
 
     Given a Sentinel-2 scene ID, the pipeline produces the vessel detections.
@@ -112,7 +115,7 @@ def predict_pipeline(scene_id: str, scratch_path: str, csv_path: str, crop_path:
     Args:
         scene_id: the Sentinel-2 scene ID.
         scratch_path: directory to use to store temporary dataset.
-        csv_path: path to write the CSV.
+        json_path: path to write the JSON of vessel detections.
         crop_path: path to write the vessel crop images.
     """
     ds_path = UPath(scratch_path)
@@ -138,10 +141,70 @@ def predict_pipeline(scene_id: str, scratch_path: str, csv_path: str, crop_path:
         -SENTINEL2_RESOLUTION,
     )
     dst_geom = item.geometry.to_projection(projection)
-    bounds = [int(value) for value in dst_geom.bounds]
+    bounds = [int(value) for value in dst_geom.shp.bounds]
+    ts = item.geometry.time_range[0]
 
-    detections = get_vessel_detections(
-        ds_path, projection, bounds, item.geometry.time_range[0]
-    )
+    detections = get_vessel_detections(ds_path, projection, bounds, ts)
 
-    print(detections)
+    # Create windows just to collect crops for each detection.
+    group = "crops"
+    window_paths: list[UPath] = []
+    for detection in detections:
+        window_name = f"{detection.col}_{detection.row}"
+        window_path = ds_path / "windows" / group / window_name
+        detection.crop_window_dir = window_path
+        bounds = [
+            detection.col - CROP_WINDOW_SIZE // 2,
+            detection.row - CROP_WINDOW_SIZE // 2,
+            detection.col + CROP_WINDOW_SIZE // 2,
+            detection.row + CROP_WINDOW_SIZE // 2,
+        ]
+        Window(
+            path=window_path,
+            group=group,
+            name=window_name,
+            projection=detection.projection,
+            bounds=bounds,
+            time_range=(ts - timedelta(minutes=20), ts + timedelta(minutes=20)),
+        ).save()
+        window_paths.append(window_path)
+    if len(detections) > 0:
+        materialize_dataset(ds_path, group=group, workers=4)
+
+    # Write JSON and crops.
+    json_path = UPath(json_path)
+    crop_path = UPath(crop_path)
+    json_data = []
+    for detection, crop_window_path in zip(detections, window_paths):
+        # Get RGB crop.
+        image_fname = (
+            crop_window_path / "layers" / "sentinel2" / "R_G_B" / "geotiff.tif"
+        )
+        with image_fname.open("rb") as f:
+            with rasterio.open(f) as src:
+                image = src.read()
+        crop_fname = crop_path / f"{detection.col}_{detection.row}.png"
+        with crop_fname.open("wb") as f:
+            Image.fromarray(image.transpose(1, 2, 0)).save(f, format="PNG")
+
+        # Get longitude/latitude.
+        src_geom = STGeometry(
+            detection.projection, shapely.Point(detection.col, detection.row), None
+        )
+        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
+        lon = dst_geom.shp.x
+        lat = dst_geom.shp.y
+
+        json_data.append(
+            dict(
+                longitude=lon,
+                latitude=lat,
+                score=detection.score,
+                ts=detection.ts.isoformat(),
+                scene_id=scene_id,
+                crop_fname=str(crop_fname),
+            )
+        )
+
+    with json_path.open("w") as f:
+        json.dump(json_data, f)
