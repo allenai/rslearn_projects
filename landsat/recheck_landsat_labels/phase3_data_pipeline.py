@@ -16,21 +16,21 @@ dataset = Dataset(dst_path)
 apply_on_windows(
     PrepareHandler(force=False),
     dataset,
-    workers=8,
-    group="phase3a",
+    workers=16,
+    group="phase3a_selected",
 )
 apply_on_windows(
     IngestHandler(),
     dataset,
-    workers=8,
+    workers=16,
     use_initial_job=False,
     jobs_per_process=1,
-    group="phase3a",
+    group="phase3a_selected",
 )
 apply_on_windows(
     MaterializeHandler(),
     dataset,
-    workers=8,
+    workers=16,
     use_initial_job=False,
-    group="phase3a",
+    group="phase3a_selected",
 )

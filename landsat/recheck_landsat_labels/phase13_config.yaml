@@ -55,8 +55,8 @@ data:
         input_mapping:
           class:
             label: "targets"
-    batch_size: 32
-    num_workers: 32
+    batch_size: 4
+    num_workers: 16
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.normalize.Normalize
@@ -68,15 +68,15 @@ data:
             mode: "center"
             size: 32
         - class_path: rslearn.train.transforms.flip.Flip
-      groups: ["selected", "phase2a_completed", "phase3a_selected"]
+      groups: ["selected", "phase3a"]
     train_config:
       tags:
         split: train
-      sampler:
-        class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
-        init_args:
-          option_key: "weight"
-          num_samples: 1000
+      # sampler:
+      #   class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
+      #   init_args:
+      #     option_key: "weight"
+      #     num_samples: 1000
     val_config:
       tags:
         split: val
@@ -84,6 +84,7 @@ data:
       tags:
         split: val
     predict_config:
+      # groups: ["phase2a_completed"]
       tags:
         split: val
 trainer:
@@ -99,4 +100,4 @@ trainer:
         selector: ["class"]
 #  limit_train_batches: 64
 rslp_project: rslearn-landsat-recheck
-rslp_experiment: phase123_20240919_00
+rslp_experiment: phase13_20240918_00

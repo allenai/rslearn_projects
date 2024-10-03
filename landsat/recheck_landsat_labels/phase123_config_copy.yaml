@@ -68,22 +68,26 @@ data:
             mode: "center"
             size: 32
         - class_path: rslearn.train.transforms.flip.Flip
-      groups: ["selected", "phase2a_completed", "phase3a_selected"]
+      groups: ["selected", "phase2a_completed", "phase3a_selected"]  # "phase3a"
+      # selected_copy -> all train
     train_config:
       tags:
         split: train
-      sampler:
-        class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
-        init_args:
-          option_key: "weight"
-          num_samples: 1000
+      # sampler:
+      #   class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
+      #   init_args:
+      #     option_key: "weight"
+      #     num_samples: 5000
     val_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
     test_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
     predict_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
 trainer:
@@ -99,4 +103,8 @@ trainer:
         selector: ["class"]
 #  limit_train_batches: 64
 rslp_project: rslearn-landsat-recheck
-rslp_experiment: phase123_20240919_00
+rslp_experiment: phase123_20240919_01_copy
+# phase123_20240919_01_copy
+# phase123_20241002_04_copy - batch_size -> 128
+# copy means only evaluate on Paige's annotations
+# selected_copy -> with train/val split, selected only train

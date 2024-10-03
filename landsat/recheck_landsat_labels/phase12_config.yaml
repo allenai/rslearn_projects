@@ -55,8 +55,8 @@ data:
         input_mapping:
           class:
             label: "targets"
-    batch_size: 8
-    num_workers: 8
+    batch_size: 32
+    num_workers: 32
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.normalize.Normalize
@@ -72,11 +72,11 @@ data:
     train_config:
       tags:
         split: train
-      sampler:
-        class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
-        init_args:
-          option_key: "weight"
-          num_samples: 1000
+      # sampler:
+      #   class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
+      #   init_args:
+      #     option_key: "weight"
+      #     num_samples: 1000
     val_config:
       tags:
         split: val
@@ -87,7 +87,7 @@ data:
       tags:
         split: val
 trainer:
-  max_epochs: 1
+  max_epochs: 64
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -99,4 +99,4 @@ trainer:
         selector: ["class"]
 #  limit_train_batches: 64
 rslp_project: rslearn-landsat-recheck
-rslp_experiment: phase12_20240916_01
+rslp_experiment: phase12_20240919_00
