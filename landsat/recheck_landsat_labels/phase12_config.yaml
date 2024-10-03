@@ -68,22 +68,25 @@ data:
             mode: "center"
             size: 32
         - class_path: rslearn.train.transforms.flip.Flip
-      groups: ["selected", "phase2a_completed"]
+      groups: ["selected_copy", "phase2a_completed"]
     train_config:
       tags:
         split: train
-      # sampler:
-      #   class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
-      #   init_args:
-      #     option_key: "weight"
-      #     num_samples: 1000
+      sampler:
+        class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
+        init_args:
+          option_key: "weight"
+          num_samples: 1000
     val_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
     test_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
     predict_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
 trainer:
@@ -99,4 +102,4 @@ trainer:
         selector: ["class"]
 #  limit_train_batches: 64
 rslp_project: rslearn-landsat-recheck
-rslp_experiment: phase12_20240919_00
+rslp_experiment: phase12_20240919_01_copy

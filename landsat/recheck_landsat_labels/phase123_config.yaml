@@ -55,7 +55,7 @@ data:
         input_mapping:
           class:
             label: "targets"
-    batch_size: 32
+    batch_size: 64
     num_workers: 32
     default_config:
       transforms:
@@ -68,7 +68,7 @@ data:
             mode: "center"
             size: 32
         - class_path: rslearn.train.transforms.flip.Flip
-      groups: ["selected", "phase2a_completed", "phase3a_selected"]
+      groups: ["selected_copy", "phase2a_completed", "phase3a_selected"]
     train_config:
       tags:
         split: train
@@ -78,12 +78,15 @@ data:
           option_key: "weight"
           num_samples: 1000
     val_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
     test_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
     predict_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
 trainer:
@@ -99,4 +102,4 @@ trainer:
         selector: ["class"]
 #  limit_train_batches: 64
 rslp_project: rslearn-landsat-recheck
-rslp_experiment: phase123_20240919_00
+rslp_experiment: phase123_20240919_01_copy

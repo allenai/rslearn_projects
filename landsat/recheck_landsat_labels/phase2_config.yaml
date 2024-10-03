@@ -53,8 +53,8 @@ data:
         input_mapping:
           class:
             label: "targets"
-    batch_size: 32  # 64
-    num_workers: 16  # 32
+    batch_size: 64
+    num_workers: 32
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.normalize.Normalize

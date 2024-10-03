@@ -46,3 +46,13 @@ So in the new Phase 2, we add some vessel detections and annotate those.
 
 - `phase2_get_3000.py`: get 3K/780K detections from those Patrick sent. Unlike Phase 1,
   we need to ingest/materialize the images with rslearn.
+
+
+Phase 3
+-------
+
+The model trained with Phases 1 \& 2 still struggles with false positives caused by icebergs, clouds, whitecaps, islands, etc. 
+
+In Phase 3, we aim to improve ML model by adding machine-annotated samples. These samples were chosen from frames containing only false positives (FPs) and with very high density of FPs. A total of 14 frames were selected, covering different latitudes and longitudes, and different FP types (icebergs, clouds, whitecaps). 
+
+- `phase3_get_700.py`: get about 750 detections from those 14 frames. For each frame, we randomly selected about 50 samples to reduce redundant samples. 

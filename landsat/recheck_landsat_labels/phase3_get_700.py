@@ -3,7 +3,6 @@
 import csv
 import json
 import os
-import random
 from datetime import datetime, timedelta, timezone
 from upath import UPath
 
@@ -15,8 +14,8 @@ from rslearn.utils.get_utm_ups_crs import get_utm_ups_crs
 
 import re
 
-in_fname = "/home/yawenz/ml_detections/detections_selected.csv"
-out_ds_dir = "/home/yawenz/ml_detections/"
+in_fname = "phase3_selected.csv"
+out_ds_dir = "./"
 out_ds_dir = UPath(out_ds_dir)
 out_group = "phase3a_selected"
 
@@ -26,9 +25,6 @@ with open(in_fname) as f:
     for idx, csv_row in enumerate(reader):
         lon = float(csv_row["lon"])
         lat = float(csv_row["lat"])
-        # ts = datetime.fromisoformat(csv_row["timestamp"])
-        # if not ts.tzinfo:
-        #     ts = ts.replace(tzinfo=timezone.utc)
         # get UTC date
         scene_id = csv_row["scene_id"]
         date_str = re.search(r'(\d{8})', scene_id).group(1)
@@ -52,8 +48,7 @@ for idx, lon, lat, ts in selected:
         int(dst_geom.shp.y) + 32,
     ]
 
-    # time_range = (ts - timedelta(minutes=20), ts + timedelta(minutes=20))
-    # update to UTC 00:00 to 23:59
+    # Update to UTC 00:00 to 23:59
     start_time = ts.replace(hour=0, minute=0, second=0, microsecond=0)
     end_time = ts.replace(hour=23, minute=59, second=59, microsecond=999999)
     time_range = (start_time, end_time)
@@ -64,14 +59,11 @@ for idx, lon, lat, ts in selected:
     url = f"https://apps.sentinel-hub.com/eo-browser/?zoom=16&lat={lat}&lng={lon}&fromTime={from_time}&toTime={to_time}&datasetId=AWS_LOTL1&layerId=2_TRUE_COLOR_PANSHARPENED"
 
     window_name = f"vessel_{idx}"
-    # window_root = os.path.join(out_ds_dir, "windows", out_group, window_name)
     window_root = out_ds_dir / "windows" / out_group / window_name
     os.makedirs(window_root, exist_ok=True)
 
-    # split = "train" if random.random() < 0.7 else "val"
-
     window = Window(
-        path=window_root,  # file_api=LocalFileAPI(window_root)
+        path=window_root,
         group=out_group,
         name=window_name,
         projection=dst_projection,
