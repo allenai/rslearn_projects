@@ -1,4 +1,5 @@
-# Data pipeline for landsat phase3 (machine annotations)
+"""Data pipeline for landsat phase3_selected."""
+
 from rslearn.dataset import Dataset
 from rslearn.main import (
     IngestHandler,
@@ -7,7 +8,6 @@ from rslearn.main import (
     apply_on_windows,
 )
 from upath import UPath
-
 
 dst_path = "/home/yawenz/ml_detections/"
 dst_path = UPath(dst_path)

@@ -1,21 +1,20 @@
-"""Get a sample of 6000 vessel labels."""
+"""Get a sample of ~700 vessel labels."""
 
 import csv
 import json
 import os
-from datetime import datetime, timedelta, timezone
-from upath import UPath
+import re
+from datetime import datetime, timezone
 
 import shapely
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_crs
-
-import re
+from upath import UPath
 
 in_fname = "phase3_selected.csv"
-out_ds_dir = "./"
+out_ds_dir = "/home/yawenz/ml_detections/"
 out_ds_dir = UPath(out_ds_dir)
 out_group = "phase3a_selected"
 
@@ -27,10 +26,9 @@ with open(in_fname) as f:
         lat = float(csv_row["lat"])
         # get UTC date
         scene_id = csv_row["scene_id"]
-        date_str = re.search(r'(\d{8})', scene_id).group(1)
+        date_str = re.search(r"(\d{8})", scene_id).group(1)
         ts = datetime.strptime(date_str, "%Y%m%d").replace(tzinfo=timezone.utc)
         candidates.append((idx, lon, lat, ts))
-# select 6K samples
 selected = candidates
 
 for idx, lon, lat, ts in selected:
