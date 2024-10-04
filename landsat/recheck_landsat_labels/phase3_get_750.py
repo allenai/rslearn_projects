@@ -13,8 +13,10 @@ from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_crs
 from upath import UPath
 
-in_fname = "phase3_selected.csv"
-out_ds_dir = "/home/yawenz/ml_detections/"
+in_fname = "phase3a_selected.csv"
+out_ds_dir = (
+    "gcs://rslearn-eai/datasets/landsat_vessel_detection/classifier/dataset_20240905/"
+)
 out_ds_dir = UPath(out_ds_dir)
 out_group = "phase3a_selected"
 
@@ -67,7 +69,7 @@ for idx, lon, lat, ts in selected:
         projection=dst_projection,
         bounds=bounds,
         time_range=time_range,
-        options={"split": "train"},
+        options={"split": "train", "weight": 1},
     )
     window.save()
 

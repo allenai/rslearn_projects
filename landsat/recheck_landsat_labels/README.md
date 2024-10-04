@@ -51,8 +51,8 @@ So in the new Phase 2, we add some vessel detections and annotate those.
 Phase 3
 -------
 
-The model trained with Phases 1 \& 2 still struggles with false positives caused by icebergs, clouds, whitecaps, islands, etc. 
+The model trained with Phase 1 \& 2 still struggles with false positives caused by icebergs, clouds, whitecaps, islands, etc, even after we increased the probability threshold for correct. 
 
 In Phase 3, we aim to improve ML model by adding machine-annotated samples. These samples were chosen from frames containing only false positives (FPs) and with very high density of FPs. A total of 14 frames were selected, covering different latitudes and longitudes, and different FP types (icebergs, clouds, whitecaps). 
 
-- `phase3_get_700.py`: get about 750 detections from those 14 frames. For each frame, we randomly selected about 50 samples to reduce redundant samples. 
+- `phase3_get_750.py`: get about 750 detections from those 14 frames. For each frame, we randomly selected about 50 samples. 
