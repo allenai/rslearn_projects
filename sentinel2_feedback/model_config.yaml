@@ -25,7 +25,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /Users/mikej/ai2/rslearn_projects/sentinel2_feedback/rslearn_data
+    path: /home/mikej/rslearn_projects/sentinel2_feedback/joe_rslearn_data
     inputs:
       image:
         data_type: "raster"
@@ -64,4 +64,4 @@ trainer:
     init_args:
       logging_interval: "epoch"
 rslp_project: sentinel2_feedback
-rslp_experiment: sentinel2_20240903_experiment1
+rslp_experiment: sentinel2_20241006_joe_data

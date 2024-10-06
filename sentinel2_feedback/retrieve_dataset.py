@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 class ArgsModel(BaseModel):
     token: str
     feedback_csv: str
-    chips_dir: str
     output_csv: str
 
 
@@ -84,7 +83,7 @@ def process_events(args: ArgsModel, session: requests.Session):
     with open(args.feedback_csv, mode="r") as file:
         reader = csv.DictReader(file)
         with open(args.output_csv, mode="w", newline="") as output_file:
-            fieldnames = ["event_id", "label", "lat", "lon", "chip_path", "time"]
+            fieldnames = ["event_id", "label", "lat", "lon", "time"]
             writer = csv.DictWriter(output_file, fieldnames=fieldnames)
             writer.writeheader()
 
@@ -99,7 +98,7 @@ def process_events(args: ArgsModel, session: requests.Session):
                         raise Exception(f"No data found for event {event_id}")
 
                     # Download the chip and get the local path
-                    chip_path = download_chip(args, event_data)
+                    # chip_path = download_chip(args, event_data)
 
                     # Extract label and coordinates
                     label = row["value"]
@@ -112,13 +111,14 @@ def process_events(args: ArgsModel, session: requests.Session):
                             "label": label,
                             "lat": point["lat"],
                             "lon": point["lon"],
-                            "chip_path": chip_path,
+                            # "chip_path": chip_path,
                             "time": event_data["start"]["time"],
                         }
                     )
                 except Exception as e:
                     print(f"Failed to process event {event_id}: {e}")
-                    raise e
+                    # raise e
+                    continue
 
 
 if __name__ == "__main__":
@@ -136,12 +136,6 @@ if __name__ == "__main__":
         help="CSV file containing event eo_sentinel2 event ids and feedback labels.",
     )
     parser.add_argument(
-        "--chips_dir",
-        type=str,
-        required=True,
-        help="Directory where to store the chips.",
-    )
-    parser.add_argument(
         "--output_csv",
         type=str,
         required=True,
@@ -150,5 +144,5 @@ if __name__ == "__main__":
     parsed_args = parser.parse_args()
     args = ArgsModel(**vars(parsed_args))  # convert parsed args to pydantic model
 
-    os.makedirs(args.chips_dir, exist_ok=True)
+    # os.makedirs(args.chips_dir, exist_ok=True)
     process_events(args, session)

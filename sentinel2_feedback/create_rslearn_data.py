@@ -44,7 +44,6 @@ class Record(BaseModel):
     label: str
     lat: float
     lon: float
-    chip_path: str
     time: str
 
 
