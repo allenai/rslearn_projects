@@ -1,12 +1,12 @@
 """Landsat vessel prediction pipeline."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
+import numpy as np
 import rasterio
 import rasterio.features
 import shapely
-from numpy import np
 from PIL import Image
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import data_source_from_config
@@ -21,7 +21,7 @@ from rslp.utils.rslearn import materialize_dataset, run_model_predict
 LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
 AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
-CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase2_config.yaml"
+CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase123_config.yaml"
 LANDSAT_RESOLUTION = 15
 
 CLASSIFY_WINDOW_SIZE = 64
@@ -173,7 +173,7 @@ def run_classifier(
         output_fname = window_path / "layers" / "output" / "data.geojson"
         with output_fname.open() as f:
             feature_collection = json.load(f)
-        category = feature_collection[0]["properties"]["label"]
+        category = feature_collection["features"][0]["properties"]["label"]
         if category == "correct":
             good_detections.append(detection)
 
@@ -232,6 +232,8 @@ def predict_pipeline(
                 top = int(raster.transform.f / projection.y_resolution)
                 scene_bounds = [left, top, left + raster.width, top + raster.height]
 
+        time_range = None
+
     else:
         with open(AWS_DATASET_CONFIG) as f:
             cfg = json.load(f)
@@ -252,11 +254,17 @@ def predict_pipeline(
             -LANDSAT_RESOLUTION,
         )
         dst_geom = item.geometry.to_projection(projection)
-        scene_bounds = [int(value) for value in dst_geom.bounds]
+        scene_bounds = [int(value) for value in dst_geom.shp.bounds]
+        time_range = (
+            dst_geom.time_range[0] - timedelta(minutes=30),
+            dst_geom.time_range[1] + timedelta(minutes=30),
+        )
 
     # Run pipeline.
-    detections = get_vessel_detections(ds_path, projection, scene_bounds)
-    detections = run_classifier(ds_path, detections)
+    detections = get_vessel_detections(
+        ds_path, projection, scene_bounds, time_range=time_range
+    )
+    detections = run_classifier(ds_path, detections, time_range=time_range)
 
     # Write JSON and crops.
     json_path = UPath(json_path)
@@ -278,7 +286,9 @@ def predict_pipeline(
         # This is just linearly scaling RGB bands to add up to B8, which is captured at
         # a higher resolution.
         for band in ["B2", "B3", "B4"]:
-            images[band + "_sharp"] = images[band].astype(np.int32)
+            sharp = images[band].astype(np.int32)
+            sharp = sharp.repeat(repeats=2, axis=0).repeat(repeats=2, axis=1)
+            images[band + "_sharp"] = sharp
         total = np.clip(
             (images["B2_sharp"] + images["B3_sharp"] + images["B4_sharp"]) // 3, 1, 255
         )
