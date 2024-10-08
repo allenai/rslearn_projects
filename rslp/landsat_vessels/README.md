@@ -1,8 +1,29 @@
 Landsat Vessel Detection
 ------------------------
 
-TODO
+This detects vessels in Landsat imagery using two models:
 
+1.  An object detector that detects fixed-size bounding boxes corresponding to vessels.
+2.  A classifier that inputs small crops centered at detected vessels, and predicts
+ whether the vessel is correct or not.
+
+
+Training
+--------
+
+The object detector can be trained like this:
+
+    python -m rslp.rslearn_main model fit --config data/landsat_vessels/config.yaml
+
+The dataset was originally labeled in siv and has been converted to rslearn dataset
+using the code in `landsat/existing_dataset_to_utm/`.
+
+The classifier can be trained like this:
+
+    python -m rslp.rslearn_main model fit --config landsat/recheck_landsat_labels/phase123_config.yaml
+
+The data collection process for the classifier is described in
+`landsat/recheck_landsat_labels/README.md`.
 
 
 Prediction Pipeline
@@ -15,13 +36,13 @@ Then create a configuration file for the prediction pipeline, here is an example
 ```json
 {
     "image_files": {
-	"B2": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B2.TIF",
-	"B3": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B3.TIF",
-	"B4": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B4.TIF",
-	"B5": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B5.TIF",
-	"B6": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B6.TIF",
-	"B7": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B7.TIF",
-	"B8": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B8.TIF",
+    "B2": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B2.TIF",
+    "B3": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B3.TIF",
+    "B4": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B4.TIF",
+    "B5": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B5.TIF",
+    "B6": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B6.TIF",
+    "B7": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B7.TIF",
+    "B8": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B8.TIF",
     },
     "scratch_path": "/home/favyenb/landsat_vessels_test_data/scratch/",
     "csv_path": "/home/favyenb/landsat_vessels_test_data/out/vessels.csv",
@@ -36,6 +57,6 @@ Now we can run the pipeline:
 
     python -m rslp.main landsat_vessels predict_pipeline --config /path/to/config.json
 
-Status:
-* Currently only the detector is working. The classifier will fail.
-* And really the detector isn't performing very well.
+Alternatively, run it with a Landsat scene ID (to be fetched from AWS):
+
+    python -m rslp.main landsat_vessels predict_pipeline --scene_id LC09_L1GT_106084_20241002_20241002_02_T2 /path/to/scratch/ /path/to/vessels.json /path/to/crops/
