@@ -1,2 +1,7 @@
 beaker-py
 python-dotenv
+uvicorn
+fastapi
+pydantic
+typing-extensions
+ruff

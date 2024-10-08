@@ -28,8 +28,12 @@ from rslearn.utils.raster_format import SingleImageRasterFormat
 from rslearn.utils.vector_format import GeojsonVectorFormat
 
 if __name__ == "__main__":
-    json_fname = "/multisat/datasets/dvim/train_outputs/2024-07-30_0.5/20240811_annotations.json"
-    big_crop_dir = "/multisat/datasets/dvim/train_outputs/2024-07-30_0.5/annotate_crops/"
+    json_fname = (
+        "/multisat/datasets/dvim/train_outputs/2024-07-30_0.5/20240811_annotations.json"
+    )
+    big_crop_dir = (
+        "/multisat/datasets/dvim/train_outputs/2024-07-30_0.5/annotate_crops/"
+    )
     out_dir = "/multisat/datasets/dvim/rslearn_classify/"
 
     # We are just using fake projection for training this model.
