@@ -2,11 +2,14 @@
 
 import argparse
 import importlib
+import logging
 import multiprocessing
 import sys
 
 import dotenv
 import jsonargparse
+
+logging.basicConfig()
 
 
 def main():
