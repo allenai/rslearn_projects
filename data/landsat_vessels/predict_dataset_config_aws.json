@@ -1,0 +1,89 @@
+{
+	"layers": {
+		"landsat": {
+            "type": "raster",
+            "band_sets": [{
+                "dtype": "uint8",
+                "bands": ["B2"],
+                "format": {"name": "geotiff"},
+                "remap": {
+                    "name": "linear",
+                    "src": [5000, 17000],
+                    "dst": [0, 255]
+                },
+				"zoom_offset": -1
+            }, {
+                "dtype": "uint8",
+                "bands": ["B3"],
+                "format": {"name": "geotiff"},
+                "remap": {
+                    "name": "linear",
+                    "src": [5000, 17000],
+                    "dst": [0, 255]
+                },
+				"zoom_offset": -1
+            }, {
+                "dtype": "uint8",
+                "bands": ["B4"],
+                "format": {"name": "geotiff"},
+                "remap": {
+                    "name": "linear",
+                    "src": [5000, 17000],
+                    "dst": [0, 255]
+                },
+				"zoom_offset": -1
+            }, {
+                "dtype": "uint8",
+                "bands": ["B5"],
+                "format": {"name": "geotiff"},
+                "remap": {
+                    "name": "linear",
+                    "src": [5000, 17000],
+                    "dst": [0, 255]
+                },
+				"zoom_offset": -1
+            }, {
+                "dtype": "uint8",
+                "bands": ["B6"],
+                "format": {"name": "geotiff"},
+                "remap": {
+                    "name": "linear",
+                    "src": [5000, 17000],
+                    "dst": [0, 255]
+                },
+				"zoom_offset": -1
+            }, {
+                "dtype": "uint8",
+                "bands": ["B7"],
+                "format": {"name": "geotiff"},
+                "remap": {
+                    "name": "linear",
+                    "src": [5000, 17000],
+                    "dst": [0, 255]
+                },
+				"zoom_offset": -1
+            }, {
+                "dtype": "uint8",
+                "bands": ["B8"],
+                "format": {"name": "geotiff"},
+                "remap": {
+                    "name": "linear",
+                    "src": [5000, 17000],
+                    "dst": [0, 255]
+                }
+            }],
+            "data_source": {
+				"name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
+				"metadata_cache_dir": "cache/landsat",
+				"max_time_delta": "1d"
+            }
+		},
+        "output": {
+            "type": "vector"
+        }
+	},
+	"tile_store": {
+		"name": "file",
+		"root_dir": "tiles"
+	}
+}

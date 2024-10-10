@@ -1,6 +1,9 @@
 """Entrypoint when using rslp directly."""
 
+import logging
 import multiprocessing
+
+logging.basicConfig()
 
 
 def main():

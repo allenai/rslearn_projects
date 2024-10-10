@@ -86,9 +86,8 @@ data:
       tags:
         split: val
     predict_config:
-      groups: ["phase2a_completed"]
-      tags:
-        split: val
+      groups: ["classify_predict"]
+      skip_targets: true
 trainer:
   max_epochs: 64
   callbacks:
