@@ -1,7 +1,6 @@
 """NMS for merging predictions from multiple patches."""
 
 import math
-from typing import Any
 
 import numpy as np
 from rslearn.train.prediction_writer import PatchPredictionMerger
@@ -15,18 +14,25 @@ DEFAULT_DISTANCE_THRESHOLD = 10
 class NMSDistanceMerger(PatchPredictionMerger):
     """Merge predictions by applying distance-based NMS."""
 
-    def __init__(self, merger_kwargs: dict[str, Any] = {}):
+    def __init__(
+        self,
+        grid_size: int = DEFAULT_GRID_SIZE,
+        distance_threshold: int = DEFAULT_DISTANCE_THRESHOLD,
+        property_name: str = "category",
+        class_agnostic: bool = False,
+    ):
         """Create a new NMSDistanceMerger.
 
         Args:
-            merger_kwargs: arguments to pass to distance NMS.
+            grid_size: size of the grid for distance NMS.
+            distance_threshold: distance threshold for NMS.
+            property_name: name of the property to apply NMS to.
+            class_agnostic: whether to apply class-agnostic NMS.
         """
-        self.merger_kwargs = merger_kwargs
-        self.grid_size = self.merger_kwargs.get("grid_size", DEFAULT_GRID_SIZE)
-        self.distance_thresh = self.merger_kwargs.get(
-            "distance_threshold", DEFAULT_DISTANCE_THRESHOLD
-        )
-        self.class_agnostic = self.merger_kwargs.get("class_agnostic", False)
+        self.grid_size = grid_size
+        self.distance_threshold = distance_threshold
+        self.property_name = property_name
+        self.class_agnostic = class_agnostic
 
     def merge(self, features: list[Feature]) -> list[Feature]:
         """Merge the predictions from multiple patches.
@@ -39,10 +45,10 @@ class NMSDistanceMerger(PatchPredictionMerger):
         """
         if len(features) == 0:
             return []
-
-        boxes = np.array([f.geom.bounds for f in features])
+        # TODO: load categories from config
+        boxes = np.array([f.geometry.shp.bounds for f in features])
         scores = np.array([f.properties["score"] for f in features])
-        class_ids = np.array([f.properties["class_id"] for f in features])
+        class_ids = np.array([f.properties[self.property_name] for f in features])
 
         if self.class_agnostic:
             # Class-agnostic NMS: process all boxes together
@@ -96,7 +102,7 @@ class NMSDistanceMerger(PatchPredictionMerger):
         if indices is None:
             indices = np.arange(len(boxes))
 
-        grid_index = GridIndex(size=max(self.grid_size, self.distance_thresh))
+        grid_index = GridIndex(size=max(self.grid_size, self.distance_threshold))
         for idx, box in zip(indices, boxes):
             cx = (box[0] + box[2]) / 2
             cy = (box[1] + box[3]) / 2
@@ -115,10 +121,10 @@ class NMSDistanceMerger(PatchPredictionMerger):
             cx = (box[0] + box[2]) / 2
             cy = (box[1] + box[3]) / 2
             rect = [
-                cx - self.distance_thresh,
-                cy - self.distance_thresh,
-                cx + self.distance_thresh,
-                cy + self.distance_thresh,
+                cx - self.distance_threshold,
+                cy - self.distance_threshold,
+                cx + self.distance_threshold,
+                cy + self.distance_threshold,
             ]
             neighbor_indices = grid_index.query(rect)
             for other_idx in neighbor_indices:
@@ -128,7 +134,7 @@ class NMSDistanceMerger(PatchPredictionMerger):
                 if other_score > score or (other_score == score and other_idx < idx):
                     other_box = boxes[other_idx]
                     distance = self._boxes_center_distance(box, other_box)
-                    if distance <= self.distance_thresh:
+                    if distance <= self.distance_threshold:
                         elim_inds.add(idx)
                         break
             if idx not in elim_inds:

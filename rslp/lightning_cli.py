@@ -7,6 +7,7 @@ import jsonargparse
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
+from rslearn.train.prediction_writer import PatchPredictionMerger
 from upath import UPath
 
 import wandb
@@ -15,7 +16,7 @@ from rslp import launcher_lib
 CHECKPOINT_DIR = "gs://{rslp_bucket}/projects/{project_id}/{experiment_id}/checkpoints/"
 
 
-def get_class_from_path(class_path: str):
+def get_class_from_path(class_path: str) -> type[PatchPredictionMerger]:
     """Get a class from a string path."""
     module_path, class_name = class_path.rsplit(".", 1)
     module = importlib.import_module(module_path)

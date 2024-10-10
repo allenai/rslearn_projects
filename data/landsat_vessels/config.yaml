@@ -129,6 +129,7 @@ trainer:
         merger_args:
           grid_size: 64
           distance_threshold: 10
+          property_name: "category"  # same as task.property_name
           class_agnostic: false
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
