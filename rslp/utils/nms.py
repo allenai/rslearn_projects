@@ -18,21 +18,21 @@ class NMSDistanceMerger(PatchPredictionMerger):
         self,
         grid_size: int = DEFAULT_GRID_SIZE,
         distance_threshold: int = DEFAULT_DISTANCE_THRESHOLD,
-        property_name: str = "category",
         class_agnostic: bool = False,
+        property_name: str = "category",
     ):
         """Create a new NMSDistanceMerger.
 
         Args:
             grid_size: size of the grid for distance NMS.
             distance_threshold: distance threshold for NMS.
-            property_name: name of the property to apply NMS to.
             class_agnostic: whether to apply class-agnostic NMS.
+            property_name: name of the property to apply NMS to.
         """
         self.grid_size = grid_size
         self.distance_threshold = distance_threshold
-        self.property_name = property_name
         self.class_agnostic = class_agnostic
+        self.property_name = property_name
 
     def merge(self, features: list[Feature]) -> list[Feature]:
         """Merge the predictions from multiple patches.
@@ -65,6 +65,8 @@ class NMSDistanceMerger(PatchPredictionMerger):
                 class_scores = scores[idxs]
                 class_keep_indices = self._apply_nms(class_boxes, class_scores, idxs)
                 keep_indices.extend(class_keep_indices)
+        # print how many are keeped and how many in total
+        print(f"kept {len(keep_indices)} out of {len(features)}")
 
         return [features[i] for i in keep_indices]
 
