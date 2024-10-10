@@ -8,15 +8,16 @@ import rasterio
 import shapely
 from PIL import Image
 from rslearn.const import WGS84_PROJECTION
-from rslearn.data_sources import data_source_from_config
+from rslearn.data_sources import Item, data_source_from_config
 from rslearn.data_sources.gcp_public_data import Sentinel2
-from rslearn.dataset import Dataset, Window
+from rslearn.dataset import Dataset, Window, WindowLayerData
 from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from upath import UPath
 
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
 
+SENTINEL2_LAYER_NAME = "sentinel2"
 DATASET_CONFIG = "data/sentinel2_vessels/config.json"
 DETECT_MODEL_CONFIG = "data/sentinel2_vessels/config.yaml"
 SENTINEL2_RESOLUTION = 10
@@ -50,6 +51,7 @@ def get_vessel_detections(
     projection: Projection,
     bounds: tuple[int, int, int, int],
     ts: datetime,
+    item: Item,
 ) -> list[VesselDetection]:
     """Apply the vessel detector.
 
@@ -62,22 +64,30 @@ def get_vessel_detections(
         projection: the projection to apply the detector in.
         bounds: the bounds to apply the detector in.
         ts: timestamp to apply the detector on.
+        item: the item to ingest.
     """
     # Create a window for applying detector.
     group = "detector_predict"
     window_path = ds_path / "windows" / group / "default"
-    Window(
+    window = Window(
         path=window_path,
         group=group,
         name="default",
         projection=projection,
         bounds=bounds,
         time_range=(ts - timedelta(minutes=20), ts + timedelta(minutes=20)),
-    ).save()
+    )
+    window.save()
+
+    if item:
+        layer_data = WindowLayerData(SENTINEL2_LAYER_NAME, [[item.serialize()]])
+        window.save_layer_datas(dict(SENTINEL2_LAYER_NAME=layer_data))
 
     print("materialize dataset")
     materialize_dataset(ds_path, group=group, workers=1)
-    assert (window_path / "layers" / "sentinel2" / "R_G_B" / "geotiff.tif").exists()
+    assert (
+        window_path / "layers" / SENTINEL2_LAYER_NAME / "R_G_B" / "geotiff.tif"
+    ).exists()
 
     # Run object detector.
     run_model_predict(DETECT_MODEL_CONFIG, ds_path)
@@ -130,7 +140,7 @@ def predict_pipeline(scene_id: str, scratch_path: str, json_path: str, crop_path
     # Determine the bounds and timestamp of this scene using the data source.
     dataset = Dataset(ds_path)
     data_source: Sentinel2 = data_source_from_config(
-        dataset.layers["sentinel2"], dataset.path
+        dataset.layers[SENTINEL2_LAYER_NAME], dataset.path
     )
     item = data_source.get_item_by_name(scene_id)
     wgs84_geom = item.geometry.to_projection(WGS84_PROJECTION)
@@ -144,7 +154,7 @@ def predict_pipeline(scene_id: str, scratch_path: str, json_path: str, crop_path
     bounds = [int(value) for value in dst_geom.shp.bounds]
     ts = item.geometry.time_range[0]
 
-    detections = get_vessel_detections(ds_path, projection, bounds, ts)
+    detections = get_vessel_detections(ds_path, projection, bounds, ts, item)
 
     # Create windows just to collect crops for each detection.
     group = "crops"
@@ -178,7 +188,7 @@ def predict_pipeline(scene_id: str, scratch_path: str, json_path: str, crop_path
     for detection, crop_window_path in zip(detections, window_paths):
         # Get RGB crop.
         image_fname = (
-            crop_window_path / "layers" / "sentinel2" / "R_G_B" / "geotiff.tif"
+            crop_window_path / "layers" / SENTINEL2_LAYER_NAME / "R_G_B" / "geotiff.tif"
         )
         with image_fname.open("rb") as f:
             with rasterio.open(f) as src:
