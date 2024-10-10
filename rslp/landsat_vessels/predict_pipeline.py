@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime, timedelta
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import numpy as np
@@ -183,8 +184,8 @@ def run_classifier(
 
 def predict_pipeline(
     crop_path: str,
-    scratch_path: Optional[str] = None,
-    json_path: Optional[str] = None,
+    scratch_path: str | None = None,
+    json_path: str | None = None,
     image_files: dict[str, str] | None = None,
     scene_id: str | None = None,
 ) -> dict[str, Any]:
@@ -203,8 +204,6 @@ def predict_pipeline(
         scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
             specified.
     """
-
-
     if not scratch_path:
         tmp_dir = TemporaryDirectory()
         scratch_path = tmp_dir.name
