@@ -60,13 +60,12 @@ class NMSDistanceMerger(PatchPredictionMerger):
                 idxs = np.where(class_ids == class_id)[0]
                 if len(idxs) == 0:
                     continue
-
                 class_boxes = boxes[idxs]
                 class_scores = scores[idxs]
                 class_keep_indices = self._apply_nms(class_boxes, class_scores, idxs)
                 keep_indices.extend(class_keep_indices)
-        # print how many are keeped and how many in total
-        print(f"kept {len(keep_indices)} out of {len(features)}")
+        # print how many are keeped out of total
+        print(f"Kept {len(keep_indices)} out of {len(features)} features after NMS")
 
         return [features[i] for i in keep_indices]
 
@@ -130,11 +129,12 @@ class NMSDistanceMerger(PatchPredictionMerger):
             ]
             neighbor_indices = grid_index.query(rect)
             for other_idx in neighbor_indices:
+                i = np.where(sorted_indices == other_idx)[0][0]
                 if other_idx == idx or other_idx in elim_inds:
                     continue
-                other_score = scores[other_idx]
+                other_score = sorted_scores[i]
                 if other_score > score or (other_score == score and other_idx < idx):
-                    other_box = boxes[other_idx]
+                    other_box = sorted_boxes[i]
                     distance = self._boxes_center_distance(box, other_box)
                     if distance <= self.distance_threshold:
                         elim_inds.add(idx)
