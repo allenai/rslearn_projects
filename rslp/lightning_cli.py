@@ -5,6 +5,7 @@ import os
 import jsonargparse
 import wandb
 from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
 from upath import UPath
 
@@ -26,6 +27,7 @@ class SaveWandbRunIdCallback(Callback):
         self.project_id = project_id
         self.experiment_id = experiment_id
 
+    @rank_zero_only
     def on_fit_start(self, trainer, pl_module):
         """Called just before fit starts I think.
 
@@ -101,6 +103,16 @@ class CustomLightningCLI(RslearnLightningCLI):
                 )
             c.trainer.logger.init_args.project = c.rslp_project
             c.trainer.logger.init_args.name = c.rslp_experiment
+
+            # Configure DDP strategy with find_unused_parameters=True
+            c.trainer.strategy = jsonargparse.Namespace(
+                {
+                    "class_path": "lightning.pytorch.strategies.DDPStrategy",
+                    "init_args": jsonargparse.Namespace(
+                        {"find_unused_parameters": True}
+                    ),
+                }
+            )
 
             # Set the checkpoint directory to canonical GCS location.
             checkpoint_callback = None
