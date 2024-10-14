@@ -3,12 +3,12 @@
 import os
 
 import jsonargparse
+import wandb
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
 from upath import UPath
 
-import wandb
 from rslp import launcher_lib
 
 CHECKPOINT_DIR = "gs://{rslp_bucket}/projects/{project_id}/{experiment_id}/checkpoints/"
