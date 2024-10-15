@@ -39,6 +39,7 @@ data:
       label:
         data_type: "vector"
         layers: ["label"]
+        is_target: true
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
@@ -50,10 +51,11 @@ data:
               classes: ["correct", "incorrect"]
               allow_invalid: true
               skip_unknown_categories: true
+              prob_property: "prob"
         input_mapping:
           class:
             label: "targets"
-    batch_size: 64
+    batch_size: 32
     num_workers: 32
     default_config:
       transforms:
@@ -66,7 +68,7 @@ data:
             mode: "center"
             size: 32
         - class_path: rslearn.train.transforms.flip.Flip
-      groups: ["selected"]
+      groups: ["selected_copy", "phase2a_completed"]
     train_config:
       tags:
         split: train
@@ -76,13 +78,19 @@ data:
           option_key: "weight"
           num_samples: 1000
     val_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
     test_config:
+      groups: ["phase2a_completed"]
+      tags:
+        split: val
+    predict_config:
+      groups: ["phase2a_completed"]
       tags:
         split: val
 trainer:
-  max_epochs: 100
+  max_epochs: 64
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -94,4 +102,4 @@ trainer:
         selector: ["class"]
 #  limit_train_batches: 64
 rslp_project: rslearn-landsat-recheck
-rslp_experiment: phase1_20240916_00
+rslp_experiment: phase12_20240919_01_copy
