@@ -57,23 +57,31 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       - name: Set up Docker Compose
         run: |
           sudo apt-get update
           sudo apt-get install -y docker-compose
 
-      - name: Pull the latest image
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+
+      # - name: Pull the latest image
+      #   run: |
+      #     docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       - name: Run tests with Docker Compose
         run: |
           docker-compose -f docker-compose.test.yml up --exit-code-from tests
         env:
           IMAGE_TAG: ${{ github.sha }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
 
       - name: Clean up
         if: always()

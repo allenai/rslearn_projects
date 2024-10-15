@@ -1,0 +1,6 @@
+version: '0.0.1'
+
+services:
+  tests:
+    image: ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+    command: python -m pytest tests/
