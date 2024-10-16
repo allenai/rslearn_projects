@@ -113,6 +113,7 @@ data:
       load_all_patches: true
       skip_targets: true
       patch_size: 512
+      overlap_ratio: 0.1
 trainer:
   max_epochs: 500
   callbacks:
@@ -124,6 +125,13 @@ trainer:
         path: gs://rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20240924/
         output_layer: output
         selector: ["detect"]
+        merger:
+          class_path: rslp.utils.nms.NMSDistanceMerger
+          init_args:
+            grid_size: 64
+            distance_threshold: 15
+            property_name: "category"  # same as task.property_name
+            class_agnostic: false
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         save_top_k: 1
