@@ -1,7 +1,8 @@
 {
     "layers": {
-        "sentinel2": {
+        "sentinel2_a": {
             "type": "raster",
+			"alias": "sentinel2",
             "band_sets": [{
                 "dtype": "uint16",
                 "bands": ["B02", "B03", "B04", "B08"]
@@ -17,17 +18,78 @@
             "data_source": {
                 "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
                 "modality": "L1C",
-                "index_cache_dir": "/data/favyenb/rslearn_datasets_satlas/solar_farm/cache/sentinel2",
+                "index_cache_dir": "cache/sentinel2",
+                "use_rtree_index": false,
                 "max_time_delta": "1d",
                 "query_config": {
-                    "max_matches": 3,
+                    "max_matches": 2,
                     "space_mode": "CONTAINS"
                 },
                 "sort_by": "cloud_cover",
                 "harmonize": true
             }
         },
-		"sentinel2.1": {
+        "sentinel2_b": {
+            "type": "raster",
+			"alias": "sentinel2",
+            "band_sets": [{
+                "dtype": "uint16",
+                "bands": ["B02", "B03", "B04", "B08"]
+            }, {
+                "dtype": "uint16",
+                "bands": ["B05", "B06", "B07", "B8A", "B11", "B12"],
+                "zoom_offset": -1
+            }, {
+                "dtype": "uint16",
+                "bands": ["B01", "B09", "B10"],
+                "zoom_offset": -2
+            }],
+            "data_source": {
+                "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+                "modality": "L1C",
+                "index_cache_dir": "cache/sentinel2",
+                "use_rtree_index": false,
+                "max_time_delta": "1d",
+                "query_config": {
+                    "max_matches": 2,
+                    "space_mode": "CONTAINS"
+                },
+                "sort_by": "cloud_cover",
+                "harmonize": true,
+				"time_offset": "-90d"
+            }
+        },
+        "sentinel2_c": {
+            "type": "raster",
+			"alias": "sentinel2",
+            "band_sets": [{
+                "dtype": "uint16",
+                "bands": ["B02", "B03", "B04", "B08"]
+            }, {
+                "dtype": "uint16",
+                "bands": ["B05", "B06", "B07", "B8A", "B11", "B12"],
+                "zoom_offset": -1
+            }, {
+                "dtype": "uint16",
+                "bands": ["B01", "B09", "B10"],
+                "zoom_offset": -2
+            }],
+            "data_source": {
+                "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+                "modality": "L1C",
+                "index_cache_dir": "cache/sentinel2",
+                "use_rtree_index": false,
+                "max_time_delta": "1d",
+                "query_config": {
+                    "max_matches": 2,
+                    "space_mode": "CONTAINS"
+                },
+                "sort_by": "cloud_cover",
+                "harmonize": true,
+				"time_offset": "-180d"
+            }
+        },
+		"sentinel2_a.1": {
 			"type": "raster",
 			"band_sets": [{
                 "dtype": "uint16",
@@ -42,7 +104,22 @@
                 "zoom_offset": -2
             }]
 		},
-		"sentinel2.2": {
+		"sentinel2_b.1": {
+			"type": "raster",
+			"band_sets": [{
+                "dtype": "uint16",
+                "bands": ["B02", "B03", "B04", "B08"]
+            }, {
+                "dtype": "uint16",
+                "bands": ["B05", "B06", "B07", "B8A", "B11", "B12"],
+                "zoom_offset": -1
+            }, {
+                "dtype": "uint16",
+                "bands": ["B01", "B09", "B10"],
+                "zoom_offset": -2
+            }]
+		},
+		"sentinel2_c.1": {
 			"type": "raster",
 			"band_sets": [{
                 "dtype": "uint16",
