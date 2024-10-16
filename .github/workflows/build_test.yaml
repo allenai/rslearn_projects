@@ -70,11 +70,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Set up Docker Compose
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -86,6 +81,13 @@ jobs:
         run: |
           curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
                  https://api.github.com/orgs/allenai/packages/container/rslearn_projects/versions
+
+      - name: Set up Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+          docker-compose -f docker-compose.yaml up -d
+
 
       - name: Run tests with Docker Compose
         run: |
