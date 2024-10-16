@@ -77,7 +77,7 @@ jobs:
 
       - name: Run tests with Docker Compose
         run: |
-          docker-compose -f docker-compose.yml up --exit-code-from tests
+          docker-compose -f docker-compose.yaml up --exit-code-from tests
         env:
           IMAGE_TAG: ${{ github.sha }}
           REGISTRY: ${{ env.REGISTRY }}
