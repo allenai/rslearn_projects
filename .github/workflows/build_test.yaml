@@ -89,7 +89,7 @@ jobs:
 
       - name: Run tests with Docker Compose
         run: |
-          docker-compose -f docker-compose.yaml run  --exit-code-from test pytest tests/
+          ls -la && docker-compose -f docker-compose.yaml run test pytest tests/
         env:
           IMAGE_NAME: ${{ needs.build.outputs.ghcr_docker_image }}
 
