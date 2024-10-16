@@ -24,7 +24,6 @@ class FormattedPrediction(TypedDict):
     """Formatted prediction for a single vessel detection."""
 
     # [{"longitude": 123.96480506005342, "latitude": -34.75794960371865, "score": 0.9195963740348816, "rgb_fname": "crops/0_rgb.png", "b8_fname": "crops/0_b8.png"}
-
     latitude: float
     longitude: float
     score: float
