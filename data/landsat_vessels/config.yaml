@@ -125,12 +125,13 @@ trainer:
         path: gs://rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20240924/
         output_layer: output
         selector: ["detect"]
-        merger: rslp.utils.nms.NMSDistanceMerger
-        merger_args:
-          grid_size: 64
-          distance_threshold: 15
-          property_name: "category"  # same as task.property_name
-          class_agnostic: false
+        merger:
+          class_path: rslp.utils.nms.NMSDistanceMerger
+          init_args:
+            grid_size: 64
+            distance_threshold: 10
+            property_name: "category"  # same as task.property_name
+            class_agnostic: false
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         save_top_k: 1

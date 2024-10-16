@@ -65,7 +65,7 @@ class NMSDistanceMerger(PatchPredictionMerger):
                 class_keep_indices = self._apply_nms(class_boxes, class_scores, idxs)
                 keep_indices.extend(class_keep_indices)
         # print how many are keeped out of total
-        print(f"Kept {len(keep_indices)} out of {len(features)} features after NMS")
+        print(f"Kept {len(keep_indices)} out of {len(features)} detections after NMS")
 
         return [features[i] for i in keep_indices]
 

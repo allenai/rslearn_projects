@@ -1,26 +1,17 @@
 """Customized LightningCLI for rslearn_projects."""
 
-import importlib
 import os
 
 import jsonargparse
+import wandb
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
-from rslearn.train.prediction_writer import PatchPredictionMerger
 from upath import UPath
 
-import wandb
 from rslp import launcher_lib
 
 CHECKPOINT_DIR = "gs://{rslp_bucket}/projects/{project_id}/{experiment_id}/checkpoints/"
-
-
-def get_class_from_path(class_path: str) -> type[PatchPredictionMerger]:
-    """Get a class from a string path."""
-    module_path, class_name = class_path.rsplit(".", 1)
-    module = importlib.import_module(module_path)
-    return getattr(module, class_name)
 
 
 class SaveWandbRunIdCallback(Callback):
@@ -167,26 +158,6 @@ class CustomLightningCLI(RslearnLightningCLI):
                     }
                 )
                 c.trainer.callbacks.append(upload_wandb_callback)
-
-        # Load the merger from the path specified in the config.
-        elif subcommand == "predict":
-            prediction_writer_callback = None
-            if "callbacks" in c.trainer:
-                for existing_callback in c.trainer.callbacks:
-                    if (
-                        existing_callback.class_path
-                        == "rslearn.train.prediction_writer.RslearnWriter"
-                    ):
-                        prediction_writer_callback = existing_callback
-                        prediction_writer_callback.init_args.path = (
-                            c.data.init_args.path
-                        )
-                        prediction_writer_callback.init_args.merger = (
-                            get_class_from_path(
-                                prediction_writer_callback.init_args.merger
-                            )
-                        )
-                    break
 
         # Check if there is an existing checkpoint.
         # If so, and autoresume/load_best are disabled, we should throw error.
