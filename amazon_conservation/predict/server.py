@@ -39,6 +39,11 @@ def index():
     return send_file("index.html")
 
 
+@app.route("/map")
+def get_map():
+    return send_file("map.html")
+
+
 @app.route("/examples")
 def get_examples():
     return jsonify(window_names)

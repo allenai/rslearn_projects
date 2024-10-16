@@ -1,0 +1,80 @@
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+</head>
+<body>
+
+<div id="map" style="width: 100%; height: 100%"></div>
+
+<<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet.vectorgrid@latest/dist/Leaflet.VectorGrid.bundled.js"></script>
+<script>
+
+const imageZoom = 13 + 1;
+
+const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+	maxZoom: 19,
+	attribution: '© OpenStreetMap'
+});
+
+let pbfLayer = L.vectorGrid.protobuf('https://pub-956f3eb0f5974f37b9228e0a62f449bf.r2.dev/rslearn-public/forest_loss_driver/20240828/tiles/{z}/{x}/{y}.pbf', {
+	maxZoom: 15,
+	maxNativeZoom: 12,
+	vectorTileLayerStyles: {
+		out: function(properties, zoom) {
+			["agriculture", "mining", "airstrip", "road", "logging", "burned", "landslide", "hurricane", "river", "none"]
+			let color;
+			if(properties['category'] == 'agriculture') {
+				color = 'lime';
+			} else if(properties['category'] == 'mining') {
+				color = 'yellow';
+			} else if(properties['category'] == 'airstrip') {
+				color = 'pink';
+			} else if(properties['category'] == 'road') {
+				color = 'orange';
+			} else if(properties['category'] == 'logging') {
+				color = 'purple';
+			} else if(properties['category'] == 'burned') {
+				color = 'red';
+			} else if(properties['category'] == 'landslide') {
+				color = 'brown';
+			} else if(properties['category'] == 'hurricane') {
+				color = 'beige';
+			} else if(properties['category'] == 'river') {
+				color = 'cyan';
+			} else {
+				return {fill: false, stroke: false};
+			}
+			return {color: color, fillColor: color, fillOpacity: 1, stroke: true, fill: true, weight: 1};
+		},
+	},
+	interactive: true,
+});
+pbfLayer.on('click', function(e) {
+	window.open('/?index=' + e.layer.properties.index, '_blank');
+	L.DomEvent.stop(e);
+});
+
+const map = new L.Map('map', {
+	crs: L.CRS.EPSG3857,
+	layers: [osmLayer, pbfLayer],
+	zoom: 5,
+	maxZoom: 15,
+	center: [-9.8, -74.2],
+});
+
+L.control.layers({
+	"OpenStreetMap": osmLayer,
+}, {
+	"Google": L.tileLayer('http://{s}.google.com/vt?lyrs=s&x={x}&y={y}&z={z}', {
+		maxZoom: 20,
+		subdomains:['mt0','mt1','mt2','mt3'],
+	}),
+	"Forest Loss Events": pbfLayer,
+}).addTo(map);
+</script>
+
+</body>
+</html>

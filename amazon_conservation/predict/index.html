@@ -61,6 +61,12 @@ $.get('/examples', examples => {
 	let image_name_idx = 0;
 	let stage = null;
 
+	// Take initial index from query variable if it's set.
+	const url_params = new URLSearchParams(window.location.search);
+	if(url_params.has("index")) {
+		cur_idx = parseInt(url_params.get("index")) - 1;
+	}
+
 	let render = () => {
 		$('#image-shown').text(image_names[image_name_idx]);
 
