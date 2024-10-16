@@ -41,6 +41,10 @@ jobs:
             type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Extract image tag
+        id: extract-tag
+        run: echo "IMAGE_TAG=$(echo '${{ steps.meta.outputs.tags }}' | cut -d',' -f1)" >> $GITHUB_ENV
+
       - name: Build and push Docker image
         id: build-push
         uses: docker/build-push-action@v6
@@ -77,13 +81,13 @@ jobs:
                  https://api.github.com/orgs/allenai/packages/container/rslearn_projects/versions
       - name: Pull the latest image
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Run tests with Docker Compose
         run: |
           docker-compose -f docker-compose.yaml up --exit-code-from tests
         env:
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
           REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
 
