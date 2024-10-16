@@ -71,14 +71,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-
-      # - name: Pull the latest image
-      #   run: |
-      #     docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+      - name: List available tags
+        run: |
+          curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                 https://api.github.com/orgs/allenai/packages/container/rslearn_projects/versions
+      - name: Pull the latest image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
       - name: Run tests with Docker Compose
         run: |
-          pwd && ls -la && docker-compose -f docker-compose.yaml up --exit-code-from tests
+          docker-compose -f docker-compose.yaml up --exit-code-from tests
         env:
           IMAGE_TAG: ${{ github.sha }}
           REGISTRY: ${{ env.REGISTRY }}
@@ -87,4 +90,4 @@ jobs:
       - name: Clean up
         if: always()
         run: |
-          docker-compose -f docker-compose.test.yml down
+          docker-compose -f docker-compose.yaml down
