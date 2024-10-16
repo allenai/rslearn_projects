@@ -1,6 +1,5 @@
 version: "3.9"
 
 services:
-  tests:
+  test:
     image: ${IMAGE_NAME}
-    command: python -m pytest tests/
