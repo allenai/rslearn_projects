@@ -19,6 +19,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+        ghcr_docker_image: ${{ steps.image-names.outputs.ghcr_image_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,10 +43,6 @@ jobs:
             type=sha,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Extract image tag
-        id: extract-tag
-        run: echo "IMAGE_TAG=$(echo '${{ steps.meta.outputs.tags }}' | cut -d',' -f1)" >> $GITHUB_ENV
-
       - name: Build and push Docker image
         id: build-push
         uses: docker/build-push-action@v6
@@ -56,6 +54,15 @@ jobs:
           build-args: |
             GIT_USERNAME=${{ secrets.GIT_USERNAME }}
             GIT_TOKEN=${{ secrets.GIT_TOKEN }}
+
+      - name: Store Image Names
+        # We need the docker image name downstream in test & deploy. This saves the full docker image names to outputs
+        id: image-names
+        run: |-
+          GHCR_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-push.outputs.digest }}"
+          GHCR_IMAGE=`echo ${GHCR_IMAGE} | tr '[:upper:]' '[:lower:]'` # docker requires that all image names be lowercase
+          echo "ghcr.io Docker image name is ${GHCR_IMAGE}"
+          echo "ghcr_image_name=\"${GHCR_IMAGE}\"" >> $GITHUB_OUTPUT
 
   test:
     needs: build
@@ -79,17 +86,12 @@ jobs:
         run: |
           curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
                  https://api.github.com/orgs/allenai/packages/container/rslearn_projects/versions
-      - name: Pull the latest image
-        run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Run tests with Docker Compose
         run: |
           docker-compose -f docker-compose.yaml up --exit-code-from tests
         env:
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-          REGISTRY: ${{ env.REGISTRY }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_NAME: ${{ needs.build.outputs.ghcr_docker_image }}
 
       - name: Clean up
         if: always()
