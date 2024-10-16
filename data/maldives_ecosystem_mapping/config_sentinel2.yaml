@@ -1,5 +1,5 @@
 model:
-  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  class_path: rslp.maldives_ecosystem_mapping.train.CMLightningModule
   init_args:
     model:
       class_path: rslearn.models.multitask.MultiTaskModel
@@ -99,7 +99,7 @@ data:
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
             mean: 0
-            std: 255
+            std: 3000
     train_config:
       patch_size: 32
       transforms:
@@ -116,7 +116,7 @@ data:
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
             mean: 0
-            std: 255
+            std: 3000
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
@@ -157,4 +157,4 @@ trainer:
         monitor: val_segment/accuracy
         mode: max
 rslp_project: maldives_ecosystem_mapping
-rslp_experiment: sentinel2_data_20240924_satlaspretrain_flip_crop32_00
+rslp_experiment: sentinel2_data_20240924_satlaspretrain_flip_crop32_01

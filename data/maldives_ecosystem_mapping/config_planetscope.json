@@ -5,7 +5,7 @@
 			"band_sets": [{
 				"dtype": "uint8",
 				"bands": ["R", "G", "B"],
-				"format": {"name": "geotiff"}
+				"format": {"name": "geotiff", "always_enable_tiling": true}
 			}]
 		},
 		"label": {
@@ -13,7 +13,7 @@
 			"band_sets": [{
 				"dtype": "uint8",
 				"bands": ["label"],
-				"format": {"name": "geotiff"}
+				"format": {"name": "geotiff", "always_enable_tiling": true}
 			}]
 		},
 		"output": {
@@ -21,14 +21,15 @@
 			"band_sets": [{
 				"dtype": "uint8",
 				"bands": ["output"],
-				"format": {"name": "geotiff"}
+				"format": {"name": "geotiff", "always_enable_tiling": true}
 			}]
 		},
 		"planetscope": {
 			"type": "raster",
 			"band_sets": [{
 				"dtype": "uint16",
-				"bands": ["b01", "b02", "b03", "b04", "b05", "b06", "b07", "b08"]
+				"bands": ["b01", "b02", "b03", "b04", "b05", "b06", "b07", "b08"],
+				"format": {"name": "geotiff", "always_enable_tiling": true}
 			}],
 			"data_source": {
 				"name": "rslearn.data_sources.planet.Planet",

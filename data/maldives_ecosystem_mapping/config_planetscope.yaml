@@ -1,5 +1,5 @@
 model:
-  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  class_path: rslp.maldives_ecosystem_mapping.train.CMLightningModule
   init_args:
     model:
       class_path: rslearn.models.multitask.MultiTaskModel

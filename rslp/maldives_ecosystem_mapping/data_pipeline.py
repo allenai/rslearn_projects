@@ -363,7 +363,7 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
 
     # Write the Maxar GeoTIFF.
     layer_dir = window_root / "layers" / "maxar"
-    GeotiffRasterFormat().encode_raster(
+    GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
         layer_dir / "R_G_B", projection, proj_bounds, crop
     )
     (layer_dir / "completed").touch()
@@ -380,7 +380,7 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
         out_shape=(proj_bounds[3] - proj_bounds[1], proj_bounds[2] - proj_bounds[0]),
     )
     layer_dir = window_root / "layers" / "label"
-    GeotiffRasterFormat().encode_raster(
+    GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
         layer_dir / "label", projection, proj_bounds, mask[None, :, :]
     )
     (layer_dir / "completed").touch()
@@ -391,7 +391,7 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
         color = COLORS[category_id % len(COLORS)]
         label_vis[mask == category_id] = color
     layer_dir = window_root / "layers" / "label"
-    GeotiffRasterFormat().encode_raster(
+    GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
         layer_dir / "vis", projection, proj_bounds, label_vis.transpose(2, 0, 1)
     )
     (layer_dir / "completed").touch()
@@ -474,7 +474,7 @@ def process_bare(job: BareJob) -> None:
         out_shape=(proj_bounds[3] - proj_bounds[1], proj_bounds[2] - proj_bounds[0]),
     )
     layer_dir = window_root / "layers" / "label"
-    GeotiffRasterFormat().encode_raster(
+    GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
         layer_dir / "label", projection, proj_bounds, mask[None, :, :]
     )
     (layer_dir / "completed").touch()
@@ -485,7 +485,7 @@ def process_bare(job: BareJob) -> None:
         color = COLORS[category_id % len(COLORS)]
         label_vis[mask == category_id] = color
     layer_dir = window_root / "layers" / "label"
-    GeotiffRasterFormat().encode_raster(
+    GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
         layer_dir / "vis", projection, proj_bounds, label_vis.transpose(2, 0, 1)
     )
     (layer_dir / "completed").touch()

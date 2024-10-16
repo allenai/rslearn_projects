@@ -21,7 +21,7 @@
 			"band_sets": [{
 				"dtype": "uint8",
 				"bands": ["R", "G", "B"],
-				"format": {"name": "geotiff"}
+				"format": {"name": "geotiff", "always_enable_tiling": true}
 			}],
 			"data_source": {
 				"name": "rslearn.data_sources.xyz_tiles.XyzTiles",

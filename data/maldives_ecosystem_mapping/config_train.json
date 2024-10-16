@@ -5,7 +5,7 @@
 			"band_sets": [{
 				"dtype": "uint8",
 				"bands": ["label"],
-				"format": {"name": "geotiff"}
+				"format": {"name": "geotiff", "always_enable_tiling": true}
 			}]
 		},
 		"output": {
@@ -13,7 +13,7 @@
 			"band_sets": [{
 				"dtype": "uint8",
 				"bands": ["output"],
-				"format": {"name": "geotiff"}
+				"format": {"name": "geotiff", "always_enable_tiling": true}
 			}]
 		},
 		"maxar": {
@@ -21,7 +21,7 @@
 			"band_sets": [{
 				"dtype": "uint8",
 				"bands": ["R", "G", "B"],
-				"format": {"name": "geotiff"}
+				"format": {"name": "geotiff", "always_enable_tiling": true}
 			}]
 		},
 		"sentinel2": {
