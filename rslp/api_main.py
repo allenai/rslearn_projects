@@ -1,4 +1,4 @@
-"""VIIRS Vessel Detection Service."""
+"""Landsat Vessel Detection Service."""
 
 from __future__ import annotations
 
@@ -47,24 +47,10 @@ class LandsatRequest(BaseModel):
     scratch_path: str
     json_path: str
 
-    # class Config:
-    #     """example configuration for a request where files are stored in cloud"""
-
-    #     schema_extra = {
-    #         "example": {
-    #             "input_dir": "input",
-    #             "output_dir": "output",
-    #             "filename": "VJ102DNB.A2022362.0154.021.2022362055600.nc",
-    #             "geo_filename": "VJ103DNB.A2022362.0154.021.2022362052511.nc",
-    #             "modraw_filename": "VJ102MOD.A2022362.0154.002.2022362115107.nc",
-    #             "modgeo_filename": "VJ103MOD.A2022362.0154.002.2022362095104.nc",
-    #         },
-    # }
-
 
 @app.on_event("startup")
 async def rslp_init() -> None:
-    """VIIRS Vessel Service Initialization."""
+    """Landsat Vessel Service Initialization."""
     logger.info("Initializing")
 
 
@@ -89,38 +75,6 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
     except Exception as e:
         logger.error(f"Error during prediction pipeline: {e}")
         return LandsatResponse(status=["error"], predictions=[])
-
-    #     ves_detections = all_detections["vessel_detections"]
-
-    #     satellite_name = utils.get_provider_name(dnb_dataset)
-    #     acquisition_time, end_time = utils.get_acquisition_time(dnb_dataset)
-    #     chips_dict = utils.get_chips(image, ves_detections, dnb_dataset)
-    #     if info.gcp_bucket is not None:
-    #         chips_dict = utils.upload_image(
-    #             info.gcp_bucket, chips_dict, info.output_dir, dnb_path
-    #         )
-    #     else:
-    #         utils.save_chips_locally(
-    #             chips_dict,
-    #             destination_path=info.output_dir,
-    #             chip_features=ves_detections,
-    #         )
-
-    #     average_moonlight = RoundedFloat(utils.get_average_moonlight(dnb_dataset), 2)
-
-    #     frame_extents = utils.get_frame_extents(dnb_dataset)
-
-    # predictions = utils.format_detections(chips_dict)
-    # time_s = round(perf_counter() - start)
-    # n_ves = len(chips_dict)
-    # logger.info(
-    #     f"In frame: {dnb_path}, vvd detected {n_ves} vessels in ({time_s} seconds)"
-    # )
-    # response.headers["n_detections"] = str(len(chips_dict))
-    # response.headers["avg_moonlight"] = str(average_moonlight)
-    # response.headers["lightning_count"] = str(all_detections["lightning_count"])
-    # response.headers["gas_flare_count"] = str(all_detections["gas_flare_count"])
-    # response.headers["inference_time"] = str("elapsed_time")
 
 
 if __name__ == "__main__":
