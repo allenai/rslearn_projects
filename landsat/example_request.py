@@ -7,7 +7,7 @@ import requests
 
 PORT = os.getenv("Landsat_PORT", default=5555)
 LANDSAT_ENDPOINT = f"http://localhost:{PORT}/detections"
-TIMEOUT_SECONDS = 200000
+TIMEOUT_SECONDS = 60000
 SCENE_ID = "LC09_L1GT_106084_20241002_20241002_02_T2"
 CROP_PATH = "/home/yawenz/rslearn_projects/landsat/temp_crops"
 SCRATCH_PATH = "/home/yawenz/rslearn_projects/landsat/temp_scratch"
