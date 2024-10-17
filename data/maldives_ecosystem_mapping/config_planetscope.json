@@ -1,0 +1,60 @@
+{
+	"layers": {
+		"maxar": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["R", "G", "B"],
+				"format": {"name": "geotiff", "always_enable_tiling": true}
+			}]
+		},
+		"label": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["label"],
+				"format": {"name": "geotiff", "always_enable_tiling": true}
+			}]
+		},
+		"output": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint8",
+				"bands": ["output"],
+				"format": {"name": "geotiff", "always_enable_tiling": true}
+			}]
+		},
+		"planetscope": {
+			"type": "raster",
+			"band_sets": [{
+				"dtype": "uint16",
+				"bands": ["b01", "b02", "b03", "b04", "b05", "b06", "b07", "b08"],
+				"format": {"name": "geotiff", "always_enable_tiling": true}
+			}],
+			"data_source": {
+				"name": "rslearn.data_sources.planet.Planet",
+				"sort_by": "-clear_percent",
+				"time_offset": "-90d",
+				"duration": "180d",
+				"item_type_id": "PSScene",
+				"asset_type_id": "ortho_analytic_8b_sr",
+				"bands": ["b01", "b02", "b03", "b04", "b05", "b06", "b07", "b08"],
+				"range_filters": {
+					"cloud_cover": {
+						"lt": 0.3
+					},
+					"clear_percent": {
+						"gt": 0.7
+					}
+				},
+				"query_config": {
+					"max_matches": 6
+				}
+			}
+		}
+	},
+	"tile_store": {
+		"name": "file",
+		"root_dir": "tiles"
+	}
+}
