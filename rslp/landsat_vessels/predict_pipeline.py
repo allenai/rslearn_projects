@@ -2,7 +2,6 @@
 
 import json
 from datetime import datetime, timedelta
-from tempfile import TemporaryDirectory
 from typing import Any
 
 import numpy as np
@@ -204,11 +203,17 @@ def predict_pipeline(
         scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
             specified.
     """
-    if not scratch_path:
-        tmp_dir = TemporaryDirectory()
-        scratch_path = tmp_dir.name
-    else:
-        tmp_dir = None
+    # if not scratch_path:
+    #     tmp_dir = TemporaryDirectory()
+    #     scratch_path = tmp_dir.name
+    # else:
+    #     tmp_dir = None
+
+    print(f"scratch_path: {scratch_path}")
+    print(f"crop_path: {crop_path}")
+    print(f"json_path: {json_path}")
+    print(f"image_files: {image_files}")
+    print(f"scene_id: {scene_id}")
 
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
@@ -269,9 +274,11 @@ def predict_pipeline(
         )
 
     # Run pipeline.
+    print("get vessel detections")
     detections = get_vessel_detections(
         ds_path, projection, scene_bounds, time_range=time_range
     )
+    print("run classifier")
     detections = run_classifier(ds_path, detections, time_range=time_range)
 
     # Write JSON and crops.
@@ -333,6 +340,9 @@ def predict_pipeline(
                 b8_fname=str(b8_fname),
             )
         )
+
+    # if tmp_dir:
+    #     tmp_dir.cleanup()
 
     if json_path:
         json_path = UPath(json_path)
