@@ -64,6 +64,8 @@ jobs:
           echo "ghcr.io Docker image name is ${GHCR_IMAGE}"
           echo "ghcr_image_name=\"${GHCR_IMAGE}\"" >> $GITHUB_OUTPUT
 
+    # TODO: Make sure skylight can grab the image tag and deploy
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -75,11 +77,6 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: List available tags
-        run: |
-          curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                 https://api.github.com/orgs/allenai/packages/container/rslearn_projects/versions
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
