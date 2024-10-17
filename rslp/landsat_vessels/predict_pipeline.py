@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime, timedelta
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import numpy as np
@@ -203,6 +204,12 @@ def predict_pipeline(
         scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
             specified.
     """
+    if not scratch_path:
+        tmp_dir = TemporaryDirectory()
+        scratch_path = tmp_dir.name
+    else:
+        tmp_dir = None
+
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
 
