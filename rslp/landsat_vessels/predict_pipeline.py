@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime, timedelta
+from typing import Any
 
 import numpy as np
 import rasterio
@@ -181,12 +182,12 @@ def run_classifier(
 
 
 def predict_pipeline(
-    scratch_path: str,
-    json_path: str,
     crop_path: str,
+    scratch_path: str | None = None,
+    json_path: str | None = None,
     image_files: dict[str, str] | None = None,
     scene_id: str | None = None,
-):
+) -> dict[str, Any]:
     """Run the Landsat vessel prediction pipeline.
 
     This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
@@ -267,8 +268,8 @@ def predict_pipeline(
     detections = run_classifier(ds_path, detections, time_range=time_range)
 
     # Write JSON and crops.
-    json_path = UPath(json_path)
     crop_path = UPath(crop_path)
+    crop_path.mkdir(parents=True, exist_ok=True)
 
     json_data = []
     for idx, detection in enumerate(detections):
@@ -326,5 +327,9 @@ def predict_pipeline(
             )
         )
 
-    with json_path.open("w") as f:
-        json.dump(json_data, f)
+    if json_path:
+        json_path = UPath(json_path)
+        with json_path.open("w") as f:
+            json.dump(json_data, f)
+
+    return json_data
