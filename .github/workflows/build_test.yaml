@@ -65,9 +65,7 @@ jobs:
           echo "ghcr_image_name=\"${GHCR_IMAGE}\"" >> $GITHUB_OUTPUT
 
   test:
-    needs: build
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -89,20 +87,18 @@ jobs:
             registry: ${{ env.REGISTRY }}
             username: ${{ github.actor }}
             password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set up Docker Compose
+      - name: Build docker images
         run: |
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-          docker-compose -f docker-compose.yaml up -d
+          COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose -f docker-compose.yaml build
 
 
       - name: Run tests with Docker Compose
         run: |
-          docker-compose -f docker-compose.yaml run test pytest tests/
+          docker compose -f docker-compose.yaml run test pytest tests/
         env:
           IMAGE_NAME: ${{ needs.build.outputs.ghcr_docker_image }}
 
       - name: Clean up
         if: always()
         run: |
-          docker-compose -f docker-compose.yaml down
+          dockercompose -f docker-compose.yaml down
