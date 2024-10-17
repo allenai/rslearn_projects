@@ -9,8 +9,8 @@ from rslp.maldives_ecosystem_mapping.data_pipeline import (
 def test_workflows(tmp_path):
     dp_config = DataPipelineConfig(
         ds_root=str(tmp_path),
-        src_dir="tests/maldives_ecosystem_mapping/data",
-        islands_fname="tests/maldives_ecosystem_mapping/data/islands.json",
+        src_dir="tests/integration/maldives_ecosystem_mapping/data",
+        islands_fname="tests/integration/maldives_ecosystem_mapping/data/islands.json",
     )
     data_pipeline(dp_config)
     assert os.path.exists(
