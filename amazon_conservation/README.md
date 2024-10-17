@@ -48,7 +48,7 @@ Collect all of the forest loss events with the predicted driver into a GeoJSON f
 
 Use [tippecanoe](https://github.com/felt/tippecanoe) (requires installation from source) to create vector tiles of the GeoJSON suitable for loading in the web app:
 
-    tippecanoe -zg -e out_tiles/ --drop-smallest-as-needed --no-tile-compression out.geojson
+    tippecanoe -zg -e out_tiles/ --drop-smallest-as-needed --no-tile-compression forest_loss_events.geojson
     # Copy to a public bucket, e.g.:
     aws s3 --endpoint-url https://b2bcf985082a37eaf385c532ee37928d.r2.cloudflarestorage.com sync out_tiles/ s3://satlas-explorer-data/rslearn-public/forest_loss_driver/YYYYMMDD/tiles/
 

@@ -39,6 +39,9 @@ def get_feature(index: int, window_root: UPath) -> list[dict[str, Any]]:
         "type": "Feature",
         "properties": properties,
         "geometry": geom_dict,
+        "tippecanoe": dict(
+            layer=category,
+        ),
     }
 
 
