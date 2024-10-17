@@ -14,7 +14,7 @@ from upath import UPath
 from rslp.lightning_cli import CustomLightningCLI
 
 
-def materialize_dataset(ds_path: UPath, group: str | None = None, workers: int = 1):
+def materialize_dataset(ds_path: UPath, group: str | None = None, workers: int = 32):
     """Materialize the specified dataset by running prepare/ingest/materialize.
 
     Args:
@@ -22,7 +22,6 @@ def materialize_dataset(ds_path: UPath, group: str | None = None, workers: int =
         group: limit dataset actions to this group.
         workers: number of workers to use.
     """
-    # multiprocessing.set_start_method("forkserver")
     dataset = Dataset(ds_path)
     apply_on_windows(
         PrepareHandler(force=False),

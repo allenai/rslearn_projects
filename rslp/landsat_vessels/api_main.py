@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging.config
+import multiprocessing
 import os
 
 import uvicorn
@@ -52,6 +53,13 @@ class LandsatRequest(BaseModel):
 async def rslp_init() -> None:
     """Landsat Vessel Service Initialization."""
     logger.info("Initializing")
+    multiprocessing.set_start_method("forkserver", force=True)
+    multiprocessing.set_forkserver_preload(
+        [
+            "rslp.utils.rslearn.materialize_dataset",
+            "rslp.utils.rslearn.run_model_predict",
+        ]
+    )
 
 
 @app.get("/")
