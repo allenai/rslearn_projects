@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging.config
+import logging
 import multiprocessing
 import os
 
@@ -14,17 +14,18 @@ from typing_extensions import TypedDict
 from rslp.landsat_vessels import predict_pipeline
 
 app = FastAPI()
+
+# Set up the logger
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-HOST = "0.0.0.0"  # nosec B104
-PORT = os.getenv("LANDSAT_PORT", default=5555)
-# MODEL_VERSION = os.getenv("GIT_COMMIT_HASH", datetime.today())
+LANDSAT_HOST = "0.0.0.0"
+LANDSAT_PORT = 5555
 
 
 class FormattedPrediction(TypedDict):
     """Formatted prediction for a single vessel detection."""
 
-    # [{"longitude": 123.96480506005342, "latitude": -34.75794960371865, "score": 0.9195963740348816, "rgb_fname": "crops/0_rgb.png", "b8_fname": "crops/0_b8.png"}
     latitude: float
     longitude: float
     score: float
@@ -72,6 +73,7 @@ async def home() -> dict:
 async def get_detections(info: LandsatRequest, response: Response) -> LandsatResponse:
     """Returns vessel detections Response object for a given Request object."""
     try:
+        logger.info(f"Received request with scene_id: {info.scene_id}")
         json_data = predict_pipeline(
             crop_path=info.crop_path,
             scene_id=info.scene_id,
@@ -80,10 +82,18 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             json_path=info.json_path,
         )
         return LandsatResponse(status=["success"], predictions=json_data)
+    except ValueError as e:
+        logger.error(f"Value error during prediction pipeline: {e}")
+        return LandsatResponse(status=["error"], predictions=[])
     except Exception as e:
-        logger.error(f"Error during prediction pipeline: {e}")
+        logger.error(f"Unexpected error during prediction pipeline: {e}")
         return LandsatResponse(status=["error"], predictions=[])
 
 
 if __name__ == "__main__":
-    uvicorn.run("api_main:app", host=HOST, port=PORT, proxy_headers=True)
+    uvicorn.run(
+        "api_main:app",
+        host=os.getenv("LANDSAT_HOST", default="0.0.0.0"),
+        port=int(os.getenv("LANDSAT_PORT", default=5555)),
+        proxy_headers=True,
+    )

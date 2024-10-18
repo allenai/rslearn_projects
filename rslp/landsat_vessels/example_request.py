@@ -5,13 +5,13 @@ import os
 
 import requests
 
-PORT = os.getenv("Landsat_PORT", default=5555)
+PORT = os.getenv("LANDSAT_PORT", default=5555)
 LANDSAT_ENDPOINT = f"http://localhost:{PORT}/detections"
-TIMEOUT_SECONDS = 200000
+TIMEOUT_SECONDS = 60000
 SCENE_ID = "LC09_L1GT_106084_20241002_20241002_02_T2"
-CROP_PATH = "/home/yawenz/rslearn_projects/landsat/temp_crops"
-SCRATCH_PATH = "/home/yawenz/rslearn_projects/landsat/temp_scratch"
-JSON_PATH = "/home/yawenz/rslearn_projects/landsat/vessels.json"
+CROP_PATH = "/home/yawenz/rslearn_projects/rslp/landsat_vessels/temp_crops"
+SCRATCH_PATH = "/home/yawenz/rslearn_projects/rslp/landsat_vessels/temp_scratch"
+JSON_PATH = "/home/yawenz/rslearn_projects/rslp/landsat_vessels/vessels.json"
 
 
 def sample_request() -> None:
@@ -28,11 +28,13 @@ def sample_request() -> None:
         LANDSAT_ENDPOINT, json=REQUEST_BODY, timeout=TIMEOUT_SECONDS
     )
     output_filename = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), "sample_response.json"
+        os.path.dirname(os.path.realpath(__file__)), "response.json"
     )
     if response.ok:
         with open(output_filename, "w") as outfile:
             json.dump(response.json(), outfile)
+    else:
+        print(f"Error: {response.status_code} - {response.text}")
 
 
 if __name__ == "__main__":
