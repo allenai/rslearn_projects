@@ -3,5 +3,5 @@
 from .predict_pipeline import predict_pipeline
 
 workflows = {
-    "predict": (None, predict_pipeline),
+    "predict": predict_pipeline,
 }

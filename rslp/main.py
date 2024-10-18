@@ -21,7 +21,7 @@ def main():
     args = parser.parse_args(args=sys.argv[1:3])
 
     module = importlib.import_module(f"rslp.{args.project}")
-    workflow_fn = module.workflows[args.workflow][1]
+    workflow_fn = module.workflows[args.workflow]
     jsonargparse.CLI(workflow_fn, args=sys.argv[3:])
 
 
