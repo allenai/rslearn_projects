@@ -110,7 +110,7 @@ def download_code(project_id: str, experiment_id: str):
     """
     bucket = _get_bucket()
     with tempfile.TemporaryDirectory() as tmpdirname:
-        print("downloading code acrhive")
+        print("downloading code archive")
         blob_path = CODE_BLOB_PATH.format(
             project_id=project_id, experiment_id=experiment_id
         )
