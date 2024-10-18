@@ -12,7 +12,7 @@ RUN pip install -r /opt/rslearn_projects/rslearn/extra_requirements.txt
 COPY requirements.txt /opt/rslearn_projects/requirements.txt
 RUN pip install -r /opt/rslearn_projects/requirements.txt
 
-# We can use `pip install rslearn[extra]` now
+# Not sure if we want to replace to `pip install rslearn[extra]` now, the current setup always import the latest version of rslearn
 # We need rslp to be pip installed as well
 
 ENV PYTHONPATH="${PYTHONPATH}:/opt/rslearn_projects/rslearn:."

@@ -34,14 +34,12 @@ def materialize_dataset(ds_path: UPath, group: str | None = None, workers: int =
         dataset,
         workers=workers,
         group=group,
-        use_initial_job=False,
     )
     apply_on_windows(
         MaterializeHandler(),
         dataset,
         workers=workers,
         group=group,
-        use_initial_job=False,
     )
 
 

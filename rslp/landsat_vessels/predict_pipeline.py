@@ -204,18 +204,6 @@ def predict_pipeline(
         scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
             specified.
     """
-    # if not scratch_path:
-    #     tmp_dir = TemporaryDirectory()
-    #     scratch_path = tmp_dir.name
-    # else:
-    #     tmp_dir = None
-
-    print(f"scratch_path: {scratch_path}")
-    print(f"crop_path: {crop_path}")
-    print(f"json_path: {json_path}")
-    print(f"image_files: {image_files}")
-    print(f"scene_id: {scene_id}")
-
     start_time = time.time()  # Start the timer
 
     ds_path = UPath(scratch_path)
@@ -344,8 +332,6 @@ def predict_pipeline(
             )
         )
 
-    # if tmp_dir:
-    #     tmp_dir.cleanup()
     elapsed_time = time.time() - start_time  # Calculate elapsed time
     print(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")
 
