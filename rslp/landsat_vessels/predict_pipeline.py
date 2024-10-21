@@ -205,6 +205,7 @@ def predict_pipeline(
             specified.
     """
     start_time = time.time()  # Start the timer
+    time_profile = {}
 
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
@@ -264,15 +265,23 @@ def predict_pipeline(
             dst_geom.time_range[1] + timedelta(minutes=30),
         )
 
+    time_profile["setup"] = time.time() - start_time
+
     # Run pipeline.
-    print("get vessel detections")
+    step_start_time = time.time()
+    print("run detector")
     detections = get_vessel_detections(
         ds_path, projection, scene_bounds, time_range=time_range
     )
+    time_profile["get_vessel_detections"] = time.time() - step_start_time
+
+    step_start_time = time.time()
     print("run classifier")
     detections = run_classifier(ds_path, detections, time_range=time_range)
+    time_profile["run_classifier"] = time.time() - step_start_time
 
     # Write JSON and crops.
+    step_start_time = time.time()
     crop_path = UPath(crop_path)
     crop_path.mkdir(parents=True, exist_ok=True)
 
@@ -332,12 +341,18 @@ def predict_pipeline(
             )
         )
 
+    time_profile["write_json_and_crops"] = time.time() - step_start_time
+
     elapsed_time = time.time() - start_time  # Calculate elapsed time
-    print(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")
+    time_profile["total"] = elapsed_time
 
     if json_path:
         json_path = UPath(json_path)
         with json_path.open("w") as f:
             json.dump(json_data, f)
+
+    print(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")
+    for step, duration in time_profile.items():
+        print(f"{step} took {duration:.2f} seconds")
 
     return json_data
