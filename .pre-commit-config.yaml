@@ -1,4 +1,5 @@
 exclude_types: ["*.geojson"]
+exclude: ^one_off_projects/
 ci:
   autofix_prs: false
   autoupdate_branch: ""
