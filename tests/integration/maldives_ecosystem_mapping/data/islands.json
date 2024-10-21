@@ -1,0 +1,1 @@
+{"type": "FeatureCollection", "crs": {"properties": {"name": "EPSG:3857"}}, "features": [{"type": "Feature", "properties": {"atoll": "x", "islandName": "x", "FCODE": "x"}, "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [0, 32], [32, 32], [32, 0]]]}}]}
