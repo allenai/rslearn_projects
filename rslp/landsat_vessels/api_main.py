@@ -72,8 +72,15 @@ async def home() -> dict:
 @app.post("/detections", response_model=LandsatResponse)
 async def get_detections(info: LandsatRequest, response: Response) -> LandsatResponse:
     """Returns vessel detections Response object for a given Request object."""
+    # Ensure that either scene_id or image_files is specified.
+    if info.scene_id is None and info.image_files is None:
+        raise ValueError("Either scene_id or image_files must be specified.")
+
     try:
-        logger.info(f"Received request with scene_id: {info.scene_id}")
+        if info.scene_id is not None:
+            logger.info(f"Received request with scene_id: {info.scene_id}")
+        elif info.image_files is not None:
+            logger.info("Received request with image_files")
         json_data = predict_pipeline(
             crop_path=info.crop_path,
             scene_id=info.scene_id,
