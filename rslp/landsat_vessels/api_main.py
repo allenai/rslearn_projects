@@ -45,9 +45,9 @@ class LandsatRequest(BaseModel):
 
     scene_id: str | None = None
     image_files: dict[str, str] | None = None
-    crop_path: str
-    scratch_path: str
-    json_path: str
+    crop_path: str | None = None
+    scratch_path: str | None = None
+    json_path: str | None = None
 
 
 @app.on_event("startup")

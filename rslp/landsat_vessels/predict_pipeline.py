@@ -1,6 +1,7 @@
 """Landsat vessel prediction pipeline."""
 
 import json
+import tempfile
 import time
 from datetime import datetime, timedelta
 from typing import Any
@@ -207,6 +208,19 @@ def predict_pipeline(
     start_time = time.time()  # Start the timer
     time_profile = {}
 
+    # Use temporary directory if scratch_path or crop_path are not specified.
+    if scratch_path is None:
+        with tempfile.TemporaryDirectory() as tmp_scratch_dir:
+            scratch_path = tmp_scratch_dir
+    else:
+        tmp_scratch_dir = None
+
+    if crop_path is None:
+        with tempfile.TemporaryDirectory() as tmp_crop_dir:
+            crop_path = tmp_crop_dir
+    else:
+        tmp_crop_dir = None
+
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
 
@@ -345,6 +359,12 @@ def predict_pipeline(
 
     elapsed_time = time.time() - start_time  # Calculate elapsed time
     time_profile["total"] = elapsed_time
+
+    # Clean up any temporary directories.
+    if tmp_scratch_dir:
+        tmp_scratch_dir.cleanup()
+    if tmp_crop_dir:
+        tmp_crop_dir.cleanup()
 
     if json_path:
         json_path = UPath(json_path)
