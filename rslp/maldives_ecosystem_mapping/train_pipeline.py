@@ -4,19 +4,19 @@ from rslp.config import BaseTrainPipelineConfig
 from rslp.launch_beaker import launch_job
 
 
-def maxar_train_pipeline(config: BaseTrainPipelineConfig):
+def maxar_train_pipeline(config: BaseTrainPipelineConfig) -> None:
     """Run the training pipeline.
 
     Args:
         config: the model training config.
     """
-    launch_job("data/maldives_ecosystem_mapping/config.yaml")
+    launch_job("data/maldives_ecosystem_mapping/config.yaml", mode="fit")
 
 
-def sentinel2_train_pipeline(config: BaseTrainPipelineConfig):
+def sentinel2_train_pipeline(config: BaseTrainPipelineConfig) -> None:
     """Run the training pipeline.
 
     Args:
         config: the model training config.
     """
-    launch_job("data/maldives_ecosystem_mapping/config_sentinel2.yaml")
+    launch_job("data/maldives_ecosystem_mapping/config_sentinel2.yaml", mode="fit")

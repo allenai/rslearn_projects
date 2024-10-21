@@ -10,7 +10,7 @@ from upath import UPath
 from rslp.lightning_cli import CustomLightningCLI
 
 
-def maxar_predict_pipeline(out_dir: str):
+def maxar_predict_pipeline(out_dir: str) -> None:
     """Run the prediction pipeline.
 
     Args:
@@ -40,7 +40,7 @@ def maxar_predict_pipeline(out_dir: str):
                 shutil.copyfileobj(src, dst)
 
 
-def sentinel2_predict_pipeline(out_dir: str):
+def sentinel2_predict_pipeline(out_dir: str) -> None:
     """Run the prediction pipeline.
 
     Args:

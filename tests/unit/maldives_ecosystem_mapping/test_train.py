@@ -7,14 +7,16 @@ from rslp.maldives_ecosystem_mapping.train import CMLightningModule
 
 
 class TestModel(torch.nn.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, inputs, targets):
+    def forward(
+        self, inputs: torch.Tensor, targets: torch.Tensor
+    ) -> tuple[torch.Tensor, dict]:
         return inputs, {"loss": 0}
 
 
-def test_cm_module_step():
+def test_cm_module_step() -> None:
     # Make sure that test_step creates correct confusion matrix.
     model = TestModel()
     task = MultiTask(
@@ -67,7 +69,7 @@ def test_cm_module_step():
             "segment": output3,
         },
     ]
-    batch = (outputs, targets, [])
+    batch: tuple = (outputs, targets, [])
 
     lm.on_test_epoch_start()
     lm.test_step(batch, 0, 0)

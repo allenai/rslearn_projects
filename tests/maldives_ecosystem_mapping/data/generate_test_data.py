@@ -13,7 +13,7 @@ from rslearn.utils import Projection, STGeometry
 tif_size = 32
 
 
-def create_tif(fname):
+def create_tif(fname: str) -> None:
     profile = dict(
         driver="GTiff",
         dtype=rasterio.uint8,
@@ -28,7 +28,7 @@ def create_tif(fname):
         src.write(array)
 
 
-def create_json(fname):
+def create_json(fname: str) -> None:
     src_vertices = [
         (0, 0),
         (tif_size, 0),

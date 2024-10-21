@@ -47,7 +47,7 @@ class DataPipelineConfig(BaseDataPipelineConfig):
         src_dir: str = "gs://earthsystem-a1/maxar",
         islands_fname: str = "gs://earthsystem-a1/resources/maldives_base_layers/island_geo.geojson",
         skip_ingest: bool = True,
-    ):
+    ) -> None:
         """Create a new DataPipelineConfig.
 
         Args:
@@ -76,7 +76,7 @@ class Label:
         geoms: list[STGeometry],
         classes: list[int],
         ts: datetime,
-    ):
+    ) -> None:
         """Create a new Label.
 
         Args:
@@ -101,7 +101,7 @@ class MaxarJob:
 
     def __init__(
         self, config: DataPipelineConfig, path: UPath, prefix: str, label: Label
-    ):
+    ) -> None:
         """Create a new ProcessJob.
 
         Args:
@@ -130,7 +130,7 @@ class BareJob:
         projection: Projection,
         island_geom: STGeometry,
         label: Label | None = None,
-    ):
+    ) -> None:
         """Create a new BareJob.
 
         Args:
@@ -149,7 +149,7 @@ class BareJob:
         self.label = label
 
 
-def clip(value, lo, hi):
+def clip(value: int, lo: int, hi: int) -> int:
     """Clip the input value to [lo, hi].
 
     Args:
@@ -168,7 +168,7 @@ def clip(value, lo, hi):
 
 
 @functools.cache
-def get_bucket(bucket_name: str):
+def get_bucket(bucket_name: str) -> storage.Bucket:
     """Get cached bucket object for the specified bucket.
 
     Args:
@@ -317,8 +317,8 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
     # Starting by converting the label bounding geometry and polygons to the projection
     # of the Maxar image.
     bounding_shp = job.label.bounding_geom.to_projection(projection).shp
-    proj_bounds = [int(x) for x in bounding_shp.bounds]
-    pixel_bounds = [
+    proj_bounds: list[int] = [int(x) for x in bounding_shp.bounds]
+    pixel_bounds: list[int] = [
         proj_bounds[0] - raster_bounds[0],
         proj_bounds[1] - raster_bounds[1],
         proj_bounds[2] - raster_bounds[0],
@@ -495,7 +495,7 @@ def get_bare_jobs(
     dp_config: DataPipelineConfig,
     island_feature: dict[str, Any],
     src_projection: Projection,
-    labels: list[Label],
+    labels: dict[str, Label],
 ) -> list[BareJob]:
     """Get the bare jobs needed for this island.
 
@@ -510,8 +510,8 @@ def get_bare_jobs(
             islandName properties, and the projection should correspond to
             src_projection.
         src_projection: the projection that the island features are in.
-        labels: list of labels available. If there's one that intersects this island
-            then we include in with the job so the crops_X window can be created.
+        labels: dictionary of labels available. If there's one that intersects this
+            island then we include in with the job so the crops_X window can be created.
 
     Returns:
         a list of BareJob objects.
@@ -566,7 +566,7 @@ def get_bare_jobs(
     return bare_jobs
 
 
-def data_pipeline(dp_config: DataPipelineConfig):
+def data_pipeline(dp_config: DataPipelineConfig) -> None:
     """Run the data pipeline for Maldives ecosystem mapping.
 
     Args:
@@ -615,7 +615,8 @@ def data_pipeline(dp_config: DataPipelineConfig):
     # This step also returns the timestamp of the Maxar images so we can update the
     # label objects accordingly, that way when we get Sentinel-2 / Planet images we can
     # have the timestamps aligned.
-    outputs = p.imap_unordered(process_maxar, maxar_jobs)
+    # TODO: Unsure how to type this right now so ignoring for now
+    outputs = p.imap_unordered(process_maxar, maxar_jobs)  # type: ignore
     for prefix, ts in tqdm.tqdm(
         outputs, total=len(maxar_jobs), desc="populate maxar windows"
     ):
@@ -651,7 +652,7 @@ def data_pipeline(dp_config: DataPipelineConfig):
     ):
         bare_jobs.extend(job_list)
 
-    outputs = p.imap_unordered(process_bare, bare_jobs)
+    outputs = p.imap_unordered(process_bare, bare_jobs)  # type: ignore
     for _ in tqdm.tqdm(outputs, total=len(bare_jobs), desc="populating other windows"):
         pass
     p.close()

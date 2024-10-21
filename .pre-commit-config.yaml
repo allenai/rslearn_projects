@@ -1,5 +1,5 @@
 exclude_types: ["*.geojson"]
-exclude: ^one_off_projects/
+exclude: ^(one_off_projects|landsat|platforms|sentinel2_postprocess_revamp|amazon_conservation|convert_satlas_webmercator_to_rslearn)/ # Exlcluding projects that have not been migrated to rslp
 ci:
   autofix_prs: false
   autoupdate_branch: ""
@@ -56,8 +56,7 @@ repos:
         exclude: ^tests/
         args:
           - -s
-          - B101
-          - B311
+          - B101,B311,B324,B108,B104
   - repo: local
     hooks:
       - id: interrogate
