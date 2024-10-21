@@ -91,12 +91,19 @@ jobs:
         run: |
           COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker compose -f docker-compose.yaml build
 
+      - name: Authenticate into gcp
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       - name: Run tests with Docker Compose
         run: |
           docker compose -f docker-compose.yaml run \
             -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
             -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
+            -v ${{env.GOOGLE_GHA_CREDS_PATH}}:/tmp/gcp-credentials.json:ro \
+            -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
+            -e RSLP_BUCKET rslearn-eai \
             test pytest tests/
 
       - name: Clean up
