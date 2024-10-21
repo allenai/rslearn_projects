@@ -22,10 +22,10 @@ model:
     plateau_patience: 10
     plateau_min_lr: 0
     plateau_cooldown: 0
-    # restore_config:
-    #   restore_path: gcs://rslearn-eai/datasets/landsat_vessel_detection/artifacts/2024-03-13-landsat-vessels/vessel02_satlas_freeze_crop512_nosatlas_b8first2/best.pth
-    #   remap_prefixes:
-    #     - ["backbone.backbone.", "encoder.0.model."]
+    restore_config:
+      restore_path: gcs://rslearn-eai/datasets/landsat_vessel_detection/artifacts/2024-03-13-landsat-vessels/vessel02_satlas_freeze_crop512_nosatlas_b8first2/best.pth
+      remap_prefixes:
+        - ["backbone.backbone.", "encoder.0.model."]
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
