@@ -1,104 +1,196 @@
 {
-	"layers": {
-		"landsat": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["B2"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [5000, 17000],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint8",
-				"bands": ["B3"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [5000, 17000],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint8",
-				"bands": ["B4"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [5000, 17000],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint8",
-				"bands": ["B5"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [5000, 17000],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint8",
-				"bands": ["B6"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [5000, 17000],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint8",
-				"bands": ["B7"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [5000, 17000],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint8",
-				"bands": ["B8"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [5000, 17000],
-					"dst": [0, 255]
-				}
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
-				"metadata_cache_dir": "/data/favyenb/rslearn_landsat/cache/landsat/",
-				"max_time_delta": "1d",
-				"sort_by": "cloud_cover",
-				"query_config": {
-					"max_matches": 1
-				}
-			}
-		},
-		"label": {
-			"type": "vector"
-		},
-		"output": {
-			"type": "vector"
-		},
-		"mask": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["mask"],
-				"format": {"name": "single_image", "format": "png"}
-			}]
-		}
-	},
-	"tile_store": {
-		"name": "file",
-		"root_dir": "/data/favyenb/rslearn_landsat/tiles"
-	}
+  "layers": {
+    "label": {
+      "type": "vector"
+    },
+    "landsat": {
+      "band_sets": [
+        {
+          "bands": [
+            "B2"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B3"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B4"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B5"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B6"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B7"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B8"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          }
+        }
+      ],
+      "data_source": {
+        "max_time_delta": "1d",
+        "metadata_cache_dir": "/data/favyenb/rslearn_landsat/cache/landsat/",
+        "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
+        "query_config": {
+          "max_matches": 1
+        },
+        "sort_by": "cloud_cover"
+      },
+      "type": "raster"
+    },
+    "mask": {
+      "band_sets": [
+        {
+          "bands": [
+            "mask"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "type": "vector"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "/data/favyenb/rslearn_landsat/tiles"
+  }
 }

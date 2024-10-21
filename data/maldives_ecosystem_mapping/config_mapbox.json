@@ -1,39 +1,67 @@
 {
-	"layers": {
-		"label": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["label"],
-				"format": {"name": "geotiff"}
-			}]
-		},
-		"output": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["output"],
-				"format": {"name": "geotiff"}
-			}]
-		},
-		"mapbox": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["R", "G", "B"],
-				"format": {"name": "geotiff", "always_enable_tiling": true}
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.xyz_tiles.XyzTiles",
-				"url_templates": ["https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.jpg?access_token=pk.eyJ1Ijoic2t5bGlnaHQtdnVsY2FuIiwiYSI6ImNqejFudGk5bTAxNWIzYm4zNXY3OXZkcmkifQ.6zaWTOP-R-MTKynYpqwvEQ"],
-				"time_ranges": [["2023-01-01T00:00:00+00:00", "2024-12-31T23:59:59+00:00"]],
-				"zoom": 18,
-				"ingest": false
-			}
-		}
-	},
-	"tile_store": {
-		"name": "file",
-		"root_dir": "tiles"
-	}
+  "layers": {
+    "label": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "mapbox": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          }
+        }
+      ],
+      "data_source": {
+        "ingest": false,
+        "name": "rslearn.data_sources.xyz_tiles.XyzTiles",
+        "time_ranges": [
+          [
+            "2023-01-01T00:00:00+00:00",
+            "2024-12-31T23:59:59+00:00"
+          ]
+        ],
+        "url_templates": [
+          "https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.jpg?access_token=pk.eyJ1Ijoic2t5bGlnaHQtdnVsY2FuIiwiYSI6ImNqejFudGk5bTAxNWIzYm4zNXY3OXZkcmkifQ.6zaWTOP-R-MTKynYpqwvEQ"
+        ],
+        "zoom": 18
+      },
+      "type": "raster"
+    },
+    "output": {
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          }
+        }
+      ],
+      "type": "raster"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
 }
