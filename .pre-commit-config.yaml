@@ -57,6 +57,7 @@ repos:
         args:
           - -s
           - B101
+          - B311
   - repo: local
     hooks:
       - id: interrogate
