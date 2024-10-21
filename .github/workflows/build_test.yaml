@@ -94,7 +94,7 @@ jobs:
 
       - name: Run tests with Docker Compose
         run: |
-          docker compose -f docker-compose.yaml run
+          docker compose -f docker-compose.yaml run \
             -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
             -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
             test pytest tests/
