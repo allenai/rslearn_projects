@@ -104,7 +104,7 @@ jobs:
             -v ${{env.GOOGLE_GHA_CREDS_PATH}}:/tmp/gcp-credentials.json:ro \
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
             -e RSLP_BUCKET=rslearn-eai \
-            test pytest tests/
+            test pytest tests/ --ignore tests/integration_slow/
 
       - name: Clean up
         if: always()
