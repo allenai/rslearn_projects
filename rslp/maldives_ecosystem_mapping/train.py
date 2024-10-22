@@ -16,8 +16,8 @@ class CMLightningModule(RslearnLightningModule):
 
     def on_test_epoch_start(self) -> None:
         """Initialize test confusion matrix."""
-        self.probs = []
-        self.y_true = []
+        self.probs: list = []
+        self.y_true: list = []
 
     def test_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
         """Compute test performance and also record for confusion matrix.

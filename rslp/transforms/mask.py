@@ -34,7 +34,7 @@ class Mask(Transform):
         """
         return image * (mask > 0).float()
 
-    def forward(self, input_dict, target_dict):
+    def forward(self, input_dict: dict, target_dict: dict) -> tuple[dict, dict]:
         """Apply mask.
 
         Args:

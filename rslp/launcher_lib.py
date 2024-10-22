@@ -14,7 +14,7 @@ WANDB_ID_BLOB_PATH = "projects/{project_id}/{experiment_id}/wandb_id"
 bucket = None
 
 
-def _get_bucket():
+def _get_bucket() -> storage.Bucket:
     global bucket
     if bucket is None:
         storage_client = storage.Client()
@@ -38,7 +38,7 @@ def get_project_and_experiment(config_path: str) -> tuple[str, str]:
     return project_id, experiment_id
 
 
-def upload_code(project_id: str, experiment_id: str):
+def upload_code(project_id: str, experiment_id: str) -> None:
     """Upload code to GCS that entrypoint should retrieve.
 
     Called by the launcher.
@@ -62,7 +62,7 @@ def upload_code(project_id: str, experiment_id: str):
         print("upload complete")
 
 
-def download_code(project_id: str, experiment_id: str):
+def download_code(project_id: str, experiment_id: str) -> None:
     """Download code from GCS for this experiment.
 
     Called by the entrypoint.
@@ -85,7 +85,7 @@ def download_code(project_id: str, experiment_id: str):
         print("extraction complete", flush=True)
 
 
-def upload_wandb_id(project_id: str, experiment_id: str, wandb_id: str):
+def upload_wandb_id(project_id: str, experiment_id: str, wandb_id: str) -> None:
     """Save a W&B run ID to GCS.
 
     Args:
