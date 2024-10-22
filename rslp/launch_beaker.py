@@ -57,12 +57,16 @@ def launch_job(
                 value="prior-satlas",  # nosec
             ),
             EnvVar(
-                name="S3_ACCESS_KEY_ID",  # nosec
+                name="WEKA_ACCESS_KEY_ID",  # nosec
                 secret="RSLEARN_WEKA_KEY",  # nosec
             ),
             EnvVar(
-                name="S3_SECRET_ACCESS_KEY",  # nosec
+                name="WEKA_SECRET_ACCESS_KEY",  # nosec
                 secret="RSLEARN_WEKA_SECRET",  # nosec
+            ),
+            EnvVar(
+                name="WEKA_ENDPOINT_URL",  # nosec
+                value="https://weka-aus.beaker.org:9000",  # nosec
             ),
             EnvVar(
                 name="RSLP_PROJECT",  # nosec
