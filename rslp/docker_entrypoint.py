@@ -3,7 +3,7 @@
 import multiprocessing
 
 
-def main():
+def main() -> None:
     """Docker entrypoint for rslp.
 
     Downloads the code from GCS before running the job.

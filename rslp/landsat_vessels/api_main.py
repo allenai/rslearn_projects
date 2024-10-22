@@ -9,9 +9,8 @@ import os
 import uvicorn
 from fastapi import FastAPI, Response
 from pydantic import BaseModel
-from typing_extensions import TypedDict
 
-from rslp.landsat_vessels import predict_pipeline
+from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_pipeline
 
 app = FastAPI()
 
@@ -21,16 +20,6 @@ logger = logging.getLogger(__name__)
 
 LANDSAT_HOST = "0.0.0.0"
 LANDSAT_PORT = 5555
-
-
-class FormattedPrediction(TypedDict):
-    """Formatted prediction for a single vessel detection."""
-
-    latitude: float
-    longitude: float
-    score: float
-    rgb_fname: str
-    b8_fname: str
 
 
 class LandsatResponse(BaseModel):
@@ -88,7 +77,10 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             scratch_path=info.scratch_path,
             json_path=info.json_path,
         )
-        return LandsatResponse(status=["success"], predictions=json_data)
+        return LandsatResponse(
+            status=["success"],
+            predictions=[pred for pred in json_data],
+        )
     except ValueError as e:
         logger.error(f"Value error during prediction pipeline: {e}")
         return LandsatResponse(status=["error"], predictions=[])

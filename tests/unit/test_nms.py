@@ -4,11 +4,11 @@ from rslearn.utils import Feature, STGeometry
 from rslp.utils.nms import NMSDistanceMerger
 
 
-def test_distance_nms():
-    metadata = {"bounds": [0, 0], "projection": "EPSG:4326"}
+def test_distance_nms() -> None:
+    metadata: dict = {"bounds": [0, 0], "projection": "EPSG:4326"}
 
     # Test with no boxes provided.
-    features = []
+    features: list = []
     merger = NMSDistanceMerger(grid_size=10, distance_threshold=5)
     merged_features = merger.merge(features)
     # Expected: No boxes, so the result should be an empty list.
