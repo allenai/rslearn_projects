@@ -1,15 +1,18 @@
 import os
 
+from upath import UPath
+
 from rslp.maldives_ecosystem_mapping.data_pipeline import (
     DataPipelineConfig,
     data_pipeline,
 )
 
 
-def test_workflows(tmp_path):
+def test_workflows(tmp_path: UPath) -> None:
     dp_config = DataPipelineConfig(
         ds_root=str(tmp_path),
-        src_dir="tests/maldives_ecosystem_mapping/data",
+        src_dir="tests/integration/maldives_ecosystem_mapping/data",
+        islands_fname="tests/integration/maldives_ecosystem_mapping/data/islands.json",
     )
     data_pipeline(dp_config)
     assert os.path.exists(

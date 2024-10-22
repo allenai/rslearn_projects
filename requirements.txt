@@ -1,8 +1,9 @@
 beaker-py
-python-dotenv
-pytest
-uvicorn
 fastapi
+interrogate
 pydantic
-typing-extensions
+pytest
+python-dotenv
 ruff
+typing-extensions
+uvicorn

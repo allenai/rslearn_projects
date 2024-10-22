@@ -4,7 +4,7 @@
 class BaseDataPipelineConfig:
     """Base configuration for a data pipeline."""
 
-    def __init__(self, ds_root: str, workers: int = 1):
+    def __init__(self, ds_root: str, workers: int = 1) -> None:
         """Create a new BaseDataPipelineConfig.
 
         Args:
@@ -18,6 +18,6 @@ class BaseDataPipelineConfig:
 class BaseTrainPipelineConfig:
     """Base configuration for a model training pipeline."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Create a new BaseTrainPipelineConfig."""
         pass

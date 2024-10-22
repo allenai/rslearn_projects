@@ -157,8 +157,8 @@ class ForestLossLightningModule(RslearnLightningModule):
 
     def on_validation_epoch_start(self) -> None:
         """Initialize val confusion matrix."""
-        self.probs = []
-        self.y_true = []
+        self.probs: list = []
+        self.y_true: list = []
 
     def validation_step(
         self, batch: Any, batch_idx: int, dataloader_idx: int = 0
@@ -249,7 +249,7 @@ class ForestLossLightningModule(RslearnLightningModule):
                 for image_suffix, image in images.items():
                     out_fname = os.path.join(
                         self.visualize_dir,
-                        f"{metadata["window_name"]}_{metadata["bounds"][0]}_{metadata["bounds"][1]}_{image_suffix}.png",
+                        f"{metadata['window_name']}_{metadata['bounds'][0]}_{metadata['bounds'][1]}_{image_suffix}.png",
                     )
                     Image.fromarray(image).save(out_fname)
 

@@ -28,7 +28,6 @@ CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase123_config.yaml"
 LANDSAT_RESOLUTION = 15
 
 CLASSIFY_WINDOW_SIZE = 64
-"""The size of windows expected by the classifier."""
 
 
 class VesselDetection:
@@ -41,7 +40,7 @@ class VesselDetection:
         projection: Projection,
         score: float,
         crop_window_dir: UPath | None = None,
-    ):
+    ) -> None:
         """Create a new VesselDetection.
 
         Args:
@@ -189,7 +188,7 @@ def predict_pipeline(
     json_path: str | None = None,
     image_files: dict[str, str] | None = None,
     scene_id: str | None = None,
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
     """Run the Landsat vessel prediction pipeline.
 
     This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
@@ -222,7 +221,7 @@ def predict_pipeline(
         # Setup the dataset configuration file with the provided image files.
         with open(LOCAL_FILES_DATASET_CONFIG) as f:
             cfg = json.load(f)
-        item_spec = {
+        item_spec: dict = {
             "fnames": [],
             "bands": [],
         }
@@ -279,7 +278,10 @@ def predict_pipeline(
     step_start_time = time.time()
     print("run detector")
     detections = get_vessel_detections(
-        ds_path, projection, scene_bounds, time_range=time_range
+        ds_path,
+        projection,
+        scene_bounds,  # type: ignore
+        time_range=time_range,
     )
     time_profile["get_vessel_detections"] = time.time() - step_start_time
 
@@ -291,13 +293,15 @@ def predict_pipeline(
     # Write JSON and crops.
     step_start_time = time.time()
     if crop_path:
-        crop_path = UPath(crop_path)
-        crop_path.mkdir(parents=True, exist_ok=True)
+        crop_upath = UPath(crop_path)
+        crop_upath.mkdir(parents=True, exist_ok=True)
 
     json_data = []
     for idx, detection in enumerate(detections):
         # Load crops from the window directory.
         images = {}
+        if detection.crop_window_dir is None:
+            raise ValueError("Crop window directory is None")
         for band in ["B2", "B3", "B4", "B8"]:
             image_fname = (
                 detection.crop_window_dir / "layers" / "landsat" / band / "geotiff.tif"
@@ -325,11 +329,11 @@ def predict_pipeline(
         )
 
         if crop_path:
-            rgb_fname = crop_path / f"{idx}_rgb.png"
+            rgb_fname = crop_upath / f"{idx}_rgb.png"
             with rgb_fname.open("wb") as f:
                 Image.fromarray(rgb).save(f, format="PNG")
 
-            b8_fname = crop_path / f"{idx}_b8.png"
+            b8_fname = crop_upath / f"{idx}_b8.png"
             with b8_fname.open("wb") as f:
                 Image.fromarray(images["B8"]).save(f, format="PNG")
         else:
@@ -364,8 +368,8 @@ def predict_pipeline(
         tmp_dir.cleanup()
 
     if json_path:
-        json_path = UPath(json_path)
-        with json_path.open("w") as f:
+        json_upath = UPath(json_path)
+        with json_upath.open("w") as f:
             json.dump(json_data, f)
 
     print(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")

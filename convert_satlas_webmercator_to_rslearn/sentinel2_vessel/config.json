@@ -1,58 +1,103 @@
 {
-    "layers": {
-        "sentinel2": {
-            "type": "raster",
-            "band_sets": [{
-                "dtype": "uint8",
-                "bands": ["R", "G", "B"],
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["B08"],
-                "format": {"name": "single_image", "format": "png"},
-                "remap": {
-                    "name": "linear",
-                    "src": [0, 8160],
-                    "dst": [0, 255]
-                }
-            }, {
-                "dtype": "uint8",
-                "bands": ["B11"],
-                "format": {"name": "single_image", "format": "png"},
-                "remap": {
-                    "name": "linear",
-                    "src": [0, 8160],
-                    "dst": [0, 255]
-                }
-            }, {
-                "dtype": "uint8",
-                "bands": ["B12"],
-                "format": {"name": "single_image", "format": "png"},
-                "remap": {
-                    "name": "linear",
-                    "src": [0, 8160],
-                    "dst": [0, 255]
-                }
-            }],
-            "data_source": {
-                "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
-                "modality": "L1C",
-                "index_cache_dir": "/data/favyenb/rslearn_datasets_satlas/solar_farm/cache/sentinel2",
-                "max_time_delta": "1d",
-                "query_config": {
-                    "max_matches": 8,
-                    "space_mode": "INTERSECTS"
-                },
-                "sort_by": "cloud_cover",
-                "harmonize": true
-            }
-        },
-        "label": {
-            "type": "vector"
-        }
+  "layers": {
+    "label": {
+      "type": "vector"
     },
-    "tile_store": {
-        "name": "file",
-        "root_dir": "tiles"
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "B08"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B11"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B12"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          }
+        }
+      ],
+      "data_source": {
+        "harmonize": true,
+        "index_cache_dir": "/data/favyenb/rslearn_datasets_satlas/solar_farm/cache/sentinel2",
+        "max_time_delta": "1d",
+        "modality": "L1C",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 8,
+          "space_mode": "INTERSECTS"
+        },
+        "sort_by": "cloud_cover"
+      },
+      "type": "raster"
     }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
 }

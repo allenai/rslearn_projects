@@ -1,6 +1,6 @@
-"""This is a quick script to visualize the outputs from create_windows.py
-(after running prepare/ingest/materialize in rslearn to get the images).
+"""This is a quick script to visualize the outputs from create_windows.py .
 
+(after running prepare/ingest/materialize in rslearn to get the images).
 Just visualizing the ground truth data.
 - Heading, length in the image.
 - Ship type in the filename.
@@ -53,5 +53,5 @@ for example_id in tqdm.tqdm(example_ids):
         im[center - 2 : center + 2, center - 2 : center + 2, :] = [255, 255, 255]
 
     Image.fromarray(im).save(
-        f"out/{example_id}_im_{info["type"]}_{info["sog"]}_{info["event_id"]}.png"
+        f"out/{example_id}_im_{info['type']}_{info['sog']}_{info['event_id']}.png"
     )
