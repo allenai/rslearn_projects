@@ -208,7 +208,6 @@ def predict_pipeline(
     start_time = time.time()  # Start the timer
     time_profile = {}
 
-    # Use temporary directory if scratch_path or crop_path are not specified.
     if scratch_path is None:
         tmp_dir = tempfile.TemporaryDirectory()
         scratch_path = tmp_dir.name
