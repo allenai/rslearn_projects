@@ -4,7 +4,7 @@ import zipfile
 from rslp.launcher_lib import make_archive
 
 
-def test_make_archive(tmp_path: pathlib.Path):
+def test_make_archive(tmp_path: pathlib.Path) -> None:
     # Make sure make_archive correctly ignores the passed prefixes.
     # We make sure it works with exactly matching file as well as a subdirectory.
     exclude_prefixes = [
