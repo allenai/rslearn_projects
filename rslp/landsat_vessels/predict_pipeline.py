@@ -4,7 +4,6 @@ import json
 import tempfile
 import time
 from datetime import datetime, timedelta
-from typing import Any
 
 import numpy as np
 import rasterio
@@ -17,6 +16,7 @@ from rslearn.data_sources.aws_landsat import LandsatOliTirs
 from rslearn.dataset import Dataset, Window
 from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
+from typing_extensions import TypedDict
 from upath import UPath
 
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
@@ -55,6 +55,16 @@ class VesselDetection:
         self.projection = projection
         self.score = score
         self.crop_window_dir = crop_window_dir
+
+
+class FormattedPrediction(TypedDict):
+    """Formatted prediction for a single vessel detection."""
+
+    latitude: float
+    longitude: float
+    score: float
+    rgb_fname: str
+    b8_fname: str
 
 
 def get_vessel_detections(
@@ -183,12 +193,12 @@ def run_classifier(
 
 
 def predict_pipeline(
-    crop_path: str,
+    crop_path: str | None = None,
     scratch_path: str | None = None,
     json_path: str | None = None,
     image_files: dict[str, str] | None = None,
     scene_id: str | None = None,
-) -> list[dict[str, Any]]:
+) -> list[FormattedPrediction]:
     """Run the Landsat vessel prediction pipeline.
 
     This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
@@ -349,13 +359,13 @@ def predict_pipeline(
         lat = dst_geom.shp.y
 
         json_data.append(
-            dict(
+            FormattedPrediction(
                 longitude=lon,
                 latitude=lat,
                 score=detection.score,
                 rgb_fname=rgb_fname,
                 b8_fname=b8_fname,
-            )
+            ),
         )
 
     time_profile["write_json_and_crops"] = time.time() - step_start_time
