@@ -296,20 +296,6 @@ def predict_pipeline(
 
     json_data = []
     for idx, detection in enumerate(detections):
-        # Get longitude/latitude.
-        src_geom = STGeometry(
-            detection.projection, shapely.Point(detection.col, detection.row), None
-        )
-        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
-        lon = dst_geom.shp.x
-        lat = dst_geom.shp.y
-
-        json_dict = dict(
-            longitude=lon,
-            latitude=lat,
-            score=detection.score,
-        )
-
         # Load crops from the window directory.
         images = {}
         for band in ["B2", "B3", "B4", "B8"]:
@@ -346,11 +332,27 @@ def predict_pipeline(
             b8_fname = crop_path / f"{idx}_b8.png"
             with b8_fname.open("wb") as f:
                 Image.fromarray(images["B8"]).save(f, format="PNG")
+        else:
+            rgb_fname = ""
+            b8_fname = ""
 
-            json_dict["rgb_fname"] = str(rgb_fname)
-            json_dict["b8_fname"] = str(b8_fname)
+        # Get longitude/latitude.
+        src_geom = STGeometry(
+            detection.projection, shapely.Point(detection.col, detection.row), None
+        )
+        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
+        lon = dst_geom.shp.x
+        lat = dst_geom.shp.y
 
-        json_data.append(json_dict)
+        json_data.append(
+            dict(
+                longitude=lon,
+                latitude=lat,
+                score=detection.score,
+                rgb_fname=rgb_fname,
+                b8_fname=b8_fname,
+            )
+        )
 
     time_profile["write_json_and_crops"] = time.time() - step_start_time
 
