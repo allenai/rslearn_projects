@@ -103,7 +103,7 @@ trainer:
         selector: ["class"]
 #  limit_train_batches: 64
 rslp_project: rslearn-landsat-recheck
-rslp_experiment: phase123_20240919_01_copy
+rslp_experiment: phase123_20241022_00_copy
 # Model 1 (with 750 FPs, phase3a_selected): phase123_20240919_01_copy
 # Model 2 (with 6K FPs, phase3a): phase123_20241002_04_copy
 # Model 3 (with 7K FPs, phase3b, add whitecaps): phase123_20241004_01_copy

@@ -1,10 +1,13 @@
 """Utility functions for launchers/entrypoints to call."""
 
+import copy
 import io
 import os
 import shutil
 import tempfile
 import zipfile
+from itertools import product
+from typing import Any
 
 import yaml
 from google.cloud import storage
@@ -163,3 +166,117 @@ def download_wandb_id(project_id: str, experiment_id: str) -> str | None:
     buf = io.BytesIO()
     blob.download_to_file(buf)
     return buf.getvalue().decode()
+
+
+def load_config(config_path: str) -> dict:
+    """Load config from a YAML file.
+
+    Args:
+        config_path: the path to the YAML file containing the config.
+
+    Returns:
+        a dictionary containing the config.
+    """
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
+def extract_parameters(
+    d: dict, path: list[str] | None = None
+) -> list[tuple[list[str], list]]:
+    """Recursively extract parameters that have list values.
+
+    Args:
+        d: the dictionary to extract parameters from.
+        path: the current path in the dictionary.
+
+    Returns:
+        a list of tuples: (path, list_of_values)
+    """
+    if path is None:
+        path = []
+    params = []
+    for key, value in d.items():
+        current_path = path + [key]
+        if isinstance(value, dict):
+            params.extend(extract_parameters(value, current_path))
+        elif isinstance(value, list):
+            params.append((current_path, value))
+        # If you have other iterable types (e.g., tuples), handle them here
+    return params
+
+
+def set_in_dict(d: dict, path: list[str], value: Any) -> None:
+    """Set a value in a nested dictionary given a path.
+
+    Args:
+        d: the dictionary to set the value in.
+        path: the path to the value.
+        value: the value to set.
+    """
+    for key in path[:-1]:
+        d = d.setdefault(key, {})
+    d[path[-1]] = value
+
+
+def generate_combinations(config: dict) -> list[dict]:
+    """Generate all combinations of hyperparameters.
+
+    Args:
+        config: the configuration dictionary.
+
+    Returns:
+        a list of dictionaries, each representing a unique combination of hyperparameters.
+    """
+    # Extract parameters with list values
+    params = extract_parameters(config)
+    if not params:
+        return [config]
+
+    # Extract paths and their corresponding lists of values
+    paths, lists = zip(*params)
+
+    # Compute Cartesian product of all parameter values
+    combinations = list(product(*lists))
+
+    # Generate a list of configuration dictionaries
+    config_dicts = []
+    for combo in combinations:
+        new_config = copy.deepcopy(config)
+        for path, value in zip(paths, combo):
+            set_in_dict(new_config, path, value)
+        config_dicts.append(new_config)
+
+    return config_dicts
+
+
+def create_custom_configs(
+    config_path: str, hparams_config_path: str, custom_dir: str
+) -> list[str]:
+    """Create custom configs with different hyperparameter combinations.
+
+    Args:
+        config_path: the path to the base config.
+        hparams_config_path: the path to the hyperparameters config.
+        custom_dir: the directory to save the custom configs to.
+
+    Returns:
+        a list of paths to the custom configs.
+    """
+    base_config = load_config(config_path)
+    hparams_combinations = generate_combinations(load_config(hparams_config_path))
+    custom_configs = []
+    for idx, combo in enumerate(hparams_combinations):
+        config_copy = copy.deepcopy(base_config)
+        config_copy.update(combo)
+        # Update experiment ID
+        experiment_id = base_config["rslp_experiment"]
+        # One issue using idx as suffix is that it doesn't include the hyperparamter information
+        custom_experiment_id = f"{experiment_id}_{idx}"
+        config_copy["rslp_experiment"] = custom_experiment_id
+        config_filename = os.path.join(custom_dir, f"{custom_experiment_id}.yaml")
+
+        with open(config_filename, "w") as f:
+            yaml.dump(config_copy, f)
+        custom_configs.append(config_filename)
+    return custom_configs

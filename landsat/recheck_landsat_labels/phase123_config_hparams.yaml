@@ -1,0 +1,6 @@
+model:
+  init_args:
+    lr: [0.001, 0.0001]
+data:
+  init_args:
+    batch_size: [8, 16]
