@@ -103,7 +103,7 @@ jobs:
             -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
             -v ${{env.GOOGLE_GHA_CREDS_PATH}}:/tmp/gcp-credentials.json:ro \
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
-            -e RSLP_BUCKET rslearn-eai \
+            -e RSLP_BUCKET=rslearn-eai \
             test pytest tests/
 
       - name: Clean up
