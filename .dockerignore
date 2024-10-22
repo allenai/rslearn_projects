@@ -1,3 +1,4 @@
 **/.git
 wandb
 lightning_logs
+.env
