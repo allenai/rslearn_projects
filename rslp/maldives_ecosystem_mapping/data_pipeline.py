@@ -552,6 +552,9 @@ def get_bare_jobs(
             -resolution,
         )
         dst_geom = island_src_geom.to_projection(dst_projection)
+        # Add buffer so that there's no issue with lower resolution bands ending up as
+        # 0x0 arrays (which causes error).
+        dst_geom.shp = dst_geom.shp.buffer(16)
         bare_jobs.append(
             BareJob(
                 config=dp_config,

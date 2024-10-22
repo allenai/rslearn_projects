@@ -364,6 +364,222 @@
         }
       ],
       "type": "raster"
+    },
+    "sentinel2_with_planet": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -2
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -3
+        },
+        {
+          "bands": [
+            "B01",
+            "B09",
+            "B10"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -4
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2_with_planet.1": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -2
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -3
+        },
+        {
+          "bands": [
+            "B01",
+            "B09",
+            "B10"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -4
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2_with_planet.2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -2
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -3
+        },
+        {
+          "bands": [
+            "B01",
+            "B09",
+            "B10"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -4
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2_with_planet.3": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -2
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -3
+        },
+        {
+          "bands": [
+            "B01",
+            "B09",
+            "B10"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -4
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2_with_planet.4": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -2
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -3
+        },
+        {
+          "bands": [
+            "B01",
+            "B09",
+            "B10"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -4
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2_with_planet.5": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -2
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -3
+        },
+        {
+          "bands": [
+            "B01",
+            "B09",
+            "B10"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -4
+        }
+      ],
+      "type": "raster"
     }
   },
   "tile_store": {
