@@ -75,7 +75,7 @@ def create_json(fname: str) -> None:
         json.dump(json_data, f)
 
 
-def create_islands_file(fname):
+def create_islands_file(fname: str) -> None:
     json_data = {
         "type": "FeatureCollection",
         "crs": {

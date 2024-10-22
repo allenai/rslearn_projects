@@ -1,1 +1,41 @@
-{"type": "FeatureCollection", "crs": {"properties": {"name": "EPSG:3857"}}, "features": [{"type": "Feature", "properties": {"atoll": "x", "islandName": "x", "FCODE": "x"}, "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [0, 32], [32, 32], [32, 0]]]}}]}
+{
+  "crs": {
+    "properties": {
+      "name": "EPSG:3857"
+    }
+  },
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              32
+            ],
+            [
+              32,
+              32
+            ],
+            [
+              32,
+              0
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "FCODE": "x",
+        "atoll": "x",
+        "islandName": "x"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}
