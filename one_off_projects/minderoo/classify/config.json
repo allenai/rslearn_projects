@@ -1,24 +1,37 @@
 {
-	"layers": {
-		"maxar": {
-            "type": "raster",
-            "band_sets": [{
-                "dtype": "uint8",
-                "bands": ["R", "G", "B"],
-                "format": {"name": "single_image", "format": "png"}
-            }]
-		},
-        "label": {
-            "type": "vector",
-            "format": {"name": "geojson"}
-        },
-        "output": {
-            "type": "vector",
-            "format": {"name": "geojson"}
+  "layers": {
+    "label": {
+      "format": {
+        "name": "geojson"
+      },
+      "type": "vector"
+    },
+    "maxar": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
         }
-	},
-	"tile_store": {
-		"name": "file",
-		"root_dir": "tiles"
-	}
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "format": {
+        "name": "geojson"
+      },
+      "type": "vector"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
 }

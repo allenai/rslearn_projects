@@ -16,7 +16,7 @@ CODE_EXCLUDES = [".env", "wandb", "rslp/__pycache__"]
 bucket = None
 
 
-def _get_bucket():
+def _get_bucket() -> storage.Bucket:
     global bucket
     if bucket is None:
         storage_client = storage.Client()
@@ -40,7 +40,9 @@ def get_project_and_experiment(config_path: str) -> tuple[str, str]:
     return project_id, experiment_id
 
 
-def make_archive(zip_filename: str, root_dir: str, exclude_prefixes: list[str] = []):
+def make_archive(
+    zip_filename: str, root_dir: str, exclude_prefixes: list[str] = []
+) -> None:
     """Create a zip archive of the contents of root_dir.
 
     The paths in the zip archive will be relative to root_dir.
@@ -72,7 +74,7 @@ def make_archive(zip_filename: str, root_dir: str, exclude_prefixes: list[str] =
                 zipf.write(full_path, arcname=rel_path)
 
 
-def upload_code(project_id: str, experiment_id: str):
+def upload_code(project_id: str, experiment_id: str) -> None:
     """Upload code to GCS that entrypoint should retrieve.
 
     Called by the launcher.
@@ -99,7 +101,7 @@ def upload_code(project_id: str, experiment_id: str):
         print("upload complete")
 
 
-def download_code(project_id: str, experiment_id: str):
+def download_code(project_id: str, experiment_id: str) -> None:
     """Download code from GCS for this experiment.
 
     Called by the entrypoint.
@@ -122,7 +124,7 @@ def download_code(project_id: str, experiment_id: str):
         print("extraction complete", flush=True)
 
 
-def upload_wandb_id(project_id: str, experiment_id: str, wandb_id: str):
+def upload_wandb_id(project_id: str, experiment_id: str, wandb_id: str) -> None:
     """Save a W&B run ID to GCS.
 
     Args:

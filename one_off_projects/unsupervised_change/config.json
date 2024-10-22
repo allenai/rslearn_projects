@@ -1,94 +1,175 @@
 {
-	"layers": {
-		"sentinel2": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["R", "G", "B"],
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B05"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [0, 8160],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint8",
-				"bands": ["B06"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [0, 8160],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint8",
-				"bands": ["B07"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [0, 8160],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint8",
-				"bands": ["B08"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [0, 8160],
-					"dst": [0, 255]
-				}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B11"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [0, 8160],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint8",
-				"bands": ["B12"],
-				"format": {"name": "single_image", "format": "png"},
-				"remap": {
-					"name": "linear",
-					"src": [0, 8160],
-					"dst": [0, 255]
-				},
-				"zoom_offset": -1
-			}],
-			"data_source_old": {
-				"name": "rslearn.data_sources.aws_open_data.Sentinel2",
-				"modality": "L1C",
-				"metadata_cache_dir": "/data/favyenb/rslearn_change_amazon_images/cache/sentinel2/",
-				"max_time_delta": "1d",
-				"query_config": {
-					"max_matches": 1
-				},
-				"sort_by": "cloud_cover"
-			},
-			"data_source": {
-				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
-				"index_cache_dir": "/data/favyenb/rslearn_change_amazon_images/cache/sentinel2_gcp/",
-				"max_time_delta": "1d",
-				"sort_by": "cloud_cover",
-				"query_config": {
-					"max_matches": 1
-				}
-			}
-		}
-	},
-	"tile_store": {
-		"name": "file",
-		"root_dir": "/data/favyenb/rslearn_change_amazon_images/tiles"
-	}
+  "layers": {
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "B05"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B06"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B07"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B08"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B11"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B12"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          },
+          "zoom_offset": -1
+        }
+      ],
+      "data_source": {
+        "index_cache_dir": "/data/favyenb/rslearn_change_amazon_images/cache/sentinel2_gcp/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1
+        },
+        "sort_by": "cloud_cover"
+      },
+      "data_source_old": {
+        "max_time_delta": "1d",
+        "metadata_cache_dir": "/data/favyenb/rslearn_change_amazon_images/cache/sentinel2/",
+        "modality": "L1C",
+        "name": "rslearn.data_sources.aws_open_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1
+        },
+        "sort_by": "cloud_cover"
+      },
+      "type": "raster"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "/data/favyenb/rslearn_change_amazon_images/tiles"
+  }
 }

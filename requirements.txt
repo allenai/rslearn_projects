@@ -1,3 +1,4 @@
 beaker-py
-python-dotenv
+interrogate
 pytest
+python-dotenv
