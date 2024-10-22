@@ -1,6 +1,8 @@
 """Landsat vessel prediction pipeline."""
 
 import json
+import tempfile
+import time
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -14,6 +16,7 @@ from rslearn.data_sources.aws_landsat import LandsatOliTirs
 from rslearn.dataset import Dataset, Window
 from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
+from typing_extensions import TypedDict
 from upath import UPath
 
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
@@ -52,6 +55,16 @@ class VesselDetection:
         self.projection = projection
         self.score = score
         self.crop_window_dir = crop_window_dir
+
+
+class FormattedPrediction(TypedDict):
+    """Formatted prediction for a single vessel detection."""
+
+    latitude: float
+    longitude: float
+    score: float
+    rgb_fname: str
+    b8_fname: str
 
 
 def get_vessel_detections(
@@ -180,12 +193,12 @@ def run_classifier(
 
 
 def predict_pipeline(
-    scratch_path: str,
-    json_path: str,
-    crop_path: str,
+    crop_path: str | None = None,
+    scratch_path: str | None = None,
+    json_path: str | None = None,
     image_files: dict[str, str] | None = None,
     scene_id: str | None = None,
-) -> None:
+) -> list[FormattedPrediction]:
     """Run the Landsat vessel prediction pipeline.
 
     This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
@@ -201,6 +214,15 @@ def predict_pipeline(
         scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
             specified.
     """
+    start_time = time.time()  # Start the timer
+    time_profile = {}
+
+    if scratch_path is None:
+        tmp_dir = tempfile.TemporaryDirectory()
+        scratch_path = tmp_dir.name
+    else:
+        tmp_dir = None
+
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
 
@@ -259,18 +281,29 @@ def predict_pipeline(
             dst_geom.time_range[1] + timedelta(minutes=30),
         )
 
+    time_profile["setup"] = time.time() - start_time
+
     # Run pipeline.
+    step_start_time = time.time()
+    print("run detector")
     detections = get_vessel_detections(
         ds_path,
         projection,
         scene_bounds,  # type: ignore
         time_range=time_range,
     )
+    time_profile["get_vessel_detections"] = time.time() - step_start_time
+
+    step_start_time = time.time()
+    print("run classifier")
     detections = run_classifier(ds_path, detections, time_range=time_range)
+    time_profile["run_classifier"] = time.time() - step_start_time
 
     # Write JSON and crops.
-    json_upath = UPath(json_path)
-    crop_upath = UPath(crop_path)
+    step_start_time = time.time()
+    if crop_path:
+        crop_upath = UPath(crop_path)
+        crop_upath.mkdir(parents=True, exist_ok=True)
 
     json_data = []
     for idx, detection in enumerate(detections):
@@ -304,13 +337,17 @@ def predict_pipeline(
             [images["B4_sharp"], images["B3_sharp"], images["B2_sharp"]], axis=2
         )
 
-        rgb_fname = crop_upath / f"{idx}_rgb.png"
-        with rgb_fname.open("wb") as f:
-            Image.fromarray(rgb).save(f, format="PNG")
+        if crop_path:
+            rgb_fname = crop_upath / f"{idx}_rgb.png"
+            with rgb_fname.open("wb") as f:
+                Image.fromarray(rgb).save(f, format="PNG")
 
-        b8_fname = crop_upath / f"{idx}_b8.png"
-        with b8_fname.open("wb") as f:
-            Image.fromarray(images["B8"]).save(f, format="PNG")
+            b8_fname = crop_upath / f"{idx}_b8.png"
+            with b8_fname.open("wb") as f:
+                Image.fromarray(images["B8"]).save(f, format="PNG")
+        else:
+            rgb_fname = ""
+            b8_fname = ""
 
         # Get longitude/latitude.
         src_geom = STGeometry(
@@ -321,14 +358,31 @@ def predict_pipeline(
         lat = dst_geom.shp.y
 
         json_data.append(
-            dict(
+            FormattedPrediction(
                 longitude=lon,
                 latitude=lat,
                 score=detection.score,
-                rgb_fname=str(rgb_fname),
-                b8_fname=str(b8_fname),
-            )
+                rgb_fname=rgb_fname,
+                b8_fname=b8_fname,
+            ),
         )
 
-    with json_upath.open("w") as f:
-        json.dump(json_data, f)
+    time_profile["write_json_and_crops"] = time.time() - step_start_time
+
+    elapsed_time = time.time() - start_time  # Calculate elapsed time
+    time_profile["total"] = elapsed_time
+
+    # Clean up any temporary directories.
+    if tmp_dir:
+        tmp_dir.cleanup()
+
+    if json_path:
+        json_upath = UPath(json_path)
+        with json_upath.open("w") as f:
+            json.dump(json_data, f)
+
+    print(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")
+    for step, duration in time_profile.items():
+        print(f"{step} took {duration:.2f} seconds")
+
+    return json_data

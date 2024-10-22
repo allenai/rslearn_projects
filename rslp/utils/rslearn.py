@@ -36,12 +36,14 @@ def materialize_dataset(
         dataset,
         workers=workers,
         group=group,
+        use_initial_job=False,
     )
     apply_on_windows(
         MaterializeHandler(),
         dataset,
         workers=workers,
         group=group,
+        use_initial_job=False,
     )
 
 
