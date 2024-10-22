@@ -1,162 +1,342 @@
 {
-    "layers": {
-        "sentinel2": {
-            "type": "raster",
-            "band_sets": [{
-                "dtype": "uint8",
-                "bands": ["R", "G", "B"],
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b05"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b06"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b07"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b08"],
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b11"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b12"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }]
-        },
-        "sentinel2.1": {
-            "type": "raster",
-            "band_sets": [{
-                "dtype": "uint8",
-                "bands": ["R", "G", "B"],
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b05"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b06"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b07"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b08"],
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b11"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b12"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }]
-        },
-        "sentinel2.2": {
-            "type": "raster",
-            "band_sets": [{
-                "dtype": "uint8",
-                "bands": ["R", "G", "B"],
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b05"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b06"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b07"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b08"],
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b11"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b12"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }]
-        },
-        "sentinel2.3": {
-            "type": "raster",
-            "band_sets": [{
-                "dtype": "uint8",
-                "bands": ["R", "G", "B"],
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b05"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b06"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b07"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b08"],
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b11"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }, {
-                "dtype": "uint8",
-                "bands": ["b12"],
-                "zoom_offset": -1,
-                "format": {"name": "single_image", "format": "png"}
-            }]
-        },
-        "label": {
-            "type": "vector"
-        },
-        "output": {
-            "type": "vector"
-        }
+  "layers": {
+    "label": {
+      "type": "vector"
     },
-    "tile_store": {
-        "name": "file",
-        "root_dir": "tiles"
+    "output": {
+      "type": "vector"
+    },
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "b05"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b06"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b07"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b08"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "b11"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b12"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2.1": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "b05"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b06"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b07"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b08"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "b11"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b12"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2.2": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "b05"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b06"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b07"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b08"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "b11"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b12"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2.3": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "b05"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b06"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b07"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b08"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "b11"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "b12"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": -1
+        }
+      ],
+      "type": "raster"
     }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
 }
