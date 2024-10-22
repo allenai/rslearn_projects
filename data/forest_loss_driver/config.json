@@ -123,6 +123,186 @@
     "output": {
       "type": "vector"
     },
+    "planet_post_0": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "7d"
+      },
+      "type": "raster"
+    },
+    "planet_post_1": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "38d"
+      },
+      "type": "raster"
+    },
+    "planet_post_2": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "69d"
+      },
+      "type": "raster"
+    },
+    "planet_pre_0": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "-300d"
+      },
+      "type": "raster"
+    },
+    "planet_pre_1": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "-331d"
+      },
+      "type": "raster"
+    },
+    "planet_pre_2": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "-362d"
+      },
+      "type": "raster"
+    },
     "post": {
       "alias": "sentinel2",
       "band_sets": [

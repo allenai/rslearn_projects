@@ -127,6 +127,9 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0, "encoder", "model"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         save_top_k: 1
@@ -134,4 +137,4 @@ trainer:
         monitor: val_class/accuracy
         mode: max
 rslp_project: amazon_conservation
-rslp_experiment: data_20240912_satlaspretrain_swinb_oldmodel_02
+rslp_experiment: data_20240912_satlaspretrain_swinb_oldmodel_freeze_02

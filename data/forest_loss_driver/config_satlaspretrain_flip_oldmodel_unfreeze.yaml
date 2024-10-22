@@ -36,7 +36,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gs://satlas-explorer-data/rslearn_labels/amazon_conservation/dataset_v1/20240912/
+    path: gs://rslearn-eai/datasets/forest_loss_driver/prediction/dataset_20240828/
     inputs:
       pre_0:
         data_type: "raster"
@@ -89,7 +89,7 @@ data:
           class:
             label: "targets"
     batch_size: 32
-    num_workers: 32
+    num_workers: 64
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -112,26 +112,29 @@ data:
             size: 64
         - class_path: rslearn.train.transforms.flip.Flip
       groups: ["peru_interesting", "peru3", "peru3_flagged_in_peru", "nadia2", "nadia3", "brazil_interesting"]
-    train_config:
-      tags:
-        split: train
-    val_config:
-      tags:
-        split: val
-    test_config:
-      tags:
-        split: val
+    predict_config:
+      groups: ["default"]
+      skip_targets: true
 trainer:
   max_epochs: 50
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0, "encoder", "model"]
+        unfreeze_at_epoch: 5
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         save_top_k: 1
         save_last: true
         monitor: val_class/accuracy
         mode: max
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: gs://rslearn-eai/datasets/forest_loss_driver/prediction/dataset_20240828/
+        output_layer: output
+        selector: ["class"]
 rslp_project: amazon_conservation
-rslp_experiment: data_20240912_satlaspretrain_swinb_oldmodel_02
+rslp_experiment: data_20240912_satlaspretrain_swinb_oldmodel_unfreeze_02
