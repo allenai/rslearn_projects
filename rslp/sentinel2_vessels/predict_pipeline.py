@@ -27,8 +27,14 @@ class VesselDetection:
     """A vessel detected in a Sentinel-2 window."""
 
     def __init__(
-        self, col: int, row: int, projection: Projection, score: float, ts: datetime
-    ):
+        self,
+        col: int,
+        row: int,
+        projection: Projection,
+        score: float,
+        ts: datetime,
+        crop_window_dir: UPath | None = None,
+    ) -> None:
         """Create a new VesselDetection.
 
         Args:
@@ -37,14 +43,17 @@ class VesselDetection:
             projection: the projection used.
             score: confidence score from object detector.
             ts: datetime fo the window.
+            crop_window_dir: the crop window directory.
         """
         self.col = col
         self.row = row
         self.projection = projection
         self.score = score
         self.ts = ts
+        self.crop_window_dir = crop_window_dir
 
 
+# TODO: make a simple class to store bounds
 def get_vessel_detections(
     ds_path: UPath,
     projection: Projection,
@@ -105,7 +114,9 @@ def get_vessel_detections(
     return detections
 
 
-def predict_pipeline(scene_id: str, scratch_path: str, json_path: str, crop_path: str):
+def predict_pipeline(
+    scene_id: str, scratch_path: str, json_path: str, crop_path: str
+) -> None:
     """Run the Sentinel-2 vessel prediction pipeline.
 
     Given a Sentinel-2 scene ID, the pipeline produces the vessel detections.
@@ -141,10 +152,12 @@ def predict_pipeline(scene_id: str, scratch_path: str, json_path: str, crop_path
         -SENTINEL2_RESOLUTION,
     )
     dst_geom = item.geometry.to_projection(projection)
-    bounds = [int(value) for value in dst_geom.shp.bounds]
+    bounds = tuple(int(value) for value in dst_geom.shp.bounds)
+    if len(bounds) != 4:
+        raise ValueError(f"Expected 4 bounds, got {len(bounds)}")
     ts = item.geometry.time_range[0]
 
-    detections = get_vessel_detections(ds_path, projection, bounds, ts)
+    detections = get_vessel_detections(ds_path, projection, bounds, ts)  # type: ignore
 
     # Create windows just to collect crops for each detection.
     group = "crops"
@@ -153,12 +166,14 @@ def predict_pipeline(scene_id: str, scratch_path: str, json_path: str, crop_path
         window_name = f"{detection.col}_{detection.row}"
         window_path = ds_path / "windows" / group / window_name
         detection.crop_window_dir = window_path
-        bounds = [
-            detection.col - CROP_WINDOW_SIZE // 2,
-            detection.row - CROP_WINDOW_SIZE // 2,
-            detection.col + CROP_WINDOW_SIZE // 2,
-            detection.row + CROP_WINDOW_SIZE // 2,
-        ]
+        bounds = tuple(
+            [
+                detection.col - CROP_WINDOW_SIZE // 2,
+                detection.row - CROP_WINDOW_SIZE // 2,
+                detection.col + CROP_WINDOW_SIZE // 2,
+                detection.row + CROP_WINDOW_SIZE // 2,
+            ]
+        )
         Window(
             path=window_path,
             group=group,
@@ -172,8 +187,8 @@ def predict_pipeline(scene_id: str, scratch_path: str, json_path: str, crop_path
         materialize_dataset(ds_path, group=group, workers=4)
 
     # Write JSON and crops.
-    json_path = UPath(json_path)
-    crop_path = UPath(crop_path)
+    json_upath = UPath(json_path)
+    crop_upath = UPath(crop_path)
     json_data = []
     for detection, crop_window_path in zip(detections, window_paths):
         # Get RGB crop.
@@ -183,7 +198,7 @@ def predict_pipeline(scene_id: str, scratch_path: str, json_path: str, crop_path
         with image_fname.open("rb") as f:
             with rasterio.open(f) as src:
                 image = src.read()
-        crop_fname = crop_path / f"{detection.col}_{detection.row}.png"
+        crop_fname = crop_upath / f"{detection.col}_{detection.row}.png"
         with crop_fname.open("wb") as f:
             Image.fromarray(image.transpose(1, 2, 0)).save(f, format="PNG")
 
@@ -206,5 +221,5 @@ def predict_pipeline(scene_id: str, scratch_path: str, json_path: str, crop_path
             )
         )
 
-    with json_path.open("w") as f:
+    with json_upath.open("w") as f:
         json.dump(json_data, f)
