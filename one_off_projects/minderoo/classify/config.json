@@ -1,0 +1,37 @@
+{
+  "layers": {
+    "label": {
+      "format": {
+        "name": "geojson"
+      },
+      "type": "vector"
+    },
+    "maxar": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "format": {
+        "name": "geojson"
+      },
+      "type": "vector"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
+}

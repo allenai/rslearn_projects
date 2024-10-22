@@ -1,0 +1,55 @@
+{
+  "layers": {
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16",
+          "format": "geotiff"
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "format": "geotiff",
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B01",
+            "B09",
+            "B10"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -2
+        }
+      ],
+      "data_source": {
+        "max_time_delta": "1d",
+        "metadata_cache_dir": "/mnt/superres_sentinel2/cache/sentinel2_metadata/",
+        "modality": "L1C",
+        "name": "rslearn.data_sources.aws_open_data.Sentinel2",
+        "query_config": {
+          "max_matches": 4
+        },
+        "sort_by": "cloud_cover"
+      },
+      "type": "raster"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "/mnt/superres_sentinel2/tiles"
+  }
+}

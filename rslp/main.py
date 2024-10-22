@@ -2,14 +2,17 @@
 
 import argparse
 import importlib
+import logging
 import multiprocessing
 import sys
 
 import dotenv
 import jsonargparse
 
+logging.basicConfig()
 
-def main():
+
+def main() -> None:
     """Main entrypoint function for rslp."""
     dotenv.load_dotenv()
     parser = argparse.ArgumentParser(description="rslearn")

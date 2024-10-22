@@ -1,2 +1,4 @@
 beaker-py
+interrogate
+pytest
 python-dotenv

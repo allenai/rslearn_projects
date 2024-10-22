@@ -1,9 +1,12 @@
 """Entrypoint when using rslp directly."""
 
+import logging
 import multiprocessing
 
+logging.basicConfig()
 
-def main():
+
+def main() -> None:
     """Main function when using rslp directly (outside of an automatic job).
 
     Includes rslp tooling except the code upload/download steps. Credentials must also

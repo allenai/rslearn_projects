@@ -1,0 +1,129 @@
+{
+  "layers": {
+    "label": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "planet": {
+      "band_sets": [
+        {
+          "bands": [
+            "b01",
+            "b02",
+            "b03",
+            "b04"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          }
+        }
+      ],
+      "data_source": {
+        "asset_type_id": "ortho_analytic_sr",
+        "bands": [
+          "b01",
+          "b02",
+          "b03",
+          "b04"
+        ],
+        "duration": "1460d",
+        "item_type_id": "SkySatCollect",
+        "name": "rslearn.data_sources.planet.Planet",
+        "query_config": {
+          "space_mode": "CONTAINS"
+        },
+        "range_filters": {
+          "cloud_cover": {
+            "lt": 0.1
+          }
+        },
+        "sort_by": "-clear_percent",
+        "time_offset": "-730d"
+      },
+      "type": "raster"
+    },
+    "skysat_vis": {
+      "alias": "planet",
+      "band_sets": [
+        {
+          "bands": [
+            "b03",
+            "b02",
+            "b01"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              3000
+            ]
+          }
+        }
+      ],
+      "data_source": {
+        "asset_type_id": "ortho_analytic_sr",
+        "bands": [
+          "b01",
+          "b02",
+          "b03",
+          "b04"
+        ],
+        "duration": "1460d",
+        "item_type_id": "SkySatCollect",
+        "name": "rslearn.data_sources.planet.Planet",
+        "query_config": {
+          "space_mode": "CONTAINS"
+        },
+        "range_filters": {
+          "cloud_cover": {
+            "lt": 0.1
+          }
+        },
+        "sort_by": "-clear_percent",
+        "time_offset": "-730d"
+      },
+      "type": "raster"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
+}

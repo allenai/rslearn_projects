@@ -1,0 +1,175 @@
+{
+  "layers": {
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        },
+        {
+          "bands": [
+            "B05"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B06"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B07"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B08"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B11"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B12"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              8160
+            ]
+          },
+          "zoom_offset": -1
+        }
+      ],
+      "data_source": {
+        "index_cache_dir": "/data/favyenb/rslearn_change_amazon_images/cache/sentinel2_gcp/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1
+        },
+        "sort_by": "cloud_cover"
+      },
+      "data_source_old": {
+        "max_time_delta": "1d",
+        "metadata_cache_dir": "/data/favyenb/rslearn_change_amazon_images/cache/sentinel2/",
+        "modality": "L1C",
+        "name": "rslearn.data_sources.aws_open_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1
+        },
+        "sort_by": "cloud_cover"
+      },
+      "type": "raster"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "/data/favyenb/rslearn_change_amazon_images/tiles"
+  }
+}

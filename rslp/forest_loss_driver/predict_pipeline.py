@@ -59,7 +59,7 @@ class PredictPipelineConfig:
         min_confidence: int = 2,
         min_area: float = 16,
         country_data_path: UPath | None = None,
-    ):
+    ) -> None:
         """Create a new PredictPipelineConfig.
 
         Args:
@@ -95,7 +95,7 @@ class ForestLossEvent:
         center_geom: STGeometry,
         center_pixel: tuple[int, int],
         ts: datetime,
-    ):
+    ) -> None:
         """Create a new ForestLossEvent.
 
         Args:
@@ -112,7 +112,7 @@ class ForestLossEvent:
         self.ts = ts
 
 
-def write_event(event: ForestLossEvent, fname: str, ds_path: UPath):
+def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
     """Write a window for this forest loss event.
 
     Args:
@@ -173,7 +173,7 @@ def write_event(event: ForestLossEvent, fname: str, ds_path: UPath):
     # Get pixel coordinates of the mask.
     polygon_webm_shp = event.polygon_geom.to_projection(WEB_MERCATOR_PROJECTION).shp
 
-    def to_out_pixel(points):
+    def to_out_pixel(points: np.ndarray) -> np.ndarray:
         points[:, 0] -= bounds[0]
         points[:, 1] -= bounds[1]
         return points
@@ -194,7 +194,7 @@ def write_event(event: ForestLossEvent, fname: str, ds_path: UPath):
         pass
 
 
-def extract_alerts(config: PredictPipelineConfig, fname: str):
+def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
     """Extract alerts from a single GeoTIFF file.
 
     Args:
@@ -275,10 +275,10 @@ def extract_alerts(config: PredictPipelineConfig, fname: str):
 
         # Check if it's in Peru.
         center_wgs84_shp = center_proj_geom.to_projection(WGS84_PROJECTION).shp
-        if not peru_wgs84_shp.contains(center_wgs84_shp):
+        if peru_wgs84_shp is None or not peru_wgs84_shp.contains(center_wgs84_shp):
             continue
 
-        def raster_pixel_to_proj(points):
+        def raster_pixel_to_proj(points: np.ndarray) -> np.ndarray:
             for i in range(points.shape[0]):
                 points[i, 0:2] = conf_raster.xy(points[i, 1], points[i, 0])
             return points
@@ -310,7 +310,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str):
     p.close()
 
 
-def predict_pipeline(pred_config: PredictPipelineConfig):
+def predict_pipeline(pred_config: PredictPipelineConfig) -> None:
     """Run the prediction pipeline.
 
     Currently this is just for populating the initial rslearn dataset based on GLAD
@@ -326,7 +326,7 @@ def predict_pipeline(pred_config: PredictPipelineConfig):
         extract_alerts(pred_config, fname)
 
 
-def select_best_images(window_path: UPath):
+def select_best_images(window_path: UPath) -> None:
     """Select the best images for the specified window.
 
     Best just means least cloudy pixels based on a brightness threshold.
@@ -361,7 +361,7 @@ def select_best_images(window_path: UPath):
                 layer_times[cur_layer_name] = group[0]["geometry"]["time_range"][0]
 
     # Find best pre and post images.
-    image_lists = {"pre": [], "post": []}
+    image_lists: dict = {"pre": [], "post": []}
     options = window_path.glob("layers/*/R_G_B/image.png")
     for fname in options:
         # "pre" or "post"
@@ -399,7 +399,7 @@ def select_best_images(window_path: UPath):
         json.dump(best_times, f)
 
 
-def select_best_images_pipeline(ds_path: str, workers: int = 64):
+def select_best_images_pipeline(ds_path: str | UPath, workers: int = 64) -> None:
     """Run the best image pipeline.
 
     This picks the best three pre/post images and puts them in the corresponding layers
@@ -411,7 +411,7 @@ def select_best_images_pipeline(ds_path: str, workers: int = 64):
         ds_path: the dataset root path
         workers: number of workers to use.
     """
-    ds_path = UPath(ds_path)
+    ds_path = UPath(ds_path) if not isinstance(ds_path, UPath) else ds_path
     window_paths = list(ds_path.glob("windows/*/*"))
     p = multiprocessing.Pool(workers)
     outputs = p.imap_unordered(select_best_images, window_paths)
