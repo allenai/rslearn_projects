@@ -4,7 +4,9 @@ import os
 
 import jsonargparse
 import wandb
+from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
 from upath import UPath
 
@@ -16,7 +18,7 @@ CHECKPOINT_DIR = "gs://{rslp_bucket}/projects/{project_id}/{experiment_id}/check
 class SaveWandbRunIdCallback(Callback):
     """Callback to save the wandb run ID to GCS in case of resume."""
 
-    def __init__(self, project_id: str, experiment_id: str):
+    def __init__(self, project_id: str, experiment_id: str) -> None:
         """Create a new SaveWandbRunIdCallback.
 
         Args:
@@ -26,7 +28,8 @@ class SaveWandbRunIdCallback(Callback):
         self.project_id = project_id
         self.experiment_id = experiment_id
 
-    def on_fit_start(self, trainer, pl_module):
+    @rank_zero_only
+    def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         """Called just before fit starts I think.
 
         Args:
@@ -44,7 +47,7 @@ class CustomLightningCLI(RslearnLightningCLI):
     rslearn_projects.
     """
 
-    def add_arguments_to_parser(self, parser) -> None:
+    def add_arguments_to_parser(self, parser: jsonargparse.ArgumentParser) -> None:
         """Add experiment ID argument.
 
         Args:
@@ -76,7 +79,7 @@ class CustomLightningCLI(RslearnLightningCLI):
             default=False,
         )
 
-    def before_instantiate_classes(self):
+    def before_instantiate_classes(self) -> None:
         """Called before Lightning class initialization."""
         super().before_instantiate_classes()
         subcommand = self.config.subcommand
@@ -101,6 +104,16 @@ class CustomLightningCLI(RslearnLightningCLI):
                 )
             c.trainer.logger.init_args.project = c.rslp_project
             c.trainer.logger.init_args.name = c.rslp_experiment
+
+            # Configure DDP strategy with find_unused_parameters=True
+            c.trainer.strategy = jsonargparse.Namespace(
+                {
+                    "class_path": "lightning.pytorch.strategies.DDPStrategy",
+                    "init_args": jsonargparse.Namespace(
+                        {"find_unused_parameters": True}
+                    ),
+                }
+            )
 
             # Set the checkpoint directory to canonical GCS location.
             checkpoint_callback = None

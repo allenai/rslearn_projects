@@ -1,4 +1,5 @@
 """This script prepares UTM rslearn windows corresponding to the existing WebMercator landsat windows.
+
 But it also produces:
 1. File containing four corners of rectangle of original window in the new coordinate system.
    The image should be blacked out outside of this quadrilateral.
@@ -54,6 +55,7 @@ example_ids = os.listdir(in_dir)
 
 
 def handle(example_id):
+    """Handle a single example."""
     # Extract polygon in source projection coordinates from the example folder name.
     parts = example_id.split("_")
     col = int(parts[0]) - total_pixels // 2

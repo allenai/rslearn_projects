@@ -1,141 +1,300 @@
 {
-	"layers": {
-		"sentinel2": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["B01"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B02"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B03"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B04"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B05"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B06"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B07"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B08"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B09"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B10"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B11"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B12"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}, {
-				"dtype": "uint8",
-				"bands": ["B8A"],
-				"remap": {
-					"name": "linear",
-					"src": [0, 5000],
-					"dst": [0, 255]
-				},
-				"format": {"name": "single_image", "format": "png"}
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.gcp_public_data.Sentinel2",
-				"index_cache_dir": "cache/sentinel2/",
-				"max_time_delta": "1d",
-				"query_config": {
-					"max_matches": 1
-				}
-			}
-		},
-		"info": {
-			"type": "vector",
-			"format": {"name": "geojson"}
-		}
-	},
-	"tile_store": {
-		"name": "file",
-		"root_dir": "tiles"
-	}
+  "layers": {
+    "info": {
+      "format": {
+        "name": "geojson"
+      },
+      "type": "vector"
+    },
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B02"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B03"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B04"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B05"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B06"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B07"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B08"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B09"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B10"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B11"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B12"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        },
+        {
+          "bands": [
+            "B8A"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              0,
+              5000
+            ]
+          }
+        }
+      ],
+      "data_source": {
+        "index_cache_dir": "cache/sentinel2/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1
+        }
+      },
+      "type": "raster"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
 }
