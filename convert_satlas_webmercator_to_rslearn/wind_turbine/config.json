@@ -3,6 +3,24 @@
     "label": {
       "type": "vector"
     },
+    "mask": {
+      "band_sets": [
+        {
+          "bands": [
+            "mask"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "type": "vector"
+    },
     "sentinel2_a": {
       "alias": "sentinel2",
       "band_sets": [
