@@ -209,4 +209,4 @@ trainer:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 2
 rslp_project: satlas_wind_turbine
-rslp_experiment: data_20241002_satlaspretrainold_patch384_01
+rslp_experiment: data_20241002_satlaspretrainold_patch384_03

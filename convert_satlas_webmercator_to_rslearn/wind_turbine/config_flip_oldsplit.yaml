@@ -39,23 +39,41 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gs://rslearn-eai/datasets/wind_turbine/dataset_v1/live/
+    path: gs://rslearn-eai/datasets/wind_turbine/dataset_v1/20241002/
     inputs:
       image1:
         data_type: "raster"
-        layers: ["sentinel2"]
+        layers: ["sentinel2_a"]
         bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
         passthrough: true
         dtype: FLOAT32
       image2:
         data_type: "raster"
-        layers: ["sentinel2.1"]
+        layers: ["sentinel2_a.1"]
         bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
         passthrough: true
         dtype: FLOAT32
       image3:
         data_type: "raster"
-        layers: ["sentinel2.2"]
+        layers: ["sentinel2_b"]
+        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        passthrough: true
+        dtype: FLOAT32
+      image4:
+        data_type: "raster"
+        layers: ["sentinel2_b.1"]
+        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        passthrough: true
+        dtype: FLOAT32
+      image5:
+        data_type: "raster"
+        layers: ["sentinel2_c"]
+        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        passthrough: true
+        dtype: FLOAT32
+      image6:
+        data_type: "raster"
+        layers: ["sentinel2_c.1"]
         bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
         passthrough: true
         dtype: FLOAT32
@@ -94,48 +112,58 @@ data:
     num_workers: 32
     default_config:
       transforms:
-        - class_path: rslearn.train.transforms.concatenate.Concatenate
-          init_args:
-            selections:
-              image1: []
-              image2: []
-              image3: []
-            output_selector: image
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
             mean: 0
             std: 3000
             valid_range: [0, 1]
             bands: [0, 1, 2]
+            selectors: ["image1", "image2", "image3", "image4", "image5", "image6"]
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
             mean: 0
             std: 8160
             valid_range: [0, 1]
             bands: [3, 4, 5, 6, 7, 8]
+            selectors: ["image1", "image2", "image3", "image4", "image5", "image6"]
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              image1: []
+              image2: []
+              image3: []
+              image4: []
+              image5: []
+              image6: []
+            output_selector: image
         - class_path: rslp.transforms.mask.Mask
     train_config:
       patch_size: 384
       transforms:
-        - class_path: rslearn.train.transforms.concatenate.Concatenate
-          init_args:
-            selections:
-              image1: []
-              image2: []
-              image3: []
-            output_selector: image
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
             mean: 0
             std: 3000
             valid_range: [0, 1]
             bands: [0, 1, 2]
+            selectors: ["image1", "image2", "image3", "image4", "image5", "image6"]
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
             mean: 0
             std: 8160
             valid_range: [0, 1]
             bands: [3, 4, 5, 6, 7, 8]
+            selectors: ["image1", "image2", "image3", "image4", "image5", "image6"]
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              image1: []
+              image2: []
+              image3: []
+              image4: []
+              image5: []
+              image6: []
+            output_selector: image
         - class_path: rslp.transforms.mask.Mask
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
@@ -167,7 +195,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: gs://rslearn-eai/datasets/wind_turbine/dataset_v1/live/
+        path: gs://rslearn-eai/datasets/wind_turbine/dataset_v1/20241002/
         output_layer: output
         selector: ["detect"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
@@ -181,4 +209,4 @@ trainer:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 2
 rslp_project: satlas_wind_turbine
-rslp_experiment: data_20240806_oldsplits_satlaspretrainold_patch384_satlasnorm_3image_flip_freeze_03
+rslp_experiment: data_20241002_satlaspretrainold_patch384_oldsplits_03
