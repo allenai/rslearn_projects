@@ -1,42 +1,62 @@
 {
-    "layers": {
-        "sentinel2": {
-            "type": "raster",
-            "band_sets": [{
-                "dtype": "uint16",
-                "bands": ["B02", "B03", "B04", "B08"]
-            }, {
-                "dtype": "uint16",
-                "bands": ["B05", "B06", "B07", "B8A", "B11", "B12"],
-                "zoom_offset": -1
-            }, {
-                "dtype": "uint16",
-                "bands": ["B01", "B09", "B10"],
-                "zoom_offset": -2
-            }],
-            "data_source": {
-                "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
-                "modality": "L1C",
-                "index_cache_dir": "cache",
-                "use_rtree_index": false,
-                "max_time_delta": "1d",
-                "query_config": {
-                    "max_matches": 3,
-                    "space_mode": "CONTAINS"
-                },
-                "sort_by": "cloud_cover",
-                "harmonize": true
-            }
-        },
-        "label": {
-            "type": "vector"
-        },
-        "output": {
-            "type": "vector"
-        }
+  "layers": {
+    "label": {
+      "type": "vector"
     },
-    "tile_store": {
-        "name": "file",
-        "root_dir": "tiles"
+    "output": {
+      "type": "vector"
+    },
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16"
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B01",
+            "B09",
+            "B10"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -2
+        }
+      ],
+      "data_source": {
+        "harmonize": true,
+        "index_cache_dir": "cache",
+        "max_time_delta": "1d",
+        "modality": "L1C",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 3,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "use_rtree_index": false
+      },
+      "type": "raster"
     }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
 }
