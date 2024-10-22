@@ -78,6 +78,18 @@ class CustomLightningCLI(RslearnLightningCLI):
             help="Load best checkpoint from GCS for test/predict",
             default=False,
         )
+        parser.add_argument(
+            "--force_log",
+            type=bool,
+            help="Log to W&B even for test/predict",
+            default=False,
+        )
+        parser.add_argument(
+            "--no_log",
+            type=bool,
+            help="Disable W&B logging for fit",
+            default=False,
+        )
 
     def before_instantiate_classes(self) -> None:
         """Called before Lightning class initialization."""
@@ -93,7 +105,7 @@ class CustomLightningCLI(RslearnLightningCLI):
             )
         )
 
-        if subcommand == "fit":
+        if (subcommand == "fit" and not c.no_log) or c.force_log:
             # Add and configure WandbLogger as needed.
             if not c.trainer.logger:
                 c.trainer.logger = jsonargparse.Namespace(
@@ -115,6 +127,7 @@ class CustomLightningCLI(RslearnLightningCLI):
                 }
             )
 
+        if subcommand == "fit" and not c.no_log:
             # Set the checkpoint directory to canonical GCS location.
             checkpoint_callback = None
             upload_wandb_callback = None
