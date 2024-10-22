@@ -1,0 +1,37 @@
+{
+  "layers": {
+    "naip": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 3
+        }
+      ],
+      "data_source": {
+        "index_cache_dir": "/mnt/data/cache/naip_index/",
+        "name": "rslearn.data_sources.aws_open_data.Naip",
+        "query_config": {
+          "max_matches": 16
+        },
+        "use_rtree_index": true
+      },
+      "type": "raster"
+    }
+  },
+  "tile_store": {
+    "default_raster_format": {
+      "name": "custom"
+    },
+    "name": "file",
+    "root_dir": "/mnt/data/rslearn_superres_dataset/tiles"
+  }
+}

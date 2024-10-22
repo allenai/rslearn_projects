@@ -4,17 +4,19 @@ import io
 import os
 import shutil
 import tempfile
+import zipfile
 
 import yaml
 from google.cloud import storage
 
 CODE_BLOB_PATH = "projects/{project_id}/{experiment_id}/code.zip"
 WANDB_ID_BLOB_PATH = "projects/{project_id}/{experiment_id}/wandb_id"
+CODE_EXCLUDES = [".env", "wandb", "rslp/__pycache__"]
 
 bucket = None
 
 
-def _get_bucket():
+def _get_bucket() -> storage.Bucket:
     global bucket
     if bucket is None:
         storage_client = storage.Client()
@@ -38,7 +40,41 @@ def get_project_and_experiment(config_path: str) -> tuple[str, str]:
     return project_id, experiment_id
 
 
-def upload_code(project_id: str, experiment_id: str):
+def make_archive(
+    zip_filename: str, root_dir: str, exclude_prefixes: list[str] = []
+) -> None:
+    """Create a zip archive of the contents of root_dir.
+
+    The paths in the zip archive will be relative to root_dir.
+
+    This is similar to shutil.make_archive but it allows specifying a list of prefixes
+    that should not be added to the zip archive.
+
+    Args:
+        zip_filename: the filename to save archive under.
+        root_dir: the directory to create archive of.
+        exclude_prefixes: a list of prefixes to exclude from the archive. If the
+            relative path of a file from root_dir starts with one of the prefixes, then
+            it will not be added to the resulting archive.
+    """
+
+    def should_exclude(rel_path: str) -> bool:
+        for prefix in exclude_prefixes:
+            if rel_path.startswith(prefix):
+                return True
+        return False
+
+    with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(root_dir):
+            for fname in files:
+                full_path = os.path.join(root, fname)
+                rel_path = os.path.relpath(full_path, start=root_dir)
+                if should_exclude(rel_path):
+                    continue
+                zipf.write(full_path, arcname=rel_path)
+
+
+def upload_code(project_id: str, experiment_id: str) -> None:
     """Upload code to GCS that entrypoint should retrieve.
 
     Called by the launcher.
@@ -50,8 +86,11 @@ def upload_code(project_id: str, experiment_id: str):
     bucket = _get_bucket()
     with tempfile.TemporaryDirectory() as tmpdirname:
         print("creating archive of current code state")
-        zip_fname = shutil.make_archive(
-            os.path.join(tmpdirname, "archive"), "zip", root_dir="."
+        zip_fname = os.path.join(tmpdirname, "archive.zip")
+        make_archive(
+            zip_fname,
+            root_dir=".",
+            exclude_prefixes=CODE_EXCLUDES,
         )
         print("uploading archive")
         blob_path = CODE_BLOB_PATH.format(
@@ -62,7 +101,7 @@ def upload_code(project_id: str, experiment_id: str):
         print("upload complete")
 
 
-def download_code(project_id: str, experiment_id: str):
+def download_code(project_id: str, experiment_id: str) -> None:
     """Download code from GCS for this experiment.
 
     Called by the entrypoint.
@@ -73,7 +112,7 @@ def download_code(project_id: str, experiment_id: str):
     """
     bucket = _get_bucket()
     with tempfile.TemporaryDirectory() as tmpdirname:
-        print("downloading code acrhive")
+        print("downloading code archive")
         blob_path = CODE_BLOB_PATH.format(
             project_id=project_id, experiment_id=experiment_id
         )
@@ -85,7 +124,7 @@ def download_code(project_id: str, experiment_id: str):
         print("extraction complete", flush=True)
 
 
-def upload_wandb_id(project_id: str, experiment_id: str, wandb_id: str):
+def upload_wandb_id(project_id: str, experiment_id: str, wandb_id: str) -> None:
     """Save a W&B run ID to GCS.
 
     Args:

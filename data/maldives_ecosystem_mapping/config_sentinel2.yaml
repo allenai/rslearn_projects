@@ -1,5 +1,5 @@
 model:
-  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  class_path: rslp.maldives_ecosystem_mapping.train.CMLightningModule
   init_args:
     model:
       class_path: rslearn.models.multitask.MultiTaskModel
@@ -22,14 +22,15 @@ model:
                 conv_layers_per_resolution: 2
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
-    plateau_factor: 0.1
-    plateau_patience: 10
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
     plateau_min_lr: 0
-    plateau_cooldown: 0
+    plateau_cooldown: 10
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240906/
+    path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/
     inputs:
       sentinel2:
         data_type: "raster"
@@ -98,7 +99,7 @@ data:
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
             mean: 0
-            std: 255
+            std: 3000
     train_config:
       patch_size: 32
       transforms:
@@ -115,7 +116,7 @@ data:
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
             mean: 0
-            std: 255
+            std: 3000
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
@@ -145,7 +146,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240906/
+        path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/
         output_layer: output
         selector: ["segment"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
@@ -156,4 +157,4 @@ trainer:
         monitor: val_segment/accuracy
         mode: max
 rslp_project: maldives_ecosystem_mapping
-rslp_experiment: sentinel2_data_20240906_satlaspretrain_flip_crop32_00
+rslp_experiment: sentinel2_data_20240924_satlaspretrain_flip_crop32_01

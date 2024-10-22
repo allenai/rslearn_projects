@@ -1,0 +1,106 @@
+{
+  "layers": {
+    "label": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "maxar": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "planetscope": {
+      "band_sets": [
+        {
+          "bands": [
+            "b01",
+            "b02",
+            "b03",
+            "b04",
+            "b05",
+            "b06",
+            "b07",
+            "b08"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          }
+        }
+      ],
+      "data_source": {
+        "asset_type_id": "ortho_analytic_8b_sr",
+        "bands": [
+          "b01",
+          "b02",
+          "b03",
+          "b04",
+          "b05",
+          "b06",
+          "b07",
+          "b08"
+        ],
+        "duration": "180d",
+        "item_type_id": "PSScene",
+        "name": "rslearn.data_sources.planet.Planet",
+        "query_config": {
+          "max_matches": 6
+        },
+        "range_filters": {
+          "clear_percent": {
+            "gt": 0.7
+          },
+          "cloud_cover": {
+            "lt": 0.3
+          }
+        },
+        "sort_by": "-clear_percent",
+        "time_offset": "-90d"
+      },
+      "type": "raster"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
+}

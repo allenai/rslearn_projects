@@ -136,21 +136,10 @@
 		},
         "label": {
             "type": "vector"
-        },
-        "output": {
-            "type": "vector"
-        },
-        "mask": {
-            "type": "raster",
-            "band_sets": [{
-                "dtype": "uint8",
-                "bands": ["mask"],
-                "format": {"name": "single_image", "format": "png"}
-            }]
-        }
-    },
-    "tile_store": {
-        "name": "file",
-        "root_dir": "tiles"
     }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
 }
