@@ -45,9 +45,11 @@ def test_generate_combinations() -> None:
         "param1": [1, 2],
         "nested_param": {
             "param2": [3, 4],
+            "param3": "l",
         },
     }
     configs = generate_combinations(base_config, hparams_config)
+    # param3 is not a list, so it should not be updated
     expected_configs = [
         {"param1": 1, "nested_param": {"param2": 3, "param3": "k"}},
         {"param1": 1, "nested_param": {"param2": 4, "param3": "k"}},
