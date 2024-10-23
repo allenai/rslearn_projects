@@ -5,8 +5,8 @@ RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git
 
 # Install rslearn.
 ARG RSLEARN_BRANCH=master
-RUN git clone -b $RSLEARN_BRANCH https://github.com/allenai/rslearn.git
-RUN cd ./rslearn
+RUN git clone -b $RSLEARN_BRANCH https://github.com/allenai/rslearn.git /opt/rslearn
+WORKDIR /opt/rslearn
 RUN pip install --no-cache-dir --upgrade --upgrade-strategy eager .[extra]
 
 # Install rslearn_projects dependencies.
