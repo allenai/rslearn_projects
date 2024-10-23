@@ -41,6 +41,15 @@ def launch_job(
         workspace: the Beaker workspace to run the job in.
         username: optional W&B username to associate with the W&B run for this job.
     """
+    # if hparams_config_path is provided, generate multiple configs, then upload code once
+    if hparams_config_path:
+        config_dir = os.path.dirname(config_path)
+        config_paths = launcher_lib.create_custom_configs(
+            config_path, hparams_config_path, config_dir
+        )
+    else:
+        config_paths = [config_path]
+
     project_id, experiment_id = launcher_lib.get_project_and_experiment(config_path)
     launcher_lib.upload_code(project_id, experiment_id)
     beaker = Beaker.from_env(default_workspace=workspace)
@@ -96,15 +105,7 @@ def launch_job(
                 )
             )
 
-        # if hparams_config_path is provided, create custom configs
-        if hparams_config_path:
-            custom_dir = os.path.dirname(config_path)
-            custom_configs = launcher_lib.create_custom_configs(
-                config_path, hparams_config_path, custom_dir
-            )
-        else:
-            custom_configs = [config_path]
-        for custom_config in custom_configs:
+        for config_path in config_paths:
             spec = ExperimentSpec.new(
                 budget=BUDGET,
                 description=f"{project_id}/{experiment_id}",
@@ -115,7 +116,7 @@ def launch_job(
                     "model",
                     mode,
                     "--config",
-                    custom_config,
+                    config_path,
                     "--autoresume=true",
                 ],
                 constraints=Constraints(cluster=["ai2/jupiter-cirrascale-2"]),
