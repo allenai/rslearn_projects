@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import shutil
 import uuid
 
 import dotenv
@@ -41,17 +42,21 @@ def launch_job(
         workspace: the Beaker workspace to run the job in.
         username: optional W&B username to associate with the W&B run for this job.
     """
-    # if hparams_config_path is provided, generate multiple configs, then upload code once
     if hparams_config_path:
         config_dir = os.path.dirname(config_path)
+        hparams_configs_dir = os.path.join(config_dir, "hparams_configs")
+        os.makedirs(hparams_configs_dir, exist_ok=True)
         config_paths = launcher_lib.create_custom_configs(
-            config_path, hparams_config_path, config_dir
+            config_path, hparams_config_path, hparams_configs_dir
         )
     else:
         config_paths = [config_path]
 
     project_id, experiment_id = launcher_lib.get_project_and_experiment(config_path)
     launcher_lib.upload_code(project_id, experiment_id)
+    # remove hparams_configs_dir from disk
+    if os.path.exists(hparams_configs_dir):
+        shutil.rmtree(hparams_configs_dir)
     beaker = Beaker.from_env(default_workspace=workspace)
 
     with beaker.session():
