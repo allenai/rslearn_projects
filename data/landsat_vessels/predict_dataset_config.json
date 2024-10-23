@@ -1,89 +1,167 @@
 {
-	"layers": {
-		"landsat": {
-            "type": "raster",
-            "band_sets": [{
-                "dtype": "uint8",
-                "bands": ["B2"],
-                "format": {"name": "geotiff"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                },
-				"zoom_offset": -1
-            }, {
-                "dtype": "uint8",
-                "bands": ["B3"],
-                "format": {"name": "geotiff"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                },
-				"zoom_offset": -1
-            }, {
-                "dtype": "uint8",
-                "bands": ["B4"],
-                "format": {"name": "geotiff"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                },
-				"zoom_offset": -1
-            }, {
-                "dtype": "uint8",
-                "bands": ["B5"],
-                "format": {"name": "geotiff"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                },
-				"zoom_offset": -1
-            }, {
-                "dtype": "uint8",
-                "bands": ["B6"],
-                "format": {"name": "geotiff"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                },
-				"zoom_offset": -1
-            }, {
-                "dtype": "uint8",
-                "bands": ["B7"],
-                "format": {"name": "geotiff"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                },
-				"zoom_offset": -1
-            }, {
-                "dtype": "uint8",
-                "bands": ["B8"],
-                "format": {"name": "geotiff"},
-                "remap": {
-                    "name": "linear",
-                    "src": [5000, 17000],
-                    "dst": [0, 255]
-                }
-            }],
-            "data_source": {
-                "name": "rslearn.data_sources.local_files.LocalFiles",
-                "src_dir": "PLACEHOLDER",
-                "item_specs": "PLACEHOLDER"
-            }
-		},
-        "output": {
-            "type": "vector"
+  "layers": {
+    "landsat": {
+      "band_sets": [
+        {
+          "bands": [
+            "B2"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B3"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B4"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B5"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B6"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B7"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B8"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          }
         }
-	},
-	"tile_store": {
-		"name": "file",
-		"root_dir": "tiles"
-	}
+      ],
+      "data_source": {
+        "item_specs": "PLACEHOLDER",
+        "name": "rslearn.data_sources.local_files.LocalFiles",
+        "src_dir": "PLACEHOLDER"
+      },
+      "type": "raster"
+    },
+    "output": {
+      "type": "vector"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles"
+  }
 }

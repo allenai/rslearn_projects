@@ -10,6 +10,8 @@ import skimage.io
 sentinel2_url = "https://se-tile-api.allen.ai/image_mosaic/sentinel2/[LABEL]/tci/[ZOOM]/[COL]/[ROW].png"
 chip_size = 512
 
+TIMEOUT = 10000
+
 
 def get_sentinel2_callback(label):
     def callback(tile):
@@ -19,7 +21,7 @@ def get_sentinel2_callback(label):
         cur_url = cur_url.replace("[COL]", str(tile[0]))
         cur_url = cur_url.replace("[ROW]", str(tile[1]))
 
-        response = requests.get(cur_url)
+        response = requests.get(cur_url, timeout=TIMEOUT)
         if response.status_code != 200:
             print(f"got status_code={response.status_code} url={cur_url}")
             if response.status_code == 404:

@@ -4,11 +4,13 @@ import os
 
 import jsonargparse
 import wandb
+from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
 from upath import UPath
 
+import rslp.utils.fs  # noqa: F401 (imported but unused)
 from rslp import launcher_lib
 
 CHECKPOINT_DIR = "gs://{rslp_bucket}/projects/{project_id}/{experiment_id}/checkpoints/"
@@ -17,7 +19,7 @@ CHECKPOINT_DIR = "gs://{rslp_bucket}/projects/{project_id}/{experiment_id}/check
 class SaveWandbRunIdCallback(Callback):
     """Callback to save the wandb run ID to GCS in case of resume."""
 
-    def __init__(self, project_id: str, experiment_id: str):
+    def __init__(self, project_id: str, experiment_id: str) -> None:
         """Create a new SaveWandbRunIdCallback.
 
         Args:
@@ -28,7 +30,7 @@ class SaveWandbRunIdCallback(Callback):
         self.experiment_id = experiment_id
 
     @rank_zero_only
-    def on_fit_start(self, trainer, pl_module):
+    def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         """Called just before fit starts I think.
 
         Args:
@@ -46,7 +48,7 @@ class CustomLightningCLI(RslearnLightningCLI):
     rslearn_projects.
     """
 
-    def add_arguments_to_parser(self, parser) -> None:
+    def add_arguments_to_parser(self, parser: jsonargparse.ArgumentParser) -> None:
         """Add experiment ID argument.
 
         Args:
@@ -77,8 +79,20 @@ class CustomLightningCLI(RslearnLightningCLI):
             help="Load best checkpoint from GCS for test/predict",
             default=False,
         )
+        parser.add_argument(
+            "--force_log",
+            type=bool,
+            help="Log to W&B even for test/predict",
+            default=False,
+        )
+        parser.add_argument(
+            "--no_log",
+            type=bool,
+            help="Disable W&B logging for fit",
+            default=False,
+        )
 
-    def before_instantiate_classes(self):
+    def before_instantiate_classes(self) -> None:
         """Called before Lightning class initialization."""
         super().before_instantiate_classes()
         subcommand = self.config.subcommand
@@ -92,7 +106,7 @@ class CustomLightningCLI(RslearnLightningCLI):
             )
         )
 
-        if subcommand == "fit":
+        if (subcommand == "fit" and not c.no_log) or c.force_log:
             # Add and configure WandbLogger as needed.
             if not c.trainer.logger:
                 c.trainer.logger = jsonargparse.Namespace(
@@ -114,6 +128,7 @@ class CustomLightningCLI(RslearnLightningCLI):
                 }
             )
 
+        if subcommand == "fit" and not c.no_log:
             # Set the checkpoint directory to canonical GCS location.
             checkpoint_callback = None
             upload_wandb_callback = None

@@ -14,7 +14,9 @@ from upath import UPath
 from rslp.lightning_cli import CustomLightningCLI
 
 
-def materialize_dataset(ds_path: UPath, group: str | None = None, workers: int = 32):
+def materialize_dataset(
+    ds_path: UPath, group: str | None = None, workers: int = 32
+) -> None:
     """Materialize the specified dataset by running prepare/ingest/materialize.
 
     Args:
@@ -34,16 +36,20 @@ def materialize_dataset(ds_path: UPath, group: str | None = None, workers: int =
         dataset,
         workers=workers,
         group=group,
+        use_initial_job=False,
     )
     apply_on_windows(
         MaterializeHandler(),
         dataset,
         workers=workers,
         group=group,
+        use_initial_job=False,
     )
 
 
-def run_model_predict(model_cfg_fname: str, ds_path: UPath, extra_args: list[str] = []):
+def run_model_predict(
+    model_cfg_fname: str, ds_path: UPath, extra_args: list[str] = []
+) -> None:
     """Call rslearn model predict.
 
     Args:

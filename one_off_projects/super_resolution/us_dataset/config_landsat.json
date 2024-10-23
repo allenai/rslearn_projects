@@ -1,34 +1,50 @@
 {
-	"layers": {
-		"sentinel2": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint16",
-				"bands": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"],
-				"format": "geotiff",
-				"zoom_offset": -1
-			}, {
-				"dtype": "uint16",
-				"bands": ["B8"],
-				"format": "geotiff"
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
-				"metadata_cache_dir": "cache/landsat/",
-				"max_time_delta": "1d",
-				"query_config": {
-					"max_matches": 4
-				},
-				"sort_by": "cloud_cover"
-			}
-		}
-	},
-	"tile_store": {
-		"name": "file",
-		"root_dir": "tiles",
-		"raster_format": {
-			"name": "image_tile",
-			"format": "geotiff"
-		}
-	}
+  "layers": {
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B9",
+            "B10",
+            "B11"
+          ],
+          "dtype": "uint16",
+          "format": "geotiff",
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B8"
+          ],
+          "dtype": "uint16",
+          "format": "geotiff"
+        }
+      ],
+      "data_source": {
+        "max_time_delta": "1d",
+        "metadata_cache_dir": "cache/landsat/",
+        "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
+        "query_config": {
+          "max_matches": 4
+        },
+        "sort_by": "cloud_cover"
+      },
+      "type": "raster"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "raster_format": {
+      "format": "geotiff",
+      "name": "image_tile"
+    },
+    "root_dir": "tiles"
+  }
 }

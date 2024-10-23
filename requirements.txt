@@ -1,3 +1,9 @@
 beaker-py
-python-dotenv
+fastapi
+interrogate
+pydantic
 pytest
+python-dotenv
+ruff
+typing-extensions
+uvicorn

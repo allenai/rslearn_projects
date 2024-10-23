@@ -1,6 +1,8 @@
 """Landsat vessel prediction pipeline."""
 
 import json
+import tempfile
+import time
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -9,15 +11,17 @@ import rasterio.features
 import shapely
 from PIL import Image
 from rslearn.const import WGS84_PROJECTION
-from rslearn.data_sources import data_source_from_config
+from rslearn.data_sources import Item, data_source_from_config
 from rslearn.data_sources.aws_landsat import LandsatOliTirs
-from rslearn.dataset import Dataset, Window
+from rslearn.dataset import Dataset, Window, WindowLayerData
 from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
+from typing_extensions import TypedDict
 from upath import UPath
 
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
 
+LANDSAT_LAYER_NAME = "landsat"
 LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
 AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
@@ -25,7 +29,6 @@ CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase123_config.yaml"
 LANDSAT_RESOLUTION = 15
 
 CLASSIFY_WINDOW_SIZE = 64
-"""The size of windows expected by the classifier."""
 
 
 class VesselDetection:
@@ -38,7 +41,7 @@ class VesselDetection:
         projection: Projection,
         score: float,
         crop_window_dir: UPath | None = None,
-    ):
+    ) -> None:
         """Create a new VesselDetection.
 
         Args:
@@ -55,11 +58,22 @@ class VesselDetection:
         self.crop_window_dir = crop_window_dir
 
 
+class FormattedPrediction(TypedDict):
+    """Formatted prediction for a single vessel detection."""
+
+    latitude: float
+    longitude: float
+    score: float
+    rgb_fname: str
+    b8_fname: str
+
+
 def get_vessel_detections(
     ds_path: UPath,
     projection: Projection,
     bounds: tuple[int, int, int, int],
     time_range: tuple[datetime, datetime] | None = None,
+    item: Item | None = None,
 ) -> list[VesselDetection]:
     """Apply the vessel detector.
 
@@ -73,22 +87,30 @@ def get_vessel_detections(
         bounds: the bounds to apply the detector in.
         time_range: optional time range to apply the detector in (in case the data
             source needs an actual time range).
+        item: only ingest this item. This is set if we are getting the scene directly
+            from a Landsat data source, not local file.
     """
     # Create a window for applying detector.
     group = "default"
     window_path = ds_path / "windows" / group / "default"
-    Window(
+    window = Window(
         path=window_path,
         group=group,
         name="default",
         projection=projection,
         bounds=bounds,
         time_range=time_range,
-    ).save()
+    )
+    window.save()
+
+    # Restrict to the item if set.
+    if item:
+        layer_data = WindowLayerData(LANDSAT_LAYER_NAME, [[item.serialize()]])
+        window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     print("materialize dataset")
     materialize_dataset(ds_path, group=group)
-    assert (window_path / "layers" / "landsat" / "B8" / "geotiff.tif").exists()
+    assert (window_path / "layers" / LANDSAT_LAYER_NAME / "B8" / "geotiff.tif").exists()
 
     # Run object detector.
     run_model_predict(DETECT_MODEL_CONFIG, ds_path)
@@ -119,6 +141,7 @@ def run_classifier(
     ds_path: UPath,
     detections: list[VesselDetection],
     time_range: tuple[datetime, datetime] | None = None,
+    item: Item | None = None,
 ) -> list[VesselDetection]:
     """Run the classifier to try to prune false positive detections.
 
@@ -128,6 +151,7 @@ def run_classifier(
         detections: the detections from the detector.
         time_range: optional time range to apply the detector in (in case the data
             source needs an actual time range).
+        item: only ingest this item.
 
     Returns:
         the subset of detections that pass the classifier.
@@ -149,20 +173,27 @@ def run_classifier(
             detection.col + CLASSIFY_WINDOW_SIZE // 2,
             detection.row + CLASSIFY_WINDOW_SIZE // 2,
         ]
-        Window(
+        window = Window(
             path=window_path,
             group=group,
             name=window_name,
             projection=detection.projection,
             bounds=bounds,
             time_range=time_range,
-        ).save()
+        )
+        window.save()
         window_paths.append(window_path)
+
+        if item:
+            layer_data = WindowLayerData(LANDSAT_LAYER_NAME, [[item.serialize()]])
+            window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     print("materialize dataset")
     materialize_dataset(ds_path, group=group)
     for window_path in window_paths:
-        assert (window_path / "layers" / "landsat" / "B8" / "geotiff.tif").exists()
+        assert (
+            window_path / "layers" / LANDSAT_LAYER_NAME / "B8" / "geotiff.tif"
+        ).exists()
 
     # Run classification model.
     run_model_predict(CLASSIFY_MODEL_CONFIG, ds_path)
@@ -181,12 +212,12 @@ def run_classifier(
 
 
 def predict_pipeline(
-    scratch_path: str,
-    json_path: str,
-    crop_path: str,
+    crop_path: str | None = None,
+    scratch_path: str | None = None,
+    json_path: str | None = None,
     image_files: dict[str, str] | None = None,
     scene_id: str | None = None,
-):
+) -> list[FormattedPrediction]:
     """Run the Landsat vessel prediction pipeline.
 
     This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
@@ -202,14 +233,24 @@ def predict_pipeline(
         scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
             specified.
     """
+    start_time = time.time()  # Start the timer
+    time_profile = {}
+
+    if scratch_path is None:
+        tmp_dir = tempfile.TemporaryDirectory()
+        scratch_path = tmp_dir.name
+    else:
+        tmp_dir = None
+
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
+    item = None
 
     if image_files:
         # Setup the dataset configuration file with the provided image files.
         with open(LOCAL_FILES_DATASET_CONFIG) as f:
             cfg = json.load(f)
-        item_spec = {
+        item_spec: dict = {
             "fnames": [],
             "bands": [],
         }
@@ -217,7 +258,7 @@ def predict_pipeline(
             cfg["src_dir"] = str(UPath(image_path).parent)
             item_spec["fnames"].append(image_path)
             item_spec["bands"].append([band])
-        cfg["layers"]["landsat"]["data_source"]["item_specs"] = [item_spec]
+        cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["item_specs"] = [item_spec]
 
         with (ds_path / "config.json").open("w") as f:
             json.dump(cfg, f)
@@ -230,7 +271,12 @@ def predict_pipeline(
                 )
                 left = int(raster.transform.c / projection.x_resolution)
                 top = int(raster.transform.f / projection.y_resolution)
-                scene_bounds = [left, top, left + raster.width, top + raster.height]
+                scene_bounds = (
+                    left,
+                    top,
+                    left + int(raster.width),
+                    top + int(raster.height),
+                )
 
         time_range = None
 
@@ -243,7 +289,7 @@ def predict_pipeline(
         # Get the projection and scene bounds using the Landsat data source.
         dataset = Dataset(ds_path)
         data_source: LandsatOliTirs = data_source_from_config(
-            dataset.layers["landsat"], dataset.path
+            dataset.layers[LANDSAT_LAYER_NAME], dataset.path
         )
         item = data_source.get_item_by_name(scene_id)
         wgs84_geom = item.geometry.to_projection(WGS84_PROJECTION)
@@ -254,29 +300,55 @@ def predict_pipeline(
             -LANDSAT_RESOLUTION,
         )
         dst_geom = item.geometry.to_projection(projection)
-        scene_bounds = [int(value) for value in dst_geom.shp.bounds]
+        scene_bounds = (
+            int(dst_geom.shp.bounds[0]),
+            int(dst_geom.shp.bounds[1]),
+            int(dst_geom.shp.bounds[2]),
+            int(dst_geom.shp.bounds[3]),
+        )
         time_range = (
             dst_geom.time_range[0] - timedelta(minutes=30),
             dst_geom.time_range[1] + timedelta(minutes=30),
         )
 
+    time_profile["setup"] = time.time() - start_time
+
     # Run pipeline.
+    step_start_time = time.time()
+    print("run detector")
     detections = get_vessel_detections(
-        ds_path, projection, scene_bounds, time_range=time_range
+        ds_path,
+        projection,
+        scene_bounds,
+        time_range=time_range,
+        item=item,
     )
-    detections = run_classifier(ds_path, detections, time_range=time_range)
+    time_profile["get_vessel_detections"] = time.time() - step_start_time
+
+    step_start_time = time.time()
+    print("run classifier")
+    detections = run_classifier(ds_path, detections, time_range=time_range, item=item)
+    time_profile["run_classifier"] = time.time() - step_start_time
 
     # Write JSON and crops.
-    json_path = UPath(json_path)
-    crop_path = UPath(crop_path)
+    step_start_time = time.time()
+    if crop_path:
+        crop_upath = UPath(crop_path)
+        crop_upath.mkdir(parents=True, exist_ok=True)
 
     json_data = []
     for idx, detection in enumerate(detections):
         # Load crops from the window directory.
         images = {}
+        if detection.crop_window_dir is None:
+            raise ValueError("Crop window directory is None")
         for band in ["B2", "B3", "B4", "B8"]:
             image_fname = (
-                detection.crop_window_dir / "layers" / "landsat" / band / "geotiff.tif"
+                detection.crop_window_dir
+                / "layers"
+                / LANDSAT_LAYER_NAME
+                / band
+                / "geotiff.tif"
             )
             with image_fname.open("rb") as f:
                 with rasterio.open(f) as src:
@@ -300,13 +372,17 @@ def predict_pipeline(
             [images["B4_sharp"], images["B3_sharp"], images["B2_sharp"]], axis=2
         )
 
-        rgb_fname = crop_path / f"{idx}_rgb.png"
-        with rgb_fname.open("wb") as f:
-            Image.fromarray(rgb).save(f, format="PNG")
+        if crop_path:
+            rgb_fname = crop_upath / f"{idx}_rgb.png"
+            with rgb_fname.open("wb") as f:
+                Image.fromarray(rgb).save(f, format="PNG")
 
-        b8_fname = crop_path / f"{idx}_b8.png"
-        with b8_fname.open("wb") as f:
-            Image.fromarray(images["B8"]).save(f, format="PNG")
+            b8_fname = crop_upath / f"{idx}_b8.png"
+            with b8_fname.open("wb") as f:
+                Image.fromarray(images["B8"]).save(f, format="PNG")
+        else:
+            rgb_fname = ""
+            b8_fname = ""
 
         # Get longitude/latitude.
         src_geom = STGeometry(
@@ -317,14 +393,31 @@ def predict_pipeline(
         lat = dst_geom.shp.y
 
         json_data.append(
-            dict(
+            FormattedPrediction(
                 longitude=lon,
                 latitude=lat,
                 score=detection.score,
-                rgb_fname=str(rgb_fname),
-                b8_fname=str(b8_fname),
-            )
+                rgb_fname=rgb_fname,
+                b8_fname=b8_fname,
+            ),
         )
 
-    with json_path.open("w") as f:
-        json.dump(json_data, f)
+    time_profile["write_json_and_crops"] = time.time() - step_start_time
+
+    elapsed_time = time.time() - start_time  # Calculate elapsed time
+    time_profile["total"] = elapsed_time
+
+    # Clean up any temporary directories.
+    if tmp_dir:
+        tmp_dir.cleanup()
+
+    if json_path:
+        json_upath = UPath(json_path)
+        with json_upath.open("w") as f:
+            json.dump(json_data, f)
+
+    print(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")
+    for step, duration in time_profile.items():
+        print(f"{step} took {duration:.2f} seconds")
+
+    return json_data

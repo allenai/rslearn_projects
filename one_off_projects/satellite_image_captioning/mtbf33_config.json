@@ -1,121 +1,186 @@
 {
-	"layers": {
-		"2012": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["R", "G", "B"],
-				"format": {"name": "single_image", "format": "png"}
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.aws_open_data.Naip",
-				"index_cache_dir": "cache/naip_index/",
-				"use_rtree_index": true,
-				"time_offset": "0d",
-				"duration": "365d"
-			}
-		},
-		"2013": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["R", "G", "B"],
-				"format": {"name": "single_image", "format": "png"}
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.aws_open_data.Naip",
-				"index_cache_dir": "cache/naip_index/",
-				"use_rtree_index": true,
-				"time_offset": "365d",
-				"duration": "365d"
-			}
-		},
-		"2014": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["R", "G", "B"],
-				"format": {"name": "single_image", "format": "png"}
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.aws_open_data.Naip",
-				"index_cache_dir": "cache/naip_index/",
-				"use_rtree_index": true,
-				"time_offset": "730d",
-				"duration": "365d"
-			}
-		},
-		"2015": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["R", "G", "B"],
-				"format": {"name": "single_image", "format": "png"}
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.aws_open_data.Naip",
-				"index_cache_dir": "cache/naip_index/",
-				"use_rtree_index": true,
-				"time_offset": "1095d",
-				"duration": "365d"
-			}
-		},
-		"2016": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["R", "G", "B"],
-				"format": {"name": "single_image", "format": "png"}
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.aws_open_data.Naip",
-				"index_cache_dir": "cache/naip_index/",
-				"use_rtree_index": true,
-				"time_offset": "1460d",
-				"duration": "365d"
-			}
-		},
-		"2017": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["R", "G", "B"],
-				"format": {"name": "single_image", "format": "png"}
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.aws_open_data.Naip",
-				"index_cache_dir": "cache/naip_index/",
-				"use_rtree_index": true,
-				"time_offset": "1825d",
-				"duration": "365d"
-			}
-		},
-		"2018": {
-			"type": "raster",
-			"band_sets": [{
-				"dtype": "uint8",
-				"bands": ["R", "G", "B"],
-				"format": {"name": "single_image", "format": "png"}
-			}],
-			"data_source": {
-				"name": "rslearn.data_sources.aws_open_data.Naip",
-				"index_cache_dir": "cache/naip_index/",
-				"use_rtree_index": true,
-				"time_offset": "2190d",
-				"duration": "365d"
-			}
-		},
-		"vector_mask": {
-			"type": "vector",
-			"data_source": {
-				"name": "rslearn.data_sources.local_files.LocalFiles",
-				"src_dir": "/data/favyenb/datasets_for_image_caption/mtbf33_after_2014/"
-			}
-		}
-	},
-	"tile_store": {
-		"name": "file",
-		"root_dir": "tiles",
-		"vector_format": {"name": "tile"}
-	}
+  "layers": {
+    "2012": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "365d",
+        "index_cache_dir": "cache/naip_index/",
+        "name": "rslearn.data_sources.aws_open_data.Naip",
+        "time_offset": "0d",
+        "use_rtree_index": true
+      },
+      "type": "raster"
+    },
+    "2013": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "365d",
+        "index_cache_dir": "cache/naip_index/",
+        "name": "rslearn.data_sources.aws_open_data.Naip",
+        "time_offset": "365d",
+        "use_rtree_index": true
+      },
+      "type": "raster"
+    },
+    "2014": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "365d",
+        "index_cache_dir": "cache/naip_index/",
+        "name": "rslearn.data_sources.aws_open_data.Naip",
+        "time_offset": "730d",
+        "use_rtree_index": true
+      },
+      "type": "raster"
+    },
+    "2015": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "365d",
+        "index_cache_dir": "cache/naip_index/",
+        "name": "rslearn.data_sources.aws_open_data.Naip",
+        "time_offset": "1095d",
+        "use_rtree_index": true
+      },
+      "type": "raster"
+    },
+    "2016": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "365d",
+        "index_cache_dir": "cache/naip_index/",
+        "name": "rslearn.data_sources.aws_open_data.Naip",
+        "time_offset": "1460d",
+        "use_rtree_index": true
+      },
+      "type": "raster"
+    },
+    "2017": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "365d",
+        "index_cache_dir": "cache/naip_index/",
+        "name": "rslearn.data_sources.aws_open_data.Naip",
+        "time_offset": "1825d",
+        "use_rtree_index": true
+      },
+      "type": "raster"
+    },
+    "2018": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "365d",
+        "index_cache_dir": "cache/naip_index/",
+        "name": "rslearn.data_sources.aws_open_data.Naip",
+        "time_offset": "2190d",
+        "use_rtree_index": true
+      },
+      "type": "raster"
+    },
+    "vector_mask": {
+      "data_source": {
+        "name": "rslearn.data_sources.local_files.LocalFiles",
+        "src_dir": "/data/favyenb/datasets_for_image_caption/mtbf33_after_2014/"
+      },
+      "type": "vector"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "tiles",
+    "vector_format": {
+      "name": "tile"
+    }
+  }
 }

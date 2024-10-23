@@ -13,7 +13,7 @@ from rslearn.utils import Projection, STGeometry
 tif_size = 32
 
 
-def create_tif(fname):
+def create_tif(fname: str) -> None:
     profile = dict(
         driver="GTiff",
         dtype=rasterio.uint8,
@@ -28,7 +28,7 @@ def create_tif(fname):
         src.write(array)
 
 
-def create_json(fname):
+def create_json(fname: str) -> None:
     src_vertices = [
         (0, 0),
         (tif_size, 0),
@@ -75,6 +75,41 @@ def create_json(fname):
         json.dump(json_data, f)
 
 
+def create_islands_file(fname: str) -> None:
+    json_data = {
+        "type": "FeatureCollection",
+        "crs": {
+            "properties": {
+                "name": "EPSG:3857",
+            },
+        },
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {
+                    "atoll": "x",
+                    "islandName": "x",
+                    "FCODE": "x",
+                },
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [
+                        [
+                            [0, 0],
+                            [0, tif_size],
+                            [tif_size, tif_size],
+                            [tif_size, 0],
+                        ]
+                    ],
+                },
+            }
+        ],
+    }
+    with open(fname, "w") as f:
+        json.dump(json_data, f)
+
+
 if __name__ == "__main__":
     create_tif("fake_2024-01-01-00-00.tif")
     create_json("fake_2024-01-01-00-00_labels.json")
+    create_islands_file("islands.json")

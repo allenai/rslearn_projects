@@ -52,10 +52,12 @@ data:
               allow_invalid: true
               skip_unknown_categories: true
               prob_property: "prob"
+              positive_class: "correct"
+              positive_class_threshold: 0.85
         input_mapping:
           class:
             label: "targets"
-    batch_size: 64
+    batch_size: 32
     num_workers: 32
     default_config:
       transforms:
