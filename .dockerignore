@@ -1,4 +1,6 @@
 **/.git
-wandb
-lightning_logs
+**/__pycache__
 .env
+.mypy_cache
+lightning_logs
+wandb
