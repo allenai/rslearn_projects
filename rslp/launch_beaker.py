@@ -104,7 +104,6 @@ def launch_job(
                     value=username,
                 )
             )
-
         for config_path in config_paths:
             spec = ExperimentSpec.new(
                 budget=BUDGET,
