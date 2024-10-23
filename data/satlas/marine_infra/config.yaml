@@ -65,6 +65,7 @@ data:
         bands: ["mask"]
         passthrough: true
         dtype: FLOAT32
+        is_target: true
       targets:
         data_type: "vector"
         layers: ["label"]
@@ -74,7 +75,7 @@ data:
       init_args:
         tasks:
           detect:
-            class_path: rslearn.train.tasks.detection.DetectionTask
+            class_path: rslp.satlas.train.MarineInfraTask
             init_args:
               property_name: "category"
               classes: ["unknown", "platform", "turbine"]
@@ -157,6 +158,28 @@ data:
       tags:
         split: val
     predict_config:
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 3000
+            valid_range: [0, 1]
+            bands: [0, 1, 2]
+            selectors: ["image1", "image2", "image3"]
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 8160
+            valid_range: [0, 1]
+            bands: [3, 4, 5, 6, 7, 8]
+            selectors: ["image1", "image2", "image3"]
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              image1: []
+              image2: []
+              image3: []
+            output_selector: image
       groups: ["predict"]
       load_all_patches: true
       skip_targets: true

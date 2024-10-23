@@ -1,4 +1,4 @@
-"""Remaps categories for marine infrastructure training."""
+"""Satlas custom training code."""
 
 from typing import Any
 
@@ -14,7 +14,7 @@ CATEGORY_MAPPING = {
 class MarineInfraTask(DetectionTask):
     """Marine infrastructure detection task.
 
-    We just add a remapping pre-processing.
+    We just add a category remapping pre-processing.
     """
 
     def process_inputs(
