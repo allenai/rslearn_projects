@@ -1,10 +1,13 @@
 """Utility functions for launchers/entrypoints to call."""
 
+import copy
 import io
 import os
 import shutil
 import tempfile
 import zipfile
+from itertools import product
+from typing import Any
 
 import yaml
 from google.cloud import storage
@@ -163,3 +166,99 @@ def download_wandb_id(project_id: str, experiment_id: str) -> str | None:
     buf = io.BytesIO()
     blob.download_to_file(buf)
     return buf.getvalue().decode()
+
+
+def extract_parameters(
+    config: dict, path: list[str] | None = None
+) -> list[tuple[list[str], list]]:
+    """Recursively extract parameters that have list values.
+
+    Args:
+        config: the configuration dictionary.
+        path: the current path in the configuration dictionary.
+
+    Returns:
+        a list of tuples: (path, list_of_values)
+    """
+    if path is None:
+        path = []
+    params = []
+    for key, value in config.items():
+        current_path = path + [key]
+        if isinstance(value, dict):
+            params.extend(extract_parameters(value, current_path))
+        elif isinstance(value, list):
+            params.append((current_path, value))
+    return params
+
+
+def set_in_dict(config: dict, path: list[str], value: Any) -> None:
+    """Set a value in a nested configuration dictionary given a path.
+
+    Args:
+        config: the configuration dictionary to set the value in.
+        path: the path to the value.
+        value: the value to set.
+    """
+    for key in path[:-1]:
+        config = config.setdefault(key, {})
+    config[path[-1]] = value
+
+
+def generate_combinations(base_config: dict, hparams_config: dict) -> list[dict]:
+    """Generate all combinations of hyperparameters.
+
+    Args:
+        base_config: the base configuration dictionary.
+        hparams_config: the hyperparameters configuration dictionary.
+
+    Returns:
+        a list of dictionaries, each represents a configuration with different hyperparameter values.
+    """
+    # Extract parameters with list values
+    params = extract_parameters(hparams_config)
+    if not params:
+        return [base_config]
+    # Generate all combinations of hyperparameters
+    paths, lists = zip(*params)
+    combinations = list(product(*lists))
+    # Create a new config for each combination
+    config_dicts = []
+    for combo in combinations:
+        new_config = copy.deepcopy(base_config)
+        for path, value in zip(paths, combo):
+            set_in_dict(new_config, path, value)
+        config_dicts.append(new_config)
+
+    return config_dicts
+
+
+def create_custom_configs(
+    config_path: str, hparams_config_path: str, custom_dir: str
+) -> list[str]:
+    """Create custom configs with different hyperparameter combinations.
+
+    Args:
+        config_path: the path to the base config.
+        hparams_config_path: the path to the hyperparameters config.
+        custom_dir: the directory to save the custom configs to.
+
+    Returns:
+        a list of paths to the custom configs.
+    """
+    with open(config_path) as f:
+        base_config = yaml.safe_load(f)
+    with open(hparams_config_path) as f:
+        hparams_config = yaml.safe_load(f)
+    custom_configs = generate_combinations(base_config, hparams_config)
+    configs_paths = []
+    for idx, config in enumerate(custom_configs):
+        # Update experiment ID by appending the index as a suffix
+        # Not sure if it's better to add the hyperparameters to the experiment ID
+        custom_experiment_id = f"{config['rslp_experiment']}_{idx}"
+        config["rslp_experiment"] = custom_experiment_id
+        config_filename = os.path.join(custom_dir, f"{custom_experiment_id}.yaml")
+        with open(config_filename, "w") as f:
+            yaml.dump(config, f)
+        configs_paths.append(config_filename)
+    return configs_paths
