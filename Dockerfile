@@ -6,8 +6,12 @@ RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git
 # Install rslearn.
 ARG RSLEARN_BRANCH=master
 RUN git clone -b $RSLEARN_BRANCH https://github.com/allenai/rslearn.git /opt/rslearn
-WORKDIR /opt/rslearn
-RUN pip install --no-cache-dir --upgrade --upgrade-strategy eager .[extra]
+# We install dependencies directly instead of relying on `pip install /opt/rslearn`
+# since we want to upgrade those packages (and I checked and it didn't upgrade even
+# when passing `--upgrade --upgrade-strategy eager`).
+RUN pip install --no-cache-dir --upgrade -r /opt/rslearn/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /opt/rslearn/extra_requirements.txt
+RUN pip install /opt/rslearn
 
 # Install rslearn_projects dependencies.
 # We do this in a separate step so it doesn't need to be rerun when other parts of the
