@@ -14,7 +14,14 @@ from google.cloud import storage
 
 CODE_BLOB_PATH = "projects/{project_id}/{experiment_id}/code.zip"
 WANDB_ID_BLOB_PATH = "projects/{project_id}/{experiment_id}/{run_id}wandb_id"
-CODE_EXCLUDES = [".env", "wandb", "rslp/__pycache__"]
+CODE_EXCLUDES = [
+    ".git",
+    "rslp/__pycache__",
+    ".env",
+    ".mypy_cache",
+    "lightning_logs",
+    "wandb",
+]
 
 bucket = None
 
