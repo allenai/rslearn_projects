@@ -25,6 +25,10 @@ from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.raster_format import SingleImageRasterFormat
 from upath import UPath
 
+from rslp.log_utils import get_logger
+
+logger = get_logger(__name__)
+
 # Time corresponding to 0 in alertDate GeoTIFF files.
 BASE_DATETIME = datetime(2019, 1, 1, tzinfo=timezone.utc)
 
@@ -222,7 +226,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
                 else:
                     peru_wgs84_shp = cur_shp
 
-    print(fname, "read confidences")
+    logger.info(fname, "read confidences")
     conf_path = UPath(GCS_CONF_PREFIX) / fname
     buf = io.BytesIO()
     with conf_path.open("rb") as f:
@@ -231,7 +235,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
     conf_raster = rasterio.open(buf)
     conf_data = conf_raster.read(1)
 
-    print(fname, "read dates")
+    logger.info(fname, "read dates")
     date_path = UPath(GCS_DATE_PREFIX) / fname
     buf = io.BytesIO()
     with date_path.open("rb") as f:
@@ -246,7 +250,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
     mask = (date_data >= min_days) & (conf_data >= config.min_confidence)
     mask = mask.astype(np.uint8)
 
-    print(fname, "extract shapes")
+    logger.info(fname, "extract shapes")
     shapes = list(rasterio.features.shapes(mask))
 
     # Start by processing the shapes into ForestLossEvent.
