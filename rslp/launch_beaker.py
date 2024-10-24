@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import shutil
 import uuid
 
 import dotenv
@@ -20,13 +21,15 @@ from rslp import launcher_lib
 
 DEFAULT_WORKSPACE = "ai2/earth-systems"
 BUDGET = "ai2/prior"
-IMAGE_NAME = "favyen/rslearn"  # Update image if needed
+# Update when new image is needed.
+IMAGE_NAME = "favyen/rslearn-20241024"
 
 
 def launch_job(
     config_path: str,
     hparams_config_path: str | None = None,
     mode: str = "fit",
+    run_id: str = "",
     workspace: str = DEFAULT_WORKSPACE,
     username: str | None = None,
     gpus: int = 1,
@@ -39,78 +42,87 @@ def launch_job(
         hparams_config_path: the relative path from rslearn_projects/ to the YAML configuration
             file containing the hyperparameters to be combined with the base config.
         mode: Mode to run the model ('fit', 'validate', 'test', or 'predict').
+        run_id: The run ID to associate with this job.
         workspace: the Beaker workspace to run the job in.
         username: optional W&B username to associate with the W&B run for this job.
         gpus: number of GPUs to use.
     """
-    # if hparams_config_path is provided, generate multiple configs, then upload code once
     if hparams_config_path:
         config_dir = os.path.dirname(config_path)
+        hparams_configs_dir = os.path.join(config_dir, "hparams_configs")
+        os.makedirs(hparams_configs_dir, exist_ok=True)
         config_paths = launcher_lib.create_custom_configs(
-            config_path, hparams_config_path, config_dir
+            config_path, hparams_config_path, hparams_configs_dir
         )
     else:
-        config_paths = [config_path]
+        # run_id is by default empty, but can be specified in predict jobs
+        config_paths = {run_id: config_path}
 
     project_id, experiment_id = launcher_lib.get_project_and_experiment(config_path)
     launcher_lib.upload_code(project_id, experiment_id)
+    if os.path.exists(hparams_configs_dir):
+        shutil.rmtree(hparams_configs_dir)
+
     beaker = Beaker.from_env(default_workspace=workspace)
 
-    with beaker.session():
-        env_vars = [
-            EnvVar(
-                name="WANDB_API_KEY",  # nosec
-                secret="RSLEARN_WANDB_API_KEY",  # nosec
-            ),
-            EnvVar(
-                name="GOOGLE_APPLICATION_CREDENTIALS",  # nosec
-                value="/etc/credentials/gcp_credentials.json",  # nosec
-            ),
-            EnvVar(
-                name="GCLOUD_PROJECT",  # nosec
-                value="prior-satlas",  # nosec
-            ),
-            EnvVar(
-                name="WEKA_ACCESS_KEY_ID",  # nosec
-                secret="RSLEARN_WEKA_KEY",  # nosec
-            ),
-            EnvVar(
-                name="WEKA_SECRET_ACCESS_KEY",  # nosec
-                secret="RSLEARN_WEKA_SECRET",  # nosec
-            ),
-            EnvVar(
-                name="WEKA_ENDPOINT_URL",  # nosec
-                value="https://weka-aus.beaker.org:9000",  # nosec
-            ),
-            EnvVar(
-                name="RSLP_PROJECT",  # nosec
-                value=project_id,
-            ),
-            EnvVar(
-                name="RSLP_EXPERIMENT",
-                value=experiment_id,
-            ),
-            EnvVar(
-                name="RSLP_BUCKET",
-                value=os.environ["RSLP_BUCKET"],
-            ),
-            EnvVar(
-                name="MKL_THREADING_LAYER",
-                value="GNU",
-            ),
-        ]
-        if username:
-            env_vars.append(
+    for run_id, config_path in config_paths.items():
+        with beaker.session():
+            env_vars = [
                 EnvVar(
-                    name="WANDB_USERNAME",
-                    value=username,
+                    name="WANDB_API_KEY",  # nosec
+                    secret="RSLEARN_WANDB_API_KEY",  # nosec
+                ),
+                EnvVar(
+                    name="GOOGLE_APPLICATION_CREDENTIALS",  # nosec
+                    value="/etc/credentials/gcp_credentials.json",  # nosec
+                ),
+                EnvVar(
+                    name="GCLOUD_PROJECT",  # nosec
+                    value="prior-satlas",  # nosec
+                ),
+                EnvVar(
+                    name="WEKA_ACCESS_KEY_ID",  # nosec
+                    secret="RSLEARN_WEKA_KEY",  # nosec
+                ),
+                EnvVar(
+                    name="WEKA_SECRET_ACCESS_KEY",  # nosec
+                    secret="RSLEARN_WEKA_SECRET",  # nosec
+                ),
+                EnvVar(
+                    name="WEKA_ENDPOINT_URL",  # nosec
+                    value="https://weka-aus.beaker.org:9000",  # nosec
+                ),
+                EnvVar(
+                    name="RSLP_PROJECT",  # nosec
+                    value=project_id,
+                ),
+                EnvVar(
+                    name="RSLP_EXPERIMENT",
+                    value=experiment_id,
+                ),
+                EnvVar(
+                    name="RSLP_RUN_ID",
+                    value=run_id,
+                ),
+                EnvVar(
+                    name="RSLP_BUCKET",
+                    value=os.environ["RSLP_BUCKET"],
+                ),
+                EnvVar(
+                    name="MKL_THREADING_LAYER",
+                    value="GNU",
+                ),
+            ]
+            if username:
+                env_vars.append(
+                    EnvVar(
+                        name="WANDB_USERNAME",
+                        value=username,
+                    )
                 )
-            )
-
-        for config_path in config_paths:
             spec = ExperimentSpec.new(
                 budget=BUDGET,
-                description=f"{project_id}/{experiment_id}",
+                description=f"{project_id}/{experiment_id}/{run_id}",
                 beaker_image=IMAGE_NAME,
                 priority=Priority.high,
                 command=["python", "-m", "rslp.docker_entrypoint"],
@@ -163,6 +175,13 @@ if __name__ == "__main__":
         default="fit",
     )
     parser.add_argument(
+        "--run_id",
+        type=str,
+        help="The run ID to associate with this job, used to specify an existing run on GCS",
+        required=False,
+        default="",
+    )
+    parser.add_argument(
         "--workspace",
         type=str,
         help="Which workspace to run the experiment in",
@@ -185,6 +204,7 @@ if __name__ == "__main__":
         args.config_path,
         hparams_config_path=args.hparams_config_path,
         mode=args.mode,
+        run_id=args.run_id,
         workspace=args.workspace,
         username=args.username,
         gpus=args.gpus,
