@@ -31,6 +31,7 @@ def launch_job(
     run_id: str = "",
     workspace: str = DEFAULT_WORKSPACE,
     username: str | None = None,
+    gpus: int = 1,
 ) -> None:
     """Launch training for the specified config on Beaker.
 
@@ -43,6 +44,7 @@ def launch_job(
         run_id: The run ID to associate with this job.
         workspace: the Beaker workspace to run the job in.
         username: optional W&B username to associate with the W&B run for this job.
+        gpus: number of GPUs to use.
     """
     if hparams_config_path:
         config_dir = os.path.dirname(config_path)
@@ -52,7 +54,7 @@ def launch_job(
             config_path, hparams_config_path, hparams_configs_dir
         )
     else:
-        # run_id is by default empty, but can be specified in predict jobs
+        # run_id can be specified in predict jobs
         config_paths = {run_id: config_path}
 
     project_id, experiment_id = launcher_lib.get_project_and_experiment(config_path)
@@ -190,12 +192,19 @@ if __name__ == "__main__":
         help="Associate a W&B user with this run in W&B",
         default=None,
     )
+    parser.add_argument(
+        "--gpus",
+        type=int,
+        help="Number of GPUs",
+        default=1,
+    )
     args = parser.parse_args()
     launch_job(
-        args.config_path,
+        config_path=args.config_path,
         hparams_config_path=args.hparams_config_path,
         mode=args.mode,
         run_id=args.run_id,
         workspace=args.workspace,
         username=args.username,
+        gpus=args.gpus,
     )

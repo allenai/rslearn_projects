@@ -77,7 +77,7 @@
       ],
       "data_source": {
         "duration": "180d",
-        "index_cache_dir": "cache/sentinel2",
+        "index_cache_dir": "gs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/cache/sentinel2",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -93,6 +93,6 @@
   },
   "tile_store": {
     "name": "file",
-    "root_dir": "tiles"
+    "root_dir": "gs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/tiles"
   }
 }

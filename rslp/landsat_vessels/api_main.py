@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import multiprocessing
 import os
 
@@ -11,12 +10,12 @@ from fastapi import FastAPI, Response
 from pydantic import BaseModel
 
 from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_pipeline
+from rslp.log_utils import get_logger
 
 app = FastAPI()
 
 # Set up the logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 LANDSAT_HOST = "0.0.0.0"
 LANDSAT_PORT = 5555
