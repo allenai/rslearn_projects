@@ -28,6 +28,7 @@ def launch_job(
     mode: str,
     workspace: str = DEFAULT_WORKSPACE,
     username: str | None = None,
+    gpus: int = 1,
 ) -> None:
     """Launch training for the specified config on Beaker.
 
@@ -37,6 +38,7 @@ def launch_job(
         mode: Mode to run the model ('fit', 'validate', 'test', or 'predict').
         workspace: the Beaker workspace to run the job in.
         username: optional W&B username to associate with the W&B run for this job.
+        gpus: number of GPUs to use.
     """
     project_id, experiment_id = launcher_lib.get_project_and_experiment(config_path)
     launcher_lib.upload_code(project_id, experiment_id)
@@ -57,12 +59,16 @@ def launch_job(
                 value="prior-satlas",  # nosec
             ),
             EnvVar(
-                name="S3_ACCESS_KEY_ID",  # nosec
+                name="WEKA_ACCESS_KEY_ID",  # nosec
                 secret="RSLEARN_WEKA_KEY",  # nosec
             ),
             EnvVar(
-                name="S3_SECRET_ACCESS_KEY",  # nosec
+                name="WEKA_SECRET_ACCESS_KEY",  # nosec
                 secret="RSLEARN_WEKA_SECRET",  # nosec
+            ),
+            EnvVar(
+                name="WEKA_ENDPOINT_URL",  # nosec
+                value="https://weka-aus.beaker.org:9000",  # nosec
             ),
             EnvVar(
                 name="RSLP_PROJECT",  # nosec
@@ -105,7 +111,7 @@ def launch_job(
                 ),
             ],
             env_vars=env_vars,
-            resources=TaskResources(gpu_count=1),
+            resources=TaskResources(gpu_count=gpus),
         )
         unique_id = str(uuid.uuid4())[0:8]
         beaker.experiment.create(f"{project_id}_{experiment_id}_{unique_id}", spec)
@@ -142,7 +148,17 @@ if __name__ == "__main__":
         help="Associate a W&B user with this run in W&B",
         default=None,
     )
+    parser.add_argument(
+        "--gpus",
+        type=int,
+        help="Number of GPUs",
+        default=1,
+    )
     args = parser.parse_args()
     launch_job(
-        args.config_path, args.mode, workspace=args.workspace, username=args.username
+        args.config_path,
+        args.mode,
+        workspace=args.workspace,
+        username=args.username,
+        gpus=args.gpus,
     )
