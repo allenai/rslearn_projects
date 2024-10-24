@@ -1,16 +1,19 @@
 """Utility functions for launchers/entrypoints to call."""
 
+import copy
 import io
 import os
 import shutil
 import tempfile
 import zipfile
+from itertools import product
+from typing import Any
 
 import yaml
 from google.cloud import storage
 
 CODE_BLOB_PATH = "projects/{project_id}/{experiment_id}/code.zip"
-WANDB_ID_BLOB_PATH = "projects/{project_id}/{experiment_id}/wandb_id"
+WANDB_ID_BLOB_PATH = "projects/{project_id}/{experiment_id}/{run_id}wandb_id"
 CODE_EXCLUDES = [".env", "wandb", "rslp/__pycache__"]
 
 bucket = None
@@ -124,17 +127,21 @@ def download_code(project_id: str, experiment_id: str) -> None:
         print("extraction complete", flush=True)
 
 
-def upload_wandb_id(project_id: str, experiment_id: str, wandb_id: str) -> None:
+def upload_wandb_id(
+    project_id: str, experiment_id: str, run_id: str, wandb_id: str
+) -> None:
     """Save a W&B run ID to GCS.
 
     Args:
         project_id: the project ID.
         experiment_id: the experiment ID.
+        run_id: the run ID (for hyperparameter experiments)
         wandb_id: the W&B run ID.
     """
     bucket = _get_bucket()
+    run_id_path = f"{run_id}/" if run_id else ""
     blob_path = WANDB_ID_BLOB_PATH.format(
-        project_id=project_id, experiment_id=experiment_id
+        project_id=project_id, experiment_id=experiment_id, run_id=run_id_path
     )
     blob = bucket.blob(blob_path)
     buf = io.BytesIO()
@@ -143,19 +150,21 @@ def upload_wandb_id(project_id: str, experiment_id: str, wandb_id: str) -> None:
     blob.upload_from_file(buf)
 
 
-def download_wandb_id(project_id: str, experiment_id: str) -> str | None:
+def download_wandb_id(project_id: str, experiment_id: str, run_id: str) -> str | None:
     """Retrieve W&B run ID from GCS.
 
     Args:
         project_id: the project ID.
         experiment_id: the experiment ID.
+        run_id: the run ID (for hyperparameter experiments)
 
     Returns:
         the W&B run ID, or None if it wasn't saved on GCS.
     """
     bucket = _get_bucket()
+    run_id_path = f"{run_id}/" if run_id else ""
     blob_path = WANDB_ID_BLOB_PATH.format(
-        project_id=project_id, experiment_id=experiment_id
+        project_id=project_id, experiment_id=experiment_id, run_id=run_id_path
     )
     blob = bucket.blob(blob_path)
     if not blob.exists():
@@ -163,3 +172,97 @@ def download_wandb_id(project_id: str, experiment_id: str) -> str | None:
     buf = io.BytesIO()
     blob.download_to_file(buf)
     return buf.getvalue().decode()
+
+
+def extract_parameters(
+    config: dict, path: list[str] | None = None
+) -> list[tuple[list[str], list]]:
+    """Recursively extract parameters that have list values.
+
+    Args:
+        config: the configuration dictionary.
+        path: the current path in the configuration dictionary.
+
+    Returns:
+        a list of tuples: (path, list_of_values)
+    """
+    if path is None:
+        path = []
+    params = []
+    for key, value in config.items():
+        current_path = path + [key]
+        if isinstance(value, dict):
+            params.extend(extract_parameters(value, current_path))
+        elif isinstance(value, list):
+            params.append((current_path, value))
+    return params
+
+
+def set_in_dict(config: dict, path: list[str], value: Any) -> None:
+    """Set a value in a nested configuration dictionary given a path.
+
+    Args:
+        config: the configuration dictionary to set the value in.
+        path: the path to the value.
+        value: the value to set.
+    """
+    for key in path[:-1]:
+        config = config.setdefault(key, {})
+    config[path[-1]] = value
+
+
+def generate_combinations(base_config: dict, hparams_config: dict) -> list[dict]:
+    """Generate all combinations of hyperparameters.
+
+    Args:
+        base_config: the base configuration dictionary.
+        hparams_config: the hyperparameters configuration dictionary.
+
+    Returns:
+        a list of dictionaries, each represents a configuration with different hyperparameter values.
+    """
+    # Extract parameters with list values
+    params = extract_parameters(hparams_config)
+    if not params:
+        return [base_config]
+    # Generate all combinations of hyperparameters
+    paths, lists = zip(*params)
+    combinations = list(product(*lists))
+    # Create a new config for each combination
+    config_dicts = []
+    for combo in combinations:
+        new_config = copy.deepcopy(base_config)
+        for path, value in zip(paths, combo):
+            set_in_dict(new_config, path, value)
+        config_dicts.append(new_config)
+
+    return config_dicts
+
+
+def create_custom_configs(
+    config_path: str, hparams_config_path: str, custom_dir: str
+) -> dict[str, str]:
+    """Create custom configs with different hyperparameter combinations.
+
+    Args:
+        config_path: the path to the base config.
+        hparams_config_path: the path to the hyperparameters config.
+        custom_dir: the directory to save the custom configs to.
+
+    Returns:
+        a dictionary mapping run IDs to paths to the custom configs.
+    """
+    with open(config_path) as f:
+        base_config = yaml.safe_load(f)
+    with open(hparams_config_path) as f:
+        hparams_config = yaml.safe_load(f)
+    custom_configs = generate_combinations(base_config, hparams_config)
+    configs_paths = {}
+    for idx, config in enumerate(custom_configs):
+        # Not sure if it's better to add the hyperparameters to the filename
+        experiment_id = base_config["rslp_experiment"]
+        config_filename = os.path.join(custom_dir, f"{experiment_id}_{idx}.yaml")
+        with open(config_filename, "w") as f:
+            yaml.dump(config, f)
+        configs_paths[f"run_{idx}"] = config_filename
+    return configs_paths

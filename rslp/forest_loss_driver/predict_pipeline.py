@@ -73,6 +73,7 @@ class PredictPipelineConfig:
                 select the subset of forest loss events that are within Peru.
         """
         rslp_bucket = os.environ["RSLP_BUCKET"]
+        # TODO: SAve these paths in constants for readability and clarity
         if ds_root is None:
             ds_root = f"gcs://{rslp_bucket}/datasets/forest_loss_driver/prediction/dataset_20240828/"
         if country_data_path is None:
