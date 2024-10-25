@@ -55,7 +55,7 @@ def launch_job(
             config_path, hparams_config_path, hparams_configs_dir
         )
     else:
-        # run_id is by default empty, but can be specified in predict jobs
+        # run_id can be specified in predict jobs
         config_paths = {run_id: config_path}
 
     project_id, experiment_id = launcher_lib.get_project_and_experiment(config_path)
@@ -201,7 +201,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     launch_job(
-        args.config_path,
+        config_path=args.config_path,
         hparams_config_path=args.hparams_config_path,
         mode=args.mode,
         run_id=args.run_id,
