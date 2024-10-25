@@ -55,9 +55,14 @@ WEB_MERCATOR_PROJECTION = Projection(WEB_MERCATOR_CRS, PIXEL_SIZE, -PIXEL_SIZE)
 class PredictPipelineConfig:
     """Prediction pipeline config for forest loss driver classification."""
 
+    # Maybe put this in init or must be in a constants file?
+    rslp_bucket = os.environ.get("RSLP_BUCKET")
+
+    peru_shape_data_path = f"gcs://{rslp_bucket}/artifacts/natural_earth_countries/20240830/ne_10m_admin_0_countries.shp"
+
     def __init__(
         self,
-        ds_root: str | None = None,
+        ds_root: str,
         workers: int = 1,
         days: int = 365,
         min_confidence: int = 2,
@@ -76,19 +81,25 @@ class PredictPipelineConfig:
             country_data_path: the path to access country boundary data, so we can
                 select the subset of forest loss events that are within Peru.
         """
-        rslp_bucket = os.environ["RSLP_BUCKET"]
-        # TODO: SAve these paths in constants for readability and clarity
-        if ds_root is None:
-            ds_root = f"gcs://{rslp_bucket}/datasets/forest_loss_driver/prediction/dataset_20240828/"
         if country_data_path is None:
-            country_data_path = f"gcs://{rslp_bucket}/artifacts/natural_earth_countries/20240830/ne_10m_admin_0_countries.shp"
-
+            logger.info(
+                f"using default peru shape data path: {self.peru_shape_data_path}"
+            )
+            country_data_path = self.peru_shape_data_path
         self.path = UPath(ds_root)
         self.workers = workers
         self.days = days
         self.min_confidence = min_confidence
         self.min_area = min_area
         self.country_data_path = UPath(country_data_path)
+
+    def __str__(self) -> str:
+        """Return a string representation of the config."""
+        return (
+            f"PredictPipelineConfig(path={self.path}, workers={self.workers}, "
+            f"days={self.days}, min_confidence={self.min_confidence}, "
+            f"min_area={self.min_area}, country_data_path={self.country_data_path})"
+        )
 
 
 class ForestLossEvent:
@@ -187,6 +198,8 @@ def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
     mask_im = rasterio.features.rasterize(
         [(polygon_out_shp, 255)],
         out_shape=(WINDOW_SIZE, WINDOW_SIZE),
+        # If out is not provided, dtype is required according to the docs.
+        dtype=np.int32,
     )
     layer_dir = window_path / "layers" / "mask"
     SingleImageRasterFormat().encode_raster(
@@ -199,6 +212,7 @@ def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
         pass
 
 
+# I want to be able to extract alerts starting form an arbitrary time
 def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
     """Extract alerts from a single GeoTIFF file.
 
@@ -206,6 +220,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
         config: the pipeline config.
         fname: the filename
     """
+    logger.info(f"extract_alerts for {str(config)}")
     # Load Peru country polygon which will be used to sub-select the forest loss
     # events.
     prefix = ".".join(config.country_data_path.name.split(".")[:-1])
@@ -226,7 +241,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
                 else:
                     peru_wgs84_shp = cur_shp
 
-    logger.info(fname, "read confidences")
+    logger.info(f"read confidences for {fname}")
     conf_path = UPath(GCS_CONF_PREFIX) / fname
     buf = io.BytesIO()
     with conf_path.open("rb") as f:
@@ -235,7 +250,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
     conf_raster = rasterio.open(buf)
     conf_data = conf_raster.read(1)
 
-    logger.info(fname, "read dates")
+    logger.info(f"read dates for {fname}")
     date_path = UPath(GCS_DATE_PREFIX) / fname
     buf = io.BytesIO()
     with date_path.open("rb") as f:
@@ -250,7 +265,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
     mask = (date_data >= min_days) & (conf_data >= config.min_confidence)
     mask = mask.astype(np.uint8)
 
-    logger.info(fname, "extract shapes")
+    logger.info(f"extract shapes for {fname}")
     shapes = list(rasterio.features.shapes(mask))
 
     # Start by processing the shapes into ForestLossEvent.
@@ -258,13 +273,17 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
     # We separate these steps because the first phase can't be parallelized easily
     # since it needs access to the date_data to lookup date of each polygon.
     events: list[ForestLossEvent] = []
+    logger.info(f"processing {len(shapes)} shapes")
+    logger.info(f"min area: {config.min_area}")
     for shp, value in tqdm.tqdm(shapes, desc="process shapes"):
         # Skip shapes corresponding to the background.
         if value != 1:
+            logger.debug(f"skipping shape with value {value}")
             continue
 
         shp = shapely.geometry.shape(shp)
         if shp.area < config.min_area:
+            logger.debug(f"skipping shape with area {shp.area}")
             continue
 
         # Get center point (clipped to shape) and note the corresponding date.
@@ -281,6 +300,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
         # Check if it's in Peru.
         center_wgs84_shp = center_proj_geom.to_projection(WGS84_PROJECTION).shp
         if peru_wgs84_shp is None or not peru_wgs84_shp.contains(center_wgs84_shp):
+            logger.debug("skipping shape not in Peru")
             continue
 
         def raster_pixel_to_proj(points: np.ndarray) -> np.ndarray:
@@ -292,14 +312,35 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
         polygon_proj_geom = STGeometry(
             Projection(conf_raster.crs, 1, 1), polygon_proj_shp, None
         )
-
-        events.append(
-            ForestLossEvent(polygon_proj_geom, center_proj_geom, center_pixel, cur_date)
+        forest_loss_event = ForestLossEvent(
+            polygon_proj_geom, center_proj_geom, center_pixel, cur_date
         )
+        events.append(forest_loss_event)
+
+        # DEBUG Specific code Save the forest loss event to a file
+        output_dir = UPath("./forest_loss_events_test")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        event_filename = f"event_{cur_date.strftime('%Y%m%d')}_{center_pixel[0]}_{center_pixel[1]}.json"
+        event_path = output_dir / event_filename
+
+        event_data = {
+            "polygon_geom": polygon_proj_geom,
+            "center_geom": center_proj_geom,
+            "center_pixel": center_pixel,
+            "ts": cur_date.isoformat(),
+        }
+        print(event_data)
+        logger.info(f"saving event to {event_path}")
+        with event_path.open("w") as f:
+            json.dump(event_data, f, indent=2)
+        if len(events) > 2:
+            break
 
     conf_raster.close()
     date_raster.close()
 
+    logger.info(f"writing {len(events)} windows")
     jobs = [
         dict(
             event=event,
@@ -315,6 +356,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
     p.close()
 
 
+# where is this config initialized?
 def predict_pipeline(pred_config: PredictPipelineConfig) -> None:
     """Run the prediction pipeline.
 

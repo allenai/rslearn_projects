@@ -2,14 +2,15 @@
 
 import argparse
 import importlib
-import logging
 import multiprocessing
 import sys
 
 import dotenv
 import jsonargparse
 
-logging.basicConfig()
+from rslp.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 def main() -> None:
@@ -22,6 +23,8 @@ def main() -> None:
 
     module = importlib.import_module(f"rslp.{args.project}")
     workflow_fn = module.workflows[args.workflow]
+    logger.info(f"running {args.workflow} for {args.project}")
+    logger.info(f"args: {sys.argv[3:]}")
     jsonargparse.CLI(workflow_fn, args=sys.argv[3:])
 
 
