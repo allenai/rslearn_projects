@@ -2,15 +2,24 @@ FROM pytorch/pytorch:2.4.0-cuda11.8-cudnn9-runtime@sha256:58a28ab734f23561aa146f
 
 RUN apt update
 RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git
-RUN git clone https://github.com/allenai/rslearn.git /opt/rslearn_projects/rslearn
-RUN pip install -r /opt/rslearn_projects/rslearn/requirements.txt
-RUN pip install -r /opt/rslearn_projects/rslearn/extra_requirements.txt
+
+# Install rslearn.
+# We use git clone and then git checkout instead of git clone -b so that the user could
+# specify a commit name or branch instead of only accepting a branch.
+ARG RSLEARN_BRANCH=master
+RUN git clone https://github.com/allenai/rslearn.git /opt/rslearn
+WORKDIR /opt/rslearn
+RUN git checkout $RSLEARN_BRANCH
+RUN pip install --no-cache-dir /opt/rslearn[extra]
+
+# Install rslearn_projects dependencies.
+# We do this in a separate step so it doesn't need to be rerun when other parts of the
+# context are modified.
 COPY requirements.txt /opt/rslearn_projects/requirements.txt
-RUN pip install -r /opt/rslearn_projects/requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /opt/rslearn_projects/requirements.txt
 
-# We need rslp to be pip installed as well
-
-ENV PYTHONPATH="${PYTHONPATH}:/opt/rslearn_projects/rslearn:."
-
+# Copy rslearn_projects.
+# For now we don't install it and instead just use PYTHONPATH.
+ENV PYTHONPATH="${PYTHONPATH}:."
 COPY /. /opt/rslearn_projects/
 WORKDIR /opt/rslearn_projects
