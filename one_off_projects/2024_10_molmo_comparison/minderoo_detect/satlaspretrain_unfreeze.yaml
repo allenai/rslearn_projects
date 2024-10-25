@@ -1,0 +1,107 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.satlaspretrain.SatlasPretrain
+            init_args:
+              model_identifier: "Aerial_SwinB_SI"
+              fpn: true
+        decoders:
+          detect:
+            - class_path: rslearn.models.pick_features.PickFeatures
+              init_args:
+                indexes: [1, 2, 3, 4]
+            - class_path: rslearn.models.faster_rcnn.FasterRCNN
+              init_args:
+                downsample_factors: [4, 8, 16, 32]
+                num_channels: 128
+                num_classes: 2
+                anchor_sizes: [[32], [64], [128], [256]]
+    lr: 0.00002
+    plateau: true
+    plateau_factor: 0.5
+    plateau_patience: 2
+    plateau_min_lr: 1e-6
+    plateau_cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: weka://dfive-default/rslearn-eai/datasets/minderoo/detector/dataset_2024-07-31/
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["image"]
+        bands: ["R", "G", "B"]
+        passthrough: true
+        dtype: INT32
+      targets:
+        data_type: "vector"
+        layers: ["label"]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          detect:
+            class_path: rslearn.train.tasks.detection.DetectionTask
+            init_args:
+              property_name: "category"
+              classes: ["unknown", "vessel"]
+              remap_values: [[0, 1], [0, 255]]
+              enable_map_metric: true
+              enable_f1_metric: true
+              f1_metric_kwargs:
+                cmp_mode: "iou"
+                cmp_threshold: 0.3
+                flatten_classes: true
+        input_mapping:
+          detect:
+            targets: "targets"
+    batch_size: 8
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 255
+    train_config:
+      patch_size: 384
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 255
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["image"]
+            box_selectors: ["target/detect"]
+      groups: ["train"]
+    val_config:
+      patch_size: 384
+      groups: ["val"]
+    test_config:
+      patch_size: 384
+      groups: ["val"]
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_detect/mAP
+        mode: max
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0, "model", "backbone"]
+        unfreeze_at_epoch: 8
+        unfreeze_lr_factor: 5
+rslp_project: molmo_comparison
+rslp_experiment: minderoo_detect_11_satlaspretrain_unfreeze

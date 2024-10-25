@@ -1,0 +1,108 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.molmo.Molmo
+            init_args:
+              model_name: "allenai/Molmo-7B-D-0924"
+        decoders:
+          segment:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                # Molmo output is always 24x24.
+                # We input 192x192 so it is 8x downsampling.
+                in_channels: [[8, 2048]]
+                out_channels: 17
+                conv_layers_per_resolution: 2
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+    lr: 0.00002
+    plateau: true
+    plateau_factor: 0.5
+    plateau_patience: 4
+    plateau_min_lr: 0
+    plateau_cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["maxar"]
+        bands: ["R", "G", "B"]
+        passthrough: true
+      targets:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["label"]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          segment:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 17
+              zero_is_invalid: true
+              metric_kwargs:
+                average: "micro"
+        input_mapping:
+          segment:
+            targets: "targets"
+    batch_size: 8
+    num_workers: 32
+    train_config:
+      patch_size: 192
+      transforms:
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
+      groups: ["crops"]
+      tags:
+        split: train
+    val_config:
+      patch_size: 192
+      load_all_patches: true
+      groups: ["crops"]
+      tags:
+        split: val
+    test_config:
+      patch_size: 192
+      load_all_patches: true
+      groups: ["crops"]
+      tags:
+        split: val
+    predict_config:
+      groups: ["images"]
+      load_all_patches: true
+      skip_targets: true
+      patch_size: 2048
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: gcs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/
+        output_layer: output
+        selector: ["segment"]
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        every_n_epochs: 50
+        save_last: true
+        monitor: val_segment/accuracy
+        mode: max
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 8
+        unfreeze_lr_factor: 10
+rslp_project: molmo_comparison
+rslp_experiment: maxar_crop192_molmo_unfreeze_10_shouldbebroken
