@@ -47,23 +47,44 @@ def forest_loss_event() -> ForestLossEvent:
     return event
 
 
+# TODO: Add unit tests for each of the components to this
 def test_write_event(forest_loss_event: ForestLossEvent) -> None:
     """Tests writing an event to a file."""
 
     with tempfile.TemporaryDirectory() as temp_dir:
         write_event(forest_loss_event, "test_filename.tif", UPath(temp_dir))
 
-        expected_subdirectory = (
-            "windows/default/feat_x_1281712_2146968_101_42718/layers/mask/mask"
-        )
+        expected_subdirectory = "windows/default/feat_x_1281712_2146968_101_42718/"
         assert (
-            UPath(temp_dir) / expected_subdirectory / "image.png"
+            UPath(temp_dir)
+            / expected_subdirectory
+            / "layers"
+            / "mask"
+            / "mask"
+            / "image.png"
         ).exists(), "image.png not found"
+
         assert (
             UPath(temp_dir) / expected_subdirectory / "metadata.json"
-        ).exists(), "metadata.json not found"
-        with (UPath(temp_dir) / expected_subdirectory / "metadata.json").open() as f:
+        ).exists(), "window metadata.json not found"
+
+        with (
+            UPath(temp_dir)
+            / expected_subdirectory
+            / "layers"
+            / "mask"
+            / "mask"
+            / "metadata.json"
+        ).open() as f:
             metadata = json.load(f)
         assert metadata == {
             "bounds": [-815504, 49752, -815376, 49880]
-        }, "metadata.json is incorrect"
+        }, "forest loss event metadata.json is incorrect"
+
+        # assert completed file exists
+        expected_layers_subdirectory = (
+            "windows/default/feat_x_1281712_2146968_101_42718/layers/mask"
+        )
+        assert (
+            UPath(temp_dir) / expected_layers_subdirectory / "completed"
+        ).exists(), "completed file not found"

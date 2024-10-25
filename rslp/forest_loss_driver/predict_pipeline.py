@@ -50,6 +50,7 @@ WEB_MERCATOR_CRS = CRS.from_epsg(3857)
 WEB_MERCATOR_M = 2 * math.pi * 6378137
 PIXEL_SIZE = WEB_MERCATOR_M / (2**13) / 512
 WEB_MERCATOR_PROJECTION = Projection(WEB_MERCATOR_CRS, PIXEL_SIZE, -PIXEL_SIZE)
+ANNOTATION_WEBSITE_MERCATOR_OFFSET = 512 * (2**12)
 
 
 class PredictPipelineConfig:
@@ -128,23 +129,78 @@ class ForestLossEvent:
         self.ts = ts
 
 
-def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
-    """Write a window for this forest loss event.
+def output_forest_event_metadata(
+    event: ForestLossEvent,
+    fname: str,
+    ds_path: UPath,
+    mercator_point: tuple[int, int],
+    projection: Projection,
+) -> None:
+    """Output the info.json metadata for a forest loss event."""
+    polygon_wgs84_shp: shapely.Polygon = event.polygon_geom.to_projection(
+        projection
+    ).shp
+    with (ds_path / "info.json").open("w") as f:
+        json.dump(
+            {
+                "fname": fname,
+                "img_point": event.center_pixel,
+                "mercator_point": mercator_point,
+                "date": event.ts.isoformat(),
+                "wkt": polygon_wgs84_shp.wkt,
+            },
+            f,
+        )
 
-    Args:
-        event: the event details.
-        fname: the GeoTIFF filename that this alert came from.
-        ds_path: the path of dataset to write to.
-    """
+
+def output_mask_raster(
+    event: ForestLossEvent,
+    ds_path: UPath,
+    bounds: tuple[int, int, int, int],
+    window: Window,
+    projection: Projection,
+    window_size: int = WINDOW_SIZE,
+) -> None:
+    """Output the mask raster for a forest loss event."""
+    # Get pixel coordinates of the mask.
+    polygon_webm_shp = event.polygon_geom.to_projection(projection).shp
+
+    def to_out_pixel(points: np.ndarray) -> np.ndarray:
+        points[:, 0] -= bounds[0]
+        points[:, 1] -= bounds[1]
+        return points
+
+    polygon_out_shp = shapely.transform(polygon_webm_shp, to_out_pixel)
+    mask_im = rasterio.features.rasterize(
+        [(polygon_out_shp, 255)],
+        out_shape=(window_size, window_size),
+        # If out is not provided, dtype is required according to the docs.
+        dtype=np.int32,
+    )
+    layer_dir = ds_path / "layers" / "mask"
+    SingleImageRasterFormat().encode_raster(
+        layer_dir / "mask",
+        window.projection,
+        window.bounds,
+        mask_im[None, :, :],
+    )
+    # Should this happen every time we encode the raster
+    with (layer_dir / "completed").open("w"):
+        pass
+
+
+def output_window_metadata(event: ForestLossEvent, ds_path: UPath) -> tuple:
+    """Output the window metadata."""
     # Transform the center to Web-Mercator for populating the window.
     center_webm_shp = event.center_geom.to_projection(WEB_MERCATOR_PROJECTION).shp
 
     # WebMercator point to include in the name.
     # The annotation website will use this so we have adjusted this to have the same offset as multisat/other code.
     mercator_point = (
-        int(center_webm_shp.x) + 512 * (2**12),
-        int(center_webm_shp.y) + 512 * (2**12),
+        int(center_webm_shp.x) + ANNOTATION_WEBSITE_MERCATOR_OFFSET,
+        int(center_webm_shp.y) + ANNOTATION_WEBSITE_MERCATOR_OFFSET,
     )
+
     # While the bounds is for rslearn.
     bounds = (
         int(center_webm_shp.x) - WINDOW_SIZE // 2,
@@ -169,47 +225,31 @@ def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
         time_range=time_range,
     )
     window.save()
+    return window, window_path, mercator_point, bounds
 
-    # Output some metadata.
-    polygon_wgs84_shp: shapely.Polygon = event.polygon_geom.to_projection(
-        WGS84_PROJECTION
-    ).shp
-    with (window_path / "info.json").open("w") as f:
-        json.dump(
-            {
-                "fname": fname,
-                "img_point": event.center_pixel,
-                "mercator_point": mercator_point,
-                "date": event.ts.isoformat(),
-                "wkt": polygon_wgs84_shp.wkt,
-            },
-            f,
-        )
 
-    # Get pixel coordinates of the mask.
-    polygon_webm_shp = event.polygon_geom.to_projection(WEB_MERCATOR_PROJECTION).shp
+#  TODO:This should really be a class that handles this
+def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
+    """Write a window for this forest loss event.
 
-    def to_out_pixel(points: np.ndarray) -> np.ndarray:
-        points[:, 0] -= bounds[0]
-        points[:, 1] -= bounds[1]
-        return points
+    This function creates several output files for each forest loss event:
+    1. Saves the window metadata to ds_path/windows/default/feat_x_.../ directory.
+    2. Saves the info.json metadata to the same directory.
+    3. Saves the mask image to ds_path/windows/default/feat_x_.../layers/mask/
+    4. Creates an empty 'completed' file to indicate successful processing.
 
-    polygon_out_shp = shapely.transform(polygon_webm_shp, to_out_pixel)
-    mask_im = rasterio.features.rasterize(
-        [(polygon_out_shp, 255)],
-        out_shape=(WINDOW_SIZE, WINDOW_SIZE),
-        # If out is not provided, dtype is required according to the docs.
-        dtype=np.int32,
+    Args:
+        event: the event details.
+        fname: the GeoTIFF filename that this alert came from.
+        ds_path: the path of dataset to write to.
+    """
+    window, window_path, mercator_point, bounds = output_window_metadata(event, ds_path)
+
+    output_forest_event_metadata(
+        event, fname, window_path, mercator_point, WGS84_PROJECTION
     )
-    layer_dir = window_path / "layers" / "mask"
-    SingleImageRasterFormat().encode_raster(
-        layer_dir / "mask",
-        window.projection,
-        window.bounds,
-        mask_im[None, :, :],
-    )
-    with (layer_dir / "completed").open("w"):
-        pass
+
+    output_mask_raster(event, window_path, bounds, window, WEB_MERCATOR_PROJECTION)
 
 
 # I want to be able to extract alerts starting form an arbitrary time
