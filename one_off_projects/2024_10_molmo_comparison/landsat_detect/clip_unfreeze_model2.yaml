@@ -1,0 +1,139 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.clip.CLIP
+            init_args:
+              model_name: "openai/clip-vit-large-patch14-336"
+        decoders:
+          detect:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 1024
+                out_channels: 1024
+                kernel_size: 3
+            # To 48x48.
+            - class_path: rslearn.models.upsample.Upsample
+              init_args:
+                scale_factor: 2
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 1024
+                out_channels: 512
+                kernel_size: 3
+            # To 96x96.
+            - class_path: rslearn.models.upsample.Upsample
+              init_args:
+                scale_factor: 2
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 512
+                out_channels: 256
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 256
+                out_channels: 128
+                kernel_size: 3
+            - class_path: rslearn.models.faster_rcnn.FasterRCNN
+              init_args:
+                downsample_factors: [4]
+                num_channels: 128
+                num_classes: 2
+                anchor_sizes: [[32]]
+    lr: 0.00002
+    plateau: true
+    plateau_factor: 0.5
+    plateau_patience: 2
+    plateau_min_lr: 1e-6
+    plateau_cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: weka://dfive-default/rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20240924/
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["landsat"]
+        bands: ["B2", "B3", "B4"]
+        passthrough: true
+      mask:
+        data_type: "raster"
+        layers: ["mask"]
+        bands: ["mask"]
+        passthrough: true
+        dtype: INT32
+        is_target: true
+      targets:
+        data_type: "vector"
+        layers: ["label"]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          detect:
+            class_path: rslearn.train.tasks.detection.DetectionTask
+            init_args:
+              property_name: "category"
+              classes: ["unknown", "vessel"]
+              box_size: 15
+              remap_values: [[0, 1], [0, 255]]
+              image_bands: [2, 1, 0]
+              exclude_by_center: true
+              enable_map_metric: true
+              enable_f1_metric: true
+              f1_metric_kwargs:
+                cmp_mode: "distance"
+                cmp_threshold: 15
+                flatten_classes: true
+        input_mapping:
+          detect:
+            targets: "targets"
+    batch_size: 8
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslp.transforms.mask.Mask
+    train_config:
+      patch_size: 192
+      transforms:
+        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["image"]
+            box_selectors: ["target/detect"]
+      tags:
+        split: train
+    val_config:
+      patch_size: 192
+      tags:
+        split: val
+      load_all_patches: true
+    test_config:
+      patch_size: 192
+      tags:
+        split: val
+      load_all_patches: true
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_detect/mAP
+        mode: max
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 8
+        unfreeze_lr_factor: 5
+rslp_project: molmo_comparison
+rslp_experiment: landsat_vessel_clip_unfreeze_model2_02
