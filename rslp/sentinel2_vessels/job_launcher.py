@@ -173,7 +173,7 @@ if __name__ == "__main__":
                 PredictionTask(
                     scene_id=scene_id,
                     json_path=f"{args.json_out_dir}{scene_id}.json",
-                    crop_path=f"{args.json_out_dir}{scene_id}",
+                    crop_path=f"{args.crop_out_dir}{scene_id}",
                 )
             )
 
