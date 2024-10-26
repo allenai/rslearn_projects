@@ -39,48 +39,30 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gs://rslearn-eai/datasets/wind_turbine/dataset_v1/20241002/
+    path: gs://rslearn-eai/datasets/wind_turbine/webmercator_dataset/20240927/
     inputs:
       image1:
         data_type: "raster"
-        layers: ["sentinel2_a"]
-        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        layers: ["sentinel2"]
+        bands: ["R", "G", "B", "b05", "b06", "b07", "b08", "b11", "b12"]
         passthrough: true
-        dtype: FLOAT32
+        dtype: INT32
       image2:
         data_type: "raster"
-        layers: ["sentinel2_a.1"]
-        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        layers: ["sentinel2.1"]
+        bands: ["R", "G", "B", "b05", "b06", "b07", "b08", "b11", "b12"]
         passthrough: true
-        dtype: FLOAT32
+        dtype: INT32
       image3:
         data_type: "raster"
-        layers: ["sentinel2_b"]
-        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        layers: ["sentinel2.2"]
+        bands: ["R", "G", "B", "b05", "b06", "b07", "b08", "b11", "b12"]
         passthrough: true
-        dtype: FLOAT32
+        dtype: INT32
       image4:
         data_type: "raster"
-        layers: ["sentinel2_b.1"]
-        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
-        passthrough: true
-        dtype: FLOAT32
-      image5:
-        data_type: "raster"
-        layers: ["sentinel2_c"]
-        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
-        passthrough: true
-        dtype: FLOAT32
-      image6:
-        data_type: "raster"
-        layers: ["sentinel2_c.1"]
-        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
-        passthrough: true
-        dtype: FLOAT32
-      mask:
-        data_type: "raster"
-        layers: ["mask"]
-        bands: ["mask"]
+        layers: ["sentinel2.3"]
+        bands: ["R", "G", "B", "b05", "b06", "b07", "b08", "b11", "b12"]
         passthrough: true
         dtype: INT32
       targets:
@@ -95,7 +77,7 @@ data:
             class_path: rslearn.train.tasks.detection.DetectionTask
             init_args:
               property_name: "category"
-              classes: ["unknown", "turbine"]
+              classes: ["unknown", "wind_turbine"]
               box_size: 15
               remap_values: [[0, 1], [0, 255]]
               exclude_by_center: true
@@ -108,24 +90,10 @@ data:
         input_mapping:
           detect:
             targets: "targets"
-    batch_size: 8
+    batch_size: 4
     num_workers: 32
     default_config:
       transforms:
-        - class_path: rslearn.train.transforms.normalize.Normalize
-          init_args:
-            mean: 0
-            std: 3000
-            valid_range: [0, 1]
-            bands: [0, 1, 2]
-            selectors: ["image1", "image2", "image3", "image4", "image5", "image6"]
-        - class_path: rslearn.train.transforms.normalize.Normalize
-          init_args:
-            mean: 0
-            std: 8160
-            valid_range: [0, 1]
-            bands: [3, 4, 5, 6, 7, 8]
-            selectors: ["image1", "image2", "image3", "image4", "image5", "image6"]
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
             selections:
@@ -133,27 +101,14 @@ data:
               image2: []
               image3: []
               image4: []
-              image5: []
-              image6: []
             output_selector: image
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 255
     train_config:
-      patch_size: 384
+      patch_size: 512
       transforms:
-        - class_path: rslearn.train.transforms.normalize.Normalize
-          init_args:
-            mean: 0
-            std: 3000
-            valid_range: [0, 1]
-            bands: [0, 1, 2]
-            selectors: ["image1", "image2", "image3", "image4", "image5", "image6"]
-        - class_path: rslearn.train.transforms.normalize.Normalize
-          init_args:
-            mean: 0
-            std: 8160
-            valid_range: [0, 1]
-            bands: [3, 4, 5, 6, 7, 8]
-            selectors: ["image1", "image2", "image3", "image4", "image5", "image6"]
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
             selections:
@@ -161,43 +116,31 @@ data:
               image2: []
               image3: []
               image4: []
-              image5: []
-              image6: []
             output_selector: image
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 255
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["image"]
             box_selectors: ["target/detect"]
-      groups: ["label", "naip"]
       tags:
         split: train
     val_config:
-      patch_size: 384
-      groups: ["label", "naip"]
+      patch_size: 512
       tags:
         split: val
     test_config:
-      patch_size: 384
-      groups: ["label", "naip"]
+      patch_size: 512
       tags:
         split: val
-    predict_config:
-      groups: ["predict"]
-      load_all_patches: true
-      skip_targets: true
-      patch_size: 512
 trainer:
   max_epochs: 500
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: rslearn.train.prediction_writer.RslearnWriter
-      init_args:
-        path: gs://rslearn-eai/datasets/wind_turbine/dataset_v1/20241002/
-        output_layer: output
-        selector: ["detect"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         save_top_k: 1
@@ -209,4 +152,4 @@ trainer:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 2
 rslp_project: satlas_wind_turbine
-rslp_experiment: data_20241002_satlaspretrainold_patch384_03
+rslp_experiment: data_20240927_satlaspretrainold_patch512_flip_4image_02
