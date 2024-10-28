@@ -21,7 +21,7 @@ CHECKPOINT_DIR = (
 class SaveWandbRunIdCallback(Callback):
     """Callback to save the wandb run ID to GCS in case of resume."""
 
-    def __init__(self, project_id: str, experiment_id: str, run_id: str) -> None:
+    def __init__(self, project_id: str, experiment_id: str, run_id: str | None) -> None:
         """Create a new SaveWandbRunIdCallback.
 
         Args:
