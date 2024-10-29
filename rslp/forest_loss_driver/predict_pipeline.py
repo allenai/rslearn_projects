@@ -50,6 +50,7 @@ WEB_MERCATOR_CRS = CRS.from_epsg(3857)
 WEB_MERCATOR_M = 2 * math.pi * 6378137
 PIXEL_SIZE = WEB_MERCATOR_M / (2**13) / 512
 WEB_MERCATOR_PROJECTION = Projection(WEB_MERCATOR_CRS, PIXEL_SIZE, -PIXEL_SIZE)
+
 ANNOTATION_WEBSITE_MERCATOR_OFFSET = 512 * (2**12)
 
 
@@ -252,9 +253,12 @@ def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
     output_mask_raster(event, window_path, bounds, window, WEB_MERCATOR_PROJECTION)
 
 
-# TODO: This should probably be agnostic to the country
 def load_country_polygon(country_data_path: UPath) -> shapely.Polygon:
-    """Load the country polygon."""
+    """Load the country polygon.
+
+    Please make sure the necessary AUX Shapefiles are in the same directory as the
+    main Shapefile.
+    """
     logger.info(f"loading country polygon from {country_data_path}")
     prefix = ".".join(country_data_path.name.split(".")[:-1])
     aux_files: list[UPath] = []
@@ -277,9 +281,10 @@ def load_country_polygon(country_data_path: UPath) -> shapely.Polygon:
 
 def read_forest_alerts_confidence_raster(
     fname: str,
+    conf_prefix: str = GCS_CONF_PREFIX,
 ) -> tuple[np.ndarray, rasterio.DatasetReader]:
     """Read the forest alerts confidence raster."""
-    conf_path = UPath(GCS_CONF_PREFIX) / fname
+    conf_path = UPath(conf_prefix) / fname
     buf = io.BytesIO()
     with conf_path.open("rb") as f:
         buf.write(f.read())
@@ -304,6 +309,7 @@ def read_forest_alerts_date_raster(
     return date_data, date_raster
 
 
+# TODO: use the generator directly
 def process_shapes_into_events(
     shapes: list[shapely.Geometry],
     conf_raster: rasterio.DatasetReader,
@@ -365,9 +371,10 @@ def create_forest_loss_mask(
     min_days: int,
     min_confidence: int,
     days: int,
+    current_utc_time: datetime = datetime.now(timezone.utc),
 ) -> np.ndarray:
     """Create a mask based on the given time range and confidence threshold."""
-    now_days = (datetime.now(timezone.utc) - BASE_DATETIME).days
+    now_days = (current_utc_time - BASE_DATETIME).days
     min_days = now_days - days
     mask = (date_data >= min_days) & (conf_data >= min_confidence)
     return mask.astype(
@@ -375,13 +382,17 @@ def create_forest_loss_mask(
     )  # THis seems to be causing issues for writing unless we change it when we write it
 
 
-# I want to be able to extract alerts starting form an arbitrary time
-def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
+def extract_alerts(
+    config: PredictPipelineConfig,
+    fname: str,
+    current_utc_time: datetime = datetime.now(timezone.utc),
+) -> None:
     """Extract alerts from a single GeoTIFF file.
 
     Args:
         config: the pipeline config.
         fname: the filename
+        current_utc_time: the time to look back from for forest loss events.
     """
     logger.info(f"extract_alerts for {str(config)}")
     # Load Peru country polygon which will be used to sub-select the forest loss
@@ -394,18 +405,23 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
     logger.info(f"read dates for {fname}")
     date_data, date_raster = read_forest_alerts_date_raster(fname)
 
-    logger.info(f"create mask for {fname}")
     mask = create_forest_loss_mask(
-        conf_data, date_data, config.days, config.min_confidence, config.days
+        conf_data,
+        date_data,
+        config.days,
+        config.min_confidence,
+        config.days,
+        current_utc_time,
     )
-
-    logger.info(f"extract shapes for {fname}")
+    mask = mask[50000:60000, 50000:60000]
+    logger.info(f"mask.sum(): {mask.sum()}")
     shapes = list(rasterio.features.shapes(mask))
 
     # Start by processing the shapes into ForestLossEvent.
     # Then prepare windows in a second phase.
     # We separate these steps because the first phase can't be parallelized easily
     # since it needs access to the date_data to lookup date of each polygon.
+    logger.info(f"processing {len(shapes)} shapes")
     events = process_shapes_into_events(
         shapes, conf_raster, date_data, country_wgs84_shp, config.min_area
     )
@@ -426,6 +442,7 @@ def extract_alerts(config: PredictPipelineConfig, fname: str) -> None:
     p.close()
 
 
+# This is the main function that should be called to run the prediction pipeline. the alerts stuff likely should be in a different module
 def predict_pipeline(pred_config: PredictPipelineConfig) -> None:
     """Run the prediction pipeline.
 
@@ -442,6 +459,7 @@ def predict_pipeline(pred_config: PredictPipelineConfig) -> None:
         extract_alerts(pred_config, fname)
 
 
+# Seperate step
 def select_best_images(window_path: UPath) -> None:
     """Select the best images for the specified window.
 

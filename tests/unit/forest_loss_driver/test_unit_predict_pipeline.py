@@ -8,11 +8,17 @@ from pathlib import Path
 import pytest
 import shapely
 import shapely.wkt
+from affine import Affine
 from rasterio.crs import CRS
 from rslearn.utils import Projection, STGeometry
 from upath import UPath
 
-from rslp.forest_loss_driver.predict_pipeline import ForestLossEvent, write_event
+from rslp.forest_loss_driver.predict_pipeline import (
+    ForestLossEvent,
+    load_country_polygon,
+    read_forest_alerts_confidence_raster,
+    write_event,
+)
 
 SAMPLE_EVENT_FOLDER = Path("test_data/forest_loss_driver/sample_forest_loss_events")
 
@@ -45,6 +51,15 @@ def forest_loss_event() -> ForestLossEvent:
     }
     event = ForestLossEvent(**event_dict)
     return event
+
+
+@pytest.fixture
+def country_data_path() -> UPath:
+    """Create a country data path."""
+    return UPath(
+        Path(__file__).parents[3]
+        / "test_data/forest_loss_driver/artifacts/natural_earth_countries/20240830/20240830/ne_10m_admin_0_countries.shp"
+    )
 
 
 # TODO: Add unit tests for each of the components to this
@@ -88,3 +103,53 @@ def test_write_event(forest_loss_event: ForestLossEvent) -> None:
         assert (
             UPath(temp_dir) / expected_layers_subdirectory / "completed"
         ).exists(), "completed file not found"
+
+
+def test_load_country_polygon(country_data_path: UPath) -> None:
+    """Tests loading the country polygon."""
+    country_wgs84_shp = load_country_polygon(country_data_path)
+    expected_type = shapely.geometry.multipolygon.MultiPolygon
+    expected_centroid = shapely.geometry.point.Point(
+        -74.37806457210715, -9.154388480752162
+    )
+    assert isinstance(
+        country_wgs84_shp, expected_type
+    ), f"country_wgs84_shp is not a {expected_type}"
+    assert country_wgs84_shp.centroid.equals(expected_centroid)
+
+
+def test_read_forest_alerts_confidence_raster() -> None:
+    """Tests reading the forest alerts confidence raster."""
+    fname = "070W_10S_060W_00N.tif"
+    conf_data, conf_raster = read_forest_alerts_confidence_raster(fname)
+    assert conf_data.shape == (100000, 100000)
+    assert conf_raster.profile == {
+        "driver": "GTiff",
+        "dtype": "uint8",
+        "nodata": None,
+        "width": 100000,
+        "height": 100000,
+        "count": 1,
+        "crs": CRS.from_epsg(4326),
+        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, 0.0),
+        "blockxsize": 100000,
+        "blockysize": 1,
+        "tiled": False,
+        "compress": "lzw",
+        "interleave": "band",
+    }
+
+
+def test_read_forest_alerts_date_raster() -> None:
+    """Tests reading the forest alerts date raster."""
+    pass
+
+
+def test_create_forest_loss_mask() -> None:
+    """Tests creating the forest loss mask."""
+    pass
+
+
+def test_process_shapes_into_events() -> None:
+    """Tests processing shapes into events."""
+    pass
