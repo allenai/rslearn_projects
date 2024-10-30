@@ -132,6 +132,27 @@ def test_load_country_polygon(country_data_path: UPath) -> None:
 
 def test_read_forest_alerts_confidence_raster(alert_tiffs_prefix: str) -> None:
     """Tests reading the forest alerts confidence raster."""
+    fname = "070W_10S_060W_00N.tif"
+    conf_data, conf_raster = read_forest_alerts_confidence_raster(
+        fname,
+        alert_tiffs_prefix,
+    )
+    assert conf_data.shape == (100000, 100000)
+    assert conf_raster.profile == {
+        "driver": "GTiff",
+        "dtype": "uint8",
+        "nodata": None,
+        "width": 100000,
+        "height": 100000,
+        "count": 1,
+        "crs": CRS.from_epsg(4326),
+        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, 0.0),
+        "blockxsize": 100000,
+        "blockysize": 1,
+        "tiled": False,
+        "compress": "lzw",
+        "interleave": "band",
+    }
     fname = "cropped_070W_10S_060W_00N.tif"
     conf_data, conf_raster = read_forest_alerts_confidence_raster(
         fname,
@@ -146,7 +167,7 @@ def test_read_forest_alerts_confidence_raster(alert_tiffs_prefix: str) -> None:
         "height": 10000,
         "count": 1,
         "crs": CRS.from_epsg(4326),
-        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, 0.0),
+        "transform": Affine(0.0001, 0.0, -68.0, 0.0, -0.0001, -9.0),
         "blockxsize": 10000,
         "blockysize": 1,
         "tiled": False,
@@ -157,6 +178,26 @@ def test_read_forest_alerts_confidence_raster(alert_tiffs_prefix: str) -> None:
 
 def test_read_forest_alerts_date_raster(alert_date_tiffs_prefix: str) -> None:
     """Tests reading the forest alerts date raster."""
+    fname = "070W_10S_060W_00N.tif"
+    date_data, date_raster = read_forest_alerts_date_raster(
+        fname, alert_date_tiffs_prefix
+    )
+    assert date_data.shape == (100000, 100000)
+    assert date_raster.profile == {
+        "driver": "GTiff",
+        "dtype": "uint16",
+        "nodata": None,
+        "width": 100000,
+        "height": 100000,
+        "count": 1,
+        "crs": CRS.from_epsg(4326),
+        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, 0.0),
+        "blockxsize": 100000,
+        "blockysize": 1,
+        "tiled": False,
+        "compress": "lzw",
+        "interleave": "band",
+    }
     fname = "cropped_070W_10S_060W_00N.tif"
     date_data, date_raster = read_forest_alerts_date_raster(
         fname, alert_date_tiffs_prefix
@@ -170,7 +211,7 @@ def test_read_forest_alerts_date_raster(alert_date_tiffs_prefix: str) -> None:
         "height": 10000,
         "count": 1,
         "crs": CRS.from_epsg(4326),
-        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, 0.0),
+        "transform": Affine(0.0001, 0.0, -68.0, 0.0, -0.0001, -9.0),
         "blockxsize": 10000,
         "blockysize": 1,
         "tiled": False,

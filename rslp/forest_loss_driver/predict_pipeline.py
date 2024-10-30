@@ -340,7 +340,9 @@ def process_shapes_into_events(
         # Get center point (clipped to shape) and note the corresponding date.
         center_shp, _ = shapely.ops.nearest_points(shp, shp.centroid)
         center_pixel = (int(center_shp.x), int(center_shp.y))
-        cur_days = int(date_data[center_pixel[1], center_pixel[0]])
+        cur_days = int(
+            date_data[center_pixel[1], center_pixel[0]]
+        )  # WE should document if date data is inverted coords
         cur_date = BASE_DATETIME + timedelta(days=cur_days)
         center_proj_coords = conf_raster.xy(center_pixel[1], center_pixel[0])
         center_proj_shp = shapely.Point(center_proj_coords[0], center_proj_coords[1])
