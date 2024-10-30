@@ -54,6 +54,12 @@ PIXEL_SIZE = WEB_MERCATOR_M / (2**13) / 512
 WEB_MERCATOR_PROJECTION = Projection(WEB_MERCATOR_CRS, PIXEL_SIZE, -PIXEL_SIZE)
 
 ANNOTATION_WEBSITE_MERCATOR_OFFSET = 512 * (2**12)
+# INFERENCE_DATASET_CONFIG = os.environ.get(
+#     "INFERENCE_DATASET_CONFIG",
+#     # str(
+#     #     Path(__file__).resolve().parents[3] / "data" / "forest_loss_driver" / "config.json"
+#     # ),
+# )
 
 
 class PredictPipelineConfig:
@@ -408,6 +414,16 @@ def create_forest_loss_mask(
     )  # THis seems to be causing issues for writing unless we change it when we write it
 
 
+def save_inference_dataset_config(ds_path: UPath) -> None:
+    """Save the inference dataset config."""
+    # TODO SLoppy needs a better way to handle this
+    INFERENCE_DATASET_CONFIG = os.environ["INFERENCE_DATASET_CONFIG"]
+    with open(INFERENCE_DATASET_CONFIG) as config_file:
+        config_json = json.load(config_file)
+    with (ds_path / "config.json").open("w") as f:
+        json.dump(config_json, f)
+
+
 def extract_alerts(
     config: PredictPipelineConfig,
     fname: str,
@@ -460,6 +476,7 @@ def extract_alerts(
     for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
         pass
     p.close()
+    save_inference_dataset_config(config.path)
 
 
 ## Image Selector
