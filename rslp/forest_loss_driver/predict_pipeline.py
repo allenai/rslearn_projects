@@ -281,7 +281,7 @@ def load_country_polygon(country_data_path: UPath) -> shapely.Polygon:
 
 def read_forest_alerts_confidence_raster(
     fname: str,
-    conf_prefix: str = GCS_CONF_PREFIX,
+    conf_prefix: str,
 ) -> tuple[np.ndarray, rasterio.DatasetReader]:
     """Read the forest alerts confidence raster."""
     conf_path = UPath(conf_prefix) / fname
@@ -296,7 +296,7 @@ def read_forest_alerts_confidence_raster(
 
 def read_forest_alerts_date_raster(
     fname: str,
-    date_prefix: str = GCS_DATE_PREFIX,
+    date_prefix: str,
 ) -> tuple[np.ndarray, rasterio.DatasetReader]:
     """Read the forest alerts date raster."""
     date_path = UPath(date_prefix) / fname
@@ -320,15 +320,21 @@ def process_shapes_into_events(
     events: list[ForestLossEvent] = []
     logger.info(f"processing {len(shapes)} shapes")
     logger.info(f"min area: {min_area}")
+    background_skip_count = 0
+    area_skip_count = 0
+    country_skip_count = 0
+
     for shp, value in tqdm.tqdm(shapes, desc="process shapes"):
         # Skip shapes corresponding to the background.
         if value != 1:
-            logger.debug(f"skipping shape with value {value}")
+            background_skip_count += 1
+            # logger.debug(f"skipping shape with value {value} as it is in background")
             continue
 
         shp = shapely.geometry.shape(shp)
         if shp.area < min_area:
-            logger.debug(f"skipping shape with area {shp.area}")
+            area_skip_count += 1
+            # logger.debug(f"skipping shape with area {shp.area}")
             continue
 
         # Get center point (clipped to shape) and note the corresponding date.
@@ -345,7 +351,8 @@ def process_shapes_into_events(
         # Check if it's in the Country Polygon.
         center_wgs84_shp = center_proj_geom.to_projection(WGS84_PROJECTION).shp
         if not country_wgs84_shp.contains(center_wgs84_shp):
-            logger.debug("skipping shape not in Peru")
+            country_skip_count += 1
+            # logger.debug("skipping shape not in Peru")
             continue
 
         def raster_pixel_to_proj(points: np.ndarray) -> np.ndarray:
@@ -361,6 +368,9 @@ def process_shapes_into_events(
             polygon_proj_geom, center_proj_geom, center_pixel, cur_date
         )
         events.append(forest_loss_event)
+    logger.info(f"Skipped {background_skip_count} shapes as background")
+    logger.info(f"Skipped {area_skip_count} shapes due to area")
+    logger.info(f"Skipped {country_skip_count} shapes not in country polygon")
     return events
 
 
@@ -395,6 +405,8 @@ def create_forest_loss_mask(
 def extract_alerts(
     config: PredictPipelineConfig,
     fname: str,
+    date_prefix: str = GCS_DATE_PREFIX,
+    conf_prefix: str = GCS_CONF_PREFIX,
     current_utc_time: datetime = datetime.now(timezone.utc),
 ) -> None:
     """Extract alerts from a single GeoTIFF file.
@@ -403,6 +415,8 @@ def extract_alerts(
         config: the pipeline config.
         fname: the filename
         current_utc_time: the time to look back from for forest loss events.
+        date_prefix: the prefix for the date raster.
+        conf_prefix: the prefix for the confidence raster.
     """
     logger.info(f"extract_alerts for {str(config)}")
     # Load Peru country polygon which will be used to sub-select the forest loss
@@ -410,11 +424,11 @@ def extract_alerts(
     country_wgs84_shp = load_country_polygon(config.country_data_path)
 
     logger.info(f"read confidences for {fname}")
-    conf_data, conf_raster = read_forest_alerts_confidence_raster(fname)
+    conf_data, conf_raster = read_forest_alerts_confidence_raster(fname, conf_prefix)
 
     logger.info(f"read dates for {fname}")
-    date_data, date_raster = read_forest_alerts_date_raster(fname)
-
+    date_data, date_raster = read_forest_alerts_date_raster(fname, date_prefix)
+    logger.info(f"create mask for {fname}")
     mask = create_forest_loss_mask(
         conf_data,
         date_data,
@@ -422,19 +436,10 @@ def extract_alerts(
         config.days,
         current_utc_time,
     )
-    mask = mask[50000:60000, 50000:60000]
-    logger.info(f"mask.sum(): {mask.sum()}")
     shapes = list(rasterio.features.shapes(mask))
-
-    # Start by processing the shapes into ForestLossEvent.
-    # Then prepare windows in a second phase.
-    # We separate these steps because the first phase can't be parallelized easily
-    # since it needs access to the date_data to lookup date of each polygon.
-    logger.info(f"processing {len(shapes)} shapes")
     events = process_shapes_into_events(
         shapes, conf_raster, date_data, country_wgs84_shp, config.min_area
     )
-
     logger.info(f"writing {len(events)} windows")
     jobs = [
         dict(

@@ -66,12 +66,12 @@ def country_data_path() -> UPath:
 
 
 @pytest.fixture
-def alert_tiffs_path() -> str:
+def alert_tiffs_prefix() -> str:
     return str(Path(__file__).parents[3] / "test_data/forest_loss_driver/alert_tiffs")
 
 
 @pytest.fixture
-def alert_date_tiffs_path() -> str:
+def alert_date_tiffs_prefix() -> str:
     return str(Path(__file__).parents[3] / "test_data/forest_loss_driver/alert_dates")
 
 
@@ -130,12 +130,12 @@ def test_load_country_polygon(country_data_path: UPath) -> None:
     assert country_wgs84_shp.centroid.equals(expected_centroid)
 
 
-def test_read_forest_alerts_confidence_raster(alert_tiffs_path: str) -> None:
+def test_read_forest_alerts_confidence_raster(alert_tiffs_prefix: str) -> None:
     """Tests reading the forest alerts confidence raster."""
     fname = "cropped_070W_10S_060W_00N.tif"
     conf_data, conf_raster = read_forest_alerts_confidence_raster(
         fname,
-        alert_tiffs_path,
+        alert_tiffs_prefix,
     )
     assert conf_data.shape == (10000, 10000)
     assert conf_raster.profile == {
@@ -155,11 +155,11 @@ def test_read_forest_alerts_confidence_raster(alert_tiffs_path: str) -> None:
     }
 
 
-def test_read_forest_alerts_date_raster(alert_date_tiffs_path: str) -> None:
+def test_read_forest_alerts_date_raster(alert_date_tiffs_prefix: str) -> None:
     """Tests reading the forest alerts date raster."""
     fname = "cropped_070W_10S_060W_00N.tif"
     date_data, date_raster = read_forest_alerts_date_raster(
-        fname, alert_date_tiffs_path
+        fname, alert_date_tiffs_prefix
     )
     assert date_data.shape == (10000, 10000)
     assert date_raster.profile == {
