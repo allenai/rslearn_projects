@@ -32,6 +32,8 @@ logger = get_logger(__name__)
 # Time corresponding to 0 in alertDate GeoTIFF files.
 BASE_DATETIME = datetime(2019, 1, 1, tzinfo=timezone.utc)
 
+
+## Constants.py
 # Where to obtain the forest loss alert data.
 GCS_CONF_PREFIX = "gs://earthenginepartners-hansen/S2alert/alert/"
 GCS_DATE_PREFIX = "gs://earthenginepartners-hansen/S2alert/alertDate/"
@@ -130,6 +132,7 @@ class ForestLossEvent:
         self.ts = ts
 
 
+## Event Writer
 def output_forest_event_metadata(
     event: ForestLossEvent,
     fname: str,
@@ -253,6 +256,7 @@ def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
     output_mask_raster(event, window_path, bounds, window, WEB_MERCATOR_PROJECTION)
 
 
+## Alert Extractor
 def load_country_polygon(country_data_path: UPath) -> shapely.Polygon:
     """Load the country polygon.
 
@@ -370,9 +374,9 @@ def process_shapes_into_events(
             polygon_proj_geom, center_proj_geom, center_pixel, cur_date
         )
         events.append(forest_loss_event)
-    logger.info(f"Skipped {background_skip_count} shapes as background")
-    logger.info(f"Skipped {area_skip_count} shapes due to area")
-    logger.info(f"Skipped {country_skip_count} shapes not in country polygon")
+    logger.debug(f"Skipped {background_skip_count} shapes as background")
+    logger.debug(f"Skipped {area_skip_count} shapes due to area")
+    logger.debug(f"Skipped {country_skip_count} shapes not in country polygon")
     return events
 
 
@@ -458,24 +462,7 @@ def extract_alerts(
     p.close()
 
 
-# This is the main function that should be called to run the prediction pipeline. the alerts stuff likely should be in a different module
-def predict_pipeline(pred_config: PredictPipelineConfig) -> None:
-    """Run the prediction pipeline.
-
-    Currently this is just for populating the initial rslearn dataset based on GLAD
-    forest loss events in Peru over the last year.
-
-    So need to prepare/ingest/materialize the dataset afterward, and run the
-    select_best_images_pipeline. Then apply the model.
-
-    Args:
-        pred_config: the pipeline configuration
-    """
-    for fname in GCS_FILENAMES:
-        extract_alerts(pred_config, fname)
-
-
-# Seperate step
+## Image Selector
 def select_best_images(window_path: UPath) -> None:
     """Select the best images for the specified window.
 
@@ -568,3 +555,20 @@ def select_best_images_pipeline(ds_path: str | UPath, workers: int = 64) -> None
     for _ in tqdm.tqdm(outputs, total=len(window_paths)):
         pass
     p.close()
+
+
+# This is the main function that should be called to run the prediction pipeline. the alerts stuff likely should be in a different module
+def predict_pipeline(pred_config: PredictPipelineConfig) -> None:
+    """Run the prediction pipeline.
+
+    Currently this is just for populating the initial rslearn dataset based on GLAD
+    forest loss events in Peru over the last year.
+
+    So need to prepare/ingest/materialize the dataset afterward, and run the
+    select_best_images_pipeline. Then apply the model.
+
+    Args:
+        pred_config: the pipeline configuration
+    """
+    for fname in GCS_FILENAMES:
+        extract_alerts(pred_config, fname)
