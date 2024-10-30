@@ -275,7 +275,7 @@ def predict_pipeline(
 
     local_path = None
     if scene_zip_path:
-        # if scene_zip_path is provided (either from GCS or WEKA), we need to first download to local path and unzip
+        # if scene_zip_path is provided (either from GCS or WEKA), we will download to local and unzip
         local_path = os.getcwd()
         scene_id = scene_zip_path.split("/")[-1].split(".")[0]
         local_scene_zip_path = os.path.join(local_path, scene_id + ".zip")
