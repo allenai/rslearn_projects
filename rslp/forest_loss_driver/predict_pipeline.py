@@ -294,12 +294,12 @@ def read_forest_alerts_confidence_raster(
     return conf_data, conf_raster
 
 
-# TODO: I think the dataset reader type is wrong here.
 def read_forest_alerts_date_raster(
     fname: str,
+    date_prefix: str = GCS_DATE_PREFIX,
 ) -> tuple[np.ndarray, rasterio.DatasetReader]:
     """Read the forest alerts date raster."""
-    date_path = UPath(GCS_DATE_PREFIX) / fname
+    date_path = UPath(date_prefix) / fname
     buf = io.BytesIO()
     with date_path.open("rb") as f:
         buf.write(f.read())
@@ -309,7 +309,6 @@ def read_forest_alerts_date_raster(
     return date_data, date_raster
 
 
-# TODO: use the generator directly
 def process_shapes_into_events(
     shapes: list[shapely.Geometry],
     conf_raster: rasterio.DatasetReader,
@@ -368,12 +367,23 @@ def process_shapes_into_events(
 def create_forest_loss_mask(
     conf_data: np.ndarray,
     date_data: np.ndarray,
-    min_days: int,
     min_confidence: int,
     days: int,
     current_utc_time: datetime = datetime.now(timezone.utc),
 ) -> np.ndarray:
-    """Create a mask based on the given time range and confidence threshold."""
+    """Create a mask based on the given time range and confidence threshold.
+
+    Args:
+        conf_data: the confidence data.
+        date_data: the date data.
+        min_confidence: the minimum confidence threshold.
+        days: the number of days to look back.
+        current_utc_time: the current time.
+
+    Returns:
+        a mask with the same shape as conf_data and date_data with 1s where the
+        confidence and date conditions are met and 0s otherwise.
+    """
     now_days = (current_utc_time - BASE_DATETIME).days
     min_days = now_days - days
     mask = (date_data >= min_days) & (conf_data >= min_confidence)
@@ -408,7 +418,6 @@ def extract_alerts(
     mask = create_forest_loss_mask(
         conf_data,
         date_data,
-        config.days,
         config.min_confidence,
         config.days,
         current_utc_time,
