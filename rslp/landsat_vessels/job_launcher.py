@@ -71,7 +71,7 @@ def launch_job(
                     "ai2/jupiter-cirrascale-2",
                 ]
             ),
-            priority=Priority.high,
+            priority=Priority.low,
             preemptible=True,
             datasets=[
                 DataMount(
