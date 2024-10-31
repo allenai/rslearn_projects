@@ -1,35 +1,67 @@
-"""Landsat Vessel Detection Service."""
+"""API for Landsat Vessel Detection."""
 
 from __future__ import annotations
 
 import multiprocessing
 import os
+from enum import Enum
 
 import uvicorn
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
 from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_pipeline
 from rslp.log_utils import get_logger
 
-app = FastAPI()
+app = FastAPI(
+    title="Landsat Vessel Detection API",
+    description="API for detecting vessels in Landsat images.",
+    version="1.0.0",
+)
 
 # Set up the logger
 logger = get_logger(__name__)
 
-LANDSAT_HOST = "0.0.0.0"
-LANDSAT_PORT = 5555
+# Configurable host and port
+LANDSAT_HOST = os.getenv("LANDSAT_HOST", "0.0.0.0")
+LANDSAT_PORT = int(os.getenv("LANDSAT_PORT", 5555))
+
+
+class StatusEnum(str, Enum):
+    """Enumeration for response status.
+
+    Attributes:
+        SUCCESS: Indicates a successful response.
+        ERROR: Indicates an error occurred.
+    """
+
+    SUCCESS = "success"
+    ERROR = "error"
 
 
 class LandsatResponse(BaseModel):
-    """Response object for vessel detections."""
+    """Response object for vessel detections.
 
-    status: list[str]
+    Attributes:
+        status: A list of status messages.
+        predictions: A list of formatted predictions.
+    """
+
+    status: list[StatusEnum]
     predictions: list[FormattedPrediction]
 
 
 class LandsatRequest(BaseModel):
-    """Request object for vessel detections."""
+    """Request object for vessel detections.
+
+    Attributes:
+        scene_id: Optional; Scene ID to process. This queries scenes from AWS.
+        scene_zip_path: Optional; Path to a zipped scene file. This queries scenes from a downloaded zip file (local or on GCS).
+        image_files: Optional; Dictionary of image files. This queries scenes from downloaded image files (local or on GCS).
+        crop_path: Optional; Path to save the cropped images.
+        scratch_path: Optional; Scratch path to save the rslearn dataset.
+        json_path: Optional; Path to save the JSON output (the response object).
+    """
 
     scene_id: str | None = None
     scene_zip_path: str | None = None
@@ -38,11 +70,40 @@ class LandsatRequest(BaseModel):
     scratch_path: str | None = None
     json_path: str | None = None
 
+    class Config:
+        """Configuration for the LandsatRequest model.
+
+        This class provides an example schema for the LandsatRequest model,
+        which can be used for documentation and validation purposes.
+        """
+
+        schema_extra = {
+            "example": {
+                "scene_id": "LC08_L1TP_123032_20200716_20200722_01_T1",
+                "scene_zip_path": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT.zip",
+                "image_files": {
+                    "B2": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B2.TIF",
+                    "B3": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B3.TIF",
+                    "B4": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B4.TIF",
+                    "B5": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B5.TIF",
+                    "B6": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B6.TIF",
+                    "B7": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B7.TIF",
+                    "B8": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B8.TIF",
+                },
+                "crop_path": "/path/to/crop",
+                "scratch_path": "/path/to/scratch",
+                "json_path": "/path/to/output.json",
+            }
+        }
+
 
 @app.on_event("startup")
 async def rslp_init() -> None:
-    """Landsat Vessel Service Initialization."""
-    logger.info("Initializing")
+    """Landsat Vessel Service Initialization.
+
+    Sets up the multiprocessing start method and preloads necessary modules.
+    """
+    logger.info("Initializing Landsat Vessel Detection Service")
     multiprocessing.set_start_method("forkserver", force=True)
     multiprocessing.set_forkserver_preload(
         [
@@ -52,31 +113,42 @@ async def rslp_init() -> None:
     )
 
 
-@app.get("/")
+@app.get("/", summary="Home", description="Service status check endpoint.")
 async def home() -> dict:
-    """Returns a simple message to indicate the service is running."""
+    """Service status check endpoint.
+
+    Returns:
+        dict: A simple message indicating that the service is running.
+    """
     return {"message": "Landsat Detections App"}
 
 
-@app.post("/detections", response_model=LandsatResponse)
+@app.post(
+    "/detections",
+    response_model=LandsatResponse,
+    summary="Get Vessel Detections from Landsat",
+    description="Returns vessel detections from Landsat.",
+)
 async def get_detections(info: LandsatRequest, response: Response) -> LandsatResponse:
-    """Returns vessel detections Response object for a given Request object."""
-    if (
-        info.scene_id is None
-        and info.scene_zip_path is None
-        and info.image_files is None
-    ):
-        raise ValueError(
-            "Either scene_id, scene_zip_path, or image_files must be specified."
-        )
+    """Returns vessel detections for a given request.
 
+    Args:
+        info (LandsatRequest): LandsatRequest object containing the request data.
+        response (Response): FastAPI Response object to manage the response state.
+
+    Returns:
+        LandsatResponse: Response object with status and predictions.
+    """
+    if not (info.scene_id or info.scene_zip_path or info.image_files):
+        logger.error(
+            "Invalid request: Missing scene_id, scene_zip_path, or image_files."
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="scene_id, scene_zip_path, or image_files must be specified.",
+        )
     try:
-        if info.scene_id is not None:
-            logger.info(f"Received request with scene_id: {info.scene_id}")
-        elif info.scene_zip_path is not None:
-            logger.info(f"Received request with scene_zip_path: {info.scene_zip_path}")
-        elif info.image_files is not None:
-            logger.info("Received request with image_files")
+        logger.info("Processing request with input data.")
         json_data = predict_pipeline(
             scene_id=info.scene_id,
             scene_zip_path=info.scene_zip_path,
@@ -85,22 +157,19 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             scratch_path=info.scratch_path,
             crop_path=info.crop_path,
         )
-        return LandsatResponse(
-            status=["success"],
-            predictions=[pred for pred in json_data],
-        )
+        return LandsatResponse(status=[StatusEnum.SUCCESS], predictions=json_data)
     except ValueError as e:
-        logger.error(f"Value error during prediction pipeline: {e}")
-        return LandsatResponse(status=["error"], predictions=[])
+        logger.error(f"ValueError in prediction pipeline: {e}")
+        return LandsatResponse(status=[StatusEnum.ERROR], predictions=[])
     except Exception as e:
-        logger.error(f"Unexpected error during prediction pipeline: {e}")
-        return LandsatResponse(status=["error"], predictions=[])
+        logger.error(f"Unexpected error in prediction pipeline: {e}")
+        return LandsatResponse(status=[StatusEnum.ERROR], predictions=[])
 
 
 if __name__ == "__main__":
     uvicorn.run(
         "api_main:app",
-        host=os.getenv("LANDSAT_HOST", default="0.0.0.0"),
-        port=int(os.getenv("LANDSAT_PORT", default=5555)),
+        host=LANDSAT_HOST,
+        port=LANDSAT_PORT,
         proxy_headers=True,
     )
