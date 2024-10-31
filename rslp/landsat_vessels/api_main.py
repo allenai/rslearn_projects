@@ -55,12 +55,15 @@ class LandsatRequest(BaseModel):
     """Request object for vessel detections.
 
     Attributes:
-        scene_id: Optional; Scene ID to process. This queries scenes from AWS.
+        scene_id: Optional; Scene ID to process. This queries scenes from AWS (only for T1 and T2 scenes).
         scene_zip_path: Optional; Path to a zipped scene file. This queries scenes from a downloaded zip file (local or on GCS).
         image_files: Optional; Dictionary of image files. This queries scenes from downloaded image files (local or on GCS).
         crop_path: Optional; Path to save the cropped images.
         scratch_path: Optional; Scratch path to save the rslearn dataset.
         json_path: Optional; Path to save the JSON output (the response object).
+
+    Note:
+        Only one of `scene_id`, `scene_zip_path`, or `image_files` needs to be provided.
     """
 
     scene_id: str | None = None
@@ -71,29 +74,46 @@ class LandsatRequest(BaseModel):
     json_path: str | None = None
 
     class Config:
-        """Configuration for the LandsatRequest model.
+        """Configuration for the LandsatRequest model."""
 
-        This class provides an example schema for the LandsatRequest model,
-        which can be used for documentation and validation purposes.
-        """
-
-        schema_extra = {
-            "example": {
-                "scene_id": "LC08_L1TP_123032_20200716_20200722_01_T1",
-                "scene_zip_path": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT.zip",
-                "image_files": {
-                    "B2": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B2.TIF",
-                    "B3": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B3.TIF",
-                    "B4": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B4.TIF",
-                    "B5": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B5.TIF",
-                    "B6": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B6.TIF",
-                    "B7": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B7.TIF",
-                    "B8": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B8.TIF",
+        json_schema_extra = {
+            "examples": [
+                {
+                    "description": "Example with scene_id",
+                    "value": {
+                        "scene_id": "LC08_L1TP_123032_20200716_20200722_01_T1",
+                    },
                 },
-                "crop_path": "/path/to/crop",
-                "scratch_path": "/path/to/scratch",
-                "json_path": "/path/to/output.json",
-            }
+                {
+                    "description": "Example with scene_id and paths",
+                    "value": {
+                        "scene_id": "LC08_L1TP_123032_20200716_20200722_01_T1",
+                        "crop_path": "gs://path/to/crop",
+                        "scratch_path": "gs://path/to/scratch",
+                        "json_path": "gs://path/to/output.json",
+                    },
+                },
+                {
+                    "description": "Example with scene_zip_path",
+                    "value": {
+                        "scene_zip_path": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT.zip",
+                    },
+                },
+                {
+                    "description": "Example with image_files",
+                    "value": {
+                        "image_files": {
+                            "B2": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B2.TIF",
+                            "B3": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B3.TIF",
+                            "B4": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B4.TIF",
+                            "B5": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B5.TIF",
+                            "B6": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B6.TIF",
+                            "B7": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B7.TIF",
+                            "B8": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B8.TIF",
+                        },
+                    },
+                },
+            ]
         }
 
 
