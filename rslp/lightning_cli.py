@@ -14,7 +14,7 @@ import rslp.utils.fs  # noqa: F401 (imported but unused)
 from rslp import launcher_lib
 
 CHECKPOINT_DIR = (
-    "gs://{rslp_bucket}/projects/{project_id}/{experiment_id}/{run_id}checkpoints/"
+    "{rslp_prefix}/projects/{project_id}/{experiment_id}/{run_id}checkpoints/"
 )
 
 
@@ -104,11 +104,11 @@ class CustomLightningCLI(RslearnLightningCLI):
         subcommand = self.config.subcommand
         c = self.config[subcommand]
 
-        run_id = os.environ["RSLP_RUN_ID"]
+        run_id = os.environ.get("RSLP_RUN_ID", None)
         run_id_path = f"{run_id}/" if run_id else ""
         checkpoint_dir = UPath(
             CHECKPOINT_DIR.format(
-                rslp_bucket=os.environ["RSLP_BUCKET"],
+                rslp_prefix=os.environ["RSLP_PREFIX"],
                 project_id=c.rslp_project,
                 experiment_id=c.rslp_experiment,
                 run_id=run_id_path,

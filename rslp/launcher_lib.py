@@ -1,7 +1,6 @@
 """Utility functions for launchers/entrypoints to call."""
 
 import copy
-import io
 import os
 import shutil
 import tempfile
@@ -10,21 +9,18 @@ from itertools import product
 from typing import Any
 
 import yaml
-from google.cloud import storage
+from upath import UPath
 
 CODE_BLOB_PATH = "projects/{project_id}/{experiment_id}/code.zip"
 WANDB_ID_BLOB_PATH = "projects/{project_id}/{experiment_id}/{run_id}wandb_id"
-CODE_EXCLUDES = [".env", "wandb", "rslp/__pycache__"]
-
-bucket = None
-
-
-def _get_bucket() -> storage.Bucket:
-    global bucket
-    if bucket is None:
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(os.environ["RSLP_BUCKET"])
-    return bucket
+CODE_EXCLUDES = [
+    ".git",
+    "rslp/__pycache__",
+    ".env",
+    ".mypy_cache",
+    "lightning_logs",
+    "wandb",
+]
 
 
 def get_project_and_experiment(config_path: str) -> tuple[str, str]:
@@ -86,7 +82,7 @@ def upload_code(project_id: str, experiment_id: str) -> None:
         project_id: the project ID.
         experiment_id: the experiment ID.
     """
-    bucket = _get_bucket()
+    rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
     with tempfile.TemporaryDirectory() as tmpdirname:
         print("creating archive of current code state")
         zip_fname = os.path.join(tmpdirname, "archive.zip")
@@ -99,8 +95,9 @@ def upload_code(project_id: str, experiment_id: str) -> None:
         blob_path = CODE_BLOB_PATH.format(
             project_id=project_id, experiment_id=experiment_id
         )
-        blob = bucket.blob(blob_path)
-        blob.upload_from_filename(zip_fname)
+        with open(zip_fname, "rb") as src:
+            with (rslp_prefix / blob_path).open("wb") as dst:
+                shutil.copyfileobj(src, dst)
         print("upload complete")
 
 
@@ -113,15 +110,16 @@ def download_code(project_id: str, experiment_id: str) -> None:
         project_id: the project ID.
         experiment_id: the experiment ID.
     """
-    bucket = _get_bucket()
+    rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
     with tempfile.TemporaryDirectory() as tmpdirname:
         print("downloading code archive")
         blob_path = CODE_BLOB_PATH.format(
             project_id=project_id, experiment_id=experiment_id
         )
-        blob = bucket.blob(blob_path)
         zip_fname = os.path.join(tmpdirname, "archive.zip")
-        blob.download_to_filename(zip_fname)
+        with (rslp_prefix / blob_path).open("rb") as src:
+            with open(zip_fname, "wb") as dst:
+                shutil.copyfileobj(src, dst)
         print("extracting archive")
         shutil.unpack_archive(zip_fname, ".", "zip")
         print("extraction complete", flush=True)
@@ -138,19 +136,18 @@ def upload_wandb_id(
         run_id: the run ID (for hyperparameter experiments)
         wandb_id: the W&B run ID.
     """
-    bucket = _get_bucket()
+    rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
     run_id_path = f"{run_id}/" if run_id else ""
     blob_path = WANDB_ID_BLOB_PATH.format(
         project_id=project_id, experiment_id=experiment_id, run_id=run_id_path
     )
-    blob = bucket.blob(blob_path)
-    buf = io.BytesIO()
-    buf.write(wandb_id.encode())
-    buf.seek(0)
-    blob.upload_from_file(buf)
+    with (rslp_prefix / blob_path).open("w") as f:
+        f.write(wandb_id)
 
 
-def download_wandb_id(project_id: str, experiment_id: str, run_id: str) -> str | None:
+def download_wandb_id(
+    project_id: str, experiment_id: str, run_id: str | None
+) -> str | None:
     """Retrieve W&B run ID from GCS.
 
     Args:
@@ -161,17 +158,16 @@ def download_wandb_id(project_id: str, experiment_id: str, run_id: str) -> str |
     Returns:
         the W&B run ID, or None if it wasn't saved on GCS.
     """
-    bucket = _get_bucket()
+    rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
     run_id_path = f"{run_id}/" if run_id else ""
     blob_path = WANDB_ID_BLOB_PATH.format(
         project_id=project_id, experiment_id=experiment_id, run_id=run_id_path
     )
-    blob = bucket.blob(blob_path)
-    if not blob.exists():
+    fname = rslp_prefix / blob_path
+    if not fname.exists():
         return None
-    buf = io.BytesIO()
-    blob.download_to_file(buf)
-    return buf.getvalue().decode()
+    with fname.open() as f:
+        return f.read().strip()
 
 
 def extract_parameters(

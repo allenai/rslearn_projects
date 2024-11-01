@@ -31,7 +31,8 @@ Setup
 rslp expects an environment variable specifying the GCS bucket to write prepared
 rslearn datasets, model checkpoints, etc. The easiest way is to create a `.env` file.
 
-    RSLP_BUCKET=rslearn-eai
+    RSLP_PREFIX=gs://rslearn-eai
+    RSLP_WEKA_PREFIX=weka://dfive-default/rslearn-eai
 
 You will also need to setup GCP credentials that have access to this bucket.
 
