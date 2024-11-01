@@ -14,7 +14,7 @@ from rasterio.crs import CRS
 from rslearn.utils import Projection, STGeometry
 from upath import UPath
 
-from rslp.forest_loss_driver.predict_pipeline import (
+from rslp.forest_loss_driver.inference.extract_alerts import (
     ForestLossEvent,
     create_forest_loss_mask,
     load_country_polygon,
