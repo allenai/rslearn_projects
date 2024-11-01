@@ -82,7 +82,7 @@ class PredictPipelineConfig:
         """Create a new PredictPipelineConfig.
 
         Args:
-            ds_root: optional dataset root to write the dataset. This defaults to GCS.
+            ds_root: dataset root to write the dataset.
             workers: number of workers.
             days: only consider forest loss events in this many past days.
             min_confidence: threshold on the GLAD alert confidence.
@@ -418,8 +418,16 @@ def save_inference_dataset_config(ds_path: UPath) -> None:
     """Save the inference dataset config."""
     # TODO SLoppy needs a better way to handle this
     INFERENCE_DATASET_CONFIG = os.environ["INFERENCE_DATASET_CONFIG"]
+    index_cache_dir = os.environ.get("INDEX_CACHE_DIR")
+    tile_store_root_dir = os.environ.get("TILE_STORE_ROOT_DIR")
+    if index_cache_dir is None or tile_store_root_dir is None:
+        raise ValueError(
+            "INDEX_CACHE_DIR and TILE_STORE_ROOT_DIR must be set as environment variables"
+        )
     with open(INFERENCE_DATASET_CONFIG) as config_file:
-        config_json = json.load(config_file)
+        config_json = json.loads(os.path.expandvars(config_file.read()))
+    # config_json["data_source"]["index_cache_dir"] = index_cache_dir
+    # config_json["tile_store"]["root_dir"] = tile_store_root_dir
     with (ds_path / "config.json").open("w") as f:
         json.dump(config_json, f)
 
@@ -574,6 +582,7 @@ def select_best_images_pipeline(ds_path: str | UPath, workers: int = 64) -> None
     p.close()
 
 
+# TODO: We need to add an environment variable validation step here for the entire pipeline
 # This is the main function that should be called to run the prediction pipeline. the alerts stuff likely should be in a different module
 def predict_pipeline(pred_config: PredictPipelineConfig) -> None:
     """Run the prediction pipeline.

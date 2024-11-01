@@ -147,7 +147,7 @@
           "B"
         ],
         "duration": "1m",
-        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
         "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
         "time_offset": "7d"
       },
@@ -177,7 +177,7 @@
           "B"
         ],
         "duration": "1m",
-        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
         "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
         "time_offset": "38d"
       },
@@ -207,7 +207,7 @@
           "B"
         ],
         "duration": "1m",
-        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
         "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
         "time_offset": "69d"
       },
@@ -237,7 +237,7 @@
           "B"
         ],
         "duration": "1m",
-        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
         "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
         "time_offset": "-300d"
       },
@@ -267,7 +267,7 @@
           "B"
         ],
         "duration": "1m",
-        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
         "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
         "time_offset": "-331d"
       },
@@ -297,7 +297,7 @@
           "B"
         ],
         "duration": "1m",
-        "name": "rslearn.data_sources.planet_basemap.Planet",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
         "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
         "time_offset": "-362d"
       },
@@ -321,7 +321,7 @@
       ],
       "data_source": {
         "duration": "365d",
-        "index_cache_dir": "file:///data/favyenb/rslearn_cache/sentinel2_gcp/",
+        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -329,7 +329,8 @@
           "space_mode": "CONTAINS"
         },
         "sort_by": "cloud_cover",
-        "time_offset": "7d"
+        "time_offset": "7d",
+        "use_rtree_index": false
       },
       "type": "raster"
     },
@@ -351,7 +352,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "file:///data/favyenb/rslearn_cache/sentinel2_gcp/",
+        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -359,7 +360,8 @@
           "space_mode": "CONTAINS"
         },
         "sort_by": "cloud_cover",
-        "time_offset": "-300d"
+        "time_offset": "-300d",
+        "use_rtree_index": false
       },
       "type": "raster"
     },
@@ -381,7 +383,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "file:///data/favyenb/rslearn_cache/sentinel2_gcp/",
+        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -389,7 +391,8 @@
           "space_mode": "CONTAINS"
         },
         "sort_by": "cloud_cover",
-        "time_offset": "-330d"
+        "time_offset": "-330d",
+        "use_rtree_index": false
       },
       "type": "raster"
     },
@@ -411,7 +414,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "file:///data/favyenb/rslearn_cache/sentinel2_gcp/",
+        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -419,7 +422,8 @@
           "space_mode": "CONTAINS"
         },
         "sort_by": "cloud_cover",
-        "time_offset": "-360d"
+        "time_offset": "-360d",
+        "use_rtree_index": false
       },
       "type": "raster"
     },
@@ -441,7 +445,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "file:///data/favyenb/rslearn_cache/sentinel2_gcp/",
+        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -449,7 +453,8 @@
           "space_mode": "CONTAINS"
         },
         "sort_by": "cloud_cover",
-        "time_offset": "-390d"
+        "time_offset": "-390d",
+        "use_rtree_index": false
       },
       "type": "raster"
     },
@@ -471,7 +476,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "file:///data/favyenb/rslearn_cache/sentinel2_gcp/",
+        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -479,7 +484,8 @@
           "space_mode": "CONTAINS"
         },
         "sort_by": "cloud_cover",
-        "time_offset": "-410d"
+        "time_offset": "-410d",
+        "use_rtree_index": false
       },
       "type": "raster"
     },
@@ -501,7 +507,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "file:///data/favyenb/rslearn_cache/sentinel2_gcp/",
+        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -509,7 +515,8 @@
           "space_mode": "CONTAINS"
         },
         "sort_by": "cloud_cover",
-        "time_offset": "-440d"
+        "time_offset": "-440d",
+        "use_rtree_index": false
       },
       "type": "raster"
     },
@@ -531,7 +538,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "file:///data/favyenb/rslearn_cache/sentinel2_gcp/",
+        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -539,13 +546,14 @@
           "space_mode": "CONTAINS"
         },
         "sort_by": "cloud_cover",
-        "time_offset": "-470d"
+        "time_offset": "-470d",
+        "use_rtree_index": false
       },
       "type": "raster"
     }
   },
   "tile_store": {
     "name": "file",
-    "root_dir": "/data/favyenb/rslearn_amazon_conservation/tiles"
+    "root_dir": "${TILE_STORE_ROOT_DIR}/rslearn_amazon_conservation/tiles"
   }
 }
