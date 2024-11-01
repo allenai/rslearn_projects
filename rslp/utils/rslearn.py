@@ -15,16 +15,20 @@ from rslp.lightning_cli import CustomLightningCLI
 
 
 def materialize_dataset(
-    ds_path: UPath, group: str | None = None, workers: int = 32
+    ds_path: UPath,
+    disabled_layers: list[str] = [],
+    group: str | None = None,
+    workers: int = 32,
 ) -> None:
     """Materialize the specified dataset by running prepare/ingest/materialize.
 
     Args:
         ds_path: the dataset root.
+        disabled_layers: a list of layers to disable.
         group: limit dataset actions to this group.
         workers: number of workers to use.
     """
-    dataset = Dataset(ds_path)
+    dataset = Dataset(ds_path, disabled_layers=disabled_layers)
     apply_on_windows(
         PrepareHandler(force=False),
         dataset,
