@@ -5,21 +5,11 @@ import tempfile
 import uuid
 from pathlib import Path
 
-import pytest
 from upath import UPath
 
 from rslp.forest_loss_driver.inference.best_image_selector import (
     select_best_images_pipeline,
 )
-
-
-@pytest.fixture
-def test_materialized_dataset_path() -> UPath:
-    """The path to the test materialized dataset."""
-    return UPath(
-        Path(__file__).resolve().parents[4]
-        / "test_data/forest_loss_driver/test_materialized_dataset/dataset_20241023"
-    )
 
 
 def test_select_best_images_pipeline(

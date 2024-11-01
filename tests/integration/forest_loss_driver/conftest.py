@@ -38,3 +38,12 @@ def inference_dataset_config_path() -> str:
         / "forest_loss_driver"
         / "config.json"
     )
+
+
+@pytest.fixture
+def test_materialized_dataset_path() -> UPath:
+    """The path to the test materialized dataset."""
+    return UPath(
+        Path(__file__).resolve().parents[3]
+        / "test_data/forest_loss_driver/test_materialized_dataset/dataset_20241023"
+    )
