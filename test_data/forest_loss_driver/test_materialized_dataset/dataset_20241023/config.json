@@ -1,0 +1,559 @@
+{
+  "layers": {
+    "best_post_0": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "best_post_1": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "best_post_2": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "best_pre_0": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "best_pre_1": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "best_pre_2": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "label": {
+      "type": "vector"
+    },
+    "mask": {
+      "band_sets": [
+        {
+          "bands": [
+            "mask"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "type": "vector"
+    },
+    "planet_post_0": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "7d"
+      },
+      "type": "raster"
+    },
+    "planet_post_1": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "38d"
+      },
+      "type": "raster"
+    },
+    "planet_post_2": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "69d"
+      },
+      "type": "raster"
+    },
+    "planet_pre_0": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "-300d"
+      },
+      "type": "raster"
+    },
+    "planet_pre_1": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "-331d"
+      },
+      "type": "raster"
+    },
+    "planet_pre_2": {
+      "alias": "planet_basemap",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          },
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "bands": [
+          "R",
+          "G",
+          "B"
+        ],
+        "duration": "1m",
+        "name": "rslearn.data_sources.planet_basemap.PlanetBasemap",
+        "series_id": "45d01564-c099-42d8-b8f2-a0851accf3e7",
+        "time_offset": "-362d"
+      },
+      "type": "raster"
+    },
+    "post": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "365d",
+        "index_cache_dir": "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/rslearn_cache//sentinel2_gcp/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 6,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "7d",
+        "use_rtree_index": false
+      },
+      "type": "raster"
+    },
+    "pre_0": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "30d",
+        "index_cache_dir": "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/rslearn_cache//sentinel2_gcp/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-300d",
+        "use_rtree_index": false
+      },
+      "type": "raster"
+    },
+    "pre_1": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "30d",
+        "index_cache_dir": "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/rslearn_cache//sentinel2_gcp/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-330d",
+        "use_rtree_index": false
+      },
+      "type": "raster"
+    },
+    "pre_2": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "30d",
+        "index_cache_dir": "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/rslearn_cache//sentinel2_gcp/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-360d",
+        "use_rtree_index": false
+      },
+      "type": "raster"
+    },
+    "pre_3": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "30d",
+        "index_cache_dir": "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/rslearn_cache//sentinel2_gcp/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-390d",
+        "use_rtree_index": false
+      },
+      "type": "raster"
+    },
+    "pre_4": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "30d",
+        "index_cache_dir": "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/rslearn_cache//sentinel2_gcp/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-410d",
+        "use_rtree_index": false
+      },
+      "type": "raster"
+    },
+    "pre_5": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "30d",
+        "index_cache_dir": "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/rslearn_cache//sentinel2_gcp/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-440d",
+        "use_rtree_index": false
+      },
+      "type": "raster"
+    },
+    "pre_6": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "data_source": {
+        "duration": "30d",
+        "index_cache_dir": "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/rslearn_cache//sentinel2_gcp/",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-470d",
+        "use_rtree_index": false
+      },
+      "type": "raster"
+    }
+  },
+  "tile_store": {
+    "name": "file",
+    "root_dir": "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/tile_store /rslearn_amazon_conservation/tiles"
+  }
+}

@@ -97,6 +97,9 @@ def select_best_images_pipeline(ds_path: str | UPath, workers: int = 64) -> None
     Args:
         ds_path: the dataset root path
         workers: number of workers to use.
+
+    Outputs:
+        best_times.json: a file containing the timestamps of the best images for each layer.
     """
     ds_path = UPath(ds_path) if not isinstance(ds_path, UPath) else ds_path
     window_paths = list(ds_path.glob("windows/*/*"))
