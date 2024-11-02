@@ -1,12 +1,18 @@
 """Config for the forest loss driver inference/predict pipeline."""
 
 import os
+from datetime import datetime, timezone
 
 from upath import UPath
 
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
+
+
+# Where to obtain the forest loss alert data.
+GCS_CONF_PREFIX = "gs://earthenginepartners-hansen/S2alert/alert/"
+GCS_DATE_PREFIX = "gs://earthenginepartners-hansen/S2alert/alertDate/"
 
 
 class PredictPipelineConfig:
@@ -25,6 +31,9 @@ class PredictPipelineConfig:
         min_confidence: int = 2,
         min_area: float = 16,
         country_data_path: UPath | None = None,
+        date_prefix: str = GCS_DATE_PREFIX,
+        conf_prefix: str = GCS_CONF_PREFIX,
+        prediction_utc_time: datetime = datetime.now(timezone.utc),
     ) -> None:
         """Create a new PredictPipelineConfig.
 
@@ -37,6 +46,9 @@ class PredictPipelineConfig:
                 roughly 10x10 m.
             country_data_path: the path to access country boundary data, so we can
                 select the subset of forest loss events that are within Peru.
+            date_prefix: the prefix for the date raster where the alert date is stored.
+            conf_prefix: the prefix for the confidence raster where the alert confidence is stored.
+            prediction_utc_time: the utc time to look back from for forest loss events.
         """
         if country_data_path is None:
             logger.info(
@@ -49,11 +61,16 @@ class PredictPipelineConfig:
         self.min_confidence = min_confidence
         self.min_area = min_area
         self.country_data_path = UPath(country_data_path)
+        self.date_prefix = date_prefix
+        self.conf_prefix = conf_prefix
+        self.prediction_utc_time = prediction_utc_time
 
     def __str__(self) -> str:
         """Return a string representation of the config."""
         return (
             f"PredictPipelineConfig(path={self.path}, workers={self.workers}, "
             f"days={self.days}, min_confidence={self.min_confidence}, "
-            f"min_area={self.min_area}, country_data_path={self.country_data_path})"
+            f"min_area={self.min_area}, country_data_path={self.country_data_path}, "
+            f"date_prefix={self.date_prefix}, conf_prefix={self.conf_prefix}, "
+            f"prediction_utc_time={self.prediction_utc_time})"
         )

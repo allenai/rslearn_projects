@@ -376,12 +376,10 @@ def save_inference_dataset_config(ds_path: UPath) -> None:
         json.dump(config_json, f)
 
 
-def extract_alerts(
+# add these to the config
+def extract_alerts_pipeline(
     config: PredictPipelineConfig,
     fname: str,
-    date_prefix: str = GCS_DATE_PREFIX,
-    conf_prefix: str = GCS_CONF_PREFIX,
-    current_utc_time: datetime = datetime.now(timezone.utc),
 ) -> None:
     """Extract alerts from a single GeoTIFF file.
 
@@ -398,17 +396,19 @@ def extract_alerts(
     country_wgs84_shp = load_country_polygon(config.country_data_path)
 
     logger.info(f"read confidences for {fname}")
-    conf_data, conf_raster = read_forest_alerts_confidence_raster(fname, conf_prefix)
+    conf_data, conf_raster = read_forest_alerts_confidence_raster(
+        fname, config.conf_prefix
+    )
 
     logger.info(f"read dates for {fname}")
-    date_data, date_raster = read_forest_alerts_date_raster(fname, date_prefix)
+    date_data, date_raster = read_forest_alerts_date_raster(fname, config.date_prefix)
     logger.info(f"create mask for {fname}")
     mask = create_forest_loss_mask(
         conf_data,
         date_data,
         config.min_confidence,
         config.days,
-        current_utc_time,
+        config.prediction_utc_time,
     )
     shapes = list(rasterio.features.shapes(mask))
     events = process_shapes_into_events(

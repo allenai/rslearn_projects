@@ -1,11 +1,13 @@
 """Fixtures for the forest loss driver tests."""
 
+import uuid
 from pathlib import Path
 
 import pytest
 from upath import UPath
 
 # TODO: these are duplicated in the unit tests for forest loss driver
+TEST_ID = str(uuid.uuid4())
 
 
 @pytest.fixture
