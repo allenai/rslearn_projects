@@ -380,6 +380,7 @@ def save_inference_dataset_config(ds_path: UPath) -> None:
 def extract_alerts_pipeline(
     config: PredictPipelineConfig,
     fname: str,
+    # max_number_of_events_to_write: int should be very large
 ) -> None:
     """Extract alerts from a single GeoTIFF file.
 

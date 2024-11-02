@@ -29,7 +29,6 @@ def test_extract_alerts(
     inference_dataset_config_path: str,
 ) -> None:
     """Tests extracting alerts from a single GeoTIFF file."""
-    # TODO: Do not love this I would rather have the inference config either passed in or accessible within the package
     with tempfile.TemporaryDirectory(prefix=f"test_{TEST_ID}_") as temp_dir:
         index_cache_dir = UPath(temp_dir) / "index_cache"
         tile_store_root_dir = UPath(temp_dir) / "tile_store"

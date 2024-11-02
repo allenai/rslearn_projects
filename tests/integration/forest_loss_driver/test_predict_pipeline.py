@@ -6,12 +6,16 @@ import os
 import tempfile
 import uuid
 from collections.abc import Generator
+from datetime import datetime, timezone
 
 import pytest
 from google.cloud import storage
 from upath import UPath
 
 from rslp.forest_loss_driver.inference.config import PredictPipelineConfig
+from rslp.forest_loss_driver.inference.materialize_dataset import (
+    VISUALIZATION_ONLY_LAYERS,
+)
 from rslp.forest_loss_driver.predict_pipeline import predict_pipeline
 from rslp.log_utils import get_logger
 
@@ -47,19 +51,13 @@ def test_bucket() -> Generator[storage.Bucket, None, None]:
     yield bucket
 
 
-# os.environ["INFERENCE_DATASET_CONFIG"] = str(
-#     Path(__file__).resolve().parents[3] / "data" / "forest_loss_driver" / "config.json"
-# )
-# os.environ["INDEX_CACHE_DIR"] = (
-#     "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/rslearn_cache/"
-# )
-# os.environ["TILE_STORE_ROOT_DIR"] = (
-#     "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/tile_store "
-# )
-# os.environ["RSLP_PREFIX"] = "gs://rslearn-eai"
+# lightning cli is pretty brittle can't have any other sys args sent in and it
+# prevents programmatic pytest usage
 def test_predict_pipeline(
     predict_pipeline_config: PredictPipelineConfig,
     inference_dataset_config_path: str,
+    alert_tiffs_prefix: str,
+    alert_date_tiffs_prefix: str,
     tiff_filename: str,
 ) -> None:
     """Test the predict pipeline."""
@@ -73,6 +71,10 @@ def test_predict_pipeline(
             days=365,
             min_confidence=1,
             min_area=16.0,
+            conf_prefix=alert_tiffs_prefix,
+            date_prefix=alert_date_tiffs_prefix,
+            prediction_utc_time=datetime(2024, 10, 23, tzinfo=timezone.utc),
+            disabled_layers=VISUALIZATION_ONLY_LAYERS,
         )
         os.environ["INFERENCE_DATASET_CONFIG"] = inference_dataset_config_path
         # Need to make these both temp dirs  also would want the predict_pipeline path to have a temp dir

@@ -61,8 +61,16 @@ def predict_pipeline(
     for filename in gcs_tiff_filenames:
         extract_alerts_pipeline(pred_config, filename)
 
-    materialize_forest_loss_driver_dataset(pred_config.path)
+    materialize_forest_loss_driver_dataset(
+        pred_config.path,
+        disabled_layers=pred_config.disabled_layers,
+        group=pred_config.group,
+        workers=pred_config.workers,
+    )
 
-    select_best_images_pipeline(pred_config.path)
+    select_best_images_pipeline(
+        pred_config.path,
+        workers=pred_config.workers,
+    )
 
     forest_loss_driver_model_predict(model_cfg_fname, pred_config.path)

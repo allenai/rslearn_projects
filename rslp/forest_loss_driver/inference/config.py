@@ -34,6 +34,8 @@ class PredictPipelineConfig:
         date_prefix: str = GCS_DATE_PREFIX,
         conf_prefix: str = GCS_CONF_PREFIX,
         prediction_utc_time: datetime = datetime.now(timezone.utc),
+        disabled_layers: list[str] = [],
+        group: str | None = None,
     ) -> None:
         """Create a new PredictPipelineConfig.
 
@@ -49,6 +51,8 @@ class PredictPipelineConfig:
             date_prefix: the prefix for the date raster where the alert date is stored.
             conf_prefix: the prefix for the confidence raster where the alert confidence is stored.
             prediction_utc_time: the utc time to look back from for forest loss events.
+            disabled_layers: layers to disable in the dataset.
+            group: the group to use for the dataset.
         """
         if country_data_path is None:
             logger.info(
@@ -64,6 +68,8 @@ class PredictPipelineConfig:
         self.date_prefix = date_prefix
         self.conf_prefix = conf_prefix
         self.prediction_utc_time = prediction_utc_time
+        self.disabled_layers = disabled_layers
+        self.group = group
 
     def __str__(self) -> str:
         """Return a string representation of the config."""
@@ -72,5 +78,6 @@ class PredictPipelineConfig:
             f"days={self.days}, min_confidence={self.min_confidence}, "
             f"min_area={self.min_area}, country_data_path={self.country_data_path}, "
             f"date_prefix={self.date_prefix}, conf_prefix={self.conf_prefix}, "
-            f"prediction_utc_time={self.prediction_utc_time})"
+            f"prediction_utc_time={self.prediction_utc_time}, "
+            f"disabled_layers={self.disabled_layers}, group={self.group})"
         )
