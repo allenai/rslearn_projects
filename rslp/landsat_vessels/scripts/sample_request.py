@@ -4,7 +4,7 @@ import requests
 
 from rslp.landsat_vessels.api_main import LANDSAT_HOST, LANDSAT_PORT
 
-SCENE_ZIP_PATH = "gs://skylight-sat-imagery-sky-int-a/sat-service/landsat_8_9/downloads/2024/11/04/LC08_L1GT_201022_20241104_20241104_02_RT.zip"
+SCENE_ZIP_PATH = "gs://rslearn-eai/projects/2024_10_check_landsat/downloads/LC08_L1GT_010055_20241025_20241025_02_RT.zip"
 TIMEOUT_SECONDS = 600
 
 
