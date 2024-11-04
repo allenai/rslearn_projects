@@ -32,6 +32,7 @@ DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
 CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase123_config.yaml"
 LANDSAT_RESOLUTION = 15
 CLASSIFY_WINDOW_SIZE = 64
+INFRA_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
 
 class VesselDetection:
@@ -376,7 +377,9 @@ def predict_pipeline(
         crop_upath.mkdir(parents=True, exist_ok=True)
 
     json_data = []
-    near_infra_filter = NearInfraFilter()
+    near_infra_filter = NearInfraFilter(
+        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
+    )
     for idx, detection in enumerate(detections):
         # Get longitude/latitude.
         src_geom = STGeometry(

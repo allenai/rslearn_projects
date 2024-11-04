@@ -24,6 +24,7 @@ DATASET_CONFIG = "data/sentinel2_vessels/config.json"
 DETECT_MODEL_CONFIG = "data/sentinel2_vessels/config.yaml"
 SENTINEL2_RESOLUTION = 10
 CROP_WINDOW_SIZE = 64
+INFRA_DISTANCE_THRESHOLD = 0.05  # unit: km, 50 meters
 
 
 class PredictionTask:
@@ -233,7 +234,9 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
     for scene_id in tasks_by_scene.keys():
         json_vessels_by_scene[scene_id] = []
 
-    near_infra_filter = NearInfraFilter()
+    near_infra_filter = NearInfraFilter(
+        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
+    )
     for detection, crop_window_path in zip(detections, window_paths):
         # Get longitude/latitude.
         src_geom = STGeometry(

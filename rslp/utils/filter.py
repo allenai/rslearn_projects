@@ -21,10 +21,10 @@ class Filter:
 
 
 # URL to the marine infrastructure GeoJSON file.
-INFRA_URL = (
+DEFAULT_INFRA_URL = (
     "https://pub-956f3eb0f5974f37b9228e0a62f449bf.r2.dev/outputs/marine/latest.geojson"
 )
-INFRA_DISTANCE_THRESHOLD = 0.25  # unit: km, 250 meters
+DEFAULT_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
 
 class NearInfraFilter(Filter):
@@ -32,8 +32,8 @@ class NearInfraFilter(Filter):
 
     def __init__(
         self,
-        infra_url: str = INFRA_URL,
-        infra_distance_threshold: float = INFRA_DISTANCE_THRESHOLD,
+        infra_url: str = DEFAULT_INFRA_URL,
+        infra_distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
     ) -> None:
         """Initialize marine infrastructure filter.
 

@@ -16,7 +16,7 @@ def test_near_infra_filter() -> None:
 
     # Test case 2: Detection is close to infrastructure.
     assert filter.should_filter(
-        infra_lat + 0.001, infra_lon + 0.001
+        infra_lat + 0.0001, infra_lon + 0.0001
     ), "Detection should be discarded as it is too close to infrastructure."
 
     # Test case 3: Detection is far from infrastructure.
