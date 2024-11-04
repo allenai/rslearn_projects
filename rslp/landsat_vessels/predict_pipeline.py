@@ -380,6 +380,7 @@ def predict_pipeline(
     near_infra_filter = NearInfraFilter(
         infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
     )
+    infra_detections = 0
     for idx, detection in enumerate(detections):
         # Get longitude/latitude.
         src_geom = STGeometry(
@@ -391,6 +392,7 @@ def predict_pipeline(
 
         # Apply near infra filter (True -> discard, False -> keep)
         if near_infra_filter.should_filter(lat, lon):
+            infra_detections += 1
             continue
 
         # Load crops from the window directory.
@@ -448,6 +450,9 @@ def predict_pipeline(
                 b8_fname=str(b8_fname),
             ),
         )
+    print(
+        f"filtered out {infra_detections} detections related to marine infrastructure"
+    )
 
     time_profile["write_json_and_crops"] = time.time() - step_start_time
 
