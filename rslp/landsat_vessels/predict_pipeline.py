@@ -21,6 +21,7 @@ from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from typing_extensions import TypedDict
 from upath import UPath
 
+from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
 
 LANDSAT_LAYER_NAME = "landsat"
@@ -375,7 +376,20 @@ def predict_pipeline(
         crop_upath.mkdir(parents=True, exist_ok=True)
 
     json_data = []
+    near_infra_filter = NearInfraFilter()
     for idx, detection in enumerate(detections):
+        # Get longitude/latitude.
+        src_geom = STGeometry(
+            detection.projection, shapely.Point(detection.col, detection.row), None
+        )
+        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
+        lon = dst_geom.shp.x
+        lat = dst_geom.shp.y
+
+        # Apply near infra filter (True -> discard, False -> keep)
+        if near_infra_filter.should_discard(lat, lon):
+            continue
+
         # Load crops from the window directory.
         images = {}
         if detection.crop_window_dir is None:
@@ -421,14 +435,6 @@ def predict_pipeline(
         else:
             rgb_fname = ""
             b8_fname = ""
-
-        # Get longitude/latitude.
-        src_geom = STGeometry(
-            detection.projection, shapely.Point(detection.col, detection.row), None
-        )
-        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
-        lon = dst_geom.shp.x
-        lat = dst_geom.shp.y
 
         json_data.append(
             FormattedPrediction(
