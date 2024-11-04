@@ -7,15 +7,15 @@ import requests
 class Filter:
     """Base class for filters."""
 
-    def should_discard(self, lat: float, lon: float) -> bool:
-        """Check if the input (latitude and longitude) should be discarded.
+    def should_filter(self, lat: float, lon: float) -> bool:
+        """Check if the input (latitude and longitude) should be filtered.
 
         Args:
             lat: latitude of the target point.
             lon: longitude of the target point.
 
         Returns:
-            True to discard, False to keep.
+            True to filter out, False to keep.
         """
         raise NotImplementedError
 
@@ -112,7 +112,7 @@ class NearInfraFilter(Filter):
 
         return distances
 
-    def should_discard(self, lat: float, lon: float) -> bool:
+    def should_filter(self, lat: float, lon: float) -> bool:
         """Check if the input is too close to marine infrastructure.
 
         Args:

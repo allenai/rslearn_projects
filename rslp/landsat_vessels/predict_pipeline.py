@@ -387,7 +387,7 @@ def predict_pipeline(
         lat = dst_geom.shp.y
 
         # Apply near infra filter (True -> discard, False -> keep)
-        if near_infra_filter.should_discard(lat, lon):
+        if near_infra_filter.should_filter(lat, lon):
             continue
 
         # Load crops from the window directory.
