@@ -17,7 +17,7 @@ TARGET_CSV_PATH = (
     "gs://rslearn-eai/projects/2024_10_check_landsat/evaluation/csv/landsat_targets.csv"
 )
 
-DETECTION_SCORE_THRESHOLD = 0.80  # this is the threshold for object detection
+DETECTION_SCORE_THRESHOLD = 0.70  # this is the threshold for object detection
 
 
 if __name__ == "__main__":
