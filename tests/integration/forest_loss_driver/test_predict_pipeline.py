@@ -89,7 +89,10 @@ def test_predict_pipeline(
         # Need to make these both temp dirs  also would want the predict_pipeline path to have a temp dir
         os.environ["INDEX_CACHE_DIR"] = str(index_cache_dir)
         os.environ["TILE_STORE_ROOT_DIR"] = str(tile_store_root_dir)
-        os.environ["RSLP_PREFIX"] = "gs://rslearn-eai"  # make this a secret
+        # TODO: Add environme nt variable checks in the pipeline
+        logger.warning(
+            " Please ensure RSLP_PREFIX is set in the environment for the test bucket"
+        )
         predict_pipeline(predict_pipeline_config, model_cfg_fname, [tiff_filename])
         # assert that the output files exist
         output_path = (

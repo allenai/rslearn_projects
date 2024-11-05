@@ -18,24 +18,11 @@ GCS_FILENAMES = [
     "080W_20S_070W_10S.tif",  # What are these files I presume the s2 tiffs of the quarter?
 ]
 
-# ENVIRONMENT VARIABLES we need here
 WINDOW_SIZE = 128
-# os.environ["INFERENCE_DATASET_CONFIG"] = str(
-#     Path(__file__).resolve().parents[3] / "data" / "forest_loss_driver" / "config.json"
-# )
-# os.environ["INDEX_CACHE_DIR"] = (
-#     "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/rslearn_cache/"
-# )
-# os.environ["TILE_STORE_ROOT_DIR"] = (
-#     "/Users/henryh/Desktop/eai-repos/rslearn_projects/data/henryh/tile_store "
-# )
-# os.environ["RSLP_PREFIX"] = "gs://rslearn-eai"
 
 
 # TODO: All important configuration should be transparently passed in via the PredictPipelineConfig
 # TODO: We need to add an environment variable validation step here for the entire pipeline
-# This is the main function that should be called to run the prediction pipeline. the alerts stuff likely should be in a different module
-# I want this to be run as a workflow but we need to have a load config into pipeline step or something
 def predict_pipeline(
     pred_config: PredictPipelineConfig,
     model_cfg_fname: str,
