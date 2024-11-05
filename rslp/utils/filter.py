@@ -1,5 +1,7 @@
 """Filters for vessel detection projects."""
 
+from functools import lru_cache
+
 import numpy as np
 import requests
 
@@ -27,6 +29,34 @@ DEFAULT_INFRA_URL = (
 DEFAULT_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
 
+@lru_cache(maxsize=1)  # set maxsize to 1 as there's only one infra_url
+def get_infra_latlons(infra_url: str) -> tuple[np.ndarray, np.ndarray]:
+    """Fetch and cache the infrastructure latitudes and longitudes.
+
+    Args:
+        infra_url: URL to the marine infrastructure GeoJSON file.
+
+    Returns:
+        A tuple of arrays: (latitudes, longitudes).
+    """
+    try:
+        # Read the geojson data from the URL.
+        response = requests.get(infra_url, timeout=10)
+        response.raise_for_status()  # Raise an error for bad responses
+        geojson_data = response.json()
+    except requests.RequestException as e:
+        raise RuntimeError(f"Failed to fetch infrastructure data: {e}")
+
+    lats = np.array(
+        [feature["geometry"]["coordinates"][1] for feature in geojson_data["features"]]
+    )
+    lons = np.array(
+        [feature["geometry"]["coordinates"][0] for feature in geojson_data["features"]]
+    )
+
+    return lats, lons
+
+
 class NearInfraFilter(Filter):
     """Filter out vessel detection that are too close to marine infrastructure."""
 
@@ -42,38 +72,8 @@ class NearInfraFilter(Filter):
             infra_distance_threshold: distance threshold for marine infrastructure.
         """
         self.infra_url = infra_url
-        self.infra_latlons = self._generate_infra_latlons()
+        self.infra_latlons = get_infra_latlons(self.infra_url)
         self.infra_distance_threshold = infra_distance_threshold
-
-    def _generate_infra_latlons(self) -> tuple[np.ndarray, np.ndarray]:
-        """Generate the latitude and longitude arrays for the marine infrastructure.
-
-        Returns:
-            lats: an array of latitudes.
-            lons: an array of longitudes.
-        """
-        try:
-            # Read the geojson data from the URL.
-            response = requests.get(self.infra_url, timeout=10)
-            response.raise_for_status()  # Raise an error for bad responses
-            geojson_data = response.json()
-        except requests.RequestException as e:
-            raise RuntimeError(f"Failed to fetch infrastructure data: {e}")
-
-        lats = np.array(
-            [
-                feature["geometry"]["coordinates"][1]
-                for feature in geojson_data["features"]
-            ]
-        )
-        lons = np.array(
-            [
-                feature["geometry"]["coordinates"][0]
-                for feature in geojson_data["features"]
-            ]
-        )
-
-        return lats, lons
 
     def _get_haversine_distances(
         self,

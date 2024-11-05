@@ -390,7 +390,7 @@ def predict_pipeline(
         lon = dst_geom.shp.x
         lat = dst_geom.shp.y
 
-        # Apply near infra filter (True -> discard, False -> keep)
+        # Apply near infra filter (True -> filter out, False -> keep)
         if near_infra_filter.should_filter(lat, lon):
             infra_detections += 1
             continue
