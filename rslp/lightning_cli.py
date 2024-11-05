@@ -12,6 +12,9 @@ from upath import UPath
 
 import rslp.utils.fs  # noqa: F401 (imported but unused)
 from rslp import launcher_lib
+from rslp.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 CHECKPOINT_DIR = (
     "{rslp_prefix}/projects/{project_id}/{experiment_id}/{run_id}checkpoints/"
@@ -230,11 +233,11 @@ class CustomLightningCLI(RslearnLightningCLI):
             else:
                 raise ValueError("autoresume is off but checkpoint already exists")
 
-            print(f"found checkpoint to resume from at {c.ckpt_path}")
+            logger.info(f"found checkpoint to resume from at {c.ckpt_path}")
 
             wandb_id = launcher_lib.download_wandb_id(
                 c.rslp_project, c.rslp_experiment, run_id
             )
             if wandb_id and subcommand == "fit":
-                print(f"resuming wandb run {wandb_id}")
+                logger.info(f"resuming wandb run {wandb_id}")
                 c.trainer.logger.init_args.id = wandb_id

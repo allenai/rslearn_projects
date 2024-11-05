@@ -35,6 +35,7 @@ WINDOW_SIZE = 128
 # TODO: All important configuration should be transparently passed in via the PredictPipelineConfig
 # TODO: We need to add an environment variable validation step here for the entire pipeline
 # This is the main function that should be called to run the prediction pipeline. the alerts stuff likely should be in a different module
+# I want this to be run as a workflow but we need to have a load config into pipeline step or something
 def predict_pipeline(
     pred_config: PredictPipelineConfig,
     model_cfg_fname: str,
