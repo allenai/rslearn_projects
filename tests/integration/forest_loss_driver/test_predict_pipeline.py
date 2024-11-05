@@ -52,14 +52,6 @@ def test_bucket() -> Generator[storage.Bucket, None, None]:
     yield bucket
 
 
-# lightning cli is pretty brittle can't have any other sys args sent in and it
-# prevents programmatic pytest usage
-# Need to limit number of windows to 1
-# We need to have a predict config that directly loads into the predict pipeline so that I can easily set up the pipeline
-# only on a cropped image for a single window
-# Issue is we have these required args that are needed for the predict pipeline
-# But they are not obviously needed for the predict pipeline
-# We should have an inference mode for predict?
 def test_predict_pipeline(
     predict_pipeline_config: PredictPipelineConfig,
     inference_dataset_config_path: str,
@@ -86,10 +78,8 @@ def test_predict_pipeline(
             disabled_layers=VISUALIZATION_ONLY_LAYERS,
         )
         os.environ["INFERENCE_DATASET_CONFIG"] = inference_dataset_config_path
-        # Need to make these both temp dirs  also would want the predict_pipeline path to have a temp dir
         os.environ["INDEX_CACHE_DIR"] = str(index_cache_dir)
         os.environ["TILE_STORE_ROOT_DIR"] = str(tile_store_root_dir)
-        # TODO: Add environme nt variable checks in the pipeline
         logger.warning(
             " Please ensure RSLP_PREFIX is set in the environment for the test bucket"
         )
