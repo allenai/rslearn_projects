@@ -75,6 +75,7 @@ def test_predict_pipeline(
             conf_prefix=alert_tiffs_prefix,
             date_prefix=alert_date_tiffs_prefix,
             prediction_utc_time=datetime(2024, 10, 23, tzinfo=timezone.utc),
+            max_number_of_events=1,
             disabled_layers=VISUALIZATION_ONLY_LAYERS,
         )
         os.environ["INFERENCE_DATASET_CONFIG"] = inference_dataset_config_path
