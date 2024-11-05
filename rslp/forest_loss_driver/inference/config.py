@@ -42,7 +42,7 @@ class PredictPipelineConfig:
     # Constants that shouldn't be overridden
     rslp_bucket: str = field(
         default=os.environ.get("RSLP_BUCKET", "rslearn-eai"),
-        init=False,  # This makes it not appear as a constructor parameter
+        init=False,
     )
 
     @property
@@ -89,15 +89,26 @@ class PredictPipelineConfig:
                 config_dict["prediction_utc_time"] = datetime.fromisoformat(
                     config_dict["prediction_utc_time"].replace("Z", "+00:00")
                 )
+        repo_root = Path(__file__).resolve().parents[3]
+        # Parse relative paths to the model config file
         if "model_cfg_fname" in config_dict:
-            if not config_dict["model_cfg_fname"].startswith(
-                "gs://"
-            ) and not config_dict["model_cfg_fname"].startswith("/"):
+            if not cls.is_absolute_path(config_dict["model_cfg_fname"]):
                 config_dict["model_cfg_fname"] = str(
-                    Path(__file__).resolve().parents[3] / config_dict["model_cfg_fname"]
+                    repo_root / config_dict["model_cfg_fname"]
                 )
+        if "date_prefix" in config_dict:
+            if not cls.is_absolute_path(config_dict["date_prefix"]):
+                config_dict["date_prefix"] = str(repo_root / config_dict["date_prefix"])
+        if "conf_prefix" in config_dict:
+            if not cls.is_absolute_path(config_dict["conf_prefix"]):
+                config_dict["conf_prefix"] = str(repo_root / config_dict["conf_prefix"])
 
         return cls(**config_dict)
+
+    @staticmethod
+    def is_absolute_path(path: str) -> bool:
+        """Check if a path is absolute."""
+        return path.startswith("gs://") or path.startswith("/")
 
     def __str__(self) -> str:
         """Return a string representation of the config."""
