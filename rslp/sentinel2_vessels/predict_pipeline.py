@@ -16,6 +16,7 @@ from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from upath import UPath
 
+from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
 
 SENTINEL2_LAYER_NAME = "sentinel2"
@@ -23,6 +24,7 @@ DATASET_CONFIG = "data/sentinel2_vessels/config.json"
 DETECT_MODEL_CONFIG = "data/sentinel2_vessels/config.yaml"
 SENTINEL2_RESOLUTION = 10
 CROP_WINDOW_SIZE = 64
+INFRA_DISTANCE_THRESHOLD = 0.05  # unit: km, 50 meters
 
 
 class PredictionTask:
@@ -232,7 +234,22 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
     for scene_id in tasks_by_scene.keys():
         json_vessels_by_scene[scene_id] = []
 
+    near_infra_filter = NearInfraFilter(
+        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
+    )
     for detection, crop_window_path in zip(detections, window_paths):
+        # Get longitude/latitude.
+        src_geom = STGeometry(
+            detection.projection, shapely.Point(detection.col, detection.row), None
+        )
+        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
+        lon = dst_geom.shp.x
+        lat = dst_geom.shp.y
+
+        # Apply near infra filter (True -> filter out, False -> keep)
+        if near_infra_filter.should_filter(lat, lon):
+            continue
+
         scene_id = detection.scene_id
         crop_upath = UPath(tasks_by_scene[scene_id].crop_path)
 
@@ -246,14 +263,6 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
         crop_fname = crop_upath / f"{detection.col}_{detection.row}.png"
         with crop_fname.open("wb") as f:
             Image.fromarray(image.transpose(1, 2, 0)).save(f, format="PNG")
-
-        # Get longitude/latitude.
-        src_geom = STGeometry(
-            detection.projection, shapely.Point(detection.col, detection.row), None
-        )
-        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
-        lon = dst_geom.shp.x
-        lat = dst_geom.shp.y
 
         if scene_id not in json_vessels_by_scene:
             json_vessels_by_scene[scene_id] = []
