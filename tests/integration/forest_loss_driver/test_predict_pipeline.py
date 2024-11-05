@@ -94,6 +94,7 @@ def test_predict_pipeline(
         # assert that the output files exist
         output_path = (
             UPath(temp_dir)
+            / "dataset_20241023"
             / "windows"
             / "default"
             / "feat_x_1281600_2146388_5_2221"
