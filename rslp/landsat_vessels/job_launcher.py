@@ -68,7 +68,9 @@ def launch_job(
             ],
             constraints=Constraints(
                 cluster=[
-                    "ai2/prior-cirrascale",
+                    "ai2/prior-elanding",
+                    "ai2/jupiter-cirrascale-2",
+                    "ai2/neptune-cirrascale",
                 ]
             ),
             priority=Priority.low,
