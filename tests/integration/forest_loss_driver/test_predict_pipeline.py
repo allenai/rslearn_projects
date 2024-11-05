@@ -17,7 +17,9 @@ from rslp.forest_loss_driver.inference.config import PredictPipelineConfig
 from rslp.forest_loss_driver.inference.materialize_dataset import (
     VISUALIZATION_ONLY_LAYERS,
 )
-from rslp.forest_loss_driver.predict_pipeline import predict_pipeline_main
+from rslp.forest_loss_driver.predict_pipeline import (
+    forest_loss_driver_prediction_pipeline,
+)
 from rslp.log_utils import get_logger
 
 TEST_ID = str(uuid.uuid4())
@@ -69,7 +71,7 @@ def test_predict_pipeline(
         logger.warning(
             " Please ensure RSLP_PREFIX is set in the environment for the test bucket"
         )
-        predict_pipeline_main(predict_pipeline_config)
+        forest_loss_driver_prediction_pipeline(predict_pipeline_config)
         # assert that the output files exist
         output_path = (
             UPath(temp_dir)

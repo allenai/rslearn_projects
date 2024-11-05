@@ -1,5 +1,7 @@
 """Forest loss driver prediction pipeline."""
 
+from pathlib import Path
+
 from rslp.forest_loss_driver.inference.best_image_selector import (
     select_best_images_pipeline,
 )
@@ -24,9 +26,22 @@ GCS_FILENAMES = [
 
 WINDOW_SIZE = 128
 
+# PIPELINE CONFIG USED FOR INFERENCE
+PREDICT_PIPELINE_CONFIG_PATH = str(
+    Path(__file__).parent
+    / "inference"
+    / "config"
+    / "forest_loss_driver_predict_pipeline_config.yaml"
+)
+
+
+def load_predict_pipeline_config() -> PredictPipelineConfig:
+    """Load the predict pipeline configuration."""
+    return PredictPipelineConfig.from_yaml(PREDICT_PIPELINE_CONFIG_PATH)
+
 
 # TODO: We need to add an environment variable validation step here for the entire pipeline
-def predict_pipeline_main(
+def forest_loss_driver_prediction_pipeline(
     pred_config: PredictPipelineConfig,
 ) -> None:
     """Run the prediction pipeline.
@@ -61,3 +76,9 @@ def predict_pipeline_main(
     )
 
     forest_loss_driver_model_predict(pred_config.model_cfg_fname, pred_config.path)
+
+
+def predict_pipeline_main() -> None:
+    """Run the predict pipeline."""
+    pred_config = load_predict_pipeline_config()
+    forest_loss_driver_prediction_pipeline(pred_config)
