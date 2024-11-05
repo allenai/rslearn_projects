@@ -1,6 +1,6 @@
 """Filters for vessel detection projects."""
 
-from functools import lru_cache
+import functools
 
 import numpy as np
 import requests
@@ -29,7 +29,7 @@ DEFAULT_INFRA_URL = (
 DEFAULT_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
 
-@lru_cache(maxsize=1)  # set maxsize to 1 as there's only one infra_url
+@functools.cache
 def get_infra_latlons(infra_url: str) -> tuple[np.ndarray, np.ndarray]:
     """Fetch and cache the infrastructure latitudes and longitudes.
 
