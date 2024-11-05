@@ -35,12 +35,15 @@ def test_extract_alerts(
         os.environ["INFERENCE_DATASET_CONFIG"] = inference_dataset_config_path
         os.environ["INDEX_CACHE_DIR"] = str(index_cache_dir)
         os.environ["TILE_STORE_ROOT_DIR"] = str(tile_store_root_dir)
+        dummy_model_cfg_fname = "dummy_model_cfg.json"  # Not used in this step
         predict_pipeline_config = PredictPipelineConfig(
             ds_root=UPath(temp_dir)
             / "datasets"
             / "forest_loss_driver"
             / "prediction"
             / "dataset_20241023",
+            model_cfg_fname=dummy_model_cfg_fname,
+            gcs_tiff_filenames=[tiff_filename],
             workers=1,
             days=365,
             min_confidence=1,

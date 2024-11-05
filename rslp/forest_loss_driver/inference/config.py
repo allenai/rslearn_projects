@@ -26,6 +26,8 @@ class PredictPipelineConfig:
     def __init__(
         self,
         ds_root: str,
+        model_cfg_fname: str,
+        gcs_tiff_filenames: list[str],
         workers: int = 1,
         days: int = 365,
         min_confidence: int = 2,
@@ -42,6 +44,8 @@ class PredictPipelineConfig:
 
         Args:
             ds_root: dataset root to write the dataset.
+            model_cfg_fname: the model configuration file name.
+            gcs_tiff_filenames: the list of GCS TIFF filenames that we want to extract alerts from
             workers: number of workers.
             days: only consider forest loss events in this many past days.
             min_confidence: threshold on the GLAD alert confidence.
@@ -63,6 +67,8 @@ class PredictPipelineConfig:
             )
             country_data_path = self.peru_shape_data_path
         self.path = UPath(ds_root)
+        self.model_cfg_fname = model_cfg_fname
+        self.gcs_tiff_filenames = gcs_tiff_filenames
         self.workers = workers
         self.days = days
         self.min_confidence = min_confidence
@@ -78,7 +84,8 @@ class PredictPipelineConfig:
     def __str__(self) -> str:
         """Return a string representation of the config."""
         return (
-            f"PredictPipelineConfig(path={self.path}, workers={self.workers}, "
+            f"PredictPipelineConfig(path={self.path}, model_cfg_fname={self.model_cfg_fname}, "
+            f"gcs_tiff_filenames={self.gcs_tiff_filenames}, workers={self.workers}, "
             f"days={self.days}, min_confidence={self.min_confidence}, "
             f"min_area={self.min_area}, country_data_path={self.country_data_path}, "
             f"date_prefix={self.date_prefix}, conf_prefix={self.conf_prefix}, "

@@ -17,7 +17,7 @@ from rslp.forest_loss_driver.inference.config import PredictPipelineConfig
 from rslp.forest_loss_driver.inference.materialize_dataset import (
     VISUALIZATION_ONLY_LAYERS,
 )
-from rslp.forest_loss_driver.predict_pipeline import predict_pipeline
+from rslp.forest_loss_driver.predict_pipeline import predict_pipeline_main
 from rslp.log_utils import get_logger
 
 TEST_ID = str(uuid.uuid4())
@@ -31,21 +31,6 @@ def tiff_filename() -> str:
 
 
 @pytest.fixture
-def predict_pipeline_config() -> PredictPipelineConfig:
-    """The configuration for the predict pipeline."""
-    test_id = TEST_ID
-    return PredictPipelineConfig(
-        ds_root=UPath(
-            f"gs://rslearn-eai/tests/{test_id}/datasets/forest_loss_driver/prediction/dataset_20241023/"
-        ),
-        workers=1,
-        days=365,
-        min_confidence=1,
-        min_area=16.0,
-    )
-
-
-@pytest.fixture
 def test_bucket() -> Generator[storage.Bucket, None, None]:
     """The test bucket."""
     bucket = storage.Client().bucket(os.environ.get("TEST_BUCKET", "rslearn-eai"))
@@ -53,7 +38,6 @@ def test_bucket() -> Generator[storage.Bucket, None, None]:
 
 
 def test_predict_pipeline(
-    predict_pipeline_config: PredictPipelineConfig,
     inference_dataset_config_path: str,
     model_cfg_fname: str,
     alert_tiffs_prefix: str,
@@ -67,6 +51,8 @@ def test_predict_pipeline(
         tile_store_root_dir = UPath(temp_dir) / "tile_store"
         predict_pipeline_config = PredictPipelineConfig(
             ds_root=ds_path,
+            model_cfg_fname=model_cfg_fname,
+            gcs_tiff_filenames=[tiff_filename],
             workers=1,
             days=365,
             min_confidence=1,
@@ -83,7 +69,7 @@ def test_predict_pipeline(
         logger.warning(
             " Please ensure RSLP_PREFIX is set in the environment for the test bucket"
         )
-        predict_pipeline(predict_pipeline_config, model_cfg_fname, [tiff_filename])
+        predict_pipeline_main(predict_pipeline_config)
         # assert that the output files exist
         output_path = (
             UPath(temp_dir)

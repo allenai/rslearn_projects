@@ -25,12 +25,9 @@ GCS_FILENAMES = [
 WINDOW_SIZE = 128
 
 
-# TODO: All important configuration should be transparently passed in via the PredictPipelineConfig
 # TODO: We need to add an environment variable validation step here for the entire pipeline
-def predict_pipeline(
+def predict_pipeline_main(
     pred_config: PredictPipelineConfig,
-    model_cfg_fname: str,
-    gcs_tiff_filenames: list[str],
 ) -> None:
     """Run the prediction pipeline.
 
@@ -42,15 +39,13 @@ def predict_pipeline(
 
     Args:
         pred_config: the pipeline configuration
-        model_cfg_fname: the model configuration file name
-        gcs_tiff_filenames: the list of GCS TIFF filenames
 
     Outputs:
         None
         a folder with outputs and the prediciton.json file.
     """
     # Move thsi for loop to the pipeline?
-    for filename in gcs_tiff_filenames:
+    for filename in pred_config.gcs_tiff_filenames:
         extract_alerts_pipeline(pred_config, filename)
 
     materialize_forest_loss_driver_dataset(
@@ -65,4 +60,4 @@ def predict_pipeline(
         workers=pred_config.workers,
     )
 
-    forest_loss_driver_model_predict(model_cfg_fname, pred_config.path)
+    forest_loss_driver_model_predict(pred_config.model_cfg_fname, pred_config.path)
