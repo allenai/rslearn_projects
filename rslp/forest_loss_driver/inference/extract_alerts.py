@@ -83,6 +83,7 @@ class ForestLossEvent:
 
 
 ## Event Writer
+#  TODO:This should really be a class that handles this
 def output_forest_event_metadata(
     event: ForestLossEvent,
     fname: str,
@@ -182,7 +183,6 @@ def output_window_metadata(event: ForestLossEvent, ds_path: UPath) -> tuple:
     return window, window_path, mercator_point, bounds
 
 
-#  TODO:This should really be a class that handles this
 def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
     """Write a window for this forest loss event.
 
@@ -380,7 +380,6 @@ def save_inference_dataset_config(ds_path: UPath) -> None:
 def extract_alerts_pipeline(
     config: PredictPipelineConfig,
     fname: str,
-    # max_number_of_events_to_write: int should be very large
 ) -> None:
     """Extract alerts from a single GeoTIFF file.
 
@@ -415,6 +414,8 @@ def extract_alerts_pipeline(
     events = process_shapes_into_events(
         shapes, conf_raster, date_data, country_wgs84_shp, config.min_area
     )
+    if config.max_number_of_events is not None:
+        events = events[: config.max_number_of_events]
     logger.info(f"writing {len(events)} windows")
     jobs = [
         dict(

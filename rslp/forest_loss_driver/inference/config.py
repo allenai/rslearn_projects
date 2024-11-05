@@ -35,6 +35,7 @@ class PredictPipelineConfig:
         conf_prefix: str = GCS_CONF_PREFIX,
         prediction_utc_time: datetime = datetime.now(timezone.utc),
         disabled_layers: list[str] = [],
+        max_number_of_events: int | None = None,
         group: str | None = None,
     ) -> None:
         """Create a new PredictPipelineConfig.
@@ -52,6 +53,8 @@ class PredictPipelineConfig:
             conf_prefix: the prefix for the confidence raster where the alert confidence is stored.
             prediction_utc_time: the utc time to look back from for forest loss events.
             disabled_layers: layers to disable in the dataset.
+            max_number_of_events: the maximum number of events to write to the dataset,
+                if None, all extractedevents are written.
             group: the group to use for the dataset.
         """
         if country_data_path is None:
@@ -69,6 +72,7 @@ class PredictPipelineConfig:
         self.conf_prefix = conf_prefix
         self.prediction_utc_time = prediction_utc_time
         self.disabled_layers = disabled_layers
+        self.max_number_of_events = max_number_of_events
         self.group = group
 
     def __str__(self) -> str:
@@ -79,5 +83,7 @@ class PredictPipelineConfig:
             f"min_area={self.min_area}, country_data_path={self.country_data_path}, "
             f"date_prefix={self.date_prefix}, conf_prefix={self.conf_prefix}, "
             f"prediction_utc_time={self.prediction_utc_time}, "
-            f"disabled_layers={self.disabled_layers}, group={self.group})"
+            f"disabled_layers={self.disabled_layers}, "
+            f"max_number_of_events={self.max_number_of_events}, "
+            f"group={self.group})"
         )

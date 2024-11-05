@@ -53,6 +53,7 @@ def test_bucket() -> Generator[storage.Bucket, None, None]:
 
 # lightning cli is pretty brittle can't have any other sys args sent in and it
 # prevents programmatic pytest usage
+# Need to limit number of windows to 1
 def test_predict_pipeline(
     predict_pipeline_config: PredictPipelineConfig,
     inference_dataset_config_path: str,
