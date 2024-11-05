@@ -2,6 +2,7 @@
 This should be refactored along with the prediction file into seperate components.
 """
 
+import json
 import os
 import tempfile
 import uuid
@@ -56,9 +57,13 @@ def test_bucket() -> Generator[storage.Bucket, None, None]:
 # Need to limit number of windows to 1
 # We need to have a predict config that directly loads into the predict pipeline so that I can easily set up the pipeline
 # only on a cropped image for a single window
+# Issue is we have these required args that are needed for the predict pipeline
+# But they are not obviously needed for the predict pipeline
+# We should have an inference mode for predict?
 def test_predict_pipeline(
     predict_pipeline_config: PredictPipelineConfig,
     inference_dataset_config_path: str,
+    model_cfg_fname: str,
     alert_tiffs_prefix: str,
     alert_date_tiffs_prefix: str,
     tiff_filename: str,
@@ -85,8 +90,47 @@ def test_predict_pipeline(
         os.environ["INDEX_CACHE_DIR"] = str(index_cache_dir)
         os.environ["TILE_STORE_ROOT_DIR"] = str(tile_store_root_dir)
         os.environ["RSLP_PREFIX"] = "gs://rslearn-eai"  # make this a secret
-        predict_pipeline(
-            predict_pipeline_config, inference_dataset_config_path, [tiff_filename]
+        predict_pipeline(predict_pipeline_config, model_cfg_fname, [tiff_filename])
+        # assert that the output files exist
+        output_path = (
+            UPath(temp_dir)
+            / "windows"
+            / "default"
+            / "feat_x_1281600_2146388_5_2221"
+            / "layers"
+            / "output"
+            / "data.geojson"
         )
-        # Make sure we are only using the cropped image as input
-        # make sure we are deleting extra widnows files?
+        # TODO: Make a pydantic model for this output
+        expected_output_json = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "new_label": "river",
+                        "probs": [
+                            0.00027457400574348867,
+                            9.164694347418845e-06,
+                            0.004422641359269619,
+                            7.985765826390434e-09,
+                            1.6661474546708632e-06,
+                            1.7722986740409397e-05,
+                            2.0580247905854776e-07,
+                            2.0334262273991044e-08,
+                            0.9876694083213806,
+                            0.007604612968862057,
+                        ],
+                    },
+                    "geometry": {"type": "Point", "coordinates": [-815616.0, 49172.0]},
+                }
+            ],
+            "properties": {
+                "crs": "EPSG:3857",
+                "x_resolution": 9.554628535647032,
+                "y_resolution": -9.554628535647032,
+            },
+        }
+        with output_path.open("r") as f:
+            output_json = json.load(f)
+        assert output_json == expected_output_json

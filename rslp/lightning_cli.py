@@ -57,6 +57,7 @@ class CustomLightningCLI(RslearnLightningCLI):
     rslearn_projects.
     """
 
+    # DO We really want these to be required for inference as well?
     def add_arguments_to_parser(self, parser: jsonargparse.ArgumentParser) -> None:
         """Add experiment ID argument.
 

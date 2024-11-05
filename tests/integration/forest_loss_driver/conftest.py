@@ -1,7 +1,9 @@
 """Fixtures for the forest loss driver tests."""
 
 import uuid
+from collections.abc import Generator
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from upath import UPath
@@ -49,3 +51,20 @@ def test_materialized_dataset_path() -> UPath:
         Path(__file__).resolve().parents[3]
         / "test_data/forest_loss_driver/test_materialized_dataset/dataset_20241023"
     )
+
+
+@pytest.fixture
+def model_cfg_fname() -> str:
+    """The path to the model configuration file."""
+    return str(
+        Path(__file__).resolve().parents[3]
+        # TODO: This should be hooked up to whatever the latest model is.
+        / "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml"
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def clear_sys_argv() -> Generator[None, None, None]:
+    """Clear the sys.argv."""
+    with mock.patch("sys.argv", ["pytest"]):
+        yield
