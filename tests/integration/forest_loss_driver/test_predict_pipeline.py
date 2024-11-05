@@ -65,6 +65,7 @@ def test_predict_pipeline(
             max_number_of_events=1,
             disabled_layers=VISUALIZATION_ONLY_LAYERS,
         )
+        # Make this not an env var
         os.environ["INFERENCE_DATASET_CONFIG"] = inference_dataset_config_path
         os.environ["INDEX_CACHE_DIR"] = str(index_cache_dir)
         os.environ["TILE_STORE_ROOT_DIR"] = str(tile_store_root_dir)

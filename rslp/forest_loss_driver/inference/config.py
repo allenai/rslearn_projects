@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 import yaml
 from upath import UPath
@@ -87,6 +88,13 @@ class PredictPipelineConfig:
             if isinstance(config_dict["prediction_utc_time"], str):
                 config_dict["prediction_utc_time"] = datetime.fromisoformat(
                     config_dict["prediction_utc_time"].replace("Z", "+00:00")
+                )
+        if "model_cfg_fname" in config_dict:
+            if not config_dict["model_cfg_fname"].startswith(
+                "gs://"
+            ) and not config_dict["model_cfg_fname"].startswith("/"):
+                config_dict["model_cfg_fname"] = str(
+                    Path(__file__).resolve().parents[3] / config_dict["model_cfg_fname"]
                 )
 
         return cls(**config_dict)
