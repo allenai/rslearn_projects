@@ -124,6 +124,6 @@
   },
   "tile_store": {
     "name": "file",
-    "root_dir": "tiles"
+    "root_dir": "gs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/tiles"
   }
 }

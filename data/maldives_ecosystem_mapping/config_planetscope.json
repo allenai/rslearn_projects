@@ -97,10 +97,72 @@
         "time_offset": "-90d"
       },
       "type": "raster"
+    },
+    "sentinel2_with_planet": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          },
+          "zoom_offset": -2
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          },
+          "zoom_offset": -3
+        },
+        {
+          "bands": [
+            "B01",
+            "B09",
+            "B10"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          },
+          "zoom_offset": -4
+        }
+      ],
+      "data_source": {
+        "duration": "180d",
+        "index_cache_dir": "gs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/cache/sentinel2",
+        "max_time_delta": "1d",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 6,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-90d",
+        "use_rtree_index": false
+      },
+      "type": "raster"
     }
   },
   "tile_store": {
     "name": "file",
-    "root_dir": "tiles"
+    "root_dir": "gs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20240924/tiles"
   }
 }

@@ -2,7 +2,8 @@
 
 import json
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Any
 
 import rasterio
 import shapely
@@ -24,11 +25,28 @@ SENTINEL2_RESOLUTION = 10
 CROP_WINDOW_SIZE = 64
 
 
+class PredictionTask:
+    """A task to predict vessels in one Sentinel-2 scene."""
+
+    def __init__(self, scene_id: str, json_path: str, crop_path: str):
+        """Create a new PredictionTask.
+
+        Args:
+            scene_id: the Sentinel-2 scene ID.
+            json_path: path to write the JSON of vessel detections.
+            crop_path: path to write the vessel crop images.
+        """
+        self.scene_id = scene_id
+        self.json_path = json_path
+        self.crop_path = crop_path
+
+
 class VesselDetection:
     """A vessel detected in a Sentinel-2 window."""
 
     def __init__(
         self,
+        scene_id: str,
         col: int,
         row: int,
         projection: Projection,
@@ -39,6 +57,7 @@ class VesselDetection:
         """Create a new VesselDetection.
 
         Args:
+            scene_id: the scene ID that the vessel was detected in.
             col: the column in projection coordinates.
             row: the row in projection coordinates.
             projection: the projection used.
@@ -46,6 +65,7 @@ class VesselDetection:
             ts: datetime fo the window.
             crop_window_dir: the crop window directory.
         """
+        self.scene_id = scene_id
         self.col = col
         self.row = row
         self.projection = projection
@@ -57,10 +77,7 @@ class VesselDetection:
 # TODO: make a simple class to store bounds
 def get_vessel_detections(
     ds_path: UPath,
-    projection: Projection,
-    bounds: tuple[int, int, int, int],
-    ts: datetime,
-    item: Item,
+    items: list[Item],
 ) -> list[VesselDetection]:
     """Apply the vessel detector.
 
@@ -70,63 +87,78 @@ def get_vessel_detections(
     Args:
         ds_path: the dataset path that will be populated with a new window to apply the
             detector.
-        projection: the projection to apply the detector in.
-        bounds: the bounds to apply the detector in.
-        ts: timestamp to apply the detector on.
-        item: the item to ingest.
+        items: the items (scenes) in Sentinel-2 data source to apply the detector on.
     """
-    # Create a window for applying detector.
-    group = "detector_predict"
-    window_path = ds_path / "windows" / group / "default"
-    window = Window(
-        path=window_path,
-        group=group,
-        name="default",
-        projection=projection,
-        bounds=bounds,
-        time_range=(ts - timedelta(minutes=20), ts + timedelta(minutes=20)),
-    )
-    window.save()
+    # Create a window corresponding to each item.
+    windows: list[Window] = []
+    for item in items:
+        wgs84_geom = item.geometry.to_projection(WGS84_PROJECTION)
+        projection = get_utm_ups_projection(
+            wgs84_geom.shp.centroid.x,
+            wgs84_geom.shp.centroid.y,
+            SENTINEL2_RESOLUTION,
+            -SENTINEL2_RESOLUTION,
+        )
+        dst_geom = item.geometry.to_projection(projection)
+        bounds = (
+            int(dst_geom.shp.bounds[0]),
+            int(dst_geom.shp.bounds[1]),
+            int(dst_geom.shp.bounds[2]),
+            int(dst_geom.shp.bounds[3]),
+        )
 
-    if item:
+        group = "detector_predict"
+        window_path = ds_path / "windows" / group / item.name
+        window = Window(
+            path=window_path,
+            group=group,
+            name=item.name,
+            projection=projection,
+            bounds=bounds,
+            time_range=item.geometry.time_range,
+        )
+        window.save()
+        windows.append(window)
+
         layer_data = WindowLayerData(SENTINEL2_LAYER_NAME, [[item.serialize()]])
         window.save_layer_datas(dict(SENTINEL2_LAYER_NAME=layer_data))
 
     print("materialize dataset")
     materialize_dataset(ds_path, group=group, workers=1)
-    assert (
-        window_path / "layers" / SENTINEL2_LAYER_NAME / "R_G_B" / "geotiff.tif"
-    ).exists()
+    for window in windows:
+        assert (
+            window.path / "layers" / SENTINEL2_LAYER_NAME / "R_G_B" / "geotiff.tif"
+        ).exists()
 
     # Run object detector.
     run_model_predict(DETECT_MODEL_CONFIG, ds_path)
 
     # Read the detections.
-    output_fname = window_path / "layers" / "output" / "data.geojson"
     detections: list[VesselDetection] = []
-    with output_fname.open() as f:
-        feature_collection = json.load(f)
-    for feature in feature_collection["features"]:
-        shp = shapely.geometry.shape(feature["geometry"])
-        col = int(shp.centroid.x)
-        row = int(shp.centroid.y)
-        score = feature["properties"]["score"]
-        detections.append(
-            VesselDetection(
-                col=col,
-                row=row,
-                projection=projection,
-                score=score,
-                ts=ts,
+    for window in windows:
+        output_fname = window.path / "layers" / "output" / "data.geojson"
+        with output_fname.open() as f:
+            feature_collection = json.load(f)
+        for feature in feature_collection["features"]:
+            shp = shapely.geometry.shape(feature["geometry"])
+            col = int(shp.centroid.x)
+            row = int(shp.centroid.y)
+            score = feature["properties"]["score"]
+            detections.append(
+                VesselDetection(
+                    scene_id=window.name,
+                    col=col,
+                    row=row,
+                    projection=projection,
+                    score=score,
+                    ts=window.time_range[0],
+                )
             )
-        )
 
     return detections
 
 
-def predict_pipeline(
-    scene_id: str, scratch_path: str, json_path: str, crop_path: str
-) -> None:
+def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
     """Run the Sentinel-2 vessel prediction pipeline.
 
     Given a Sentinel-2 scene ID, the pipeline produces the vessel detections.
@@ -134,10 +166,8 @@ def predict_pipeline(
     crops of each detection.
 
     Args:
-        scene_id: the Sentinel-2 scene ID.
+        tasks: prediction tasks to execute.
         scratch_path: directory to use to store temporary dataset.
-        json_path: path to write the JSON of vessel detections.
-        crop_path: path to write the vessel crop images.
     """
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
@@ -153,30 +183,20 @@ def predict_pipeline(
     data_source: Sentinel2 = data_source_from_config(
         dataset.layers[SENTINEL2_LAYER_NAME], dataset.path
     )
-    item = data_source.get_item_by_name(scene_id)
-    wgs84_geom = item.geometry.to_projection(WGS84_PROJECTION)
-    projection = get_utm_ups_projection(
-        wgs84_geom.shp.centroid.x,
-        wgs84_geom.shp.centroid.y,
-        SENTINEL2_RESOLUTION,
-        -SENTINEL2_RESOLUTION,
-    )
-    dst_geom = item.geometry.to_projection(projection)
-    bounds = (
-        int(dst_geom.shp.bounds[0]),
-        int(dst_geom.shp.bounds[1]),
-        int(dst_geom.shp.bounds[2]),
-        int(dst_geom.shp.bounds[3]),
-    )
-    ts = item.geometry.time_range[0]
+    items_by_scene: dict[str, Item] = {}
+    tasks_by_scene: dict[str, PredictionTask] = {}
+    for task in tasks:
+        item = data_source.get_item_by_name(task.scene_id)
+        items_by_scene[item.name] = item
+        tasks_by_scene[item.name] = task
 
-    detections = get_vessel_detections(ds_path, projection, bounds, ts, item)
+    detections = get_vessel_detections(ds_path, list(items_by_scene.values()))
 
     # Create windows just to collect crops for each detection.
     group = "crops"
     window_paths: list[UPath] = []
     for detection in detections:
-        window_name = f"{detection.col}_{detection.row}"
+        window_name = f"{detection.scene_id}_{detection.col}_{detection.row}"
         window_path = ds_path / "windows" / group / window_name
         detection.crop_window_dir = window_path
         bounds = (
@@ -185,23 +205,37 @@ def predict_pipeline(
             detection.col + CROP_WINDOW_SIZE // 2,
             detection.row + CROP_WINDOW_SIZE // 2,
         )
-        Window(
+
+        item = items_by_scene[detection.scene_id]
+        window = Window(
             path=window_path,
             group=group,
             name=window_name,
             projection=detection.projection,
             bounds=bounds,
-            time_range=(ts - timedelta(minutes=20), ts + timedelta(minutes=20)),
-        ).save()
+            time_range=item.geometry.time_range,
+        )
+        window.save()
+
+        layer_data = WindowLayerData(SENTINEL2_LAYER_NAME, [[item.serialize()]])
+        window.save_layer_datas(dict(SENTINEL2_LAYER_NAME=layer_data))
+
         window_paths.append(window_path)
+
     if len(detections) > 0:
-        materialize_dataset(ds_path, group=group, workers=4)
+        materialize_dataset(ds_path, group=group)
 
     # Write JSON and crops.
-    json_upath = UPath(json_path)
-    crop_upath = UPath(crop_path)
-    json_data = []
+    json_vessels_by_scene: dict[str, list[dict[str, Any]]] = {}
+    # Populate the dict so all JSONs are written including empty ones (this way their
+    # presence can be used to check for task completion).
+    for scene_id in tasks_by_scene.keys():
+        json_vessels_by_scene[scene_id] = []
+
     for detection, crop_window_path in zip(detections, window_paths):
+        scene_id = detection.scene_id
+        crop_upath = UPath(tasks_by_scene[scene_id].crop_path)
+
         # Get RGB crop.
         image_fname = (
             crop_window_path / "layers" / SENTINEL2_LAYER_NAME / "R_G_B" / "geotiff.tif"
@@ -221,7 +255,10 @@ def predict_pipeline(
         lon = dst_geom.shp.x
         lat = dst_geom.shp.y
 
-        json_data.append(
+        if scene_id not in json_vessels_by_scene:
+            json_vessels_by_scene[scene_id] = []
+
+        json_vessels_by_scene[scene_id].append(
             dict(
                 longitude=lon,
                 latitude=lat,
@@ -232,5 +269,7 @@ def predict_pipeline(
             )
         )
 
-    with json_upath.open("w") as f:
-        json.dump(json_data, f)
+    for scene_id, json_data in json_vessels_by_scene.items():
+        json_upath = UPath(tasks_by_scene[scene_id].json_path)
+        with json_upath.open("w") as f:
+            json.dump(json_data, f)

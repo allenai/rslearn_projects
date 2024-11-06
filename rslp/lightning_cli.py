@@ -13,21 +13,25 @@ from upath import UPath
 import rslp.utils.fs  # noqa: F401 (imported but unused)
 from rslp import launcher_lib
 
-CHECKPOINT_DIR = "gs://{rslp_bucket}/projects/{project_id}/{experiment_id}/checkpoints/"
+CHECKPOINT_DIR = (
+    "{rslp_prefix}/projects/{project_id}/{experiment_id}/{run_id}checkpoints/"
+)
 
 
 class SaveWandbRunIdCallback(Callback):
     """Callback to save the wandb run ID to GCS in case of resume."""
 
-    def __init__(self, project_id: str, experiment_id: str) -> None:
+    def __init__(self, project_id: str, experiment_id: str, run_id: str) -> None:
         """Create a new SaveWandbRunIdCallback.
 
         Args:
             project_id: the project ID.
             experiment_id: the experiment ID.
+            run_id: the run ID (for hyperparameter experiments)
         """
         self.project_id = project_id
         self.experiment_id = experiment_id
+        self.run_id = run_id
 
     @rank_zero_only
     def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
@@ -37,8 +41,10 @@ class SaveWandbRunIdCallback(Callback):
             trainer: the Trainer object.
             pl_module: the LightningModule object.
         """
-        run_id = wandb.run.id
-        launcher_lib.upload_wandb_id(self.project_id, self.experiment_id, run_id)
+        wandb_id = wandb.run.id
+        launcher_lib.upload_wandb_id(
+            self.project_id, self.experiment_id, self.run_id, wandb_id
+        )
 
 
 class CustomLightningCLI(RslearnLightningCLI):
@@ -98,11 +104,14 @@ class CustomLightningCLI(RslearnLightningCLI):
         subcommand = self.config.subcommand
         c = self.config[subcommand]
 
+        run_id = os.environ.get("RSLP_RUN_ID", None)
+        run_id_path = f"{run_id}/" if run_id else ""
         checkpoint_dir = UPath(
             CHECKPOINT_DIR.format(
-                rslp_bucket=os.environ["RSLP_BUCKET"],
+                rslp_prefix=os.environ["RSLP_PREFIX"],
                 project_id=c.rslp_project,
                 experiment_id=c.rslp_experiment,
+                run_id=run_id_path,
             )
         )
 
@@ -168,6 +177,7 @@ class CustomLightningCLI(RslearnLightningCLI):
                             {
                                 "project_id": c.rslp_project,
                                 "experiment_id": c.rslp_experiment,
+                                "run_id": run_id,
                             }
                         ),
                     }
@@ -222,7 +232,9 @@ class CustomLightningCLI(RslearnLightningCLI):
 
             print(f"found checkpoint to resume from at {c.ckpt_path}")
 
-            wandb_id = launcher_lib.download_wandb_id(c.rslp_project, c.rslp_experiment)
+            wandb_id = launcher_lib.download_wandb_id(
+                c.rslp_project, c.rslp_experiment, run_id
+            )
             if wandb_id and subcommand == "fit":
                 print(f"resuming wandb run {wandb_id}")
                 c.trainer.logger.init_args.id = wandb_id
