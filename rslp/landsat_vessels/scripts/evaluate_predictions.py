@@ -1,11 +1,4 @@
-"""Evaluate the model on multiple landsat scenes (covering different failure modes and true positives).
-
-Step 0: Run `job_launcher.py` to launch the evaluation jobs.
-Command: `python rslp/landsat_vessels/job_launcher.py --zip_dir gs://rslearn-eai/projects/2024_10_check_landsat/evaluation/downloads/ --json_dir gs://rslearn-eai/projects/2024_10_check_landsat/evaluation/jsons/`
-This will launch multiple beaker jobs. Each job will evaluate the model on one scene and save the results in the `jsons` directory.
-
-Step 1 (this script): Check the results against the targets (expected results) at scene level.
-"""
+"""Evaluate the scene-level predictions against the expected results."""
 
 import json
 
