@@ -45,13 +45,15 @@ Then create a configuration file for the prediction pipeline, here is an example
     "B8": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B8.TIF",
     },
     "scratch_path": "/home/favyenb/landsat_vessels_test_data/scratch/",
-    "csv_path": "/home/favyenb/landsat_vessels_test_data/out/vessels.csv",
+    "json_path": "/home/favyenb/landsat_vessels_test_data/out/vessels.json",
     "crop_path": "/home/favyenb/landsat_vessels_test_data/out/crops/"
 }
 ```
 
 This specifies the arguments to
 `rslp.landsat_vessels.predict_pipeline.predict_pipeline` via `jsonargparse`.
+
+Here, `scratch_path` is used to save the rslearn dataset, `crop_path` is used to save the cropped images, `json_path` is used to save the JSON output, all of which are optional, depending on whether the user wants to save the intermediate results or not.
 
 Now we can run the pipeline:
 
@@ -62,8 +64,8 @@ Alternatively, run it with a Landsat scene ID (to be fetched from AWS):
     python -m rslp.main landsat_vessels predict --scene_id LC09_L1GT_106084_20241002_20241002_02_T2 /path/to/scratch/ /path/to/vessels.json /path/to/crops/
 
 
-API Usage
----------
+API
+---
 
 First, we need to define the environment variables `LANDSAT_HOST` and `LANDSAT_PORT` to define the host and port of the Landsat service.
 
