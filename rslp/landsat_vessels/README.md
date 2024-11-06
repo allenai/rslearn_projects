@@ -60,3 +60,11 @@ Now we can run the pipeline:
 Alternatively, run it with a Landsat scene ID (to be fetched from AWS):
 
     python -m rslp.main landsat_vessels predict --scene_id LC09_L1GT_106084_20241002_20241002_02_T2 /path/to/scratch/ /path/to/vessels.json /path/to/crops/
+
+
+API Usage
+---------
+
+First, we need to define the environment variables `LANDSAT_HOST` and `LANDSAT_PORT` to define the host and port of the Landsat service.
+
+Then we can run the API server via `python rslp/landsat_vessels/api_main.py`. Sample request can be found in `rslp/landsat_vessels/scripts/sample_request.py`.

@@ -22,7 +22,7 @@ app = FastAPI(
 # Set up the logger
 logger = get_logger(__name__)
 
-# Configurable host and port
+# Configurable host and port, overridable via environment variables
 LANDSAT_HOST = os.getenv("LANDSAT_HOST", "0.0.0.0")
 LANDSAT_PORT = int(os.getenv("LANDSAT_PORT", 5555))
 
