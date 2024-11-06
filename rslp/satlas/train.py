@@ -38,12 +38,11 @@ class MarineInfraTask(DetectionTask):
             return {}, {}
 
         for feat in raw_inputs["targets"]:
-            if self.property_name not in feat["properties"]:
+            if self.property_name not in feat.properties:
                 continue
-            properties = feat["properties"]
-            category = properties[self.property_name]
+            category = feat.properties[self.property_name]
             if category not in CATEGORY_MAPPING:
                 continue
-            properties[self.property_name] = CATEGORY_MAPPING[category]
+            feat.properties[self.property_name] = CATEGORY_MAPPING[category]
 
         return super().process_inputs(raw_inputs, metadata, load_targets)

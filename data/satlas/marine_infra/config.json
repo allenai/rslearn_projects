@@ -19,9 +19,14 @@
       "type": "raster"
     },
     "output": {
+      "format": {
+        "coordinate_mode": "pixel",
+        "name": "geojson"
+      },
       "type": "vector"
     },
-    "sentinel2": {
+    "sentinel2_a": {
+      "alias": "sentinel2",
       "band_sets": [
         {
           "bands": [
@@ -55,20 +60,20 @@
         }
       ],
       "data_source": {
+        "duration": "30d",
         "harmonize": true,
         "index_cache_dir": "cache/sentinel2",
-        "max_time_delta": "1d",
+        "max_time_delta": "0d",
         "modality": "L1C",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
-        "query_config": {
-          "max_matches": 3
-        },
         "sort_by": "cloud_cover",
+        "time_offset": "60d",
         "use_rtree_index": false
       },
       "type": "raster"
     },
-    "sentinel2.1": {
+    "sentinel2_b": {
+      "alias": "sentinel2",
       "band_sets": [
         {
           "bands": [
@@ -101,9 +106,21 @@
           "zoom_offset": -2
         }
       ],
+      "data_source": {
+        "duration": "30d",
+        "harmonize": true,
+        "index_cache_dir": "cache/sentinel2",
+        "max_time_delta": "0d",
+        "modality": "L1C",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "sort_by": "cloud_cover",
+        "time_offset": "30d",
+        "use_rtree_index": false
+      },
       "type": "raster"
     },
-    "sentinel2.2": {
+    "sentinel2_c": {
+      "alias": "sentinel2",
       "band_sets": [
         {
           "bands": [
@@ -136,6 +153,64 @@
           "zoom_offset": -2
         }
       ],
+      "data_source": {
+        "duration": "30d",
+        "harmonize": true,
+        "index_cache_dir": "cache/sentinel2",
+        "max_time_delta": "0d",
+        "modality": "L1C",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "sort_by": "cloud_cover",
+        "time_offset": "0d",
+        "use_rtree_index": false
+      },
+      "type": "raster"
+    },
+    "sentinel2_d": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16"
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B01",
+            "B09",
+            "B10"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -2
+        }
+      ],
+      "data_source": {
+        "duration": "30d",
+        "harmonize": true,
+        "index_cache_dir": "cache/sentinel2",
+        "max_time_delta": "0d",
+        "modality": "L1C",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "sort_by": "cloud_cover",
+        "time_offset": "-30d",
+        "use_rtree_index": false
+      },
       "type": "raster"
     }
   },
