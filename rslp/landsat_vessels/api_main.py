@@ -16,7 +16,7 @@ from rslp.log_utils import get_logger
 app = FastAPI(
     title="Landsat Vessel Detection API",
     description="API for detecting vessels in Landsat images.",
-    version="1.0.0",
+    version="0.0.1",
 )
 
 # Set up the logger
