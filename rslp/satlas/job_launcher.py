@@ -2,12 +2,10 @@
 
 import json
 import multiprocessing
-import os
 import random
 import uuid
 from datetime import datetime
 
-import rslearn.utils.get_utm_ups_crs
 import shapely
 import tqdm
 from beaker import (
@@ -23,13 +21,13 @@ from beaker import (
 from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
+from rslearn.utils.get_utm_ups_crs import get_proj_bounds
 
-from .predict_pipeline import Application, get_output_fname
+from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE, IMAGE_NAME, get_base_env_vars
 
-WORKSPACE = "ai2/earth-systems"
-BUDGET = "ai2/d5"
-IMAGE_NAME = "favyen/rslearn"
-TILE_SIZE = 16384
+from .predict_pipeline import Application, PredictTaskArgs, get_output_fname
+
+TILE_SIZE = 32768
 RESOLUTION = 10
 
 
@@ -60,36 +58,40 @@ class Task:
         self.out_path = out_path
 
 
-def launch_job(task: Task) -> None:
+def launch_job(batch: list[Task]) -> None:
     """Launch job for this task.
 
     Args:
-        task: the Task object for which to create a job.
+        batch: list of Task objects for which to create a job.
     """
-    beaker = Beaker.from_env(default_workspace=WORKSPACE)
+    beaker = Beaker.from_env(default_workspace=DEFAULT_WORKSPACE)
+
+    # Convert tasks to PredictTask.
+    # These just set projection/bounds/time range, so the application and output path
+    # come from the first task.
+    predict_tasks = []
+    for task in batch:
+        predict_tasks.append(
+            PredictTaskArgs(
+                projection_json=task.projection.serialize(),
+                bounds=task.bounds,
+                time_range=task.time_range,
+            )
+        )
 
     with beaker.session():
-        env_vars = [
+        env_vars = get_base_env_vars(use_weka_prefix=False)
+        env_vars.append(
             EnvVar(
-                name="GOOGLE_APPLICATION_CREDENTIALS",  # nosec
-                value="/etc/credentials/gcp_credentials.json",  # nosec
-            ),
-            EnvVar(
-                name="GCLOUD_PROJECT",  # nosec
-                value="skylight-proto-1",  # nosec
-            ),
-            EnvVar(
-                name="RSLP_BUCKET",
-                value=os.environ["RSLP_BUCKET"],
-            ),
-            EnvVar(
-                name="MKL_THREADING_LAYER",
-                value="GNU",
-            ),
-        ]
+                name="RSLEARN_LOGLEVEL",
+                value="DEBUG",
+            )
+        )
 
+        # Name the job based on the first task.
+        task = batch[0]
         experiment_name = (
-            f"satlas_{task.application.value}_{str(task.projection.crs)}_"
+            f"satlas_{task.application.value}_{task.projection.crs.to_epsg()}_"
             + f"{task.bounds[0]}_{task.bounds[1]}"
         )
 
@@ -101,15 +103,13 @@ def launch_job(task: Task) -> None:
             command=["python", "-m", "rslp.main"],
             arguments=[
                 "satlas",
-                "predict",
-                task.application,
-                json.dumps(task.projection.serialize()),
-                json.dumps(task.bounds),
-                json.dumps(
-                    [task.time_range[0].isoformat(), task.time_range[1].isoformat()]
-                ),
+                "predict_multi",
+                task.application.value.upper(),
                 task.out_path,
-                "/tmp/scratch/",
+                f"/data/favyenb/marine_infra/scratch/{experiment_name}/",
+                json.dumps(
+                    [predict_task.serialize() for predict_task in predict_tasks]
+                ),
             ],
             constraints=Constraints(
                 cluster=[
@@ -120,6 +120,7 @@ def launch_job(task: Task) -> None:
                     "ai2/general-cirrascale",
                     "ai2/prior-cirrascale",
                     "ai2/prior-elanding",
+                    "ai2/augusta-google-1",
                 ]
             ),
             preemptible=True,
@@ -128,9 +129,13 @@ def launch_job(task: Task) -> None:
                     source=DataSource(secret="RSLEARN_GCP_CREDENTIALS"),  # nosec
                     mount_path="/etc/credentials/gcp_credentials.json",  # nosec
                 ),
+                DataMount(
+                    source=DataSource(host_path="/data"),  # nosec
+                    mount_path="/data",  # nosec
+                ),
             ],
             env_vars=env_vars,
-            resources=TaskResources(gpu_count=1),
+            resources=TaskResources(gpu_count=1, shared_memory="256GiB"),
         )
         unique_id = str(uuid.uuid4())[0:8]
         beaker.experiment.create(experiment_name + "_" + unique_id, spec)
@@ -158,8 +163,9 @@ def launch_jobs(
     time_range: tuple[datetime, datetime],
     out_path: str,
     epsg_code: int | None = None,
-    wgs84_bounds: PixelBounds | None = None,
+    wgs84_bounds: tuple[float, float, float, float] | None = None,
     count: int | None = None,
+    batch_size: int = 1,
 ) -> None:
     """Launch Beaker jobs for Satlas prediction.
 
@@ -171,40 +177,68 @@ def launch_jobs(
             run in all UTM zones.
         wgs84_bounds: limit tasks to ones that intersect these WGS84 bounds.
         count: only run up to this many tasks.
+        batch_size: how many tasks to run in each Beaker job.
     """
     # Generate tasks.
     if epsg_code:
         utm_zones = [CRS.from_epsg(epsg_code)]
     else:
+        utm_zones = []
         for epsg_code in range(32601, 32661):
             utm_zones.append(CRS.from_epsg(epsg_code))
         for epsg_code in range(32701, 32761):
             utm_zones.append(CRS.from_epsg(epsg_code))
 
     tasks: list[Task] = []
-    for utm_zone in utm_zones:
-        zone_bounds = rslearn.utils.get_utm_ups_crs.get_proj_bounds(utm_zone)
+    for utm_zone in tqdm.tqdm(utm_zones, desc="Enumerating tasks across UTM zones"):
+        # get_proj_bounds returns bounds in CRS units so we need to convert to pixel
+        # units.
+        crs_bbox = STGeometry(
+            Projection(utm_zone, 1, 1),
+            shapely.box(*get_proj_bounds(utm_zone)),
+            None,
+        )
         projection = Projection(utm_zone, RESOLUTION, -RESOLUTION)
-        for col in range(zone_bounds[0], zone_bounds[2], TILE_SIZE):
-            for row in range(zone_bounds[1], zone_bounds[3], TILE_SIZE):
-                if wgs84_bounds is not None:
-                    # Check if the longitude/latitude of this task is in wgs84_bounds.
-                    src_geom = STGeometry(projection, shapely.Point(col, row), None)
-                    wgs84_point = src_geom.to_projection(WGS84_PROJECTION).shp
-                    if wgs84_point.x < wgs84_bounds[0]:
+        pixel_bbox = crs_bbox.to_projection(projection)
+        zone_bounds = tuple(int(value) for value in pixel_bbox.shp.bounds)
+
+        user_bounds_in_proj: PixelBounds | None = None
+        if wgs84_bounds is not None:
+            dst_geom = STGeometry(
+                WGS84_PROJECTION, shapely.box(*wgs84_bounds), None
+            ).to_projection(projection)
+            user_bounds_in_proj = (
+                int(dst_geom.shp.bounds[0]),
+                int(dst_geom.shp.bounds[1]),
+                int(dst_geom.shp.bounds[2]),
+                int(dst_geom.shp.bounds[3]),
+            )
+
+        for col in range(zone_bounds[0] // TILE_SIZE, zone_bounds[2] // TILE_SIZE + 1):
+            for row in range(
+                zone_bounds[1] // TILE_SIZE, zone_bounds[3] // TILE_SIZE + 1
+            ):
+                if user_bounds_in_proj is not None:
+                    # Check if this task intersects the bounds specified by the user.
+                    if (col + 1) * TILE_SIZE < user_bounds_in_proj[0]:
                         continue
-                    if wgs84_point.x >= wgs84_bounds[2]:
+                    if col * TILE_SIZE >= user_bounds_in_proj[2]:
                         continue
-                    if wgs84_point.y < wgs84_bounds[1]:
+                    if (row + 1) * TILE_SIZE < user_bounds_in_proj[1]:
                         continue
-                    if wgs84_point.y >= wgs84_bounds[3]:
+                    if row * TILE_SIZE >= user_bounds_in_proj[3]:
                         continue
 
                 tasks.append(
                     Task(
                         application=application,
                         projection=projection,
-                        bounds=(col, row, col + TILE_SIZE, row + TILE_SIZE),
+                        bounds=(
+                            col * TILE_SIZE,
+                            row * TILE_SIZE,
+                            (col + 1) * TILE_SIZE,
+                            (row + 1) * TILE_SIZE,
+                        ),
                         time_range=time_range,
                         out_path=out_path,
                     )
@@ -233,5 +267,10 @@ def launch_jobs(
     print(
         f"Got {len(tasks)} total tasks, {len(pending_tasks)} pending, running {len(run_tasks)} of them"
     )
-    for task in tqdm.tqdm(run_tasks, desc="Starting Beaker jobs"):
-        launch_job(task)
+
+    batches = []
+    for i in range(0, len(run_tasks), batch_size):
+        batches.append(run_tasks[i : i + batch_size])
+
+    for batch in tqdm.tqdm(batches, desc="Starting Beaker jobs"):
+        launch_job(batch)
