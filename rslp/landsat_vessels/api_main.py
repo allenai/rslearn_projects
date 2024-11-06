@@ -179,10 +179,10 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
         )
         return LandsatResponse(status=[StatusEnum.SUCCESS], predictions=json_data)
     except ValueError as e:
-        logger.error(f"ValueError in prediction pipeline: {e}")
+        logger.error(f"ValueError in prediction pipeline: {e}", exc_info=True)
         return LandsatResponse(status=[StatusEnum.ERROR], predictions=[])
     except Exception as e:
-        logger.error(f"Unexpected error in prediction pipeline: {e}")
+        logger.error(f"Unexpected error in prediction pipeline: {e}", exc_info=True)
         return LandsatResponse(status=[StatusEnum.ERROR], predictions=[])
 
 
