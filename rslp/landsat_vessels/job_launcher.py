@@ -68,7 +68,9 @@ def launch_job(
             ],
             constraints=Constraints(
                 cluster=[
+                    "ai2/prior-elanding",
                     "ai2/jupiter-cirrascale-2",
+                    "ai2/neptune-cirrascale",
                 ]
             ),
             priority=Priority.low,
@@ -144,7 +146,7 @@ if __name__ == "__main__":
     if args.dry_run:
         print(f"Dry run: launching job for {zip_paths[0]}")
         launch_job(
-            zip_paths[0],
+            str(zip_paths[0]),
             args.json_dir,
             args.crop_dir,
             args.scratch_dir,
@@ -153,7 +155,7 @@ if __name__ == "__main__":
     else:
         for scene_zip_path in tqdm.tqdm(zip_paths, desc="Launching beaker jobs"):
             launch_job(
-                scene_zip_path,
+                str(scene_zip_path),
                 args.json_dir,
                 args.crop_dir,
                 args.scratch_dir,
