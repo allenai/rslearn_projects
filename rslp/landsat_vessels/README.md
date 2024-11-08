@@ -98,4 +98,3 @@ API
 First, we need to define the environment variables `LANDSAT_HOST` and `LANDSAT_PORT` to define the host and port of the Landsat service.
 
 Then we can run the API server via `python rslp/landsat_vessels/api_main.py`. Sample request can be found in `rslp/landsat_vessels/scripts/sample_request.py`.
-
