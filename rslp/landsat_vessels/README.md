@@ -53,6 +53,8 @@ Then create a configuration file for the prediction pipeline, here is an example
 This specifies the arguments to
 `rslp.landsat_vessels.predict_pipeline.predict_pipeline` via `jsonargparse`.
 
+Here, `scratch_path` is used to save the rslearn dataset, `crop_path` is used to save the cropped images, `json_path` is used to save the JSON output, all of which are optional, depending on whether the user wants to save the intermediate results or not.
+
 Now we can run the pipeline:
 
     python -m rslp.main landsat_vessels predict --config /path/to/config.json
@@ -86,3 +88,14 @@ This will launch multiple beaker jobs. Each job will evaluate the model on one s
 `python rslp/landsat_vessels/scripts/evaluate_predictions.py`
 
 This will output the details of each scene (e.g. scene id, description, location, expected number of detections, actual number of detections), as well as the total number of passes and fails, and the success rate.
+=======
+    python -m rslp.main landsat_vessels predict --scene_id LC09_L1GT_106084_20241002_20241002_02_T2 /path/to/scratch/ /path/to/vessels.json /path/to/crops/
+
+
+API
+---
+
+First, we need to define the environment variables `LANDSAT_HOST` and `LANDSAT_PORT` to define the host and port of the Landsat service.
+
+Then we can run the API server via `python rslp/landsat_vessels/api_main.py`. Sample request can be found in `rslp/landsat_vessels/scripts/sample_request.py`.
+
