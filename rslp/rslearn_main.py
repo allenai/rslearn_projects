@@ -1,7 +1,8 @@
 """Entrypoint when using rslp directly."""
 
 import logging
-import multiprocessing
+
+from rslp.utils.mp import init_mp
 
 logging.basicConfig()
 
@@ -24,23 +25,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
-    multiprocessing.set_forkserver_preload(
-        [
-            "pickle",
-            "fiona",
-            "gcsfs",
-            "jsonargparse",
-            "numpy",
-            "PIL",
-            "torch",
-            "torch.multiprocessing",
-            "torchvision",
-            "upath",
-            "wandb",
-            "rslearn.main",
-            "rslearn.train.dataset",
-            "rslearn.train.data_module",
-        ]
-    )
+    init_mp()
     main()

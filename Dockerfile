@@ -21,5 +21,5 @@ RUN pip install --no-cache-dir --upgrade -r /opt/rslearn_projects/requirements.t
 # Copy rslearn_projects.
 # For now we don't install it and instead just use PYTHONPATH.
 ENV PYTHONPATH="${PYTHONPATH}:."
-COPY /. /opt/rslearn_projects/
+COPY . /opt/rslearn_projects/
 WORKDIR /opt/rslearn_projects
