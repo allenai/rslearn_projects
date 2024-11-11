@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any
 
 from rslearn.const import WGS84_PROJECTION
+from rslearn.data_sources.copernicus import load_sentinel2_tile_index
 from rslearn.dataset import Window
 from rslearn.utils.geometry import PixelBounds, Projection
 from upath import UPath
@@ -19,6 +20,10 @@ DATASET_CONFIG_FNAME = "data/satlas/{application}/config.json"
 MODEL_CONFIG_FNAME = "data/satlas/{application}/config.yaml"
 SENTINEL2_LAYER = "sentinel2"
 PATCH_SIZE = 2048
+
+# Add padding to the time range specified by the user for prediction since some
+# applications use images from up to this many days outside of that time range.
+RTREE_TIME_PAD_DAYS = 30
 
 # Layers not to use when seeing which patches are valid.
 VALIDITY_EXCLUDE_LAYERS = ["mask", "output", "label"]
@@ -97,7 +102,7 @@ def predict_pipeline(
     projection = Projection.deserialize(json.loads(projection_json))
     out_fname = get_output_fname(application, out_path, projection, bounds)
     if out_fname.exists():
-        print(f"output file {out_fname} already exists")
+        logger.info(f"output file {out_fname} already exists")
         return
 
     # Initialize an rslearn dataset.
@@ -105,6 +110,27 @@ def predict_pipeline(
     ds_path.mkdir(parents=True)
     with open(dataset_config_fname) as f:
         ds_cfg = json.load(f)
+
+    # Set the time range to use for the rtree.
+    # And also make sure the rtree will be cached based on the out_path.
+    index_cache_dir = ds_path / "index_cache_dir"
+    index_cache_dir.mkdir()
+    image_layer_names = []
+    for layer_name, layer_cfg in ds_cfg["layers"].items():
+        if "data_source" not in layer_cfg:
+            continue
+        layer_source_cfg = layer_cfg["data_source"]
+        if not layer_source_cfg["name"].endswith("gcp_public_data.Sentinel2"):
+            continue
+        layer_source_cfg["index_cache_dir"] = str(index_cache_dir)
+        # layer_source_cfg["rtree_cache_dir"] = str(UPath(out_path) / "index")
+        # layer_source_cfg["use_rtree_index"] = True
+        # layer_source_cfg["rtree_time_range"] = [
+        #    (time_range[0] - timedelta(days=RTREE_TIME_PAD_DAYS)).isoformat(),
+        #    (time_range[1] + timedelta(days=RTREE_TIME_PAD_DAYS)).isoformat(),
+        # ]
+        image_layer_names.append(layer_name)
+
     with (ds_path / "config.json").open("w") as f:
         json.dump(ds_cfg, f)
 
@@ -167,43 +193,32 @@ def predict_pipeline(
             window.save()
             tile_to_window[(tile_col, tile_row)] = window
 
-    # Create the cache that will be needed to run "prepare" step in parallel.
-    """dataset = Dataset(ds_path)
-    needed_cell_years = set()
-    wgs84_geometry = window.get_geometry().to_projection(WGS84_PROJECTION)
-    for cell_id in rslearn.utils.mgrs.for_each_cell(wgs84_geometry.shp.bounds):
-        for year in range(
-            wgs84_geometry.time_range[0].year,
-            wgs84_geometry.time_range[1].year + 1,
-        ):
-            needed_cell_years.add((cell_id, year))
-    cache_jobs = []
-    for cell_id, year in needed_cell_years:
-        cache_jobs.append(dict(
-            cell=cell_id,
-            year=year,
-            dataset=dataset,
-        ))
-    p = multiprocessing.Pool(32)
-    outputs = star_imap_unordered(p, cache_cell, cache_jobs)
-    for _ in tqdm.tqdm(outputs, total=len(cache_jobs), desc="Caching Sentinel-2 metadata"):
-        pass
-    p.close()"""
+    # Before preparing, cache the Sentinel-2 tile index.
+    # This way it is only downloaded once here instead of many times during prepare.
+    # We could set use_initial_prepare_job=True in materialize_dataset call, but then
+    # it could take a minute or more longer than needed.
+    load_sentinel2_tile_index(index_cache_dir)
 
     # Populate the windows.
-    print("materialize dataset")
-    materialize_dataset(ds_path, group=group)
+    logger.info("materialize dataset")
+    materialize_dataset(ds_path, group=group, prepare_workers=128)
 
-    # Run the model.
-    run_model_predict(model_config_fname, ds_path)
+    # Run the model, only if at least one window has some data.
+    completed_fnames = ds_path.glob(
+        f"windows/{group}/*/layers/{image_layer_names[0]}/completed"
+    )
+    if len(list(completed_fnames)) == 0:
+        logger.info("skipping prediction since no windows seem to have data")
+    else:
+        run_model_predict(model_config_fname, ds_path)
 
     if APP_IS_RASTER[application]:
-        raise NotImplementedError
         """src_fname = window_path / "layers" / "output" / "output" / "geotiff.tif"
 
         with src_fname.open("rb") as src:
             with out_fname.open("wb") as dst:
                 shutil.copyfileobj(src, dst)"""
+        raise NotImplementedError
 
     else:
         # Merge the features across the windows.

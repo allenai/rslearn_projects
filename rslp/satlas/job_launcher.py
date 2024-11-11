@@ -106,7 +106,7 @@ def launch_job(batch: list[Task]) -> None:
                 "predict_multi",
                 task.application.value.upper(),
                 task.out_path,
-                f"/data/favyenb/marine_infra/scratch/{experiment_name}/",
+                "/tmp/scratch/",
                 json.dumps(
                     [predict_task.serialize() for predict_task in predict_tasks]
                 ),
@@ -128,10 +128,6 @@ def launch_job(batch: list[Task]) -> None:
                 DataMount(
                     source=DataSource(secret="RSLEARN_GCP_CREDENTIALS"),  # nosec
                     mount_path="/etc/credentials/gcp_credentials.json",  # nosec
-                ),
-                DataMount(
-                    source=DataSource(host_path="/data"),  # nosec
-                    mount_path="/data",  # nosec
                 ),
             ],
             env_vars=env_vars,
