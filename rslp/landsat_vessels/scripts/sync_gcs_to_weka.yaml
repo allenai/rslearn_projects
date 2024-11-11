@@ -1,0 +1,25 @@
+# The service account is a json file, need to write it to a beaker secret
+# cat service_account.json | beaker secret write --workspace ai2/earth-systems gcp-secret
+version: v2
+description: Sync contents of GCS bucket "2024_10_check_landsat" to WEKA bucket "dfive-default"
+tasks:
+  - name: sync_gcs_to_weka
+    image:
+      beaker: ai2/cuda11.8-ubuntu20.04
+    # sync landsat zip files and model checkpoints
+    command: [/bin/bash, -c, 'gcloud auth activate-service-account rslearn-gha@skylight-proto-1.iam.gserviceaccount.com --key-file=/root/service-account.json && gcloud storage rsync gs://rslearn-eai/projects/2024_10_check_landsat/downloads dfive-default/rslearn-eai/projects/2024_10_check_landsat/downloads --recursive && gcloud storage rsync gs://rslearn-eai/projects/landsat_vessels dfive-default/rslearn-eai/projects/landsat_vessels --recursive && gcloud storage rsync gs://rslearn-eai/projects/rslearn-landsat-recheck dfive-default/rslearn-eai/projects/rslearn-landsat-recheck --recursive']
+    datasets:
+      - mountPath: /dfive-default
+        source:
+          weka: dfive-default
+      - mountPath: /root/service-account.json
+        source:
+          secret: gcp-secret
+    result:
+      path: ""
+    context:
+      priority: high
+      preemptible: true
+    constraints:
+      cluster:
+        - ai2/jupiter-cirrascale-2

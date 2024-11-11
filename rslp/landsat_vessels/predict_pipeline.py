@@ -1,6 +1,8 @@
 """Landsat vessel prediction pipeline."""
 
 import json
+import os
+import shutil
 import tempfile
 import time
 from datetime import datetime, timedelta
@@ -19,16 +21,18 @@ from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from typing_extensions import TypedDict
 from upath import UPath
 
+from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
 
 LANDSAT_LAYER_NAME = "landsat"
+LANDSAT_BANDS = ["B2", "B3", "B4", "B5", "B6", "B7", "B8"]
 LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
 AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
 CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase123_config.yaml"
 LANDSAT_RESOLUTION = 15
-
 CLASSIFY_WINDOW_SIZE = 64
+INFRA_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
 
 class VesselDetection:
@@ -211,12 +215,31 @@ def run_classifier(
     return good_detections
 
 
+def download_and_unzip_scene(
+    remote_zip_path: str, local_zip_path: str, extract_to: str
+) -> None:
+    """Download a zip file to the local path and unzip it to the extraction path.
+
+    Args:
+        remote_zip_path: the path to the zip file.
+        local_zip_path: the path to the local directory to download the zip file to.
+        extract_to: the path to the extraction directory.
+    """
+    remote_zip_upath = UPath(remote_zip_path)
+    with remote_zip_upath.open("rb") as f:
+        with open(local_zip_path, "wb") as f_out:
+            shutil.copyfileobj(f, f_out)
+    shutil.unpack_archive(local_zip_path, extract_to)
+    print(f"Unzipped {local_zip_path} to {extract_to}")
+
+
 def predict_pipeline(
-    crop_path: str | None = None,
-    scratch_path: str | None = None,
-    json_path: str | None = None,
-    image_files: dict[str, str] | None = None,
     scene_id: str | None = None,
+    scene_zip_path: str | None = None,
+    image_files: dict[str, str] | None = None,
+    json_path: str | None = None,
+    scratch_path: str | None = None,
+    crop_path: str | None = None,
 ) -> list[FormattedPrediction]:
     """Run the Landsat vessel prediction pipeline.
 
@@ -225,13 +248,14 @@ def predict_pipeline(
     along with crops of each detection.
 
     Args:
-        scratch_path: directory to use to store temporary dataset.
         json_path: path to write vessel detections as JSON file.
+        scratch_path: directory to use to store temporary dataset.
         crop_path: path to write the vessel crop images.
-        image_files: map from band name like "B8" to the path of the image. The path
-            will be converted to UPath so it can include protocol like gs://...
         scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
             specified.
+        scene_zip_path: path to the zip file containing the Landsat scene.
+        image_files: map from band name like "B8" to the path of the image. The path
+            will be converted to UPath so it can include protocol like gs://...
     """
     start_time = time.time()  # Start the timer
     time_profile = {}
@@ -245,6 +269,22 @@ def predict_pipeline(
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
     item = None
+
+    if scene_id is None and scene_zip_path is None and image_files is None:
+        raise ValueError(
+            "One of scene_id, scene_zip_path, or image_files must be specified."
+        )
+
+    local_path = None
+    if scene_zip_path:
+        # if scene_zip_path is provided (either from GCS or WEKA), we will download to local and unzip
+        local_path = os.getcwd()
+        scene_id = scene_zip_path.split("/")[-1].split(".")[0]
+        local_scene_zip_path = os.path.join(local_path, scene_id + ".zip")
+        download_and_unzip_scene(scene_zip_path, local_scene_zip_path, local_path)
+        image_files = {}
+        for band in LANDSAT_BANDS:
+            image_files[band] = f"{local_path}/{scene_id}/{scene_id}_{band}.TIF"
 
     if image_files:
         # Setup the dataset configuration file with the provided image files.
@@ -337,7 +377,24 @@ def predict_pipeline(
         crop_upath.mkdir(parents=True, exist_ok=True)
 
     json_data = []
+    near_infra_filter = NearInfraFilter(
+        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
+    )
+    infra_detections = 0
     for idx, detection in enumerate(detections):
+        # Get longitude/latitude.
+        src_geom = STGeometry(
+            detection.projection, shapely.Point(detection.col, detection.row), None
+        )
+        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
+        lon = dst_geom.shp.x
+        lat = dst_geom.shp.y
+
+        # Apply near infra filter (True -> filter out, False -> keep)
+        if near_infra_filter.should_filter(lat, lon):
+            infra_detections += 1
+            continue
+
         # Load crops from the window directory.
         images = {}
         if detection.crop_window_dir is None:
@@ -384,23 +441,18 @@ def predict_pipeline(
             rgb_fname = ""
             b8_fname = ""
 
-        # Get longitude/latitude.
-        src_geom = STGeometry(
-            detection.projection, shapely.Point(detection.col, detection.row), None
-        )
-        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
-        lon = dst_geom.shp.x
-        lat = dst_geom.shp.y
-
         json_data.append(
             FormattedPrediction(
                 longitude=lon,
                 latitude=lat,
                 score=detection.score,
-                rgb_fname=rgb_fname,
-                b8_fname=b8_fname,
+                rgb_fname=str(rgb_fname),  # UPath is not JSON serializable
+                b8_fname=str(b8_fname),
             ),
         )
+    print(
+        f"filtered out {infra_detections} detections related to marine infrastructure"
+    )
 
     time_profile["write_json_and_crops"] = time.time() - step_start_time
 
@@ -415,6 +467,11 @@ def predict_pipeline(
         json_upath = UPath(json_path)
         with json_upath.open("w") as f:
             json.dump(json_data, f)
+
+    # delete all temporary local files
+    if local_path is not None:
+        os.remove(local_scene_zip_path)
+        shutil.rmtree(f"{local_path}/{scene_id}")
 
     print(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")
     for step, duration in time_profile.items():
