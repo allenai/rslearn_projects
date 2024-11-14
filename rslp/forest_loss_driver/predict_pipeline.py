@@ -1,5 +1,6 @@
 """Forest loss driver prediction pipeline."""
 
+import os
 from pathlib import Path
 
 from rslp.forest_loss_driver.inference.best_image_selector import (
@@ -45,9 +46,6 @@ class ForestLossDriverPredictionPipeline:
         / "config"
         / "forest_loss_driver_predict_pipeline_config.yaml"
     )
-    # Should we split this out as per step validation?
-    REQUIRED_ENV_VARS = ["INFERENCE_DATASET_CONFIG"]
-    OPTIONAL_ENV_VARS = ["INDEX_CACHE_DIR", "TILE_STORE_ROOT_DIR", "PL_API_KEY"]
 
     def __init__(self) -> None:
         """Initialize the pipeline.
@@ -57,20 +55,36 @@ class ForestLossDriverPredictionPipeline:
         self.pred_config = PredictPipelineConfig.from_yaml(
             self.PREDICT_PIPELINE_CONFIG_PATH
         )
-        self._validate_required_env_vars()
 
-    def _validate_required_env_vars(self) -> None:
+    def _validate_required_env_vars(
+        self, required_env_vars: list[str], optional_env_vars: list[str]
+    ) -> None:
         """Validate the required environment variables."""
-        # missing_vars = [var for var in self.REQUIRED_ENV_VARS if var not in os.environ]
-        # if missing_vars:
-        #     missing_vars_str = ", ".join(missing_vars)
-        #     raise EnvironmentError(
-        #         f"The following required environment variables are missing: {missing_vars_str}"
-        #     )
+        missing_vars = [var for var in required_env_vars if var not in os.environ]
+        if missing_vars:
+            missing_vars_str = ", ".join(missing_vars)
+            raise OSError(
+                f"The following required environment variables are missing: {missing_vars_str}"
+            )
+        missing_optional_vars = [
+            var for var in optional_env_vars if var not in os.environ
+        ]
+        if missing_optional_vars:
+            missing_optional_vars_str = ", ".join(missing_optional_vars)
+            logger.warning(
+                f"The following optional environment variables are missing: {missing_optional_vars_str}"
+            )
         # check that we have PL_API_KEY if we are looking for planet images
 
     def extract_dataset(self) -> None:
         """Extract the dataset."""
+        REQUIRED_ENV_VARS: list[str] = []
+        OPTIONAL_ENV_VARS: list[str] = [
+            "INDEX_CACHE_DIR",
+            "TILE_STORE_ROOT_DIR",
+            "PL_API_KEY",
+        ]
+        self._validate_required_env_vars(REQUIRED_ENV_VARS, OPTIONAL_ENV_VARS)
         for filename in self.pred_config.gcs_tiff_filenames:
             extract_alerts_pipeline(self.pred_config, filename)
 
@@ -88,9 +102,14 @@ class ForestLossDriverPredictionPipeline:
 
     def run_model_predict(self) -> None:
         """Run the model predict."""
+        REQUIRED_ENV_VARS: list[str] = ["RSLP_PREFIX"]
+        OPTIONAL_ENV_VARS: list[str] = []
+        self._validate_required_env_vars(REQUIRED_ENV_VARS, OPTIONAL_ENV_VARS)
         # TODO: Add some validation that the extract dataset step is done by checking the dataset bucket
         forest_loss_driver_model_predict(
-            self.pred_config.model_cfg_fname, self.pred_config.path
+            self.pred_config.model_cfg_fname,
+            self.pred_config.path,
+            self.pred_config.model_data_load_workers,
         )
 
 

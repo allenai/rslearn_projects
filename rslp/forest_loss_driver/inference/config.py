@@ -26,6 +26,7 @@ class PredictPipelineConfig:
 
     # Optional fields with defaults
     workers: int = 1
+    model_data_load_workers: int = 4
     days: int = 365
     min_confidence: int = 2
     min_area: float = 16.0
