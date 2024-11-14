@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import multiprocessing
 import os
 from enum import Enum
 
@@ -12,6 +11,7 @@ from pydantic import BaseModel
 
 from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_pipeline
 from rslp.log_utils import get_logger
+from rslp.utils.mp import init_mp
 
 app = FastAPI(
     title="Landsat Vessel Detection API",
@@ -124,13 +124,7 @@ async def rslp_init() -> None:
     Sets up the multiprocessing start method and preloads necessary modules.
     """
     logger.info("Initializing Landsat Vessel Detection Service")
-    multiprocessing.set_start_method("forkserver", force=True)
-    multiprocessing.set_forkserver_preload(
-        [
-            "rslp.utils.rslearn.materialize_dataset",
-            "rslp.utils.rslearn.run_model_predict",
-        ]
-    )
+    init_mp()
 
 
 @app.get("/", summary="Home", description="Service status check endpoint.")
