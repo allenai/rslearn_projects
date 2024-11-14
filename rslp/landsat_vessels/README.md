@@ -88,8 +88,6 @@ This will launch multiple beaker jobs. Each job will evaluate the model on one s
 `python rslp/landsat_vessels/scripts/evaluate_predictions.py`
 
 This will output the details of each scene (e.g. scene id, description, location, expected number of detections, actual number of detections), as well as the total number of passes and fails, and the success rate.
-=======
-    python -m rslp.main landsat_vessels predict --scene_id LC09_L1GT_106084_20241002_20241002_02_T2 /path/to/scratch/ /path/to/vessels.json /path/to/crops/
 
 
 API
