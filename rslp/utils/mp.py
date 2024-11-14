@@ -5,7 +5,7 @@ import multiprocessing
 
 def init_mp() -> None:
     """Set start method to preload and configure forkserver preload."""
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("forkserver", force=True)
     multiprocessing.set_forkserver_preload(
         [
             "pickle",
