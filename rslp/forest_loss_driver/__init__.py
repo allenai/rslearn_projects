@@ -1,7 +1,8 @@
 """Forest loss driver classification project."""
 
-from .predict_pipeline import predict_pipeline_main
+from .predict_pipeline import extract_dataset_main, run_model_predict_main
 
 workflows = {
-    "predict": predict_pipeline_main,
+    "extract_dataset": extract_dataset_main,
+    "run_model_predict": run_model_predict_main,
 }

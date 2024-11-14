@@ -6,6 +6,7 @@ import math
 import multiprocessing
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import fiona
 import numpy as np
@@ -48,12 +49,9 @@ PIXEL_SIZE = WEB_MERCATOR_M / (2**13) / 512
 WEB_MERCATOR_PROJECTION = Projection(WEB_MERCATOR_CRS, PIXEL_SIZE, -PIXEL_SIZE)
 
 ANNOTATION_WEBSITE_MERCATOR_OFFSET = 512 * (2**12)
-# INFERENCE_DATASET_CONFIG = os.environ.get(
-#     "INFERENCE_DATASET_CONFIG",
-#     # str(
-#     #     Path(__file__).resolve().parents[3] / "data" / "forest_loss_driver" / "config.json"
-#     # ),
-# )
+INFERENCE_DATASET_CONFIG = str(
+    Path(__file__).resolve().parents[3] / "data" / "forest_loss_driver" / "config.json"
+)
 
 
 class ForestLossEvent:
@@ -361,13 +359,13 @@ def create_forest_loss_mask(
 def save_inference_dataset_config(ds_path: UPath) -> None:
     """Save the inference dataset config."""
     # TODO SLoppy needs a better way to handle this
-    INFERENCE_DATASET_CONFIG = os.environ["INFERENCE_DATASET_CONFIG"]
-    index_cache_dir = os.environ.get("INDEX_CACHE_DIR")
-    tile_store_root_dir = os.environ.get("TILE_STORE_ROOT_DIR")
-    if index_cache_dir is None or tile_store_root_dir is None:
-        raise ValueError(
-            "INDEX_CACHE_DIR and TILE_STORE_ROOT_DIR must be set as environment variables"
-        )
+    # ARE these needed if so they should be set based on environment and checked outside pipeline
+    # index_cache_dir = os.environ.get("INDEX_CACHE_DIR")
+    # tile_store_root_dir = os.environ.get("TILE_STORE_ROOT_DIR")
+    # if index_cache_dir is None or tile_store_root_dir is None:
+    #     raise ValueError(
+    #         "INDEX_CACHE_DIR and TILE_STORE_ROOT_DIR must be set as environment variables"
+    #     )
     with open(INFERENCE_DATASET_CONFIG) as config_file:
         config_json = json.loads(os.path.expandvars(config_file.read()))
     # config_json["data_source"]["index_cache_dir"] = index_cache_dir
@@ -430,4 +428,5 @@ def extract_alerts_pipeline(
     for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
         pass
     p.close()
+    # rslearn dataset expects a config.json file in the dataset root
     save_inference_dataset_config(config.path)

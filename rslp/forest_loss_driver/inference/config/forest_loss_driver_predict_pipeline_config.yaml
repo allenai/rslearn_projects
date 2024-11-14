@@ -7,5 +7,13 @@ gcs_tiff_filenames:
 # Optional fields (can be omitted), if omitted will use defaults in config.py
 workers: 4
 min_confidence: 3
+max_number_of_events: 1
 date_prefix: "test_data/forest_loss_driver/alert_dates"
 conf_prefix: "test_data/forest_loss_driver/alert_tiffs"
+disabled_layers:
+  - "planet_post_0"
+  - "planet_post_1"
+  - "planet_post_2"
+  - "planet_pre_0"
+  - "planet_pre_1"
+  - "planet_pre_2"
