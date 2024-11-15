@@ -1,6 +1,5 @@
 # Brainstorming Document for Coding/Development Best Practices
-Please add! I added some random things to start. This should
-
+Please add! I added some random things to start.
 - use jsonargparse for all the configuration
 - always log when you write a file
 - static typing
