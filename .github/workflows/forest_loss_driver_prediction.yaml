@@ -100,7 +100,7 @@ jobs:
             --zone "us-west1-b" \
             --machine-type "e2-micro" \
             --docker-image ${{ steps.image-names.outputs.ghcr_image_name }} \
-            --command "python rslp/forest_loss_driver/inference/predict_pipeline.py" \
+            --command "python -m rslp.main forest_loss_driver extract_dataset" \
             --user "henryh" \
             --ghcr-user "allenai" \
             --delete no
