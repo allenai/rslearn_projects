@@ -2,6 +2,9 @@ name: Forest-Loss-Driver-Prediction
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - henryh/favyen/forest-loss-20240917
 
 env:
   REGISTRY: ghcr.io
