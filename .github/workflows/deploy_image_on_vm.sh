@@ -9,9 +9,9 @@ usage() {
     echo "  --machine-type    VM machine type (default: e2-micro)"
     echo "  --docker-image    Docker image to run"
     echo "  --command         Command to run in container"
-    echo "  --user           User (default: henryh)"
-    echo "  --ghcr-user      GitHub Container Registry user (default: allenai)"
-    echo "  --delete         Delete VM after completion (yes/no)"
+    echo "  --user            User (default: henryh)"
+    echo "  --ghcr-user       GitHub Container Registry user (default: allenai)"
+    echo "  --delete          Delete VM after completion (yes/no)"
     exit 1
 }
 
@@ -29,36 +29,36 @@ DELETE_VM="no"
 while [ $# -gt 0 ]; do
     case "$1" in
         --project-id)
-            PROJECT_ID="$2"
-            shift 2
+            shift
+            PROJECT_ID="$1"
             ;;
         --zone)
-            ZONE="$2"
-            shift 2
+            shift
+            ZONE="$1"
             ;;
         --machine-type)
-            MACHINE_TYPE="$2"
-            shift 2
+            shift
+            MACHINE_TYPE="$1"
             ;;
         --docker-image)
-            DOCKER_IMAGE="$2"
-            shift 2
+            shift
+            DOCKER_IMAGE="$1"
             ;;
         --command)
-            COMMAND="$2"
-            shift 2
+            shift
+            COMMAND="$1"
             ;;
         --user)
-            USER="$2"
-            shift 2
+            shift
+            USER="$1"
             ;;
         --ghcr-user)
-            GHCR_USER="$2"
-            shift 2
+            shift
+            GHCR_USER="$1"
             ;;
         --delete)
-            DELETE_VM="$2"
-            shift 2
+            shift
+            DELETE_VM="$1"
             ;;
         -h|--help)
             usage
@@ -68,6 +68,7 @@ while [ $# -gt 0 ]; do
             usage
             ;;
     esac
+    shift
 done
 
 # Validate required arguments
@@ -118,7 +119,7 @@ create_vm() {
         export GHCR_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-token) && \
         export GHCR_USER=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-user) && \
         export DOCKER_IMAGE=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/docker-image) && \
-        export COMMAND=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/command) && \
+        export COMMAND=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/command | base64 --decode) && \
         echo $GHCR_TOKEN | sudo docker login ghcr.io -u $GHCR_USER --password-stdin && \
         sudo docker pull $DOCKER_IMAGE && \
         echo "Docker image pulled" && \
@@ -127,10 +128,23 @@ create_vm() {
         ') \
         --image-family="$image_family" \
         --image-project="$image_project" \
-        --boot-disk-size=100GB \
+        --boot-disk-size=200GB \
 
     echo "Done!"
 }
+
+# Echo all the variables being passed in
+echo "VM_NAME: $VM_NAME"
+echo "PROJECT_ID: $PROJECT_ID"
+echo "ZONE: $ZONE"
+echo "MACHINE_TYPE: $MACHINE_TYPE"
+echo "IMAGE_FAMILY: $IMAGE_FAMILY"
+echo "IMAGE_PROJECT: $IMAGE_PROJECT"
+echo "GHCR_PAT: $GHCR_PAT"
+echo "GHCR_USER: $GHCR_USER"
+echo "USER: $USER"
+echo "DOCKER_IMAGE: $DOCKER_IMAGE"
+echo "COMMAND: $COMMAND"
 
 # Create the VM
 create_vm "$VM_NAME" "$PROJECT_ID" "$ZONE" "$MACHINE_TYPE" "$IMAGE_FAMILY" "$IMAGE_PROJECT" "$GHCR_PAT" "$GHCR_USER" "$USER" "$DOCKER_IMAGE" "$COMMAND"

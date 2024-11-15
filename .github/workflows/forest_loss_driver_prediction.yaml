@@ -102,7 +102,7 @@ jobs:
 
       - name: Run Extract Dataset Job on a VM # We need all of these to become secrets
         run: |
-          export GHCR_PAT=${{ secrets.GHCR_PAT_PULL_DOCKER_IMAGE }}
+          export GHCR_PAT=${{ secrets.GHCR_PAT_PULL_DOCKER_IMAGE }} && \
           bash .github/workflows/deploy_image_on_vm.sh  \
             --project-id "skylight-proto-1" \
             --zone "us-west1-b" \
