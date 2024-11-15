@@ -1,4 +1,4 @@
-name: Forest Loss Driver Prediction
+name: Forest-Loss-Driver-Prediction
 
 on:
   workflow_dispatch:
