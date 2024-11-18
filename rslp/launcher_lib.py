@@ -8,7 +8,9 @@ import zipfile
 from itertools import product
 from typing import Any
 
+import beaker
 import yaml
+from beaker import DataMount, DataSource, EnvVar, ImageSource
 from upath import UPath
 
 CODE_BLOB_PATH = "projects/{project_id}/{experiment_id}/code.zip"
@@ -21,6 +23,62 @@ CODE_EXCLUDES = [
     "lightning_logs",
     "wandb",
 ]
+
+
+def get_base_env_vars(use_weka_prefix: bool = False) -> list[EnvVar]:
+    """Get basic environment variables that should be common across all Beaker jobs.
+
+    Args:
+        use_weka_prefix: set RSLP_PREFIX to RSLP_WEKA_PREFIX which should be set up to
+            point to Weka. Otherwise it is set to RSLP_PREFIX which could be GCS or
+            Weka.
+    """
+    env_vars = [
+        EnvVar(
+            name="WANDB_API_KEY",  # nosec
+            secret="RSLEARN_WANDB_API_KEY",  # nosec
+        ),
+        EnvVar(
+            name="GOOGLE_APPLICATION_CREDENTIALS",  # nosec
+            value="/etc/credentials/gcp_credentials.json",  # nosec
+        ),
+        EnvVar(
+            name="GCLOUD_PROJECT",  # nosec
+            value="prior-satlas",  # nosec
+        ),
+        EnvVar(
+            name="WEKA_ACCESS_KEY_ID",  # nosec
+            secret="RSLEARN_WEKA_KEY",  # nosec
+        ),
+        EnvVar(
+            name="WEKA_SECRET_ACCESS_KEY",  # nosec
+            secret="RSLEARN_WEKA_SECRET",  # nosec
+        ),
+        EnvVar(
+            name="WEKA_ENDPOINT_URL",  # nosec
+            value="https://weka-aus.beaker.org:9000",  # nosec
+        ),
+        EnvVar(
+            name="MKL_THREADING_LAYER",
+            value="GNU",
+        ),
+    ]
+
+    if use_weka_prefix:
+        env_vars.append(
+            EnvVar(
+                name="RSLP_PREFIX",
+                value=os.environ["RSLP_WEKA_PREFIX"],
+            )
+        )
+    else:
+        env_vars.append(
+            EnvVar(
+                name="RSLP_PREFIX",
+                value=os.environ["RSLP_PREFIX"],
+            )
+        )
+    return env_vars
 
 
 def get_project_and_experiment(config_path: str) -> tuple[str, str]:
@@ -123,6 +181,21 @@ def download_code(project_id: str, experiment_id: str) -> None:
         print("extracting archive")
         shutil.unpack_archive(zip_fname, ".", "zip")
         print("extraction complete", flush=True)
+
+
+def upload_image(image_name: str, workspace: str) -> None:
+    """Upload an image to Beaker."""
+    image = beaker.image.create(image_name, image_name, workspace=workspace)
+    image_source = ImageSource(beaker=image.full_name)
+    return image_source
+
+
+def create_gcp_credentials_mount() -> DataMount:
+    """Create a mount for the GCP credentials."""
+    return DataMount(
+        source=DataSource(secret="RSLEARN_GCP_CREDENTIALS"),  # nosec
+        mount_path="/etc/credentials/gcp_credentials.json",  # nosec
+    )
 
 
 def upload_wandb_id(

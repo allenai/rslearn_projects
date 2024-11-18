@@ -1,5 +1,14 @@
 #!/bin/bash
+cleanup() {
+    if [ -n "$VM_NAME" ]; then
+        echo -e "\nCleaning up VM $VM_NAME..."
+        gcloud compute instances delete "$VM_NAME" --zone="$ZONE" --quiet || true
+    fi
+    exit 1
+}
 
+# Set up trap for SIGINT (CTRL+C)
+trap cleanup SIGINT
 # Parse command line arguments
 usage() {
     echo "Usage: $0 [options]"

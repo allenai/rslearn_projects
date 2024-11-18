@@ -112,3 +112,6 @@ jobs:
             --user "app" \
             --ghcr-user "allenai" \
             --delete no
+
+# FOR clean up i will just run this vm with an instance schedule for like a day or something and have it log how long everything took somewhere
+# I want to just launch predict as a single beaker job and have it run on a gpu

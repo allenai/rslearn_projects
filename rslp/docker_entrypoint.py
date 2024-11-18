@@ -22,6 +22,8 @@ def main() -> None:
     rslp.rslearn_main.main()
 
 
+# Here we need a seperate entrypoint if we don't want to download the code from GCS and instead just want to run a docker image
+
 if __name__ == "__main__":
     multiprocessing.set_start_method("forkserver")
     main()
