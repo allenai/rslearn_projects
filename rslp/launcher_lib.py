@@ -8,9 +8,9 @@ import zipfile
 from itertools import product
 from typing import Any
 
-import beaker
 import yaml
 from beaker import DataMount, DataSource, EnvVar, ImageSource
+from beaker.client import Beaker
 from upath import UPath
 
 CODE_BLOB_PATH = "projects/{project_id}/{experiment_id}/code.zip"
@@ -183,9 +183,9 @@ def download_code(project_id: str, experiment_id: str) -> None:
         print("extraction complete", flush=True)
 
 
-def upload_image(image_name: str, workspace: str) -> None:
+def upload_image(image_name: str, workspace: str, beaker_client: Beaker) -> ImageSource:
     """Upload an image to Beaker."""
-    image = beaker.image.create(image_name, image_name, workspace=workspace)
+    image = beaker_client.image.create(image_name, image_name, workspace=workspace)
     image_source = ImageSource(beaker=image.full_name)
     return image_source
 
