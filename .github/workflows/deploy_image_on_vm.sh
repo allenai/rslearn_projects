@@ -150,6 +150,7 @@ create_vm() {
         export BEAKER_ADDR=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-addr) && \
         curl -s 'https://beaker.org/api/v3/release/cli?os=linux&arch=amd64' | sudo tar -zxv -C /usr/local/bin ./beaker && \
         "
+        # Need to run the docker commands with env vars passed through
         ') \
         --image-family="$image_family" \
         --image-project="$image_project" \
