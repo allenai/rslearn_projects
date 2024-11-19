@@ -103,11 +103,13 @@ jobs:
       - name: Run Extract Dataset Job on a VM # We need all of these to become secrets
         run: |
           export GHCR_PAT=${{ secrets.GHCR_PAT_PULL_DOCKER_IMAGE }} && \
+          export BEAKER_TOKEN=${{ secrets.BEAKER_TOKEN }} && \
+          export BEAKER_ADDR=${{ secrets.BEAKER_ADDR }} && \
           bash .github/workflows/deploy_image_on_vm.sh  \
             --project-id "skylight-proto-1" \
             --zone "us-west1-b" \
             --machine-type "e2-micro" \
-            --docker-image ${{ steps.image-names.outputs.ghcr_image_name }} \
+            --docker-image ${{ steps.image-names.outputs.ghcr_image_name }} \ # This is not  being used currently
             --command "python -m rslp.main forest_loss_driver extract_dataset" \
             --user "app" \
             --ghcr-user "allenai" \

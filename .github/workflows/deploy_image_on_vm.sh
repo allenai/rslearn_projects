@@ -21,6 +21,8 @@ usage() {
     echo "  --user            User (default: henryh)"
     echo "  --ghcr-user       GitHub Container Registry user (default: allenai)"
     echo "  --delete          Delete VM after completion (yes/no)"
+    echo "  --beaker-token    Beaker token"
+    echo "  --beaker-addr     Beaker address"
     exit 1
 }
 
@@ -69,6 +71,14 @@ while [ $# -gt 0 ]; do
             shift
             DELETE_VM="$1"
             ;;
+        --beaker-token)
+            shift
+            BEAKER_TOKEN="$1"
+            ;;
+        --beaker-addr)
+            shift
+            BEAKER_ADDR="$1"
+            ;;
         -h|--help)
             usage
             ;;
@@ -112,13 +122,15 @@ create_vm() {
     local user="$9"
     local docker_image="${10}"
     local command="${11}"
+    local beaker_token="${12}"
+    local beaker_addr="${13}"
 
     echo "Creating VM $vm_name in project $project_id..."
     gcloud compute instances create "$vm_name" \
         --project="$project_id" \
         --zone="$zone" \
         --machine-type="$machine_type" \
-        --metadata=ghcr-token="$ghcr_pat",ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command" \
+        --metadata=ghcr-token="$ghcr_pat",ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr" \
         --metadata-from-file=startup-script=<(echo '#! /bin/bash
         sudo apt-get update
         sudo apt-get install -y docker.io
@@ -128,12 +140,16 @@ create_vm() {
         export GHCR_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-token) && \
         export GHCR_USER=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-user) && \
         export DOCKER_IMAGE=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/docker-image) && \
-        export COMMAND=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/command | base64 --decode) && \
+        export COMMAND=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/command) && \
         echo $GHCR_TOKEN | sudo docker login ghcr.io -u $GHCR_USER --password-stdin && \
         sudo docker pull $DOCKER_IMAGE && \
         echo "Docker image pulled" && \
-        sudo docker run -d $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
-        echo "Docker container Pulled and Running"
+        sudo docker run $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
+        echo "Data Extraction Complete" && \
+        export BEAKER_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-token) && \
+        export BEAKER_ADDR=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-addr) && \
+        curl -s 'https://beaker.org/api/v3/release/cli?os=linux&arch=amd64' | sudo tar -zxv -C /usr/local/bin ./beaker && \
+        "
         ') \
         --image-family="$image_family" \
         --image-project="$image_project" \
