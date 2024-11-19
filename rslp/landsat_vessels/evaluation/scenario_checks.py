@@ -10,8 +10,6 @@ TARGET_CSV_PATH = (
     "gs://rslearn-eai/projects/2024_10_check_landsat/evaluation/csv/landsat_targets.csv"
 )
 
-DETECTION_SCORE_THRESHOLD = 0.70  # this is the threshold for object detection
-
 
 if __name__ == "__main__":
     # Load the target CSV file
@@ -26,10 +24,8 @@ if __name__ == "__main__":
         json_path = UPath(RESULT_JSON_DIR) / f"{scene_id}.json"
         with json_path.open() as f:
             data = json.load(f)
-        # Count the number of detections above the threshold
-        count_detections = len(
-            [item for item in data if item["score"] >= DETECTION_SCORE_THRESHOLD]
-        )
+        # Count the number of detections
+        count_detections = len(data)
         # Check if the number of detections is within the expected range
         if low <= count_detections <= high:
             count_pass += 1

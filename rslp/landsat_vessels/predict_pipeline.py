@@ -21,18 +21,19 @@ from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from typing_extensions import TypedDict
 from upath import UPath
 
+from rslp.landsat_vessels.config import (
+    AWS_DATASET_CONFIG,
+    CLASSIFY_MODEL_CONFIG,
+    CLASSIFY_WINDOW_SIZE,
+    DETECT_MODEL_CONFIG,
+    INFRA_DISTANCE_THRESHOLD,
+    LANDSAT_BANDS,
+    LANDSAT_LAYER_NAME,
+    LANDSAT_RESOLUTION,
+    LOCAL_FILES_DATASET_CONFIG,
+)
 from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
-
-LANDSAT_LAYER_NAME = "landsat"
-LANDSAT_BANDS = ["B2", "B3", "B4", "B5", "B6", "B7", "B8"]
-LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
-AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
-DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
-CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase123_config.yaml"
-LANDSAT_RESOLUTION = 15
-CLASSIFY_WINDOW_SIZE = 64
-INFRA_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
 
 class VesselDetection:

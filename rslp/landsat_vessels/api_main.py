@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from enum import Enum
 
 import uvicorn
@@ -13,10 +15,27 @@ from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_p
 from rslp.log_utils import get_logger
 from rslp.utils.mp import init_mp
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Lifespan event handler for the Landsat Vessel Detection Service.
+
+    Sets up the multiprocessing start method and preloads necessary modules.
+
+    Args:
+        app: FastAPI app instance.
+    """
+    logger.info("Initializing Landsat Vessel Detection Service")
+    init_mp()
+    yield
+    logger.info("Landsat Vessel Detection Service shutdown.")
+
+
 app = FastAPI(
     title="Landsat Vessel Detection API",
     description="API for detecting vessels in Landsat images.",
     version="0.0.1",
+    lifespan=lifespan,
 )
 
 # Set up the logger
@@ -115,16 +134,6 @@ class LandsatRequest(BaseModel):
                 },
             ]
         }
-
-
-@app.on_event("startup")
-async def rslp_init() -> None:
-    """Landsat Vessel Service Initialization.
-
-    Sets up the multiprocessing start method and preloads necessary modules.
-    """
-    logger.info("Initializing Landsat Vessel Detection Service")
-    init_mp()
 
 
 @app.get("/", summary="Home", description="Service status check endpoint.")

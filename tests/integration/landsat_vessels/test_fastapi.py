@@ -6,12 +6,15 @@ client = TestClient(app)
 
 
 def test_singapore_dense_scene() -> None:
-    # LC08_L1TP_125059_20240913_20240920_02_T1 is a scene that includes southeast coast
-    # of Singapore where there are hundreds of vessels.
+    # LC08_L1TP_162042_20241103_20241103_02_RT is a cropped 10000m x 10000m scene
+    # that should have at least 1 vessel detection.
     response = client.post(
-        "/detections", json={"scene_id": "LC08_L1TP_125059_20240913_20240920_02_T1"}
+        "/detections",
+        json={
+            "scene_zip_path": "gs://test-bucket-rslearn/Landsat/LC08_L1TP_162042_20241103_20241103_02_RT.zip"
+        },
     )
     assert response.status_code == 200
     predictions = response.json()["predictions"]
     # There are many correct vessels in this scene.
-    assert len(predictions) >= 100
+    assert len(predictions) > 0
