@@ -1,6 +1,7 @@
 """Customized LightningCLI for rslearn_projects."""
 
 import hashlib
+import json
 import os
 import shutil
 import tempfile
@@ -70,17 +71,25 @@ def get_cached_checkpoint(checkpoint_fname: UPath) -> str:
 class SaveWandbRunIdCallback(Callback):
     """Callback to save the wandb run ID to GCS in case of resume."""
 
-    def __init__(self, project_id: str, experiment_id: str, run_id: str | None) -> None:
+    def __init__(
+        self,
+        project_id: str,
+        experiment_id: str,
+        run_id: str | None,
+        config_str: str | None,
+    ) -> None:
         """Create a new SaveWandbRunIdCallback.
 
         Args:
             project_id: the project ID.
             experiment_id: the experiment ID.
             run_id: the run ID (for hyperparameter experiments)
+            config_str: the JSON-encoded configuration of this experiment
         """
         self.project_id = project_id
         self.experiment_id = experiment_id
         self.run_id = run_id
+        self.config_str = config_str
 
     @rank_zero_only
     def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
@@ -94,6 +103,9 @@ class SaveWandbRunIdCallback(Callback):
         launcher_lib.upload_wandb_id(
             self.project_id, self.experiment_id, self.run_id, wandb_id
         )
+
+        if self.config_str is not None:
+            wandb.config.update(json.loads(self.config_str))
 
 
 class CustomLightningCLI(RslearnLightningCLI):
@@ -121,6 +133,12 @@ class CustomLightningCLI(RslearnLightningCLI):
             type=str,
             help="A unique name for this experiment.",
             required=True,
+        )
+        parser.add_argument(
+            "--rslp_description",
+            type=str,
+            help="Description of the experiment",
+            default="",
         )
         parser.add_argument(
             "--autoresume",
@@ -175,6 +193,8 @@ class CustomLightningCLI(RslearnLightningCLI):
                 )
             c.trainer.logger.init_args.project = c.rslp_project
             c.trainer.logger.init_args.name = c.rslp_experiment
+            if c.rslp_description:
+                c.trainer.logger.init_args.notes = c.rslp_description
 
             # Configure DDP strategy with find_unused_parameters=True
             c.trainer.strategy = jsonargparse.Namespace(
@@ -219,6 +239,9 @@ class CustomLightningCLI(RslearnLightningCLI):
             checkpoint_callback.init_args.dirpath = str(checkpoint_dir)
 
             if not upload_wandb_callback:
+                config_str = json.dumps(
+                    c.as_dict(), default=lambda _: "<not serializable>"
+                )
                 upload_wandb_callback = jsonargparse.Namespace(
                     {
                         "class_path": "SaveWandbRunIdCallback",
@@ -227,6 +250,7 @@ class CustomLightningCLI(RslearnLightningCLI):
                                 "project_id": c.rslp_project,
                                 "experiment_id": c.rslp_experiment,
                                 "run_id": run_id,
+                                "config_str": config_str,
                             }
                         ),
                     }
