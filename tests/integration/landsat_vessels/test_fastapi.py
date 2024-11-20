@@ -5,7 +5,7 @@ from rslp.landsat_vessels.api_main import app
 client = TestClient(app)
 
 
-def test_singapore_dense_scene() -> None:
+def test_cropped_scene() -> None:
     # LC08_L1TP_162042_20241103_20241103_02_RT is a cropped 10000m x 10000m scene
     # that should have at least 1 vessel detection.
     response = client.post(
