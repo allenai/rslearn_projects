@@ -5,7 +5,8 @@ The Landsat Vessel Detection API provides a way to apply the Landsat scenes for 
 
 ## Overview
 - **Model Name**: Landsat Vessel Detection
-- **Model Version**: v0.0.1
+- **Model Version**: `v0.0.1`
+- **Tag**: `landsat_vessels_v0.0.1`
 - **Last Updated**: `2024-11-19`
 
 
@@ -28,7 +29,7 @@ AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
 - `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` are required when fetching the landsat scenes from AWS S3 bucket.
 
 
-## Running the API server Locally
+## Running the API server Locally (TODO: import env from .env file)
 
    ```python
    python rslp/landsat_vessels/api_main.py
@@ -49,7 +50,7 @@ Prebuilt Docker images are available on both GHCR and GCR. Use the following ste
 2. Run the container.
 
     ```bash
-    docker run --rm -p ${LANDSAT_PORT}:${LANDSAT_PORT} \
+    docker run \
     --env-file .env \
     ghcr.io/allenai/landsat-vessel-detection:v0.0.1
     ```

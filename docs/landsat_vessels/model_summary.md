@@ -2,7 +2,8 @@
 
 ## Overview
 - **Model Name**: Landsat Vessel Detection
-- **Model Version**: v0.0.1
+- **Model Version**: `v0.0.1`
+- **Tag**: `landsat_vessels_v0.0.1`
 - **Last Updated**: `2024-11-19`
 
 ---

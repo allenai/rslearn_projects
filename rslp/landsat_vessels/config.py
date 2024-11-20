@@ -1,14 +1,22 @@
 """This module contains the configuration for the Landsat Vessel Detection pipeline."""
 
+import json
+
 # Landsat configuration
 LANDSAT_LAYER_NAME = "landsat"
-LANDSAT_BANDS = ["B2", "B3", "B4", "B5", "B6", "B7", "B8"]
 LANDSAT_RESOLUTION = 15
 
 # Detector configuration
 LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
 AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
+
+# Extract Landsat bands from local config file
+with open(LOCAL_FILES_DATASET_CONFIG) as f:
+    json_data = json.load(f)
+LANDSAT_BANDS = [
+    band["bands"][0] for band in json_data["layers"][LANDSAT_LAYER_NAME]["band_sets"]
+]
 
 # Classifier configuration
 CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase123_config.yaml"

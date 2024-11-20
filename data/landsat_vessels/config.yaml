@@ -63,7 +63,7 @@ data:
               remap_values: [[0, 1], [0, 255]]
               image_bands: [2, 1, 0]
               exclude_by_center: true
-              score_threshold: 0.7  # Still need this threshold for now
+              score_threshold: 0.7
               enable_map_metric: true
               enable_f1_metric: true
               f1_metric_thresholds: [[0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95], [0.1], [0.2], [0.3], [0.4], [0.5], [0.6], [0.7], [0.8], [0.9]]
