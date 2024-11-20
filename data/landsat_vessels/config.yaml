@@ -111,6 +111,7 @@ data:
           init_args:
             mean: 0
             std: 255
+      groups: ["default"]
       load_all_patches: true
       skip_targets: true
       patch_size: 512
