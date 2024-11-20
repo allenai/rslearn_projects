@@ -1,6 +1,7 @@
 """Landsat vessel prediction pipeline."""
 
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -34,6 +35,14 @@ from rslp.landsat_vessels.config import (
 )
 from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("landsat_pipeline.log"), logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
 
 
 class VesselDetection:
@@ -364,11 +373,13 @@ def predict_pipeline(
         time_range=time_range,
         item=item,
     )
+    logger.info(f"Number of detections after detector: {len(detections)}")
     time_profile["get_vessel_detections"] = time.time() - step_start_time
 
     step_start_time = time.time()
     print("run classifier")
     detections = run_classifier(ds_path, detections, time_range=time_range, item=item)
+    logger.info(f"Number of detections after classifier: {len(detections)}")
     time_profile["run_classifier"] = time.time() - step_start_time
 
     # Write JSON and crops.
@@ -390,12 +401,10 @@ def predict_pipeline(
         dst_geom = src_geom.to_projection(WGS84_PROJECTION)
         lon = dst_geom.shp.x
         lat = dst_geom.shp.y
-
         # Apply near infra filter (True -> filter out, False -> keep)
         if near_infra_filter.should_filter(lat, lon):
             infra_detections += 1
             continue
-
         # Load crops from the window directory.
         images = {}
         if detection.crop_window_dir is None:
@@ -447,17 +456,13 @@ def predict_pipeline(
                 longitude=lon,
                 latitude=lat,
                 score=detection.score,
-                rgb_fname=str(rgb_fname),  # UPath is not JSON serializable
+                rgb_fname=str(rgb_fname),
                 b8_fname=str(b8_fname),
             ),
         )
-    print(
-        f"filtered out {infra_detections} detections related to marine infrastructure"
-    )
-
+    logger.info(f"Number of detections after infra filter: {len(json_data)}")
     time_profile["write_json_and_crops"] = time.time() - step_start_time
-
-    elapsed_time = time.time() - start_time  # Calculate elapsed time
+    elapsed_time = time.time() - start_time
     time_profile["total"] = elapsed_time
 
     # Clean up any temporary directories.
@@ -474,7 +479,7 @@ def predict_pipeline(
         os.remove(local_scene_zip_path)
         shutil.rmtree(f"{local_path}/{scene_id}")
 
-    print(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")
+    logger.info(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")
     for step, duration in time_profile.items():
         print(f"{step} took {duration:.2f} seconds")
 
