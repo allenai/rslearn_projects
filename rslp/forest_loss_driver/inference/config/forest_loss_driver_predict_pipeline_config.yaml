@@ -9,8 +9,8 @@ workers: 4
 model_data_load_workers: 4
 min_confidence: 3
 max_number_of_events: 1
-date_prefix: "test_data/forest_loss_driver/alert_dates"
-conf_prefix: "test_data/forest_loss_driver/alert_tiffs"
+date_prefix: "gs://test-bucket-rslearn/forest_loss_driver/test_data/forest_loss_driver/alert_dates"
+conf_prefix: "gs://test-bucket-rslearn/forest_loss_driver/test_data/forest_loss_driver/alert_tiffs"
 disabled_layers:
   - "planet_post_0"
   - "planet_post_1"
