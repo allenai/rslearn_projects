@@ -22,6 +22,7 @@ AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
 - `RSLP_PREFIX`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` are required when fetching landsat scenes from GCS bucket.
 - `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` are required when fetching the landsat scenes from AWS S3 bucket.
 
+
 ## Running the API server Locally
 
    ```python
@@ -112,3 +113,10 @@ Once the API server is running, you can send requests to the `/detections` endpo
 For a complete example of how to send a request, refer to the `sample_request.py` script in `rslp/landsat_vessels/scripts/`.
 
 The API will respond with the vessel detection results in JSON format.
+
+
+## Auto Documentation
+
+This API has enabled Swagger UI and ReDoc.
+
+You can access the Swagger UI at `http://<your_address>:<port_number>/docs` and ReDoc at `http://<your_address>:<port_number>/redoc` for a detailed documentation of the API. If you are running this API on VM, you will need to open the port to the public.

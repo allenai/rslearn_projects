@@ -36,6 +36,8 @@ app = FastAPI(
     description="API for detecting vessels in Landsat images.",
     version="0.0.1",
     lifespan=lifespan,
+    docs_url="/docs",  # URL for Swagger UI
+    redoc_url="/redoc",  # URL for ReDoc
 )
 
 # Set up the logger
