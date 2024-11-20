@@ -50,7 +50,7 @@ Prebuilt Docker images are available on both GHCR and GCR. Use the following ste
 2. Run the container.
 
     ```bash
-    docker run \
+    docker run --rm -p ${LANDSAT_PORT}:${LANDSAT_PORT} \
     --env-file .env \
     ghcr.io/allenai/landsat-vessel-detection:v0.0.1
     ```
