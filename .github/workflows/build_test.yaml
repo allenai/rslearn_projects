@@ -78,7 +78,7 @@ jobs:
     # TODO: Make sure skylight can grab the image tag and deploy
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: GPU-Enabled-Runner
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -121,6 +121,7 @@ jobs:
             -v ${{env.GOOGLE_GHA_CREDS_PATH}}:/tmp/gcp-credentials.json:ro \
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
             -e RSLP_BUCKET=rslearn-eai \
+            -e RSLP_PREFIX=gs://rslearn-eai \
             test pytest tests/ --ignore tests/integration_slow/
 
       - name: Clean up
