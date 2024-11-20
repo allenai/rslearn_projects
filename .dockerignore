@@ -1,7 +1,7 @@
 **/.git
 **/__pycache__
+**/.mypy_cache
 .env
-.mypy_cache
 lightning_logs
 wandb
 **/test_data

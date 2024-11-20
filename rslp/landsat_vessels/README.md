@@ -45,7 +45,7 @@ Then create a configuration file for the prediction pipeline, here is an example
     "B8": "/home/favyenb/landsat_vessels_test_data/LC08_L1TP_125059_20240727_20240801_02_T1_B8.TIF",
     },
     "scratch_path": "/home/favyenb/landsat_vessels_test_data/scratch/",
-    "csv_path": "/home/favyenb/landsat_vessels_test_data/out/vessels.csv",
+    "json_path": "/home/favyenb/landsat_vessels_test_data/out/vessels.json",
     "crop_path": "/home/favyenb/landsat_vessels_test_data/out/crops/"
 }
 ```
@@ -53,10 +53,48 @@ Then create a configuration file for the prediction pipeline, here is an example
 This specifies the arguments to
 `rslp.landsat_vessels.predict_pipeline.predict_pipeline` via `jsonargparse`.
 
+Here, `scratch_path` is used to save the rslearn dataset, `crop_path` is used to save the cropped images, `json_path` is used to save the JSON output, all of which are optional, depending on whether the user wants to save the intermediate results or not.
+
 Now we can run the pipeline:
 
     python -m rslp.main landsat_vessels predict --config /path/to/config.json
 
-Alternatively, run it with a Landsat scene ID (to be fetched from AWS):
+Other alternatives:
 
+- Run it with a path to the zipped Landsat scene files (downloaded locally or on GCS):
+
+    `python -m rslp.main landsat_vessels predict --scene_zip_path /path/to/scene.zip --scratch_path /path/to/scratch/ --json_path /path/to/vessels.json --crop_path /path/to/crops/`
+
+- Run it with a Landsat scene ID (to be fetched from AWS):
+
+    `python -m rslp.main landsat_vessels predict --scene_id LC09_L1GT_106084_20241002_20241002_02_T2 --scratch_path /path/to/scratch/ --json_path /path/to/vessels.json --crop_path /path/to/crops/`
+
+
+Evaluation
+----------
+
+To evaluate the model before integration, we prepared multiple scenes that cover different regions, failure modes (whitcaps, clouds, ice, islands, etc.), and true positives to check if the model is working correctlly. We can keep adding more evaluation scenes for a better coverage of different failure modes.
+
+The evaluation process is as follows:
+
+1. Launch the prediction jobs for the evaluation scenes:
+
+`python rslp/landsat_vessels/job_launcher.py --zip_dir gs://rslearn-eai/projects/2024_10_check_landsat/evaluation/downloads/ --json_dir gs://rslearn-eai/projects/2024_10_check_landsat/evaluation/jsons/`
+
+This will launch multiple beaker jobs. Each job will evaluate the model on one scene and save the results in the `jsons` directory.
+
+2. Check the results against the targets (expected results) at scene level.
+
+`python rslp/landsat_vessels/scripts/evaluate_predictions.py`
+
+This will output the details of each scene (e.g. scene id, description, location, expected number of detections, actual number of detections), as well as the total number of passes and fails, and the success rate.
+=======
     python -m rslp.main landsat_vessels predict --scene_id LC09_L1GT_106084_20241002_20241002_02_T2 /path/to/scratch/ /path/to/vessels.json /path/to/crops/
+
+
+API
+---
+
+First, we need to define the environment variables `LANDSAT_HOST` and `LANDSAT_PORT` to define the host and port of the Landsat service.
+
+Then we can run the API server via `python rslp/landsat_vessels/api_main.py`. Sample request can be found in `rslp/landsat_vessels/scripts/sample_request.py`.

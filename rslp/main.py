@@ -2,15 +2,19 @@
 
 import argparse
 import importlib
+
 import multiprocessing
+
 import sys
 
 import dotenv
 import jsonargparse
 
+
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
+from rslp.utils.mp import init_mp
 
 
 def main() -> None:
@@ -29,5 +33,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    init_mp()
     main()

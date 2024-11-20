@@ -1,5 +1,5 @@
 FROM pytorch/pytorch:2.5.0-cuda11.8-cudnn9-runtime@sha256:d15e9803095e462e351f097fb1f5e7cdaa4f5e855d7ff6d6f36ec4c2aa2938ea
-# rslearn requires a newer version of torch than rslearn projects
+
 RUN apt update
 RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git
 
@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir --upgrade -r /opt/rslearn_projects/requirements.t
 # Copy rslearn_projects.
 # For now we don't install it and instead just use PYTHONPATH.
 ENV PYTHONPATH="${PYTHONPATH}:."
+
 COPY /. /opt/rslearn_projects/
 # install rslp package
 RUN pip install --no-cache-dir /opt/rslearn_projects

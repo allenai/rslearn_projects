@@ -21,6 +21,7 @@ from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from typing_extensions import TypedDict
 from upath import UPath
 
+from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
 
 LANDSAT_LAYER_NAME = "landsat"
@@ -31,6 +32,7 @@ DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
 CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase123_config.yaml"
 LANDSAT_RESOLUTION = 15
 CLASSIFY_WINDOW_SIZE = 64
+INFRA_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
 
 class VesselDetection:
@@ -375,7 +377,24 @@ def predict_pipeline(
         crop_upath.mkdir(parents=True, exist_ok=True)
 
     json_data = []
+    near_infra_filter = NearInfraFilter(
+        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
+    )
+    infra_detections = 0
     for idx, detection in enumerate(detections):
+        # Get longitude/latitude.
+        src_geom = STGeometry(
+            detection.projection, shapely.Point(detection.col, detection.row), None
+        )
+        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
+        lon = dst_geom.shp.x
+        lat = dst_geom.shp.y
+
+        # Apply near infra filter (True -> filter out, False -> keep)
+        if near_infra_filter.should_filter(lat, lon):
+            infra_detections += 1
+            continue
+
         # Load crops from the window directory.
         images = {}
         if detection.crop_window_dir is None:
@@ -422,14 +441,6 @@ def predict_pipeline(
             rgb_fname = ""
             b8_fname = ""
 
-        # Get longitude/latitude.
-        src_geom = STGeometry(
-            detection.projection, shapely.Point(detection.col, detection.row), None
-        )
-        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
-        lon = dst_geom.shp.x
-        lat = dst_geom.shp.y
-
         json_data.append(
             FormattedPrediction(
                 longitude=lon,
@@ -439,6 +450,9 @@ def predict_pipeline(
                 b8_fname=str(b8_fname),
             ),
         )
+    print(
+        f"filtered out {infra_detections} detections related to marine infrastructure"
+    )
 
     time_profile["write_json_and_crops"] = time.time() - step_start_time
 
