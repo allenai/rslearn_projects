@@ -4,4 +4,5 @@
 .env
 lightning_logs
 wandb
-**/test_data
+**/test_data/**
+!**/test_data/**/*cropped*.tif
