@@ -6,9 +6,8 @@ import multiprocessing
 import numpy as np
 import tqdm
 from PIL import Image
-from upath import UPath
-
 from rslp.log_utils import get_logger
+from upath import UPath
 
 logger = get_logger(__name__)
 
