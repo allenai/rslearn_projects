@@ -5,11 +5,13 @@ from pathlib import Path
 
 from rslp.log_utils import get_logger
 
-from .inference.best_image_selector import select_best_images_pipeline
-from .inference.config import PredictPipelineConfig
-from .inference.extract_alerts import extract_alerts_pipeline
-from .inference.materialize_dataset import materialize_forest_loss_driver_dataset
-from .inference.model_predict import forest_loss_driver_model_predict
+from .inference import (
+    PredictPipelineConfig,
+    extract_alerts_pipeline,
+    forest_loss_driver_model_predict,
+    materialize_forest_loss_driver_dataset,
+    select_best_images_pipeline,
+)
 
 logger = get_logger(__name__)
 
