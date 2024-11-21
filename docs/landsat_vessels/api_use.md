@@ -7,12 +7,12 @@ The Landsat Vessel Detection API provides a way to apply the Landsat scenes for 
 - **Model Name**: Landsat Vessel Detection
 - **Model Version**: `v0.0.1`
 - **Tag**: `landsat_vessels_v0.0.1`
-- **Last Updated**: `2024-11-19`
+- **Last Updated**: `2024-11-21`
 
 
 ## Setting Up the Environment
 
-First, create an `.env` file in the directory that you are running the API from, including the following environment variables:
+First, create an `.env` file in the directory that you are running the API or Docker container from, including the following environment variables:
 
 ```bash
 # Required
@@ -20,7 +20,7 @@ LANDSAT_HOST=<host_address>
 LANDSAT_PORT=<port_number>
 RSLP_PREFIX=<rslp_prefix>
 GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_key>
-# Optional
+# Optional (only if you are fetching Landsat scenes from AWS S3 bucket)
 AWS_ACCESS_KEY_ID=<aws_access_key_id>
 AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
 ```
@@ -37,6 +37,8 @@ AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
    python rslp/landsat_vessels/api_main.py
    ```
 
+This will start the API server on the specified host and port, and will load the environment variables from the `.env` file.
+
 ## Using Docker Images for API Deployment
 
 Prebuilt Docker images are available on both GHCR and GCR. Use the following steps to pull and run the image:
@@ -52,12 +54,13 @@ Prebuilt Docker images are available on both GHCR and GCR. Use the following ste
 2. Run the container. Note that you need to replace the `<port_number>` and `<path_to_service_account_key>` with the actual `LANDSAT_PORT` and path to your local service account key file, and keep the other arguments unchanged.
 
     ```bash
-    docker run --gpus all \
-    -e LANDSAT_PORT=<port_number> \
-    --rm -p ${LANDSAT_PORT}:${LANDSAT_PORT} \
-    -e GOOGLE_APPLICATION_CREDENTIALS=/path/in/container/key.json \
-    -v <path_to_service_account_key>:/path/in/container/key.json \
+    docker run \
+    --rm -p <port_number>:<port_number> \
+    -e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/key.json \
+    -v <path_to_service_account_key>:/app/credentials/key.json \
     --env-file .env \
+    --shm-size=15g \
+    --gpus all \
     ghcr.io/allenai/landsat-vessel-detection:v0.0.1
     ```
 
@@ -69,13 +72,16 @@ Prebuilt Docker images are available on both GHCR and GCR. Use the following ste
     docker pull gcr.io/skylight-proto-1/landsat-vessel-detection:v0.0.1
     ```
 
-2. Run the container.
+2. Run the container. Note that you need to replace the `<port_number>` and `<path_to_service_account_key>` with the actual `LANDSAT_PORT` and path to your local service account key file, and keep the other arguments unchanged.
 
     ```bash
-    docker run --gpus all \
-    -e GOOGLE_APPLICATION_CREDENTIALS=/path/in/container/key.json \
-    -v /path/to/your/local/key.json:/path/in/container/key.json \
+    docker run \
+    --rm -p <port_number>:<port_number> \
+    -e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/key.json \
+    -v <path_to_service_account_key>:/app/credentials/key.json \
     --env-file .env \
+    --shm-size=15g \
+    --gpus all \
     gcr.io/skylight-proto-1/landsat-vessel-detection:v0.0.1
     ```
 
@@ -126,7 +132,7 @@ Once the API server is running, you can send requests to the `/detections` endpo
 
 You can send requests using `curl` or `requests` library.
 
-Example:
+Example with `curl`:
 
 ```bash
 curl -X POST http://${LANDSAT_HOST}:${LANDSAT_PORT}/detections -H "Content-Type: application/json" -d '{"scene_zip_path": "gs://test-bucket-rslearn/Landsat/LC08_L1TP_162042_20241103_20241103_02_RT.zip"}'
@@ -134,9 +140,15 @@ curl -X POST http://${LANDSAT_HOST}:${LANDSAT_PORT}/detections -H "Content-Type:
 
 The API will respond with the vessel detection results in JSON format.
 
+Note that the above example uses a test zip file, which is a cropped Landsat scene, not a full scene. To run the API on a full scene, you can use the command below:
+
+```bash
+curl -X POST http://${LANDSAT_HOST}:${LANDSAT_PORT}/detections -H "Content-Type: application/json" -d '{"scene_id": "LC09_L1GT_106084_20241002_20241002_02_T2"}'
+```
+
 
 ## Auto Documentation
 
 This API has enabled Swagger UI and ReDoc.
 
-You can access the Swagger UI at `http://<your_address>:<port_number>/docs` and ReDoc at `http://<your_address>:<port_number>/redoc` for a detailed documentation of the API. If you are running this API on VM, you will need to open the port to the public.
+You can access the Swagger UI at `http://<your_address>:<port_number>/docs` and ReDoc at `http://<your_address>:<port_number>/redoc` for a detailed documentation of the API. If you are running this API on VM, the `<your_address>` should be the public IP address of the VM, and you also need to open the `<port_number>` to the public.
