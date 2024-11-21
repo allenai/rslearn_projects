@@ -17,7 +17,7 @@ from rslp.log_utils import get_logger
 from rslp.utils.mp import init_mp
 
 # Load environment variables from the .env file
-load_dotenv()
+load_dotenv(override=True)
 # Configurable host and port, overridable via environment variables
 LANDSAT_HOST = os.getenv("LANDSAT_HOST", "0.0.0.0")
 LANDSAT_PORT = int(os.getenv("LANDSAT_PORT", 5555))
