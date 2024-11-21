@@ -16,17 +16,20 @@ First, create an `.env` file in the directory that you are running the API or Do
 
 ```bash
 # Required
-LANDSAT_HOST=<host_address>
-LANDSAT_PORT=<port_number>
 RSLP_PREFIX=<rslp_prefix>
 GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_key>
+
+# Optional (with default values)
+LANDSAT_HOST=<host_address>
+LANDSAT_PORT=<port_number>
+
 # Optional (only if you are fetching Landsat scenes from AWS S3 bucket)
 AWS_ACCESS_KEY_ID=<aws_access_key_id>
 AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
 ```
 
-- `LANDSAT_HOST` and `LANDSAT_PORT` are required to configure the host and port for the Landsat service.
 - `RSLP_PREFIX` is required to specify the prefix of the GCS bucket where model checkpoints are stored.
+- `LANDSAT_HOST` and `LANDSAT_PORT` are optional, and used to configure the host and port for the Landsat service. The default values are `0.0.0.0` and `5555`.
 - `GOOGLE_APPLICATION_CREDENTIALS` is required for fetching model checkpoints from GCS bucket, also used for fetching downloaded Landsat scenes from GCS bucket. The service account key file should have the `storage.admin` role.
 - `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are optional, and only required when `scene_id` is used to fetch Landsat scenes from AWS S3 bucket.
 
@@ -37,11 +40,11 @@ AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
    python rslp/landsat_vessels/api_main.py
    ```
 
-This will start the API server on the specified host and port, and will load the environment variables from the `.env` file.
+This will start the API server on the specified host and port, and will rewrite the environment variables in the `.env` file.
 
 ## Using Docker Images for API Deployment
 
-Prebuilt Docker images are available on both GHCR and GCR. Use the following steps to pull and run the image:
+Prebuilt Docker images are available on both GHCR and GCR. Use the following steps to pull and run the image (make sure the `.env` file is in the same directory as the Dockerfile, and at least 15GB of shared memory is available):
 
 ### GHCR image
 
@@ -51,7 +54,7 @@ Prebuilt Docker images are available on both GHCR and GCR. Use the following ste
     docker pull ghcr.io/allenai/landsat-vessel-detection:v0.0.1
     ```
 
-2. Run the container. Note that you need to replace the `<port_number>` and `<path_to_service_account_key>` with the actual `LANDSAT_PORT` and path to your local service account key file, and keep the other arguments unchanged.
+2. Run the container. Note that you need to replace the `<port_number>` and `<path_to_service_account_key>` with the actual `LANDSAT_PORT` (if you use the default port, set it to `5555`) and path to your local service account key file, and keep the other arguments unchanged.
 
     ```bash
     docker run \
@@ -72,7 +75,7 @@ Prebuilt Docker images are available on both GHCR and GCR. Use the following ste
     docker pull gcr.io/skylight-proto-1/landsat-vessel-detection:v0.0.1
     ```
 
-2. Run the container. Note that you need to replace the `<port_number>` and `<path_to_service_account_key>` with the actual `LANDSAT_PORT` and path to your local service account key file, and keep the other arguments unchanged.
+2. Run the container. Note that you need to replace the `<port_number>` and `<path_to_service_account_key>` with the actual `LANDSAT_PORT` (if you use the default port, set it to `5555`) and path to your local service account key file, and keep the other arguments unchanged.
 
     ```bash
     docker run \

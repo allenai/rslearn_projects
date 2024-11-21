@@ -285,16 +285,17 @@ def predict_pipeline(
             "One of scene_id, scene_zip_path, or image_files must be specified."
         )
 
-    local_path = None
     if scene_zip_path:
         # if scene_zip_path is provided (either from GCS or WEKA), we will download to local and unzip
-        local_path = os.getcwd()
+        # Create a TemporaryDirectory object
+        tmp_zip_dir = tempfile.TemporaryDirectory()
+        zip_dir = tmp_zip_dir.name
         scene_id = scene_zip_path.split("/")[-1].split(".")[0]
-        local_scene_zip_path = os.path.join(local_path, scene_id + ".zip")
-        download_and_unzip_scene(scene_zip_path, local_scene_zip_path, local_path)
+        local_scene_zip_path = os.path.join(zip_dir, scene_id + ".zip")
+        download_and_unzip_scene(scene_zip_path, local_scene_zip_path, zip_dir)
         image_files = {}
         for band in LANDSAT_BANDS:
-            image_files[band] = f"{local_path}/{scene_id}/{scene_id}_{band}.TIF"
+            image_files[band] = f"{zip_dir}/{scene_id}/{scene_id}_{band}.TIF"
 
     if image_files:
         # Setup the dataset configuration file with the provided image files.
@@ -465,19 +466,17 @@ def predict_pipeline(
     elapsed_time = time.time() - start_time
     time_profile["total"] = elapsed_time
 
-    # Clean up any temporary directories.
+    # Clean up temporary directories
     if tmp_dir:
         tmp_dir.cleanup()
+
+    if tmp_zip_dir:
+        tmp_zip_dir.cleanup()
 
     if json_path:
         json_upath = UPath(json_path)
         with json_upath.open("w") as f:
             json.dump(json_data, f)
-
-    # delete all temporary local files
-    if local_path is not None:
-        os.remove(local_scene_zip_path)
-        shutil.rmtree(f"{local_path}/{scene_id}")
 
     logger.info(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")
     for step, duration in time_profile.items():
