@@ -296,6 +296,8 @@ def predict_pipeline(
         image_files = {}
         for band in LANDSAT_BANDS:
             image_files[band] = f"{zip_dir}/{scene_id}/{scene_id}_{band}.TIF"
+    else:
+        tmp_zip_dir = None
 
     if image_files:
         # Setup the dataset configuration file with the provided image files.
