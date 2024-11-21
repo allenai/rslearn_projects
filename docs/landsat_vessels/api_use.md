@@ -15,21 +15,23 @@ The Landsat Vessel Detection API provides a way to apply the Landsat scenes for 
 First, create an `.env` file in the directory that you are running the API from, including the following environment variables:
 
 ```bash
+# Required
 LANDSAT_HOST=<host_address>
 LANDSAT_PORT=<port_number>
 RSLP_PREFIX=<rslp_prefix>
-S3_ACCESS_KEY_ID=<s3_access_key_id>
-S3_SECRET_ACCESS_KEY=<s3_secret_access_key>
+GOOGLE_APPLICATION_CREDENTIALS=<path_to_service_account_key>
+# Optional
 AWS_ACCESS_KEY_ID=<aws_access_key_id>
 AWS_SECRET_ACCESS_KEY=<aws_secret_access_key>
 ```
 
 - `LANDSAT_HOST` and `LANDSAT_PORT` are required to configure the host and port for the Landsat service.
-- `RSLP_PREFIX`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` are required when fetching landsat scenes from GCS bucket.
-- `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` are required when fetching the landsat scenes from AWS S3 bucket.
+- `RSLP_PREFIX` is required to specify the prefix of the GCS bucket where model checkpoints are stored.
+- `GOOGLE_APPLICATION_CREDENTIALS` is required for fetching model checkpoints from GCS bucket, also used for fetching downloaded Landsat scenes from GCS bucket. The service account key file should have the `storage.admin` role.
+- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are optional, and only required when `scene_id` is used to fetch Landsat scenes from AWS S3 bucket.
 
 
-## Running the API server Locally (TODO: import env from .env file)
+## Running the API server Locally
 
    ```python
    python rslp/landsat_vessels/api_main.py
@@ -47,10 +49,14 @@ Prebuilt Docker images are available on both GHCR and GCR. Use the following ste
     docker pull ghcr.io/allenai/landsat-vessel-detection:v0.0.1
     ```
 
-2. Run the container.
+2. Run the container. Note that you need to replace the `<port_number>` and `<path_to_service_account_key>` with the actual `LANDSAT_PORT` and path to your local service account key file, and keep the other arguments unchanged.
 
     ```bash
-    docker run --rm -p ${LANDSAT_PORT}:${LANDSAT_PORT} \
+    docker run --gpus all \
+    -e LANDSAT_PORT=<port_number> \
+    --rm -p ${LANDSAT_PORT}:${LANDSAT_PORT} \
+    -e GOOGLE_APPLICATION_CREDENTIALS=/path/in/container/key.json \
+    -v <path_to_service_account_key>:/path/in/container/key.json \
     --env-file .env \
     ghcr.io/allenai/landsat-vessel-detection:v0.0.1
     ```
@@ -66,7 +72,9 @@ Prebuilt Docker images are available on both GHCR and GCR. Use the following ste
 2. Run the container.
 
     ```bash
-    docker run --rm -p ${LANDSAT_PORT}:${LANDSAT_PORT} \
+    docker run --gpus all \
+    -e GOOGLE_APPLICATION_CREDENTIALS=/path/in/container/key.json \
+    -v /path/to/your/local/key.json:/path/in/container/key.json \
     --env-file .env \
     gcr.io/skylight-proto-1/landsat-vessel-detection:v0.0.1
     ```
@@ -116,7 +124,13 @@ Once the API server is running, you can send requests to the `/detections` endpo
     }
     ```
 
-For a complete example of how to send a request, refer to the `sample_request.py` script in `rslp/landsat_vessels/scripts/`.
+You can send requests using `curl` or `requests` library.
+
+Example:
+
+```bash
+curl -X POST http://${LANDSAT_HOST}:${LANDSAT_PORT}/detections -H "Content-Type: application/json" -d '{"scene_zip_path": "gs://test-bucket-rslearn/Landsat/LC08_L1TP_162042_20241103_20241103_02_RT.zip"}'
+```
 
 The API will respond with the vessel detection results in JSON format.
 

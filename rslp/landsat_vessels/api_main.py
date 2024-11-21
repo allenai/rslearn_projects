@@ -8,12 +8,22 @@ from contextlib import asynccontextmanager
 from enum import Enum
 
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
 from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_pipeline
 from rslp.log_utils import get_logger
 from rslp.utils.mp import init_mp
+
+# Load environment variables from the .env file
+load_dotenv()
+# Configurable host and port, overridable via environment variables
+LANDSAT_HOST = os.getenv("LANDSAT_HOST", "0.0.0.0")
+LANDSAT_PORT = int(os.getenv("LANDSAT_PORT", 5555))
+
+# Set up the logger
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -39,13 +49,6 @@ app = FastAPI(
     docs_url="/docs",  # URL for Swagger UI
     redoc_url="/redoc",  # URL for ReDoc
 )
-
-# Set up the logger
-logger = get_logger(__name__)
-
-# Configurable host and port, overridable via environment variables
-LANDSAT_HOST = os.getenv("LANDSAT_HOST", "0.0.0.0")
-LANDSAT_PORT = int(os.getenv("LANDSAT_PORT", 5555))
 
 
 class StatusEnum(str, Enum):
