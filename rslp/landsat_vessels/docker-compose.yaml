@@ -16,8 +16,6 @@ services:
     shm_size: '20G'  # This adds the shared memory size
     depends_on:
       - base-image
-    ports:
-      - "${LANDSAT_PORT}:${LANDSAT_PORT}"
     environment:
       - NVIDIA_VISIBLE_DEVICES=all  # Make all GPUs visible
     deploy:
