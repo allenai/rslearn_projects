@@ -18,7 +18,7 @@ jobs:
       contents: read
       packages: write
     outputs:
-      ghcr_docker_image: ${{ steps.image-names.outputs.ghcr_image_name }}
+      ghcr_docker_image: ${{ steps.image-names.outputs.ghcr_docker_image }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -66,17 +66,12 @@ jobs:
         run: |-
           GHCR_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-push.outputs.digest }}"
           GHCR_IMAGE=`echo ${GHCR_IMAGE} | tr '[:upper:]' '[:lower:]'` # docker requires that all image names be lowercase
-          echo "ghcr.io Docker image name is ${GHCR_IMAGE}"
-          echo "ghcr_image_name=\"${GHCR_IMAGE}\"" >> $GITHUB_OUTPUT
+          echo "ghcr_docker_image=\"${GHCR_IMAGE}\"" >> $GITHUB_OUTPUT
 
   predict:
     needs: build
     runs-on: ubuntu-latest-m
     steps:
-      - name: Debug getting ghcr image name
-        run: |
-          echo "ghcr_image_name: ${{ needs.build.outputs.ghcr_image_name }}"
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -109,7 +104,7 @@ jobs:
             --project-id ${{ secrets.GCP_PROJECT_ID }} \
             --zone "us-west1-b" \
             --machine-type "n2-standard-8" \
-            --docker-image ${{ needs.build.outputs.ghcr_image_name }} \
+            --docker-image ${{ needs.build.outputs.ghcr_docker_image }} \
             --command "$DATASET_EXTRACT_COMMAND" \
             --user ${{ secrets.GCP_USER }} \
             --ghcr-user allenai \
