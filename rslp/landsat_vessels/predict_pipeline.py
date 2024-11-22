@@ -156,6 +156,7 @@ def run_classifier(
     detections: list[VesselDetection],
     time_range: tuple[datetime, datetime] | None = None,
     item: Item | None = None,
+    group: str = "classify_predict",
 ) -> list[VesselDetection]:
     """Run the classifier to try to prune false positive detections.
 
@@ -166,6 +167,7 @@ def run_classifier(
         time_range: optional time range to apply the detector in (in case the data
             source needs an actual time range).
         item: only ingest this item.
+        group: the group to use for the classifier.
 
     Returns:
         the subset of detections that pass the classifier.
@@ -175,7 +177,6 @@ def run_classifier(
         return []
 
     # Create windows for applying classifier.
-    group = "classify_predict"
     window_paths: list[UPath] = []
     for detection in detections:
         window_name = f"{detection.col}_{detection.row}"
@@ -202,15 +203,28 @@ def run_classifier(
             layer_data = WindowLayerData(LANDSAT_LAYER_NAME, [[item.serialize()]])
             window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
-    print("materialize dataset")
-    materialize_dataset(ds_path, group=group)
+    # Check if the dataset has already been materialized
+    all_exist = True
+    for window_path in window_paths:
+        if not (
+            window_path / "layers" / LANDSAT_LAYER_NAME / "B8" / "geotiff.tif"
+        ).exists():
+            all_exist = False
+            break
+
+    if not all_exist:
+        print("materialize dataset")
+        materialize_dataset(ds_path, group=group)
+    else:
+        print("skip materialize dataset since it already exist.")
+
     for window_path in window_paths:
         assert (
             window_path / "layers" / LANDSAT_LAYER_NAME / "B8" / "geotiff.tif"
         ).exists()
 
     # Run classification model.
-    run_model_predict(CLASSIFY_MODEL_CONFIG, ds_path)
+    run_model_predict(CLASSIFY_MODEL_CONFIG, ds_path, groups=[group])
 
     # Read the results.
     good_detections = []
