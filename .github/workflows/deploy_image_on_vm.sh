@@ -230,6 +230,7 @@ create_vm() {
         curl -s 'https://beaker.org/api/v3/release/cli?os=linux&arch=amd64' | sudo tar -zxv -C /usr/local/bin ./beaker && \
         export IMAGE_ID=$(docker images --format "{{.ID}}" $DOCKER_IMAGE | head -n 1) && \
         export BEAKER_IMAGE_NAME=$(echo $DOCKER_IMAGE | tr '/' '_' | tr ':' '_' | tr -cd '[:alnum:]-') && \
+        echo "Creating Beaker image" && \
         beaker image create $IMAGE_ID --name $BEAKER_IMAGE_NAME && \
         echo "Image uploaded to Beaker" && \
         export BEAKER_USERNAME=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker_username) && \
