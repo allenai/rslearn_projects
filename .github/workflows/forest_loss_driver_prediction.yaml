@@ -57,8 +57,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # cache-from: type=gha
-          # cache-to: type=gha,mode=max
           build-args: |
             GIT_USERNAME=${{ secrets.GIT_USERNAME }}
             GIT_TOKEN=${{ secrets.GIT_TOKEN }}
@@ -112,7 +110,7 @@ jobs:
             --project-id ${{ secrets.GCP_PROJECT_ID }} \
             --zone "us-west1-b" \
             --machine-type "n2-standard-8" \
-            --docker-image ${{ steps.image-names.outputs.ghcr_image_name }} \
+            --docker-image ${{ needs.build.outputs.ghcr_image_name }} \
             --command "$DATASET_EXTRACT_COMMAND" \
             --user ${{ secrets.GCP_USER }} \
             --ghcr-user allenai \
