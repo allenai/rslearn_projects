@@ -73,6 +73,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest-m
     steps:
+      - name: Debug getting ghcr image name
+        run: |
+          echo "ghcr_image_name: ${{ needs.build.outputs.ghcr_image_name }}"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -96,12 +100,7 @@ jobs:
         with:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
-      - name: Debug script location
-        run: |
-          pwd
-          ls -la
-
-      - name: Run Extract Dataset Job on a VM and Launch Prediction Job on Beaker # We need all of these to become secrets
+      - name: Run Extract Dataset Job on a VM and Launch Prediction Job on Beaker
         run: |
           export GHCR_PAT=${{ secrets.GHCR_PAT_PULL_DOCKER_IMAGE }} && \
           export DATASET_EXTRACT_COMMAND="python -m rslp.main forest_loss_driver extract_dataset" && \
