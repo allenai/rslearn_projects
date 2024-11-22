@@ -229,7 +229,7 @@ create_vm() {
         export BEAKER_ADDR=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-addr) && \
         curl -s '\''https://beaker.org/api/v3/release/cli?os=linux&arch=amd64'\'' | sudo tar -zxv -C /usr/local/bin ./beaker && \
         export IMAGE_ID=$(docker images --format "{{.ID}}" $DOCKER_IMAGE | head -n 1) && \
-        export BEAKER_IMAGE_NAME=$(echo $DOCKER_IMAGE | tr '/' '_' | tr ':' '_' | tr -cd '[:alnum:]-') && \
+        export BEAKER_IMAGE_NAME=$(date +%Y%m%d_%H%M%S)_$(echo $DOCKER_IMAGE | tr '/' '_' | tr ':' '_' | tr -cd '[:alnum:]-') && \
         export WORKSPACE=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/workspace) && \
         beaker config set default_workspace $WORKSPACE && \
         echo "Creating Beaker image" && \
