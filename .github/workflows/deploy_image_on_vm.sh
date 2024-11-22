@@ -227,7 +227,7 @@ create_vm() {
         echo "Data Extraction Complete" && \
         export BEAKER_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-token) && \
         export BEAKER_ADDR=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-addr) && \
-        curl -s 'https://beaker.org/api/v3/release/cli?os=linux&arch=amd64' | sudo tar -zxv -C /usr/local/bin ./beaker && \
+        curl -s '\''https://beaker.org/api/v3/release/cli?os=linux&arch=amd64'\'' | sudo tar -zxv -C /usr/local/bin ./beaker && \
         export IMAGE_ID=$(docker images --format "{{.ID}}" $DOCKER_IMAGE | head -n 1) && \
         export BEAKER_IMAGE_NAME=$(echo $DOCKER_IMAGE | tr '/' '_' | tr ':' '_' | tr -cd '[:alnum:]-') && \
         echo "Creating Beaker image" && \
@@ -260,7 +260,7 @@ create_vm() {
             -e BEAKER_ADDR=$BEAKER_ADDR \
             -e RSLP_PREFIX=$RSLP_PREFIX \
             $DOCKER_IMAGE /bin/bash -c "$INFERENCE_JOB_LAUNCH_COMMAND" && \
-        echo "Model inference launched!" && \
+        echo "Model inference launched!"
         ') \
         --image-family="$image_family" \
         --image-project="$image_project" \

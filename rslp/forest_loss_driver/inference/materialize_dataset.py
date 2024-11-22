@@ -1,7 +1,8 @@
 """Materialize the dataset for the forest loss driver inference pipeline."""
 
-from rslp.utils.rslearn import materialize_dataset
 from upath import UPath
+
+from rslp.utils.rslearn import materialize_dataset
 
 # Eventually this should be moved to the config file.
 VISUALIZATION_ONLY_LAYERS = [
@@ -27,9 +28,12 @@ def materialize_forest_loss_driver_dataset(
     """Materialize the forest loss driver dataset.
 
     Wrapper function specific to the forest loss driver inference pipeline.
+
     Args:
         ds_path: the dataset root path,
-
+        disabled_layers: layers to disable for prepare/ingest/materialize,
+        group: the group to use for prepare/ingest/materialize,
+        workers: the number of workers to use for prepare/ingest/materialize,
     Outputs:
         Steps:
             prepare: items.json file for each layer

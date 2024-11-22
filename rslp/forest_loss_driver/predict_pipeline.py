@@ -36,7 +36,6 @@ PREDICT_PIPELINE_CONFIG_PATH = str(
 class ForestLossDriverPredictionPipeline:
     """Forest loss driver prediction pipeline."""
 
-    # PIPELINE CONFIG USED FOR INFERENCE
     PREDICT_PIPELINE_CONFIG_PATH = str(
         Path(__file__).parent
         / "inference"
@@ -44,14 +43,24 @@ class ForestLossDriverPredictionPipeline:
         / "forest_loss_driver_predict_pipeline_config.yaml"
     )
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        pred_config_path: str | None = None,
+        pred_pipeline_config: PredictPipelineConfig | None = None,
+    ) -> None:
         """Initialize the pipeline.
 
-        We always load config from the same yaml
+        Args:
+            pred_config_path: the path to the prediction pipeline config,
+            pred_pipeline_config: the prediction pipeline config,
+
+        We always default to the config at the path specified in the class
         """
-        self.pred_config = PredictPipelineConfig.from_yaml(
-            self.PREDICT_PIPELINE_CONFIG_PATH
-        )
+        if pred_config_path is None:
+            pred_config_path = self.PREDICT_PIPELINE_CONFIG_PATH
+        if pred_pipeline_config is None:
+            pred_pipeline_config = PredictPipelineConfig.from_yaml(pred_config_path)
+        self.pred_config = pred_pipeline_config
 
     def _validate_required_env_vars(
         self, required_env_vars: list[str], optional_env_vars: list[str]
