@@ -17,12 +17,8 @@ from beaker import (
 )
 from upath import UPath
 
-from rslp.launch_beaker import (
-    BUDGET,
-    DEFAULT_WORKSPACE,
-    IMAGE_NAME,
-    get_base_env_vars,
-)
+from rslp import launcher_lib
+from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE, IMAGE_NAME
 
 
 def launch_job(
@@ -53,7 +49,7 @@ def launch_job(
     }
 
     with beaker.session():
-        env_vars = get_base_env_vars(use_weka_prefix=use_weka_prefix)
+        env_vars = launcher_lib.get_base_env_vars(use_weka_prefix=use_weka_prefix)
 
         spec = ExperimentSpec.new(
             budget=BUDGET,

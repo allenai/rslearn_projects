@@ -6,9 +6,11 @@ import shutil
 import tempfile
 import uuid
 
-from rslp.forest_loss_driver.inference.model_predict import \
-    forest_loss_driver_model_predict
 from upath import UPath
+
+from rslp.forest_loss_driver.inference.model_predict import (
+    forest_loss_driver_model_predict,
+)
 
 
 def test_forest_loss_driver_model_predict(
@@ -20,7 +22,11 @@ def test_forest_loss_driver_model_predict(
     # materialized dataset path
     with tempfile.TemporaryDirectory(prefix=f"test_{uuid.uuid4()}_") as temp_dir:
         shutil.copytree(test_materialized_dataset_path, temp_dir, dirs_exist_ok=True)
-        forest_loss_driver_model_predict(model_cfg_fname, UPath(temp_dir))
+        forest_loss_driver_model_predict(
+            model_cfg_fname,
+            UPath(temp_dir),
+            model_data_load_workers=1,
+        )
         output_path = (
             UPath(temp_dir)
             / "windows"
