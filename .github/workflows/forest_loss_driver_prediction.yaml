@@ -102,20 +102,34 @@ jobs:
           pwd
           ls -la
 
-      - name: Run Extract Dataset Job on a VM # We need all of these to become secrets
+      - name: Run Extract Dataset Job on a VM and Launch Prediction Job on Beaker # We need all of these to become secrets
         run: |
           export GHCR_PAT=${{ secrets.GHCR_PAT_PULL_DOCKER_IMAGE }} && \
-          export BEAKER_TOKEN=${{ secrets.BEAKER_TOKEN }} && \
-          export BEAKER_ADDR=${{ secrets.BEAKER_ADDR }} && \
-          bash .github/workflows/deploy_image_on_vm.sh  \
-            --project-id "skylight-proto-1" \
+          export DATASET_EXTRACT_COMMAND="python -m rslp.main forest_loss_driver extract_dataset" && \
+          export RSLP_PROJECT="forest_loss_driver" && \
+          bash .github/workflows/deploy_image_on_vm.sh \
+            --project-id ${{ secrets.GCP_PROJECT_ID }} \
             --zone "us-west1-b" \
-            --machine-type "e2-micro" \
-            --docker-image ${{ steps.image-names.outputs.ghcr_image_name }} \ # This is not  being used currently
-            --command "python -m rslp.main forest_loss_driver extract_dataset" \
-            --user "app" \
-            --ghcr-user "allenai" \
-            --delete no
+            --machine-type "n2-standard-8" \
+            --docker-image ${{ steps.image-names.outputs.ghcr_image_name }} \
+            --command "$DATASET_EXTRACT_COMMAND" \
+            --user ${{ secrets.GCP_USER }} \
+            --ghcr-user ${{ secrets.GHCR_USER }} \
+            --service-account ${{ secrets.FOREST_LOSS_DRIVER_INFERENCE_SERVICE_ACCOUNT }} \
+            --delete no \
+            --beaker-token ${{ secrets.BEAKER_TOKEN }} \
+            --beaker-addr ${{ secrets.BEAKER_ADDR }} \
+            --beaker-username ${{ secrets.BEAKER_USERNAME }} \
+            --rslp-project $RSLP_PROJECT \
+            --workflow predict \
+            --rslp-prefix ${{ secrets.RSLP_PREFIX }} \
+            --gpu-count 1 \
+            --shared-memory "64Gib" \
+            --cluster ${{ secrets.BEAKER_CLUSTER_INFERENCE }} \
+            --priority "normal" \
+            --task-name "${RSLP_PROJECT}_inference_$(uuidgen | cut -c1-8)" \
+            --budget ${{ secrets.BEAKER_BUDGET }} \
+            --workspace ${{ secrets.BEAKER_WORKSPACE }}
 
 # FOR clean up i will just run this vm with an instance schedule for like a day or something and have it log how long everything took somewhere
 # I want to just launch predict as a single beaker job and have it run on a gpu

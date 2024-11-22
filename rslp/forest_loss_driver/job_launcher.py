@@ -1,7 +1,7 @@
 """Launch a Beaker Job for forest loss driver prediction.
 
-First get something working then think about how to make integrated shared code
-
+# TODO: First get something working then think about how to make integrated shared code
+# Would it be simpler to launch both on beaker?
 """
 
 import argparse
@@ -12,6 +12,7 @@ from datetime import datetime
 import dotenv
 from beaker import Beaker, EnvVar, ExperimentSpec, ImageSource
 from beaker.exceptions import ImageNotFound
+
 from rslp import launcher_lib
 from rslp.log_utils import get_logger
 
@@ -46,6 +47,7 @@ def launch_job(
     budget: str,
     workspace: str,
 ) -> None:
+    """Launch a job on Beaker."""
     beaker = Beaker.from_env(default_workspace=workspace)
     with beaker.session():
         logger.info("Starting Beaker client...")
@@ -146,7 +148,7 @@ if __name__ == "__main__":
         required=True,
     )
     parser.add_argument(
-        "--task_specific_env_vars",
+        "--task_specific_env_vars",  # Should be optional and we have double parsing occcuring right now
         type=lambda x: x.split(","),
         nargs="+",
         help="List of task-specific environment variables in the format: NAME=VALUE,NAME=VALUE",

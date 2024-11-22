@@ -1,5 +1,5 @@
 # Required fields
-ds_root: gs://rslearn-eai/datasets/forest_loss_driver/prediction/dataset_20241106
+ds_root: gs://rslearn-eai/datasets/forest_loss_driver/prediction/dataset_20241122
 model_cfg_fname: "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml" # should be path from the top of the repo IF NOT ABSOLUTE PATH
 gcs_tiff_filenames:
   - "cropped_070W_10S_060W_00N.tif"
