@@ -176,6 +176,8 @@ def run_classifier(
     if len(detections) == 0:
         return []
 
+    # TODO(yawenz): check if windows are there already, not need to materialize
+
     # Create windows for applying classifier.
     window_paths: list[UPath] = []
     for detection in detections:
