@@ -109,10 +109,6 @@ while [ $# -gt 0 ]; do
             shift
             RSLP_PROJECT="$1"
             ;;
-        --workflow)
-            shift
-            WORKFLOW="$1"
-            ;;
         --rslp-prefix)
             shift
             RSLP_PREFIX="$1"
@@ -201,7 +197,6 @@ create_vm() {
     local budget="${22}"
     local workspace="${23}"
     local rslp_prefix="${24}"
-    local workflow="${25}"
     echo "Creating VM $vm_name in project $project_id..."
     gcloud compute instances create "$vm_name" \
         --project="$project_id" \
@@ -209,7 +204,7 @@ create_vm() {
         --machine-type="$machine_type" \
         --service-account="$service_account" \
         --scopes=cloud-platform \
-        --metadata=ghcr-token="$ghcr_pat",ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix",workflow="$workflow" \
+        --metadata=ghcr-token="$ghcr_pat",ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
         sudo apt-get update
         sudo apt-get install -y docker.io
@@ -244,10 +239,9 @@ create_vm() {
         export BUDGET=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/budget) && \
         export RSLP_PREFIX=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/rslp-prefix) && \
         export RSLP_PROJECT=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/rslp-project) && \
-        export WORKFLOW=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/workflow) && \
         export INFERENCE_JOB_LAUNCH_COMMAND="python rslp/$RSLP_PROJECT/job_launcher.py \
             --project $RSLP_PROJECT \
-            --workflow $WORKFLOW \
+            --workflow predict \
             --image $BEAKER_USERNAME/$BEAKER_IMAGE_NAME \
             --gpu_count $GPU_COUNT \
             --shared_memory $SHARED_MEMORY \
@@ -256,6 +250,7 @@ create_vm() {
             --task_name $TASK_NAME \
             --budget $BUDGET \
             --workspace $WORKSPACE" && \
+        echo "INFERENCE_JOB_LAUNCH_COMMAND: $INFERENCE_JOB_LAUNCH_COMMAND" && \
         echo "Launching inference job on Beaker" && \
         docker run -e BEAKER_TOKEN=$BEAKER_TOKEN \
             -e BEAKER_ADDR=$BEAKER_ADDR \
@@ -294,8 +289,9 @@ echo "BUDGET: $BUDGET"
 echo "WORKSPACE: $WORKSPACE"
 echo "RSLP_PREFIX: $RSLP_PREFIX"
 
+
 # Create the VM
-create_vm "$VM_NAME" "$PROJECT_ID" "$ZONE" "$MACHINE_TYPE" "$IMAGE_FAMILY" "$IMAGE_PROJECT" "$GHCR_PAT" "$GHCR_USER" "$USER" "$DOCKER_IMAGE" "$COMMAND" "$BEAKER_TOKEN" "$BEAKER_ADDR" "$BEAKER_USERNAME" "$SERVICE_ACCOUNT" "$RSLP_PROJECT" "$GPU_COUNT" "$SHARED_MEMORY" "$CLUSTER" "$PRIORITY" "$TASK_NAME" "$BUDGET" "$WORKSPACE" "$WORKFLOW"
+create_vm "$VM_NAME" "$PROJECT_ID" "$ZONE" "$MACHINE_TYPE" "$IMAGE_FAMILY" "$IMAGE_PROJECT" "$GHCR_PAT" "$GHCR_USER" "$USER" "$DOCKER_IMAGE" "$COMMAND" "$BEAKER_TOKEN" "$BEAKER_ADDR" "$BEAKER_USERNAME" "$SERVICE_ACCOUNT" "$RSLP_PROJECT" "$GPU_COUNT" "$SHARED_MEMORY" "$CLUSTER" "$PRIORITY" "$TASK_NAME" "$BUDGET" "$WORKSPACE"
 
 # Handle VM deletion if requested
 if [[ "$DELETE_VM" == "yes" ]]; then
