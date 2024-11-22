@@ -1,7 +1,8 @@
 """Model Predict Step for the Forest Loss Driver Inference Pipeline."""
 
-from rslp.utils.rslearn import run_model_predict
 from upath import UPath
+
+from rslp.utils.rslearn import run_model_predict
 
 
 def forest_loss_driver_model_predict(

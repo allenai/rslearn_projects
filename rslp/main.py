@@ -2,19 +2,15 @@
 
 import argparse
 import importlib
-
-import multiprocessing
-
 import sys
 
 import dotenv
 import jsonargparse
 
-
 from rslp.log_utils import get_logger
+from rslp.utils.mp import init_mp
 
 logger = get_logger(__name__)
-from rslp.utils.mp import init_mp
 
 
 def main() -> None:

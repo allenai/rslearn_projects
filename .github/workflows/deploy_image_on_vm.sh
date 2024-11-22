@@ -230,6 +230,8 @@ create_vm() {
         curl -s '\''https://beaker.org/api/v3/release/cli?os=linux&arch=amd64'\'' | sudo tar -zxv -C /usr/local/bin ./beaker && \
         export IMAGE_ID=$(docker images --format "{{.ID}}" $DOCKER_IMAGE | head -n 1) && \
         export BEAKER_IMAGE_NAME=$(echo $DOCKER_IMAGE | tr '/' '_' | tr ':' '_' | tr -cd '[:alnum:]-') && \
+        export WORKSPACE=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/workspace) && \
+        beaker config set default_workspace $WORKSPACE && \
         echo "Creating Beaker image" && \
         beaker image create $IMAGE_ID --name $BEAKER_IMAGE_NAME && \
         echo "Image uploaded to Beaker" && \
@@ -240,7 +242,6 @@ create_vm() {
         export PRIORITY=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/priority) && \
         export TASK_NAME=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/task-name) && \
         export BUDGET=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/budget) && \
-        export WORKSPACE=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/workspace) && \
         export RSLP_PREFIX=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/rslp-prefix) && \
         export RSLP_PROJECT=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/rslp-project) && \
         export WORKFLOW=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/workflow) && \
