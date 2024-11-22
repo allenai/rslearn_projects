@@ -1,6 +1,8 @@
 """Utilities for using rslearn datasets and models."""
 
 from rslearn.dataset import Dataset
+
+# Should wandb required from rslearn to run rslp?
 from rslearn.main import (
     IngestHandler,
     MaterializeHandler,

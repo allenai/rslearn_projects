@@ -65,9 +65,10 @@ jobs:
         id: image-names
         run: |-
           GHCR_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-push.outputs.digest }}"
-          GHCR_IMAGE=`echo ${GHCR_IMAGE} | tr '[:upper:]' '[:lower:]'` # docker requires that all image names be lowercase
-          echo "ghcr.io Docker image name is ${GHCR_IMAGE}"
-          echo "ghcr_image_name=\"${GHCR_IMAGE}\"" >> $GITHUB_OUTPUT
+          GHCR_IMAGE=`echo ${GHCR_IMAGE} | tr '[:upper:]' '[:lower:]'`
+          echo "Debug: GHCR_IMAGE=${GHCR_IMAGE}"
+          echo "ghcr_image_name=${GHCR_IMAGE}" >> $GITHUB_OUTPUT
+          cat $GITHUB_OUTPUT
 
   predict:
     needs: build
@@ -75,7 +76,7 @@ jobs:
     steps:
       - name: Debug getting ghcr image name
         run: |
-          echo "ghcr_image_name: ${{ needs.build.outputs.ghcr_image_name }}"
+          echo "ghcr_image_name: ${{ needs.build.outputs.ghcr_docker_image }}"
 
       - name: Checkout repository
         uses: actions/checkout@v4

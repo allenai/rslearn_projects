@@ -7,9 +7,7 @@ from pathlib import Path
 
 from upath import UPath
 
-from rslp.forest_loss_driver.inference.best_image_selector import (
-    select_best_images_pipeline,
-)
+from rslp.forest_loss_driver.inference import select_best_images_pipeline
 
 
 def test_select_best_images_pipeline(
