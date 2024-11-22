@@ -72,6 +72,7 @@ jobs:
           echo "ghcr_image_name=\"${GHCR_IMAGE}\"" >> $GITHUB_OUTPUT
 
   predict:
+    needs: build
     runs-on: ubuntu-latest-m
     steps:
       - name: Checkout repository
@@ -114,14 +115,13 @@ jobs:
             --docker-image ${{ steps.image-names.outputs.ghcr_image_name }} \
             --command "$DATASET_EXTRACT_COMMAND" \
             --user ${{ secrets.GCP_USER }} \
-            --ghcr-user ${{ secrets.GHCR_USER }} \
+            --ghcr-user allenai \
             --service-account ${{ secrets.FOREST_LOSS_DRIVER_INFERENCE_SERVICE_ACCOUNT }} \
             --delete no \
             --beaker-token ${{ secrets.BEAKER_TOKEN }} \
-            --beaker-addr ${{ secrets.BEAKER_ADDR }} \
+            --beaker-addr "https://beaker.org" \
             --beaker-username ${{ secrets.BEAKER_USERNAME }} \
             --rslp-project $RSLP_PROJECT \
-            --workflow predict \
             --rslp-prefix ${{ secrets.RSLP_PREFIX }} \
             --gpu-count 1 \
             --shared-memory "64Gib" \
@@ -130,6 +130,3 @@ jobs:
             --task-name "${RSLP_PROJECT}_inference_$(uuidgen | cut -c1-8)" \
             --budget ${{ secrets.BEAKER_BUDGET }} \
             --workspace ${{ secrets.BEAKER_WORKSPACE }}
-
-# FOR clean up i will just run this vm with an instance schedule for like a day or something and have it log how long everything took somewhere
-# I want to just launch predict as a single beaker job and have it run on a gpu
