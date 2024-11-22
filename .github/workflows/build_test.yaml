@@ -129,7 +129,7 @@ jobs:
         run: |
           docker compose -f docker-compose.yaml down
 
-  test-slow:
+  test-gpu:
     runs-on: GPU-Enabled-Runner
     steps:
       - name: Checkout repository
