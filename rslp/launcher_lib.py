@@ -184,7 +184,33 @@ def download_code(project_id: str, experiment_id: str) -> None:
 
 
 def upload_image(image_name: str, workspace: str, beaker_client: Beaker) -> ImageSource:
-    """Upload an image to Beaker."""
+    """Upload an image to Beaker.
+
+    This function handles uploading a Docker image to Beaker's image registry. It creates
+    a new image entry in the specified Beaker workspace and returns an ImageSource that
+    can be used to reference this image in Beaker experiments.
+
+    The image must already exist locally in the Docker daemon. The image_name parameter
+    should match the name of the local Docker image.
+
+    Args:
+        image_name: The name of the local Docker image to upload. This should be in the
+            format "repository/image:tag" or just "image:tag".
+        workspace: The Beaker workspace where the image should be uploaded. The workspace
+            must already exist and the authenticated user must have write permissions.
+        beaker_client: An authenticated Beaker client instance that will be used to
+            make the API calls.
+
+    Returns:
+        ImageSource: A Beaker ImageSource object containing the full Beaker image name.
+            This can be used as a source in experiment specifications.
+
+    Example:
+        >>> client = Beaker(token="...")
+        >>> image_source = upload_image("myimage:latest", "my-workspace", client)
+        >>> print(image_source.beaker)
+        'beaker://my-workspace/myimage'
+    """
     image = beaker_client.image.create(image_name, image_name, workspace=workspace)
     image_source = ImageSource(beaker=image.full_name)
     return image_source
