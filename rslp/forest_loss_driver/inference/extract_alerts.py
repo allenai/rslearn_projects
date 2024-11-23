@@ -350,7 +350,9 @@ def create_forest_loss_mask(
     """
     now_days = (current_utc_time - BASE_DATETIME).days
     min_days = now_days - days
-    mask = (date_data >= min_days) & (conf_data >= min_confidence)
+    date_mask = date_data >= min_days
+    conf_mask = conf_data >= min_confidence
+    mask = date_mask & conf_mask
     return mask.astype(
         np.uint8
     )  # THis seems to be causing issues for writing unless we change it when we write it

@@ -22,11 +22,13 @@ from rslp.forest_loss_driver.inference.extract_alerts import (
     read_forest_alerts_date_raster,
     write_event,
 )
+from rslp.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 SAMPLE_EVENT_FOLDER = Path("test_data/forest_loss_driver/sample_forest_loss_events")
 
-FOLDER_PATH = Path(__file__).parents[3] / SAMPLE_EVENT_FOLDER
-print(FOLDER_PATH)
+FOLDER_PATH = Path(__file__).parents[4] / SAMPLE_EVENT_FOLDER
 
 
 @pytest.fixture
@@ -60,19 +62,19 @@ def forest_loss_event() -> ForestLossEvent:
 def country_data_path() -> UPath:
     """Create a country data path."""
     return UPath(
-        Path(__file__).parents[3]
-        / "test_data/forest_loss_driver/artifacts/natural_earth_countries/20240830/20240830/ne_10m_admin_0_countries.shp"
+        Path(__file__).parents[4]
+        / "test_data/forest_loss_driver/artifacts/natural_earth_countries/ne_10m_admin_0_countries.shp"
     )
 
 
 @pytest.fixture
 def alert_tiffs_prefix() -> str:
-    return str(Path(__file__).parents[3] / "test_data/forest_loss_driver/alert_tiffs")
+    return str(Path(__file__).parents[4] / "test_data/forest_loss_driver/alert_tiffs")
 
 
 @pytest.fixture
 def alert_date_tiffs_prefix() -> str:
-    return str(Path(__file__).parents[3] / "test_data/forest_loss_driver/alert_dates")
+    return str(Path(__file__).parents[4] / "test_data/forest_loss_driver/alert_dates")
 
 
 def test_write_event(forest_loss_event: ForestLossEvent) -> None:
@@ -220,15 +222,15 @@ def test_read_forest_alerts_date_raster(alert_date_tiffs_prefix: str) -> None:
     }
 
 
-def test_create_forest_loss_mask() -> None:
+def test_create_forest_loss_mask_events_found() -> None:
     """Tests creating the forest loss mask."""
     conf_data = np.zeros((10, 10), dtype=np.uint8)
-    date_data = 2124 * np.ones(
+    date_data = 2148 * np.ones(
         (10, 10), dtype=np.uint16
     )  # Equivalent to all data is from 5 days ago
     # Set specific elements to nonzero
     conf_data[5:7, 5:7] = 2  # Example region of confidence data
-    min_days = 6
+    days_to_look_back = 6
     min_confidence = 1
 
     expected_mask = np.zeros((10, 10), dtype=np.uint8)
@@ -237,10 +239,18 @@ def test_create_forest_loss_mask() -> None:
         conf_data,
         date_data,
         min_confidence,
-        min_days,
-        datetime.now(timezone.utc),
+        days_to_look_back,
+        datetime(2024, 11, 23, tzinfo=timezone.utc),
     )
     assert np.all(mask == expected_mask)
+
+
+def test_create_forest_loss_mask_events_not_found() -> None:
+    """Tests creating the forest loss mask."""
+    days_to_look_back = 6
+    min_confidence = 1
+
+    conf_data = np.zeros((10, 10), dtype=np.uint8)
     date_data_2 = 2120 * np.ones(
         (10, 10), dtype=np.uint16
     )  # Equivalent to all data is from 9 days ago
@@ -248,7 +258,7 @@ def test_create_forest_loss_mask() -> None:
         conf_data,
         date_data_2,
         min_confidence,
-        min_days,
-        datetime.now(timezone.utc),
+        days_to_look_back,
+        datetime(2024, 11, 23, tzinfo=timezone.utc),
     )
-    assert np.all(mask_2 == 0)
+    assert np.all(mask_2 == np.zeros_like(mask_2))
