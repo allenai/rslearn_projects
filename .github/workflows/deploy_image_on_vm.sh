@@ -260,8 +260,7 @@ create_vm() {
         ') \
         --image-family="$image_family" \
         --image-project="$image_project" \
-        --boot-disk-size=200GB
-
+        --boot-disk-size=200GB && \
     echo "Done!"
 }
 

@@ -121,4 +121,5 @@ jobs:
             --priority "normal" \
             --task-name "${RSLP_PROJECT}_inference_$(uuidgen | cut -c1-8)" \
             --budget ${{ secrets.BEAKER_BUDGET }} \
-            --workspace ${{ secrets.BEAKER_WORKSPACE }}
+            --workspace ${{ secrets.BEAKER_WORKSPACE }} && \
+          echo "Inference job launched!"
