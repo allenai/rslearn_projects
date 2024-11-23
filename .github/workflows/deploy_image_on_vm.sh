@@ -197,7 +197,9 @@ create_vm() {
     local budget="${22}"
     local workspace="${23}"
     local rslp_prefix="${24}"
-    echo "Creating VM $vm_name in project $project_id..."
+    echo "Creating VM $vm_name in project $project_id..." && \
+    echo "Logged into GCP as $(gcloud config get-value account)" && \
+    echo "$(gcloud config list)" && \
     gcloud compute instances create "$vm_name" \
         --project="$project_id" \
         --zone="$zone" \

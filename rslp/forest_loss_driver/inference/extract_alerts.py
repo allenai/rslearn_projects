@@ -35,9 +35,7 @@ BASE_DATETIME = datetime(2019, 1, 1, tzinfo=timezone.utc)
 
 
 ## Constants.py
-# Where to obtain the forest loss alert data.
-GCS_CONF_PREFIX = "gs://earthenginepartners-hansen/S2alert/alert/"
-GCS_DATE_PREFIX = "gs://earthenginepartners-hansen/S2alert/alertDate/"
+
 
 # How big the rslearn windows should be.
 WINDOW_SIZE = 128
