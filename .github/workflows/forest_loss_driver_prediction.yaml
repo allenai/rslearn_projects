@@ -111,7 +111,7 @@ jobs:
             --service-account ${{ secrets.FOREST_LOSS_DRIVER_INFERENCE_SERVICE_ACCOUNT }} \
             --delete no \
             --beaker-token ${{ secrets.BEAKER_TOKEN }} \
-            --beaker-addr https://beaker.org \
+            --beaker-addr "https://beaker.org" \
             --beaker-username ${{ secrets.BEAKER_USERNAME }} \
             --rslp-project $RSLP_PROJECT \
             --rslp-prefix ${{ secrets.RSLP_PREFIX }} \
