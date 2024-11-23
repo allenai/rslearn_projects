@@ -216,11 +216,22 @@ def upload_image(image_name: str, workspace: str, beaker_client: Beaker) -> Imag
     return image_source
 
 
-def create_gcp_credentials_mount() -> DataMount:
-    """Create a mount for the GCP credentials."""
+def create_gcp_credentials_mount(
+    secret: str = "RSLEARN_GCP_CREDENTIALS",
+    mount_path: str = "/etc/credentials/gcp_credentials.json",
+) -> DataMount:
+    """Create a mount for the GCP credentials.
+
+    Args:
+        secret: the beaker secret containing the GCP credentials.
+        mount_path: the path to mount the GCP credentials to.
+
+    Returns:
+        DataMount: A Beaker DataMount object that can be used in an experiment specification.
+    """
     return DataMount(
-        source=DataSource(secret="RSLEARN_GCP_CREDENTIALS"),  # nosec
-        mount_path="/etc/credentials/gcp_credentials.json",  # nosec
+        source=DataSource(secret=secret),  # nosec
+        mount_path=mount_path,  # nosec
     )
 
 
