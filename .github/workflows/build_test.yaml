@@ -167,7 +167,8 @@ jobs:
 
       - name: Run tests with Docker Compose
         run: |
-          docker compose -f docker-compose.yaml run \
+          docker run \
+            --gpus all \
             --shm-size=15g \
             -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
             -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
@@ -175,7 +176,7 @@ jobs:
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
             -e RSLP_BUCKET=rslearn-eai \
             -e RSLP_PREFIX=gs://rslearn-eai \
-            test pytest tests/integration_slow/
+            rslearn_projects-test pytest tests/integration_slow/
 
       - name: Clean up
         if: always()
