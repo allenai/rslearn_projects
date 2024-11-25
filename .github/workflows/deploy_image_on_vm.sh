@@ -208,17 +208,17 @@ create_vm() {
         --scopes=cloud-platform \
         --metadata=ghcr-token="$ghcr_pat",ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
-        sudo apt-get update
-        sudo apt-get install -y docker.io
-        sudo systemctl start docker
-        export USER=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/user)
-        sudo usermod -aG docker $USER
-        export GHCR_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-token)
-        export GHCR_USER=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-user)
-        export DOCKER_IMAGE=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/docker-image)
-        export COMMAND=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/command)
-        echo $GHCR_TOKEN | sudo docker login ghcr.io -u $GHCR_USER --password-stdin
-        sudo docker pull $DOCKER_IMAGE
+        sudo apt-get update && \
+        sudo apt-get install -y docker.io && \
+        sudo systemctl start docker && \
+        export USER=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/user) && \
+        sudo usermod -aG docker $USER && \
+        export GHCR_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-token) && \
+        export GHCR_USER=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-user) && \
+        export DOCKER_IMAGE=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/docker-image) && \
+        export COMMAND=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/command) && \
+        echo $GHCR_TOKEN | sudo docker login ghcr.io -u $GHCR_USER --password-stdin && \
+        sudo docker pull $DOCKER_IMAGE && \
         echo "Docker image pulled" && \
         sudo docker run -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token) $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
         echo "Data Extraction Complete" && \
