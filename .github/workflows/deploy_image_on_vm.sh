@@ -224,7 +224,7 @@ create_vm() {
         echo "Pulling Docker image" && \
         sudo docker pull $DOCKER_IMAGE && \
         echo "Docker image pulled" && \
-        sudo docker run -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token) $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
+        sudo docker run -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token --lifetime 43200) $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
         echo "Data Extraction Complete" && \
         export BEAKER_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-token) && \
         export BEAKER_ADDR=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-addr) && \
