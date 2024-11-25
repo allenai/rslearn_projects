@@ -217,7 +217,11 @@ create_vm() {
         export GHCR_USER=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-user) && \
         export DOCKER_IMAGE=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/docker-image) && \
         export COMMAND=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/command) && \
+        echo "Logging into GHCR" && \
+        echo "GHCR_TOKEN: $GHCR_TOKEN" && \
+        echo "GHCR_USER: $GHCR_USER" && \
         echo $GHCR_TOKEN | sudo docker login ghcr.io -u $GHCR_USER --password-stdin && \
+        echo "Pulling Docker image" && \
         sudo docker pull $DOCKER_IMAGE && \
         echo "Docker image pulled" && \
         sudo docker run -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token) $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
