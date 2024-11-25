@@ -67,7 +67,11 @@ Run it with a path to the zipped Landsat scene files (downloaded locally or on G
 
 Run it with a Landsat scene ID (to be fetched from AWS):
 
-    python -m rslp.main landsat_vessels predict --scene_id LC09_L1GT_106084_20241002_20241002_02_T2 --scratch_path /path/to/scratch/ --json_path /path/to/vessels.json --crop_path /path/to/crops/
+    python -m rslp.main landsat_vessels predict --scene_id scene_id --scratch_path /path/to/scratch/ --json_path /path/to/vessels.json --crop_path /path/to/crops/
+
+Run it with a path to a window containing the metadata.json files:
+
+    python -m rslp.main landsat_vessels predict --window_path /path/to/window/ --scratch_path /path/to/scratch/ --json_path /path/to/vessels.json --crop_path /path/to/crops/
 
 ---
 
@@ -76,32 +80,33 @@ Run it with a Landsat scene ID (to be fetched from AWS):
 The whole pipeline is evaluated with two approaches.
 
 - **Evaluation Metrics**: Evaluate the pipeline on the validation set of the detector (about 1K images), which outputs the recall, precision, and F1 score.
-- **Scenario Checks**: Evaluate the pipeline on a set of selected scenes, which covers different regions, failure modes (whitcaps, clouds, ice, islands, etc.), and true positives, to check if the pipeline is working properly.
+- **Scenario Checks**: Evaluate the pipeline on a set of selected scenes, which covers different regions, failure modes (whitcaps, clouds, ice, islands, etc.), and true positives, to validate if the pipeline is working properly.
 
 
 ### Evaluation Metrics
 
-1. Run the evaluation pipeline, which runs the detector and classifier on the validation set, and computes the metrics:
+1. Launch the prediction jobs for the detector validation set:
 
     ```python
-    python rslp/landsat_vessels/evaluation/evaluation_metrics.py --detector_ds_path gs://rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20240924/ --detector_group labels_utm --classifier_ds_path gs://rslearn-eai/datasets/landsat_vessel_detection/pipeline/dataset_20240924/
+    python rslp/landsat_vessels/job_launcher.py --window_dir gs://rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20240924/windows/labels_utm/ --json_dir gs://rslearn-eai/projects/landsat_evaluation/pipeline_results/jsons/
     ```
 
-There're four optional flags (if not provided, default is False):
+This will launch multiple beaker jobs. Each job will evaluate the model on one window and save the results in the `jsons` directory.
 
-- `--materialize_detector_ds`: materialize the detector dataset.
-- `--run_detector`: run the detector on the validation set.
-- `--materialize_classifier_ds`: materialize the classifier dataset.
-- `--run_classifier`: run the classifier on the detector outputs.
+2. Compute the evaluation metrics:
 
-If none of these are provided, it means both the detector and classifier dataset are already materialized and run, and the metrics are computed directly. If the detector changes, we need to provide the flags of `--run_detector`, `--materialize_classifier_ds`, and `--run_classifier`. If only the classifier changes, we only need to provide the flags of `--run_classifier`.
+    ```python
+    python rslp/landsat_vessels/evaluation/get_metrics.py --ground_truth_dir gs://rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20240924/windows/labels_utm --predictions_dir gs://rslearn-eai/projects/landsat_evaluation/pipeline_results/jsons/
+    ```
+
+This will output the evaluation metrics, including precision, recall, and F1 score.
 
 ### Scenario Checks
 
-1. Launch the prediction jobs for the evaluation scenes:
+1. Launch the prediction jobs for the scenario check scenes:
 
     ```python
-    python rslp/landsat_vessels/job_launcher.py --zip_dir gs://rslearn-eai/projects/2024_10_check_landsat/evaluation/downloads/ --json_dir gs://rslearn-eai/projects/2024_10_check_landsat/evaluation/jsons/
+    python rslp/landsat_vessels/job_launcher.py --zip_dir gs://rslearn-eai/projects/landsat_evaluation/scenario_checks/downloads/ --json_dir gs://rslearn-eai/projects/landsat_evaluation/scenario_checks/jsons/
     ```
 
 This will launch multiple beaker jobs. Each job will evaluate the model on one scene and save the results in the `jsons` directory.

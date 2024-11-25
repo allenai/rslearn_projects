@@ -26,4 +26,7 @@ CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase123_config.yaml"
 CLASSIFY_WINDOW_SIZE = 64
 
 # Filter configuration
-INFRA_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
+INFRA_DISTANCE_THRESHOLD = 0.03  # unit: km, 30 meters
+
+# Evaluation configuration
+MATCH_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters

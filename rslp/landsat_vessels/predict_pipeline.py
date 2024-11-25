@@ -1,11 +1,9 @@
 """Landsat vessel prediction pipeline."""
 
 import json
-import logging
 import os
 import shutil
 import tempfile
-import time
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -35,14 +33,6 @@ from rslp.landsat_vessels.config import (
 )
 from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import materialize_dataset, run_model_predict
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("landsat_pipeline.log"), logging.StreamHandler()],
-)
-logger = logging.getLogger(__name__)
 
 
 class VesselDetection:
@@ -156,7 +146,6 @@ def run_classifier(
     detections: list[VesselDetection],
     time_range: tuple[datetime, datetime] | None = None,
     item: Item | None = None,
-    group: str = "classify_predict",
 ) -> list[VesselDetection]:
     """Run the classifier to try to prune false positive detections.
 
@@ -167,7 +156,6 @@ def run_classifier(
         time_range: optional time range to apply the detector in (in case the data
             source needs an actual time range).
         item: only ingest this item.
-        group: the group to use for the classifier.
 
     Returns:
         the subset of detections that pass the classifier.
@@ -177,6 +165,7 @@ def run_classifier(
         return []
 
     # Create windows for applying classifier.
+    group = "classify_predict"
     window_paths: list[UPath] = []
     for detection in detections:
         window_name = f"{detection.col}_{detection.row}"
@@ -242,13 +231,14 @@ def download_and_unzip_scene(
         with open(local_zip_path, "wb") as f_out:
             shutil.copyfileobj(f, f_out)
     shutil.unpack_archive(local_zip_path, extract_to)
-    print(f"Unzipped {local_zip_path} to {extract_to}")
+    print(f"unzipped {local_zip_path} to {extract_to}")
 
 
 def predict_pipeline(
     scene_id: str | None = None,
     scene_zip_path: str | None = None,
     image_files: dict[str, str] | None = None,
+    window_path: str | None = None,
     json_path: str | None = None,
     scratch_path: str | None = None,
     crop_path: str | None = None,
@@ -260,18 +250,16 @@ def predict_pipeline(
     along with crops of each detection.
 
     Args:
-        json_path: path to write vessel detections as JSON file.
-        scratch_path: directory to use to store temporary dataset.
-        crop_path: path to write the vessel crop images.
         scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
             specified.
         scene_zip_path: path to the zip file containing the Landsat scene.
         image_files: map from band name like "B8" to the path of the image. The path
             will be converted to UPath so it can include protocol like gs://...
+        window_path: path to the metadata.json file for the window.
+        json_path: path to write vessel detections as JSON file.
+        scratch_path: directory to use to store temporary dataset.
+        crop_path: path to write the vessel crop images.
     """
-    start_time = time.time()  # Start the timer
-    time_profile = {}
-
     if scratch_path is None:
         tmp_scratch_dir = tempfile.TemporaryDirectory()
         scratch_path = tmp_scratch_dir.name
@@ -282,13 +270,18 @@ def predict_pipeline(
     ds_path.mkdir(parents=True, exist_ok=True)
     item = None
 
-    if scene_id is None and scene_zip_path is None and image_files is None:
+    if (
+        scene_id is None
+        and scene_zip_path is None
+        and image_files is None
+        and window_path is None
+    ):
         raise ValueError(
-            "One of scene_id, scene_zip_path, or image_files must be specified."
+            "One of scene_id, scene_zip_path, image_files, or window_path must be specified."
         )
 
     if scene_zip_path:
-        # Download the zip file and unzip it locally.
+        # Download the zip file and create image_files locally.
         tmp_zip_dir = tempfile.TemporaryDirectory()
         zip_dir = tmp_zip_dir.name
         scene_id = scene_zip_path.split("/")[-1].split(".")[0]
@@ -331,44 +324,57 @@ def predict_pipeline(
                     left + int(raster.width),
                     top + int(raster.height),
                 )
-
         time_range = None
 
     else:
+        # Load the AWS dataset configuration file.
         with open(AWS_DATASET_CONFIG) as f:
             cfg = json.load(f)
         with (ds_path / "config.json").open("w") as f:
             json.dump(cfg, f)
 
-        # Get the projection and scene bounds using the Landsat data source.
-        dataset = Dataset(ds_path)
-        data_source: LandsatOliTirs = data_source_from_config(
-            dataset.layers[LANDSAT_LAYER_NAME], dataset.path
-        )
-        item = data_source.get_item_by_name(scene_id)
-        wgs84_geom = item.geometry.to_projection(WGS84_PROJECTION)
-        projection = get_utm_ups_projection(
-            wgs84_geom.shp.centroid.x,
-            wgs84_geom.shp.centroid.y,
-            LANDSAT_RESOLUTION,
-            -LANDSAT_RESOLUTION,
-        )
-        dst_geom = item.geometry.to_projection(projection)
-        scene_bounds = (
-            int(dst_geom.shp.bounds[0]),
-            int(dst_geom.shp.bounds[1]),
-            int(dst_geom.shp.bounds[2]),
-            int(dst_geom.shp.bounds[3]),
-        )
-        time_range = (
-            dst_geom.time_range[0] - timedelta(minutes=30),
-            dst_geom.time_range[1] + timedelta(minutes=30),
-        )
-
-    time_profile["setup"] = time.time() - start_time
+        if scene_id:
+            # Get the projection and scene bounds using the Landsat data source.
+            dataset = Dataset(ds_path)
+            data_source: LandsatOliTirs = data_source_from_config(
+                dataset.layers[LANDSAT_LAYER_NAME], dataset.path
+            )
+            item = data_source.get_item_by_name(scene_id)
+            wgs84_geom = item.geometry.to_projection(WGS84_PROJECTION)
+            projection = get_utm_ups_projection(
+                wgs84_geom.shp.centroid.x,
+                wgs84_geom.shp.centroid.y,
+                LANDSAT_RESOLUTION,
+                -LANDSAT_RESOLUTION,
+            )
+            dst_geom = item.geometry.to_projection(projection)
+            scene_bounds = (
+                int(dst_geom.shp.bounds[0]),
+                int(dst_geom.shp.bounds[1]),
+                int(dst_geom.shp.bounds[2]),
+                int(dst_geom.shp.bounds[3]),
+            )
+            time_range = (
+                dst_geom.time_range[0] - timedelta(minutes=30),
+                dst_geom.time_range[1] + timedelta(minutes=30),
+            )
+        elif window_path:
+            # Load the window metadata.
+            metadata_fname = UPath(window_path) / "metadata.json"
+            with metadata_fname.open("r") as f:
+                window_metadata = json.load(f)
+            scene_bounds = window_metadata["bounds"]
+            projection = Projection.deserialize(window_metadata["projection"])
+            time_range = (
+                (
+                    datetime.fromisoformat(window_metadata["time_range"][0]),
+                    datetime.fromisoformat(window_metadata["time_range"][1]),
+                )
+                if window_metadata["time_range"]
+                else None
+            )
 
     # Run pipeline.
-    step_start_time = time.time()
     print("run detector")
     detections = get_vessel_detections(
         ds_path,
@@ -377,17 +383,15 @@ def predict_pipeline(
         time_range=time_range,
         item=item,
     )
-    logger.info(f"Number of detections after detector: {len(detections)}")
-    time_profile["get_vessel_detections"] = time.time() - step_start_time
-
-    step_start_time = time.time()
     print("run classifier")
-    detections = run_classifier(ds_path, detections, time_range=time_range, item=item)
-    logger.info(f"Number of detections after classifier: {len(detections)}")
-    time_profile["run_classifier"] = time.time() - step_start_time
+    detections = run_classifier(
+        ds_path,
+        detections=detections,
+        time_range=time_range,
+        item=item,
+    )
 
     # Write JSON and crops.
-    step_start_time = time.time()
     if crop_path:
         crop_upath = UPath(crop_path)
         crop_upath.mkdir(parents=True, exist_ok=True)
@@ -464,11 +468,6 @@ def predict_pipeline(
                 b8_fname=str(b8_fname),
             ),
         )
-    logger.info(f"Number of detections after infra filter: {len(json_data)}")
-    time_profile["write_json_and_crops"] = time.time() - step_start_time
-    elapsed_time = time.time() - start_time
-    time_profile["total"] = elapsed_time
-
     # Clean up
     if tmp_scratch_dir:
         tmp_scratch_dir.cleanup()
@@ -479,9 +478,5 @@ def predict_pipeline(
         json_upath = UPath(json_path)
         with json_upath.open("w") as f:
             json.dump(json_data, f)
-
-    logger.info(f"Prediction pipeline completed in {elapsed_time:.2f} seconds")
-    for step, duration in time_profile.items():
-        print(f"{step} took {duration:.2f} seconds")
 
     return json_data
