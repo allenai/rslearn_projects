@@ -93,7 +93,7 @@ jobs:
       - name: Authenticate into gcp
         uses: "google-github-actions/auth@v2"
         with:
-          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+          credentials_json: ${{ secrets.GCP_VM_DEPLOYER_CREDENTIALS }}
 
       - name: Run Extract Dataset Job on a VM and Launch Prediction Job on Beaker
         run: |
