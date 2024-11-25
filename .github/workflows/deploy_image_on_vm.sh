@@ -163,11 +163,6 @@ if [ -z "$COMMAND" ]; then
     usage
 fi
 
-if [ -z "$GHCR_PAT" ]; then
-    echo "Error: GHCR_PAT environment variable must be set"
-    exit 1
-fi
-
 # Generate VM name
 VM_NAME="test-vm-$(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-4)"
 
@@ -179,24 +174,23 @@ create_vm() {
     local machine_type="$4"
     local image_family="$5"
     local image_project="$6"
-    local ghcr_pat="$7"
-    local ghcr_user="$8"
-    local user="$9"
-    local docker_image="${10}"
-    local command="${11}"
-    local beaker_token="${12}"
-    local beaker_addr="${13}"
-    local beaker_username="${14}"
-    local service_account="${15}"
-    local rslp_project="${16}"
-    local gpu_count="${17}"
-    local shared_memory="${18}"
-    local cluster="${19}"
-    local priority="${20}"
-    local task_name="${21}"
-    local budget="${22}"
-    local workspace="${23}"
-    local rslp_prefix="${24}"
+    local ghcr_user="$7"
+    local user="$8"
+    local docker_image="${9}"
+    local command="${10}"
+    local beaker_token="${11}"
+    local beaker_addr="${12}"
+    local beaker_username="${13}"
+    local service_account="${14}"
+    local rslp_project="${15}"
+    local gpu_count="${16}"
+    local shared_memory="${17}"
+    local cluster="${18}"
+    local priority="${19}"
+    local task_name="${20}"
+    local budget="${21}"
+    local workspace="${22}"
+    local rslp_prefix="${23}"
     echo "Creating VM $vm_name in project $project_id..." && \
     echo "Logged into GCP as $(gcloud config get-value account)" && \
     echo "$(gcloud config list)" && \
@@ -206,14 +200,14 @@ create_vm() {
         --machine-type="$machine_type" \
         --service-account="$service_account" \
         --scopes=cloud-platform \
-        --metadata=ghcr-token="$ghcr_pat",ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
+        --metadata=ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
         sudo apt-get update && \
         sudo apt-get install -y docker.io && \
         sudo systemctl start docker && \
         export USER=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/user) && \
         sudo usermod -aG docker $USER && \
-        export GHCR_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-token) && \
+        export GHCR_TOKEN=$(gcloud secrets versions access latest --secret="ghcr_pat_forest_loss") && \
         export GHCR_USER=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-user) && \
         export DOCKER_IMAGE=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/docker-image) && \
         export COMMAND=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/command) && \
@@ -224,7 +218,11 @@ create_vm() {
         echo "Pulling Docker image" && \
         sudo docker pull $DOCKER_IMAGE && \
         echo "Docker image pulled" && \
-        sudo docker run -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token --lifetime 43200) $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
+        export PL_API_KEY=$(gcloud secrets versions access latest --secret="planet_api_key_forest_loss") && \
+        sudo docker run \
+            -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token --lifetime 43200) \
+            -e PL_API_KEY=$PL_API_KEY \
+            $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
         echo "Data Extraction Complete" && \
         export BEAKER_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-token) && \
         export BEAKER_ADDR=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-addr) && \
@@ -296,7 +294,7 @@ echo "RSLP_PREFIX: $RSLP_PREFIX"
 
 
 # Create the VM
-create_vm "$VM_NAME" "$PROJECT_ID" "$ZONE" "$MACHINE_TYPE" "$IMAGE_FAMILY" "$IMAGE_PROJECT" "$GHCR_PAT" "$GHCR_USER" "$USER" "$DOCKER_IMAGE" "$COMMAND" "$BEAKER_TOKEN" "$BEAKER_ADDR" "$BEAKER_USERNAME" "$SERVICE_ACCOUNT" "$RSLP_PROJECT" "$GPU_COUNT" "$SHARED_MEMORY" "$CLUSTER" "$PRIORITY" "$TASK_NAME" "$BUDGET" "$WORKSPACE"
+create_vm "$VM_NAME" "$PROJECT_ID" "$ZONE" "$MACHINE_TYPE" "$IMAGE_FAMILY" "$IMAGE_PROJECT" "$GHCR_USER" "$USER" "$DOCKER_IMAGE" "$COMMAND" "$BEAKER_TOKEN" "$BEAKER_ADDR" "$BEAKER_USERNAME" "$SERVICE_ACCOUNT" "$RSLP_PROJECT" "$GPU_COUNT" "$SHARED_MEMORY" "$CLUSTER" "$PRIORITY" "$TASK_NAME" "$BUDGET" "$WORKSPACE"
 
 # Handle VM deletion if requested
 if [[ "$DELETE_VM" == "yes" ]]; then

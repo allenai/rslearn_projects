@@ -97,7 +97,6 @@ jobs:
 
       - name: Run Extract Dataset Job on VM and Launch Prediction Job on Beaker
         run: |
-          export GHCR_PAT=${{ secrets.GHCR_PAT_PULL_DOCKER_IMAGE }} && \
           export DATASET_EXTRACT_COMMAND="python -m rslp.main forest_loss_driver extract_dataset" && \
           export RSLP_PROJECT="forest_loss_driver" && \
           bash .github/workflows/deploy_image_on_vm.sh \
