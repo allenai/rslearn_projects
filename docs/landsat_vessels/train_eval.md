@@ -73,26 +73,28 @@ Run it with a Landsat scene ID (to be fetched from AWS):
 
 ## Evaluation
 
-We evaluate the whole pipeline with two strategies.
+The whole pipeline is evaluated with two approaches.
 
-- **Evaluation Metrics**: We evaluate the pipeline on the validation set of the detector (about 1K images), which outputs the recall, precision, and F1 score.
-- **Scenario Checks**: We evaluate the pipeline on a set of selected scenes, which covers different regions, failure modes (whitcaps, clouds, ice, islands, etc.), and true positives, to check if the pipeline is working properly.
+- **Evaluation Metrics**: Evaluate the pipeline on the validation set of the detector (about 1K images), which outputs the recall, precision, and F1 score.
+- **Scenario Checks**: Evaluate the pipeline on a set of selected scenes, which covers different regions, failure modes (whitcaps, clouds, ice, islands, etc.), and true positives, to check if the pipeline is working properly.
 
 
 ### Evaluation Metrics
 
-1. Run the detector on the validation set (if not already run):
+1. Run the evaluation pipeline, which runs the detector and classifier on the validation set, and computes the metrics:
 
     ```python
-    python -m rslp.rslearn_main model predict --config data/landsat_vessels/config.yaml
+    python rslp/landsat_vessels/evaluation/evaluation_metrics.py --detector_ds_path gs://rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20240924/ --detector_group labels_utm --classifier_ds_path gs://rslearn-eai/datasets/landsat_vessel_detection/pipeline/dataset_20240924/
     ```
 
-2. Run the following script to generate classification windows based on the detector outputs, and evaluate the results against the human-generated labels from the validation set:
+There're four optional flags (if not provided, default is False):
 
-    ```python
-    python rslp/landsat_vessels/evaluation/evaluation_metrics.py --detector_dataset_path /path/to/detector_dataset/ --detector_group detector_group --classifier_dataset_path /path/to/classifier_dataset/ --output_path /path/to/result.json
-    ```
+- `--materialize_detector_ds`: materialize the detector dataset.
+- `--run_detector`: run the detector on the validation set.
+- `--materialize_classifier_ds`: materialize the classifier dataset.
+- `--run_classifier`: run the classifier on the detector outputs.
 
+If none of these are provided, it means both the detector and classifier dataset are already materialized and run, and the metrics are computed directly. If the detector changes, we need to provide the flags of `--run_detector`, `--materialize_classifier_ds`, and `--run_classifier`. If only the classifier changes, we only need to provide the flags of `--run_classifier`.
 
 ### Scenario Checks
 

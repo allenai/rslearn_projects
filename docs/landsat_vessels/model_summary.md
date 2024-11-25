@@ -4,7 +4,7 @@
 - **Model Name**: Landsat Vessel Detection
 - **Model Version**: `v0.0.1`
 - **Tag**: `landsat_vessels_v0.0.1`
-- **Last Updated**: `2024-11-19`
+- **Last Updated**: `2024-11-25`
 
 ---
 
@@ -14,7 +14,7 @@ Note: The evaluation metrics are reported for the two-stage model (detector + cl
 
 | Date       | Version | Precision | Recall | F1-Score |
 |------------|---------|-----------|--------|----------|
-| 2024-11-15 | 0.0.1   | 0.79      | 0.56   | 0.66     |
+| 2024-11-15 | 0.0.1   | 0.77      | 0.60   | 0.67     |
 | YYYY-MM-DD | TBD     | TBD       | TBD    | TBD      |
 
 ## Offline Scenario Checks

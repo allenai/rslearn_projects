@@ -176,8 +176,6 @@ def run_classifier(
     if len(detections) == 0:
         return []
 
-    # TODO(yawenz): check if windows are there already, not need to materialize
-
     # Create windows for applying classifier.
     window_paths: list[UPath] = []
     for detection in detections:
@@ -205,20 +203,8 @@ def run_classifier(
             layer_data = WindowLayerData(LANDSAT_LAYER_NAME, [[item.serialize()]])
             window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
-    # Check if the dataset has already been materialized
-    all_exist = True
-    for window_path in window_paths:
-        if not (
-            window_path / "layers" / LANDSAT_LAYER_NAME / "B8" / "geotiff.tif"
-        ).exists():
-            all_exist = False
-            break
-
-    if not all_exist:
-        print("materialize dataset")
-        materialize_dataset(ds_path, group=group)
-    else:
-        print("skip materialize dataset since it already exist.")
+    print("materialize dataset")
+    materialize_dataset(ds_path, group=group)
 
     for window_path in window_paths:
         assert (
@@ -287,10 +273,10 @@ def predict_pipeline(
     time_profile = {}
 
     if scratch_path is None:
-        tmp_dir = tempfile.TemporaryDirectory()
-        scratch_path = tmp_dir.name
+        tmp_scratch_dir = tempfile.TemporaryDirectory()
+        scratch_path = tmp_scratch_dir.name
     else:
-        tmp_dir = None
+        tmp_scratch_dir = None
 
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
@@ -302,13 +288,12 @@ def predict_pipeline(
         )
 
     if scene_zip_path:
-        # if scene_zip_path is provided (either from GCS or WEKA), we will download to local and unzip
-        # Create a TemporaryDirectory object
+        # Download the zip file and unzip it locally.
         tmp_zip_dir = tempfile.TemporaryDirectory()
         zip_dir = tmp_zip_dir.name
         scene_id = scene_zip_path.split("/")[-1].split(".")[0]
-        local_scene_zip_path = os.path.join(zip_dir, scene_id + ".zip")
-        download_and_unzip_scene(scene_zip_path, local_scene_zip_path, zip_dir)
+        local_zip_path = os.path.join(zip_dir, scene_id + ".zip")
+        download_and_unzip_scene(scene_zip_path, local_zip_path, zip_dir)
         image_files = {}
         for band in LANDSAT_BANDS:
             image_files[band] = f"{zip_dir}/{scene_id}/{scene_id}_{band}.TIF"
@@ -484,10 +469,9 @@ def predict_pipeline(
     elapsed_time = time.time() - start_time
     time_profile["total"] = elapsed_time
 
-    # Clean up temporary directories
-    if tmp_dir:
-        tmp_dir.cleanup()
-
+    # Clean up
+    if tmp_scratch_dir:
+        tmp_scratch_dir.cleanup()
     if tmp_zip_dir:
         tmp_zip_dir.cleanup()
 

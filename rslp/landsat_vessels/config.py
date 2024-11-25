@@ -10,6 +10,9 @@ LANDSAT_RESOLUTION = 15
 LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
 AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
+DETECT_MODEL_EVAL_CONFIG = (
+    "data/landsat_vessels/config_eval.yaml"  # config for evaluation
+)
 
 # Extract Landsat bands from local config file
 with open(LOCAL_FILES_DATASET_CONFIG) as f:
