@@ -93,7 +93,7 @@ The whole pipeline is evaluated with two approaches.
 
 This will launch multiple beaker jobs. Each job will evaluate the model on one window and save the results in the `jsons` directory.
 
-2. Compute the evaluation metrics:
+2. Compute the metrics:
 
     ```python
     python rslp/landsat_vessels/evaluation/get_metrics.py --ground_truth_dir gs://rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20240924/windows/labels_utm --predictions_dir gs://rslearn-eai/projects/landsat_evaluation/pipeline_results/jsons/

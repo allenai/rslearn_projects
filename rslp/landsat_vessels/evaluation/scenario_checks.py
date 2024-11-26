@@ -5,10 +5,8 @@ import json
 import pandas as pd
 from upath import UPath
 
-RESULT_JSON_DIR = "gs://rslearn-eai/projects/2024_10_check_landsat/evaluation/jsons/"
-TARGET_CSV_PATH = (
-    "gs://rslearn-eai/projects/2024_10_check_landsat/evaluation/csv/landsat_targets.csv"
-)
+RESULT_JSON_DIR = "gs://rslearn-eai/projects/landsat_evaluation/scenario_checks/jsons/"
+TARGET_CSV_PATH = "gs://rslearn-eai/projects/landsat_evaluation/scenario_checks/csv/landsat_targets.csv"
 
 
 if __name__ == "__main__":

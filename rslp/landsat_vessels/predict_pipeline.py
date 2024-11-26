@@ -25,7 +25,7 @@ from rslp.landsat_vessels.config import (
     CLASSIFY_MODEL_CONFIG,
     CLASSIFY_WINDOW_SIZE,
     DETECT_MODEL_CONFIG,
-    INFRA_DISTANCE_THRESHOLD,
+    INFRA_THRESHOLD_KM,
     LANDSAT_BANDS,
     LANDSAT_LAYER_NAME,
     LANDSAT_RESOLUTION,
@@ -397,9 +397,7 @@ def predict_pipeline(
         crop_upath.mkdir(parents=True, exist_ok=True)
 
     json_data = []
-    near_infra_filter = NearInfraFilter(
-        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
-    )
+    near_infra_filter = NearInfraFilter(infra_distance_threshold=INFRA_THRESHOLD_KM)
     infra_detections = 0
     for idx, detection in enumerate(detections):
         # Get longitude/latitude.
@@ -468,11 +466,6 @@ def predict_pipeline(
                 b8_fname=str(b8_fname),
             ),
         )
-    # Clean up
-    if tmp_scratch_dir:
-        tmp_scratch_dir.cleanup()
-    if tmp_zip_dir:
-        tmp_zip_dir.cleanup()
 
     if json_path:
         json_upath = UPath(json_path)

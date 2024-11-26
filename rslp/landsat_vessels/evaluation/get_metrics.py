@@ -12,7 +12,7 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.utils import Projection, STGeometry
 from upath import UPath
 
-from rslp.landsat_vessels.config import MATCH_DISTANCE_THRESHOLD
+from rslp.landsat_vessels.config import MATCH_THRESHOLD_KM
 from rslp.utils.mp import init_mp
 
 
@@ -74,7 +74,7 @@ def process_window(
         matched = False
         for exp in expected_detections:
             distance = haversine(pred, exp, unit=Unit.KILOMETERS)
-            if distance <= MATCH_DISTANCE_THRESHOLD:
+            if distance <= MATCH_THRESHOLD_KM:
                 matches += 1
                 if exp in current_missed_expected:
                     current_missed_expected.remove(exp)
@@ -83,6 +83,12 @@ def process_window(
         if not matched:
             unmatched_predicted += 1
     missed_expected += len(current_missed_expected)
+    print(
+        f"window {window_name}, "
+        f"matches: {matches}, "
+        f"missed_expected: {missed_expected}, "
+        f"unmatched_predicted: {unmatched_predicted}"
+    )
 
     return matches, missed_expected, unmatched_predicted
 

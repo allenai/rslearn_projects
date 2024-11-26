@@ -2,11 +2,11 @@
 
 import json
 
-# Landsat configuration
+# Landsat config
 LANDSAT_LAYER_NAME = "landsat"
 LANDSAT_RESOLUTION = 15
 
-# Detector configuration
+# Detector config
 LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
 AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config.yaml"
@@ -21,12 +21,12 @@ LANDSAT_BANDS = [
     band["bands"][0] for band in json_data["layers"][LANDSAT_LAYER_NAME]["band_sets"]
 ]
 
-# Classifier configuration
+# Classifier config
 CLASSIFY_MODEL_CONFIG = "landsat/recheck_landsat_labels/phase123_config.yaml"
 CLASSIFY_WINDOW_SIZE = 64
 
-# Filter configuration
-INFRA_DISTANCE_THRESHOLD = 0.03  # unit: km, 30 meters
+# Filter config
+INFRA_THRESHOLD_KM = 0.03  # max-distance between marine infra and prediction
 
-# Evaluation configuration
-MATCH_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
+# Evaluation config
+MATCH_THRESHOLD_KM = 0.1  # max-distance between ground-truth and prediction

@@ -64,6 +64,7 @@ def launch_job(
 
     with beaker.session():
         env_vars = get_base_env_vars(use_weka_prefix=use_weka_prefix)
+        # Add AWS credentials for downloading data
         env_vars.append(
             EnvVar(
                 name="AWS_ACCESS_KEY_ID",
@@ -161,7 +162,7 @@ if __name__ == "__main__":
     if args.zip_dir:
         try:
             zip_dir_upath = UPath(args.zip_dir)
-            zip_paths = list(zip_dir_upath.glob("*.zip"))
+            paths = list(zip_dir_upath.glob("*.zip"))
         except Exception:
             # using S3 protocol to access WEKA is only supported on ai2 clusters
             # as a workaround for other machines, we load the corresponding gcs bucket first

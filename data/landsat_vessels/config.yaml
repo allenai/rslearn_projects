@@ -131,7 +131,7 @@ trainer:
           class_path: rslp.utils.nms.NMSDistanceMerger
           init_args:
             grid_size: 64
-            distance_threshold: 15
+            distance_threshold: 10
             property_name: "category"  # same as task.property_name
             class_agnostic: false
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint

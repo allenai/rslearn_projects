@@ -14,7 +14,7 @@ Note: The evaluation metrics are reported for the two-stage model (detector + cl
 
 | Date       | Version | Precision | Recall | F1-Score |
 |------------|---------|-----------|--------|----------|
-| 2024-11-15 | 0.0.1   | 0.77      | 0.60   | 0.67     |
+| 2024-11-15 | 0.0.1   | 0.72      | 0.53   | 0.61     |
 | YYYY-MM-DD | TBD     | TBD       | TBD    | TBD      |
 
 ## Offline Scenario Checks

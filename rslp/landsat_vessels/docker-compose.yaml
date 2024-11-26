@@ -17,7 +17,7 @@ services:
       - base-image
     ports:
       - 5555:5555
-    shm_size: '15G'  # This adds the shared memory size
+    shm_size: '15G'  # Add the shared memory size
     environment:
       - NVIDIA_VISIBLE_DEVICES=all  # Make all GPUs visible
     deploy:
