@@ -8,8 +8,12 @@ from unittest import mock
 import pytest
 from upath import UPath
 
+from rslp.log_utils import get_logger
+
 # TODO: these are duplicated in the unit tests for forest loss driver
 TEST_ID = str(uuid.uuid4())
+
+logger = get_logger(__name__)
 
 
 @pytest.fixture
@@ -68,3 +72,30 @@ def clear_sys_argv() -> Generator[None, None, None]:
     """Clear the sys.argv."""
     with mock.patch("sys.argv", ["pytest"]):
         yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def download_test_data() -> Generator[None, None, None]:
+    """Download test data from GCS bucket if not present locally."""
+    test_data_path = Path(__file__).parents[3] / "test_data/forest_loss_driver"
+    gcs_path = "gs://test-bucket-rslearn/forest_loss_driver/test_data"
+
+    # Only download if test_data directory is empty or doesn't exist
+    if not test_data_path.exists() or not any(test_data_path.iterdir()):
+        logger.info("Downloading test data from GCS...")
+
+        # Create test_data directory if it doesn't exist
+        test_data_path.mkdir(parents=True, exist_ok=True)
+
+        # Copy data from GCS to local
+        gcs_upath = UPath(gcs_path)
+        for src_path in gcs_upath.rglob("*"):
+            if src_path.is_file():
+                rel_path = src_path.relative_to(gcs_upath)
+                dst_path = test_data_path / rel_path
+                dst_path.parent.mkdir(parents=True, exist_ok=True)
+                with src_path.open("rb") as src, dst_path.open("wb") as dst:
+                    dst.write(src.read())
+
+        logger.info("Test data download complete")
+    yield
