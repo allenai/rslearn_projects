@@ -200,6 +200,8 @@ create_vm() {
         --machine-type="$machine_type" \
         --service-account="$service_account" \
         --scopes=cloud-platform \
+        --instance-termination-action=DELETE \
+        --max-run-duration=12h \
         --metadata=ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
         sudo apt-get update && \
