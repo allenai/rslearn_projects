@@ -48,13 +48,17 @@ def materialize_dataset(
 
 
 def run_model_predict(
-    model_cfg_fname: str, ds_path: UPath, extra_args: list[str] = []
+    model_cfg_fname: str,
+    ds_path: UPath,
+    groups: list[str] = [],
+    extra_args: list[str] = [],
 ) -> None:
     """Call rslearn model predict.
 
     Args:
         model_cfg_fname: the model configuration file.
         ds_path: the dataset root path.
+        groups: the groups to predict.
         extra_args: additional arguments to pass to model predict.
     """
     CustomLightningCLI(
@@ -68,6 +72,7 @@ def run_model_predict(
             "--data.init_args.path",
             str(ds_path),
         ]
+        + (["--data.init_args.predict_config.groups", str(groups)] if groups else [])
         + extra_args,
         subclass_mode_model=True,
         subclass_mode_data=True,
