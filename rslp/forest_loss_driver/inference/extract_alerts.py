@@ -379,8 +379,6 @@ def extract_alerts_pipeline(
         fname: the GeoTIFF file to extract alerts from.
     """
     logger.info(f"extract_alerts for {str(config)}")
-    # Load Peru country polygon which will be used to sub-select the forest loss
-    # events.
     country_wgs84_shp = load_country_polygon(config.country_data_path)
 
     logger.info(f"read confidences for {fname}")
@@ -391,14 +389,17 @@ def extract_alerts_pipeline(
     logger.info(f"read dates for {fname}")
     date_data, date_raster = read_forest_alerts_date_raster(fname, config.date_prefix)
     logger.info(f"create mask for {fname}")
-    mask = create_forest_loss_mask(
+    forest_loss_mask = create_forest_loss_mask(
         conf_data,
         date_data,
         config.min_confidence,
         config.days,
         config.prediction_utc_time,
     )
-    shapes = list(rasterio.features.shapes(mask))
+    logger.info(f"create shapes for mask{fname}")
+    # Rasterio uses True for features and False for background
+    ignore_mask = forest_loss_mask == 1
+    shapes = list(rasterio.features.shapes(forest_loss_mask, mask=ignore_mask))
     events = process_shapes_into_events(
         shapes, conf_raster, date_data, country_wgs84_shp, config.min_area
     )
