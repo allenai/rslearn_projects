@@ -358,17 +358,10 @@ def create_forest_loss_mask(
 
 def save_inference_dataset_config(ds_path: UPath) -> None:
     """Save the inference dataset config."""
-    # TODO SLoppy needs a better way to handle this
-    # ARE these needed if so they should be set based on environment and checked outside pipeline
-    # index_cache_dir = os.environ.get("INDEX_CACHE_DIR")
-    # tile_store_root_dir = os.environ.get("TILE_STORE_ROOT_DIR")
-    # if index_cache_dir is None or tile_store_root_dir is None:
-    #     raise ValueError(
-    #         "INDEX_CACHE_DIR and TILE_STORE_ROOT_DIR must be set as environment variables"
-    #     )
     with open(INFERENCE_DATASET_CONFIG) as config_file:
         config_json = json.loads(os.path.expandvars(config_file.read()))
-    # config_json["data_source"]["index_cache_dir"] = index_cache_dir
+    # Add back as optional
+    # config_json["data_source"]["index_cache_dir"] = osindex_cache_dir
     # config_json["tile_store"]["root_dir"] = tile_store_root_dir
     with (ds_path / "config.json").open("w") as f:
         json.dump(config_json, f)
@@ -383,10 +376,7 @@ def extract_alerts_pipeline(
 
     Args:
         config: the pipeline config.
-        fname: the filename
-        current_utc_time: the time to look back from for forest loss events.
-        date_prefix: the prefix for the date raster.
-        conf_prefix: the prefix for the confidence raster.
+        fname: the GeoTIFF file to extract alerts from.
     """
     logger.info(f"extract_alerts for {str(config)}")
     # Load Peru country polygon which will be used to sub-select the forest loss
@@ -413,6 +403,7 @@ def extract_alerts_pipeline(
         shapes, conf_raster, date_data, country_wgs84_shp, config.min_area
     )
     if config.max_number_of_events is not None:
+        logger.info(f"limiting to {config.max_number_of_events} events")
         events = events[: config.max_number_of_events]
     logger.info(f"writing {len(events)} windows")
     jobs = [

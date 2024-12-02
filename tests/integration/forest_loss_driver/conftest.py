@@ -78,16 +78,15 @@ def clear_sys_argv() -> Generator[None, None, None]:
 def download_test_data() -> Generator[None, None, None]:
     """Download test data from GCS bucket if not present locally."""
     test_data_path = Path(__file__).parents[3] / "test_data/forest_loss_driver"
-    gcs_path = "gs://test-bucket-rslearn/forest_loss_driver/test_data"
+    gcs_path = (
+        "gs://test-bucket-rslearn/forest_loss_driver/test_data/forest_loss_driver"
+    )
 
     # Only download if test_data directory is empty or doesn't exist
     if not test_data_path.exists() or not any(test_data_path.iterdir()):
         logger.info("Downloading test data from GCS...")
 
-        # Create test_data directory if it doesn't exist
         test_data_path.mkdir(parents=True, exist_ok=True)
-
-        # Copy data from GCS to local
         gcs_upath = UPath(gcs_path)
         for src_path in gcs_upath.rglob("*"):
             if src_path.is_file():
