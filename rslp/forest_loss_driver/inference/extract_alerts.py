@@ -272,8 +272,9 @@ def process_shapes_into_events(
     background_skip_count = 0
     area_skip_count = 0
     country_skip_count = 0
-
-    for shp, value in tqdm.tqdm(shapes, desc="process shapes"):
+    logger.info(f"min area: {min_area}")
+    # for shp, value in tqdm.tqdm(shapes, desc="process shapes"):
+    for shp, value in shapes:
         # Skip shapes corresponding to the background.
         if value != 1:
             background_skip_count += 1
