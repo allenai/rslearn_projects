@@ -269,7 +269,6 @@ def process_shapes_into_events(
     """Process the masked out shapes into a forest loss event."""
     events: list[ForestLossEvent] = []
     logger.info(f"processing {len(shapes)} shapes")
-    logger.info(f"min area: {min_area}")
     background_skip_count = 0
     area_skip_count = 0
     country_skip_count = 0
@@ -278,13 +277,11 @@ def process_shapes_into_events(
         # Skip shapes corresponding to the background.
         if value != 1:
             background_skip_count += 1
-            # logger.debug(f"skipping shape with value {value} as it is in background")
             continue
 
         shp = shapely.geometry.shape(shp)
         if shp.area < min_area:
             area_skip_count += 1
-            # logger.debug(f"skipping shape with area {shp.area}")
             continue
 
         # Get center point (clipped to shape) and note the corresponding date.
@@ -396,10 +393,11 @@ def extract_alerts_pipeline(
         config.days,
         config.prediction_utc_time,
     )
-    logger.info(f"create shapes for mask{fname}")
+    logger.info(f"create shapes from mask for {fname}")
     # Rasterio uses True for features and False for background
     ignore_mask = forest_loss_mask == 1
     shapes = list(rasterio.features.shapes(forest_loss_mask, mask=ignore_mask))
+    logger.info(f"process shapes into events for {fname}")
     events = process_shapes_into_events(
         shapes, conf_raster, date_data, country_wgs84_shp, config.min_area
     )
