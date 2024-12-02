@@ -88,12 +88,6 @@ class PredictPipelineConfig:
         with open(yaml_path) as f:
             config_dict = yaml.safe_load(f)
 
-        # Check for required fields
-        required_fields = {"ds_root", "model_cfg_fname", "gcs_tiff_filenames"}
-        missing_fields = required_fields - set(config_dict.keys())
-        if missing_fields:
-            raise ValueError(f"Missing required fields in config: {missing_fields}")
-
         # Convert string datetime to datetime object if present
         if "prediction_utc_time" in config_dict:
             if isinstance(config_dict["prediction_utc_time"], str):

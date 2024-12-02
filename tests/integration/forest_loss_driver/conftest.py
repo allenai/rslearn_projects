@@ -90,8 +90,11 @@ def download_test_data() -> Generator[None, None, None]:
         gcs_upath = UPath(gcs_path)
         for src_path in gcs_upath.rglob("*"):
             if src_path.is_file():
-                rel_path = src_path.relative_to(gcs_upath)
+                # Skip the parent folders by taking the last 2 path components
+                rel_path = Path(*src_path.relative_to(gcs_upath).parts[4:])
                 dst_path = test_data_path / rel_path
+                logger.info(f"rel_path: {rel_path}")
+                logger.info(f"Downloading {src_path} to {dst_path}")
                 dst_path.parent.mkdir(parents=True, exist_ok=True)
                 with src_path.open("rb") as src, dst_path.open("wb") as dst:
                     dst.write(src.read())

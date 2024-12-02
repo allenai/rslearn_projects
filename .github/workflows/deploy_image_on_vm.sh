@@ -162,9 +162,9 @@ if [ -z "$COMMAND" ]; then
     echo "Error: --command is required"
     usage
 fi
-
+job_name="forest_loss_driver_inference_$(uuidgen | cut -c1-8)"
 # Generate VM name
-VM_NAME="test-vm-$(uuidgen | tr '[:upper:]' '[:lower:]' | cut -c1-4)"
+VM_NAME="rslp-$job_name"
 
 # Rest of your existing create_vm function...
 create_vm() {
