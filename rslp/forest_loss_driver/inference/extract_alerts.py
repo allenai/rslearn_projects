@@ -283,7 +283,7 @@ def process_shapes_into_events(
         if shp.area < min_area:
             area_skip_count += 1
             continue
-
+        logger.info(f"processing shape with area {shp.area}")
         # Get center point (clipped to shape) and note the corresponding date.
         center_shp, _ = shapely.ops.nearest_points(shp, shp.centroid)
         center_pixel = (int(center_shp.x), int(center_shp.y))
