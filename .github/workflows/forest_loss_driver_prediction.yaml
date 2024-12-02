@@ -122,3 +122,4 @@ jobs:
             --budget ${{ secrets.BEAKER_BUDGET }} \
             --workspace ${{ secrets.BEAKER_WORKSPACE }} && \
           echo "Inference job launched!"
+      # TODO: Add a check to see if the vm has been created and is ready

@@ -78,7 +78,7 @@ jobs:
     # TODO: Make sure skylight can grab the image tag and deploy
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-m
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
