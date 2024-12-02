@@ -162,7 +162,7 @@ if [ -z "$COMMAND" ]; then
     echo "Error: --command is required"
     usage
 fi
-job_name="forest_loss_driver_inference_$(uuidgen | cut -c1-8)"
+job_name="forest-loss-driver-inference-$(uuidgen | cut -c1-8)"
 # Generate VM name
 VM_NAME="rslp-$job_name"
 
