@@ -5,6 +5,6 @@ gcs_tiff_filenames:
   # - "cropped_070W_10S_060W_00N.tif"
 
 # Optional fields (can be omitted), if omitted will use defaults in config.py
-workers: 16
+workers: 4
 model_data_load_workers: 8
 min_confidence: 2
