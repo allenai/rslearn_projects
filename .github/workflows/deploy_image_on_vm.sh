@@ -222,7 +222,7 @@ create_vm() {
         echo "Docker image pulled" && \
         export PL_API_KEY=$(gcloud secrets versions access latest --secret="planet_api_key_forest_loss") && \
         sudo docker run \
-            -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token --lifetime 43200) \
+            -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token) \
             -e PL_API_KEY=$PL_API_KEY \
             $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
         echo "Data Extraction Complete" && \

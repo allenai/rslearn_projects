@@ -102,7 +102,7 @@ jobs:
           bash .github/workflows/deploy_image_on_vm.sh \
             --project-id ${{ secrets.GCP_PROJECT_ID }} \
             --zone "us-west1-b" \
-            --machine-type "n2-standard-8" \
+            --machine-type "n2-highmem-16" \
             --docker-image ${{ needs.build.outputs.ghcr_docker_image }} \
             --command "$DATASET_EXTRACT_COMMAND" \
             --user ${{ secrets.GCP_USER }} \
