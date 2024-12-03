@@ -112,7 +112,8 @@ class ForestLossDriverPredictionPipeline:
         OPTIONAL_ENV_VARS: list[str] = []
         self._validate_required_env_vars(REQUIRED_ENV_VARS, OPTIONAL_ENV_VARS)
         # TODO: Add some validation that the extract dataset step is done by checking the dataset bucket
-        # TODO: This may have unneeded levels of wrapping and ab
+        # TODO: This may have unneeded levels of wrapping and abstraction
+        logger.info(f"running model predict with config: {self.pred_config}")
         forest_loss_driver_model_predict(
             self.pred_config.model_cfg_fname,
             self.pred_config.path,

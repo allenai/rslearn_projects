@@ -273,8 +273,11 @@ def process_shapes_into_events(
     area_skip_count = 0
     country_skip_count = 0
     logger.info(f"min area: {min_area}")
-    # for shp, value in tqdm.tqdm(shapes, desc="process shapes"):
-    for shp, value in shapes:
+    # Set pbar update interval to 5 to avoid token too long error on gcp buffer "bufio.Scanner token too long"
+    pbar_update_interval = 5
+    for shp, value in tqdm.tqdm(
+        shapes, desc="process shapes", mininterval=pbar_update_interval
+    ):
         # Skip shapes corresponding to the background.
         if value != 1:
             background_skip_count += 1
@@ -284,7 +287,6 @@ def process_shapes_into_events(
         if shp.area < min_area:
             area_skip_count += 1
             continue
-        logger.info(f"processing shape with area {shp.area}")
         # Get center point (clipped to shape) and note the corresponding date.
         center_shp, _ = shapely.ops.nearest_points(shp, shp.centroid)
         center_pixel = (int(center_shp.x), int(center_shp.y))

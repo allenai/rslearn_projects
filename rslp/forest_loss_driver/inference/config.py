@@ -23,14 +23,8 @@ class PredictPipelineConfig:
     model_cfg_fname: str
     gcs_tiff_filenames: list[str]
 
-    rslp_prefix: str = field(
-        default=os.environ.get("RSLP_PREFIX", "gs://rslearn-eai"),
-        init=False,
-    )
-    # Dynamically defined fields
-
     # TODO:REMOVE DEBUG
-    ds_root: str = f"{rslp_prefix}/datasets/forest_loss_driver/debug/prediction/dataset_{datetime.now().strftime('%Y%m%d')}"
+    ds_root: str = f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/debug/prediction/dataset_{datetime.now().strftime('%Y%m%d')}"
 
     # Optional fields with defaults
     workers: int = 1
