@@ -75,7 +75,6 @@ jobs:
           echo "ghcr.io Docker image name is ${GHCR_IMAGE}"
           echo "ghcr_image_name=\"${GHCR_IMAGE}\"" >> $GITHUB_OUTPUT
 
-    # TODO: Make sure skylight can grab the image tag and deploy
 
   test:
     runs-on: ubuntu-latest-m

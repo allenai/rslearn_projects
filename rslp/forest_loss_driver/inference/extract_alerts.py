@@ -274,10 +274,11 @@ def process_shapes_into_events(
     country_skip_count = 0
     logger.info(f"min area: {min_area}")
     # Set pbar update interval to 5 to avoid token too long error on gcp buffer "bufio.Scanner token too long"
-    pbar_update_interval = 5
-    for shp, value in tqdm.tqdm(
-        shapes, desc="process shapes", mininterval=pbar_update_interval
-    ):
+    # pbar_update_interval = 5
+    # for shp, value in tqdm.tqdm(
+    #     shapes, desc="process shapes", mininterval=pbar_update_interval
+    # ):
+    for shp, value in shapes:
         # Skip shapes corresponding to the background.
         if value != 1:
             background_skip_count += 1
