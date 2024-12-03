@@ -1,4 +1,8 @@
-"""Fixtures for the forest loss driver tests."""
+"""Fixtures for the forest loss driver tests.
+
+Note: All data is downloaded to the test_data directory in the root of the repo at the
+start of the testing session
+"""
 
 import uuid
 from collections.abc import Generator

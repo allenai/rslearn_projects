@@ -26,10 +26,6 @@ from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 
-SAMPLE_EVENT_FOLDER = Path("test_data/forest_loss_driver/sample_forest_loss_events")
-
-FOLDER_PATH = Path(__file__).parents[4] / SAMPLE_EVENT_FOLDER
-
 
 @pytest.fixture
 def forest_loss_event() -> ForestLossEvent:
@@ -58,6 +54,7 @@ def forest_loss_event() -> ForestLossEvent:
     return event
 
 
+# TODO: Make this fixture write the file to a temp directory or readd to the test data
 @pytest.fixture
 def country_data_path() -> UPath:
     """Create a country data path."""
