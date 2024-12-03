@@ -24,6 +24,7 @@ class PredictPipelineConfig:
     gcs_tiff_filenames: list[str]
 
     # TODO:REMOVE DEBUG
+    # TODO: Fix bug of this happening on a differnet day probably should be passed more explicitly
     ds_root: str = f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/debug_1/prediction/dataset_{datetime.now().strftime('%Y%m%d')}"
 
     # Optional fields with defaults

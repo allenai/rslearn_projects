@@ -1,9 +1,13 @@
 """Tool to create smaller cropped tiffs for testing."""
 
-from pathlib import Path
+import argparse
 
 import rasterio
 from rasterio.windows import Window
+
+from rslp.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 def crop_geotiff(
@@ -27,7 +31,7 @@ def crop_geotiff(
 
         # Update profile for the new file
         profile = src.profile.copy()
-        print(transform)
+        logger.info(f"{transform=}")
         profile.update({"height": height, "width": width, "transform": transform})
 
         # Write the cropped image
@@ -36,26 +40,53 @@ def crop_geotiff(
 
 
 if __name__ == "__main__":
-    original_path = str(
-        Path(__file__).parents[1]
-        / "test_data/forest_loss_driver/alert_dates/070W_10S_060W_00N.tif"
+    parser = argparse.ArgumentParser(
+        description="Crop a GeoTIFF file to specified dimensions"
     )
-    cropped_path = str(
-        Path(__file__).parents[1]
-        / "test_data/forest_loss_driver/alert_dates/cropped_070W_10S_060W_00N.tif"
+    parser.add_argument(
+        "--input",
+        type=str,
+        required=True,
+        help="Path to input GeoTIFF file",
     )
-    x_start = 0
-    y_start = 40000
-    width = 10000
-    height = 10000
-    crop_geotiff(original_path, cropped_path, x_start, y_start, width, height)
+    parser.add_argument(
+        "--output",
+        type=str,
+        required=True,
+        help="Path to save cropped GeoTIFF file",
+    )
+    parser.add_argument(
+        "--x-start",
+        type=int,
+        required=True,
+        help="Starting x coordinate for crop window",
+    )
+    parser.add_argument(
+        "--y-start",
+        type=int,
+        required=True,
+        help="Starting y coordinate for crop window",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        required=True,
+        help="Width of crop window in pixels",
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        required=True,
+        help="Height of crop window in pixels",
+    )
 
-    original_conf_path = str(
-        Path(__file__).parents[1]
-        / "test_data/forest_loss_driver/alert_tiffs/070W_10S_060W_00N.tif"
+    args = parser.parse_args()
+
+    crop_geotiff(
+        args.input,
+        args.output,
+        args.x_start,
+        args.y_start,
+        args.width,
+        args.height,
     )
-    cropped_conf_path = str(
-        Path(__file__).parents[1]
-        / "test_data/forest_loss_driver/alert_tiffs/cropped_070W_10S_060W_00N.tif"
-    )
-    crop_geotiff(original_conf_path, cropped_conf_path, x_start, y_start, width, height)

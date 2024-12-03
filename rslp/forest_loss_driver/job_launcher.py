@@ -93,6 +93,8 @@ if __name__ == "__main__":
     # Ensure that RSLP_Prefix is set to get base nev vars
     if "RSLP_PREFIX" not in os.environ:
         raise ValueError("RSLP_PREFIX is not set")
+    else:
+        logger.info(f"RSLP_PREFIX: {os.environ['RSLP_PREFIX']}")
 
     # i want to be able to specify project andd workflow here
     parser = argparse.ArgumentParser(

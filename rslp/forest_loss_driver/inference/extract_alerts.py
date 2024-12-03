@@ -422,4 +422,5 @@ def extract_alerts_pipeline(
         pass
     p.close()
     # rslearn dataset expects a config.json file in the dataset root
+    # TODO: This should be in the main function at the end rather than here
     save_inference_dataset_config(config.path)
