@@ -204,11 +204,11 @@ create_vm() {
         --max-run-duration=12h \
         --metadata=ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
-        exec 1> >(logger -s -t $(basename $0)) 2>&1  # Redirect stdout and stderr to syslog
-
-        # Create a log directory and file
+        # Create a log directory
         sudo mkdir -p /var/log/startup-script
-        exec 1> >(tee -a "/var/log/startup-script/startup.log") 2>&1
+
+        # Redirect all output only to the log file
+        exec 1> "/var/log/startup-script/startup.log" 2>&1
 
         echo "Starting startup script at $(date)"
 
