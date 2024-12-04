@@ -207,7 +207,7 @@ create_vm() {
         # Create a log directory
         sudo mkdir -p /var/log/startup-script
 
-        # Redirect all output only to the log file
+        # Redirect all output only to the log file to avoid buffer.Scanner token too long errors
         exec 1> "/var/log/startup-script/startup.log" 2>&1
 
         echo "Starting startup script at $(date)"
@@ -228,7 +228,7 @@ create_vm() {
         echo "Pulling Docker image" && \
         sudo docker pull $DOCKER_IMAGE && \
         echo "Docker image pulled" && \
-        export PL_API_KEY=$(gcloud secrdets versions access latest --secret="planet_api_key_forest_loss") && \
+        export PL_API_KEY=$(gcloud secrets versions access latest --secret="planet_api_key_forest_loss") && \
         sudo docker run \
             -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token) \
             -e PL_API_KEY=$PL_API_KEY \

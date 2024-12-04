@@ -418,6 +418,7 @@ def extract_alerts_pipeline(
     ]
     p = multiprocessing.Pool(config.workers)
     outputs = star_imap_unordered(p, write_event, jobs)
+    # I can add this back once the output is redirected
     # for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
     for _ in outputs:
         pass
