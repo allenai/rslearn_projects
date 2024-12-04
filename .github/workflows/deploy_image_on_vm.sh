@@ -204,6 +204,14 @@ create_vm() {
         --max-run-duration=12h \
         --metadata=ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
+        exec 1> >(logger -s -t $(basename $0)) 2>&1  # Redirect stdout and stderr to syslog
+
+        # Create a log directory and file
+        sudo mkdir -p /var/log/startup-script
+        exec 1> >(tee -a "/var/log/startup-script/startup.log") 2>&1
+
+        echo "Starting startup script at $(date)"
+
         sudo apt-get update && \
         sudo apt-get install -y docker.io && \
         sudo systemctl start docker && \
@@ -220,7 +228,7 @@ create_vm() {
         echo "Pulling Docker image" && \
         sudo docker pull $DOCKER_IMAGE && \
         echo "Docker image pulled" && \
-        export PL_API_KEY=$(gcloud secrets versions access latest --secret="planet_api_key_forest_loss") && \
+        export PL_API_KEY=$(gcloud secrdets versions access latest --secret="planet_api_key_forest_loss") && \
         sudo docker run \
             -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token) \
             -e PL_API_KEY=$PL_API_KEY \
