@@ -7,6 +7,6 @@ gcs_tiff_filenames:
   - "080W_20S_070W_10S.tif"
 
 # Optional fields (can be omitted), if omitted will use defaults in config.py
-workers: 8
-model_data_load_workers: 8
+workers: 64
+model_data_load_workers: 16
 min_confidence: 2

@@ -418,7 +418,8 @@ def extract_alerts_pipeline(
     ]
     p = multiprocessing.Pool(config.workers)
     outputs = star_imap_unordered(p, write_event, jobs)
-    for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
+    # for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
+    for _ in outputs:
         pass
     p.close()
     # rslearn dataset expects a config.json file in the dataset root
