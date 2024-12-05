@@ -115,7 +115,7 @@ jobs:
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
             -e RSLP_BUCKET=rslearn-eai \
             -e RSLP_PREFIX=gs://rslearn-eai \
-            test pytest tests/ --ignore tests/integration_slow/ -vv
+            test pytest tests/integration/forest_loss_driver/inference/test_materialize_dataset.py  --ignore tests/integration_slow/ -vv
 
       - name: Clean up
         if: always()

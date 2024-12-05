@@ -104,4 +104,8 @@ def download_test_data() -> Generator[None, None, None]:
                     dst.write(src.read())
 
         logger.info("Test data download complete")
+    # Log contents of test data folder
+    logger.info("\nTest data directory contents:")
+    for path in sorted(test_data_path.rglob("*")):
+        logger.info(f"  {path.relative_to(test_data_path)}")
     yield

@@ -11,6 +11,9 @@ from upath import UPath
 from rslp.forest_loss_driver.inference.materialize_dataset import (
     materialize_forest_loss_driver_dataset,
 )
+from rslp.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 @pytest.fixture
@@ -40,6 +43,10 @@ def test_materialize_forest_loss_driver_dataset(
         )
         # Output of Ingest Step
         tiles_path = Path(temp_dir) / "tiles"
+        # Log all contents of tiles directory
+        logger.info("\nTiles directory contents:")
+        for path in sorted(tiles_path.rglob("*")):
+            logger.info(f"  {path.relative_to(tiles_path)}")
         tiff_files = list(tiles_path.rglob("*.tif"))
         metadata_json_files = list(tiles_path.rglob("metadata.json"))
         expected_num_tif_files = 13
