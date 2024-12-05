@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0 # Ensure all history and tags are fetched
 
       - name: Fetch tags
-        run: git fetch --tags
+        run: git fetch --tags --force
 
       # Step 2: Extract the version from the latest tag and its associated commit SHA
       - name: Get latest tag and associated SHA
