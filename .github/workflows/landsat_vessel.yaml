@@ -1,0 +1,49 @@
+name: Landsat-Vessel-Detection
+
+on:
+  workflow_dispatch: # Manual trigger
+  push:
+    tags:
+      - "landsat_vessels_v*" # Trigger only when a version tag (e.g., landsat_vessels_v0.0.1) is pushed
+
+jobs:
+  build-and-push:
+    runs-on: GPU-Enabled-Runner
+
+    steps:
+      # Step 1: Checkout the repository and fetch all tags
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Ensure all history and tags are fetched
+
+      - name: Fetch tags
+        run: git fetch --tags
+
+      # Step 2: Extract the version from the latest tag and its associated commit SHA
+      - name: Get latest tag and associated SHA
+        id: version
+        run: |
+          # Get the latest tag matching the pattern
+          LATEST_TAG=$(git tag --list "landsat_vessels_v*" --sort=-v:refname | head -n 1)
+          TAG_COMMIT=$(git rev-list -n 1 $LATEST_TAG)
+          SHORT_SHA=$(git rev-parse --short $TAG_COMMIT)
+          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
+
+      # Step 3: Log in to GHCR
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.GITHUB_ACTOR }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 4: Build and push the Docker image
+      - name: Build and Push Docker Image
+        working-directory: rslp/landsat_vessels # Navigate to the required directory
+        run: |
+          docker compose build
+          docker tag landsat_vessels-landsat-vessels ghcr.io/allenai/landsat-vessel-detection:sha-${{ env.SHORT_SHA }}
+          docker tag landsat_vessels-landsat-vessels ghcr.io/allenai/landsat-vessel-detection:${{ env.LATEST_TAG }}
+          docker push ghcr.io/allenai/landsat-vessel-detection:sha-${{ env.SHORT_SHA }}
+          docker push ghcr.io/allenai/landsat-vessel-detection:${{ env.LATEST_TAG }}
