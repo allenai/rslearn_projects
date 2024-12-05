@@ -126,14 +126,14 @@ def download_code(project_id: str, experiment_id: str) -> None:
 
 
 def upload_wandb_id(
-    project_id: str, experiment_id: str, run_id: str, wandb_id: str
+    project_id: str, experiment_id: str, run_id: str | None, wandb_id: str
 ) -> None:
     """Save a W&B run ID to GCS.
 
     Args:
         project_id: the project ID.
         experiment_id: the experiment ID.
-        run_id: the run ID (for hyperparameter experiments)
+        run_id: optional run ID (for hyperparameter experiments)
         wandb_id: the W&B run ID.
     """
     rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
