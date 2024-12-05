@@ -116,6 +116,10 @@ jobs:
             -e RSLP_BUCKET=rslearn-eai \
             -e RSLP_PREFIX=gs://rslearn-eai \
             test pytest tests/integration/forest_loss_driver/inference/test_materialize_dataset.py  --ignore tests/integration_slow/ -vv
+      - name: Show test data contents
+        run: |
+          echo "Test data directory contents:"
+          find test_data/forest_loss_driver -type f -ls
 
       - name: Clean up
         if: always()
