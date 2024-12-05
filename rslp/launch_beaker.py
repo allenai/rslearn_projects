@@ -43,8 +43,8 @@ def get_base_env_vars(use_weka_prefix: bool = False) -> list[EnvVar]:
             value="/etc/credentials/gcp_credentials.json",  # nosec
         ),
         EnvVar(
-            name="GCLOUD_PROJECT",  # nosec
-            value="prior-satlas",  # nosec
+            name="GOOGLE_CLOUD_PROJECT",  # nosec
+            value="skylight-proto-1",  # nosec
         ),
         EnvVar(
             name="WEKA_ACCESS_KEY_ID",  # nosec

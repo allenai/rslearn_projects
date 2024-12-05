@@ -43,25 +43,25 @@ data:
     inputs:
       image1:
         data_type: "raster"
-        layers: ["sentinel2_a"]
+        layers: ["sentinel2"]
         bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
         passthrough: true
         dtype: FLOAT32
       image2:
         data_type: "raster"
-        layers: ["sentinel2_b"]
+        layers: ["sentinel2.1"]
         bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
         passthrough: true
         dtype: FLOAT32
       image3:
         data_type: "raster"
-        layers: ["sentinel2_c"]
+        layers: ["sentinel2.2"]
         bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
         passthrough: true
         dtype: FLOAT32
       image4:
         data_type: "raster"
-        layers: ["sentinel2_d"]
+        layers: ["sentinel2.3"]
         bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
         passthrough: true
         dtype: FLOAT32
