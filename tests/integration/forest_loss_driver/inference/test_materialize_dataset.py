@@ -31,6 +31,9 @@ def test_materialize_forest_loss_driver_dataset(
     """Test materializing the forest loss driver dataset."""
     # copy the unmaterialized dataset to a temp directory
     with tempfile.TemporaryDirectory(prefix=f"test_{uuid.uuid4()}_") as temp_dir:
+        logger.info(
+            f"Copying unmaterialized dataset from {test_unmaterialized_dataset_path} to {temp_dir}"
+        )
         shutil.copytree(test_unmaterialized_dataset_path, temp_dir, dirs_exist_ok=True)
         materialize_forest_loss_driver_dataset(UPath(temp_dir))
         # Output of Prepare Step
@@ -91,3 +94,6 @@ def test_materialize_forest_loss_driver_dataset(
             assert layer_path.exists(), f"{layer_path} does not exist"
             assert image_path.exists(), f"{image_path} does not exist"
             assert metadata_path.exists(), f"{metadata_path} does not exist"
+
+
+# Add test where there is some sort of error to ensure  that materialization does not fail silently
