@@ -115,7 +115,7 @@ jobs:
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
             -e RSLP_BUCKET=rslearn-eai \
             -e RSLP_PREFIX=gs://rslearn-eai \
-            test pytest tests/ --ignore tests/integration_slow/
+            test pytest tests/ --ignore tests/integration_slow/ -vv
 
       - name: Clean up
         if: always()
@@ -169,7 +169,7 @@ jobs:
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
             -e RSLP_BUCKET=rslearn-eai \
             -e RSLP_PREFIX=gs://rslearn-eai \
-            rslearn_projects-test pytest tests/integration_slow/
+            rslearn_projects-test pytest tests/integration_slow/ -vv
 
       - name: Clean up
         if: always()
