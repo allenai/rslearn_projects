@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -15,6 +14,7 @@ import (
 )
 
 const FUTURE_LABEL = "2030-01"
+const TILE_SIZE = 2048
 
 type Tile struct {
 	Projection string
@@ -26,16 +26,16 @@ type Point struct {
 	Geometry struct {
 		Type        string     `json:"type"`
 		Coordinates [2]float64 `json:"coordinates"`
-	}
+	} `json:"geometry"`
 	label      string
 	Properties struct {
-		Category   string  `json:"category"`
-		Score      float64 `json:"score"`
-		Projection string  `json:"projection,omitempty"`
-		Column     int     `json:"column,omitempty"`
-		Row        int     `json:"row,omitempty"`
-		Start      string  `json:"start,omitempty"`
-		End        string  `json:"end,omitempty"`
+		Category   *string  `json:"category"`
+		Score      *float64 `json:"score"`
+		Projection *string  `json:"projection,omitempty"`
+		Column     *int     `json:"col,omitempty"`
+		Row        *int     `json:"row,omitempty"`
+		Start      string   `json:"start,omitempty"`
+		End        string   `json:"end,omitempty"`
 	} `json:"properties"`
 }
 
@@ -43,7 +43,7 @@ type PointData struct {
 	Type       string  `json:"type"`
 	Features   []Point `json:"features"`
 	Properties struct {
-		ValidPatches map[string][][2]int `json:"valid_patches"`
+		ValidPatches map[string][][2]int `json:"valid_patches,omitempty"`
 	} `json:"properties"`
 }
 
@@ -52,8 +52,8 @@ type Group []Point
 func (g Group) Center() [2]int {
 	var sum [2]int
 	for _, p := range g {
-		sum[0] += p.Properties.Column
-		sum[1] += p.Properties.Row
+		sum[0] += *p.Properties.Column
+		sum[1] += *p.Properties.Row
 	}
 	return [2]int{
 		sum[0] / len(g),
@@ -113,7 +113,7 @@ func main() {
 		if _, err := os.Stat(fname); os.IsNotExist(err) {
 			continue
 		}
-		bytes, err := ioutil.ReadFile(fname)
+		bytes, err := os.ReadFile(fname)
 		if err != nil {
 			panic(err)
 		}
@@ -130,9 +130,9 @@ func main() {
 		}
 		gridIndexes := make(map[string]*common.GridIndex)
 		for idx, point := range curPoints {
-			projection := point.Properties.Projection
-			col := float64(point.Properties.Column)
-			row := float64(point.Properties.Row)
+			projection := *point.Properties.Projection
+			col := float64(*point.Properties.Column)
+			row := float64(*point.Properties.Row)
 			if gridIndexes[projection] == nil {
 				gridIndexes[projection] = common.NewGridIndex(GridSize)
 			}
@@ -147,7 +147,7 @@ func main() {
 		// Match existing groups to the new points.
 		matchedIndices := make(map[int]bool)
 		for groupIdx, group := range groups {
-			projection := group[0].Properties.Projection
+			projection := *group[0].Properties.Projection
 			center := group.Center()
 			indices := gridIndexes[projection].Search(common.Rectangle{
 				Min: common.Point{float64(center[0]) - GridSize, float64(center[1]) - GridSize},
@@ -159,12 +159,12 @@ func main() {
 				if matchedIndices[idx] {
 					continue
 				}
-				if group[0].Properties.Category != curPoints[idx].Properties.Category {
+				if *group[0].Properties.Category != *curPoints[idx].Properties.Category {
 					continue
 				}
 
-				dx := center[0] - curPoints[idx].Properties.Column
-				dy := center[1] - curPoints[idx].Properties.Row
+				dx := center[0] - *curPoints[idx].Properties.Column
+				dy := center[1] - *curPoints[idx].Properties.Row
 				distance := math.Sqrt(float64(dx*dx + dy*dy))
 
 				if distance > *distanceThreshold/MetersPerPixel {
@@ -310,9 +310,9 @@ func main() {
 				validLabelSet := make(map[string]bool)
 				center := group.Center()
 				tile := Tile{
-					Projection: group[0].Properties.Projection,
-					Column:     center[0] / 512,
-					Row:        center[1] / 512,
+					Projection: *group[0].Properties.Projection,
+					Column:     int(math.Floor(float64(center[0]) / TILE_SIZE)),
+					Row:        int(math.Floor(float64(center[1]) / TILE_SIZE)),
 				}
 				for _, label := range tileLabelValidity[tile] {
 					validLabelSet[label] = true
@@ -371,7 +371,9 @@ func main() {
 			for labelIdx := rng.StartIdx; labelIdx < rng.EndIdx; labelIdx++ {
 				label := labelList[labelIdx]
 				if outFeatures[label] == nil {
-					outFeatures[label] = &PointData{}
+					outFeatures[label] = &PointData{
+						Type: "FeatureCollection",
+					}
 				}
 				outFeatures[label].Features = append(outFeatures[label].Features, feat)
 			}
@@ -384,9 +386,10 @@ func main() {
 
 			var scoreSum float64 = 0
 			for _, p := range rng.Group {
-				scoreSum += p.Properties.Score
+				scoreSum += *p.Properties.Score
 			}
-			feat.Properties.Score = scoreSum / float64(len(rng.Group))
+			scoreAvg := scoreSum / float64(len(rng.Group))
+			feat.Properties.Score = &scoreAvg
 
 			historyData.Features = append(historyData.Features, feat)
 		}
@@ -399,7 +402,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		if err := ioutil.WriteFile(*histFname, bytes, 0644); err != nil {
+		if err := os.WriteFile(*histFname, bytes, 0644); err != nil {
 			panic(err)
 		}
 	}
@@ -411,7 +414,7 @@ func main() {
 			if err != nil {
 				panic(err)
 			}
-			if err := ioutil.WriteFile(fname, bytes, 0644); err != nil {
+			if err := os.WriteFile(fname, bytes, 0644); err != nil {
 				panic(err)
 			}
 		}

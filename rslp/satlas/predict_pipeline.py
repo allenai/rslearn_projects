@@ -7,8 +7,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+import rslearn.data_sources.copernicus
 from rslearn.const import WGS84_PROJECTION
-from rslearn.data_sources.copernicus import load_sentinel2_tile_index
 from rslearn.dataset import Window
 from rslearn.utils.geometry import PixelBounds, Projection
 from upath import UPath
@@ -20,10 +20,6 @@ DATASET_CONFIG_FNAME = "data/satlas/{application}/config.json"
 MODEL_CONFIG_FNAME = "data/satlas/{application}/config.yaml"
 SENTINEL2_LAYER = "sentinel2"
 PATCH_SIZE = 2048
-
-# Add padding to the time range specified by the user for prediction since some
-# applications use images from up to this many days outside of that time range.
-RTREE_TIME_PAD_DAYS = 30
 
 # Layers not to use when seeing which patches are valid.
 VALIDITY_EXCLUDE_LAYERS = ["mask", "output", "label"]
@@ -120,15 +116,15 @@ def predict_pipeline(
         if "data_source" not in layer_cfg:
             continue
         layer_source_cfg = layer_cfg["data_source"]
-        if not layer_source_cfg["name"].endswith("gcp_public_data.Sentinel2"):
+        if not layer_source_cfg["name"].endswith("MonthlySentinel2"):
             continue
         layer_source_cfg["index_cache_dir"] = str(index_cache_dir)
-        # layer_source_cfg["rtree_cache_dir"] = str(UPath(out_path) / "index")
-        # layer_source_cfg["use_rtree_index"] = True
-        # layer_source_cfg["rtree_time_range"] = [
-        #    (time_range[0] - timedelta(days=RTREE_TIME_PAD_DAYS)).isoformat(),
-        #    (time_range[1] + timedelta(days=RTREE_TIME_PAD_DAYS)).isoformat(),
-        # ]
+        layer_source_cfg["rtree_cache_dir"] = str(UPath(out_path) / "index")
+        layer_source_cfg["use_rtree_index"] = True
+        layer_source_cfg["rtree_time_range"] = [
+            time_range[0].isoformat(),
+            time_range[1].isoformat(),
+        ]
         image_layer_names.append(layer_name)
 
     with (ds_path / "config.json").open("w") as f:
@@ -197,11 +193,11 @@ def predict_pipeline(
     # This way it is only downloaded once here instead of many times during prepare.
     # We could set use_initial_prepare_job=True in materialize_dataset call, but then
     # it could take a minute or more longer than needed.
-    load_sentinel2_tile_index(index_cache_dir)
+    rslearn.data_sources.copernicus._cache_sentinel2_tile_index(index_cache_dir)
 
     # Populate the windows.
     logger.info("materialize dataset")
-    materialize_dataset(ds_path, group=group, prepare_workers=128)
+    materialize_dataset(ds_path, group=group, initial_prepare_job=True)
 
     # Run the model, only if at least one window has some data.
     completed_fnames = ds_path.glob(

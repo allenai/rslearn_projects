@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from enum import Enum
 
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
@@ -13,18 +16,39 @@ from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_p
 from rslp.log_utils import get_logger
 from rslp.utils.mp import init_mp
 
-app = FastAPI(
-    title="Landsat Vessel Detection API",
-    description="API for detecting vessels in Landsat images.",
-    version="0.0.1",
-)
+# Load environment variables from the .env file
+load_dotenv(override=True)
+# Configurable host and port, overridable via environment variables
+LANDSAT_HOST = os.getenv("LANDSAT_HOST", "0.0.0.0")
+LANDSAT_PORT = int(os.getenv("LANDSAT_PORT", 5555))
 
 # Set up the logger
 logger = get_logger(__name__)
 
-# Configurable host and port, overridable via environment variables
-LANDSAT_HOST = os.getenv("LANDSAT_HOST", "0.0.0.0")
-LANDSAT_PORT = int(os.getenv("LANDSAT_PORT", 5555))
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Lifespan event handler for the Landsat Vessel Detection Service.
+
+    Sets up the multiprocessing start method and preloads necessary modules.
+
+    Args:
+        app: FastAPI app instance.
+    """
+    logger.info("Initializing Landsat Vessel Detection Service")
+    init_mp()
+    yield
+    logger.info("Landsat Vessel Detection Service shutdown.")
+
+
+app = FastAPI(
+    title="Landsat Vessel Detection API",
+    description="API for detecting vessels in Landsat images.",
+    version="0.0.1",
+    lifespan=lifespan,
+    docs_url="/docs",  # URL for Swagger UI
+    redoc_url="/redoc",  # URL for ReDoc
+)
 
 
 class StatusEnum(str, Enum):
@@ -115,16 +139,6 @@ class LandsatRequest(BaseModel):
                 },
             ]
         }
-
-
-@app.on_event("startup")
-async def rslp_init() -> None:
-    """Landsat Vessel Service Initialization.
-
-    Sets up the multiprocessing start method and preloads necessary modules.
-    """
-    logger.info("Initializing Landsat Vessel Detection Service")
-    init_mp()
 
 
 @app.get("/", summary="Home", description="Service status check endpoint.")

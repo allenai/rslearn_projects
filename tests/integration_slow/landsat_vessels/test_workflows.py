@@ -5,5 +5,5 @@ from rslp.landsat_vessels.predict_pipeline import predict_pipeline
 
 def test_predict_pipeline(tmp_path: pathlib.Path) -> None:
     predict_pipeline(
-        crop_path=str(tmp_path), scene_id="LC08_L1GT_114081_20241002_20241006_02_T2"
+        scene_zip_path="gs://test-bucket-rslearn/Landsat/LC08_L1TP_162042_20241103_20241103_02_RT.zip"
     )

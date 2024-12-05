@@ -1,8 +1,6 @@
 """Launch Satlas prediction jobs on Beaker."""
 
 import json
-import multiprocessing
-import random
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -22,10 +20,14 @@ from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_proj_bounds
+from upath import UPath
 
 from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE, IMAGE_NAME, get_base_env_vars
+from rslp.log_utils import get_logger
 
-from .predict_pipeline import Application, PredictTaskArgs, get_output_fname
+from .predict_pipeline import Application, PredictTaskArgs
+
+logger = get_logger(__name__)
 
 TILE_SIZE = 32768
 RESOLUTION = 10
@@ -38,7 +40,7 @@ DAYS_AFTER = 90
 
 
 class Task:
-    """Represents a task that will correspond to one Beaker job."""
+    """Represents a task that processes one tile at one point in time."""
 
     def __init__(
         self,
@@ -64,26 +66,29 @@ class Task:
         self.out_path = out_path
 
 
-def launch_job(batch: list[Task]) -> None:
-    """Launch job for this task.
+class WorkerParams:
+    """Parameters that worker pipeline needs to know."""
+
+    def __init__(self, job_fname: str, claim_bucket_name: str, claim_dir: str) -> None:
+        """Create a new WorkerParams.
+
+        Args:
+            job_fname: the filename containing list of jobs.
+            claim_bucket_name: the bucket where workers will claim jobs.
+            claim_dir: the path in the bucket to write claim files.
+        """
+        self.job_fname = job_fname
+        self.claim_bucket_name = claim_bucket_name
+        self.claim_dir = claim_dir
+
+
+def launch_worker(worker_params: WorkerParams) -> None:
+    """Launch a worker job.
 
     Args:
-        batch: list of Task objects for which to create a job.
+        worker_params: the parameters to pass to the worker.
     """
     beaker = Beaker.from_env(default_workspace=DEFAULT_WORKSPACE)
-
-    # Convert tasks to PredictTask.
-    # These just set projection/bounds/time range, so the application and output path
-    # come from the first task.
-    predict_tasks = []
-    for task in batch:
-        predict_tasks.append(
-            PredictTaskArgs(
-                projection_json=task.projection.serialize(),
-                bounds=task.bounds,
-                time_range=task.time_range,
-            )
-        )
 
     with beaker.session():
         env_vars = get_base_env_vars(use_weka_prefix=False)
@@ -94,28 +99,20 @@ def launch_job(batch: list[Task]) -> None:
             )
         )
 
-        # Name the job based on the first task.
-        task = batch[0]
-        experiment_name = (
-            f"satlas_{task.application.value}_{task.projection.crs.to_epsg()}_"
-            + f"{task.bounds[0]}_{task.bounds[1]}"
-        )
-
         spec = ExperimentSpec.new(
             budget=BUDGET,
-            description=experiment_name,
+            description="worker",
             beaker_image=IMAGE_NAME,
             priority=Priority.low,
             command=["python", "-m", "rslp.main"],
             arguments=[
+                "common",
+                "worker",
                 "satlas",
                 "predict_multi",
-                task.application.value.upper(),
-                task.out_path,
-                "/tmp/scratch/",
-                json.dumps(
-                    [predict_task.serialize() for predict_task in predict_tasks]
-                ),
+                worker_params.job_fname,
+                worker_params.claim_bucket_name,
+                worker_params.claim_dir,
             ],
             constraints=Constraints(
                 cluster=[
@@ -123,8 +120,6 @@ def launch_job(batch: list[Task]) -> None:
                     "ai2/neptune-cirrascale",
                     "ai2/saturn-cirrascale",
                     "ai2/augusta-google-1",
-                    # "ai2/prior-cirrascale",
-                    # "ai2/prior-elanding",
                 ]
             ),
             preemptible=True,
@@ -138,36 +133,18 @@ def launch_job(batch: list[Task]) -> None:
             resources=TaskResources(gpu_count=1, shared_memory="256GiB"),
         )
         unique_id = str(uuid.uuid4())[0:8]
-        beaker.experiment.create(experiment_name + "_" + unique_id, spec)
+        beaker.experiment.create(f"worker_{unique_id}", spec)
 
 
-def check_task_done(task: Task) -> tuple[Task, bool]:
-    """Checks whether this task is done processing already.
-
-    It is determined based on existence of output file for the task.
-
-    Args:
-        task: the task.
-
-    Returns:
-        whether the task was completed
-    """
-    out_fname = get_output_fname(
-        task.application, task.out_path, task.projection, task.bounds
-    )
-    return task, out_fname.exists()
-
-
-def launch_jobs(
+def get_jobs(
     application: Application,
     time_range: tuple[datetime, datetime],
     out_path: str,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
-    count: int | None = None,
     batch_size: int = 1,
-) -> None:
-    """Launch Beaker jobs for Satlas prediction.
+) -> list[list[str]]:
+    """Get batches of tasks for Satlas prediction.
 
     Args:
         application: which application to run.
@@ -176,8 +153,10 @@ def launch_jobs(
         epsg_code: limit tasks to this UTM zone (specified by its EPSG code), default
             run in all UTM zones.
         wgs84_bounds: limit tasks to ones that intersect these WGS84 bounds.
-        count: only run up to this many tasks.
-        batch_size: how many tasks to run in each Beaker job.
+        batch_size: how many tasks to run in each batch.
+
+    Returns:
+        the list of worker tasks where each worker task
     """
     # Generate tasks.
     if epsg_code:
@@ -244,67 +223,117 @@ def launch_jobs(
                     )
                 )
 
-    # See which tasks are not done yet.
-    p = multiprocessing.Pool(32)
-    outputs = p.imap_unordered(check_task_done, tasks)
+    print(f"Got {len(tasks)} total tasks")
 
-    pending_tasks: list[Task] = []
-    for task, is_done in tqdm.tqdm(
-        outputs, desc="Check which tasks are completed", total=len(tasks)
-    ):
-        if is_done:
-            continue
-        pending_tasks.append(task)
+    jobs = []
+    for i in range(0, len(tasks), batch_size):
+        cur_tasks = tasks[i : i + batch_size]
 
-    p.close()
+        # Get list of PredictTaskArgs that we can serialize.
+        # These just specify the projection, time range, and bounds.
+        predict_tasks = []
+        for task in cur_tasks:
+            predict_tasks.append(
+                PredictTaskArgs(
+                    projection_json=task.projection.serialize(),
+                    bounds=task.bounds,
+                    time_range=task.time_range,
+                )
+            )
 
-    # Run up to count of them.
-    if count is not None and len(pending_tasks) > count:
-        run_tasks = random.sample(pending_tasks, count)
-    else:
-        run_tasks = pending_tasks
+        cur_args = [
+            application.value.upper(),
+            out_path,
+            "/tmp/scratch/",
+            json.dumps([predict_task.serialize() for predict_task in predict_tasks]),
+        ]
+        jobs.append(cur_args)
 
-    print(
-        f"Got {len(tasks)} total tasks, {len(pending_tasks)} pending, running {len(run_tasks)} of them"
-    )
-
-    batches = []
-    for i in range(0, len(run_tasks), batch_size):
-        batches.append(run_tasks[i : i + batch_size])
-
-    for batch in tqdm.tqdm(batches, desc="Starting Beaker jobs"):
-        launch_job(batch)
+    return jobs
 
 
-def launch_jobs_for_year_month(
-    year: int,
-    month: int,
+def write_jobs(
     application: Application,
+    time_range: tuple[datetime, datetime],
     out_path: str,
+    job_fname: str,
+    epsg_code: int | None = None,
+    wgs84_bounds: tuple[float, float, float, float] | None = None,
     batch_size: int = 1,
-    count: int | None = None,
 ) -> None:
-    """Launch Satlas prediction jobs on Beaker for the given year and month.
+    """Write jobs for the specified application and time range.
 
     Args:
-        year: the year.
-        month: the month.
+        application: which application to run.
+        time_range: the time range to run within. Must have timezone.
+        out_path: the output path. It should be specific to the time range.
+        job_fname: where to write the list of jobs for workers to read.
+        epsg_code: limit tasks to this UTM zone (specified by its EPSG code), default
+            run in all UTM zones.
+        wgs84_bounds: limit tasks to ones that intersect these WGS84 bounds.
+        batch_size: how many tasks to run in each batch.
+    """
+    jobs = get_jobs(
+        application,
+        time_range,
+        out_path,
+        epsg_code=epsg_code,
+        wgs84_bounds=wgs84_bounds,
+        batch_size=batch_size,
+    )
+    with UPath(job_fname).open("w") as f:
+        json.dump(jobs, f)
+
+
+def write_jobs_for_year_months(
+    year_months: list[tuple[int, int]],
+    application: Application,
+    out_path: str,
+    job_fname: str,
+    batch_size: int = 1,
+) -> None:
+    """Write Satlas prediction jobs for the given year and month.
+
+    Args:
+        year_months: list of year-month pairs.
         application: the application to run.
         out_path: the output path with year and month placeholders.
+        job_fname: where to write the list of jobs for workers to read.
+        worker_params: the worker parameters.
         batch_size: the batch size.
-        count: only run up to this many tasks.
     """
-    ts = datetime(year, month, 1, tzinfo=timezone.utc)
-    time_range = (
-        ts - timedelta(days=DAYS_BEFORE),
-        ts + timedelta(days=DAYS_AFTER),
-    )
-    cur_out_path = out_path.format(year=year, month=month)
-    print(f"launching jobs with time_range={time_range} and out_path={cur_out_path}")
-    launch_jobs(
-        application=application,
-        time_range=time_range,
-        out_path=cur_out_path,
-        batch_size=batch_size,
-        count=count,
-    )
+    jobs = []
+    for year, month in year_months:
+        ts = datetime(year, month, 1, tzinfo=timezone.utc)
+        time_range = (
+            ts - timedelta(days=DAYS_BEFORE),
+            ts + timedelta(days=DAYS_AFTER),
+        )
+        cur_out_path = out_path.format(year=year, month=month)
+        logger.info(
+            f"collecting jobs for year={year}, month={month}, time_range={time_range}, out_path={cur_out_path}"
+        )
+        cur_jobs = get_jobs(
+            application=application,
+            time_range=time_range,
+            out_path=cur_out_path,
+            batch_size=batch_size,
+        )
+        logger.info("got %d jobs for %04d-%02d", len(cur_jobs), year, month)
+        jobs.extend(cur_jobs)
+
+    logger.info("got a total of %d jobs across year-months", len(jobs))
+    with UPath(job_fname).open("w") as f:
+        json.dump(jobs, f)
+
+
+def launch_workers(worker_params: WorkerParams, num_workers: int) -> None:
+    """Start workers for the prediction jobs.
+
+    Args:
+        worker_params: the parameters for the workers, including job file where the
+            list of jobs has been written.
+        num_workers: number of workers to launch
+    """
+    for _ in tqdm.tqdm(range(num_workers)):
+        launch_worker(worker_params)
