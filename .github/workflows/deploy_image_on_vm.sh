@@ -204,7 +204,7 @@ create_vm() {
         --max-run-duration=48h \
         --metadata=ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
-        # Create a log directory
+        # Create a log dir
         sudo mkdir -p /var/log/startup-script
 
         # Redirect all output only to the log file to avoid buffer.Scanner token too long errors
