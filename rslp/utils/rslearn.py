@@ -30,6 +30,7 @@ def materialize_dataset(
         group: limit dataset actions to this group.
         workers: number of workers to use.
     """
+    # TODO: Make it clear on a traceback which step is occuring.
     dataset = Dataset(ds_path, disabled_layers=disabled_layers)
     apply_on_windows(
         PrepareHandler(force=False),
