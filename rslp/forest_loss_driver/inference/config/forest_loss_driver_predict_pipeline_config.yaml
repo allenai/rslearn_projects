@@ -3,8 +3,8 @@ model_cfg_fname: "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_un
 gcs_tiff_filenames:
   # - "070W_10S_060W_00N.tif"
   # - "070W_20S_060W_10S.tif"
-  - "080W_10S_070W_00N.tif"
-  # - "080W_20S_070W_10S.tif"
+  # - "080W_10S_070W_00N.tif"
+  - "080W_20S_070W_10S.tif"
 
 # Optional fields (can be omitted), if omitted will use defaults in config.py
 workers: 64
