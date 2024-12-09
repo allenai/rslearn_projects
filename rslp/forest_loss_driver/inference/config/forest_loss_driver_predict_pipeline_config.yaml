@@ -2,9 +2,9 @@
 model_cfg_fname: "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml" # should be path from the top of the repo IF NOT ABSOLUTE PATH
 gcs_tiff_filenames:
   - "070W_10S_060W_00N.tif"
-  - "070W_20S_060W_10S.tif"
-  - "080W_10S_070W_00N.tif"
-  - "080W_20S_070W_10S.tif"
+  # - "070W_20S_060W_10S.tif"
+  # - "080W_10S_070W_00N.tif"
+  # - "080W_20S_070W_10S.tif"
 
 # Optional fields (can be omitted), if omitted will use defaults in config.py
 workers: 64
