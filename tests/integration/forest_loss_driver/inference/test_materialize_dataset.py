@@ -52,9 +52,9 @@ def test_materialize_forest_loss_driver_dataset(
     # Output of Ingest Step
     tiles_path = Path(tmp_dir) / "tiles"
     tiff_files = list(tiles_path.rglob("*.tif"))
-    metadata_json_files = list(tiles_path.rglob("metadata.json"))
+    completed_files = list(tiles_path.rglob("completed"))
     expected_num_tif_files = 13
-    expected_num_metadata_json_files = 13
+    expected_num_completed_files = 13
 
     # Output of Materialize Step
     expected_layers = [
@@ -78,9 +78,9 @@ def test_materialize_forest_loss_driver_dataset(
         f"Expected {expected_num_tif_files} TIFF files in the materialized dataset "
         f"found {len(tiff_files)}"
     )
-    assert len(metadata_json_files) == expected_num_metadata_json_files, (
-        f"Expected {expected_num_metadata_json_files} metadata.json files in the "
-        f"materialized dataset found {len(metadata_json_files)}"
+    assert len(completed_files) == expected_num_completed_files, (
+        f"Expected {expected_num_completed_files} completed files in the "
+        f"materialized dataset found {len(completed_files)}"
     )
     layers_dir = (
         Path(tmp_dir)

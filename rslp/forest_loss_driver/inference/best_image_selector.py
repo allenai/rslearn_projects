@@ -81,7 +81,7 @@ def select_best_images(window_path: UPath) -> None:
             src_layer = fname.parent.parent.name
             layer_time = layer_times[src_layer]
             best_times[dst_layer] = layer_time
-
+    logger.info(f"Writing best_times.json to {window_path / 'best_times.json'}...")
     with (window_path / "best_times.json").open("w") as f:
         json.dump(best_times, f)
 
