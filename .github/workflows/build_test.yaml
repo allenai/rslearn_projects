@@ -106,6 +106,12 @@ jobs:
         with:
           credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
 
+      - name: Run unit tests with Docker Compose
+        run: |
+          docker compose -f docker-compose.yaml run \
+            test pytest tests/unit/
+
+      # TODO: maybe add seperate step for unit tests?
       - name: Run tests with Docker Compose
         run: |
           docker compose -f docker-compose.yaml run \

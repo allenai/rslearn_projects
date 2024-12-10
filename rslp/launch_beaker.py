@@ -6,21 +6,12 @@ import shutil
 import uuid
 
 import dotenv
-from beaker import (
-    Beaker,
-    Constraints,
-    EnvVar,
-    ExperimentSpec,
-    Priority,
-    TaskResources,
-)
+from beaker import Beaker, Constraints, EnvVar, ExperimentSpec, Priority, TaskResources
 
 from rslp import launcher_lib
 
 DEFAULT_WORKSPACE = "ai2/earth-systems"
 BUDGET = "ai2/prior"
-# Update when new image is needed.
-IMAGE_NAME = "favyen/rslearn-20241025"
 
 # I should make a docker image specifc to this project
 # Need to add the following functionality
@@ -29,6 +20,7 @@ IMAGE_NAME = "favyen/rslearn-20241025"
 
 def launch_job(
     config_path: str,
+    image_name: str,
     hparams_config_path: str | None = None,
     mode: str = "fit",
     run_id: str = "",
@@ -41,6 +33,7 @@ def launch_job(
     Args:
         config_path: the relative path from rslearn_projects/ to the YAML configuration
             file.
+        image_name: the name of the Beaker image to use for the job.
         hparams_config_path: the relative path from rslearn_projects/ to the YAML configuration
             file containing the hyperparameters to be combined with the base config.
         mode: Mode to run the model ('fit', 'validate', 'test', or 'predict').
@@ -99,7 +92,7 @@ def launch_job(
             spec = ExperimentSpec.new(
                 budget=BUDGET,
                 description=f"{project_id}/{experiment_id}/{run_id}",
-                beaker_image=IMAGE_NAME,
+                beaker_image=image_name,
                 priority=Priority.high,
                 command=["python", "-m", "rslp.docker_entrypoint"],
                 arguments=[
@@ -128,6 +121,12 @@ if __name__ == "__main__":
         "--config_path",
         type=str,
         help="Path to configuration file relative to rslearn_projects repository root",
+        required=True,
+    )
+    parser.add_argument(
+        "--image_name",
+        type=str,
+        help="Name of the Beaker image to use for the job",
         required=True,
     )
     parser.add_argument(
@@ -173,6 +172,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     launch_job(
         config_path=args.config_path,
+        image_name=args.image_name,
         hparams_config_path=args.hparams_config_path,
         mode=args.mode,
         run_id=args.run_id,
