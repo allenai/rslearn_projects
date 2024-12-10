@@ -87,7 +87,12 @@ def download_test_data() -> Generator[None, None, None]:
     )
 
     # Define which folders we want to download
-    folders_to_download = ["test_materialized_dataset", "alert_dates", "alert_tiffs"]
+    folders_to_download = [
+        "test_materialized_dataset",
+        "alert_dates",
+        "alert_tiffs",
+        "artifacts",
+    ]
 
     # Create test data directory if it doesn't exist
     test_data_path.mkdir(parents=True, exist_ok=True)

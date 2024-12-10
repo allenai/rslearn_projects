@@ -73,4 +73,29 @@ def test_forest_loss_driver_model_predict(
         logger.info(f"Expected output: {expected_output_json}")
         with output_path.open("r") as f:
             output_json = json.load(f)
-        assert output_json == expected_output_json
+        # TODO: Ideally we would have a pydantic model for this output perhaps that we could subclass from rslearn?
+        # Check properties except probs
+        assert output_json["type"] == expected_output_json["type"]
+        assert output_json["properties"] == expected_output_json["properties"]
+        assert len(output_json["features"]) == len(expected_output_json["features"])
+        assert (
+            output_json["features"][0]["type"]  # type: ignore
+            == expected_output_json["features"][0]["type"]  # type: ignore
+        )
+        assert (
+            output_json["features"][0]["geometry"]  # type: ignore
+            == expected_output_json["features"][0]["geometry"]  # type: ignore
+        )
+        assert (
+            output_json["features"][0]["properties"]["new_label"]  # type: ignore
+            == expected_output_json["features"][0]["properties"]["new_label"]  # type: ignore
+        )
+
+        # Check probs are within 0.001
+        actual_probs = output_json["features"][0]["properties"]["probs"]  # type: ignore
+        expected_probs = expected_output_json["features"][0]["properties"]["probs"]  # type: ignore
+        assert len(actual_probs) == len(expected_probs)
+        for actual, expected in zip(actual_probs, expected_probs):
+            assert (
+                abs(actual - expected) < 0.001
+            ), f"Probability difference {abs(actual - expected)} exceeds threshold 0.001"

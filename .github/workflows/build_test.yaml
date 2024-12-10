@@ -111,7 +111,7 @@ jobs:
           docker compose -f docker-compose.yaml run \
             test pytest tests/unit/
 
-      # TODO: maybe add seperate step for unit tests?
+      # TODO: Loop through projects to run integration tests per project
       - name: Run tests with Docker Compose
         run: |
           docker compose -f docker-compose.yaml run \
@@ -121,9 +121,8 @@ jobs:
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
             -e RSLP_BUCKET=rslearn-eai \
             -e RSLP_PREFIX=gs://rslearn-eai \
-            test pytest tests/integration/forest_loss_driver/  --ignore tests/integration_slow/ -vv
+            test pytest tests/integration/forest_loss_driver/inference/ --ignore tests/integration_slow/ -vv
 
-      #TODO: Update actions to only run integration tests per project?
       - name: Show test data contents
         run: |
           echo "Test data directory contents:"

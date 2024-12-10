@@ -83,6 +83,7 @@ def test_read_forest_alerts_date_raster(alert_date_tiffs_prefix: str) -> None:
 
 def test_load_country_polygon(country_data_path: UPath) -> None:
     """Tests loading the country polygon."""
+    # This data is dynamically loaded from gcs in conftest.py
     country_wgs84_shp = load_country_polygon(country_data_path)
     expected_type = shapely.geometry.multipolygon.MultiPolygon
     expected_centroid = shapely.geometry.point.Point(

@@ -98,5 +98,10 @@ def test_materialize_forest_loss_driver_dataset(
             assert image_path.exists(), f"{image_path} does not exist"
             assert metadata_path.exists(), f"{metadata_path} does not exist"
 
+        logger.info(f"Test materialized dataset: {tmp_dir}")
+        import time
+
+        time.sleep(1000000)
+
 
 # Add test where there is some sort of error to ensure  that materialization does not fail silently

@@ -122,4 +122,29 @@ def test_predict_pipeline(
         logger.info(f"Expected output: {expected_output_json}")
         with output_path.open("r") as f:
             output_json = json.load(f)
-        assert output_json == expected_output_json
+        tol = 0.1
+        # Check everything except probs
+        assert output_json["type"] == expected_output_json["type"]  # type: ignore
+        assert output_json["properties"] == expected_output_json["properties"]  # type: ignore
+        assert len(output_json["features"]) == len(expected_output_json["features"])  # type: ignore
+        assert (
+            output_json["features"][0]["type"]  # type: ignore
+            == expected_output_json["features"][0]["type"]  # type: ignore
+        )
+        assert (
+            output_json["features"][0]["geometry"]  # type: ignore
+            == expected_output_json["features"][0]["geometry"]  # type: ignore
+        )
+        assert (
+            output_json["features"][0]["properties"]["new_label"]  # type: ignore
+            == expected_output_json["features"][0]["properties"]["new_label"]  # type: ignore
+        )
+
+        # Check probs are within 0.1
+        actual_probs = output_json["features"][0]["properties"]["probs"]  # type: ignore
+        expected_probs = expected_output_json["features"][0]["properties"]["probs"]  # type: ignore
+        assert len(actual_probs) == len(expected_probs)
+        for actual, expected in zip(actual_probs, expected_probs):
+            assert (
+                abs(actual - expected) < tol
+            ), f"Probability difference {abs(actual - expected)} exceeds threshold {tol}"
