@@ -77,3 +77,10 @@ Launch training on Beaker:
 Manually train locally:
 
     python -m rslp.rslearn_main model fit --config_path data/maldives_ecosystem_mapping/config.yaml
+
+
+
+Specific Project Documentation
+------------------
+
+Forest Loss Driver - see [documentation](rslp/forest_loss_driver/README.md)
