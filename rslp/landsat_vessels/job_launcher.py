@@ -20,10 +20,11 @@ from beaker import (
 from upath import UPath
 
 from rslp import launcher_lib
-from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE, IMAGE_NAME
+from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE
 
 
 def launch_job(
+    image_name: str,
     scene_zip_path: str | None = None,
     window_path: str | None = None,
     json_dir: str = "",
@@ -34,6 +35,7 @@ def launch_job(
     """Launch a job for the landsat scene zip file.
 
     Args:
+        image_name: the name of the beaker image to use.
         scene_zip_path: the path to the landsat scene zip file.
         window_path: the path to the directory containing the windows.
         json_dir: the path to the directory containing the json files.
@@ -77,7 +79,7 @@ def launch_job(
         spec = ExperimentSpec.new(
             budget=BUDGET,
             description=f"landsat_vessel_{job_id}",
-            beaker_image=IMAGE_NAME,
+            beaker_image=image_name,
             command=["python", "-m", "rslp.main"],
             arguments=[
                 "landsat_vessels",
@@ -111,6 +113,12 @@ if __name__ == "__main__":
     dotenv.load_dotenv()
     parser = argparse.ArgumentParser(
         description="Launch beaker experiment for landsat prediction jobs",
+    )
+    parser.add_argument(
+        "--image_name",
+        type=str,
+        help="The name of the beaker image to use",
+        required=True,
     )
     parser.add_argument(
         "--zip_dir",
@@ -183,6 +191,7 @@ if __name__ == "__main__":
     if args.dry_run:
         print(f"Dry run: launching job for {paths[0]}")
         launch_job(
+            image_name=args.image_name,
             scene_zip_path=str(paths[0]) if args.zip_dir else None,
             window_path=str(paths[0]) if args.window_dir else None,
             json_dir=args.json_dir,
@@ -193,6 +202,7 @@ if __name__ == "__main__":
     else:
         for scene_zip_path in tqdm.tqdm(paths, desc="Launching beaker jobs"):
             launch_job(
+                image_name=args.image_name,
                 scene_zip_path=str(scene_zip_path) if args.zip_dir else None,
                 window_path=str(scene_zip_path) if args.window_dir else None,
                 json_dir=args.json_dir,
