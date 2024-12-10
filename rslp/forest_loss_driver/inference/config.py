@@ -24,9 +24,8 @@ class PredictPipelineConfig:
     gcs_tiff_filenames: list[str]
     ignore_errors: bool
 
-    # TODO: REMOVE DEBUG
     # TODO: Fix bug of this happening on a differnet day probably should be passed more explicitly
-    ds_root: str = f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/ignore_error_debug/prediction/dataset_{datetime.now().strftime('%Y%m%d')}"
+    ds_root: str = f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/final_test/prediction/dataset_{datetime.now().strftime('%Y%m%d')}"
 
     # Optional fields with defaults
     workers: int = 1

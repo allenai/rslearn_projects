@@ -33,6 +33,7 @@ def tiff_filename() -> str:
 @pytest.fixture
 def test_bucket() -> Generator[storage.Bucket, None, None]:
     """The test bucket."""
+    # TODO: Fix this
     bucket = storage.Client().bucket(os.environ.get("TEST_BUCKET", "rslearn-eai"))
     yield bucket
 
@@ -68,9 +69,10 @@ def test_predict_pipeline(
         os.environ["INFERENCE_DATASET_CONFIG"] = inference_dataset_config_path
         os.environ["INDEX_CACHE_DIR"] = str(index_cache_dir)
         os.environ["TILE_STORE_ROOT_DIR"] = str(tile_store_root_dir)
-        logger.warning(
-            " Please ensure RSLP_PREFIX is set in the environment for the test bucket"
-        )
+        if "RSLP_PREFIX" not in os.environ:
+            raise OSError(
+                "RSLP_PREFIX must be set in the environment for the test bucket"
+            )
         prediction_pipeline = ForestLossDriverPredictionPipeline(
             pred_pipeline_config=predict_pipeline_config
         )
