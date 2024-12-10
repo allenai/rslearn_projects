@@ -30,22 +30,23 @@ def test_materialize_forest_loss_driver_dataset(
 ) -> None:
     """Test materializing the forest loss driver dataset."""
     # copy the unmaterialized dataset to a temp directory
-    with tempfile.TemporaryDirectory(prefix=f"test_{uuid.uuid4()}_") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix=f"test_{uuid.uuid4()}_") as tmp_dir:
         logger.info(
-            f"Copying unmaterialized dataset from {test_unmaterialized_dataset_path} to {temp_dir}"
+            f"Copying unmaterialized dataset from {test_unmaterialized_dataset_path} "
+            f"to {tmp_dir}"
         )
-        shutil.copytree(test_unmaterialized_dataset_path, temp_dir, dirs_exist_ok=True)
-        materialize_forest_loss_driver_dataset(UPath(temp_dir))
+        shutil.copytree(test_unmaterialized_dataset_path, tmp_dir, dirs_exist_ok=True)
+        materialize_forest_loss_driver_dataset(UPath(tmp_dir))
         # Output of Prepare Step
         items_json_path = (
-            Path(temp_dir)
+            Path(tmp_dir)
             / "windows"
             / "default"
             / "feat_x_1281600_2146388_5_2221"
             / "items.json"
         )
         # Output of Ingest Step
-        tiles_path = Path(temp_dir) / "tiles"
+        tiles_path = Path(tmp_dir) / "tiles"
         # Log all contents of tiles directory
         logger.info("\nTiles directory contents:")
         for path in sorted(tiles_path.rglob("*")):
@@ -73,14 +74,16 @@ def test_materialize_forest_loss_driver_dataset(
         ]
 
         assert items_json_path.exists(), f"{items_json_path} does not exist"
-        assert (
-            len(tiff_files) == expected_num_tif_files
-        ), f"Expected {expected_num_tif_files} TIFF files in the materialized dataset"
-        assert (
-            len(metadata_json_files) == expected_num_metadata_json_files
-        ), f"Expected {expected_num_metadata_json_files} metadata.json files in the materialized dataset"
+        assert len(tiff_files) == expected_num_tif_files, (
+            f"Expected {expected_num_tif_files} TIFF files in the materialized dataset "
+            f"found {len(tiff_files)}"
+        )
+        assert len(metadata_json_files) == expected_num_metadata_json_files, (
+            f"Expected {expected_num_metadata_json_files} metadata.json files in the "
+            f"materialized dataset found {len(metadata_json_files)}"
+        )
         layers_dir = (
-            Path(temp_dir)
+            Path(tmp_dir)
             / "windows"
             / "default"
             / "feat_x_1281600_2146388_5_2221"

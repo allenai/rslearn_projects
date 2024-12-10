@@ -86,24 +86,31 @@ def download_test_data() -> Generator[None, None, None]:
         "gs://test-bucket-rslearn/forest_loss_driver/test_data/forest_loss_driver"
     )
 
-    # Only download if test_data directory is empty or doesn't exist
-    if not test_data_path.exists() or not any(test_data_path.iterdir()):
-        logger.info("Downloading test data from GCS...")
+    # Define which folders we want to download
+    folders_to_download = ["test_materialized_dataset", "alert_dates", "alert_tiffs"]
 
-        test_data_path.mkdir(parents=True, exist_ok=True)
-        gcs_upath = UPath(gcs_path)
-        for src_path in gcs_upath.rglob("*"):
-            if src_path.is_file():
-                # Skip the parent folders by taking the last 2 path components
-                rel_path = Path(*src_path.relative_to(gcs_upath).parts[4:])
-                dst_path = test_data_path / rel_path
-                logger.info(f"rel_path: {rel_path}")
-                logger.info(f"Downloading {src_path} to {dst_path}")
-                dst_path.parent.mkdir(parents=True, exist_ok=True)
-                with src_path.open("rb") as src, dst_path.open("wb") as dst:
-                    dst.write(src.read())
+    # Create test data directory if it doesn't exist
+    test_data_path.mkdir(parents=True, exist_ok=True)
 
-        logger.info("Test data download complete")
+    # Download each required folder
+    gcs_upath = UPath(gcs_path)
+    for folder in folders_to_download:
+        folder_path = test_data_path / folder
+        if not folder_path.exists() or not any(folder_path.iterdir()):
+            logger.info(f"Downloading {folder} from GCS...")
+            folder_gcs_path = gcs_upath / folder
+
+            for src_path in folder_gcs_path.rglob("*"):
+                if src_path.is_file():
+                    rel_path = Path(*src_path.relative_to(gcs_upath).parts[4:])
+                    dst_path = test_data_path / rel_path
+                    logger.info(f"Downloading {src_path} to {dst_path}")
+                    dst_path.parent.mkdir(parents=True, exist_ok=True)
+                    with src_path.open("rb") as src, dst_path.open("wb") as dst:
+                        dst.write(src.read())
+
+            logger.info(f"Finished downloading {folder}")
+
     # Log contents of test data folder
     logger.info("\nTest data directory contents:")
     for path in sorted(test_data_path.rglob("*")):

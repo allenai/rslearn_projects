@@ -16,7 +16,7 @@ VISUALIZATION_ONLY_LAYERS = [
 
 GROUP = None
 
-WORKERS = 32
+WORKERS = 0
 
 
 def materialize_forest_loss_driver_dataset(

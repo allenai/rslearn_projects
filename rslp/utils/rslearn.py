@@ -14,6 +14,9 @@ from rslearn.train.lightning_module import RslearnLightningModule
 from upath import UPath
 
 from rslp.lightning_cli import CustomLightningCLI
+from rslp.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 def materialize_dataset(
@@ -32,14 +35,15 @@ def materialize_dataset(
         group: limit dataset actions to this group.
         workers: number of workers to use.
     """
-    # TODO: Make it clear on a traceback which step is occuring.
     dataset = Dataset(ds_path, disabled_layers=disabled_layers)
+    logger.info("Running prepare step")
     apply_on_windows(
         PrepareHandler(force=False),
         dataset,
         workers=workers,
         group=group,
     )
+    logger.info("Running ingest step")
     apply_on_windows(
         IngestHandler(ignore_errors=ignore_errors),
         dataset,
@@ -47,6 +51,7 @@ def materialize_dataset(
         group=group,
         use_initial_job=False,
     )
+    logger.info("Running materialize step")
     apply_on_windows(
         MaterializeHandler(),
         dataset,

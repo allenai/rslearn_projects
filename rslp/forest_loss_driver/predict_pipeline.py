@@ -85,11 +85,13 @@ class ForestLossDriverPredictionPipeline:
     def extract_dataset(self) -> None:
         """Extract the dataset."""
         REQUIRED_ENV_VARS: list[str] = []
+        # TODO: Add instructions on when to set these
         OPTIONAL_ENV_VARS: list[str] = [
             "INDEX_CACHE_DIR",
             "TILE_STORE_ROOT_DIR",
             "PL_API_KEY",
         ]
+        # TODO: make sure the env variables are parsed in the config json
         self._validate_required_env_vars(REQUIRED_ENV_VARS, OPTIONAL_ENV_VARS)
         for filename in self.pred_config.gcs_tiff_filenames:
             extract_alerts_pipeline(self.pred_config, filename)
