@@ -119,6 +119,7 @@ def test_predict_pipeline(
                 }
             ],
         }
+        logger.info(f"Expected output: {expected_output_json}")
         with output_path.open("r") as f:
             output_json = json.load(f)
         assert output_json == expected_output_json
