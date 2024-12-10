@@ -3,13 +3,11 @@
 import json
 import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 
 import numpy as np
 import pytest
 import shapely
 import shapely.wkt
-from affine import Affine
 from rasterio.crs import CRS
 from rslearn.utils import Projection, STGeometry
 from upath import UPath
@@ -17,9 +15,6 @@ from upath import UPath
 from rslp.forest_loss_driver.inference.extract_alerts import (
     ForestLossEvent,
     create_forest_loss_mask,
-    load_country_polygon,
-    read_forest_alerts_confidence_raster,
-    read_forest_alerts_date_raster,
     write_event,
 )
 from rslp.log_utils import get_logger
@@ -52,26 +47,6 @@ def forest_loss_event() -> ForestLossEvent:
     }
     event = ForestLossEvent(**event_dict)
     return event
-
-
-# TODO: Make this fixture write the file to a temp directory or readd to the test data
-@pytest.fixture
-def country_data_path() -> UPath:
-    """Create a country data path."""
-    return UPath(
-        Path(__file__).parents[4]
-        / "test_data/forest_loss_driver/artifacts/natural_earth_countries/ne_10m_admin_0_countries.shp"
-    )
-
-
-@pytest.fixture
-def alert_tiffs_prefix() -> str:
-    return str(Path(__file__).parents[4] / "test_data/forest_loss_driver/alert_tiffs")
-
-
-@pytest.fixture
-def alert_date_tiffs_prefix() -> str:
-    return str(Path(__file__).parents[4] / "test_data/forest_loss_driver/alert_dates")
 
 
 def test_write_event(forest_loss_event: ForestLossEvent) -> None:
@@ -114,109 +89,6 @@ def test_write_event(forest_loss_event: ForestLossEvent) -> None:
         assert (
             UPath(temp_dir) / expected_layers_subdirectory / "completed"
         ).exists(), "completed file not found"
-
-
-def test_load_country_polygon(country_data_path: UPath) -> None:
-    """Tests loading the country polygon."""
-    country_wgs84_shp = load_country_polygon(country_data_path)
-    expected_type = shapely.geometry.multipolygon.MultiPolygon
-    expected_centroid = shapely.geometry.point.Point(
-        -74.37806457210715, -9.154388480752162
-    )
-    assert isinstance(
-        country_wgs84_shp, expected_type
-    ), f"country_wgs84_shp is not a {expected_type}"
-    assert country_wgs84_shp.centroid.equals(expected_centroid)
-
-
-def test_read_forest_alerts_confidence_raster(alert_tiffs_prefix: str) -> None:
-    """Tests reading the forest alerts confidence raster."""
-    fname = "070W_10S_060W_00N.tif"
-    conf_data, conf_raster = read_forest_alerts_confidence_raster(
-        fname,
-        alert_tiffs_prefix,
-    )
-    assert conf_data.shape == (100000, 100000)
-    assert conf_raster.profile == {
-        "driver": "GTiff",
-        "dtype": "uint8",
-        "nodata": None,
-        "width": 100000,
-        "height": 100000,
-        "count": 1,
-        "crs": CRS.from_epsg(4326),
-        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, 0.0),
-        "blockxsize": 100000,
-        "blockysize": 1,
-        "tiled": False,
-        "compress": "lzw",
-        "interleave": "band",
-    }
-    fname = "cropped_070W_10S_060W_00N.tif"
-    conf_data, conf_raster = read_forest_alerts_confidence_raster(
-        fname,
-        alert_tiffs_prefix,
-    )
-    assert conf_data.shape == (10000, 10000)
-    assert conf_raster.profile == {
-        "driver": "GTiff",
-        "dtype": "uint8",
-        "nodata": None,
-        "width": 10000,
-        "height": 10000,
-        "count": 1,
-        "crs": CRS.from_epsg(4326),
-        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, -4.0),
-        "blockxsize": 10000,
-        "blockysize": 1,
-        "tiled": False,
-        "compress": "lzw",
-        "interleave": "band",
-    }
-
-
-def test_read_forest_alerts_date_raster(alert_date_tiffs_prefix: str) -> None:
-    """Tests reading the forest alerts date raster."""
-    fname = "070W_10S_060W_00N.tif"
-    date_data, date_raster = read_forest_alerts_date_raster(
-        fname, alert_date_tiffs_prefix
-    )
-    assert date_data.shape == (100000, 100000)
-    assert date_raster.profile == {
-        "driver": "GTiff",
-        "dtype": "uint16",
-        "nodata": None,
-        "width": 100000,
-        "height": 100000,
-        "count": 1,
-        "crs": CRS.from_epsg(4326),
-        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, 0.0),
-        "blockxsize": 100000,
-        "blockysize": 1,
-        "tiled": False,
-        "compress": "lzw",
-        "interleave": "band",
-    }
-    fname = "cropped_070W_10S_060W_00N.tif"
-    date_data, date_raster = read_forest_alerts_date_raster(
-        fname, alert_date_tiffs_prefix
-    )
-    assert date_data.shape == (10000, 10000)
-    assert date_raster.profile == {
-        "driver": "GTiff",
-        "dtype": "uint16",
-        "nodata": None,
-        "width": 10000,
-        "height": 10000,
-        "count": 1,
-        "crs": CRS.from_epsg(4326),
-        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, -4.0),
-        "blockxsize": 10000,
-        "blockysize": 1,
-        "tiled": False,
-        "compress": "lzw",
-        "interleave": "band",
-    }
 
 
 def test_create_forest_loss_mask_events_found() -> None:

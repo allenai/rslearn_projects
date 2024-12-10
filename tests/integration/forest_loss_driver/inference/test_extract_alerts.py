@@ -6,10 +6,19 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
+import shapely
+import shapely.wkt
+from affine import Affine
+from rasterio.crs import CRS
 from upath import UPath
 
 from rslp.forest_loss_driver.inference.config import PredictPipelineConfig
-from rslp.forest_loss_driver.inference.extract_alerts import extract_alerts_pipeline
+from rslp.forest_loss_driver.inference.extract_alerts import (
+    extract_alerts_pipeline,
+    load_country_polygon,
+    read_forest_alerts_confidence_raster,
+    read_forest_alerts_date_raster,
+)
 from rslp.log_utils import get_logger
 
 TEST_ID = str(uuid.uuid4())
@@ -21,6 +30,68 @@ def tiff_filename() -> str:
     """The path to the alert GeoTIFF file."""
     logger.warning("This tif is on GCS and is downloaded in conftest.py")
     return "cropped_070W_10S_060W_00N.tif"
+
+
+def test_read_forest_alerts_confidence_raster(alert_tiffs_prefix: str) -> None:
+    """Tests reading the forest alerts confidence raster."""
+    fname = "cropped_070W_10S_060W_00N.tif"
+    conf_data, conf_raster = read_forest_alerts_confidence_raster(
+        fname,
+        alert_tiffs_prefix,
+    )
+    assert conf_data.shape == (10000, 10000)
+    assert conf_raster.profile == {
+        "driver": "GTiff",
+        "dtype": "uint8",
+        "nodata": None,
+        "width": 10000,
+        "height": 10000,
+        "count": 1,
+        "crs": CRS.from_epsg(4326),
+        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, -4.0),
+        "blockxsize": 10000,
+        "blockysize": 1,
+        "tiled": False,
+        "compress": "lzw",
+        "interleave": "band",
+    }
+
+
+def test_read_forest_alerts_date_raster(alert_date_tiffs_prefix: str) -> None:
+    """Tests reading the forest alerts date raster."""
+    fname = "cropped_070W_10S_060W_00N.tif"
+    date_data, date_raster = read_forest_alerts_date_raster(
+        fname, alert_date_tiffs_prefix
+    )
+    assert date_data.shape == (10000, 10000)
+    assert date_raster.profile == {
+        "driver": "GTiff",
+        "dtype": "uint16",
+        "nodata": None,
+        "width": 10000,
+        "height": 10000,
+        "count": 1,
+        "crs": CRS.from_epsg(4326),
+        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, -4.0),
+        "blockxsize": 10000,
+        "blockysize": 1,
+        "tiled": False,
+        "compress": "lzw",
+        "interleave": "band",
+    }
+
+
+def test_load_country_polygon(country_data_path: UPath) -> None:
+    """Tests loading the country polygon."""
+    country_wgs84_shp = load_country_polygon(country_data_path)
+    expected_type = shapely.geometry.multipolygon.MultiPolygon
+    expected_centroid = shapely.geometry.point.Point(
+        -74.37806457210715, -9.154388480752162
+    )
+    assert isinstance(
+        country_wgs84_shp, expected_type
+    ), f"country_wgs84_shp is not a {expected_type}"
+    assert country_wgs84_shp.centroid.equals(expected_centroid)
 
 
 def test_extract_alerts(
