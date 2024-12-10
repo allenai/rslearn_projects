@@ -92,32 +92,32 @@ def test_predict_pipeline(
         # TODO: Make a pydantic model for this output
         expected_output_json = {
             "type": "FeatureCollection",
+            "properties": {
+                "crs": "EPSG:3857",
+                "x_resolution": 9.554628535647032,
+                "y_resolution": -9.554628535647032,
+            },
             "features": [
                 {
                     "type": "Feature",
                     "properties": {
                         "new_label": "river",
                         "probs": [
-                            0.00027457400574348867,
-                            9.164694347418845e-06,
-                            0.004422641359269619,
-                            7.985765826390434e-09,
-                            1.6661474546708632e-06,
-                            1.7722986740409397e-05,
-                            2.0580247905854776e-07,
-                            2.0334262273991044e-08,
-                            0.9876694083213806,
-                            0.007604612968862057,
+                            0.0003058495349250734,
+                            8.582491318520624e-06,
+                            0.0032749103847891092,
+                            7.261763190768988e-09,
+                            1.4538236428052187e-06,
+                            1.59567116497783e-05,
+                            1.8003102297825535e-07,
+                            2.3082723288325724e-08,
+                            0.989401638507843,
+                            0.0069913845509290695,
                         ],
                     },
                     "geometry": {"type": "Point", "coordinates": [-815616.0, 49172.0]},
                 }
             ],
-            "properties": {
-                "crs": "EPSG:3857",
-                "x_resolution": 9.554628535647032,
-                "y_resolution": -9.554628535647032,
-            },
         }
         with output_path.open("r") as f:
             output_json = json.load(f)
