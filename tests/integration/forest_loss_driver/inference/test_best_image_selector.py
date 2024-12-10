@@ -13,6 +13,7 @@ from rslp.forest_loss_driver.inference import select_best_images_pipeline
 def test_select_best_images_pipeline(
     test_materialized_dataset_path: UPath,
 ) -> None:
+    """Test the best image selector pipeline."""
     # Want to make sure we have the best times for each layer?
     # Will all layers in config be present? Is there the case of no best images? What is expected behavior?
     with tempfile.TemporaryDirectory(prefix=f"test_{uuid.uuid4()}_") as temp_dir:

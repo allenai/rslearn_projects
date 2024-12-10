@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 @pytest.fixture
 def tiff_filename() -> str:
     """The path to the alert GeoTIFF file."""
+    logger.warning("This tif is on GCS and is downloaded in conftest.py")
     return "cropped_070W_10S_060W_00N.tif"
 
 
