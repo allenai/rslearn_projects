@@ -35,6 +35,10 @@ def test_materialize_forest_loss_driver_dataset(
             f"Copying unmaterialized dataset from {test_unmaterialized_dataset_path} "
             f"to {tmp_dir}"
         )
+        if not UPath(test_unmaterialized_dataset_path).exists():
+            raise FileNotFoundError(
+                f"Unmaterialized dataset not found at {test_unmaterialized_dataset_path}"
+            )
         shutil.copytree(test_unmaterialized_dataset_path, tmp_dir, dirs_exist_ok=True)
         materialize_forest_loss_driver_dataset(UPath(tmp_dir))
         # Output of Prepare Step
@@ -47,10 +51,6 @@ def test_materialize_forest_loss_driver_dataset(
         )
         # Output of Ingest Step
         tiles_path = Path(tmp_dir) / "tiles"
-        # Log all contents of tiles directory
-        logger.info("\nTiles directory contents:")
-        for path in sorted(tiles_path.rglob("*")):
-            logger.info(f"  {path.relative_to(tiles_path)}")
         tiff_files = list(tiles_path.rglob("*.tif"))
         metadata_json_files = list(tiles_path.rglob("metadata.json"))
         expected_num_tif_files = 13

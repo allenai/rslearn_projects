@@ -104,7 +104,7 @@ def download_test_data() -> Generator[None, None, None]:
                 if src_path.is_file():
                     rel_path = Path(*src_path.relative_to(gcs_upath).parts[4:])
                     dst_path = test_data_path / rel_path
-                    logger.info(f"Downloading {src_path} to {dst_path}")
+                    logger.debug(f"Downloading {src_path} to {dst_path}")
                     dst_path.parent.mkdir(parents=True, exist_ok=True)
                     with src_path.open("rb") as src, dst_path.open("wb") as dst:
                         dst.write(src.read())
@@ -114,5 +114,7 @@ def download_test_data() -> Generator[None, None, None]:
     # Log contents of test data folder
     logger.info("\nTest data directory contents:")
     for path in sorted(test_data_path.rglob("*")):
-        logger.info(f"  {path.relative_to(test_data_path)}")
+        logger.debug(f"  {path.relative_to(test_data_path)}")
+        if path.is_dir():
+            logger.info(f"    {path.relative_to(test_data_path)}")
     yield
