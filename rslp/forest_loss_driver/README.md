@@ -32,14 +32,20 @@ The system consists of two main pipeline components:
 
 ### Environment Setup
 Required environment variables:
-- `RSLP_PREFIX`: GCS bucket prefix for model checkpoints
+- `RSLP_PREFIX`: GCS bucket prefix for model checkpoints \
+
+Optional environment variables:
 - `INDEX_CACHE_DIR`: Directory for caching image indices
 - `TILE_STORE_ROOT_DIR`: Directory for tile storage
 - `PL_API_KEY`: Planet API key (if using Planet imagery)
 
 Otherwise, follow set up in [main readme](../../README.md)
 
-### Data and Model Configuration
+### Pipeline Configuration
+
+The current inference data configuration is stored in [data/forest_loss_driver/config.json](../../data/forest_loss_driver/config.json). This contains the bands and data sources the model needs to perform inference. It is essential this dataset configuration matches the configuration used to train the model.
+
+The current pipeline configuration is stored in [forest_loss_driver_predict_pipeline_config.yaml](inference/config/forest_loss_driver_predict_pipeline_config.yaml) the default values can be found in this [config class](inference/config.py). This configuration points to the model configuration currently in use by the pipeline.
 ### Running the Pipeline Quickstart
 
 1. Extract and prepare the dataset:

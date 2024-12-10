@@ -58,7 +58,8 @@ under "Access keys for your user account".
 
 Usage
 -----
-
+TODO: Add information about installing the packages in editable mode for usage
+Also add the information about extra_requirements as that is sometimes needed as well
 Create an environment for rslearn and setup with rslearn_projects requirements:
 
     conda create -n rslearn python=3.12
@@ -80,7 +81,7 @@ Manually train locally:
 
 
 
-Specific Project Documentation
+Projects
 ------------------
 
 Forest Loss Driver - see [documentation](rslp/forest_loss_driver/README.md)
