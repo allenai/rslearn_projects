@@ -117,6 +117,7 @@ class PredictPipelineConfig:
             f"PredictPipelineConfig(\n"
             f"  Required:\n"
             f"    ds_root={self.ds_root}\n"
+            f"    ignore_errors={self.ignore_errors}\n"
             f"    model_cfg_fname={self.model_cfg_fname}\n"
             f"    gcs_tiff_filenames={self.gcs_tiff_filenames}\n"
             f"  Optional:\n"
