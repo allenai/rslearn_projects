@@ -16,6 +16,11 @@ import (
 const FUTURE_LABEL = "2030-01"
 const TILE_SIZE = 2048
 
+// Don't consider groups with fewer than this many valid timesteps.
+// Note that the point doesn't need to be detected in all the timesteps, this is just
+// timesteps where we have image coverage.
+const MIN_VALID_TIMESTEPS = 8
+
 type Tile struct {
 	Projection string
 	Column     int
@@ -23,6 +28,7 @@ type Tile struct {
 }
 
 type Point struct {
+	Type     string `json:"type"`
 	Geometry struct {
 		Type        string     `json:"type"`
 		Coordinates [2]float64 `json:"coordinates"`
@@ -96,6 +102,7 @@ func main() {
 	outFname := flag.String("out", "", "Output filename with LABEL placeholder like out/LABEL.geojson")
 	histFname := flag.String("hist", "", "Merged history output filename")
 	distanceThreshold := flag.Float64("max_dist", 200, "Matching distance threshold in meters")
+	nmsDistance := flag.Float64("nms_dist", 200.0/111111, "NMS distance in degrees")
 	numThreads := flag.Int("threads", 32, "Number of threads")
 	flag.Parse()
 
@@ -149,20 +156,33 @@ func main() {
 		for groupIdx, group := range groups {
 			projection := *group[0].Properties.Projection
 			center := group.Center()
-			indices := gridIndexes[projection].Search(common.Rectangle{
-				Min: common.Point{float64(center[0]) - GridSize, float64(center[1]) - GridSize},
-				Max: common.Point{float64(center[0]) + GridSize, float64(center[1]) + GridSize},
-			})
+
+			// Lookup candidate new points that could match this group using the grid index.
+			var indices []int
+			if gridIndexes[projection] != nil {
+				indices = gridIndexes[projection].Search(common.Rectangle{
+					Min: common.Point{float64(center[0]) - GridSize, float64(center[1]) - GridSize},
+					Max: common.Point{float64(center[0]) + GridSize, float64(center[1]) + GridSize},
+				})
+			}
+
 			var closestIdx int = -1
 			var closestDistance float64
 			for _, idx := range indices {
 				if matchedIndices[idx] {
 					continue
 				}
-				if *group[0].Properties.Category != *curPoints[idx].Properties.Category {
-					continue
-				}
 
+				// Double check distance threshold since the index may still return
+				// points that are slightly outside the threshold.
+				// We used to check category too, but now we use the category of the
+				// last prediction, and just apply a distance penalty for mismatched
+				// category, since we noticed that sometimes there are partially
+				// constructed wind turbines detected as platforms but then later
+				// detected as turbines once construction is done, and we don't want
+				// that to mess up the Viterbi smoothing. Put another way, marine
+				// infrastructure should show up in our map even if we're not exactly
+				// sure about the category.
 				dx := center[0] - *curPoints[idx].Properties.Column
 				dy := center[1] - *curPoints[idx].Properties.Row
 				distance := math.Sqrt(float64(dx*dx + dy*dy))
@@ -170,6 +190,11 @@ func main() {
 				if distance > *distanceThreshold/MetersPerPixel {
 					continue
 				}
+
+				if *group[0].Properties.Category != *curPoints[idx].Properties.Category {
+					distance += *distanceThreshold / MetersPerPixel
+				}
+
 				if closestIdx == -1 || distance < closestDistance {
 					closestIdx = idx
 					closestDistance = distance
@@ -204,6 +229,51 @@ func main() {
 			}
 		}
 	}
+
+	// Apply non-maximal suppression over groups.
+	// We prefer longer groups, or if they are the same length, the group with higher
+	// last score.
+	log.Println("applying non-maximal suppression")
+	nmsIndex := common.NewGridIndex(*nmsDistance * 5)
+	for groupIdx, group := range groups {
+		last := group[len(group)-1]
+		coordinates := last.Geometry.Coordinates
+		nmsIndex.Insert(groupIdx, common.Point{coordinates[0], coordinates[1]}.Rectangle())
+	}
+	var newGroups []Group
+	for groupIdx, group := range groups {
+		last := group[len(group)-1]
+		coordinates := last.Geometry.Coordinates
+		results := nmsIndex.Search(common.Point{coordinates[0], coordinates[1]}.RectangleTol(*nmsDistance))
+		needsRemoval := false
+		for _, otherIdx := range results {
+			if otherIdx == groupIdx {
+				continue
+			}
+			other := groups[otherIdx]
+			otherLast := other[len(other)-1]
+			otherCoordinates := otherLast.Geometry.Coordinates
+			dx := coordinates[0] - otherCoordinates[0]
+			dy := coordinates[1] - otherCoordinates[1]
+			distance := math.Sqrt(float64(dx*dx + dy*dy))
+			if distance >= *nmsDistance {
+				continue
+			}
+
+			// It is within distance threshold, so see if group is worse than other.
+			if len(group) < len(other) {
+				needsRemoval = true
+			} else if len(group) == len(other) && *last.Properties.Score < *otherLast.Properties.Score {
+				needsRemoval = true
+			}
+		}
+
+		if !needsRemoval {
+			newGroups = append(newGroups, group)
+		}
+	}
+	log.Printf("NMS filtered from %d to %d groups", len(groups), len(newGroups))
+	groups = newGroups
 
 	// Apply Viterbi algorithm in each group.
 	initialProbs := []float64{0.5, 0.5}
@@ -318,6 +388,10 @@ func main() {
 					validLabelSet[label] = true
 				}
 
+				if len(validLabelSet) < MIN_VALID_TIMESTEPS {
+					continue
+				}
+
 				// Now make history of observations for Viterbi algorithm.
 				// We only include timesteps where the tile was valid.
 				// We also create a map from observed timesteps to original timestep index.
@@ -363,6 +437,7 @@ func main() {
 		for _, rng := range curRngs {
 			last := rng.Group[len(rng.Group)-1]
 			feat := Point{}
+			feat.Type = "Feature"
 			feat.Geometry = last.Geometry
 			feat.Properties.Category = last.Properties.Category
 			feat.Properties.Score = last.Properties.Score

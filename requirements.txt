@@ -1,5 +1,6 @@
 beaker-py>=1.32
 fastapi>=0.115
+google-cloud-bigtable>=2.18
 interrogate>=1.7
 pydantic>=2.8
 pytest>=8.2

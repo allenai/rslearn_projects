@@ -27,6 +27,13 @@ MAX_METERS_PER_DEGREE = 111111
 # exact.
 NMS_DISTANCE_THRESHOLD = 100 / MAX_METERS_PER_DEGREE
 
+APP_CATEGORY_MAPS = {
+    Application.MARINE_INFRA: {
+        "platform": "offshore_platform",
+        "turbine": "offshore_wind_turbine",
+    }
+}
+
 logger = get_logger(__name__)
 
 
@@ -90,19 +97,16 @@ def apply_nms(
     return good_features
 
 
-def postprocess_points(
+def merge_points(
     application: Application,
     label: str,
     predict_path: str,
     merged_path: str,
-    smoothed_path: str,
     workers: int = 32,
 ) -> None:
-    """Post-process Satlas point outputs.
+    """Merge Satlas point outputs.
 
-    This merges the outputs across different prediction tasks for this timestamp and
-    spatial tile. Then it applies Viterbi smoothing that takes into account merged
-    outputs from previous time ranges, and uploads the results.
+    This merges the outputs across different prediction tasks for this timestamp.
 
     Args:
         application: the application.
@@ -111,11 +115,8 @@ def postprocess_points(
             the different tasks have been written.
         merged_path: folder to write merged predictions. The filename will be
             YYYY-MM.geojson.
-        smoothed_path: folder to write smoothed predictions. The filename will be
-            YYYY-MM.geojson.
         workers: number of worker processes.
     """
-    # Merge the predictions.
     predict_upath = UPath(predict_path)
     merged_features = []
     merged_patches: dict[str, list[tuple[int, int]]] = {}
@@ -123,6 +124,9 @@ def postprocess_points(
     fnames = [fname for fname in predict_upath.iterdir() if fname.name != "index"]
     p = multiprocessing.Pool(workers)
     outputs = p.imap_unordered(_get_fc, fnames)
+
+    # Get category remapping in case one is specified for this application.
+    category_map = APP_CATEGORY_MAPS.get(application, {})
 
     for cur_fc in tqdm.tqdm(outputs, total=len(fnames)):
         # The projection information may be missing if there are no valid patches.
@@ -151,6 +155,10 @@ def postprocess_points(
             dst_geom = src_geom.to_projection(WGS84_PROJECTION)
             feat["geometry"]["coordinates"] = [dst_geom.shp.x, dst_geom.shp.y]
 
+            category = feat["properties"]["category"]
+            if category in category_map:
+                feat["properties"]["category"] = category_map[category]
+
             merged_features.append(feat)
 
         # Merge the valid patches too, these indicate which portions of the world
@@ -162,18 +170,13 @@ def postprocess_points(
 
     p.close()
 
-    nms_features = apply_nms(merged_features, distance_threshold=NMS_DISTANCE_THRESHOLD)
-    logger.info(
-        "NMS filtered from %d -> %d features", len(merged_features), len(nms_features)
-    )
-
     merged_upath = UPath(merged_path)
     merged_fname = merged_upath / f"{label}.geojson"
     with merged_fname.open("w") as f:
         json.dump(
             {
                 "type": "FeatureCollection",
-                "features": nms_features,
+                "features": merged_features,
                 "properties": {
                     "valid_patches": merged_patches,
                 },
@@ -181,6 +184,27 @@ def postprocess_points(
             f,
         )
 
+
+def smooth_points(
+    application: Application,
+    label: str,
+    merged_path: str,
+    smoothed_path: str,
+) -> None:
+    """Smooth the Satlas point outputs.
+
+    It applies Viterbi smoothing that takes into account merged outputs from previous
+    time ranges, and uploads the results.
+
+    Args:
+        application: the application.
+        label: YYYY-MM representation of the time range used for this prediction run.
+        merged_path: folder to write merged predictions. The filename will be
+            YYYY-MM.geojson.
+        smoothed_path: folder to write smoothed predictions. The filename will be
+            YYYY-MM.geojson.
+    """
+    merged_upath = UPath(merged_path)
     # Download the merged prediction history (ending with the one we just wrote) and
     # run smoothing.
     smoothed_upath = UPath(smoothed_path)
