@@ -51,6 +51,7 @@ def test_predict_pipeline(
         tile_store_root_dir = UPath(temp_dir) / "tile_store"
         predict_pipeline_config = PredictPipelineConfig(
             ds_root=ds_path,
+            ignore_errors=False,
             model_cfg_fname=model_cfg_fname,
             gcs_tiff_filenames=[tiff_filename],
             workers=1,

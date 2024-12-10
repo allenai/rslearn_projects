@@ -61,7 +61,6 @@ def launch_job(
     with beaker.session():
         env_vars = launcher_lib.get_base_env_vars(use_weka_prefix=use_weka_prefix)
 
-
         # Add AWS credentials for downloading data
         env_vars.append(
             EnvVar(

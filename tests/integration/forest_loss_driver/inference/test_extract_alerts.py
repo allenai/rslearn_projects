@@ -42,6 +42,7 @@ def test_extract_alerts(
             / "forest_loss_driver"
             / "prediction"
             / "dataset_20241023",
+            ignore_errors=False,
             model_cfg_fname=dummy_model_cfg_fname,
             gcs_tiff_filenames=[tiff_filename],
             workers=1,
