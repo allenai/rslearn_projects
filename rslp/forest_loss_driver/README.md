@@ -37,9 +37,15 @@ Required environment variables:
 - `TILE_STORE_ROOT_DIR`: Directory for tile storage
 - `PL_API_KEY`: Planet API key (if using Planet imagery)
 
-### Running the Pipeline
+Otherwise, follow set up in [main readme](../../README.md)
+
+### Data and Model Configuration
+### Running the Pipeline Quickstart
 
 1. Extract and prepare the dataset:
 
 
 ## Links to other specific kinds of docs and functionality
+
+training doc \
+deployment doc \
