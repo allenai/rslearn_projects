@@ -21,6 +21,7 @@ WORKERS = 32
 
 def materialize_forest_loss_driver_dataset(
     ds_path: UPath,
+    ignore_errors: bool = False,
     disabled_layers: list[str] = VISUALIZATION_ONLY_LAYERS,
     group: str | None = GROUP,
     workers: int = WORKERS,
@@ -31,6 +32,8 @@ def materialize_forest_loss_driver_dataset(
 
     Args:
         ds_path: the dataset root path,
+        ignore_errors: whether to ignore errors, this allows us to ignore errors in the ingest step due to missing data, file corruption, etc.
+            For this task, as we don't end up using all the ingested data, it's okay to ignore the occasional errors. (we select the best images later)
         disabled_layers: layers to disable for prepare/ingest/materialize,
         group: the group to use for prepare/ingest/materialize,
         workers: the number of workers to use for prepare/ingest/materialize,
@@ -43,6 +46,7 @@ def materialize_forest_loss_driver_dataset(
     # TODO: Add step to validate the directory has all the required files.
     materialize_dataset(
         ds_path,
+        ignore_errors=ignore_errors,
         disabled_layers=disabled_layers,
         group=group,
         workers=workers,

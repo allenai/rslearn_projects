@@ -1,5 +1,6 @@
 # Required fields
 model_cfg_fname: "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml" # should be path from the top of the repo IF NOT ABSOLUTE PATH
+ignore_errors: true
 gcs_tiff_filenames:
   # - "070W_10S_060W_00N.tif"
   # - "070W_20S_060W_10S.tif"

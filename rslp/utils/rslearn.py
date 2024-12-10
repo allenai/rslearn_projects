@@ -18,6 +18,7 @@ from rslp.lightning_cli import CustomLightningCLI
 
 def materialize_dataset(
     ds_path: UPath,
+    ignore_errors: bool = False,
     disabled_layers: list[str] = [],
     group: str | None = None,
     workers: int = 32,
@@ -26,6 +27,7 @@ def materialize_dataset(
 
     Args:
         ds_path: the dataset root.
+        ignore_errors: whether to ignore errors, this allows us to ignore errors in the ingest step due to missing data, file corruption, etc.
         disabled_layers: a list of layers to disable.
         group: limit dataset actions to this group.
         workers: number of workers to use.
@@ -39,7 +41,7 @@ def materialize_dataset(
         group=group,
     )
     apply_on_windows(
-        IngestHandler(),
+        IngestHandler(ignore_errors=ignore_errors),
         dataset,
         workers=workers,
         group=group,

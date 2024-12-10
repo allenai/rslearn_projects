@@ -96,6 +96,7 @@ class ForestLossDriverPredictionPipeline:
 
         materialize_forest_loss_driver_dataset(
             self.pred_config.path,
+            ignore_errors=self.pred_config.ignore_errors,
             disabled_layers=self.pred_config.disabled_layers,
             group=self.pred_config.group,
             workers=self.pred_config.workers,
