@@ -1,6 +1,4 @@
-"""Integration tests for the predict pipeline.
-This should be refactored along with the prediction file into seperate components.
-"""
+"""Integration tests for the predict pipeline."""
 
 import json
 import os
