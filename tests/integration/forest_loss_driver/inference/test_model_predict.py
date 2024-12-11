@@ -74,11 +74,6 @@ def test_forest_loss_driver_model_predict(
                 }
             ],
         }
-        logger.info(f"Expected output: {expected_output_json}")
-        import time
-
-        logger.info(f"temp_dir: {temp_dir}")
-        time.sleep(1000000)
 
         with output_path.open("r") as f:
             output_json = json.load(f)
