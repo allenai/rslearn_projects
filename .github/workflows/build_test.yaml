@@ -115,6 +115,8 @@ jobs:
       - name: Run tests with Docker Compose
         run: |
           docker compose -f docker-compose.yaml run \
+            --gpus all \
+            --shm-size=15g \
             -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
             -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
             -v ${{env.GOOGLE_GHA_CREDS_PATH}}:/tmp/gcp-credentials.json:ro \
@@ -123,10 +125,6 @@ jobs:
             -e RSLP_PREFIX=gs://rslearn-eai \
             test pytest tests/integration/forest_loss_driver/inference/test_model_predict.py --ignore tests/integration_slow/ -vv
 
-      - name: Show test data contents
-        run: |
-          echo "Test data directory contents:"
-          find test_data/forest_loss_driver -type f -ls
 
       - name: Clean up
         if: always()
