@@ -41,7 +41,7 @@ def test_materialize_forest_loss_driver_dataset(
                 f"Unmaterialized dataset not found at {test_unmaterialized_dataset_path}"
             )
         shutil.copytree(test_unmaterialized_dataset_path, tmp_dir, dirs_exist_ok=True)
-        num_workers = max(1, multiprocessing.cpu_count() - 4)
+        num_workers = max(1, multiprocessing.cpu_count() - 2)
         materialize_forest_loss_driver_dataset(UPath(tmp_dir), workers=num_workers)
         # Output of Prepare Step
         items_json_path = (
@@ -99,11 +99,6 @@ def test_materialize_forest_loss_driver_dataset(
             assert layer_path.exists(), f"{layer_path} does not exist"
             assert image_path.exists(), f"{image_path} does not exist"
             assert metadata_path.exists(), f"{metadata_path} does not exist"
-
-        logger.info(f"Test materialized dataset: {tmp_dir}")
-        import time
-
-        time.sleep(1000000)
 
 
 # Add test where there is some sort of error to ensure  that materialization does not fail silently

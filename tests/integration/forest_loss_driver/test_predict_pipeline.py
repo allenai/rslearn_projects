@@ -49,7 +49,7 @@ def test_predict_pipeline(
         ds_path = UPath(temp_dir) / "dataset_20241023"
         index_cache_dir = UPath(temp_dir) / "index_cache"
         tile_store_root_dir = UPath(temp_dir) / "tile_store"
-        num_workers = max(1, multiprocessing.cpu_count() - 4)
+        num_workers = max(1, multiprocessing.cpu_count() - 2)
         predict_pipeline_config = PredictPipelineConfig(
             ds_root=ds_path,
             ignore_errors=False,

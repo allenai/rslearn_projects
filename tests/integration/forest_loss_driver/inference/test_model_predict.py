@@ -31,7 +31,7 @@ def test_forest_loss_driver_model_predict(
         # Set up Materialized dataset for best times
         select_best_images_pipeline(UPath(temp_dir))
         # Run model predict
-        num_workers = max(1, multiprocessing.cpu_count() - 4)
+        num_workers = max(1, multiprocessing.cpu_count() - 2)
         forest_loss_driver_model_predict(
             model_cfg_fname,
             UPath(temp_dir),
