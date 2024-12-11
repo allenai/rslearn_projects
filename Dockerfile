@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir --upgrade -r /opt/rslearn_projects/requirements.t
 # For now we don't install it and instead just use PYTHONPATH.
 ENV PYTHONPATH="${PYTHONPATH}:."
 
-COPY /. /opt/rslearn_projects/
+COPY . /opt/rslearn_projects/
 # install rslp package
 RUN pip install --no-cache-dir /opt/rslearn_projects
 WORKDIR /opt/rslearn_projects
