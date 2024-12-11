@@ -5,6 +5,7 @@ from upath import UPath
 from rslp.utils.rslearn import run_model_predict
 
 
+# TODO: Add code to collect all outputs and return them
 def forest_loss_driver_model_predict(
     model_cfg_fname: str, ds_path: str | UPath, model_data_load_workers: int
 ) -> None:
