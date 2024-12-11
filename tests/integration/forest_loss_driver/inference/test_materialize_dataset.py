@@ -41,7 +41,7 @@ def test_materialize_forest_loss_driver_dataset(
                 f"Unmaterialized dataset not found at {test_unmaterialized_dataset_path}"
             )
         shutil.copytree(test_unmaterialized_dataset_path, tmp_dir, dirs_exist_ok=True)
-        num_workers = max(1, multiprocessing.cpu_count() - 2)
+        num_workers = max(1, multiprocessing.cpu_count() - 4)
         materialize_forest_loss_driver_dataset(UPath(tmp_dir), workers=num_workers)
         # Output of Prepare Step
         items_json_path = (
