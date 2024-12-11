@@ -21,7 +21,7 @@ def country_data_path() -> UPath:
     """Create a country data path."""
     return UPath(
         Path(__file__).parents[3]
-        / "test_data/forest_loss_driver/artifacts/natural_earth_countries/20240830/20240830/ne_10m_admin_0_countries.shp"
+        / "test_data/forest_loss_driver/artifacts/natural_earth_countries/20240830/ne_10m_admin_0_countries.shp"
     )
 
 
