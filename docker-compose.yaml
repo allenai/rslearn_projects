@@ -11,4 +11,3 @@ services:
         reservations:
           devices:
             - capabilities: [gpu]  # Ensure this service can access GPUs
-    runtime: nvidia  # Use the NVIDIA runtime
