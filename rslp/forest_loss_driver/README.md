@@ -46,9 +46,11 @@ Otherwise, follow set up in [main readme](../../README.md)
 The current inference data configuration is stored in [data/forest_loss_driver/config.json](../../data/forest_loss_driver/config.json). This contains the bands and data sources the model needs to perform inference. It is essential this dataset configuration matches the configuration used to train the model.
 
 The current pipeline configuration is stored in [forest_loss_driver_predict_pipeline_config.yaml](inference/config/forest_loss_driver_predict_pipeline_config.yaml) the default values can be found in this [config class](inference/config.py). This configuration points to the model configuration currently in use by the pipeline.
-### Running the Pipeline Quickstart
+### Running the Pipeline
 
-1. Extract and prepare the dataset:
+1. Extract dataset
+
+2. Predict Forest Loss Driver Events
 
 
 ## Links to other specific kinds of docs and functionality
