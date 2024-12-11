@@ -33,11 +33,7 @@ PREDICT_PIPELINE_CONFIG_PATH = str(
 )
 
 
-# TODO: Provide Clearer description of the env vars needed in a readme
-# RSLP_PREFIX is the prefix of the directory or bucket where the model checkpoints are stored
-# INDEX_CACHE_DIR is the directory where the index cache is stored
-# TILE_STORE_ROOT_DIR is the directory where the tile store is stored
-# PL_API_KEY is the API key for the Planet API
+# TODO: Add Data vlaidation steps after each step to check to ensure the directory structure is correct
 class ForestLossDriverPredictionPipeline:
     """Forest loss driver prediction pipeline."""
 
@@ -90,7 +86,6 @@ class ForestLossDriverPredictionPipeline:
     def extract_dataset(self) -> None:
         """Extract the dataset."""
         REQUIRED_ENV_VARS: list[str] = []
-        # TODO: Add instructions on when to set these
         OPTIONAL_ENV_VARS: list[str] = [
             "INDEX_CACHE_DIR",
             "TILE_STORE_ROOT_DIR",

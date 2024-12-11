@@ -111,7 +111,6 @@ jobs:
           docker compose -f docker-compose.yaml run \
             test pytest tests/unit/
 
-      # TODO: Loop through projects to run integration tests per project
       - name: Run tests with Docker Compose
         run: |
           docker compose -f docker-compose.yaml run \
@@ -121,7 +120,7 @@ jobs:
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
             -e RSLP_BUCKET=rslearn-eai \
             -e RSLP_PREFIX=gs://rslearn-eai \
-            test pytest tests/integration/forest_loss_driver/test_predict_pipeline.py --ignore tests/integration_slow/ -vv
+            test pytest tests/integration/ --ignore tests/integration_slow/ -vv
 
 
       - name: Clean up

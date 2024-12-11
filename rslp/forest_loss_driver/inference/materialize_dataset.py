@@ -39,7 +39,6 @@ def materialize_forest_loss_driver_dataset(
             ingest:
             materialize
     """
-    # TODO: Add step to validate the directory has all the required files.
     materialize_dataset(
         ds_path,
         ignore_errors=ignore_errors,

@@ -4,7 +4,6 @@ Note: All data is downloaded to the test_data directory in the root of the repo 
 start of the testing session
 """
 
-import uuid
 from collections.abc import Generator
 from pathlib import Path
 from unittest import mock
@@ -13,9 +12,6 @@ import pytest
 from upath import UPath
 
 from rslp.log_utils import get_logger
-
-# TODO: these are duplicated in the unit tests for forest loss driver
-TEST_ID = str(uuid.uuid4())
 
 logger = get_logger(__name__)
 

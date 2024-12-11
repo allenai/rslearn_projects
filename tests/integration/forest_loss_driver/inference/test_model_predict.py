@@ -46,7 +46,6 @@ def test_forest_loss_driver_model_predict(
             / "output"
             / "data.geojson"
         )
-        # TODO: Make a pydantic model for this output
         expected_output_json = {
             "type": "FeatureCollection",
             "properties": {
