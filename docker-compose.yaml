@@ -3,3 +3,12 @@ version: "3.9"
 services:
   test:
     build: .
+    shm_size: '15G'  # Add the shared memory size
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all  # Make all GPUs visible
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]  # Ensure this service can access GPUs
+    runtime: nvidia  # Use the NVIDIA runtime
