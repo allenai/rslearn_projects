@@ -1,6 +1,7 @@
 """Integration tests for the predict pipeline."""
 
 import json
+import multiprocessing
 import os
 import tempfile
 import uuid
@@ -48,12 +49,13 @@ def test_predict_pipeline(
         ds_path = UPath(temp_dir) / "dataset_20241023"
         index_cache_dir = UPath(temp_dir) / "index_cache"
         tile_store_root_dir = UPath(temp_dir) / "tile_store"
+        num_workers = max(1, multiprocessing.cpu_count() - 2)
         predict_pipeline_config = PredictPipelineConfig(
             ds_root=ds_path,
             ignore_errors=False,
             model_cfg_fname=model_cfg_fname,
             gcs_tiff_filenames=[tiff_filename],
-            workers=1,
+            workers=num_workers,
             days=365,
             min_confidence=1,
             min_area=16.0,

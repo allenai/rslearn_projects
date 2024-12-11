@@ -1,5 +1,6 @@
 """Integration test for dataset materialization for the forest loss driver inference pipeline."""
 
+import multiprocessing
 import shutil
 import tempfile
 import uuid
@@ -40,7 +41,8 @@ def test_materialize_forest_loss_driver_dataset(
                 f"Unmaterialized dataset not found at {test_unmaterialized_dataset_path}"
             )
         shutil.copytree(test_unmaterialized_dataset_path, tmp_dir, dirs_exist_ok=True)
-        materialize_forest_loss_driver_dataset(UPath(tmp_dir))
+        num_workers = max(1, multiprocessing.cpu_count() - 2)
+        materialize_forest_loss_driver_dataset(UPath(tmp_dir), workers=num_workers)
         # Output of Prepare Step
         items_json_path = (
             Path(tmp_dir)

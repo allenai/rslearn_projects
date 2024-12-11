@@ -1,6 +1,7 @@
 """Integration test for the model predict step for the forest loss driver inference pipeline."""
 
 import json
+import multiprocessing
 import os
 import shutil
 import tempfile
@@ -30,10 +31,11 @@ def test_forest_loss_driver_model_predict(
         # Set up Materialized dataset for best times
         select_best_images_pipeline(UPath(temp_dir))
         # Run model predict
+        num_workers = max(1, multiprocessing.cpu_count() - 2)
         forest_loss_driver_model_predict(
             model_cfg_fname,
             UPath(temp_dir),
-            model_data_load_workers=1,
+            model_data_load_workers=num_workers,
         )
         output_path = (
             UPath(temp_dir)
