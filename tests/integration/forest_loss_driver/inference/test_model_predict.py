@@ -8,8 +8,9 @@ import uuid
 
 from upath import UPath
 
-from rslp.forest_loss_driver.inference.model_predict import (
+from rslp.forest_loss_driver.inference import (
     forest_loss_driver_model_predict,
+    select_best_images_pipeline,
 )
 from rslp.log_utils import get_logger
 
@@ -26,6 +27,9 @@ def test_forest_loss_driver_model_predict(
     # materialized dataset path
     with tempfile.TemporaryDirectory(prefix=f"test_{uuid.uuid4()}_") as temp_dir:
         shutil.copytree(test_materialized_dataset_path, temp_dir, dirs_exist_ok=True)
+        # Set up Materialized dataset for best times
+        select_best_images_pipeline(UPath(temp_dir))
+        # Run model predict
         forest_loss_driver_model_predict(
             model_cfg_fname,
             UPath(temp_dir),
@@ -71,6 +75,11 @@ def test_forest_loss_driver_model_predict(
             ],
         }
         logger.info(f"Expected output: {expected_output_json}")
+        import time
+
+        logger.info(f"temp_dir: {temp_dir}")
+        time.sleep(1000000)
+
         with output_path.open("r") as f:
             output_json = json.load(f)
         # TODO: Ideally we would have a pydantic model for this output perhaps that we could subclass from rslearn?
