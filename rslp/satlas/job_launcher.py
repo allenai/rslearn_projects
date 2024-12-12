@@ -31,10 +31,10 @@ TILE_SIZE = 32768
 RESOLUTION = 10
 
 # Days to add before a provided date.
-DAYS_BEFORE = 120
+DEFAULT_DAYS_BEFORE = 120
 
 # Days to add after a provided date.
-DAYS_AFTER = 90
+DEFAULT_DAYS_AFTER = 90
 
 
 class Task:
@@ -283,6 +283,8 @@ def launch_jobs_for_year_month(
     out_path: str,
     batch_size: int = 1,
     count: int | None = None,
+    days_before: int = DEFAULT_DAYS_BEFORE,
+    days_after: int = DEFAULT_DAYS_AFTER,
 ) -> None:
     """Launch Satlas prediction jobs on Beaker for the given year and month.
 
@@ -293,11 +295,13 @@ def launch_jobs_for_year_month(
         out_path: the output path with year and month placeholders.
         batch_size: the batch size.
         count: only run up to this many tasks.
+        days_before: how much to pad windows before the year/month.
+        days_after: how much to pad windows after the year/month.
     """
     ts = datetime(year, month, 1, tzinfo=timezone.utc)
     time_range = (
-        ts - timedelta(days=DAYS_BEFORE),
-        ts + timedelta(days=DAYS_AFTER),
+        ts - timedelta(days=days_before),
+        ts + timedelta(days=days_after),
     )
     cur_out_path = out_path.format(year=year, month=month)
     print(f"launching jobs with time_range={time_range} and out_path={cur_out_path}")
