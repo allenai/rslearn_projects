@@ -22,6 +22,7 @@
       "type": "vector"
     },
     "sentinel2_a": {
+      "alias": "sentinel2",
       "band_sets": [
         {
           "bands": [
@@ -114,7 +115,6 @@
           "space_mode": "CONTAINS"
         },
         "sort_by": "cloud_cover",
-        "time_offset": "-90d",
         "use_rtree_index": false
       },
       "type": "raster"
