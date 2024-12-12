@@ -104,7 +104,7 @@ class SaveWandbRunIdCallback(Callback):
             self.project_id, self.experiment_id, self.run_id, wandb_id
         )
 
-        if self.config_str is not None:
+        if self.config_str is not None and "rslp_project" not in wandb.config:
             wandb.config.update(json.loads(self.config_str))
 
 
