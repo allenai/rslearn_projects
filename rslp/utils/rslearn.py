@@ -53,7 +53,7 @@ def materialize_dataset(
     )
     logger.info("Running materialize step")
     apply_on_windows(
-        MaterializeHandler(),
+        MaterializeHandler(ignore_errors=ignore_errors),
         dataset,
         workers=workers,
         group=group,
