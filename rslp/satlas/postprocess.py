@@ -31,7 +31,10 @@ APP_CATEGORY_MAPS = {
     Application.MARINE_INFRA: {
         "platform": "offshore_platform",
         "turbine": "offshore_wind_turbine",
-    }
+    },
+    Application.WIND_TURBINE: {
+        "turbine": "wind_turbine",
+    },
 }
 
 logger = get_logger(__name__)

@@ -1,28 +1,16 @@
 """Launch Satlas prediction jobs on Beaker."""
 
 import json
-import uuid
 from datetime import datetime, timedelta, timezone
 
 import shapely
 import tqdm
-from beaker import (
-    Beaker,
-    Constraints,
-    DataMount,
-    DataSource,
-    EnvVar,
-    ExperimentSpec,
-    Priority,
-    TaskResources,
-)
+from google.cloud import pubsub_v1
 from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_proj_bounds
-from upath import UPath
 
-from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE, IMAGE_NAME, get_base_env_vars
 from rslp.log_utils import get_logger
 
 from .predict_pipeline import Application, PredictTaskArgs
@@ -33,10 +21,10 @@ TILE_SIZE = 32768
 RESOLUTION = 10
 
 # Days to add before a provided date.
-DAYS_BEFORE = 120
+DEFAULT_DAYS_BEFORE = 120
 
 # Days to add after a provided date.
-DAYS_AFTER = 90
+DEFAULT_DAYS_AFTER = 90
 
 
 class Task:
@@ -64,76 +52,6 @@ class Task:
         self.bounds = bounds
         self.time_range = time_range
         self.out_path = out_path
-
-
-class WorkerParams:
-    """Parameters that worker pipeline needs to know."""
-
-    def __init__(self, job_fname: str, claim_bucket_name: str, claim_dir: str) -> None:
-        """Create a new WorkerParams.
-
-        Args:
-            job_fname: the filename containing list of jobs.
-            claim_bucket_name: the bucket where workers will claim jobs.
-            claim_dir: the path in the bucket to write claim files.
-        """
-        self.job_fname = job_fname
-        self.claim_bucket_name = claim_bucket_name
-        self.claim_dir = claim_dir
-
-
-def launch_worker(worker_params: WorkerParams) -> None:
-    """Launch a worker job.
-
-    Args:
-        worker_params: the parameters to pass to the worker.
-    """
-    beaker = Beaker.from_env(default_workspace=DEFAULT_WORKSPACE)
-
-    with beaker.session():
-        env_vars = get_base_env_vars(use_weka_prefix=False)
-        env_vars.append(
-            EnvVar(
-                name="RSLEARN_LOGLEVEL",
-                value="DEBUG",
-            )
-        )
-
-        spec = ExperimentSpec.new(
-            budget=BUDGET,
-            description="worker",
-            beaker_image=IMAGE_NAME,
-            priority=Priority.low,
-            command=["python", "-m", "rslp.main"],
-            arguments=[
-                "common",
-                "worker",
-                "satlas",
-                "predict_multi",
-                worker_params.job_fname,
-                worker_params.claim_bucket_name,
-                worker_params.claim_dir,
-            ],
-            constraints=Constraints(
-                cluster=[
-                    "ai2/jupiter-cirrascale-2",
-                    "ai2/neptune-cirrascale",
-                    "ai2/saturn-cirrascale",
-                    "ai2/augusta-google-1",
-                ]
-            ),
-            preemptible=True,
-            datasets=[
-                DataMount(
-                    source=DataSource(secret="RSLEARN_GCP_CREDENTIALS"),  # nosec
-                    mount_path="/etc/credentials/gcp_credentials.json",  # nosec
-                ),
-            ],
-            env_vars=env_vars,
-            resources=TaskResources(gpu_count=1, shared_memory="256GiB"),
-        )
-        unique_id = str(uuid.uuid4())[0:8]
-        beaker.experiment.create(f"worker_{unique_id}", spec)
 
 
 def get_jobs(
@@ -252,11 +170,29 @@ def get_jobs(
     return jobs
 
 
+def _write_jobs_to_topic(
+    jobs: list[list[str]],
+    project_id: str,
+    topic_id: str,
+) -> None:
+    publisher = pubsub_v1.PublisherClient()
+    topic_path = publisher.topic_path(project_id, topic_id)
+    for job in tqdm.tqdm(jobs, desc="Writing jobs to Pub/Sub topic"):
+        json_data = dict(
+            project="satlas",
+            workflow="predict_multi",
+            args=job,
+        )
+        data = json.dumps(json_data).encode()
+        publisher.publish(topic_path, data).result()
+
+
 def write_jobs(
     application: Application,
     time_range: tuple[datetime, datetime],
     out_path: str,
-    job_fname: str,
+    project_id: str,
+    topic_id: str,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     batch_size: int = 1,
@@ -267,7 +203,8 @@ def write_jobs(
         application: which application to run.
         time_range: the time range to run within. Must have timezone.
         out_path: the output path. It should be specific to the time range.
-        job_fname: where to write the list of jobs for workers to read.
+        project_id: project containing the Pub/Sub topic.
+        topic_id: the Pub/Sub topic to write the jobs to.
         epsg_code: limit tasks to this UTM zone (specified by its EPSG code), default
             run in all UTM zones.
         wgs84_bounds: limit tasks to ones that intersect these WGS84 bounds.
@@ -281,16 +218,18 @@ def write_jobs(
         wgs84_bounds=wgs84_bounds,
         batch_size=batch_size,
     )
-    with UPath(job_fname).open("w") as f:
-        json.dump(jobs, f)
+    _write_jobs_to_topic(jobs, project_id, topic_id)
 
 
 def write_jobs_for_year_months(
     year_months: list[tuple[int, int]],
     application: Application,
     out_path: str,
-    job_fname: str,
+    project_id: str,
+    topic_id: str,
     batch_size: int = 1,
+    days_before: int = DEFAULT_DAYS_BEFORE,
+    days_after: int = DEFAULT_DAYS_AFTER,
 ) -> None:
     """Write Satlas prediction jobs for the given year and month.
 
@@ -298,16 +237,19 @@ def write_jobs_for_year_months(
         year_months: list of year-month pairs.
         application: the application to run.
         out_path: the output path with year and month placeholders.
-        job_fname: where to write the list of jobs for workers to read.
+        project_id: project containing the Pub/Sub topic.
+        topic_id: the Pub/Sub topic to write the jobs to.
         worker_params: the worker parameters.
         batch_size: the batch size.
+        days_before: how much to pad windows before the year/month.
+        days_after: how much to pad windows after the year/month.
     """
     jobs = []
     for year, month in year_months:
         ts = datetime(year, month, 1, tzinfo=timezone.utc)
         time_range = (
-            ts - timedelta(days=DAYS_BEFORE),
-            ts + timedelta(days=DAYS_AFTER),
+            ts - timedelta(days=days_before),
+            ts + timedelta(days=days_after),
         )
         cur_out_path = out_path.format(year=year, month=month)
         logger.info(
@@ -323,17 +265,4 @@ def write_jobs_for_year_months(
         jobs.extend(cur_jobs)
 
     logger.info("got a total of %d jobs across year-months", len(jobs))
-    with UPath(job_fname).open("w") as f:
-        json.dump(jobs, f)
-
-
-def launch_workers(worker_params: WorkerParams, num_workers: int) -> None:
-    """Start workers for the prediction jobs.
-
-    Args:
-        worker_params: the parameters for the workers, including job file where the
-            list of jobs has been written.
-        num_workers: number of workers to launch
-    """
-    for _ in tqdm.tqdm(range(num_workers)):
-        launch_worker(worker_params)
+    _write_jobs_to_topic(jobs, project_id, topic_id)

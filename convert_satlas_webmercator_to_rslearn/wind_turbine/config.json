@@ -22,7 +22,6 @@
       "type": "vector"
     },
     "sentinel2_a": {
-      "alias": "sentinel2",
       "band_sets": [
         {
           "bands": [
@@ -68,41 +67,6 @@
         "sort_by": "cloud_cover",
         "use_rtree_index": false
       },
-      "type": "raster"
-    },
-    "sentinel2_a.1": {
-      "band_sets": [
-        {
-          "bands": [
-            "B02",
-            "B03",
-            "B04",
-            "B08"
-          ],
-          "dtype": "uint16"
-        },
-        {
-          "bands": [
-            "B05",
-            "B06",
-            "B07",
-            "B8A",
-            "B11",
-            "B12"
-          ],
-          "dtype": "uint16",
-          "zoom_offset": -1
-        },
-        {
-          "bands": [
-            "B01",
-            "B09",
-            "B10"
-          ],
-          "dtype": "uint16",
-          "zoom_offset": -2
-        }
-      ],
       "type": "raster"
     },
     "sentinel2_b": {
@@ -155,41 +119,6 @@
       },
       "type": "raster"
     },
-    "sentinel2_b.1": {
-      "band_sets": [
-        {
-          "bands": [
-            "B02",
-            "B03",
-            "B04",
-            "B08"
-          ],
-          "dtype": "uint16"
-        },
-        {
-          "bands": [
-            "B05",
-            "B06",
-            "B07",
-            "B8A",
-            "B11",
-            "B12"
-          ],
-          "dtype": "uint16",
-          "zoom_offset": -1
-        },
-        {
-          "bands": [
-            "B01",
-            "B09",
-            "B10"
-          ],
-          "dtype": "uint16",
-          "zoom_offset": -2
-        }
-      ],
-      "type": "raster"
-    },
     "sentinel2_c": {
       "alias": "sentinel2",
       "band_sets": [
@@ -238,41 +167,6 @@
         "time_offset": "-180d",
         "use_rtree_index": false
       },
-      "type": "raster"
-    },
-    "sentinel2_c.1": {
-      "band_sets": [
-        {
-          "bands": [
-            "B02",
-            "B03",
-            "B04",
-            "B08"
-          ],
-          "dtype": "uint16"
-        },
-        {
-          "bands": [
-            "B05",
-            "B06",
-            "B07",
-            "B8A",
-            "B11",
-            "B12"
-          ],
-          "dtype": "uint16",
-          "zoom_offset": -1
-        },
-        {
-          "bands": [
-            "B01",
-            "B09",
-            "B10"
-          ],
-          "dtype": "uint16",
-          "zoom_offset": -2
-        }
-      ],
       "type": "raster"
     }
   },

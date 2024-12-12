@@ -216,4 +216,4 @@ trainer:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 2
 rslp_project: satlas_marine_infra
-rslp_experiment: data_20241030_run_20241210_00
+rslp_experiment: data_20241030_satlaspretrainold_patch512_00
