@@ -167,6 +167,7 @@ job_name="forest-loss-driver-inference-$(uuidgen | cut -c1-8)"
 VM_NAME="rslp-$job_name"
 
 # Rest of your existing create_vm function...
+# TODO: add back instance termination action and max run duration
 create_vm() {
     local vm_name="$1"
     local project_id="$2"
@@ -200,8 +201,6 @@ create_vm() {
         --machine-type="$machine_type" \
         --service-account="$service_account" \
         --scopes=cloud-platform \
-        --instance-termination-action=DELETE \
-        --max-run-duration=48h \
         --metadata=ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
         # Create a log dir

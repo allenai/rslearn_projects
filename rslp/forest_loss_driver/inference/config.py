@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -19,13 +19,20 @@ class PredictPipelineConfig:
         gcs_tiff_filenames: List of GCS TIFF filenames to extract alerts from
     """
 
+    @staticmethod
+    def _default_ds_root() -> str:
+        now = datetime.now()
+        monday = now - timedelta(days=now.weekday())
+        dated_dataset_name = f"dataset_{monday.strftime('%Y%m%d')}"
+        return f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/final_test_2/prediction/{dated_dataset_name}"
+
     # Required fields (no default values)
     model_cfg_fname: str
     gcs_tiff_filenames: list[str]
     ignore_errors: bool
 
-    # TODO: Fix bug of this happening on a differnet day probably should be passed more explicitly
-    ds_root: str = f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/final_test/prediction/dataset_{datetime.now().strftime('%Y%m%d')}"
+    # Factory fields
+    ds_root: str = field(default_factory=_default_ds_root)
 
     # Optional fields with defaults
     workers: int = 1
@@ -60,6 +67,14 @@ class PredictPipelineConfig:
     def path(self) -> UPath:
         """The path to the dataset."""
         return UPath(self.ds_root)
+
+    @property
+    def dated_dataset_name(self) -> str:
+        """The dated dataset name using Monday of the current week."""
+        now = datetime.now()
+        # Get Monday (weekday 0) of current week by subtracting days since last Monday
+        monday = now - timedelta(days=now.weekday())
+        return f"dataset_{monday.strftime('%Y%m%d')}"
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""

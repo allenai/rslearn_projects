@@ -78,8 +78,6 @@ class ForestLossEvent:
         self.ts = ts
 
 
-## Event Writer
-#  TODO:This should really be a class that handles this
 def output_forest_event_metadata(
     event: ForestLossEvent,
     fname: str,
@@ -418,11 +416,8 @@ def extract_alerts_pipeline(
     ]
     p = multiprocessing.Pool(config.workers)
     outputs = star_imap_unordered(p, write_event, jobs)
-    # I can add this back once the output is redirected
-    # for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
-    for _ in outputs:
+    for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
         pass
     p.close()
     # rslearn dataset expects a config.json file in the dataset root
-    # TODO: This should be in the main function at the end rather than here
     save_inference_dataset_config(config.path)

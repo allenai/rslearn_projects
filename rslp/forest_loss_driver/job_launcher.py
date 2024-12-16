@@ -1,8 +1,4 @@
-"""Launch a Beaker Job for forest loss driver prediction.
-
-# TODO: First get something working then think about how to make integrated shared code
-# Would it be simpler to launch both on beaker?
-"""
+"""Launch a Beaker Job for forest loss driver prediction."""
 
 import argparse
 import os
@@ -33,7 +29,6 @@ def get_inference_job_command(project: str, workflow: str) -> list[str]:
 
 
 # Must Auth with     ADDRESS_KEY: ClassVar[str] = "BEAKER_ADDR" CONFIG_PATH_KEY: ClassVar[str] = "BEAKER_CONFIG" TOKEN_KEY: ClassVar[str] = "BEAKER_TOKEN"
-# Maybe allow setting a group for this to keep these tasks  orgnaized on beake
 def launch_job(
     project: str,
     workflow: str,
