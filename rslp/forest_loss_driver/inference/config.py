@@ -40,6 +40,9 @@ class PredictPipelineConfig:
     days: int = 180
     min_confidence: int = 2
     min_area: float = 16.0
+    batch_size: int = 1
+    use_initial_job: bool = False
+    jobs_per_process: int | None = None
     country_data_path: UPath | None = None
     date_prefix: str = "gs://earthenginepartners-hansen/S2alert/alertDate/"
     conf_prefix: str = "gs://earthenginepartners-hansen/S2alert/alert/"

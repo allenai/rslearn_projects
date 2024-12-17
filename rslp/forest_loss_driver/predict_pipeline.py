@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from rslp.log_utils import get_logger
+from rslp.utils.rslearn import PrepareIngestMaterializeApplyWindowsArgs
 
 from .inference import (
     PredictPipelineConfig,
@@ -96,12 +97,15 @@ class ForestLossDriverPredictionPipeline:
         for filename in self.pred_config.gcs_tiff_filenames:
             extract_alerts_pipeline(self.pred_config, filename)
 
+        apply_args = PrepareIngestMaterializeApplyWindowsArgs(
+            workers=self.pred_config.workers,
+            group=self.pred_config.group,
+        )
         materialize_forest_loss_driver_dataset(
             self.pred_config.path,
             ignore_errors=self.pred_config.ignore_errors,
             disabled_layers=self.pred_config.disabled_layers,
-            group=self.pred_config.group,
-            workers=self.pred_config.workers,
+            apply_args=apply_args,
         )
 
         select_best_images_pipeline(
