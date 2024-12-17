@@ -195,17 +195,13 @@ create_vm() {
     echo "Creating VM $vm_name in project $project_id..." && \
     echo "Logged into GCP as $(gcloud config get-value account)" && \
     echo "$(gcloud config list)" && \
-    gcloud compute instances create "$vm_name" \
+    if ! gcloud compute instances create "$vm_name" \
         --project="$project_id" \
         --zone="$zone" \
         --machine-type="$machine_type" \
         --service-account="$service_account" \
         --scopes=cloud-platform \
-        --metadata=enable-osconfig=TRUE \
-        --metadata=google-monitoring-enable=TRUE \
-        --metadata=google-logging-enable=TRUE \
-        --metadata=ops-agents-install='{"name": "ops-agent"}' \
-        --metadata=ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
+        --metadata=ops-agents-install='{"name": "ops-agent"}',google-logging-enable=TRUE,google-monitoring-enable=TRUE,enable-osconfig=TRUE,ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
         # Create a log dir
         sudo mkdir -p /var/log/startup-script
@@ -277,7 +273,10 @@ create_vm() {
         ') \
         --image-family="$image_family" \
         --image-project="$image_project" \
-        --boot-disk-size=200GB && \
+        --boot-disk-size=200GB; then
+        echo "Failed to create VM instance"
+        exit 1
+    fi
     echo "Done!"
 }
 
