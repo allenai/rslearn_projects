@@ -13,6 +13,7 @@ from rslp.forest_loss_driver.inference.materialize_dataset import (
     materialize_forest_loss_driver_dataset,
 )
 from rslp.log_utils import get_logger
+from rslp.utils.rslearn import PrepareIngestMaterializeApplyWindowsArgs
 
 logger = get_logger(__name__)
 
@@ -42,7 +43,14 @@ def test_materialize_forest_loss_driver_dataset(
             )
         shutil.copytree(test_unmaterialized_dataset_path, tmp_dir, dirs_exist_ok=True)
         num_workers = max(1, multiprocessing.cpu_count() - 2)
-        materialize_forest_loss_driver_dataset(UPath(tmp_dir), workers=num_workers)
+        apply_args = PrepareIngestMaterializeApplyWindowsArgs(
+            workers=num_workers,
+            group=None,
+            batch_size=1,
+            use_initial_job=False,
+            jobs_per_process=None,
+        )
+        materialize_forest_loss_driver_dataset(UPath(tmp_dir), apply_args=apply_args)
         # Output of Prepare Step
         items_json_path = (
             Path(tmp_dir)

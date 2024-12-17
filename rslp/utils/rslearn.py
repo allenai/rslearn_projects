@@ -1,6 +1,6 @@
 """Utilities for using rslearn datasets and models."""
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from rslearn.dataset import Dataset
 
@@ -50,22 +50,23 @@ def materialize_dataset(
     dataset = Dataset(ds_path, disabled_layers=disabled_layers)
     logger.debug(f"apply_args: {apply_args}")
     logger.info("Running prepare step")
+    apply_args_dict = asdict(apply_args)
     apply_on_windows(
         PrepareHandler(force=False),
         dataset,
-        **apply_args,
+        **apply_args_dict,
     )
     logger.info("Running ingest step")
     apply_on_windows(
         IngestHandler(ignore_errors=ignore_errors),
         dataset,
-        **apply_args,
+        **apply_args_dict,
     )
     logger.info("Running materialize step")
     apply_on_windows(
         MaterializeHandler(ignore_errors=ignore_errors),
         dataset,
-        **apply_args,
+        **apply_args_dict,
     )
 
 

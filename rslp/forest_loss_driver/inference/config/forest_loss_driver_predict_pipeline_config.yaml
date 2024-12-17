@@ -11,6 +11,7 @@ gcs_tiff_filenames:
 workers: 112
 model_data_load_workers: 16
 min_confidence: 2
+batch_size: 4
 disabled_layers:
     - "planet_post_0"
     - "planet_post_1"

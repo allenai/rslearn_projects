@@ -100,6 +100,9 @@ class ForestLossDriverPredictionPipeline:
         apply_args = PrepareIngestMaterializeApplyWindowsArgs(
             workers=self.pred_config.workers,
             group=self.pred_config.group,
+            batch_size=self.pred_config.batch_size,
+            use_initial_job=self.pred_config.use_initial_job,
+            jobs_per_process=self.pred_config.jobs_per_process,
         )
         materialize_forest_loss_driver_dataset(
             self.pred_config.path,

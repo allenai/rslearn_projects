@@ -18,6 +18,7 @@ VISUALIZATION_ONLY_LAYERS = [
 ]
 
 
+# TODO: Seperate these args for prepare/ingest/materialize
 def materialize_forest_loss_driver_dataset(
     ds_path: UPath,
     ignore_errors: bool = False,
@@ -38,7 +39,7 @@ def materialize_forest_loss_driver_dataset(
         Steps:
             prepare: items.json file for each layer
             ingest:
-            materialize
+            materialize:
     """
     materialize_dataset(
         ds_path,
