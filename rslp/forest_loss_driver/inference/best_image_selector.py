@@ -2,18 +2,24 @@
 
 import json
 import multiprocessing
+from functools import partial
 
 import numpy as np
 import tqdm
 from PIL import Image
 from upath import UPath
 
+from rslp.forest_loss_driver.inference.config import SelectBestImagesArgs
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 
 
-def select_best_images(window_path: UPath) -> None:
+def select_best_images(
+    window_path: UPath,
+    num_outs: int,
+    min_choices: int,
+) -> None:
     """Select the best images for the specified window.
 
     Best just means least cloudy pixels based on a brightness threshold.
@@ -24,10 +30,9 @@ def select_best_images(window_path: UPath) -> None:
 
     Args:
         window_path: the window root.
+        num_outs: the number of best images to select.
+        min_choices: the minimum number of images to select.
     """
-    num_outs = 3
-    min_choices = 5
-
     items_fname = window_path / "items.json"
     if not items_fname.exists():
         return
@@ -86,7 +91,10 @@ def select_best_images(window_path: UPath) -> None:
         json.dump(best_times, f)
 
 
-def select_best_images_pipeline(ds_path: str | UPath, workers: int = 64) -> None:
+def select_best_images_pipeline(
+    ds_path: str | UPath,
+    select_best_images_args: SelectBestImagesArgs,
+) -> None:
     """Run the best image pipeline.
 
     This picks the best three pre/post images and puts them in the corresponding layers
@@ -96,15 +104,23 @@ def select_best_images_pipeline(ds_path: str | UPath, workers: int = 64) -> None
 
     Args:
         ds_path: the dataset root path
-        workers: number of workers to use.
+        select_best_images_args: the arguments for the select_best_images step.
 
     Outputs:
         best_times.json: a file containing the timestamps of the best images for each layer.
     """
     ds_path = UPath(ds_path) if not isinstance(ds_path, UPath) else ds_path
     window_paths = list(ds_path.glob("windows/*/*"))
-    p = multiprocessing.Pool(workers)
-    outputs = p.imap_unordered(select_best_images, window_paths)
+    p = multiprocessing.Pool(select_best_images_args.workers)
+    select_best_images_partial = partial(
+        select_best_images,
+        num_outs=select_best_images_args.num_outs,
+        min_choices=select_best_images_args.min_choices,
+    )
+    outputs = p.imap_unordered(
+        select_best_images_partial,
+        window_paths,
+    )
     for _ in tqdm.tqdm(outputs, total=len(window_paths)):
         pass
     p.close()

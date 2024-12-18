@@ -25,7 +25,7 @@ from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.raster_format import SingleImageRasterFormat
 from upath import UPath
 
-from rslp.forest_loss_driver.inference.config import PredictPipelineConfig
+from rslp.forest_loss_driver.inference.config import ExtractAlertsArgs
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 BASE_DATETIME = datetime(2019, 1, 1, tzinfo=timezone.utc)
 
 
-## Constants.py
+# TODO; Make a class for these collections of functions that share the same args
 
 
 # How big the rslearn windows should be.
@@ -200,7 +200,6 @@ def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
     output_mask_raster(event, window_path, bounds, window, WEB_MERCATOR_PROJECTION)
 
 
-## Alert Extractor
 def load_country_polygon(country_data_path: UPath) -> shapely.Polygon:
     """Load the country polygon.
 
@@ -365,59 +364,68 @@ def save_inference_dataset_config(ds_path: UPath) -> None:
         json.dump(config_json, f)
 
 
-# add these to the config
 def extract_alerts_pipeline(
-    config: PredictPipelineConfig,
-    fname: str,
+    ds_root: UPath,
+    extract_alerts_args: ExtractAlertsArgs,
 ) -> None:
     """Extract alerts from a single GeoTIFF file.
 
     Args:
-        config: the pipeline config.
-        fname: the GeoTIFF file to extract alerts from.
+        ds_root: the root path to the dataset.
+        extract_alerts_args: the extract_alerts_args
     """
-    logger.info(f"extract_alerts for {str(config)}")
-    country_wgs84_shp = load_country_polygon(config.country_data_path)
+    for fname in extract_alerts_args.gcs_tiff_filenames:
+        logger.info(f"Extract_alerts for {str(extract_alerts_args)}")
+        country_wgs84_shp = load_country_polygon(extract_alerts_args.country_data_path)
 
-    logger.info(f"read confidences for {fname}")
-    conf_data, conf_raster = read_forest_alerts_confidence_raster(
-        fname, config.conf_prefix
-    )
-
-    logger.info(f"read dates for {fname}")
-    date_data, date_raster = read_forest_alerts_date_raster(fname, config.date_prefix)
-    logger.info(f"create mask for {fname}")
-    forest_loss_mask = create_forest_loss_mask(
-        conf_data,
-        date_data,
-        config.min_confidence,
-        config.days,
-        config.prediction_utc_time,
-    )
-    logger.info(f"create shapes from mask for {fname}")
-    # Rasterio uses True for features and False for background
-    ignore_mask = forest_loss_mask == 1
-    shapes = list(rasterio.features.shapes(forest_loss_mask, mask=ignore_mask))
-    logger.info(f"process shapes into events for {fname}")
-    events = process_shapes_into_events(
-        shapes, conf_raster, date_data, country_wgs84_shp, config.min_area
-    )
-    if config.max_number_of_events is not None:
-        logger.info(f"limiting to {config.max_number_of_events} events")
-        events = events[: config.max_number_of_events]
-    logger.info(f"writing {len(events)} windows")
-    jobs = [
-        dict(
-            event=event,
-            fname=fname,
-            ds_path=config.path,
+        logger.info(f"Read confidences for {fname}")
+        conf_data, conf_raster = read_forest_alerts_confidence_raster(
+            fname, extract_alerts_args.conf_prefix
         )
-        for event in events
-    ]
-    p = multiprocessing.Pool(config.workers)
-    outputs = star_imap_unordered(p, write_event, jobs)
-    for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
-        pass
-    p.close()
+
+        logger.info(f"Read dates for {fname}")
+        date_data, date_raster = read_forest_alerts_date_raster(
+            fname, extract_alerts_args.date_prefix
+        )
+        logger.info(f"Create mask for {fname}")
+        forest_loss_mask = create_forest_loss_mask(
+            conf_data,
+            date_data,
+            extract_alerts_args.min_confidence,
+            extract_alerts_args.days,
+            extract_alerts_args.prediction_utc_time,
+        )
+        logger.info(f"Create shapes from mask for {fname}")
+        # Rasterio uses True for features and False for background
+        ignore_mask = forest_loss_mask == 1
+        shapes = list(rasterio.features.shapes(forest_loss_mask, mask=ignore_mask))
+        logger.info(f"Process shapes into events for {fname}")
+        events = process_shapes_into_events(
+            shapes,
+            conf_raster,
+            date_data,
+            country_wgs84_shp,
+            extract_alerts_args.min_area,
+        )
+        if extract_alerts_args.max_number_of_events is not None:
+            logger.info(
+                f"Limiting to {extract_alerts_args.max_number_of_events} \
+                        events"
+            )
+            events = events[: extract_alerts_args.max_number_of_events]
+        logger.info(f"Writing {len(events)} windows")
+        jobs = [
+            dict(
+                event=event,
+                fname=fname,
+                ds_path=ds_root,
+            )
+            for event in events
+        ]
+        p = multiprocessing.Pool(extract_alerts_args.workers)
+        outputs = star_imap_unordered(p, write_event, jobs)
+        for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
+            pass
+        p.close()
     # rslearn dataset expects a config.json file in the dataset root
-    save_inference_dataset_config(config.path)
+    save_inference_dataset_config(ds_root)

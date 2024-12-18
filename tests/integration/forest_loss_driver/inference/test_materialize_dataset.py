@@ -9,11 +9,11 @@ from pathlib import Path
 import pytest
 from upath import UPath
 
+from rslp.forest_loss_driver.inference.config import ForestLossDriverMaterializeArgs
 from rslp.forest_loss_driver.inference.materialize_dataset import (
     materialize_forest_loss_driver_dataset,
 )
 from rslp.log_utils import get_logger
-from rslp.utils.rslearn import PrepareIngestMaterializeApplyWindowsArgs
 
 logger = get_logger(__name__)
 
@@ -27,8 +27,20 @@ def test_unmaterialized_dataset_path() -> UPath:
     )
 
 
+@pytest.fixture
+def materialize_pipeline_args() -> ForestLossDriverMaterializeArgs:
+    """The materialize pipeline arguments."""
+    num_workers = max(1, multiprocessing.cpu_count() - 2)
+    materialize_args = ForestLossDriverMaterializeArgs()
+    materialize_args.prepare_args.apply_windows_args.workers = num_workers
+    materialize_args.ingest_args.apply_windows_args.workers = num_workers
+    materialize_args.materialize_args.apply_windows_args.workers = num_workers
+    return materialize_args
+
+
 def test_materialize_forest_loss_driver_dataset(
     test_unmaterialized_dataset_path: UPath,
+    materialize_pipeline_args: ForestLossDriverMaterializeArgs,
 ) -> None:
     """Test materializing the forest loss driver dataset."""
     # copy the unmaterialized dataset to a temp directory that won't be automatically removed
@@ -42,15 +54,10 @@ def test_materialize_forest_loss_driver_dataset(
                 f"Unmaterialized dataset not found at {test_unmaterialized_dataset_path}"
             )
         shutil.copytree(test_unmaterialized_dataset_path, tmp_dir, dirs_exist_ok=True)
-        num_workers = max(1, multiprocessing.cpu_count() - 2)
-        apply_args = PrepareIngestMaterializeApplyWindowsArgs(
-            workers=num_workers,
-            group=None,
-            batch_size=1,
-            use_initial_job=False,
-            jobs_per_process=None,
+
+        materialize_forest_loss_driver_dataset(
+            UPath(tmp_dir), materialize_pipeline_args
         )
-        materialize_forest_loss_driver_dataset(UPath(tmp_dir), apply_args=apply_args)
         # Output of Prepare Step
         items_json_path = (
             Path(tmp_dir)
@@ -107,6 +114,3 @@ def test_materialize_forest_loss_driver_dataset(
             assert layer_path.exists(), f"{layer_path} does not exist"
             assert image_path.exists(), f"{image_path} does not exist"
             assert metadata_path.exists(), f"{metadata_path} does not exist"
-
-
-# Add test where there is some sort of error to ensure  that materialization does not fail silently

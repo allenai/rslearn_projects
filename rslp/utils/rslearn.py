@@ -1,6 +1,6 @@
 """Utilities for using rslearn datasets and models."""
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 from rslearn.dataset import Dataset
 
@@ -21,52 +21,94 @@ from rslp.log_utils import get_logger
 logger = get_logger(__name__)
 
 
-# TODO: add an args model in rslearn instead of here
+# TODO: We should get this from rslearn and there should be no defaults in this
 @dataclass
-class PrepareIngestMaterializeApplyWindowsArgs:
-    """Arguments for prepare/ingest/materialize/apply_on_windows."""
+class ApplyWindowsArgs:
+    """Arguments for apply_on_windows."""
 
     workers: int = 0
     batch_size: int = 1
     use_initial_job: bool = False
     jobs_per_process: int | None = None
     group: str | None = None
+    window: str | None = None
+
+
+@dataclass
+class PrepareArgs:
+    """Arguments for prepare operation."""
+
+    apply_windows_args: ApplyWindowsArgs = field(
+        default_factory=lambda: ApplyWindowsArgs()
+    )
+
+
+@dataclass
+class IngestArgs:
+    """Arguments for ingest operation."""
+
+    ignore_errors: bool
+    apply_windows_args: ApplyWindowsArgs = field(
+        default_factory=lambda: ApplyWindowsArgs()
+    )
+
+
+@dataclass
+class MaterializeArgs:
+    """Arguments for materialize operation."""
+
+    ignore_errors: bool
+    apply_windows_args: ApplyWindowsArgs = field(
+        default_factory=lambda: ApplyWindowsArgs()
+    )
+
+
+@dataclass
+class MaterializePipelineArgs:
+    """Arguments for materialize_dataset."""
+
+    disabled_layers: list[str]
+    prepare_args: PrepareArgs
+    ingest_args: IngestArgs
+    materialize_args: MaterializeArgs
 
 
 def materialize_dataset(
-    ds_path: UPath,
-    ignore_errors: bool = False,
-    disabled_layers: list[str] = [],
-    apply_args: PrepareIngestMaterializeApplyWindowsArgs = PrepareIngestMaterializeApplyWindowsArgs(),
+    ds_root: UPath,
+    materialize_pipeline_args: MaterializePipelineArgs,
 ) -> None:
     """Materialize the specified dataset by running prepare/ingest/materialize.
 
     Args:
-        ds_path: the dataset root.
-        ignore_errors: whether to ignore errors, this allows us to ignore errors in the ingest step due to missing data, file corruption, etc.
-        disabled_layers: a list of layers to disable.
-        apply_args: arguments for prepare/ingest/materialize/apply_on_windows.
+        ds_root: the root path to the dataset.
+        materialize_pipeline_args: arguments for materialize_dataset.
     """
-    dataset = Dataset(ds_path, disabled_layers=disabled_layers)
-    logger.debug(f"apply_args: {apply_args}")
+    dataset = Dataset(
+        ds_root,
+        disabled_layers=materialize_pipeline_args.disabled_layers,
+    )
+    logger.debug("materialize_pipeline_args: %s", materialize_pipeline_args)
     logger.info("Running prepare step")
-    apply_args_dict = asdict(apply_args)
     apply_on_windows(
         PrepareHandler(force=False),
         dataset,
-        **apply_args_dict,
+        **asdict(materialize_pipeline_args.prepare_args.apply_windows_args),
     )
     logger.info("Running ingest step")
     apply_on_windows(
-        IngestHandler(ignore_errors=ignore_errors),
+        IngestHandler(
+            ignore_errors=materialize_pipeline_args.ingest_args.ignore_errors
+        ),
         dataset,
-        **apply_args_dict,
+        **asdict(materialize_pipeline_args.ingest_args.apply_windows_args),
     )
     logger.info("Running materialize step")
     apply_on_windows(
-        MaterializeHandler(ignore_errors=ignore_errors),
+        MaterializeHandler(
+            ignore_errors=materialize_pipeline_args.materialize_args.ignore_errors
+        ),
         dataset,
-        **apply_args_dict,
+        **asdict(materialize_pipeline_args.materialize_args.apply_windows_args),
     )
 
 

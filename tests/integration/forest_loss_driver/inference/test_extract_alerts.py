@@ -12,7 +12,7 @@ from affine import Affine
 from rasterio.crs import CRS
 from upath import UPath
 
-from rslp.forest_loss_driver.inference.config import PredictPipelineConfig
+from rslp.forest_loss_driver.inference.config import ExtractAlertsArgs
 from rslp.forest_loss_driver.inference.extract_alerts import (
     extract_alerts_pipeline,
     load_country_polygon,
@@ -100,6 +100,7 @@ def test_extract_alerts(
     alert_tiffs_prefix: str,
     alert_date_tiffs_prefix: str,
     inference_dataset_config_path: str,
+    country_data_path: UPath,
 ) -> None:
     """Tests extracting alerts from a single GeoTIFF file."""
     with tempfile.TemporaryDirectory(prefix=f"test_{TEST_ID}_") as temp_dir:
@@ -108,15 +109,14 @@ def test_extract_alerts(
         os.environ["INFERENCE_DATASET_CONFIG"] = inference_dataset_config_path
         os.environ["INDEX_CACHE_DIR"] = str(index_cache_dir)
         os.environ["TILE_STORE_ROOT_DIR"] = str(tile_store_root_dir)
-        dummy_model_cfg_fname = "dummy_model_cfg.json"  # Not used in this step
-        predict_pipeline_config = PredictPipelineConfig(
-            ds_root=UPath(temp_dir)
+        ds_root = (
+            UPath(temp_dir)
             / "datasets"
             / "forest_loss_driver"
             / "prediction"
-            / "dataset_20241023",
-            ignore_errors=False,
-            model_cfg_fname=dummy_model_cfg_fname,
+            / "dataset_20241023"
+        )
+        extract_alerts_args = ExtractAlertsArgs(
             gcs_tiff_filenames=[tiff_filename],
             workers=1,
             days=365,
@@ -125,8 +125,9 @@ def test_extract_alerts(
             conf_prefix=alert_tiffs_prefix,
             date_prefix=alert_date_tiffs_prefix,
             prediction_utc_time=datetime(2024, 10, 23, tzinfo=timezone.utc),
+            country_data_path=country_data_path,
         )
-        extract_alerts_pipeline(predict_pipeline_config, tiff_filename)
+        extract_alerts_pipeline(ds_root, extract_alerts_args)
 
         # Assert one of the windows has all the info
         expected_image_path = (

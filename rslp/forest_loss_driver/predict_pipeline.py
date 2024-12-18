@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 from rslp.log_utils import get_logger
-from rslp.utils.rslearn import PrepareIngestMaterializeApplyWindowsArgs
 
 from .inference import (
     PredictPipelineConfig,
@@ -94,26 +93,19 @@ class ForestLossDriverPredictionPipeline:
         ]
         # TODO: make sure the env variables are parsed in the config json
         self._validate_required_env_vars(REQUIRED_ENV_VARS, OPTIONAL_ENV_VARS)
-        for filename in self.pred_config.gcs_tiff_filenames:
-            extract_alerts_pipeline(self.pred_config, filename)
-
-        apply_args = PrepareIngestMaterializeApplyWindowsArgs(
-            workers=self.pred_config.workers,
-            group=self.pred_config.group,
-            batch_size=self.pred_config.batch_size,
-            use_initial_job=self.pred_config.use_initial_job,
-            jobs_per_process=self.pred_config.jobs_per_process,
+        extract_alerts_pipeline(
+            self.pred_config.path,
+            self.pred_config.extract_alerts_args,
         )
+
         materialize_forest_loss_driver_dataset(
             self.pred_config.path,
-            ignore_errors=self.pred_config.ignore_errors,
-            disabled_layers=self.pred_config.disabled_layers,
-            apply_args=apply_args,
+            self.pred_config.materialize_pipeline_args,
         )
 
         select_best_images_pipeline(
             self.pred_config.path,
-            workers=self.pred_config.workers,
+            self.pred_config.select_best_images_args,
         )
 
     def run_model_predict(self) -> None:
@@ -122,12 +114,10 @@ class ForestLossDriverPredictionPipeline:
         OPTIONAL_ENV_VARS: list[str] = []
         self._validate_required_env_vars(REQUIRED_ENV_VARS, OPTIONAL_ENV_VARS)
         # TODO: Add some validation that the extract dataset step is done by checking the dataset bucket
-        # TODO: This may have unneeded levels of wrapping and abstraction
         logger.info(f"running model predict with config: {self.pred_config}")
         forest_loss_driver_model_predict(
-            self.pred_config.model_cfg_fname,
             self.pred_config.path,
-            self.pred_config.model_data_load_workers,
+            self.pred_config.model_predict_args,
         )
 
 

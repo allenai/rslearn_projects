@@ -7,21 +7,36 @@ import shutil
 import tempfile
 import uuid
 
+import pytest
 from upath import UPath
 
 from rslp.forest_loss_driver.inference import (
     forest_loss_driver_model_predict,
     select_best_images_pipeline,
 )
+from rslp.forest_loss_driver.inference.config import (
+    ModelPredictArgs,
+    SelectBestImagesArgs,
+)
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 
 
+@pytest.fixture
+def model_predict_args(model_cfg_fname: str) -> ModelPredictArgs:
+    """The arguments for the model_predict step."""
+    num_workers = max(1, multiprocessing.cpu_count() - 2)
+    return ModelPredictArgs(
+        model_cfg_fname=model_cfg_fname,
+        data_load_workers=num_workers,
+    )
+
+
 # Why are model outputs nto stable in different envs
 def test_forest_loss_driver_model_predict(
     test_materialized_dataset_path: UPath,
-    model_cfg_fname: str,
+    model_predict_args: ModelPredictArgs,
 ) -> None:
     # This should probably be a secret on Beaker.
     os.environ["RSLP_PREFIX"] = "gs://rslearn-eai"
@@ -29,13 +44,11 @@ def test_forest_loss_driver_model_predict(
     with tempfile.TemporaryDirectory(prefix=f"test_{uuid.uuid4()}_") as temp_dir:
         shutil.copytree(test_materialized_dataset_path, temp_dir, dirs_exist_ok=True)
         # Set up Materialized dataset for best times
-        select_best_images_pipeline(UPath(temp_dir))
+        select_best_images_pipeline(UPath(temp_dir), SelectBestImagesArgs())
         # Run model predict
-        num_workers = max(1, multiprocessing.cpu_count() - 2)
         forest_loss_driver_model_predict(
-            model_cfg_fname,
             UPath(temp_dir),
-            model_data_load_workers=num_workers,
+            model_predict_args,
         )
         output_path = (
             UPath(temp_dir)

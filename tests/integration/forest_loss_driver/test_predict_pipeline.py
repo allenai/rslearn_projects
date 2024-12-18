@@ -12,9 +12,10 @@ import pytest
 from google.cloud import storage
 from upath import UPath
 
-from rslp.forest_loss_driver.inference.config import PredictPipelineConfig
-from rslp.forest_loss_driver.inference.materialize_dataset import (
-    VISUALIZATION_ONLY_LAYERS,
+from rslp.forest_loss_driver.inference.config import (
+    ExtractAlertsArgs,
+    ModelPredictArgs,
+    PredictPipelineConfig,
 )
 from rslp.forest_loss_driver.predict_pipeline import ForestLossDriverPredictionPipeline
 from rslp.log_utils import get_logger
@@ -37,36 +38,45 @@ def test_bucket() -> Generator[storage.Bucket, None, None]:
     yield bucket
 
 
-def test_predict_pipeline(
+@pytest.fixture
+def predict_pipeline_config(
     inference_dataset_config_path: str,
     model_cfg_fname: str,
     alert_tiffs_prefix: str,
     alert_date_tiffs_prefix: str,
     tiff_filename: str,
-) -> None:
-    """Test the predict pipeline."""
-    with tempfile.TemporaryDirectory(prefix=f"test_{TEST_ID}_") as temp_dir:
-        ds_path = UPath(temp_dir) / "dataset_20241023"
-        index_cache_dir = UPath(temp_dir) / "index_cache"
-        tile_store_root_dir = UPath(temp_dir) / "tile_store"
-        num_workers = max(1, multiprocessing.cpu_count() - 2)
-        predict_pipeline_config = PredictPipelineConfig(
-            ds_root=ds_path,
-            ignore_errors=False,
-            model_cfg_fname=model_cfg_fname,
+) -> PredictPipelineConfig:
+    """The predict pipeline config."""
+    # TODO: make this not an env var
+
+    os.environ["INFERENCE_DATASET_CONFIG"] = inference_dataset_config_path
+    num_workers = max(1, multiprocessing.cpu_count() - 2)
+    predict_pipeline_config = PredictPipelineConfig(
+        model_predict_args=ModelPredictArgs(model_cfg_fname=model_cfg_fname),
+        extract_alerts_args=ExtractAlertsArgs(
             gcs_tiff_filenames=[tiff_filename],
             workers=num_workers,
-            days=365,
             min_confidence=1,
             min_area=16.0,
             conf_prefix=alert_tiffs_prefix,
             date_prefix=alert_date_tiffs_prefix,
             prediction_utc_time=datetime(2024, 10, 23, tzinfo=timezone.utc),
             max_number_of_events=1,
-            disabled_layers=VISUALIZATION_ONLY_LAYERS,
-        )
-        # Make this not an env var
-        os.environ["INFERENCE_DATASET_CONFIG"] = inference_dataset_config_path
+        ),
+    )
+    predict_pipeline_config.set_num_workers_for_all_steps(num_workers)
+    return predict_pipeline_config
+
+
+def test_predict_pipeline(
+    predict_pipeline_config: PredictPipelineConfig,
+) -> None:
+    """Test the predict pipeline."""
+    with tempfile.TemporaryDirectory(prefix=f"test_{TEST_ID}_") as temp_dir:
+        ds_path = UPath(temp_dir) / "dataset_20241023"
+        index_cache_dir = UPath(temp_dir) / "index_cache"
+        tile_store_root_dir = UPath(temp_dir) / "tile_store"
+        predict_pipeline_config.ds_root = ds_path
         os.environ["INDEX_CACHE_DIR"] = str(index_cache_dir)
         os.environ["TILE_STORE_ROOT_DIR"] = str(tile_store_root_dir)
         if "RSLP_PREFIX" not in os.environ:
