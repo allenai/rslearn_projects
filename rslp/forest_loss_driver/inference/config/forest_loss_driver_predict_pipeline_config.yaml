@@ -1,21 +1,3 @@
 # Required fields
-model_cfg_fname: "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml" # should be path from the top of the repo IF NOT ABSOLUTE PATH
-ignore_errors: true
-gcs_tiff_filenames:
-  - "070W_10S_060W_00N.tif"
-  - "070W_20S_060W_10S.tif"
-  - "080W_10S_070W_00N.tif"
-  - "080W_20S_070W_10S.tif"
-
-# Optional fields (can be omitted), if omitted will use defaults in config.py
-workers: 112
-model_data_load_workers: 16
-min_confidence: 2
-batch_size: 4
-disabled_layers:
-    - "planet_post_0"
-    - "planet_post_1"
-    - "planet_post_2"
-    - "planet_pre_0"
-    - "planet_pre_1"
-    - "planet_pre_2"
+model_predict_args:
+  model_cfg_fname: "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml" # should be path from the top of the repo IF NOT ABSOLUTE PATH

@@ -25,7 +25,7 @@ GCS_FILENAMES = [
 WINDOW_SIZE = 128
 
 # PIPELINE CONFIG USED FOR INFERENCE
-PREDICT_PIPELINE_CONFIG_PATH = str(
+DEFAULT_PREDICT_PIPELINE_CONFIG_PATH = str(
     Path(__file__).parent
     / "inference"
     / "config"
@@ -36,13 +36,6 @@ PREDICT_PIPELINE_CONFIG_PATH = str(
 # TODO: Add Data vlaidation steps after each step to check to ensure the directory structure is correct
 class ForestLossDriverPredictionPipeline:
     """Forest loss driver prediction pipeline."""
-
-    PREDICT_PIPELINE_CONFIG_PATH = str(
-        Path(__file__).parent
-        / "inference"
-        / "config"
-        / "forest_loss_driver_predict_pipeline_config.yaml"
-    )
 
     def __init__(
         self,
@@ -58,7 +51,7 @@ class ForestLossDriverPredictionPipeline:
         We always default to the config at the path specified in the class
         """
         if pred_config_path is None:
-            pred_config_path = self.PREDICT_PIPELINE_CONFIG_PATH
+            pred_config_path = DEFAULT_PREDICT_PIPELINE_CONFIG_PATH
         if pred_pipeline_config is None:
             pred_pipeline_config = PredictPipelineConfig.from_yaml(pred_config_path)
         self.pred_config = pred_pipeline_config

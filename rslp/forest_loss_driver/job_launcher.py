@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 DEFAULT_WORKSPACE = "ai2/earth-systems"
 
 
+# TODO:make this into a jsonargparse cli
 def get_inference_job_command(project: str, workflow: str) -> list[str]:
     """Get the command for the inference job.
 

@@ -90,7 +90,7 @@ class ExtractAlertsArgs:
 
 def get_default_workers() -> int:
     """Get the default number of workers."""
-    return max(1, multiprocessing.cpu_count() - 2)
+    return max(1, multiprocessing.cpu_count() - 10)
 
 
 @dataclass
@@ -147,6 +147,12 @@ class ModelPredictArgs:
     model_cfg_fname: str
     data_load_workers: int = field(default_factory=get_default_workers)
 
+    def __post_init__(self) -> None:
+        """Convert relative paths to absolute paths using repo root."""
+        if not self.model_cfg_fname.startswith(("gs://", "/")):
+            repo_root = Path(__file__).resolve().parents[3]
+            self.model_cfg_fname = str(repo_root / self.model_cfg_fname)
+
 
 @dataclass
 class PredictPipelineConfig:
@@ -197,33 +203,7 @@ class PredictPipelineConfig:
         """
         with open(yaml_path) as f:
             config_dict = yaml.safe_load(f)
-
-        # Convert string datetime to datetime object if present
-        if "prediction_utc_time" in config_dict:
-            if isinstance(config_dict["prediction_utc_time"], str):
-                config_dict["prediction_utc_time"] = datetime.fromisoformat(
-                    config_dict["prediction_utc_time"].replace("Z", "+00:00")
-                )
-        repo_root = Path(__file__).resolve().parents[3]
-        # Parse relative paths to the model config file
-        if "model_cfg_fname" in config_dict:
-            if not cls.is_absolute_path(config_dict["model_cfg_fname"]):
-                config_dict["model_cfg_fname"] = str(
-                    repo_root / config_dict["model_cfg_fname"]
-                )
-        if "date_prefix" in config_dict:
-            if not cls.is_absolute_path(config_dict["date_prefix"]):
-                config_dict["date_prefix"] = str(repo_root / config_dict["date_prefix"])
-        if "conf_prefix" in config_dict:
-            if not cls.is_absolute_path(config_dict["conf_prefix"]):
-                config_dict["conf_prefix"] = str(repo_root / config_dict["conf_prefix"])
-
         return cls(**config_dict)
-
-    @staticmethod
-    def is_absolute_path(path: str) -> bool:
-        """Check if a path is absolute."""
-        return path.startswith("gs://") or path.startswith("/")
 
     def set_num_workers_for_all_steps(self, num_workers: int) -> None:
         """Convenience method to set the number of workers for all steps."""
