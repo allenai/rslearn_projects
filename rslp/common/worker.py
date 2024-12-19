@@ -4,6 +4,7 @@ import json
 import threading
 import time
 import uuid
+from concurrent import futures
 from datetime import datetime, timedelta, timezone
 
 import tqdm
@@ -140,9 +141,15 @@ def worker_pipeline(
 
     flow_control = pubsub_v1.types.FlowControl(
         max_messages=1,
+        max_lease_duration=24 * 3600,
     )
+    executor = futures.ThreadPoolExecutor(max_workers=5)
+    scheduler = pubsub_v1.subscriber.scheduler.ThreadScheduler(executor)
     streaming_pull_future = subscriber.subscribe(
-        subscription_path, callback=callback, flow_control=flow_control
+        subscription_path,
+        callback=callback,
+        flow_control=flow_control,
+        scheduler=scheduler,
     )
     logger.info("worker listening for messages on %s", subscription_path)
     try:

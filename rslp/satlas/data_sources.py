@@ -4,13 +4,14 @@ from datetime import timedelta
 from typing import Any
 
 import shapely
-from rslearn.config import QueryConfig, RasterLayerConfig, SpaceMode
+from rslearn.config import LayerConfig, QueryConfig, RasterLayerConfig, SpaceMode
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources.azure_sentinel1 import Sentinel1
 from rslearn.data_sources.azure_sentinel2 import Sentinel2 as AzureSentinel2
 from rslearn.data_sources.data_source import DataSource, Item
 from rslearn.data_sources.gcp_public_data import Sentinel2 as GcpSentinel2
 from rslearn.data_sources.utils import match_candidate_items_to_window
+from rslearn.dataset import Window
 from rslearn.tile_stores import TileStore
 from rslearn.utils.geometry import STGeometry
 from upath import UPath
@@ -262,6 +263,23 @@ class MonthlyAzureSentinel2(DataSource):
         """
         self.sentinel2.ingest(tile_store, items, geometries)
 
+    def materialize(
+        self,
+        window: Window,
+        item_groups: list[list[Item]],
+        layer_name: str,
+        layer_cfg: LayerConfig,
+    ) -> None:
+        """Materialize data for the window.
+
+        Args:
+            window: the window to materialize
+            item_groups: the items from get_items
+            layer_name: the name of this layer
+            layer_cfg: the config of this layer
+        """
+        self.sentinel2.materialize(window, item_groups, layer_name, layer_cfg)
+
 
 class MonthlySentinel1(DataSource):
     """Similar to MonthlySentinel2 but for Sentinel-1 on Azure."""
@@ -356,3 +374,20 @@ class MonthlySentinel1(DataSource):
             geometries: a list of geometries needed for each item
         """
         self.sentinel1.ingest(tile_store, items, geometries)
+
+    def materialize(
+        self,
+        window: Window,
+        item_groups: list[list[Item]],
+        layer_name: str,
+        layer_cfg: LayerConfig,
+    ) -> None:
+        """Materialize data for the window.
+
+        Args:
+            window: the window to materialize
+            item_groups: the items from get_items
+            layer_name: the name of this layer
+            layer_cfg: the config of this layer
+        """
+        self.sentinel1.materialize(window, item_groups, layer_name, layer_cfg)
