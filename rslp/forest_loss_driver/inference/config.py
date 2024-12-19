@@ -171,7 +171,7 @@ class PredictPipelineConfig:
         now = datetime.now()
         monday = now - timedelta(days=now.weekday())
         dated_dataset_name = f"dataset_{monday.strftime('%Y%m%d')}"
-        return f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/final_test_3/prediction/{dated_dataset_name}"
+        return f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/final_test_4/prediction/{dated_dataset_name}"
 
     model_predict_args: ModelPredictArgs
     ds_root: str = field(default_factory=_default_ds_root)
