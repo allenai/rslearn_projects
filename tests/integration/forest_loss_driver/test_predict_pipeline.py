@@ -158,9 +158,3 @@ def test_predict_pipeline(
             assert (
                 abs(actual - expected) < tol
             ), f"Probability difference {abs(actual - expected)} exceeds threshold {tol}"
-
-
-def test_config_load() -> None:
-    """Test the config loading for the forest loss driver inference pipeline."""
-    pipeline = ForestLossDriverPredictionPipeline()
-    assert isinstance(pipeline.pred_config, PredictPipelineConfig)

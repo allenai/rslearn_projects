@@ -290,12 +290,4 @@ create_vm() {
 # Create the VM
 create_vm "$VM_NAME" "$PROJECT_ID" "$ZONE" "$MACHINE_TYPE" "$IMAGE_FAMILY" "$IMAGE_PROJECT" "$GHCR_USER" "$USER" "$DOCKER_IMAGE" "$COMMAND" "$BEAKER_TOKEN" "$BEAKER_ADDR" "$BEAKER_USERNAME" "$SERVICE_ACCOUNT" "$RSLP_PROJECT" "$GPU_COUNT" "$SHARED_MEMORY" "$CLUSTER" "$PRIORITY" "$TASK_NAME" "$BUDGET" "$WORKSPACE" "$RSLP_PREFIX" "$EXTRA_ARGS"
 
-# Handle VM deletion if requested
-if [[ "$DELETE_VM" == "yes" ]]; then
-    echo "Deleting VM $VM_NAME..."
-    gcloud compute instances delete "$VM_NAME" --zone="$ZONE" --quiet
-else
-    echo "VM $VM_NAME retained for further testing."
-fi
-
 echo "Done!"
