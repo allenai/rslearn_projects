@@ -192,6 +192,7 @@ create_vm() {
     local budget="${21}"
     local workspace="${22}"
     local rslp_prefix="${23}"
+    local extra_args_model_predict="${24}"
     echo "Creating VM $vm_name in project $project_id..." && \
     echo "Logged into GCP as $(gcloud config get-value account)" && \
     echo "$(gcloud config list)" && \
@@ -201,7 +202,7 @@ create_vm() {
         --machine-type="$machine_type" \
         --service-account="$service_account" \
         --scopes=cloud-platform \
-        --metadata=ops-agents-install='{"name": "ops-agent"}',google-logging-enable=TRUE,google-monitoring-enable=TRUE,enable-osconfig=TRUE,ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix",index-cache-dir="$INDEX_CACHE_DIR",tile-store-root-dir="$TILE_STORE_ROOT_DIR" \
+        --metadata=ops-agents-install='{"name": "ops-agent"}',google-logging-enable=TRUE,google-monitoring-enable=TRUE,enable-osconfig=TRUE,ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix",index-cache-dir="$INDEX_CACHE_DIR",tile-store-root-dir="$TILE_STORE_ROOT_DIR",extra_args_model_predict="$EXTRA_ARGS" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
         # Create a log dir
         sudo mkdir -p /var/log/startup-script
@@ -256,6 +257,7 @@ create_vm() {
         export BUDGET=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/budget) && \
         export RSLP_PREFIX=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/rslp-prefix) && \
         export RSLP_PROJECT=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/rslp-project) && \
+        export EXTRA_ARGS=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/extra_args_model_predict) && \
         export INFERENCE_JOB_LAUNCH_COMMAND="python rslp/$RSLP_PROJECT/job_launcher.py \
             --project $RSLP_PROJECT \
             --workflow predict \
@@ -266,7 +268,8 @@ create_vm() {
             --priority $PRIORITY \
             --task_name $TASK_NAME \
             --budget $BUDGET \
-            --workspace $WORKSPACE" && \
+            --workspace $WORKSPACE" \
+            --extra_args $EXTRA_ARGS && \
         echo "INFERENCE_JOB_LAUNCH_COMMAND: $INFERENCE_JOB_LAUNCH_COMMAND" && \
         echo "Launching inference job on Beaker" && \
         docker run -e BEAKER_TOKEN=$BEAKER_TOKEN \
@@ -284,33 +287,8 @@ create_vm() {
     echo "Done!"
 }
 
-# Echo all the variables being passed in (DEBUGGING ONLY)
-echo "VM_NAME: $VM_NAME"
-echo "PROJECT_ID: $PROJECT_ID"
-echo "ZONE: $ZONE"
-echo "MACHINE_TYPE: $MACHINE_TYPE"
-echo "IMAGE_FAMILY: $IMAGE_FAMILY"
-echo "IMAGE_PROJECT: $IMAGE_PROJECT"
-echo "GHCR_PAT: $GHCR_PAT"
-echo "GHCR_USER: $GHCR_USER"
-echo "USER: $USER"
-echo "DOCKER_IMAGE: $DOCKER_IMAGE"
-echo "COMMAND: $COMMAND"
-echo "BEAKER_TOKEN: $BEAKER_TOKEN"
-echo "BEAKER_ADDR: $BEAKER_ADDR"
-echo "SERVICE_ACCOUNT: $SERVICE_ACCOUNT"
-echo "GPU_COUNT: $GPU_COUNT"
-echo "SHARED_MEMORY: $SHARED_MEMORY"
-echo "CLUSTER: $CLUSTER"
-echo "PRIORITY: $PRIORITY"
-echo "TASK_NAME: $TASK_NAME"
-echo "BUDGET: $BUDGET"
-echo "WORKSPACE: $WORKSPACE"
-echo "RSLP_PREFIX: $RSLP_PREFIX"
-
-
 # Create the VM
-create_vm "$VM_NAME" "$PROJECT_ID" "$ZONE" "$MACHINE_TYPE" "$IMAGE_FAMILY" "$IMAGE_PROJECT" "$GHCR_USER" "$USER" "$DOCKER_IMAGE" "$COMMAND" "$BEAKER_TOKEN" "$BEAKER_ADDR" "$BEAKER_USERNAME" "$SERVICE_ACCOUNT" "$RSLP_PROJECT" "$GPU_COUNT" "$SHARED_MEMORY" "$CLUSTER" "$PRIORITY" "$TASK_NAME" "$BUDGET" "$WORKSPACE" "$RSLP_PREFIX"
+create_vm "$VM_NAME" "$PROJECT_ID" "$ZONE" "$MACHINE_TYPE" "$IMAGE_FAMILY" "$IMAGE_PROJECT" "$GHCR_USER" "$USER" "$DOCKER_IMAGE" "$COMMAND" "$BEAKER_TOKEN" "$BEAKER_ADDR" "$BEAKER_USERNAME" "$SERVICE_ACCOUNT" "$RSLP_PROJECT" "$GPU_COUNT" "$SHARED_MEMORY" "$CLUSTER" "$PRIORITY" "$TASK_NAME" "$BUDGET" "$WORKSPACE" "$RSLP_PREFIX" "$EXTRA_ARGS"
 
 # Handle VM deletion if requested
 if [[ "$DELETE_VM" == "yes" ]]; then

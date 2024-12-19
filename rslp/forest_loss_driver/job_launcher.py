@@ -19,14 +19,17 @@ DEFAULT_WORKSPACE = "ai2/earth-systems"
 
 
 # TODO:make this into a jsonargparse cli
-def get_inference_job_command(project: str, workflow: str) -> list[str]:
+def get_inference_job_command(
+    project: str, workflow: str, extra_args: list[str]
+) -> list[str]:
     """Get the command for the inference job.
 
     Args:
         project: The project to execute a workflow for.
         workflow: The name of the workflow.
+        extra_args: Extra arguments to pass to the workflow.
     """
-    return ["python", "-m", "rslp.main", project, workflow]
+    return ["python", "-m", "rslp.main", project, workflow] + extra_args
 
 
 # Must Auth with     ADDRESS_KEY: ClassVar[str] = "BEAKER_ADDR" CONFIG_PATH_KEY: ClassVar[str] = "BEAKER_CONFIG" TOKEN_KEY: ClassVar[str] = "BEAKER_TOKEN"
@@ -42,6 +45,7 @@ def launch_job(
     task_specific_env_vars: list[EnvVar],
     budget: str,
     workspace: str,
+    extra_args: list[str],
 ) -> None:
     """Launch a job on Beaker."""
     beaker = Beaker.from_env(default_workspace=workspace)
@@ -71,7 +75,7 @@ def launch_job(
             result_path="/models",
             priority=priority,
             cluster=cluster,
-            command=get_inference_job_command(project, workflow),
+            command=get_inference_job_command(project, workflow, extra_args),
             env_vars=base_env_vars + task_specific_env_vars,
             datasets=[launcher_lib.create_gcp_credentials_mount()],
             resources={"gpuCount": gpu_count, "sharedMemory": shared_memory},
@@ -166,6 +170,14 @@ if __name__ == "__main__":
         required=False,
         default=DEFAULT_WORKSPACE,
     )
+    parser.add_argument(
+        "--extra_args",
+        type=lambda x: x.split(" "),
+        nargs="+",
+        help="Extra arguments to pass to the workflow",
+        required=False,
+        default=[],
+    )
     args = parser.parse_args()
 
     task_specific_env_vars = []
@@ -191,4 +203,5 @@ if __name__ == "__main__":
         task_specific_env_vars=task_specific_env_vars,
         budget=args.budget,
         workspace=args.workspace,
+        extra_args=args.extra_args,
     )

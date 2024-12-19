@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 
 class RelativePathActionConfigFile(ActionConfigFile):
-    """Custom action to handle relative paths in config files."""
+    """Custom action to handle relative paths to config files."""
 
     def __call__(
         self,
