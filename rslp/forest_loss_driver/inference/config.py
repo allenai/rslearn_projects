@@ -32,8 +32,10 @@ FOREST_LOSS_GEOTIFF_FILENAMES = [
     "080W_20S_070W_10S.tif",
 ]
 
-# I want to make this dataclass more modular and clear about what is going into each step
-# should the bucket be an nev var
+
+def get_default_workers() -> int:
+    """Get the default number of workers."""
+    return max(1, multiprocessing.cpu_count() - 10)
 
 
 @dataclass
@@ -75,7 +77,7 @@ class ExtractAlertsArgs:
     min_area: float = 16.0
     max_number_of_events: int | None = None
     group: str | None = None
-    workers: int = 1
+    workers: int = field(default_factory=get_default_workers)
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -86,11 +88,6 @@ class ExtractAlertsArgs:
             raise ValueError("workers must be at least 1")
         if self.min_area <= 0:
             raise ValueError("min_area must be positive")
-
-
-def get_default_workers() -> int:
-    """Get the default number of workers."""
-    return max(1, multiprocessing.cpu_count() - 10)
 
 
 @dataclass
