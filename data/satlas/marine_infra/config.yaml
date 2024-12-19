@@ -39,7 +39,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gs://rslearn-eai/datasets/marine_infra/dataset_v1/20241030/
+    path: gs://rslearn-eai/datasets/marine_infra/dataset_v1/20241210/
     inputs:
       image1:
         data_type: "raster"
@@ -99,7 +99,7 @@ data:
         input_mapping:
           detect:
             targets: "targets"
-    batch_size: 4
+    batch_size: 8
     num_workers: 32
     default_config:
       transforms:
@@ -202,7 +202,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: gs://rslearn-eai/datasets/marine_infra/dataset_v1/20241030/
+        path: gs://rslearn-eai/datasets/marine_infra/dataset_v1/20241210/
         output_layer: output
         selector: ["detect"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
@@ -216,4 +216,4 @@ trainer:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 2
 rslp_project: satlas_marine_infra
-rslp_experiment: data_20241030_run_20241210_00
+rslp_experiment: data_20241210_run_20241210_00

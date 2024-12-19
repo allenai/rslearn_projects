@@ -32,6 +32,7 @@
         }
       ],
       "data_source": {
+        "ingest": false,
         "name": "rslp.satlas.data_sources.MonthlySentinel1",
         "query_config": {
           "max_matches": 6
@@ -74,6 +75,7 @@
       ],
       "data_source": {
         "harmonize": true,
+        "ingest": false,
         "max_cloud_cover": 50,
         "name": "rslp.satlas.data_sources.MonthlyAzureSentinel2",
         "query_config": {
@@ -91,8 +93,7 @@
         "compress": "zstd",
         "predictor": 2,
         "zstd_level": 1
-      },
-      "path_suffix": "gs://rslearn-eai/datasets/marine_infra/dataset_v1/20241210/tiles"
+      }
     }
   }
 }

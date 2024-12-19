@@ -1,6 +1,7 @@
 """Launch Satlas prediction jobs on Beaker."""
 
 import json
+import random
 from datetime import datetime, timedelta, timezone
 
 import shapely
@@ -61,6 +62,7 @@ def get_jobs(
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     batch_size: int = 1,
+    count: int | None = None,
 ) -> list[list[str]]:
     """Get batches of tasks for Satlas prediction.
 
@@ -72,6 +74,7 @@ def get_jobs(
             run in all UTM zones.
         wgs84_bounds: limit tasks to ones that intersect these WGS84 bounds.
         batch_size: how many tasks to run in each batch.
+        count: limit to this many tasks.
 
     Returns:
         the list of worker tasks where each worker task
@@ -143,6 +146,10 @@ def get_jobs(
 
     print(f"Got {len(tasks)} total tasks")
 
+    if count is not None and len(tasks) > count:
+        tasks = random.sample(tasks, count)
+        logger.info("Randomly sampled %d tasks", len(tasks))
+
     jobs = []
     for i in range(0, len(tasks), batch_size):
         cur_tasks = tasks[i : i + batch_size]
@@ -196,6 +203,7 @@ def write_jobs(
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     batch_size: int = 1,
+    count: int | None = None,
 ) -> None:
     """Write jobs for the specified application and time range.
 
@@ -209,6 +217,7 @@ def write_jobs(
             run in all UTM zones.
         wgs84_bounds: limit tasks to ones that intersect these WGS84 bounds.
         batch_size: how many tasks to run in each batch.
+        count: limit to this many tasks.
     """
     jobs = get_jobs(
         application,
@@ -217,6 +226,7 @@ def write_jobs(
         epsg_code=epsg_code,
         wgs84_bounds=wgs84_bounds,
         batch_size=batch_size,
+        count=count,
     )
     _write_jobs_to_topic(jobs, project_id, topic_id)
 
@@ -230,6 +240,7 @@ def write_jobs_for_year_months(
     batch_size: int = 1,
     days_before: int = DEFAULT_DAYS_BEFORE,
     days_after: int = DEFAULT_DAYS_AFTER,
+    count: int | None = None,
 ) -> None:
     """Write Satlas prediction jobs for the given year and month.
 
@@ -243,6 +254,7 @@ def write_jobs_for_year_months(
         batch_size: the batch size.
         days_before: how much to pad windows before the year/month.
         days_after: how much to pad windows after the year/month.
+        count: limit each year-month to this many tasks.
     """
     jobs = []
     for year, month in year_months:
@@ -260,6 +272,7 @@ def write_jobs_for_year_months(
             time_range=time_range,
             out_path=cur_out_path,
             batch_size=batch_size,
+            count=count,
         )
         logger.info("got %d jobs for %04d-%02d", len(cur_jobs), year, month)
         jobs.extend(cur_jobs)
