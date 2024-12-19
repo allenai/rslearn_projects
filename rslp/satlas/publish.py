@@ -144,29 +144,10 @@ def publish_points(
         for fname in available_fnames[-NUM_RECOMPUTE:]:
             logger.info("upload %s", str(fname))
             local_geojson_fname = os.path.join(tmp_dir, "data.geojson")
-            # local_shp_prefix = os.path.join(tmp_dir, "shp_data")
-            # local_kml_fname = os.path.join(tmp_dir, "data.kml")
 
             with fname.open("rb") as src:
                 with open(local_geojson_fname, "wb") as dst:
                     shutil.copyfileobj(src, dst)
-
-            """
-            subprocess.check_call([
-                'ogr2ogr',
-                '-F', 'ESRI Shapefile',
-                '-nlt', 'POINT',
-                local_shp_prefix + ".shp",
-                local_geojson_fname,
-            ])
-            make_shapefile_zip(local_shp_prefix)
-            subprocess.check_call([
-                'ogr2ogr',
-                '-F', 'KML',
-                local_kml_fname,
-                local_geojson_fname,
-            ])
-            """
 
             fname_prefix = fname.name.split(".")[0]
 
@@ -174,31 +155,11 @@ def publish_points(
                 local_geojson_fname,
                 f"outputs/{app_name_on_r2}/{fname_prefix}.geojson",
             )
-            """
-            bucket.upload_file(
-                local_shp_prefix + ".shp.zip",
-                f"outputs/{app_name_on_r2}/{fname_prefix}.shp.zip",
-            )
-            bucket.upload_file(
-                local_kml_fname,
-                f"outputs/{app_name_on_r2}/{fname_prefix}.kml",
-            )
-            """
             if fname == available_fnames[-1]:
                 bucket.upload_file(
                     local_geojson_fname,
                     f"outputs/{app_name_on_r2}/latest.geojson",
                 )
-                """
-                bucket.upload_file(
-                    local_shp_prefix + ".shp.zip",
-                    f"outputs/{app_name_on_r2}/latest.shp.zip",
-                )
-                bucket.upload_file(
-                    local_kml_fname,
-                    f"outputs/{app_name_on_r2}/latest.kml",
-                )
-                """
 
         update_index(bucket, f"outputs/{app_name_on_r2}/")
 
