@@ -36,7 +36,7 @@ Required environment variables:
 
 Optional environment variables:
 - `INDEX_CACHE_DIR`: Directory for caching image indices
-- `TILE_STORE_ROOT_DIR`: Directory for tile storage
+- `TILE_STORE_ROOT_DIR`: Directory for tile storage cache
 - `PL_API_KEY`: Planet API key (if using Planet imagery)
 
 Otherwise, follow set up in [main readme](../../README.md)

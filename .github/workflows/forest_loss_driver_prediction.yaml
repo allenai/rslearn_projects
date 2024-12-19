@@ -98,6 +98,8 @@ jobs:
 
       - name: Run Extract Dataset Job on VM and Launch Prediction Job on Beaker
         run: |
+          export INDEX_CACHE_DIR=${{ secrets.RSLP_PREFIX }}/datasets/forest_loss_driver/index_cache_dir/  && \
+          export TILE_STORE_ROOT_DIR=${{ secrets.RSLP_PREFIX }}/datasets/forest_loss_driver/tile_store_root_dir/ && \
           export DATASET_EXTRACT_COMMAND="python -m rslp.main forest_loss_driver extract_dataset" && \
           export RSLP_PROJECT="forest_loss_driver" && \
           bash .github/workflows/deploy_image_on_vm.sh \

@@ -201,7 +201,7 @@ create_vm() {
         --machine-type="$machine_type" \
         --service-account="$service_account" \
         --scopes=cloud-platform \
-        --metadata=ops-agents-install='{"name": "ops-agent"}',google-logging-enable=TRUE,google-monitoring-enable=TRUE,enable-osconfig=TRUE,ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix" \
+        --metadata=ops-agents-install='{"name": "ops-agent"}',google-logging-enable=TRUE,google-monitoring-enable=TRUE,enable-osconfig=TRUE,ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix",index-cache-dir="$INDEX_CACHE_DIR",tile-store-root-dir="$TILE_STORE_ROOT_DIR" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
         # Create a log dir
         sudo mkdir -p /var/log/startup-script
@@ -228,9 +228,13 @@ create_vm() {
         sudo docker pull $DOCKER_IMAGE && \
         echo "Docker image pulled" && \
         export PL_API_KEY=$(gcloud secrets versions access latest --secret="planet_api_key_forest_loss") && \
+        export INDEX_CACHE_DIR=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/index-cache-dir) && \
+        export TILE_STORE_ROOT_DIR=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/tile-store-root-dir) && \
         sudo docker run \
             -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token) \
             -e PL_API_KEY=$PL_API_KEY \
+            -e TILE_STORE_ROOT_DIR=$TILE_STORE_ROOT_DIR \
+            -e INDEX_CACHE_DIR=$INDEX_CACHE_DIR \
             $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
         echo "Data Extraction Complete" && \
         export BEAKER_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-token) && \
