@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import yaml
 from upath import UPath
 
 from rslp.utils.rslearn import (
@@ -188,19 +187,6 @@ class PredictPipelineConfig:
     def path(self) -> UPath:
         """The path to the dataset."""
         return UPath(self.ds_root)
-
-    # TODO: Remove from yaml and just use the json argparse loading and overrides
-    @classmethod
-    def from_yaml(cls, yaml_path: str) -> "PredictPipelineConfig":
-        """Create a new config from a YAML file.
-
-        Raises:
-            ValueError: If required fields are missing
-            yaml.YAMLError: If YAML file is invalid
-        """
-        with open(yaml_path) as f:
-            config_dict = yaml.safe_load(f)
-        return cls(**config_dict)
 
     def set_num_workers_for_all_steps(self, num_workers: int) -> None:
         """Convenience method to set the number of workers for all steps."""

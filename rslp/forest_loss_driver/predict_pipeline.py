@@ -37,24 +37,15 @@ DEFAULT_PREDICT_PIPELINE_CONFIG_PATH = str(
 class ForestLossDriverPredictionPipeline:
     """Forest loss driver prediction pipeline."""
 
-    def __init__(
-        self,
-        pred_config_path: str | None = None,
-        pred_pipeline_config: PredictPipelineConfig | None = None,
-    ) -> None:
+    def __init__(self, pred_pipeline_config: PredictPipelineConfig) -> None:
         """Initialize the pipeline.
 
         Args:
-            pred_config_path: the path to the prediction pipeline config,
             pred_pipeline_config: the prediction pipeline config,
 
-        We always default to the config at the path specified in the class
         """
-        if pred_config_path is None:
-            pred_config_path = DEFAULT_PREDICT_PIPELINE_CONFIG_PATH
-        if pred_pipeline_config is None:
-            pred_pipeline_config = PredictPipelineConfig.from_yaml(pred_config_path)
         self.pred_config = pred_pipeline_config
+        logger.info(f"Initialized pipeline with config: {self.pred_config}")
 
     def _validate_required_env_vars(
         self, required_env_vars: list[str], optional_env_vars: list[str]
@@ -114,13 +105,17 @@ class ForestLossDriverPredictionPipeline:
         )
 
 
-def extract_dataset_main() -> None:
+def extract_dataset_main(pred_pipeline_config: PredictPipelineConfig) -> None:
     """Extract the dataset."""
-    pipeline = ForestLossDriverPredictionPipeline()
+    pipeline = ForestLossDriverPredictionPipeline(
+        pred_pipeline_config=pred_pipeline_config
+    )
     pipeline.extract_dataset()
 
 
-def run_model_predict_main() -> None:
+def run_model_predict_main(pred_pipeline_config: PredictPipelineConfig) -> None:
     """Run the model predict."""
-    pipeline = ForestLossDriverPredictionPipeline()
+    pipeline = ForestLossDriverPredictionPipeline(
+        pred_pipeline_config=pred_pipeline_config
+    )
     pipeline.run_model_predict()
