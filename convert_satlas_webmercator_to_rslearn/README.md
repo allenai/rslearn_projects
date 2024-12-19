@@ -4,6 +4,9 @@ About
 This project is for converting the various Satlas application training datasets (wind
 turbines, solar farms, marine infrastructure) to rslearn format.
 
+TODO: this project should be moved to one_off_projects in the near-future since the
+conversion is complete and this code does not need to be maintained anymore.
+
 
 Wind Turbines
 -------------
