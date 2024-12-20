@@ -374,6 +374,7 @@ def extract_alerts_pipeline(
         ds_root: the root path to the dataset.
         extract_alerts_args: the extract_alerts_args
     """
+    total_events = 0
     logger.info(f"Extract_alerts for {str(extract_alerts_args)}")
     country_wgs84_shp = load_country_polygon(extract_alerts_args.country_data_path)
     for fname in extract_alerts_args.gcs_tiff_filenames:
@@ -419,6 +420,7 @@ def extract_alerts_pipeline(
             )
             events = events[: extract_alerts_args.max_number_of_events]
         logger.info(f"Writing {len(events)} windows")
+        total_events += len(events)
         jobs = [
             dict(
                 event=event,
@@ -432,5 +434,11 @@ def extract_alerts_pipeline(
         for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
             pass
         p.close()
+    logger.info(f"Total events: {total_events}")
+    if total_events == 0:
+        raise ValueError(
+            "No forest loss events found in the given GeoTIFF files. \
+            Please check the GeoTIFF files and the configuration."
+        )
     # rslearn dataset expects a config.json file in the dataset root
     save_inference_dataset_config(ds_root)
