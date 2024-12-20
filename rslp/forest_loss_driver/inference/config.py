@@ -66,8 +66,8 @@ class ExtractAlertsArgs:
     country_data_path: UPath | None = field(
         default_factory=_default_peru_shape_data_path
     )
-    conf_prefix: str = "gs://earthenginepartners-hansen/S2alert/alertDate/"
-    date_prefix: str = "gs://earthenginepartners-hansen/S2alert/alert/"
+    conf_prefix: str = "gs://earthenginepartners-hansen/S2alert/alert/"
+    date_prefix: str = "gs://earthenginepartners-hansen/S2alert/alertDate/"
     prediction_utc_time: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )

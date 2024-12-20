@@ -233,6 +233,7 @@ def read_forest_alerts_confidence_raster(
     """Read the forest alerts confidence raster."""
     conf_path = UPath(conf_prefix) / fname
     buf = io.BytesIO()
+    logger.debug(f"conf_path: {conf_path}")
     with conf_path.open("rb") as f:
         buf.write(f.read())
     buf.seek(0)
@@ -247,6 +248,7 @@ def read_forest_alerts_date_raster(
 ) -> tuple[np.ndarray, rasterio.DatasetReader]:
     """Read the forest alerts date raster."""
     date_path = UPath(date_prefix) / fname
+    logger.debug(f"date_path: {date_path}")
     buf = io.BytesIO()
     with date_path.open("rb") as f:
         buf.write(f.read())
