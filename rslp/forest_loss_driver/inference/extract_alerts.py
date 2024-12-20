@@ -393,6 +393,10 @@ def extract_alerts_pipeline(
             extract_alerts_args.days,
             extract_alerts_args.prediction_utc_time,
         )
+        # check if mask is all 0s
+        if np.all(forest_loss_mask == 0):
+            logger.warning(f"No forest loss events found for {fname}")
+            continue
         logger.info(f"Create shapes from mask for {fname}")
         # Rasterio uses True for features and False for background
         ignore_mask = forest_loss_mask == 1
