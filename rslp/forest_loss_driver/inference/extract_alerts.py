@@ -374,15 +374,13 @@ def extract_alerts_pipeline(
         ds_root: the root path to the dataset.
         extract_alerts_args: the extract_alerts_args
     """
+    logger.info(f"Extract_alerts for {str(extract_alerts_args)}")
+    country_wgs84_shp = load_country_polygon(extract_alerts_args.country_data_path)
     for fname in extract_alerts_args.gcs_tiff_filenames:
-        logger.info(f"Extract_alerts for {str(extract_alerts_args)}")
-        country_wgs84_shp = load_country_polygon(extract_alerts_args.country_data_path)
-
         logger.info(f"Read confidences for {fname}")
         conf_data, conf_raster = read_forest_alerts_confidence_raster(
             fname, extract_alerts_args.conf_prefix
         )
-
         logger.info(f"Read dates for {fname}")
         date_data, date_raster = read_forest_alerts_date_raster(
             fname, extract_alerts_args.date_prefix
