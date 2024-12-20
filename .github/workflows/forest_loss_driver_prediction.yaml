@@ -60,7 +60,7 @@ jobs:
           build-args: |
             GIT_USERNAME=${{ secrets.GIT_USERNAME }}
             GIT_TOKEN=${{ secrets.GIT_TOKEN }}
-            RSLEARN_BRANCH=henryh/gcp_public_data_debug
+            RSLEARN_BRANCH=henryh/bumplightning
 
       - name: Store Image Names
         id: image-names
