@@ -407,6 +407,9 @@ def extract_alerts_pipeline(
             country_wgs84_shp,
             extract_alerts_args.min_area,
         )
+        # Close raster files
+        conf_raster.close()
+        date_raster.close()
         if extract_alerts_args.max_number_of_events is not None:
             logger.info(
                 f"Limiting to {extract_alerts_args.max_number_of_events} \
