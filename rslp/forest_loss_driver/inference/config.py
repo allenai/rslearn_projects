@@ -117,8 +117,8 @@ class ForestLossDriverMaterializeArgs(MaterializePipelineArgs):
 
 
 @dataclass
-class SelectBestImagesArgs:
-    """Arguments for select_best_images_pipeline.
+class SelectLeastCloudyImagesArgs:
+    """Arguments for select_least_cloudy_images_pipeline.
 
     Args:
         min_choices: the minimum number of images to select.
@@ -162,15 +162,21 @@ class PredictPipelineConfig:
         model_predict_args: the arguments for the model_predict step. (Required)
         extract_alerts_args: the arguments for the extract_alerts step.
         materialize_pipeline_args: the arguments for the materialize step.
-        select_best_images_args: the arguments for the select_best_images step.
+        select_least_cloudy_images_args: the arguments for the select_least_cloudy_images step.
     """
 
     @staticmethod
-    def _default_ds_root() -> str:
+    def _get_most_recent_friday() -> datetime:
+        """Get the most recent Friday."""
         now = datetime.now()
-        monday = now - timedelta(days=now.weekday())
-        dated_dataset_name = f"dataset_{monday.strftime('%Y%m%d')}"
-        return f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/final_test_4/prediction/{dated_dataset_name}"
+        friday = now - timedelta(days=(now.weekday() - 4 + 7) % 7)
+        return friday
+
+    @staticmethod
+    def _default_ds_root() -> str:
+        friday = PredictPipelineConfig._get_most_recent_friday()
+        dated_dataset_name = f"dataset_{friday.strftime('%Y%m%d')}"
+        return f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/final_test_5/prediction/{dated_dataset_name}"
 
     model_predict_args: ModelPredictArgs
     ds_root: str = field(default_factory=_default_ds_root)
@@ -179,8 +185,8 @@ class PredictPipelineConfig:
         default_factory=ForestLossDriverMaterializeArgs
     )
 
-    select_best_images_args: SelectBestImagesArgs = field(
-        default_factory=lambda: SelectBestImagesArgs()
+    select_least_cloudy_images_args: SelectLeastCloudyImagesArgs = field(
+        default_factory=lambda: SelectLeastCloudyImagesArgs()
     )
 
     @property
@@ -201,5 +207,5 @@ class PredictPipelineConfig:
         self.materialize_pipeline_args.materialize_args.apply_windows_args.workers = (
             num_workers
         )
-        self.select_best_images_args.workers = num_workers
+        self.select_least_cloudy_images_args.workers = num_workers
         self.model_predict_args.data_load_workers = num_workers

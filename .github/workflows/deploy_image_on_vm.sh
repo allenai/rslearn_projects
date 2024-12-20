@@ -206,7 +206,7 @@ create_vm() {
         --machine-type="$machine_type" \
         --service-account="$service_account" \
         --scopes=cloud-platform \
-        --metadata=ops-agents-install='{"name": "ops-agent"}',google-logging-enable=TRUE,google-monitoring-enable=TRUE,enable-osconfig=TRUE,ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix",index-cache-dir="$INDEX_CACHE_DIR",tile-store-root-dir="$TILE_STORE_ROOT_DIR",extra_args_model_predict="$EXTRA_ARGS" \
+        --metadata=ops-agents-install='{"name": "ops-agent"}',google-logging-enable=TRUE,google-monitoring-enable=TRUE,enable-osconfig=TRUE,ghcr-user="$ghcr_user",user="$user",docker-image="$docker_image",command="$command",beaker-token="$beaker_token",beaker-addr="$beaker_addr",beaker_username="$beaker_username",rslp-project="$rslp_project",gpu-count="$gpu_count",shared-memory="$shared_memory",cluster="$cluster",priority="$priority",task-name="$task_name",budget="$budget",workspace="$workspace",rslp-prefix="$rslp_prefix",index-cache-dir="$INDEX_CACHE_DIR",tile-store-root-dir="$TILE_STORE_ROOT_DIR",extra_args_model_predict="$extra_args_model_predict" \
         --metadata-from-file=startup-script=<(echo '#!/bin/bash
         # Create a log dir
         sudo mkdir -p /var/log/startup-script

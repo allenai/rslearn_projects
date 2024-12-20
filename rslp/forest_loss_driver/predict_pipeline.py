@@ -10,7 +10,7 @@ from .inference import (
     extract_alerts_pipeline,
     forest_loss_driver_model_predict,
     materialize_forest_loss_driver_dataset,
-    select_best_images_pipeline,
+    select_least_cloudy_images_pipeline,
 )
 
 logger = get_logger(__name__)
@@ -87,9 +87,9 @@ class ForestLossDriverPredictionPipeline:
             self.pred_config.materialize_pipeline_args,
         )
 
-        select_best_images_pipeline(
+        select_least_cloudy_images_pipeline(
             self.pred_config.path,
-            self.pred_config.select_best_images_args,
+            self.pred_config.select_least_cloudy_images_args,
         )
 
     def run_model_predict(self) -> None:
