@@ -7,6 +7,7 @@ import tempfile
 import uuid
 from collections.abc import Generator
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pytest
 from google.cloud import storage
@@ -19,6 +20,7 @@ from rslp.forest_loss_driver.inference.config import (
 )
 from rslp.forest_loss_driver.predict_pipeline import ForestLossDriverPredictionPipeline
 from rslp.log_utils import get_logger
+from rslp.main import main
 
 TEST_ID = str(uuid.uuid4())
 logger = get_logger(__name__)
@@ -36,6 +38,12 @@ def test_bucket() -> Generator[storage.Bucket, None, None]:
     # TODO: Fix this
     bucket = storage.Client().bucket(os.environ.get("TEST_BUCKET", "rslearn-eai"))
     yield bucket
+
+
+@pytest.fixture
+def predict_pipeline_config_path() -> str:
+    """The path to the config file used for inference."""
+    return "rslp/forest_loss_driver/inference/config/forest_loss_driver_predict_pipeline_config.yaml"
 
 
 @pytest.fixture
@@ -158,3 +166,28 @@ def test_predict_pipeline(
             assert (
                 abs(actual - expected) < tol
             ), f"Probability difference {abs(actual - expected)} exceeds threshold {tol}"
+
+
+def test_forest_loss_driver_predict_cli_config_load(
+    predict_pipeline_config_path: str,
+) -> None:
+    def assert_config(pred_pipeline_config: PredictPipelineConfig) -> bool:
+        # Verify the config is the correct type
+        logger.info(f"Pred pipeline config: {pred_pipeline_config}")
+        assert isinstance(pred_pipeline_config, PredictPipelineConfig)
+        return True
+
+    with (
+        patch(
+            "sys.argv",
+            [
+                "rslp",
+                "forest_loss_driver",
+                "predict",
+                "--pred_pipeline_config",
+                predict_pipeline_config_path,
+            ],
+        ),
+        patch("rslp.forest_loss_driver.workflows", {"predict": assert_config}),
+    ):
+        main()
