@@ -125,5 +125,5 @@ jobs:
             --task-name "${RSLP_PROJECT}_inference_$(uuidgen | cut -c1-8)" \
             --budget ${{ secrets.BEAKER_BUDGET }} \
             --workspace ${{ secrets.BEAKER_WORKSPACE }} \
-            --extra_args_model_predict $PRED_PIPELINE_CONFIG_ARG && \
+            --extra_args_model_predict "$PRED_PIPELINE_CONFIG_ARG" && \
           echo "Inference job launched!"
