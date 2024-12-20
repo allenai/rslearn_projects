@@ -141,6 +141,10 @@ while [ $# -gt 0 ]; do
             shift
             WORKSPACE="$1"
             ;;
+        --extra_args_model_predict)
+            shift
+            EXTRA_ARGS_MODEL_PREDICT="$1"
+            ;;
         -h|--help)
             usage
             ;;
