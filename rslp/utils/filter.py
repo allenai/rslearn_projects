@@ -1,9 +1,10 @@
 """Filters for vessel detection projects."""
 
 import functools
+import json
 
 import numpy as np
-import requests
+from upath import UPath
 
 
 class Filter:
@@ -30,22 +31,17 @@ DEFAULT_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
 
 @functools.cache
-def get_infra_latlons(infra_url: str) -> tuple[np.ndarray, np.ndarray]:
+def get_infra_latlons(infra_path: UPath) -> tuple[np.ndarray, np.ndarray]:
     """Fetch and cache the infrastructure latitudes and longitudes.
 
     Args:
-        infra_url: URL to the marine infrastructure GeoJSON file.
+        infra_path: path to the marine infrastructure GeoJSON file.
 
     Returns:
         A tuple of arrays: (latitudes, longitudes).
     """
-    try:
-        # Read the geojson data from the URL.
-        response = requests.get(infra_url, timeout=10)
-        response.raise_for_status()  # Raise an error for bad responses
-        geojson_data = response.json()
-    except requests.RequestException as e:
-        raise RuntimeError(f"Failed to fetch infrastructure data: {e}")
+    with infra_path.open("r") as f:
+        geojson_data = json.load(f)
 
     lats = np.array(
         [feature["geometry"]["coordinates"][1] for feature in geojson_data["features"]]
@@ -72,7 +68,7 @@ class NearInfraFilter(Filter):
             infra_distance_threshold: distance threshold for marine infrastructure.
         """
         self.infra_url = infra_url
-        self.infra_latlons = get_infra_latlons(self.infra_url)
+        self.infra_latlons = get_infra_latlons(UPath(self.infra_url))
         self.infra_distance_threshold = infra_distance_threshold
 
     def _get_haversine_distances(
