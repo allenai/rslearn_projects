@@ -169,7 +169,7 @@ class PredictPipelineConfig:
     def _get_most_recent_friday() -> datetime:
         """Get the most recent Friday."""
         now = datetime.now()
-        friday = now - timedelta(days=(now.weekday() - 4 + 7) % 7)
+        friday = now - timedelta(days=(now.weekday() - 4) % 7)
         return friday
 
     @staticmethod
