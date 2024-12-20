@@ -1,66 +1,55 @@
-"""Unit tests for the NearInfraFilter class."""
+"""Unit Tests for marine infrastructure FIltering"""
+import json
+import pathlib
 
-from unittest.mock import patch
-
-import numpy as np
 import pytest
 
-from rslp.log_utils import get_logger
 from rslp.utils.filter import NearInfraFilter
 
-logger = get_logger(__name__)
+TEST_INFRA_LON = 1.234
+TEST_INFRA_LAT = 5.678
 
 
-@pytest.fixture
-def infra_coords() -> tuple[float, float]:
-    """Fixture providing infrastructure coordinates extracted from the geojson file."""
-    return (16.613, 103.381)
+class TestNearInfraFilter:
+    @pytest.fixture
+    def single_point_infra_filter(self, tmp_path: pathlib.Path) -> NearInfraFilter:
+        geojson_data = {
+            "type": "FeatureCollection",
+            "properties": {},
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {},
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [TEST_INFRA_LON, TEST_INFRA_LAT],
+                    },
+                }
+            ],
+        }
+        fname = tmp_path / "data.geojson"
+        with fname.open("w") as f:
+            json.dump(geojson_data, f)
 
+        return NearInfraFilter(infra_url=str(fname))
 
-@pytest.fixture
-def infra_filter(infra_coords: tuple[float, float]) -> NearInfraFilter:
-    """Fixture providing a NearInfraFilter initialized with test coordinates."""
-    infra_lat, infra_lon = infra_coords
-    # Mocking funciton that actually fetches the infrastructure coordinates
-    with patch("rslp.utils.filter.get_infra_latlons") as mock_get_infra_latlons:
-        mock_get_infra_latlons.return_value = (
-            np.array([infra_lat]),
-            np.array([infra_lon]),
-        )
-    filter = NearInfraFilter()
-    filter.infra_latlons = (np.array([infra_lat]), np.array([infra_lon]))
-    return filter
+    def test_exactly_on_infra(self, single_point_infra_filter: NearInfraFilter) -> None:
+        # Test when detection is exactly on infrastructure.
+        # The coordinates are directly extracted from the geojson file.
+        # Since this point is exactly an infrastructure point, the filter should discard it (return True)
+        assert single_point_infra_filter.should_filter(
+            TEST_INFRA_LAT,
+            TEST_INFRA_LON,
+        ), "Detection should be filtered out as it is located on infrastructure."
 
+    def test_close_to_infra(self, single_point_infra_filter: NearInfraFilter) -> None:
+        # Test when detection is close to infrastructure.
+        assert single_point_infra_filter.should_filter(
+            TEST_INFRA_LAT + 0.0001, TEST_INFRA_LON + 0.0001
+        ), "Detection should be filtered out as it is too close to infrastructure."
 
-def test_filter_exact_infrastructure_point(
-    infra_coords: tuple[float, float], infra_filter: NearInfraFilter
-) -> None:
-    """Test that a point exactly on infrastructure is filtered out."""
-    infra_lat, infra_lon = infra_coords
-    logger.info(f"Infra coords: {infra_filter.infra_latlons}")
-
-    assert infra_filter.should_filter(
-        infra_lat, infra_lon
-    ), "Detection should be filtered out as it is located on infrastructure."
-
-
-def test_filter_near_infrastructure_point(
-    infra_coords: tuple[float, float], infra_filter: NearInfraFilter
-) -> None:
-    """Test that a point close to infrastructure is filtered out."""
-    infra_lat, infra_lon = infra_coords
-
-    assert infra_filter.should_filter(
-        infra_lat + 0.0001, infra_lon + 0.0001
-    ), "Detection should be filtered out as it is too close to infrastructure."
-
-
-def test_keep_point_far_from_infrastructure(
-    infra_coords: tuple[float, float], infra_filter: NearInfraFilter
-) -> None:
-    """Test that a point far from infrastructure is not filtered out."""
-    infra_lat, infra_lon = infra_coords
-
-    assert not infra_filter.should_filter(
-        infra_lat + 0.5, infra_lon + 0.5
-    ), "Detection should be kept as it is far from infrastructure."
+    def test_far_from_infra(self, single_point_infra_filter: NearInfraFilter) -> None:
+        # Test when detection is far from infrastructure.
+        assert not single_point_infra_filter.should_filter(
+            TEST_INFRA_LAT + 0.5, TEST_INFRA_LON + 0.5
+        ), "Detection should be kept as it is far from infrastructure."
