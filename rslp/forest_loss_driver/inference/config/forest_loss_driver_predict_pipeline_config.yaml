@@ -1,17 +1,16 @@
-# Required fields
-# extract_alerts_args:
-#   workers: 112
-# materialize_pipeline_args:
-#   prepare_args:
-#     apply_windows_args:
-#       workers: 112
-#   ingest_args:
-#     apply_windows_args:
-#       workers: 112
-#   materialize_args:
-#     apply_windows_args:
-#       workers: 112
-# select_best_images_args:
-#   workers: 112
+extract_alerts_args:
+  workers: 112
+materialize_pipeline_args:
+  prepare_args:
+    apply_windows_args:
+      workers: 112
+  ingest_args:
+    apply_windows_args:
+      workers: 112
+  materialize_args:
+    apply_windows_args:
+      workers: 112
+select_best_images_args:
+  workers: 112
 model_predict_args:
   model_cfg_fname: "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml" # should be path from the top of the repo IF NOT ABSOLUTE PATH
