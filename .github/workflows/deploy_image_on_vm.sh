@@ -268,8 +268,8 @@ create_vm() {
             --priority $PRIORITY \
             --task_name $TASK_NAME \
             --budget $BUDGET \
-            --workspace $WORKSPACE" \
-            --extra_args $EXTRA_ARGS && \
+            --workspace $WORKSPACE \
+            --extra_args $EXTRA_ARGS" && \
         echo "INFERENCE_JOB_LAUNCH_COMMAND: $INFERENCE_JOB_LAUNCH_COMMAND" && \
         echo "Launching inference job on Beaker" && \
         docker run -e BEAKER_TOKEN=$BEAKER_TOKEN \
