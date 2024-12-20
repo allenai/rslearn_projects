@@ -65,7 +65,6 @@ jobs:
           build-args: |
             GIT_USERNAME=${{ secrets.GIT_USERNAME }}
             GIT_TOKEN=${{ secrets.GIT_TOKEN }}
-            RSLEARN_BRANCH=henryh/bumplightning
 
       - name: Store Image Names
         # We need the docker image name downstream in test & deploy. This saves the full docker image names to outputs
