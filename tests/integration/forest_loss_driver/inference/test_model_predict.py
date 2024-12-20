@@ -12,11 +12,11 @@ from upath import UPath
 
 from rslp.forest_loss_driver.inference import (
     forest_loss_driver_model_predict,
-    select_best_images_pipeline,
+    select_least_cloudy_images_pipeline,
 )
 from rslp.forest_loss_driver.inference.config import (
     ModelPredictArgs,
-    SelectBestImagesArgs,
+    SelectLeastCloudyImagesArgs,
 )
 from rslp.log_utils import get_logger
 
@@ -44,7 +44,9 @@ def test_forest_loss_driver_model_predict(
     with tempfile.TemporaryDirectory(prefix=f"test_{uuid.uuid4()}_") as temp_dir:
         shutil.copytree(test_materialized_dataset_path, temp_dir, dirs_exist_ok=True)
         # Set up Materialized dataset for best times
-        select_best_images_pipeline(UPath(temp_dir), SelectBestImagesArgs())
+        select_least_cloudy_images_pipeline(
+            UPath(temp_dir), SelectLeastCloudyImagesArgs()
+        )
         # Run model predict
         forest_loss_driver_model_predict(
             UPath(temp_dir),
