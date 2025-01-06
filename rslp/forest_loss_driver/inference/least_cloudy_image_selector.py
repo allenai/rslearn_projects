@@ -15,6 +15,23 @@ from rslp.log_utils import get_logger
 logger = get_logger(__name__)
 
 
+def compute_cloudiness_score(im: np.ndarray) -> int:
+    """Compute the cloudiness score of an image.
+
+    Uses the R, G, B channels to compute the cloudiness score.
+    This heuristic is specific to the Forest Loss Region where cloudy images
+    will have very little green and other images will have a bunch as it is
+    in the forest.
+
+    Args:
+        im: the image to score.
+
+    Returns:
+        The cloudiness score of the image.
+    """
+    return np.count_nonzero((im[0].max(axis=2) == 0) | (im[0].min(axis=2) > 140))
+
+
 def select_least_cloudy_images(
     window_path: UPath,
     num_outs: int,
@@ -69,11 +86,7 @@ def select_least_cloudy_images(
     for k, image_list in image_lists.items():
         if len(image_list) < min_choices:
             return
-        image_list.sort(
-            key=lambda t: np.count_nonzero(
-                (t[0].max(axis=2) == 0) | (t[0].min(axis=2) > 140)
-            )
-        )
+        image_list.sort(key=compute_cloudiness_score)
         for idx, (im, fname) in enumerate(image_list[0:num_outs]):
             # TODO: f"best_{k}_{idx}" MUST MATCH THE LAYER NAMES IN THE MODEL and DATA CONFIGS
             # TODO: This is very brittle and should not be hidden here
