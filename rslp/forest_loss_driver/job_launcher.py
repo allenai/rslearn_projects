@@ -152,7 +152,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--task_specific_env_vars",  # Should be optional and we have double parsing occcuring right now
         type=lambda x: x.split(","),
-        nargs="+",
         help="List of task-specific environment variables in the format: NAME=VALUE,NAME=VALUE",
         required=False,
         default=[],
@@ -173,7 +172,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--extra_args",
         type=lambda x: x.split(" "),
-        nargs="+",
         help="Extra arguments to pass to the workflow",
         required=False,
         default=[],
