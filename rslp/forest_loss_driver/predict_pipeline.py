@@ -65,6 +65,7 @@ class ForestLossDriverPredictionPipeline:
             logger.warning(
                 f"The following optional environment variables are missing: {missing_optional_vars_str}"
             )
+        logger.info(f"Environment variables: {os.environ}")
         # check that we have PL_API_KEY if we are looking for planet images
 
     def extract_dataset(self) -> None:

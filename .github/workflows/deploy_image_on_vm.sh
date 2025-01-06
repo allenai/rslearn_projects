@@ -268,6 +268,8 @@ extra_args_model_predict="$extra_args_model_predict" \
             -v $LOCAL_INDEX_CACHE_DIR:/index_cache \
             $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
         echo "Data Extraction Complete" && \
+        gsutil -m cp -r /index_cache/* $INDEX_CACHE_DIR/ && \
+        echo "Index cache copied back to $INDEX_CACHE_DIR" && \
         export BEAKER_TOKEN=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-token) && \
         export BEAKER_ADDR=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/beaker-addr) && \
         curl -s '\''https://beaker.org/api/v3/release/cli?os=linux&arch=amd64'\'' | sudo tar -zxv -C /usr/local/bin ./beaker && \

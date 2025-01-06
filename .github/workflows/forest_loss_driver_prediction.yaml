@@ -104,8 +104,8 @@ jobs:
           export PIPELINE_INFERENCE_CONFIG_PATH="rslp/forest_loss_driver/inference/config/forest_loss_driver_predict_pipeline_config.yaml" && \
           export PRED_PIPELINE_CONFIG_ARG="--pred_pipeline_config $PIPELINE_INFERENCE_CONFIG_PATH" && \
           # NOTE: The Index cahce dir will be copied to the VM and mounted as a volume in the docker container
-          export INDEX_CACHE_DIR=${{ secrets.RSLP_PREFIX }}/datasets/forest_loss_driver/index_cache_dir/  && \
-          export TILE_STORE_ROOT_DIR=${{ secrets.RSLP_PREFIX }}/datasets/forest_loss_driver/tile_store_root_dir/ && \
+          export INDEX_CACHE_DIR=${{ secrets.RSLP_PREFIX }}/datasets/forest_loss_driver/index_cache_dir && \
+          export TILE_STORE_ROOT_DIR=${{ secrets.RSLP_PREFIX }}/datasets/forest_loss_driver/tile_store_root_dir && \
           export DATASET_EXTRACT_COMMAND="python -m rslp.main forest_loss_driver extract_dataset $PRED_PIPELINE_CONFIG_ARG" && \
           export RSLP_PROJECT="forest_loss_driver" && \
           bash .github/workflows/deploy_image_on_vm.sh \
