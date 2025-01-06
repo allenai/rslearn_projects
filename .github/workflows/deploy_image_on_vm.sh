@@ -170,7 +170,6 @@ job_name="forest-loss-driver-inference-$(uuidgen | cut -c1-8)"
 # Generate VM name
 VM_NAME="rslp-$job_name"
 
-# Rest of your existing create_vm function...
 # TODO: add back instance termination action and max run duration
 create_vm() {
     local vm_name="$1"
