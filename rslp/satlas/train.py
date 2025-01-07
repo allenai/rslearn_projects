@@ -46,3 +46,49 @@ class MarineInfraTask(DetectionTask):
             feat.properties[self.property_name] = CATEGORY_MAPPING[category]
 
         return super().process_inputs(raw_inputs, metadata, load_targets)
+
+
+class TeePipe(torch.nn.Module):
+    """TeePipe passes different channels of the input image to different backbones.
+
+    The features from the different backbones are then concatenated and returned.
+    """
+
+    def __init__(
+        self,
+        encoders: list[torch.nn.Module],
+        channels: list[list[int]],
+    ):
+        """Create a new TeePipe.
+
+        Args:
+            encoders: the encoders to apply.
+            channels: the subset of channels that each encoder should input. For
+                example, if the input is ABCDEF and first encoder should see ABC while
+                second should see DEF, then the list should be [[0, 1, 2], [3, 4, 5]].
+        """
+        self.encoders = encoders
+        self.channels = channels
+
+    def forward(self, inputs: list[dict[str, Any]]) -> list[torch.Tensor]:
+        """Compute features.
+
+        Args:
+            inputs: input dicts that must include "image" key containing the images to
+                process.
+        """
+        # index in feature map -> encoder index -> feature map
+        all_features: list[list[torch.Tensor]] | None = None
+
+        for encoder, cur_channels in zip(self.encoders, self.channels):
+            cur_features = encoder(
+                [{"image": inp["image"][cur_channels, :, :]} for inp in inputs]
+            )
+            if all_features is None:
+                all_features = [[] for _ in cur_features]
+            for idx, feat_map in enumerate(cur_features):
+                all_features[idx].append(feat_map)
+
+        # Final feature map should concatenate at each scale.
+        assert all_features is not None
+        return [torch.cat(feat_map_list, dim=1) for feat_map_list in all_features]

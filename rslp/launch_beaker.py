@@ -163,7 +163,9 @@ def launch_job(
                     config_path,
                     "--autoresume=true",
                 ],
-                constraints=Constraints(cluster=["ai2/jupiter-cirrascale-2"]),
+                constraints=Constraints(
+                    cluster=["ai2/jupiter-cirrascale-2", "ai2/augusta-google-1"]
+                ),
                 preemptible=True,
                 datasets=[
                     DataMount(
