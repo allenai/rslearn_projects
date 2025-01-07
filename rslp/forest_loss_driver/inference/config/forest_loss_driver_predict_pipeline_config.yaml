@@ -1,5 +1,6 @@
 extract_alerts_args:
   workers: 112
+  days: 90
 materialize_pipeline_args:
   prepare_args:
     apply_windows_args:
