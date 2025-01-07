@@ -35,7 +35,7 @@ Required environment variables:
 - `RSLP_PREFIX`: GCS bucket prefix for model checkpoints \
 
 Optional environment variables:
-- `INDEX_CACHE_DIR`: Directory for caching image indices
+- `INDEX_CACHE_DIR`: Directory for caching image indices MUST SPECIFY FILE SYSTEM OR IT WILL BE TREATED ad relative path
 - `TILE_STORE_ROOT_DIR`: Directory for tile storage cache
 - `PL_API_KEY`: Planet API key (if using Planet imagery)
 

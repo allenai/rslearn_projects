@@ -65,8 +65,15 @@ class ForestLossDriverPredictionPipeline:
             logger.warning(
                 f"The following optional environment variables are missing: {missing_optional_vars_str}"
             )
-        logger.info(f"Environment variables: {os.environ}")
-        # check that we have PL_API_KEY if we are looking for planet images
+        if "INDEX_CACHE_DIR" in os.environ:
+            cache_dir = os.environ["INDEX_CACHE_DIR"]
+            if not any(
+                cache_dir.startswith(prefix) for prefix in ["gs://", "s3://", "file://"]
+            ):
+                logger.warning(
+                    f"INDEX_CACHE_DIR '{cache_dir}' does not specify filesystem - "
+                    "will be treated as relative path"
+                )
 
     def extract_dataset(self) -> None:
         """Extract the dataset."""

@@ -264,7 +264,7 @@ extra_args_model_predict="$extra_args_model_predict" \
             -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token) \
             -e PL_API_KEY=$PL_API_KEY \
             -e TILE_STORE_ROOT_DIR=$TILE_STORE_ROOT_DIR \
-            -e INDEX_CACHE_DIR=/index_cache \
+            -e INDEX_CACHE_DIR=file:///index_cache \
             -v $LOCAL_INDEX_CACHE_DIR:/index_cache \
             $DOCKER_IMAGE /bin/bash -c "$COMMAND" && \
         echo "Data Extraction Complete" && \

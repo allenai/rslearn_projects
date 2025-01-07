@@ -28,7 +28,7 @@ class ApplyWindowsArgs:
 
     workers: int = 0
     batch_size: int = 1
-    use_initial_job: bool = False
+    use_initial_job: bool = False  # TODO: mathc no use_initial_job
     jobs_per_process: int | None = None
     group: str | None = None
     window: str | None = None
