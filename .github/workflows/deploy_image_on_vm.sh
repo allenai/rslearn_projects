@@ -246,7 +246,6 @@ extra_args_model_predict="$extra_args_model_predict" \
         export GHCR_TOKEN=$(gcloud secrets versions access latest --secret="ghcr_pat_forest_loss") && \
         export GHCR_USER=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/ghcr-user) && \
         export DOCKER_IMAGE=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/docker-image) && \
-        export COMMAND=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/command) && \
         echo "Logging into GHCR" && \
         echo "GHCR_TOKEN: $GHCR_TOKEN" && \
         echo "GHCR_USER: $GHCR_USER" && \
@@ -260,6 +259,7 @@ extra_args_model_predict="$extra_args_model_predict" \
         export LOCAL_INDEX_CACHE_DIR="/tmp/index_cache" && \
         mkdir -p $LOCAL_INDEX_CACHE_DIR && \
         gsutil -m cp -r $INDEX_CACHE_DIR/* $LOCAL_INDEX_CACHE_DIR/ && \
+        export COMMAND=$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/command) && \
         sudo docker run \
             -e CLOUDSDK_AUTH_ACCESS_TOKEN=$(gcloud auth application-default print-access-token) \
             -e PL_API_KEY=$PL_API_KEY \
