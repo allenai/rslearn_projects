@@ -176,7 +176,7 @@ class PredictPipelineConfig:
     def _default_ds_root() -> str:
         friday = PredictPipelineConfig._get_most_recent_friday()
         dated_dataset_name = f"dataset_{friday.strftime('%Y%m%d')}"
-        return f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/final_test_9/prediction/{dated_dataset_name}"
+        return f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/prediction/{dated_dataset_name}"
 
     model_predict_args: ModelPredictArgs
     ds_root: str = field(default_factory=_default_ds_root)

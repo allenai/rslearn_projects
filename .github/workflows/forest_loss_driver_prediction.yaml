@@ -2,9 +2,8 @@ name: Forest-Loss-Driver-Prediction
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - henryh/favyen/forest-loss-20240917
+  schedule:
+    - cron: '0 8 * * 1'  # Run at 8:00 AM UTC every Monday
 
 env:
   REGISTRY: ghcr.io
