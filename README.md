@@ -63,8 +63,13 @@ Create an environment for rslearn and setup with rslearn_projects requirements:
 
     conda create -n rslearn python=3.12
     conda activate rslearn
-    pip install -r rslearn/requirements.txt
+    pip install -r rslearn/requirements.txt -r rslearn/extra_requirements.txt
     pip install -r rslearn_projects/requirements.txt
+
+For development it is easier to use PYTHONPATH or install rslearn and rslearn_projects
+in editable mode, e.g.:
+
+    export PYTHONPATH=.:/path/to/rslearn/rslearn
 
 Execute a data processing pipeline:
 
@@ -77,3 +82,9 @@ Launch training on Beaker:
 Manually train locally:
 
     python -m rslp.rslearn_main model fit --config_path data/maldives_ecosystem_mapping/config.yaml
+
+
+Projects
+--------
+
+- [Forest Loss Driver](rslp/forest_loss_driver/README.md)
