@@ -209,11 +209,12 @@ def predict_pipeline(
         run_model_predict(model_config_fname, ds_path)
 
     if APP_IS_RASTER[application]:
-        """src_fname = window_path / "layers" / "output" / "output" / "geotiff.tif"
+        src_fname = window_path / "layers" / "output" / "output" / "geotiff.tif"
 
         with src_fname.open("rb") as src:
             with out_fname.open("wb") as dst:
-                shutil.copyfileobj(src, dst)"""
+                shutil.copyfileobj(src, dst)
+        # TODO: implement valid patches and such.
         raise NotImplementedError
 
     else:
@@ -249,43 +250,6 @@ def predict_pipeline(
                 "type": "FeatureCollection",
                 "features": [],
             }
-
-        """
-        # Add a list specifying which patches are valid vs invalid to the GeoJSON.
-        # Valid means that none of the input layers are completely zero at the patch.
-        # This is so that when we smooth the predictions over time, we can distinguish
-        # a point not being detected because it wasn't there vs not being detected just
-        # because there was no image available there.
-        check_images = window_path.glob("layers/*/B02_B03_B04_B08/geotiff.tif")
-        valid_patches = set()
-        for check_image in check_images:
-            path_parts = check_image.path.split("/")
-            if path_parts[-3] in VALIDITY_EXCLUDE_LAYERS:
-                continue
-
-            with check_image.open("rb") as f:
-                with rasterio.open(f) as raster:
-                    valid_mask = raster.read().max(axis=0) > 0
-
-            for tile_col in range(bounds[0] // PATCH_SIZE, bounds[2] // PATCH_SIZE):
-                for tile_row in range(bounds[1] // PATCH_SIZE, bounds[3] // PATCH_SIZE):
-                    cur_patch_id = (tile_col, tile_row)
-                    cur_offset = (tile_col * PATCH_SIZE, tile_row * PATCH_SIZE)
-
-                    if cur_patch_id in valid_patches:
-                        continue
-
-                    # Read from the window that contains this patch.
-                    window = tile_to_window[cur_patch_id]
-
-
-                    patch_valid = np.zeros((VALIDITY_PATCH_SIZE, VALIDITY_PATCH_SIZE))
-                    copy_spatial_array(valid_mask, patch_valid, bounds[0:2], cur_offset)
-                    if valid_mask.max() is False:
-                        continue
-
-                    valid_patches.add(cur_patch_id)
-        """
 
         if "properties" not in fc:
             fc["properties"] = {}
