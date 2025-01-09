@@ -4,3 +4,4 @@
 .env
 lightning_logs
 wandb
+**/test_data/**/**/*.tif

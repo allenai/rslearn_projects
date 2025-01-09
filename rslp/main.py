@@ -2,17 +2,38 @@
 
 import argparse
 import importlib
-import logging
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import dotenv
 import jsonargparse
 import jsonargparse.typing
+from jsonargparse import ActionConfigFile
 
+from rslp.log_utils import get_logger
 from rslp.utils.mp import init_mp
 
-logging.basicConfig()
+logger = get_logger(__name__)
+
+
+class RelativePathActionConfigFile(ActionConfigFile):
+    """Custom action to handle relative paths to config files."""
+
+    def __call__(
+        self,
+        parser: jsonargparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str,
+        option_string: str | None = None,
+    ) -> None:
+        """Convert relative paths to absolute before loading config."""
+        if not str(values).startswith(("/", "gs://")):
+            repo_root = (
+                Path(__file__).resolve().parents[1]
+            )  # Go up to rslearn_projects root
+            values = str(repo_root / values)
+        super().__call__(parser, namespace, values, option_string)
 
 
 def datetime_serializer(v: datetime) -> str:
@@ -49,6 +70,11 @@ def run_workflow(project: str, workflow: str, args: list[str]) -> None:
     """
     module = importlib.import_module(f"rslp.{project}")
     workflow_fn = module.workflows[workflow]
+    logger.info(f"running {workflow} for {project}")
+    logger.info(f"args: {args}")
+
+    # Enable relative path support for config files
+    jsonargparse.set_config_read_mode("default")
     jsonargparse.CLI(workflow_fn, args=args)
 
 
@@ -56,6 +82,7 @@ def main() -> None:
     """Main entrypoint function for rslp."""
     dotenv.load_dotenv()
     parser = argparse.ArgumentParser(description="rslearn")
+    parser.register("action", "config_file", RelativePathActionConfigFile)
     parser.add_argument("project", help="The project to execute a workflow for.")
     parser.add_argument("workflow", help="The name of the workflow.")
     args = parser.parse_args(args=sys.argv[1:3])
