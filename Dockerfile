@@ -12,6 +12,8 @@ WORKDIR /opt/rslearn
 RUN git checkout $RSLEARN_BRANCH
 RUN pip install --no-cache-dir /opt/rslearn[extra]
 
+# maybe some steps to make this huge iamge smaller
+
 # Install rslearn_projects dependencies.
 # We do this in a separate step so it doesn't need to be rerun when other parts of the
 # context are modified.
@@ -21,5 +23,8 @@ RUN pip install --no-cache-dir --upgrade -r /opt/rslearn_projects/requirements.t
 # Copy rslearn_projects.
 # For now we don't install it and instead just use PYTHONPATH.
 ENV PYTHONPATH="${PYTHONPATH}:."
+
 COPY . /opt/rslearn_projects/
+# install rslp package
+RUN pip install --no-cache-dir /opt/rslearn_projects
 WORKDIR /opt/rslearn_projects

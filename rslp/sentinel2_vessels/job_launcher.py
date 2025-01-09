@@ -20,15 +20,17 @@ from beaker import (
 from rslearn.utils.mp import star_imap_unordered
 from upath import UPath
 
-from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE, IMAGE_NAME, get_base_env_vars
+from rslp import launcher_lib
+from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE
 
 from .predict_pipeline import PredictionTask
 
 
-def launch_job(tasks: list[PredictionTask]) -> None:
+def launch_job(image_name: str, tasks: list[PredictionTask]) -> None:
     """Launch job for the Sentinel-2 scene.
 
     Args:
+        image_name: the name of the beaker image to use.
         tasks: the prediction tasks to run.
     """
     beaker = Beaker.from_env(default_workspace=DEFAULT_WORKSPACE)
@@ -43,12 +45,12 @@ def launch_job(tasks: list[PredictionTask]) -> None:
     ]
 
     with beaker.session():
-        env_vars = get_base_env_vars(use_weka_prefix=True)
+        env_vars = launcher_lib.get_base_env_vars(use_weka_prefix=True)
 
         spec = ExperimentSpec.new(
             budget=BUDGET,
             description=f"sentinel2_vessel_{first_scene_id}",
-            beaker_image=IMAGE_NAME,
+            beaker_image=image_name,
             priority=Priority.low,
             command=["python", "-m", "rslp.main"],
             arguments=[
@@ -98,6 +100,12 @@ if __name__ == "__main__":
     dotenv.load_dotenv()
     parser = argparse.ArgumentParser(
         description="Launch beaker experiment for rslearn_projects",
+    )
+    parser.add_argument(
+        "--image_name",
+        type=str,
+        help="The name of the beaker image to use",
+        required=True,
     )
     parser.add_argument(
         "--json_fname",
@@ -177,4 +185,4 @@ if __name__ == "__main__":
                 )
             )
 
-        launch_job(tasks)
+        launch_job(args.image_name, tasks)

@@ -16,8 +16,19 @@ from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from upath import UPath
 
+from rslp.log_utils import get_logger
 from rslp.utils.filter import NearInfraFilter
-from rslp.utils.rslearn import materialize_dataset, run_model_predict
+from rslp.utils.rslearn import (
+    ApplyWindowsArgs,
+    IngestArgs,
+    MaterializeArgs,
+    MaterializePipelineArgs,
+    PrepareArgs,
+    materialize_dataset,
+    run_model_predict,
+)
+
+logger = get_logger(__name__)
 
 SENTINEL2_LAYER_NAME = "sentinel2"
 DATASET_CONFIG = "data/sentinel2_vessels/config.json"
@@ -125,8 +136,19 @@ def get_vessel_detections(
         layer_data = WindowLayerData(SENTINEL2_LAYER_NAME, [[item.serialize()]])
         window.save_layer_datas(dict(SENTINEL2_LAYER_NAME=layer_data))
 
-    print("materialize dataset")
-    materialize_dataset(ds_path, group=group, workers=1)
+    logger.info("Materialize dataset for Sentinel-2 Vessel Detection")
+    apply_windows_args = ApplyWindowsArgs(group=group, workers=1)
+    materialize_pipeline_args = MaterializePipelineArgs(
+        disabled_layers=[],
+        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
+        ingest_args=IngestArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+        materialize_args=MaterializeArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+    )
+    materialize_dataset(ds_path, materialize_pipeline_args)
     for window in windows:
         assert (
             window.path / "layers" / SENTINEL2_LAYER_NAME / "R_G_B" / "geotiff.tif"
@@ -224,8 +246,19 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
 
         window_paths.append(window_path)
 
+    apply_windows_args = ApplyWindowsArgs(group=group, workers=1)
+    materialize_pipeline_args = MaterializePipelineArgs(
+        disabled_layers=[],
+        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
+        ingest_args=IngestArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+        materialize_args=MaterializeArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+    )
     if len(detections) > 0:
-        materialize_dataset(ds_path, group=group)
+        materialize_dataset(ds_path, materialize_pipeline_args)
 
     # Write JSON and crops.
     json_vessels_by_scene: dict[str, list[dict[str, Any]]] = {}

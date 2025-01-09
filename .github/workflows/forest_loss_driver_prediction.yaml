@@ -1,0 +1,133 @@
+name: Forest-Loss-Driver-Prediction
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 8 * * 1'  # Run at 8:00 AM UTC every Monday
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  SERVICE_NAME: "rslearn_projects"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      ghcr_docker_image: ${{ steps.image-names.outputs.ghcr_docker_image }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+            type=sha,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Cleanup disk space
+        run: |
+          sudo docker rmi $(docker image ls -aq) >/dev/null 2>&1 || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+
+      - name: Build and push Docker image
+        id: build-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_USERNAME=${{ secrets.GIT_USERNAME }}
+            GIT_TOKEN=${{ secrets.GIT_TOKEN }}
+
+      - name: Store Image Names
+        id: image-names
+        run: |-
+          GHCR_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-push.outputs.digest }}"
+          GHCR_IMAGE=`echo ${GHCR_IMAGE} | tr '[:upper:]' '[:lower:]'` # docker requires that all image names be lowercase
+          echo "ghcr_docker_image=\"${GHCR_IMAGE}\"" >> $GITHUB_OUTPUT
+
+  predict:
+    needs: build
+    runs-on: ubuntu-latest-m
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup disk space
+        run: |
+          sudo docker rmi $(docker image ls -aq) >/dev/null 2>&1 || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+
+      - name: Authenticate into gcp
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: ${{ secrets.GCP_VM_DEPLOYER_CREDENTIALS }}
+
+      - name: Run Extract Dataset Job on VM and Launch Prediction Job on Beaker
+        run: |
+          export PIPELINE_INFERENCE_CONFIG_PATH="rslp/forest_loss_driver/inference/config/forest_loss_driver_predict_pipeline_config.yaml" && \
+          export PRED_PIPELINE_CONFIG_ARG="--pred_pipeline_config $PIPELINE_INFERENCE_CONFIG_PATH" && \
+          # NOTE: The Index cahce dir will be copied to the VM and mounted as a volume in the docker container
+          export INDEX_CACHE_DIR=${{ secrets.RSLP_PREFIX }}/datasets/forest_loss_driver/index_cache_dir && \
+          export TILE_STORE_ROOT_DIR=${{ secrets.RSLP_PREFIX }}/datasets/forest_loss_driver/tile_store_root_dir && \
+          export DATASET_EXTRACT_COMMAND="python -m rslp.main forest_loss_driver extract_dataset $PRED_PIPELINE_CONFIG_ARG" && \
+          export RSLP_PROJECT="forest_loss_driver" && \
+          bash .github/workflows/deploy_image_on_vm.sh \
+            --project-id ${{ secrets.GCP_PROJECT_ID }} \
+            --zone "us-west1-b" \
+            --machine-type "n2-standard-128" \
+            --docker-image ${{ needs.build.outputs.ghcr_docker_image }} \
+            --command "$DATASET_EXTRACT_COMMAND" \
+            --user ${{ secrets.GCP_USER }} \
+            --ghcr-user allenai \
+            --service-account ${{ secrets.FOREST_LOSS_DRIVER_INFERENCE_SERVICE_ACCOUNT }} \
+            --delete no \
+            --beaker-token ${{ secrets.BEAKER_TOKEN }} \
+            --beaker-addr "https://beaker.org" \
+            --beaker-username ${{ secrets.BEAKER_USERNAME }} \
+            --rslp-project $RSLP_PROJECT \
+            --rslp-prefix ${{ secrets.RSLP_PREFIX }} \
+            --gpu-count 1 \
+            --shared-memory "64Gib" \
+            --cluster ${{ secrets.BEAKER_CLUSTER_INFERENCE }} \
+            --priority "normal" \
+            --task-name "${RSLP_PROJECT}_inference_$(uuidgen | cut -c1-8)" \
+            --budget ${{ secrets.BEAKER_BUDGET }} \
+            --workspace ${{ secrets.BEAKER_WORKSPACE }} \
+            --extra_args_model_predict "$PRED_PIPELINE_CONFIG_ARG" && \
+          echo "Inference job launched!"
