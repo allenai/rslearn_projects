@@ -11,6 +11,8 @@ import rasterio.features
 import shapely
 from PIL import Image
 
+from rslearn.utils.vector_format import GeojsonVectorFormat
+from rslearn.utils.raster_format import SingleImageRasterFormat
 from ..lib import convert_window
 
 db_path = "/home/ubuntu/siv_renewable/data/siv.sqlite3"
@@ -36,7 +38,7 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
         ts = ts.replace(tzinfo=timezone.utc)
     time_range = (
         ts - timedelta(days=120),
-        ts + timedelta(days=30),
+        ts + timedelta(days=60),
     )
 
     db.execute(
@@ -64,15 +66,20 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
     )
 
     # Create raster version of the label.
+    layer_name = "label"
+    layer_dir = window.get_layer_dir(layer_name)
+    features = GeojsonVectorFormat().decode_vector(layer_dir, bounds)
     shapes = []
-    with window.file_api.open("layers/label/data.geojson", "r") as f:
-        for feat in json.load(f)["features"]:
-            geometry = feat["geometry"]
-            assert geometry["type"] == "Polygon"
-            geometry["coordinates"] = (
-                np.array(geometry["coordinates"]) - [window.bounds[0], window.bounds[1]]
-            ).tolist()
-            shapes.append((geometry, 255))
+    for feat in features:
+        geometry = feat.geometry
+
+
+        geometry = feat["geometry"]
+        assert geometry["type"] == "Polygon"
+        geometry["coordinates"] = (
+            np.array(geometry["coordinates"]) - [window.bounds[0], window.bounds[1]]
+        ).tolist()
+        shapes.append((geometry, 255))
     if shapes:
         mask = rasterio.features.rasterize(
             shapes,
