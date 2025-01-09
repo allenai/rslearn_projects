@@ -76,6 +76,7 @@ def predict_pipeline(
     time_range: tuple[datetime, datetime],
     out_path: str,
     scratch_path: str,
+    use_rtree_index: bool = True,
 ) -> None:
     """Compute outputs of a Satlas model on this tile.
 
@@ -90,6 +91,9 @@ def predict_pipeline(
         out_path: directory to write the outputs. It will either be a GeoTIFF or
             GeoJSON, named based on the bounds.
         scratch_path: where to store the dataset.
+        use_rtree_index: whether to prepare using rtree index. This is recommended when
+            applying the model globally but can be disabled for small regions to avoid
+            the time to create the index.
     """
     dataset_config_fname = DATASET_CONFIG_FNAME.format(application=application.value)
     model_config_fname = MODEL_CONFIG_FNAME.format(application=application.value)
@@ -120,7 +124,7 @@ def predict_pipeline(
             continue
         layer_source_cfg["index_cache_dir"] = str(index_cache_dir)
         layer_source_cfg["rtree_cache_dir"] = str(UPath(out_path) / "index")
-        layer_source_cfg["use_rtree_index"] = True
+        layer_source_cfg["use_rtree_index"] = use_rtree_index
         layer_source_cfg["rtree_time_range"] = [
             time_range[0].isoformat(),
             time_range[1].isoformat(),
