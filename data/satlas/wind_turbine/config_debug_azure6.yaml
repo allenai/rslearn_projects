@@ -17,7 +17,7 @@ model:
                     - class_path: rslearn.models.satlaspretrain.SatlasPretrain
                       init_args:
                         model_identifier: "Sentinel1_SwinB_MI"
-                  channels: [[0, 1, 2, 3, 4, 5, 6, 7, 8], [9, 10, 11]]
+                  channels: [[0, 1, 2, 3, 4, 5, 6, 7, 8], [9, 10]]
               image_channels: 11
           - class_path: rslearn.models.fpn.Fpn
             init_args:
@@ -147,7 +147,7 @@ data:
         input_mapping:
           detect:
             targets: "targets"
-    batch_size: 8
+    batch_size: 4
     num_workers: 32
     default_config:
       transforms:
