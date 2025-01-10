@@ -31,8 +31,19 @@ from rslp.landsat_vessels.config import (
     LANDSAT_RESOLUTION,
     LOCAL_FILES_DATASET_CONFIG,
 )
+from rslp.log_utils import get_logger
 from rslp.utils.filter import NearInfraFilter
-from rslp.utils.rslearn import materialize_dataset, run_model_predict
+from rslp.utils.rslearn import (
+    ApplyWindowsArgs,
+    IngestArgs,
+    MaterializeArgs,
+    MaterializePipelineArgs,
+    PrepareArgs,
+    materialize_dataset,
+    run_model_predict,
+)
+
+logger = get_logger(__name__)
 
 
 class VesselDetection:
@@ -112,8 +123,19 @@ def get_vessel_detections(
         layer_data = WindowLayerData(LANDSAT_LAYER_NAME, [[item.serialize()]])
         window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
-    print("materialize dataset")
-    materialize_dataset(ds_path, group=group)
+    logger.info("materialize dataset")
+    apply_windows_args = ApplyWindowsArgs(group=group, workers=1)
+    materialize_pipeline_args = MaterializePipelineArgs(
+        disabled_layers=[],
+        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
+        ingest_args=IngestArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+        materialize_args=MaterializeArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+    )
+    materialize_dataset(ds_path, materialize_pipeline_args)
     assert (window_path / "layers" / LANDSAT_LAYER_NAME / "B8" / "geotiff.tif").exists()
 
     # Run object detector.
@@ -192,8 +214,19 @@ def run_classifier(
             layer_data = WindowLayerData(LANDSAT_LAYER_NAME, [[item.serialize()]])
             window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
-    print("materialize dataset")
-    materialize_dataset(ds_path, group=group)
+    logger.info("materialize dataset")
+    apply_windows_args = ApplyWindowsArgs(group=group)
+    materialize_pipeline_args = MaterializePipelineArgs(
+        disabled_layers=[],
+        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
+        ingest_args=IngestArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+        materialize_args=MaterializeArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+    )
+    materialize_dataset(ds_path, materialize_pipeline_args)
 
     for window_path in window_paths:
         assert (

@@ -1,11 +1,8 @@
 """Forest loss driver classification project."""
 
-from .predict_pipeline import (
-    predict_pipeline,
-    select_best_images_pipeline,
-)
+from .predict_pipeline import extract_dataset_main, run_model_predict_main
 
 workflows = {
-    "predict": predict_pipeline,
-    "select_best_images": select_best_images_pipeline,
+    "extract_dataset": extract_dataset_main,
+    "predict": run_model_predict_main,
 }
