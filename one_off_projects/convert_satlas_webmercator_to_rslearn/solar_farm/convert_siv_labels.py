@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import rasterio.features
 import shapely
-from PIL import Image
+from upath import UPath
 
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from rslearn.utils.raster_format import SingleImageRasterFormat
@@ -57,7 +57,7 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
         labels.append((polygon, properties))
 
     window = convert_window(
-        root_dir=out_dir,
+        root_dir=UPath(out_dir),
         group=group,
         zoom=15,
         bounds=bounds,
@@ -66,15 +66,13 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
     )
 
     # Create raster version of the label.
-    layer_name = "label"
-    layer_dir = window.get_layer_dir(layer_name)
+    layer_dir = window.get_layer_dir("label")
     features = GeojsonVectorFormat().decode_vector(layer_dir, bounds)
+
     shapes = []
     for feat in features:
-        geometry = feat.geometry
-
-
-        geometry = feat["geometry"]
+        assert feat.geometry.projection == window.projection
+        geometry = json.loads(shapely.to_geojson(feat.geometry.shp))
         assert geometry["type"] == "Polygon"
         geometry["coordinates"] = (
             np.array(geometry["coordinates"]) - [window.bounds[0], window.bounds[1]]
@@ -94,5 +92,7 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
             (window.bounds[3] - window.bounds[1], window.bounds[2] - window.bounds[0]),
             dtype=np.uint8,
         )
-    with window.file_api.get_folder("layers/label_raster").open("image.png", "wb") as f:
-        Image.fromarray(mask).save(f, format="PNG")
+    layer_name = "label_raster"
+    raster_dir = window.get_raster_dir(layer_name, ["label"])
+    SingleImageRasterFormat().encode_raster(raster_dir, window.projection, window.bounds, mask[None, :, :])
+    window.mark_layer_completed(layer_name)
