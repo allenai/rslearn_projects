@@ -321,7 +321,7 @@
       ],
       "data_source": {
         "duration": "365d",
-        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
+        "index_cache_dir": "index_cache_dir",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -352,7 +352,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
+        "index_cache_dir": "index_cache_dir",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -383,7 +383,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
+        "index_cache_dir": "index_cache_dir",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -414,7 +414,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
+        "index_cache_dir": "index_cache_dir",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -445,7 +445,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
+        "index_cache_dir": "index_cache_dir",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -476,7 +476,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
+        "index_cache_dir": "index_cache_dir",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -507,7 +507,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
+        "index_cache_dir": "index_cache_dir",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -538,7 +538,7 @@
       ],
       "data_source": {
         "duration": "30d",
-        "index_cache_dir": "${INDEX_CACHE_DIR}/sentinel2_gcp/",
+        "index_cache_dir": "index_cache_dir",
         "max_time_delta": "1d",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
@@ -551,9 +551,5 @@
       },
       "type": "raster"
     }
-  },
-  "tile_store": {
-    "name": "file",
-    "root_dir": "${TILE_STORE_ROOT_DIR}/rslearn_amazon_conservation/tiles"
   }
 }

@@ -121,7 +121,7 @@ def convert_window(
     rr, cc = skimage.draw.polygon(polygon_rows, polygon_cols, shape=mask.shape)
     mask[rr, cc] = 255
     layer_name = "mask"
-    layer_dir = window.get_layer_dir(layer_name)
+    layer_dir = window.get_raster_dir(layer_name, ["mask"])
     SingleImageRasterFormat().encode_raster(layer_dir, dst_projection, bounds, mask[None, :, :])
     window.mark_layer_completed(layer_name)
 

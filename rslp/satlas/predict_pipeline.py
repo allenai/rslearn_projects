@@ -7,14 +7,21 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-import rslearn.data_sources.copernicus
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils.geometry import PixelBounds, Projection
 from upath import UPath
 
 from rslp.log_utils import get_logger
-from rslp.utils.rslearn import materialize_dataset, run_model_predict
+from rslp.utils.rslearn import (
+    ApplyWindowsArgs,
+    IngestArgs,
+    MaterializeArgs,
+    MaterializePipelineArgs,
+    PrepareArgs,
+    materialize_dataset,
+    run_model_predict,
+)
 
 DATASET_CONFIG_FNAME = "data/satlas/{application}/config.json"
 MODEL_CONFIG_FNAME = "data/satlas/{application}/config.yaml"
@@ -193,15 +200,20 @@ def predict_pipeline(
             window.save()
             tile_to_window[(tile_col, tile_row)] = window
 
-    # Before preparing, cache the Sentinel-2 tile index.
-    # This way it is only downloaded once here instead of many times during prepare.
-    # We could set use_initial_prepare_job=True in materialize_dataset call, but then
-    # it could take a minute or more longer than needed.
-    rslearn.data_sources.copernicus._cache_sentinel2_tile_index(index_cache_dir)
-
     # Populate the windows.
     logger.info("materialize dataset")
-    materialize_dataset(ds_path, group=group, initial_prepare_job=True)
+    apply_windows_args = ApplyWindowsArgs(group=group, workers=1)
+    materialize_pipeline_args = MaterializePipelineArgs(
+        disabled_layers=[],
+        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
+        ingest_args=IngestArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+        materialize_args=MaterializeArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+    )
+    materialize_dataset(ds_path, materialize_pipeline_args=materialize_pipeline_args)
 
     # Run the model, only if at least one window has some data.
     completed_fnames = ds_path.glob(
