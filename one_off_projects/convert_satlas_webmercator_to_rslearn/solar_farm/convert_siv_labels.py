@@ -77,7 +77,7 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
         geometry["coordinates"] = (
             np.array(geometry["coordinates"]) - [window.bounds[0], window.bounds[1]]
         ).tolist()
-        shapes.append((geometry, 255))
+        shapes.append((geometry, 1))
     if shapes:
         mask = rasterio.features.rasterize(
             shapes,

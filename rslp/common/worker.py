@@ -19,7 +19,8 @@ from beaker import (
 )
 from google.cloud import pubsub_v1, storage
 
-from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE, IMAGE_NAME, get_base_env_vars
+from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE
+from rslp.launcher_lib import get_base_env_vars
 from rslp.log_utils import get_logger
 from rslp.main import run_workflow
 
@@ -196,6 +197,7 @@ def launch_worker(project_id: str, subscription_id: str) -> None:
 
 
 def launch_workers(
+    image_name: str,
     project_id: str,
     subscription_id: str,
     num_workers: int,
@@ -207,6 +209,7 @@ def launch_workers(
     """Start workers for the prediction jobs.
 
     Args:
+        image_name: the Beaker image name to use for the jobs.
         project_id: the Google Cloud project ID.
         subscription_id: the Pub/Sub subscription ID.
         num_workers: number of workers to launch
@@ -224,7 +227,7 @@ def launch_workers(
             spec = ExperimentSpec.new(
                 budget=BUDGET,
                 description="worker",
-                beaker_image=IMAGE_NAME,
+                beaker_image=image_name,
                 priority=priority,
                 command=["python", "-m", "rslp.main"],
                 arguments=[
