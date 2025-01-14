@@ -51,7 +51,8 @@ It is an rslearn dataset consisting of window folders like
   the bounds of the window which are in `metadata.json`, so subtract the window's
   bounds to get pixel coordinates relative to the image.
 
-To train the model, run:
+Use the command below to train the model. Note that Weights & Biases is needed. You can
+disable W&B with `--no_log true` but then it may be difficult to track the metrics.
 
     python -m rslp.rslearn_main model fit --config data/sentinel2_vessels/config.yaml --data.init_args.path project_data/datasets/sentinel2_vessels/
 
