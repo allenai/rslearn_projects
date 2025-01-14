@@ -304,7 +304,7 @@ extra_args_model_predict="$extra_args_model_predict" \
             --task_name $TASK_NAME \
             --budget $BUDGET \
             --workspace $WORKSPACE \
-            --extra_args \"$EXTRA_ARGS\" && \
+            --extra_args \"$EXTRA_ARGS\"" && \
         echo "INFERENCE_JOB_LAUNCH_COMMAND: $INFERENCE_JOB_LAUNCH_COMMAND" && \
         echo "Launching inference job on Beaker" && \
         docker run -e BEAKER_TOKEN=$BEAKER_TOKEN \
