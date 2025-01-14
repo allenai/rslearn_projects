@@ -9,10 +9,12 @@ turbines.
 It inputs four mosaics of Sentinel-2 images, where each mosaic should be constructed
 using Sentinel-2 scenes from a distinct 30-day period.
 
-TODO: It is trained on a dataset consisting of 43,443 image patches (ranging from 300x300 to
-1000x1000) with 37,145 ship labels.
+The model consists of a SatlasPretrain backbone to extract features from the image time
+series, paired with a Faster R-CNN decoder to predict bounding boxes. Note that the
+actual labels are points but the model is trained to predict bounding boxes.
 
-TODO: insert example image
+It is trained on a dataset consisting of 7,197 image patches (ranging from 300x300 to
+1000x1000) with 8,791 turbine labels and 4,459 platform labels.
 
 
 Inference
@@ -110,4 +112,4 @@ disable W&B with `--no_log true` but then it may be difficult to track the metri
 To visualize outputs on the validation set:
 
     mkdir vis
-    python -m rslp.rslearn_main model test --config data/satlas_marine_infra/config.yaml --data.init_args.path project_data/datasets/satlas_marine_infra/ --model.init_args.visualize_dir=vis/
+    python -m rslp.rslearn_main model test --config data/satlas_marine_infra/config.yaml --data.init_args.path project_data/datasets/satlas_marine_infra/ --model.init_args.visualize_dir=vis/ --load_best true
