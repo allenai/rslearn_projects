@@ -6,6 +6,8 @@ authors = [
     {name = "Favyen Bastani", email = "favyenb@allenai.org"},
     {name = "Patrick Beukema", email = "patrickb@allenai.org"},
     {name = "Henry Herzog", email = "henryh@allenai.org"},
+    {name = "Yawen Zhang", email = "yawenz@allenai.org"},
+    {name = "Mike Jacobi", email = "mikej@allenai.org"},
 ]
 readme = "README.md"
 requires-python = ">=3.10"
