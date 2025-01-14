@@ -17,6 +17,7 @@ Install rslearn:
 
 Install requirements:
 
+    cd ..
     git clone https://github.com/allenai/rslearn_projects.git
     cd rslearn_projects
     pip install -r requirements.txt

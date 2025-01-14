@@ -3,10 +3,10 @@ Sentinel-2 Vessel Detection
 
 The Sentinel-2 vessel detection model detects ships in Sentinel-2 L1C scenes.
 
-TODO: insert example image
-
 It is trained on a dataset consisting of 43,443 image patches (ranging from 300x300 to
 1000x1000) with 37,145 ship labels.
+
+![Image showing a Sentinel-2 image with predicted positions of ships from the model overlayed.](./images/sentinel2_vessels/prediction.png)
 
 
 Inference
@@ -16,7 +16,7 @@ First, download the model checkpoint to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
     mkdir -p project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/
-    wget XYZ -O project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/best.ckpt
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/sentinel2_vessels/best.ckpt -O project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/last.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in
 `rslp/sentinel2_vessels/predict_pipeline.py`. It accepts a Sentinel-2 scene ID and
@@ -39,7 +39,7 @@ First, download the training dataset:
 
     cd rslearn_projects
     mkdir -p project_data/datasets/sentinel2_vessels/
-    wget XYZ -O project_data/datasets/sentinel2_vessels.tar
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/sentinel2_vessels/sentinel2_vessels.tar -O project_data/datasets/sentinel2_vessels.tar
     tar xvf project_data/datasets/sentinel2_vessels.tar --directory project_data/datasets/sentinel2_vessels/
 
 It is an rslearn dataset consisting of window folders like
@@ -54,3 +54,8 @@ It is an rslearn dataset consisting of window folders like
 To train the model, run:
 
     python -m rslp.rslearn_main model fit --config data/sentinel2_vessels/config.yaml --data.init_args.path project_data/datasets/sentinel2_vessels/
+
+To visualize outputs on the validation set:
+
+    mkdir vis
+    python -m rslp.rslearn_main model test --config data/sentinel2_vessels/config.yaml --data.init_args.path project_data/datasets/sentinel2_vessels/ --model.init_args.visualize_dir vis/ --load_best true
