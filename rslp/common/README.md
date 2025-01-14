@@ -24,4 +24,4 @@ Then you can launch the worker. To test on one machine:
 
 And to launch 100 workers on Beaker:
 
-    python -m rslp.main common launch skylight-proto-1 rslp-job-queue-YOURNAME-sub 100 --gpus 1 --shared_memory 256GiB
+    python -m rslp.main common launch BEAKER_IMAGE_NAME skylight-proto-1 rslp-job-queue-YOURNAME-sub 100 --gpus 1 --shared_memory 256GiB
