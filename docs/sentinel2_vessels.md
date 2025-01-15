@@ -1,10 +1,14 @@
 Sentinel-2 Vessel Detection
 ---------------------------
 
-The Sentinel-2 vessel detection model detects ships in Sentinel-2 L1C scenes.
+The Sentinel-2 vessel detection model detects ships in Sentinel-2 L1C scenes. We use
+L1C instead of L2A since L1C scenes are released with a lower latency, and latency is
+important for [Skylight](https://www.skylight.global/) (which is the primary use of
+this model within Ai2).
 
 It is trained on a dataset consisting of 43,443 image patches (ranging from 300x300 to
-1000x1000) with 37,145 ship labels.
+1000x1000) with 37,145 ship labels. See [our paper](https://arxiv.org/pdf/2312.03207)
+for more details about the model and dataset.
 
 ![Image showing a Sentinel-2 image with predicted positions of ships from the model overlayed.](./images/sentinel2_vessels/prediction.png)
 
