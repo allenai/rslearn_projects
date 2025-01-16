@@ -18,8 +18,8 @@ LANDSAT_BANDS = [
 ]
 
 # Model config
-DETECT_MODEL_CONFIG = "data/landsat_vessels/detector_config.yaml"
-CLASSIFY_MODEL_CONFIG = "data/landsat_vessels/classifier_config.yaml"
+DETECT_MODEL_CONFIG = "data/landsat_vessels/config_detector.yaml"
+CLASSIFY_MODEL_CONFIG = "data/landsat_vessels/config_classifier.yaml"
 CLASSIFY_WINDOW_SIZE = 64
 
 # Filter config
