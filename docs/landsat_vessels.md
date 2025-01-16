@@ -5,7 +5,7 @@ The Landsat vessel detection model detects ships in Landsat 8/9 scenes. We use L
 important for [Skylight](https://www.skylight.global/) (which is the primary use of
 this model within Ai2).
 
-The model includes of a detector and a classifier: the detector detects ship-like objects, and the classifier refines these detections. The detector is trained on a dataset consisting of 7,954 Landsat patches (ranging from 384x384 to 768x768) with 18,509 ship labels. The classifier is trained on a dataset consisting of about 2,000 annotated detections (the input patch size is 64x64). See [our paper](https://arxiv.org/pdf/2312.03207) for more details about the model and dataset.
+The model includes of a detector and a classifier: the detector detects ship-like objects, and the classifier refines these detections by pruning ones that it is confident are not ships. The detector is trained on a dataset consisting of 7,954 Landsat patches (ranging from 384x384 to 768x768) with 18,509 ship labels. The classifier is trained on a dataset consisting of 1,733 annotated detections, with each detection represented as a 64x64 patch centered at the position of a detected ship. See our paper for more details about the model and dataset.
 
 <div style="text-align: center;">
     <img src="./images/landsat_vessels/prediction.png"
@@ -26,13 +26,37 @@ First, download the detector and classifier checkpoints to the `RSLP_PREFIX` dir
     mkdir -p project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/checkpoints/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/classifer/best.ckpt -O project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/checkpoints/last.ckpt
 
-The esasiest way to apply the model is using the prediction pipeline in `rslp/landsat_vessels/predict_pipeline.py`. It accepts a Landsat scene ID and automatically downloads the scene images from [AWS](https://aws.amazon.com/marketplace/pp/prodview-ivr4jeq6flk7u#resources). You will need to set up your AWS account for accessing Landsat data.
+The easiest way to apply the model is using the prediction pipeline in `rslp/landsat_vessels/predict_pipeline.py`. You can download the Landsat scene files, e.g. from USGS EarthExplorer or AWS, and then create a configuration file for the prediction pipeline, here is an example:
 
-    mkdir scratch_dir
-    mkdir crop_dir
-    python -m rslp.main landsat_vessels predict --scene_id LC09_L1TP_193030_20241104_20241104_02_T1 --scratch_path scratch_dir --crop_path crop_dir --json_path output.json
+```json
+{
+    "image_files": {
+    "B2": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B2.TIF",
+    "B3": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B3.TIF",
+    "B4": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B4.TIF",
+    "B5": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B5.TIF",
+    "B6": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B6.TIF",
+    "B7": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B7.TIF",
+    "B8": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B8.TIF",
+    },
+    "scratch_path": "/home/data/scratch/",
+    "json_path": "/home/data/vessels.json",
+    "crop_path": "/home/data/crops/"
+}
+```
 
-Then, `scratch_dir` will save the rslearn dataset, `crop_dir` will save the cropped RGB images centered around the detected ships, and `output.json` will save the JSON output of the detected ships.
+This specifies the arguments to
+`rslp.landsat_vessels.predict_pipeline.predict_pipeline` via `jsonargparse`.
+
+Now we can run the pipeline:
+
+    python -m rslp.main landsat_vessels predict --config /path/to/config.json
+
+Here, `scratch_path` saves the rslearn dataset, `crop_path` saves the cropped RGB images centered around the detected ships, and `json_path` saves the JSON output of the detected ships, all of which are optional, depending on whether the user wants to save the intermediate results or not.
+
+The prediction pipeline also accepts a Landsat scene ID and automatically downloads the scene images from [AWS](https://aws.amazon.com/marketplace/pp/prodview-ivr4jeq6flk7u#resources). You will need to set up your AWS account for accessing Landsat data. Use the command below to run pipeline with scene ID:
+
+    python -m rslp.main landsat_vessels predict --scene_id LC08_L1TP_125059_20240727_20240801_02_T1
 
 
 Training
@@ -64,4 +88,4 @@ Second, download the training dataset for classifier:
 
 Use the command below to train the classifier.
 
-    python -m rslp.rslearn_main model fit --config data/landsat_vessels/config_classifer.yaml --data.init_args.path project_data/datasets/landsat_vessels/dataset_20240905/
+    python -m rslp.rslearn_main model fit --config data/landsat_vessels/config_classifier.yaml --data.init_args.path project_data/datasets/landsat_vessels/dataset_20240905/
