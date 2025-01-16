@@ -1,17 +1,23 @@
 Landsat Vessel Detection
 ---------------------------
 
-The Landsat vessel detection model detects vessels in Landsat 8 and 9 scenes.
+The Landsat vessel detection model detects ships in Landsat 8/9 scenes. We use Level-1 data since they are released with a lower latency, and latency is
+important for [Skylight](https://www.skylight.global/) (which is the primary use of
+this model within Ai2).
 
-A two-stage model is trained to detect vessels from Landsat scenes, consisting of a detector and a classifier. The detector is trained on a dataset consisting of 7,954 Landsat patches (ranging from 384x384 to 768x768) with 18,509 vessel labels. The classifier is trained on a dataset consisting of about 2,000 annotated detections (the input patch size is 64x64). See [our paper](https://arxiv.org/pdf/2312.03207) for more details about the model and dataset.
+The model includes of a detector and a classifier: the detector detects ship-like objects, and the classifier refines these detections. The detector is trained on a dataset consisting of 7,954 Landsat patches (ranging from 384x384 to 768x768) with 18,509 ship labels. The classifier is trained on a dataset consisting of about 2,000 annotated detections (the input patch size is 64x64). See [our paper](https://arxiv.org/pdf/2312.03207) for more details about the model and dataset.
 
-![Image showing a Landsat image with predicted positions of ships from the model overlayed.]()
+<div style="text-align: center;">
+    <img src="./images/landsat_vessels/prediction.png"
+         alt="Image showing a Landsat image with predicted positions of ships from the model overlayed."
+         style="max-width: 60%; height: auto; margin: auto;">
+</div>
 
 
 Inference
 ---------
 
-First, download the both the detector and classifier checkpoint to the `RSLP_PREFIX` directory.
+First, download the detector and classifier checkpoints to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
     mkdir -p project_data/projects/landsat_vessels/data_20240924_model_20240924_imagenet_patch512_flip_03/checkpoints/
@@ -20,11 +26,13 @@ First, download the both the detector and classifier checkpoint to the `RSLP_PRE
     mkdir -p project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/checkpoints/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/classifer/best.ckpt -O project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/checkpoints/last.ckpt
 
-The esasiest way to apply the model is using the prediction pipeline in `rslp/landsat_vessels/predict_pipeline.py`. It accepts a Landsat scene ID and automatically downloads the scene images from AWS.
+The esasiest way to apply the model is using the prediction pipeline in `rslp/landsat_vessels/predict_pipeline.py`. It accepts a Landsat scene ID and automatically downloads the scene images from [AWS](https://aws.amazon.com/marketplace/pp/prodview-ivr4jeq6flk7u#resources). You will need to set up your AWS account for accessing Landsat data.
 
-    mkdir output_crops
+    mkdir scratch_dir
+    mkdir crop_dir
+    python -m rslp.main landsat_vessels predict --scene_id LC09_L1TP_193030_20241104_20241104_02_T1 --scratch_path scratch_dir --crop_path crop_dir --json_path output.json
 
-TODO: add the command here.
+Then, `scratch_dir` will save the rslearn dataset, `crop_dir` will save the cropped RGB images centered around the detected ships, and `output.json` will save the JSON output of the detected ships.
 
 
 Training
@@ -34,19 +42,26 @@ First, download the training dataset for detector:
 
     cd rslearn_projects
     mkdir -p project_data/datasets/landsat_vessels/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/landsat_vessels_detector.tar -0
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/landsat_vessels_detector.tar -0 project_data/datasets/landsat_vessels_detector.tar
     tar xvf project_data/datasets/landsat_vessels_detector.tar --directory project_data/datasets/landsat_vessels/
 
-It is an rslearn dataset consisting of window folders like
+It is an rslearn dataset consisting of window folders like `windows/labels_utm/41984_2354176_f7c057a567ee40b694d0a77ea59ef81a_6359/`. Inside each window folder:
 
-Use the command below to train the model. Note that Weights & Biases is needed.
+- `layers/landsat/` contains different Landsat bands used by the model.
+- `layers/label/data.geojson` contains the positions of ships. These are offset from
+  the bounds of the window which are in `metadata.json`, so subtract the window's
+  bounds to get pixel coordinates relative to the image.
 
+Use the command below to train the detector. Note that Weights & Biases is needed. You can
+disable W&B with `--no_log true` but then it may be difficult to track the metrics.
+
+    python -m rslp.rslearn_main model fit --config data/landsat_vessels/config_detector.yaml --data.init_args.path project_data/datasets/landsat_vessels/dataset_20240924/
 
 Second, download the training dataset for classifier:
 
-    cd rslearn_projects
-    mkdir -p project_data/datasets/landsat_vessels/
-    wget  -0
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/landsat_vessels_classifier.tar -0 project_data/datasets/landsat_vessels_classifier.tar
     tar xvf project_data/dataset/landsat_vessels_classifier.tar --directory project_data/datasets/landsat_vessels/
 
-To visualize outputs on the
+Use the command below to train the classifier.
+
+    python -m rslp.rslearn_main model fit --config data/landsat_vessels/config_classifer.yaml --data.init_args.path project_data/datasets/landsat_vessels/dataset_20240905/
