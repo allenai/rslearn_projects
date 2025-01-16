@@ -6,7 +6,7 @@ for machine learning applications built on top of
 [rslearn](https://github.com/allenai/rslearn/) at Ai2.
 
 - **Model weights and Code**: Licensed under [Apache License 2.0](LICENSE).
-- **Annotations**: Licensed under [CC-BY 4.0](DATA_LICENSE).
+- **Annotations**: Licensed under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 
 Setup
