@@ -5,8 +5,8 @@ rslearn_projects contains the training datasets, model weights, and correspondin
 for machine learning applications built on top of
 [rslearn](https://github.com/allenai/rslearn/) at Ai2.
 
-The model weights and code are released under Apache License 2.0 while the annotations
-are released under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).
+- **Model weights and Code**: Licensed under [Apache License 2.0](LICENSE).
+- **Annotations**: Licensed under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 
 Setup
