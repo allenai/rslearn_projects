@@ -54,7 +54,7 @@ Now we can run the pipeline:
 
 Here, `scratch_path` saves the rslearn dataset, `crop_path` saves the cropped RGB images centered around the detected ships, and `json_path` saves the JSON output of the detected ships, all of which are optional, depending on whether the user wants to save the intermediate results or not.
 
-The prediction pipeline also accepts a Landsat scene ID and automatically downloads the scene images from [AWS](https://aws.amazon.com/marketplace/pp/prodview-ivr4jeq6flk7u#resources). You will need to set up your AWS account for accessing Landsat data. Use the command below to run pipeline with scene ID:
+The prediction pipeline also accepts a Landsat scene ID and automatically downloads the scene images from [AWS](https://aws.amazon.com/marketplace/pp/prodview-ivr4jeq6flk7u#resources). You will need to set up your AWS account for accessing Landsat data. Use the command below to run the pipeline with scene ID:
 
     python -m rslp.main landsat_vessels predict --scene_id LC08_L1TP_125059_20240727_20240801_02_T1
 
