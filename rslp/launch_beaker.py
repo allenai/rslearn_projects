@@ -13,10 +13,6 @@ from rslp import launcher_lib
 DEFAULT_WORKSPACE = "ai2/earth-systems"
 BUDGET = "ai2/prior"
 
-# I should make a docker image specifc to this project
-# Need to add the following functionality
-# upload a specified image
-
 
 def launch_job(
     config_path: str,
@@ -104,7 +100,9 @@ def launch_job(
                     config_path,
                     "--autoresume=true",
                 ],
-                constraints=Constraints(cluster=["ai2/jupiter-cirrascale-2"]),
+                constraints=Constraints(
+                    cluster=["ai2/jupiter-cirrascale-2", "ai2/augusta-google-1"]
+                ),
                 preemptible=True,
                 datasets=[launcher_lib.create_gcp_credentials_mount()],
                 env_vars=env_vars,
