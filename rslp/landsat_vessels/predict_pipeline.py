@@ -215,7 +215,7 @@ def run_classifier(
             window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     logger.info("materialize dataset")
-    apply_windows_args = ApplyWindowsArgs(group=group)
+    apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
     materialize_pipeline_args = MaterializePipelineArgs(
         disabled_layers=[],
         prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),

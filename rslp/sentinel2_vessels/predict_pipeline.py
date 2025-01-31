@@ -137,7 +137,7 @@ def get_vessel_detections(
         window.save_layer_datas(dict(SENTINEL2_LAYER_NAME=layer_data))
 
     logger.info("Materialize dataset for Sentinel-2 Vessel Detection")
-    apply_windows_args = ApplyWindowsArgs(group=group, workers=1)
+    apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
     materialize_pipeline_args = MaterializePipelineArgs(
         disabled_layers=[],
         prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
@@ -296,9 +296,6 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
         crop_fname = crop_upath / f"{detection.col}_{detection.row}.png"
         with crop_fname.open("wb") as f:
             Image.fromarray(image.transpose(1, 2, 0)).save(f, format="PNG")
-
-        if scene_id not in json_vessels_by_scene:
-            json_vessels_by_scene[scene_id] = []
 
         json_vessels_by_scene[scene_id].append(
             dict(

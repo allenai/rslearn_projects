@@ -61,10 +61,7 @@ def launch_job(image_name: str, tasks: list[PredictionTask]) -> None:
             ],
             constraints=Constraints(
                 cluster=[
-                    # Don't use Renton cirrascale since it loads very slowly from Weka.
-                    "ai2/prior-elanding",
                     "ai2/jupiter-cirrascale-2",
-                    "ai2/neptune-cirrascale",
                 ]
             ),
             preemptible=True,
