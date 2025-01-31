@@ -1,11 +1,17 @@
 """Worker to process jobs in a list of jobs."""
 
 import json
+import os
+import shutil
+import signal
+import sys
+import tempfile
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from concurrent import futures
-from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import tqdm
 from beaker import (
@@ -17,7 +23,7 @@ from beaker import (
     Priority,
     TaskResources,
 )
-from google.cloud import pubsub_v1, storage
+from google.cloud import pubsub_v1
 
 from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE
 from rslp.launcher_lib import get_base_env_vars
@@ -30,38 +36,27 @@ logger = get_logger(__name__)
 # about a pending claim that hasn't completed yet.
 MAX_JOB_HOURS = 4
 
+# Scratch directory that jobs can use and it will be managed by this module.
+SCRATCH_DIRECTORY = "/tmp/scratch"
 
-def _get_pending_jobs(
-    jobs: list[list[str]], claim_bucket: storage.Bucket, claim_dir: str
-) -> list[int]:
-    """Get the indices of jobs that haven't been claimed yet.
+DATA_DISK = "/data/rslearn_projects"
+
+
+def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
+    """Make a signal handler that cleans up the specified directory before exiting.
+
+    This should be passed as the handler to signal.signal.
 
     Args:
-        jobs: the full list of jobs.
-        claim_bucket: bucket where files indicating completed jobs are written.
-        claim_dir: path within bucket.
+        tmp_dir: the directory to delete when the signal is received.
     """
-    claimed = set()
-    # Pending claims are only valid for a few hours.
-    for blob in claim_bucket.list_blobs(prefix=f"{claim_dir}pending/"):
-        if datetime.now(timezone.utc) - blob.time_created > timedelta(
-            hours=MAX_JOB_HOURS
-        ):
-            # This is a stale pending claim (the job may have completed, but if so we
-            # will see its completed blob below).
-            continue
-        claimed.add(int(blob.name.split("/")[-1]))
-    # While completed files indicate that the job is done permanently.
-    for blob in claim_bucket.list_blobs(prefix=f"{claim_dir}completed/"):
-        claimed.add(int(blob.name.split("/")[-1]))
 
-    pending = []
-    for idx in range(len(jobs)):
-        if idx in claimed:
-            continue
-        pending.append(idx)
+    def cleanup_signal_handler(signo: int, stack_frame: Any) -> None:
+        logger.error(f"cleanup_signal_handler: caught signal {signo}")
+        shutil.rmtree(tmp_dir)
+        sys.exit(1)
 
-    return pending
+    return cleanup_signal_handler
 
 
 def worker_pipeline(
@@ -70,6 +65,7 @@ def worker_pipeline(
     retries: int = 3,
     retry_sleep: int = 60,
     idle_timeout: int = 10,
+    manage_scratch_dir_on_data_disk: bool = False,
 ) -> None:
     """Start a worker to run jobs from a Pub/Sub subscription.
 
@@ -86,7 +82,21 @@ def worker_pipeline(
         retry_sleep: sleep for this many seconds between retries. Sleeping helps in
             case there is an error due to rate limiting.
         idle_timeout: seconds before we terminate if there is no activity.
+        manage_scratch_dir_on_data_disk: whether to create SCRATCH_DIRECTORY on the
+            /data disk and manage it to ensure it is deleted in case of SIGTERM.
     """
+    if manage_scratch_dir_on_data_disk:
+        # Some tasks use SCRATCH_DIRECTORY, and if management is enabled, it means we
+        # should put the SCRATCH_DIRECTORY on the /data/ disk (via symlink), and that
+        # we must ensure it is deleted in case SIGTERM is received (i.e. if the Beaker
+        # job is cancelled or pre-empted.
+        os.makedirs(DATA_DISK, exist_ok=True)
+        tmp_dir_on_data_disk = tempfile.TemporaryDirectory(dir=DATA_DISK)
+        os.symlink(tmp_dir_on_data_disk.name, SCRATCH_DIRECTORY)
+        signal.signal(
+            signal.SIGTERM, get_cleanup_signal_handler(tmp_dir_on_data_disk.name)
+        )
+
     subscriber = pubsub_v1.SubscriberClient()
     subscription_path = subscriber.subscription_path(project_id, subscription_id)
 
@@ -144,7 +154,7 @@ def worker_pipeline(
         max_messages=1,
         max_lease_duration=24 * 3600,
     )
-    executor = futures.ThreadPoolExecutor(max_workers=5)
+    executor = futures.ThreadPoolExecutor(max_workers=1)
     scheduler = pubsub_v1.subscriber.scheduler.ThreadScheduler(executor)
     streaming_pull_future = subscriber.subscribe(
         subscription_path,
@@ -205,6 +215,7 @@ def launch_workers(
     shared_memory: str | None = None,
     priority: Priority = Priority.low,
     cluster: list[str] = ["ai2/augusta-google-1"],
+    manage_scratch_dir_on_data_disk: bool = False,
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -217,6 +228,7 @@ def launch_workers(
         shared_memory: shared memory string like "256GiB".
         priority: priority to assign the Beaker jobs.
         cluster: clusters to target.
+        manage_scratch_dir_on_data_disk: see worker_pipeline.
     """
     beaker = Beaker.from_env(default_workspace=DEFAULT_WORKSPACE)
 
@@ -235,6 +247,8 @@ def launch_workers(
                     "worker",
                     project_id,
                     subscription_id,
+                    "--manage_scratch_dir_on_data_disk",
+                    str(manage_scratch_dir_on_data_disk),
                 ],
                 constraints=Constraints(
                     cluster=cluster,
@@ -244,6 +258,10 @@ def launch_workers(
                     DataMount(
                         source=DataSource(secret="RSLEARN_GCP_CREDENTIALS"),  # nosec
                         mount_path="/etc/credentials/gcp_credentials.json",  # nosec
+                    ),
+                    DataMount(
+                        source=DataSource(host_path="/data"),
+                        mount_path="/data",
                     ),
                 ],
                 env_vars=env_vars,

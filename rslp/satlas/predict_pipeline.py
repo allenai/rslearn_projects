@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import tempfile
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -202,15 +203,26 @@ def predict_pipeline(
 
     # Populate the windows.
     logger.info("materialize dataset")
-    apply_windows_args = ApplyWindowsArgs(group=group, workers=1)
     materialize_pipeline_args = MaterializePipelineArgs(
         disabled_layers=[],
-        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
+        # Use initial job for prepare since it involves locally caching the tile index
+        # and other steps that should only be performed once.
+        prepare_args=PrepareArgs(
+            apply_windows_args=ApplyWindowsArgs(
+                group=group, workers=32, use_initial_job=True
+            )
+        ),
         ingest_args=IngestArgs(
-            ignore_errors=False, apply_windows_args=apply_windows_args
+            ignore_errors=False,
+            apply_windows_args=ApplyWindowsArgs(
+                group=group, workers=32, use_initial_job=False
+            ),
         ),
         materialize_args=MaterializeArgs(
-            ignore_errors=False, apply_windows_args=apply_windows_args
+            ignore_errors=False,
+            apply_windows_args=ApplyWindowsArgs(
+                group=group, workers=32, use_initial_job=False
+            ),
         ),
     )
     materialize_dataset(ds_path, materialize_pipeline_args=materialize_pipeline_args)
@@ -341,17 +353,15 @@ def predict_multi(
         scratch_path: local directory to use for scratch space.
         tasks: list of tasks to execute.
     """
-    if os.path.exists(scratch_path):
-        shutil.rmtree(scratch_path)
-
+    os.makedirs(scratch_path, exist_ok=True)
     for task in tasks:
-        predict_pipeline(
-            application=application,
-            projection_json=json.dumps(task.projection_json),
-            bounds=task.bounds,
-            time_range=task.time_range,
-            out_path=out_path,
-            scratch_path=scratch_path,
-        )
-        if os.path.exists(scratch_path):
-            shutil.rmtree(scratch_path)
+        with tempfile.TemporaryDirectory(dir=scratch_path) as tmp_dir:
+            logger.info(f"running task {task} in temporary directory {tmp_dir}")
+            predict_pipeline(
+                application=application,
+                projection_json=json.dumps(task.projection_json),
+                bounds=task.bounds,
+                time_range=task.time_range,
+                out_path=out_path,
+                scratch_path=os.path.join(tmp_dir, "scratch"),
+            )
