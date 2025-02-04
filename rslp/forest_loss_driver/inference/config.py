@@ -72,11 +72,18 @@ class ExtractAlertsArgs:
         default_factory=lambda: datetime.now(timezone.utc)
     )
     min_confidence: int = 2
-    days: int = 180
+    days: int = 365
     min_area: float = 16.0
     max_number_of_events: int | None = None
     group: str | None = None
     workers: int = field(default_factory=get_default_workers)
+
+    # Parameters to fill in for the dataset configuration file.
+    # Absolute paths are preferred here so that these directories can be shared across
+    # different runs of the pipeline.
+    # The default empty string results in using relative path within the dataset root.
+    index_cache_dir: str = ""
+    tile_store_dir: str = ""
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -91,7 +98,7 @@ class ExtractAlertsArgs:
 
 @dataclass
 class ForestLossDriverMaterializeArgs(MaterializePipelineArgs):
-    """Arguments for materialize_forest_loss_driver_dataset.
+    """Arguments for materialize_dataset, with defaults for forest loss application.
 
     Args:
         disabled_layers: the list of layers to disable for prepare/ingest/materialize.
@@ -176,7 +183,7 @@ class PredictPipelineConfig:
     def _default_ds_root() -> str:
         friday = PredictPipelineConfig._get_most_recent_friday()
         dated_dataset_name = f"dataset_{friday.strftime('%Y%m%d')}"
-        return f"{os.environ.get('RSLP_PREFIX', 'gs://rslearn-eai')}/datasets/forest_loss_driver/prediction/{dated_dataset_name}"
+        return f"{os.environ['RSLP_PREFIX']}/datasets/forest_loss_driver/prediction/{dated_dataset_name}"
 
     model_predict_args: ModelPredictArgs
     ds_root: str = field(default_factory=_default_ds_root)

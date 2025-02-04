@@ -1,6 +1,7 @@
 extract_alerts_args:
+  index_cache_dir: /tmp/index_cache_dir/
+  tile_store_dir: weka://dfive-default/rslearn-eai/datasets/forest_loss_driver/tile_store_root_dir/
   workers: 112
-  days: 90
 materialize_pipeline_args:
   prepare_args:
     apply_windows_args:
