@@ -30,8 +30,8 @@ Note: The evaluation metrics are reported for the two-stage model (detector + cl
 ---
 
 ## Model Configurations
-- **Detector**: `rslearn_projects/data/landsat_vessels/config.yaml`
-- **Classifier**: `rslearn_projects/landsat/recheck_landsat_labels/phase123_config.yaml`
+- **Detector**: `rslearn_projects/data/landsat_vessels/config_detector.yaml`
+- **Classifier**: `rslearn_projects/data/landsat_vessels/config_classifier.yaml`
 - **Filters**: marine infrastructure `rslearn_projects/rslp/utils/filter.py`
 
 ---

@@ -12,17 +12,17 @@ This detects vessels in Landsat imagery using two models:
 
 The object detector can be trained like this:
 
-    python -m rslp.rslearn_main model fit --config data/landsat_vessels/config.yaml
+    python -m rslp.rslearn_main model fit --config data/landsat_vessels/config_detector.yaml
 
 The dataset was originally labeled in siv and has been converted to rslearn dataset
 using the code in `landsat/existing_dataset_to_utm/`.
 
 The classifier can be trained like this:
 
-    python -m rslp.rslearn_main model fit --config landsat/recheck_landsat_labels/phase123_config.yaml
+    python -m rslp.rslearn_main model fit --config data/landsat_vessels/config_classifier.yaml
 
 The data collection process for the classifier is described in
-`landsat/recheck_landsat_labels/README.md`.
+`one_off_projects/landsat/recheck_landsat_labels/README.md`.
 
 ---
 
