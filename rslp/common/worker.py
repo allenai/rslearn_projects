@@ -25,10 +25,10 @@ from beaker import (
 )
 from google.cloud import pubsub_v1
 
-from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE
-from rslp.launcher_lib import get_base_env_vars
+from rslp.launch_beaker import DEFAULT_WORKSPACE
 from rslp.log_utils import get_logger
 from rslp.main import run_workflow
+from rslp.utils.beaker import DEFAULT_BUDGET, get_base_env_vars
 
 logger = get_logger(__name__)
 
@@ -237,7 +237,7 @@ def launch_workers(
             env_vars = get_base_env_vars(use_weka_prefix=False)
 
             spec = ExperimentSpec.new(
-                budget=BUDGET,
+                budget=DEFAULT_BUDGET,
                 description="worker",
                 beaker_image=image_name,
                 priority=priority,

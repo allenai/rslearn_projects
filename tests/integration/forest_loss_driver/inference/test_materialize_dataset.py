@@ -10,10 +10,8 @@ import pytest
 from upath import UPath
 
 from rslp.forest_loss_driver.inference.config import ForestLossDriverMaterializeArgs
-from rslp.forest_loss_driver.inference.materialize_dataset import (
-    materialize_forest_loss_driver_dataset,
-)
 from rslp.log_utils import get_logger
+from rslp.utils.rslearn import materialize_dataset
 
 logger = get_logger(__name__)
 
@@ -55,9 +53,7 @@ def test_materialize_forest_loss_driver_dataset(
             )
         shutil.copytree(test_unmaterialized_dataset_path, tmp_dir, dirs_exist_ok=True)
 
-        materialize_forest_loss_driver_dataset(
-            UPath(tmp_dir), materialize_pipeline_args
-        )
+        materialize_dataset(UPath(tmp_dir), materialize_pipeline_args)
         # Output of Prepare Step
         items_json_path = (
             Path(tmp_dir)
