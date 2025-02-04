@@ -34,6 +34,17 @@
       "data_source": {
         "ingest": false,
         "name": "rslp.satlas.data_sources.MonthlySentinel1",
+        "query": {
+          "sar:instrument_mode": {
+            "eq": "IW"
+          },
+          "sar:polarizations": {
+            "eq": [
+              "VV",
+              "VH"
+            ]
+          }
+        },
         "query_config": {
           "max_matches": 6
         }

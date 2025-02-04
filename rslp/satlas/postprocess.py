@@ -40,9 +40,19 @@ APP_CATEGORY_MAPS = {
 logger = get_logger(__name__)
 
 
-def _get_fc(fname: UPath) -> dict[str, Any]:
+def _get_fc(fname: UPath) -> tuple[UPath, dict[str, Any]]:
+    """Read the FeatureCollection from the specified file.
+
+    This is intended to be used as a handler for multiprocessing.
+
+    Args:
+        fname: the filename to read.
+
+    Returns:
+        a tuple (fname, fc) of the filename and the decoded FeatureCollection JSON.
+    """
     with fname.open() as f:
-        return json.load(f)
+        return fname, json.load(f)
 
 
 def apply_nms(
@@ -131,7 +141,7 @@ def merge_points(
     # Get category remapping in case one is specified for this application.
     category_map = APP_CATEGORY_MAPS.get(application, {})
 
-    for cur_fc in tqdm.tqdm(outputs, total=len(fnames)):
+    for fname, cur_fc in tqdm.tqdm(outputs, total=len(fnames)):
         # The projection information may be missing if there are no valid patches.
         if "crs" not in cur_fc["properties"]:
             # Just do some sanity checks, there should be no features and no valid
