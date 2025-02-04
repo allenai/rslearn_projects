@@ -2,7 +2,6 @@
 
 import json
 import shutil
-from datetime import datetime
 from typing import Any
 
 import rasterio
@@ -12,7 +11,6 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import Item, data_source_from_config
 from rslearn.data_sources.gcp_public_data import Sentinel2
 from rslearn.dataset import Dataset, Window, WindowLayerData
-from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from upath import UPath
 
@@ -27,67 +25,51 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
+from rslp.vessels import VesselDetection
 
 logger = get_logger(__name__)
 
+# Name to use for source attribute in VesselDetection.
+SENTINEL2_SOURCE = "sentinel2"
+
+# Name to use in rslearn dataset for layer containing Sentinel-2 images.
 SENTINEL2_LAYER_NAME = "sentinel2"
+
 DATASET_CONFIG = "data/sentinel2_vessels/config.json"
 DETECT_MODEL_CONFIG = "data/sentinel2_vessels/config.yaml"
+
 SENTINEL2_RESOLUTION = 10
 CROP_WINDOW_SIZE = 64
-INFRA_DISTANCE_THRESHOLD = 0.05  # unit: km, 50 meters
+
+# Distance threshold for near marine infrastructure filter in km.
+# 0.05 km = 50 m
+INFRA_DISTANCE_THRESHOLD = 0.05
 
 
 class PredictionTask:
     """A task to predict vessels in one Sentinel-2 scene."""
 
-    def __init__(self, scene_id: str, json_path: str, crop_path: str):
+    def __init__(
+        self,
+        scene_id: str,
+        json_path: str | None = None,
+        crop_path: str | None = None,
+        geojson_path: str | None = None,
+    ):
         """Create a new PredictionTask.
 
         Args:
             scene_id: the Sentinel-2 scene ID.
             json_path: path to write the JSON of vessel detections.
             crop_path: path to write the vessel crop images.
+            geojson_path: path to write GeoJSON of detections.
         """
         self.scene_id = scene_id
         self.json_path = json_path
         self.crop_path = crop_path
+        self.geojson_path = geojson_path
 
 
-class VesselDetection:
-    """A vessel detected in a Sentinel-2 window."""
-
-    def __init__(
-        self,
-        scene_id: str,
-        col: int,
-        row: int,
-        projection: Projection,
-        score: float,
-        ts: datetime,
-        crop_window_dir: UPath | None = None,
-    ) -> None:
-        """Create a new VesselDetection.
-
-        Args:
-            scene_id: the scene ID that the vessel was detected in.
-            col: the column in projection coordinates.
-            row: the row in projection coordinates.
-            projection: the projection used.
-            score: confidence score from object detector.
-            ts: datetime fo the window.
-            crop_window_dir: the crop window directory.
-        """
-        self.scene_id = scene_id
-        self.col = col
-        self.row = row
-        self.projection = projection
-        self.score = score
-        self.ts = ts
-        self.crop_window_dir = crop_window_dir
-
-
-# TODO: make a simple class to store bounds
 def get_vessel_detections(
     ds_path: UPath,
     items: list[Item],
@@ -170,6 +152,7 @@ def get_vessel_detections(
             score = feature["properties"]["score"]
             detections.append(
                 VesselDetection(
+                    source=SENTINEL2_SOURCE,
                     scene_id=window.name,
                     col=col,
                     row=row,
@@ -222,7 +205,6 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
     for detection in detections:
         window_name = f"{detection.scene_id}_{detection.col}_{detection.row}"
         window_path = ds_path / "windows" / group / window_name
-        detection.crop_window_dir = window_path
         bounds = (
             detection.col - CROP_WINDOW_SIZE // 2,
             detection.row - CROP_WINDOW_SIZE // 2,
@@ -230,6 +212,8 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
             detection.row + CROP_WINDOW_SIZE // 2,
         )
 
+        # scene_id attribute is always set in sentinel2_vessels.
+        assert detection.scene_id is not None
         item = items_by_scene[detection.scene_id]
         window = Window(
             path=window_path,
@@ -262,53 +246,61 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
 
     # Write JSON and crops.
     json_vessels_by_scene: dict[str, list[dict[str, Any]]] = {}
+    geojson_vessels_by_scene: dict[str, list[dict[str, Any]]] = {}
     # Populate the dict so all JSONs are written including empty ones (this way their
     # presence can be used to check for task completion).
     for scene_id in tasks_by_scene.keys():
         json_vessels_by_scene[scene_id] = []
+        geojson_vessels_by_scene[scene_id] = []
 
     near_infra_filter = NearInfraFilter(
         infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
     )
     for detection, crop_window_path in zip(detections, window_paths):
-        # Get longitude/latitude.
-        src_geom = STGeometry(
-            detection.projection, shapely.Point(detection.col, detection.row), None
-        )
-        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
-        lon = dst_geom.shp.x
-        lat = dst_geom.shp.y
-
         # Apply near infra filter (True -> filter out, False -> keep)
-        if near_infra_filter.should_filter(lat, lon):
+        lon, lat = detection.get_lon_lat()
+        if near_infra_filter.should_filter(lon, lat):
             continue
 
+        assert detection.scene_id is not None
         scene_id = detection.scene_id
-        crop_upath = UPath(tasks_by_scene[scene_id].crop_path)
 
-        # Get RGB crop.
-        image_fname = (
-            crop_window_path / "layers" / SENTINEL2_LAYER_NAME / "R_G_B" / "geotiff.tif"
-        )
-        with image_fname.open("rb") as f:
-            with rasterio.open(f) as src:
-                image = src.read()
-        crop_fname = crop_upath / f"{detection.col}_{detection.row}.png"
-        with crop_fname.open("wb") as f:
-            Image.fromarray(image.transpose(1, 2, 0)).save(f, format="PNG")
+        if tasks_by_scene[scene_id].crop_path is not None:
+            crop_upath = UPath(tasks_by_scene[scene_id].crop_path)
 
-        json_vessels_by_scene[scene_id].append(
-            dict(
-                longitude=lon,
-                latitude=lat,
-                score=detection.score,
-                ts=detection.ts.isoformat(),
-                scene_id=scene_id,
-                crop_fname=str(crop_fname),
+            # Get RGB crop.
+            image_fname = (
+                crop_window_path
+                / "layers"
+                / SENTINEL2_LAYER_NAME
+                / "R_G_B"
+                / "geotiff.tif"
             )
-        )
+            with image_fname.open("rb") as f:
+                with rasterio.open(f) as src:
+                    image = src.read()
+            detection.crop_fname = crop_upath / f"{detection.col}_{detection.row}.png"
+            with detection.crop_fname.open("wb") as f:
+                Image.fromarray(image.transpose(1, 2, 0)).save(f, format="PNG")
+
+        json_vessels_by_scene[scene_id].append(detection.to_dict())
+        geojson_vessels_by_scene[scene_id].append(detection.to_feature())
 
     for scene_id, json_data in json_vessels_by_scene.items():
-        json_upath = UPath(tasks_by_scene[scene_id].json_path)
-        with json_upath.open("w") as f:
-            json.dump(json_data, f)
+        if tasks_by_scene[scene_id].json_path is not None:
+            json_upath = UPath(tasks_by_scene[scene_id].json_path)
+            with json_upath.open("w") as f:
+                json.dump(json_data, f)
+
+    for scene_id, geojson_features in geojson_vessels_by_scene.items():
+        if tasks_by_scene[scene_id].geojson_path is not None:
+            geojson_upath = UPath(tasks_by_scene[scene_id].geojson_path)
+            with geojson_upath.open("w") as f:
+                json.dump(
+                    {
+                        "type": "FeatureCollection",
+                        "properties": {},
+                        "features": geojson_features,
+                    },
+                    f,
+                )

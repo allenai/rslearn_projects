@@ -113,6 +113,7 @@ data:
       load_all_patches: true
       skip_targets: true
       patch_size: 512
+      overlap_ratio: 0.1
 trainer:
   max_epochs: 500
   callbacks:
