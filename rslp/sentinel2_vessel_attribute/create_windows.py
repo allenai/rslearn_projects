@@ -18,18 +18,18 @@ from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.mp import star_imap_unordered
 from upath import UPath
 
-from .ship_types import SHIP_TYPES, VESSEL_CATEGORIES
+from .ship_types import VESSEL_CATEGORIES
 
 PIXEL_SIZE = 10
 WINDOW_SIZE = 128
-GROUP = "default"
 DATASET_CONFIG_FNAME = "data/sentinel2_vessel_attribute/config.json"
 
 
-def process_row(ds_upath: UPath, csv_row: dict[str, str]) -> None:
+def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
     """Create a window from one row in the vessel CSV.
 
     Args:
+        group: the rslearn group to add the window to.
         ds_upath: the path of the output rslearn dataset.
         csv_row: the row from vessel CSV.
     """
@@ -40,37 +40,24 @@ def process_row(ds_upath: UPath, csv_row: dict[str, str]) -> None:
         else:
             return None
 
-    if "event_time" in csv_row:
-        event_id = csv_row["event_id"]
-        ts = datetime.fromisoformat(csv_row["event_time"])
-        lat = float(csv_row["lat"])
-        lon = float(csv_row["lon"])
-        if csv_row["vessel_category"]:
-            ship_type = csv_row["vessel_category"]
-        else:
-            ship_type = "unknown"
-        vessel_length = get_optional_float("vessel_length")
-        vessel_width = get_optional_float("vessel_width")
-        vessel_cog = get_optional_float("ais_course")
-        vessel_cog_avg = get_optional_float("course")
-        vessel_sog = get_optional_float("ais_speed")
+    event_id = csv_row["event_id"]
+    ts = datetime.fromisoformat(csv_row["event_time"])
+    lat = float(csv_row["lat"])
+    lon = float(csv_row["lon"])
+    if csv_row["vessel_category"]:
+        ship_type = csv_row["vessel_category"]
     else:
-        ts = datetime.fromisoformat(csv_row["timestamp"])
-        lat = float(csv_row["latitude"])
-        lon = float(csv_row["longitude"])
-        if csv_row["ship_type"]:
-            ship_type = SHIP_TYPES.get(int(csv_row["ship_type"]), "unknown")
-        else:
-            ship_type = "unknown"
-
-        vessel_length = get_optional_float("length")
-        vessel_width = get_optional_float("width")
-        vessel_cog = get_optional_float("cog")
-        vessel_cog_avg = None
-        vessel_sog = get_optional_float("sog")
-        event_id = (
-            f"{csv_row['timestamp']}_{csv_row['longitude']}_{csv_row['latitude']}"
-        )
+        ship_type = "unknown"
+    vessel_length = get_optional_float("vessel_length")
+    vessel_width = get_optional_float("vessel_width")
+    vessel_cog = get_optional_float("ais_course")
+    vessel_cog_avg = get_optional_float("course")
+    vessel_sog = get_optional_float("ais_speed")
+    vessel_sog_variance = get_optional_float("ais_speed_variance")
+    if "time_to_closest_position" in csv_row:
+        time_to_closest_position = get_optional_float("time_to_closest_position")
+    else:
+        time_to_closest_position = None
 
     src_point = shapely.Point(lon, lat)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
@@ -90,10 +77,10 @@ def process_row(ds_upath: UPath, csv_row: dict[str, str]) -> None:
     split = "val" if is_val else "train"
 
     window_name = event_id
-    window_root = Window.get_window_root(ds_upath, GROUP, window_name)
+    window_root = Window.get_window_root(ds_upath, group, window_name)
     window = Window(
         path=window_root,
-        group=GROUP,
+        group=group,
         name=window_name,
         projection=dst_projection,
         bounds=bounds,
@@ -115,6 +102,8 @@ def process_row(ds_upath: UPath, csv_row: dict[str, str]) -> None:
                 "cog_avg": vessel_cog_avg,
                 "sog": vessel_sog,
                 "type": ship_type,
+                "sog_variance": vessel_sog_variance,
+                "time_to_closest_position": time_to_closest_position,
             },
             f,
         )
@@ -153,14 +142,16 @@ def process_row(ds_upath: UPath, csv_row: dict[str, str]) -> None:
         )
 
 
-def create_windows(csv_dir: str, ds_path: str) -> None:
+def create_windows(group: str, csv_dir: str, ds_path: str, workers: int = 32) -> None:
     """Initialize an rslearn dataset at the specified path.
 
     Args:
+        group: which group to use for these windows.
         csv_dir: path containing CSVs with AIS-correlated vessel detections, e.g.
             gs://rslearn-eai/datasets/sentinel2_vessel_attribute/artifacts/sentinel2_correlated_detections_bigtable/.
         ds_path: path to write the dataset, e.g.
             gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20241212/
+        workers: number of worker processes to use
     """
     csv_upath = UPath(csv_dir)
     ds_upath = UPath(ds_path)
@@ -177,12 +168,13 @@ def create_windows(csv_dir: str, ds_path: str) -> None:
             for csv_row in reader:
                 jobs.append(
                     dict(
+                        group=group,
                         ds_upath=ds_upath,
                         csv_row=csv_row,
                     )
                 )
 
-    p = multiprocessing.Pool(32)
+    p = multiprocessing.Pool(workers)
     outputs = star_imap_unordered(p, process_row, jobs)
     for _ in tqdm.tqdm(outputs, total=len(jobs)):
         pass
