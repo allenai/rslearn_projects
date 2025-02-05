@@ -4,13 +4,13 @@ import json
 import shutil
 from typing import Any
 
-import rasterio
 import shapely
 from PIL import Image
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import Item, data_source_from_config
 from rslearn.data_sources.gcp_public_data import Sentinel2
 from rslearn.dataset import Dataset, Window, WindowLayerData
+from rslearn.utils.fsspec import open_rasterio_upath_reader
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from upath import UPath
 
@@ -197,6 +197,10 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
         items_by_scene[item.name] = item
         tasks_by_scene[item.name] = task
 
+        # Also make sure crop directory exists here.
+        if task.crop_path is not None:
+            UPath(task.crop_path).mkdir(parents=True, exist_ok=True)
+
     detections = get_vessel_detections(ds_path, list(items_by_scene.values()))
 
     # Create windows just to collect crops for each detection.
@@ -276,9 +280,8 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
                 / "R_G_B"
                 / "geotiff.tif"
             )
-            with image_fname.open("rb") as f:
-                with rasterio.open(f) as src:
-                    image = src.read()
+            with open_rasterio_upath_reader(image_fname) as src:
+                image = src.read()
             detection.crop_fname = crop_upath / f"{detection.col}_{detection.row}.png"
             with detection.crop_fname.open("wb") as f:
                 Image.fromarray(image.transpose(1, 2, 0)).save(f, format="PNG")
