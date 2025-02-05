@@ -23,6 +23,7 @@ def launch_job(
     workspace: str = DEFAULT_WORKSPACE,
     username: str | None = None,
     gpus: int = 1,
+    shared_memory: str = "256GiB",
 ) -> None:
     """Launch training for the specified config on Beaker.
 
@@ -37,6 +38,7 @@ def launch_job(
         workspace: the Beaker workspace to run the job in.
         username: optional W&B username to associate with the W&B run for this job.
         gpus: number of GPUs to use.
+        shared_memory: shared memory resource string to use, e.g. "256GiB".
     """
     hparams_configs_dir = None
 
@@ -104,7 +106,7 @@ def launch_job(
                 preemptible=True,
                 datasets=[launcher_lib.create_gcp_credentials_mount()],
                 env_vars=env_vars,
-                resources=TaskResources(gpu_count=gpus),
+                resources=TaskResources(gpu_count=gpus, shared_memory=shared_memory),
             )
             unique_id = str(uuid.uuid4())[0:8]
             beaker.experiment.create(f"{project_id}_{experiment_id}_{unique_id}", spec)
@@ -167,6 +169,12 @@ if __name__ == "__main__":
         help="Number of GPUs",
         default=1,
     )
+    parser.add_argument(
+        "--shared_memory",
+        type=str,
+        help="Shared memory",
+        default="256GiB",
+    )
     args = parser.parse_args()
     launch_job(
         config_path=args.config_path,
@@ -177,4 +185,5 @@ if __name__ == "__main__":
         workspace=args.workspace,
         username=args.username,
         gpus=args.gpus,
+        shared_memory=args.shared_memory,
     )
