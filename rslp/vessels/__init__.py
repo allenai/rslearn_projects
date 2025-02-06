@@ -22,7 +22,7 @@ class VesselDetection:
         ts: datetime | None = None,
         scene_id: str | None = None,
         crop_fname: UPath | None = None,
-        metadata: dict[str, Any] = {},
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Create a new VesselDetection.
 
@@ -45,7 +45,11 @@ class VesselDetection:
         self.ts = ts
         self.scene_id = scene_id
         self.crop_fname = crop_fname
-        self.metadata = metadata
+
+        if metadata is None:
+            self.metadata = {}
+        else:
+            self.metadata = metadata
 
     def get_lon_lat(self) -> tuple[float, float]:
         """Get the longitude and latitude of this detection.
