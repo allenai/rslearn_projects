@@ -304,12 +304,17 @@ def setup_dataset(
     if scene_zip_path:
         # Download the zip file and create image_files locally.
         scene_id = scene_zip_path.split("/")[-1].split(".")[0]
-        zip_dir = ds_path / "scene_zip"
+        zip_dir = (ds_path / "scene_zip").absolute()
+        zip_dir.mkdir(exist_ok=True)
         local_zip_path = os.path.join(zip_dir, scene_id + ".zip")
         download_and_unzip_scene(scene_zip_path, local_zip_path, zip_dir)
         image_files = {}
         for band in LANDSAT_BANDS:
-            image_files[band] = f"{zip_dir}/{scene_id}/{scene_id}_{band}.TIF"
+            # TODO: have helper utility function that gets str() of UPath with protocol
+            image_fname = str(zip_dir / scene_id / f"{scene_id}_{band}.TIF")
+            if "://" not in image_fname:
+                image_fname = f"file://{image_fname}"
+            image_files[band] = image_fname
 
     if image_files:
         # Setup the dataset configuration file with the provided image files.
