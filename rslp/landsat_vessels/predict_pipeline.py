@@ -138,11 +138,11 @@ def get_vessel_detections(
 
     # Read the detections.
     layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
-    features = GeojsonVectorFormat().decode_vector(layer_dir)
+    features = GeojsonVectorFormat().decode_vector(layer_dir, window.bounds)
     detections: list[VesselDetection] = []
     for feature in features:
         geometry = feature.geometry
-        score = feature["properties"]["score"]
+        score = feature.properties["score"]
 
         detection = VesselDetection(
             source=LANDSAT_SOURCE,

@@ -4,7 +4,6 @@ import json
 import shutil
 from typing import Any
 
-import shapely
 from PIL import Image
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import Item, data_source_from_config
@@ -12,6 +11,7 @@ from rslearn.data_sources.gcp_public_data import Sentinel2
 from rslearn.dataset import Dataset, Window, WindowLayerData
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.raster_format import GeotiffRasterFormat
+from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
@@ -34,6 +34,9 @@ SENTINEL2_SOURCE = "sentinel2"
 
 # Name to use in rslearn dataset for layer containing Sentinel-2 images.
 SENTINEL2_LAYER_NAME = "sentinel2"
+
+# Name of layer containing the output.
+OUTPUT_LAYER_NAME = "output"
 
 DATASET_CONFIG = "data/sentinel2_vessels/config.json"
 DETECT_MODEL_CONFIG = "data/sentinel2_vessels/config.yaml"
@@ -132,9 +135,10 @@ def get_vessel_detections(
     )
     materialize_dataset(ds_path, materialize_pipeline_args)
     for window in windows:
-        assert (
-            window.path / "layers" / SENTINEL2_LAYER_NAME / "R_G_B" / "geotiff.tif"
-        ).exists()
+        if not window.is_layer_completed(SENTINEL2_LAYER_NAME):
+            raise ValueError(
+                f"window {window.name} does not have Sentinel-2 layer completed"
+            )
 
     # Run object detector.
     run_model_predict(DETECT_MODEL_CONFIG, ds_path)
@@ -142,21 +146,18 @@ def get_vessel_detections(
     # Read the detections.
     detections: list[VesselDetection] = []
     for window in windows:
-        output_fname = window.path / "layers" / "output" / "data.geojson"
-        with output_fname.open() as f:
-            feature_collection = json.load(f)
-        for feature in feature_collection["features"]:
-            shp = shapely.geometry.shape(feature["geometry"])
-            col = int(shp.centroid.x)
-            row = int(shp.centroid.y)
-            score = feature["properties"]["score"]
+        layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
+        features = GeojsonVectorFormat().decode_vector(layer_dir, window.bounds)
+        for feature in features:
+            geometry = feature.geometry
+            score = feature.properties["score"]
             detections.append(
                 VesselDetection(
                     source=SENTINEL2_SOURCE,
                     scene_id=window.name,
-                    col=col,
-                    row=row,
-                    projection=projection,
+                    col=int(geometry.shp.centroid.x),
+                    row=int(geometry.shp.centroid.y),
+                    projection=geometry.projection,
                     score=score,
                     ts=window.time_range[0],
                 )
