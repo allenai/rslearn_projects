@@ -420,7 +420,12 @@ def predict_pipeline(
         if near_infra_filter.should_filter(lon, lat):
             infra_detections += 1
             continue
-        # Load crops from the window directory.
+
+        # Load crops from the window directory for writing output PNGs.
+        # We create two PNGs:
+        # - b8.png: just has B8 (panchromatic band).
+        # - rgb.png: true color with pan-sharpening. The RGB is from B4, B3, and B2
+        #   respectively while B8 is used for pan-sharpening.
         images = {}
         crop_window_dir = detection.metadata["crop_window_dir"]
         if crop_window_dir is None:
