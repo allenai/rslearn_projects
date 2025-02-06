@@ -4,7 +4,6 @@ import io
 import json
 import math
 import multiprocessing
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -25,6 +24,7 @@ from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.raster_format import SingleImageRasterFormat
 from upath import UPath
 
+from rslp.forest_loss_driver.const import GROUP
 from rslp.forest_loss_driver.inference.config import ExtractAlertsArgs
 from rslp.log_utils import get_logger
 
@@ -32,10 +32,6 @@ logger = get_logger(__name__)
 
 # Time corresponding to 0 in alertDate GeoTIFF files.
 BASE_DATETIME = datetime(2019, 1, 1, tzinfo=timezone.utc)
-
-
-# TODO; Make a class for these collections of functions that share the same args
-
 
 # How big the rslearn windows should be.
 WINDOW_SIZE = 128
@@ -50,6 +46,9 @@ ANNOTATION_WEBSITE_MERCATOR_OFFSET = 512 * (2**12)
 INFERENCE_DATASET_CONFIG = str(
     Path(__file__).resolve().parents[3] / "data" / "forest_loss_driver" / "config.json"
 )
+
+# Filename used to indicate that alert extraction is done for a given dataset.
+COMPLETED_FNAME = "extract_alerts_completed"
 
 
 class ForestLossEvent:
@@ -164,10 +163,10 @@ def output_window_metadata(event: ForestLossEvent, ds_path: UPath) -> tuple:
 
     # Create the new rslearn windows.
     window_name = f"feat_x_{mercator_point[0]}_{mercator_point[1]}_{event.center_pixel[0]}_{event.center_pixel[1]}"
-    window_path = ds_path / "windows" / "default" / window_name
+    window_path = ds_path / "windows" / GROUP / window_name
     window = Window(
         path=window_path,
-        group="default",
+        group=GROUP,
         name=window_name,
         projection=WEB_MERCATOR_PROJECTION,
         bounds=bounds,
@@ -355,13 +354,22 @@ def create_forest_loss_mask(
     )  # THis seems to be causing issues for writing unless we change it when we write it
 
 
-def save_inference_dataset_config(ds_path: UPath) -> None:
-    """Save the inference dataset config."""
+def save_inference_dataset_config(
+    ds_path: UPath, index_cache_dir: str, tile_store_dir: str
+) -> None:
+    """Save the inference dataset config.
+
+    Args:
+        ds_path: the path to store the rslearn dataset for these alerts.
+        index_cache_dir: path to use for data source index.
+        tile_store_dir: path to use for tile store.
+    """
     with open(INFERENCE_DATASET_CONFIG) as config_file:
-        config_json = json.loads(os.path.expandvars(config_file.read()))
-    # Add back as optional
-    # config_json["data_source"]["index_cache_dir"] = osindex_cache_dir
-    # config_json["tile_store"]["root_dir"] = tile_store_root_dir
+        # The dataset config has placeholders for INDEX_CACHE_DIR and TILE_STORE_DIR.
+        config_str = config_file.read()
+        config_str = config_str.replace("${INDEX_CACHE_DIR}", index_cache_dir)
+        config_str = config_str.replace("${TILE_STORE_DIR}", tile_store_dir)
+        config_json = json.loads(config_str)
     with (ds_path / "config.json").open("w") as f:
         json.dump(config_json, f)
 
@@ -376,6 +384,22 @@ def extract_alerts_pipeline(
         ds_root: the root path to the dataset.
         extract_alerts_args: the extract_alerts_args
     """
+    # Skip extraction if it was marked completed.
+    completed_fname = ds_root / COMPLETED_FNAME
+    if completed_fname.exists():
+        return
+
+    # Create the dataset configuration file.
+    save_inference_dataset_config(
+        ds_root,
+        index_cache_dir=extract_alerts_args.index_cache_dir,
+        tile_store_dir=extract_alerts_args.tile_store_dir,
+    )
+
+    # Process the GLAD alert tiles one tile at a time.
+    # Each tile has two files we need to read, the confidence raster (which we use to
+    # threshold pixels by confidence threshold) and date raster (which we use to only
+    # select pixels with recent forest loss based on specified number of days).
     total_events = 0
     logger.info(f"Extract_alerts for {str(extract_alerts_args)}")
     country_wgs84_shp = load_country_polygon(extract_alerts_args.country_data_path)
@@ -438,9 +462,11 @@ def extract_alerts_pipeline(
         p.close()
     logger.info(f"Total events: {total_events}")
     if total_events == 0:
+        # Raise an error since this likely means there is a misconfiguration.
         raise ValueError(
             "No forest loss events found in the given GeoTIFF files. \
             Please check the GeoTIFF files and the configuration."
         )
-    # rslearn dataset expects a config.json file in the dataset root
-    save_inference_dataset_config(ds_root)
+
+    # Mark it completed so we don't run this again in case user reruns the pipeline.
+    completed_fname.touch()

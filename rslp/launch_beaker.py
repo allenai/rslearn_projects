@@ -9,13 +9,12 @@ import dotenv
 from beaker import Beaker, Constraints, EnvVar, ExperimentSpec, Priority, TaskResources
 
 from rslp import launcher_lib
-
-DEFAULT_WORKSPACE = "ai2/earth-systems"
-BUDGET = "ai2/prior"
-
-# I should make a docker image specifc to this project
-# Need to add the following functionality
-# upload a specified image
+from rslp.utils.beaker import (
+    DEFAULT_BUDGET,
+    DEFAULT_WORKSPACE,
+    create_gcp_credentials_mount,
+    get_base_env_vars,
+)
 
 
 def launch_job(
@@ -67,7 +66,7 @@ def launch_job(
 
     for run_id, config_path in config_paths.items():
         with beaker.session():
-            env_vars = launcher_lib.get_base_env_vars()
+            env_vars = get_base_env_vars()
             env_vars.extend(
                 [
                     EnvVar(
@@ -92,7 +91,7 @@ def launch_job(
                     )
                 )
             spec = ExperimentSpec.new(
-                budget=BUDGET,
+                budget=DEFAULT_BUDGET,
                 description=f"{project_id}/{experiment_id}/{run_id}",
                 beaker_image=image_name,
                 priority=Priority.high,
@@ -104,9 +103,11 @@ def launch_job(
                     config_path,
                     "--autoresume=true",
                 ],
-                constraints=Constraints(cluster=["ai2/jupiter-cirrascale-2"]),
+                constraints=Constraints(
+                    cluster=["ai2/jupiter-cirrascale-2", "ai2/augusta-google-1"]
+                ),
                 preemptible=True,
-                datasets=[launcher_lib.create_gcp_credentials_mount()],
+                datasets=[create_gcp_credentials_mount()],
                 env_vars=env_vars,
                 resources=TaskResources(gpu_count=gpus, shared_memory=shared_memory),
             )

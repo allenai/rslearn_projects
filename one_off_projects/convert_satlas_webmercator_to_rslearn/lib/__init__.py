@@ -14,7 +14,11 @@ from PIL import Image
 from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
+from rslearn.utils.geometry import Projection, STGeometry
+from rslearn.utils.get_utm_ups_crs import get_utm_ups_crs
+from rslearn.utils.feature import Feature
+from rslearn.utils.vector_format import GeojsonVectorFormat
+from rslearn.utils.raster_format import SingleImageRasterFormat
 from upath import UPath
 
 src_crs = CRS.from_epsg(3857)
@@ -30,7 +34,7 @@ def convert_window(
     time_range: tuple[datetime, datetime],
     dst_pixel_size: float = 10,
     window_name: str | None = None,
-):
+) -> Window:
     """Create an rslearn window from a multisat window with the specified properties.
 
     Args:
@@ -81,7 +85,7 @@ def convert_window(
         int(dst_polygon.bounds[2]),
         int(dst_polygon.bounds[3]),
     ]
-    window_root = root_dir / "windows" / group / window_name
+    window_root = Window.get_window_root(root_dir, group, window_name)
     window = Window(
         path=window_root,
         group=group,
@@ -93,7 +97,7 @@ def convert_window(
     window.save()
 
     # (2) Write the turbine positions.
-    features = []
+    features: list[Feature] = []
     for shp, properties in labels:
         # Similar to with bounds, subtract the WebMercator pixel offset between
         # multisat and rslearn.
@@ -101,26 +105,12 @@ def convert_window(
 
         src_geom = STGeometry(src_projection, shp, None)
         dst_geom = src_geom.to_projection(dst_projection)
-        features.append(
-            {
-                "type": "Feature",
-                "geometry": json.loads(shapely.to_geojson(dst_geom.shp)),
-                "properties": properties,
-            }
-        )
-    layer_dir = window_root / "layers" / "label"
-    label_fname = layer_dir / "data.geojson"
-    layer_dir.mkdir(parents=True, exist_ok=True)
-    with label_fname.open("w") as f:
-        json.dump(
-            {
-                "type": "FeatureCollection",
-                "features": features,
-                "properties": dst_projection.serialize(),
-            },
-            f,
-        )
-    (layer_dir / "completed").touch()
+        features.append(Feature(dst_geom, properties))
+
+    layer_name = "label"
+    layer_dir = window.get_layer_dir(layer_name)
+    GeojsonVectorFormat().encode_vector(layer_dir, dst_projection, features)
+    window.mark_layer_completed(layer_name)
 
     # (3) Write mask corresponding to old window projected onto new window.
     mask = np.zeros((bounds[3] - bounds[1], bounds[2] - bounds[0]), dtype=np.uint8)
@@ -130,13 +120,9 @@ def convert_window(
     polygon_cols = [coord[0] - bounds[0] for coord in dst_polygon.exterior.coords]
     rr, cc = skimage.draw.polygon(polygon_rows, polygon_cols, shape=mask.shape)
     mask[rr, cc] = 255
-    layer_dir = window_root / "layers" / "mask"
-    mask_fname = layer_dir / "mask" / "image.png"
-    mask_fname.parent.mkdir(parents=True, exist_ok=True)
-    with mask_fname.open("wb") as f:
-        Image.fromarray(mask).save(f)
-    with (mask_fname.parent / "bounds.json").open("w") as f:
-        json.dump(bounds, f)
-    (layer_dir / "completed").touch()
+    layer_name = "mask"
+    layer_dir = window.get_raster_dir(layer_name, ["mask"])
+    SingleImageRasterFormat().encode_raster(layer_dir, dst_projection, bounds, mask[None, :, :])
+    window.mark_layer_completed(layer_name)
 
     return window
