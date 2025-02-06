@@ -20,13 +20,18 @@ from rslp.log_utils import get_logger
 from .predict_pipeline import Application
 
 # Approximate maximum meters in one degree latitude/longitude.
+# Above/below the equator there will be fewer meters.
+# This is used to compute the NMS_DISTANCE_THRESHOLD below.
 MAX_METERS_PER_DEGREE = 111111
 
 # Threshold on Euclidean distance between lat/lon for NMS.
 # We just do Euclidean distance for speed/simplicity since NMS doesn't need to be super
-# exact.
+# exact (instead of spherical distance).
 NMS_DISTANCE_THRESHOLD = 100 / MAX_METERS_PER_DEGREE
 
+# Individual Satlas applications use different category names than the global ones that
+# we want to serve. We should adjust this but for now this map helps to rename the
+# categories.
 APP_CATEGORY_MAPS = {
     Application.MARINE_INFRA: {
         "platform": "offshore_platform",
@@ -61,6 +66,12 @@ def apply_nms(
 ) -> list[dict[str, Any]]:
     """Apply non-maximum suppression over the points.
 
+    Although we run NMS inside the object detector, we need to run a global NMS again
+    because there two levels where we are dividing into patches -- at the global level,
+    where we start different prediction tasks for every 32768x32768 patch, and again
+    within the tasks, where we process each 2048x2048 sub-patch. So there can be
+    redundant detections across these boundaries.
+
     Args:
         features: the list of JSON Feature objects.
         distance_threshold: the distance threshold to match points.
@@ -77,6 +88,9 @@ def apply_nms(
         box = (coordinates[0], coordinates[1], coordinates[0], coordinates[1])
         grid_index.insert(box, idx)
 
+    # Now we iterate over the features and use the index to identify other features
+    # that are nearby. If the other feature has a higher score then we delete the
+    # feature.
     good_features = []
     for idx, feat in enumerate(features):
         coordinates = feat["geometry"]["coordinates"]
@@ -141,8 +155,13 @@ def merge_points(
     # Get category remapping in case one is specified for this application.
     category_map = APP_CATEGORY_MAPS.get(application, {})
 
+    # Iterate over each of the files produced by a prediction task.
+    # We merge both the predicted points along with the valid patches (patches
+    # processed by the task that had available input images).
     for fname, cur_fc in tqdm.tqdm(outputs, total=len(fnames)):
         # The projection information may be missing if there are no valid patches.
+        # In that case we can skip the file since it has neither valid patches that we
+        # need to track nor any predicted points.
         if "crs" not in cur_fc["properties"]:
             # Just do some sanity checks, there should be no features and no valid
             # patches.
@@ -243,9 +262,11 @@ def smooth_points(
                     shutil.copyfileobj(src, dst)
             labels.append(label)
 
-        # Sort by YYYY-MM.
+        # Sort by YYYY-MM, since the smoothing function expects us to provide all of
+        # the labels in temporal order.
         labels.sort()
 
+        # Smoothing is handled by a Go script.
         subprocess.check_call(
             [
                 "rslp/satlas/scripts/smooth_point_labels_viterbi",
@@ -260,6 +281,7 @@ def smooth_points(
             ],
         )  # nosec
 
+        # Now we can upload the smoothed per-timestep files.
         for label in labels:
             src_path = tmp_smoothed_dir / f"{label}.geojson"
             dst_path = smoothed_upath / f"{label}.geojson"
@@ -267,6 +289,12 @@ def smooth_points(
                 with dst_path.open("wb") as dst:
                     shutil.copyfileobj(src, dst)
 
+        # The smoothing also produces a history GeoJSON containing all of the points
+        # annotated with start/end properties indicating the first and last timesteps
+        # when the point was detected. (In this case, points detected over time are
+        # merged into a single GeoJSON feature.) So we upload that too.
+        # This history file is the one that used to create vector tiles for the web
+        # application.
         dst_path = smoothed_upath / "history.geojson"
         with tmp_hist_fname.open("rb") as src:
             with dst_path.open("wb") as dst:
