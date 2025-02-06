@@ -20,7 +20,7 @@ First, download the model checkpoint to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
     mkdir -p project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/sentinel2_vessels/best.ckpt -O project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/last.ckpt
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/sentinel2_vessels/best.ckpt -O project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in
 `rslp/sentinel2_vessels/predict_pipeline.py`. It accepts a Sentinel-2 scene ID and
