@@ -40,7 +40,7 @@ The easiest way to apply the model is using the prediction pipeline in `rslp/lan
     "B8": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B8.TIF",
     },
     "scratch_path": "/home/data/scratch/",
-    "json_path": "/home/data/vessels.json",
+    "geojson_path": "/home/data/vessels.geojson",
     "crop_path": "/home/data/crops/"
 }
 ```
@@ -52,11 +52,12 @@ Now we can run the pipeline:
 
     python -m rslp.main landsat_vessels predict --config /path/to/config.json
 
-Here, `scratch_path` saves the rslearn dataset, `crop_path` saves the cropped RGB images centered around the detected ships, and `json_path` saves the JSON output of the detected ships, all of which are optional, depending on whether the user wants to save the intermediate results or not.
+Here, `scratch_path` saves the rslearn dataset, `crop_path` saves the cropped RGB images centered around the detected ships, and `geojson_path` saves the GeoJSON output of the detected ships, all of which are optional, depending on whether the user wants to save the intermediate results or not.
 
 The prediction pipeline also accepts a Landsat scene ID and automatically downloads the scene images from [AWS](https://aws.amazon.com/marketplace/pp/prodview-ivr4jeq6flk7u#resources). You will need to set up your AWS account for accessing Landsat data. Use the command below to run the pipeline with scene ID:
 
-    python -m rslp.main landsat_vessels predict --scene_id LC08_L1TP_125059_20240727_20240801_02_T1
+    python -m rslp.main landsat_vessels predict --scene_id LC08_L1TP_125059_20240727_20240801_02_T1 --geojson_path out.geojson --scratch_path scratch_dir/
+    qgis out.geojson scratch_dir/windows/default/default/layers/landsat/B8/geotiff.tif
 
 
 Training

@@ -25,6 +25,10 @@ from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE
 
 from .predict_pipeline import PredictionTask
 
+CLUSTERS = [
+    "ai2/jupiter-cirrascale-2",
+]
+
 
 def launch_job(image_name: str, tasks: list[PredictionTask]) -> None:
     """Launch job for the Sentinel-2 scene.
@@ -60,9 +64,7 @@ def launch_job(image_name: str, tasks: list[PredictionTask]) -> None:
                 "/tmp/x/",
             ],
             constraints=Constraints(
-                cluster=[
-                    "ai2/jupiter-cirrascale-2",
-                ]
+                cluster=CLUSTERS,
             ),
             preemptible=True,
             datasets=[
