@@ -7,6 +7,7 @@ from rslp.utils.rslearn import materialize_dataset
 
 from .inference import (
     PredictPipelineConfig,
+    extract_alerts_pipeline,
     forest_loss_driver_model_predict,
     select_least_cloudy_images_pipeline,
 )
@@ -47,10 +48,10 @@ class ForestLossDriverPredictionPipeline:
 
     def extract_dataset(self) -> None:
         """Extract the dataset."""
-        # extract_alerts_pipeline(
-        #    self.pred_config.path,
-        #    self.pred_config.extract_alerts_args,
-        # )
+        extract_alerts_pipeline(
+            self.pred_config.path,
+            self.pred_config.extract_alerts_args,
+        )
 
         materialize_dataset(
             self.pred_config.path,
