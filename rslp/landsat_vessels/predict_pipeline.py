@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -14,7 +15,7 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import Item, data_source_from_config
 from rslearn.data_sources.aws_landsat import LandsatOliTirs
 from rslearn.dataset import Dataset, Window, WindowLayerData
-from rslearn.utils import Projection
+from rslearn.utils.geometry import PixelBounds, Projection
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from rslearn.utils.vector_format import GeojsonVectorFormat
@@ -50,6 +51,25 @@ from rslp.vessels import VesselDetection
 logger = get_logger(__name__)
 
 
+@dataclass
+class SceneData:
+    """Data about the Landsat scene that the prediction should be applied on.
+
+    This can come from many sources, e.g. a Landsat scene ID or provided GeoTIFFs.
+    """
+
+    # Basic required information.
+    projection: Projection
+    bounds: PixelBounds
+
+    # Optional time range -- if provided, it is passed on to the Window.
+    time_range: tuple[datetime, datetime] | None = None
+
+    # Optional Item -- if provided, we write the layer metadatas (items.json) in the
+    # window to skip prepare step so that the correct item is always read.
+    item: Item | None = None
+
+
 class FormattedPrediction(TypedDict):
     """Formatted prediction for a single vessel detection."""
 
@@ -62,10 +82,7 @@ class FormattedPrediction(TypedDict):
 
 def get_vessel_detections(
     ds_path: UPath,
-    projection: Projection,
-    bounds: tuple[int, int, int, int],
-    time_range: tuple[datetime, datetime] | None = None,
-    item: Item | None = None,
+    scene_data: SceneData,
 ) -> list[VesselDetection]:
     """Apply the vessel detector.
 
@@ -75,12 +92,7 @@ def get_vessel_detections(
     Args:
         ds_path: the dataset path that will be populated with a new window to apply the
             detector.
-        projection: the projection to apply the detector in.
-        bounds: the bounds to apply the detector in.
-        time_range: optional time range to apply the detector in (in case the data
-            source needs an actual time range).
-        item: only ingest this item. This is set if we are getting the scene directly
-            from a Landsat data source, not local file.
+        scene_data: the SceneData to apply the detector in.
     """
     # Create a window for applying detector.
     group = "default"
@@ -90,15 +102,17 @@ def get_vessel_detections(
         path=window_path,
         group=group,
         name=window_name,
-        projection=projection,
-        bounds=bounds,
-        time_range=time_range,
+        projection=scene_data.projection,
+        bounds=scene_data.bounds,
+        time_range=scene_data.time_range,
     )
     window.save()
 
     # Restrict to the item if set.
-    if item:
-        layer_data = WindowLayerData(LANDSAT_LAYER_NAME, [[item.serialize()]])
+    if scene_data.item:
+        layer_data = WindowLayerData(
+            LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+        )
         window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     logger.info("materialize dataset")
@@ -137,9 +151,9 @@ def get_vessel_detections(
             projection=geometry.projection,
             score=score,
         )
-        if item:
-            detection.scene_id = item.name
-            detection.ts = item.geometry.time_range[0]
+        if scene_data.item:
+            detection.scene_id = scene_data.item.name
+            detection.ts = scene_data.item.geometry.time_range[0]
         detections.append(detection)
 
     return detections
@@ -148,8 +162,7 @@ def get_vessel_detections(
 def run_classifier(
     ds_path: UPath,
     detections: list[VesselDetection],
-    time_range: tuple[datetime, datetime] | None = None,
-    item: Item | None = None,
+    scene_data: SceneData,
 ) -> list[VesselDetection]:
     """Run the classifier to try to prune false positive detections.
 
@@ -157,9 +170,7 @@ def run_classifier(
         ds_path: the dataset path that will be populated with new windows to apply the
             classifier.
         detections: the detections from the detector.
-        time_range: optional time range to apply the detector in (in case the data
-            source needs an actual time range).
-        item: only ingest this item.
+        scene_data: the SceneData.
 
     Returns:
         the subset of detections that pass the classifier.
@@ -186,14 +197,16 @@ def run_classifier(
             name=window_name,
             projection=detection.projection,
             bounds=bounds,
-            time_range=time_range,
+            time_range=scene_data.time_range,
         )
         window.save()
         windows.append(window)
         detection.metadata["crop_window"] = window
 
-        if item:
-            layer_data = WindowLayerData(LANDSAT_LAYER_NAME, [[item.serialize()]])
+        if scene_data.item:
+            layer_data = WindowLayerData(
+                LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+            )
             window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     logger.info("materialize dataset")
@@ -248,42 +261,34 @@ def download_and_unzip_scene(
     print(f"unzipped {local_zip_path} to {extract_to}")
 
 
-def predict_pipeline(
+def setup_dataset(
+    ds_path: UPath,
     scene_id: str | None = None,
     scene_zip_path: str | None = None,
     image_files: dict[str, str] | None = None,
     window_path: str | None = None,
-    json_path: str | None = None,
-    scratch_path: str | None = None,
-    crop_path: str | None = None,
-    geojson_path: str | None = None,
-) -> list[FormattedPrediction]:
-    """Run the Landsat vessel prediction pipeline.
+) -> SceneData:
+    """Setup the rslearn dataset and get SceneData.
 
-    This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
-    vessel detections. It produces a CSV containing the vessel detection locations
-    along with crops of each detection.
+    This handles the diverse range of supported inputs, and ensures that an appropriate
+    rslearn dataset configuration file is copied and also returns all the information
+    in SceneData in a uniform way.
+
+    Potential inputs:
+    - Scene ID.
+    - Scene zip path.
+    - Map from bands to GeoTIFFs.
+    - Window metadata path (directly specifying the bounds and time range).
 
     Args:
+        ds_path: the dataset path.
         scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
             specified.
         scene_zip_path: path to the zip file containing the Landsat scene.
         image_files: map from band name like "B8" to the path of the image. The path
             will be converted to UPath so it can include protocol like gs://...
         window_path: path to the metadata.json file for the window.
-        json_path: path to write vessel detections as JSON file.
-        scratch_path: directory to use to store temporary dataset.
-        crop_path: path to write the vessel crop images.
-        geojson_path: path to write vessel detections as GeoJSON file.
     """
-    if scratch_path is None:
-        tmp_scratch_dir = tempfile.TemporaryDirectory()
-        scratch_path = tmp_scratch_dir.name
-    else:
-        tmp_scratch_dir = None
-
-    ds_path = UPath(scratch_path)
-    ds_path.mkdir(parents=True, exist_ok=True)
     item = None
 
     if (
@@ -390,22 +395,61 @@ def predict_pipeline(
                 else None
             )
 
+    return SceneData(projection, scene_bounds, time_range, item)
+
+
+def predict_pipeline(
+    scene_id: str | None = None,
+    scene_zip_path: str | None = None,
+    image_files: dict[str, str] | None = None,
+    window_path: str | None = None,
+    json_path: str | None = None,
+    scratch_path: str | None = None,
+    crop_path: str | None = None,
+    geojson_path: str | None = None,
+) -> list[FormattedPrediction]:
+    """Run the Landsat vessel prediction pipeline.
+
+    This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
+    vessel detections. It produces a CSV containing the vessel detection locations
+    along with crops of each detection.
+
+    Args:
+        scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
+            specified.
+        scene_zip_path: path to the zip file containing the Landsat scene.
+        image_files: map from band name like "B8" to the path of the image. The path
+            will be converted to UPath so it can include protocol like gs://...
+        window_path: path to the metadata.json file for the window.
+        json_path: path to write vessel detections as JSON file.
+        scratch_path: directory to use to store temporary dataset.
+        crop_path: path to write the vessel crop images.
+        geojson_path: path to write vessel detections as GeoJSON file.
+    """
+    if scratch_path is None:
+        tmp_scratch_dir = tempfile.TemporaryDirectory()
+        scratch_path = tmp_scratch_dir.name
+    else:
+        tmp_scratch_dir = None
+
+    ds_path = UPath(scratch_path)
+    ds_path.mkdir(parents=True, exist_ok=True)
+
+    # Determine which of the arguments to use and setup dataset and get SceneData
+    # appropriately.
+    scene_data = setup_dataset(
+        ds_path,
+        scene_id=scene_id,
+        scene_zip_path=scene_zip_path,
+        image_files=image_files,
+        window_path=window_path,
+    )
+
     # Run pipeline.
     print("run detector")
-    detections = get_vessel_detections(
-        ds_path,
-        projection,
-        scene_bounds,
-        time_range=time_range,
-        item=item,
-    )
+    detections = get_vessel_detections(ds_path, scene_data)
     print("run classifier")
-    detections = run_classifier(
-        ds_path,
-        detections=detections,
-        time_range=time_range,
-        item=item,
-    )
+    detections = run_classifier(ds_path, detections=detections, scene_data=scene_data)
 
     # Write JSON and crops.
     if crop_path:
