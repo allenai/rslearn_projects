@@ -303,16 +303,13 @@ def setup_dataset(
 
     if scene_zip_path:
         # Download the zip file and create image_files locally.
-        tmp_zip_dir = tempfile.TemporaryDirectory()
-        zip_dir = tmp_zip_dir.name
         scene_id = scene_zip_path.split("/")[-1].split(".")[0]
+        zip_dir = ds_path / "scene_zip"
         local_zip_path = os.path.join(zip_dir, scene_id + ".zip")
         download_and_unzip_scene(scene_zip_path, local_zip_path, zip_dir)
         image_files = {}
         for band in LANDSAT_BANDS:
             image_files[band] = f"{zip_dir}/{scene_id}/{scene_id}_{band}.TIF"
-    else:
-        tmp_zip_dir = None
 
     if image_files:
         # Setup the dataset configuration file with the provided image files.
