@@ -33,10 +33,6 @@ logger = get_logger(__name__)
 # Time corresponding to 0 in alertDate GeoTIFF files.
 BASE_DATETIME = datetime(2019, 1, 1, tzinfo=timezone.utc)
 
-
-# TODO; Make a class for these collections of functions that share the same args
-
-
 # How big the rslearn windows should be.
 WINDOW_SIZE = 128
 
@@ -50,6 +46,9 @@ ANNOTATION_WEBSITE_MERCATOR_OFFSET = 512 * (2**12)
 INFERENCE_DATASET_CONFIG = str(
     Path(__file__).resolve().parents[3] / "data" / "forest_loss_driver" / "config.json"
 )
+
+# Filename used to indicate that alert extraction is done for a given dataset.
+COMPLETED_FNAME = "extract_alerts_completed"
 
 
 class ForestLossEvent:
@@ -385,6 +384,22 @@ def extract_alerts_pipeline(
         ds_root: the root path to the dataset.
         extract_alerts_args: the extract_alerts_args
     """
+    # Skip extraction if it was marked completed.
+    completed_fname = ds_root / COMPLETED_FNAME
+    if completed_fname.exists():
+        return
+
+    # Create the dataset configuration file.
+    save_inference_dataset_config(
+        ds_root,
+        index_cache_dir=extract_alerts_args.index_cache_dir,
+        tile_store_dir=extract_alerts_args.tile_store_dir,
+    )
+
+    # Process the GLAD alert tiles one tile at a time.
+    # Each tile has two files we need to read, the confidence raster (which we use to
+    # threshold pixels by confidence threshold) and date raster (which we use to only
+    # select pixels with recent forest loss based on specified number of days).
     total_events = 0
     logger.info(f"Extract_alerts for {str(extract_alerts_args)}")
     country_wgs84_shp = load_country_polygon(extract_alerts_args.country_data_path)
@@ -447,13 +462,11 @@ def extract_alerts_pipeline(
         p.close()
     logger.info(f"Total events: {total_events}")
     if total_events == 0:
+        # Raise an error since this likely means there is a misconfiguration.
         raise ValueError(
             "No forest loss events found in the given GeoTIFF files. \
             Please check the GeoTIFF files and the configuration."
         )
-    # rslearn dataset expects a config.json file in the dataset root
-    save_inference_dataset_config(
-        ds_root,
-        index_cache_dir=extract_alerts_args.index_cache_dir,
-        tile_store_dir=extract_alerts_args.tile_store_dir,
-    )
+
+    # Mark it completed so we don't run this again in case user reruns the pipeline.
+    completed_fname.touch()
