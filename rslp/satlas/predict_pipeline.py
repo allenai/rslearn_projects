@@ -236,6 +236,7 @@ def predict_pipeline(
     else:
         run_model_predict(model_config_fname, ds_path)
 
+    # Merge and upload the outputs.
     if APP_IS_RASTER[application]:
         src_fname = window_path / "layers" / "output" / "output" / "geotiff.tif"
 
