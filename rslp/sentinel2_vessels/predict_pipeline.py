@@ -10,8 +10,8 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import Item, data_source_from_config
 from rslearn.data_sources.gcp_public_data import Sentinel2
 from rslearn.dataset import Dataset, Window, WindowLayerData
-from rslearn.utils.fsspec import open_rasterio_upath_reader
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
+from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
@@ -116,7 +116,7 @@ def get_vessel_detections(
         windows.append(window)
 
         layer_data = WindowLayerData(SENTINEL2_LAYER_NAME, [[item.serialize()]])
-        window.save_layer_datas(dict(SENTINEL2_LAYER_NAME=layer_data))
+        window.save_layer_datas({SENTINEL2_LAYER_NAME: layer_data})
 
     logger.info("Materialize dataset for Sentinel-2 Vessel Detection")
     apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
@@ -165,6 +165,72 @@ def get_vessel_detections(
     return detections
 
 
+def get_vessel_crop_windows(
+    ds_path: UPath, detections: list[VesselDetection], items_by_scene: dict[str, Item]
+) -> list[Window]:
+    """Create a window for each vessel to obtain a cropped image for it.
+
+    Args:
+        ds_path: the rslearn dataset path (same one used for object detector -- we will
+            put the crop windows in a different group).
+        detections: list of vessel detections.
+        items_by_scene: scene ID -> Item map, same one used to get the big image to run
+            detector over.
+
+    Returns:
+        list of windows corresponding to the detection list, where cropped images have
+            been materialized.
+    """
+    # Create the windows.
+    group = "crops"
+    crop_windows: list[UPath] = []
+    for detection in detections:
+        window_name = f"{detection.scene_id}_{detection.col}_{detection.row}"
+        window_path = Window.get_window_root(ds_path, group, window_name)
+        bounds = (
+            detection.col - CROP_WINDOW_SIZE // 2,
+            detection.row - CROP_WINDOW_SIZE // 2,
+            detection.col + CROP_WINDOW_SIZE // 2,
+            detection.row + CROP_WINDOW_SIZE // 2,
+        )
+
+        # scene_id attribute is always set in sentinel2_vessels.
+        assert detection.scene_id is not None
+        item = items_by_scene[detection.scene_id]
+        window = Window(
+            path=window_path,
+            group=group,
+            name=window_name,
+            projection=detection.projection,
+            bounds=bounds,
+            time_range=item.geometry.time_range,
+        )
+        window.save()
+
+        layer_data = WindowLayerData(SENTINEL2_LAYER_NAME, [[item.serialize()]])
+        window.save_layer_datas({SENTINEL2_LAYER_NAME: layer_data})
+
+        crop_windows.append(window)
+
+    # Materialize the windows.
+    apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
+    materialize_pipeline_args = MaterializePipelineArgs(
+        disabled_layers=[],
+        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
+        ingest_args=IngestArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+        materialize_args=MaterializeArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+    )
+    # Avoid error in case of no detections.
+    if len(detections) > 0:
+        materialize_dataset(ds_path, materialize_pipeline_args)
+
+    return crop_windows
+
+
 def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
     """Run the Sentinel-2 vessel prediction pipeline.
 
@@ -201,52 +267,11 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
         if task.crop_path is not None:
             UPath(task.crop_path).mkdir(parents=True, exist_ok=True)
 
+    # Apply the vessel detection model.
     detections = get_vessel_detections(ds_path, list(items_by_scene.values()))
 
-    # Create windows just to collect crops for each detection.
-    group = "crops"
-    window_paths: list[UPath] = []
-    for detection in detections:
-        window_name = f"{detection.scene_id}_{detection.col}_{detection.row}"
-        window_path = ds_path / "windows" / group / window_name
-        bounds = (
-            detection.col - CROP_WINDOW_SIZE // 2,
-            detection.row - CROP_WINDOW_SIZE // 2,
-            detection.col + CROP_WINDOW_SIZE // 2,
-            detection.row + CROP_WINDOW_SIZE // 2,
-        )
-
-        # scene_id attribute is always set in sentinel2_vessels.
-        assert detection.scene_id is not None
-        item = items_by_scene[detection.scene_id]
-        window = Window(
-            path=window_path,
-            group=group,
-            name=window_name,
-            projection=detection.projection,
-            bounds=bounds,
-            time_range=item.geometry.time_range,
-        )
-        window.save()
-
-        layer_data = WindowLayerData(SENTINEL2_LAYER_NAME, [[item.serialize()]])
-        window.save_layer_datas(dict(SENTINEL2_LAYER_NAME=layer_data))
-
-        window_paths.append(window_path)
-
-    apply_windows_args = ApplyWindowsArgs(group=group, workers=1)
-    materialize_pipeline_args = MaterializePipelineArgs(
-        disabled_layers=[],
-        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
-        ingest_args=IngestArgs(
-            ignore_errors=False, apply_windows_args=apply_windows_args
-        ),
-        materialize_args=MaterializeArgs(
-            ignore_errors=False, apply_windows_args=apply_windows_args
-        ),
-    )
-    if len(detections) > 0:
-        materialize_dataset(ds_path, materialize_pipeline_args)
+    # Create and materialize windows that correspond to a crop of each detection.
+    crop_windows = get_vessel_crop_windows(ds_path, detections, items_by_scene)
 
     # Write JSON and crops.
     json_vessels_by_scene: dict[str, list[dict[str, Any]]] = {}
@@ -260,7 +285,8 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
     near_infra_filter = NearInfraFilter(
         infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
     )
-    for detection, crop_window_path in zip(detections, window_paths):
+    raster_format = GeotiffRasterFormat()
+    for detection, crop_window in zip(detections, crop_windows):
         # Apply near infra filter (True -> filter out, False -> keep)
         lon, lat = detection.get_lon_lat()
         if near_infra_filter.should_filter(lon, lat):
@@ -273,15 +299,13 @@ def predict_pipeline(tasks: list[PredictionTask], scratch_path: str) -> None:
             crop_upath = UPath(tasks_by_scene[scene_id].crop_path)
 
             # Get RGB crop.
-            image_fname = (
-                crop_window_path
-                / "layers"
-                / SENTINEL2_LAYER_NAME
-                / "R_G_B"
-                / "geotiff.tif"
+            raster_dir = crop_window.get_raster_dir(
+                SENTINEL2_LAYER_NAME, ["R", "G", "B"]
             )
-            with open_rasterio_upath_reader(image_fname) as src:
-                image = src.read()
+            raster_bounds = raster_format.get_raster_bounds(raster_dir)
+            image = GeotiffRasterFormat().decode_raster(raster_dir, raster_bounds)
+
+            # And save it under the specified crop path.
             detection.crop_fname = crop_upath / f"{detection.col}_{detection.row}.png"
             with detection.crop_fname.open("wb") as f:
                 Image.fromarray(image.transpose(1, 2, 0)).save(f, format="PNG")
