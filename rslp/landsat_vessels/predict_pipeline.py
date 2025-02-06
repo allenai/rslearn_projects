@@ -4,19 +4,21 @@ import json
 import os
 import shutil
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import numpy as np
 import rasterio
 import rasterio.features
-import shapely
 from PIL import Image
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import Item, data_source_from_config
 from rslearn.data_sources.aws_landsat import LandsatOliTirs
 from rslearn.dataset import Dataset, Window, WindowLayerData
-from rslearn.utils import Projection, STGeometry
+from rslearn.utils.geometry import PixelBounds, Projection
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
+from rslearn.utils.raster_format import GeotiffRasterFormat
+from rslearn.utils.vector_format import GeojsonVectorFormat
 from typing_extensions import TypedDict
 from upath import UPath
 
@@ -29,7 +31,9 @@ from rslp.landsat_vessels.config import (
     LANDSAT_BANDS,
     LANDSAT_LAYER_NAME,
     LANDSAT_RESOLUTION,
+    LANDSAT_SOURCE,
     LOCAL_FILES_DATASET_CONFIG,
+    OUTPUT_LAYER_NAME,
 )
 from rslp.log_utils import get_logger
 from rslp.utils.filter import NearInfraFilter
@@ -42,35 +46,28 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
+from rslp.vessels import VesselDetection
 
 logger = get_logger(__name__)
 
 
-class VesselDetection:
-    """A vessel detected in a Landsat scene."""
+@dataclass
+class SceneData:
+    """Data about the Landsat scene that the prediction should be applied on.
 
-    def __init__(
-        self,
-        col: int,
-        row: int,
-        projection: Projection,
-        score: float,
-        crop_window_dir: UPath | None = None,
-    ) -> None:
-        """Create a new VesselDetection.
+    This can come from many sources, e.g. a Landsat scene ID or provided GeoTIFFs.
+    """
 
-        Args:
-            col: the column in projection coordinates.
-            row: the row in projection coordinates.
-            projection: the projection used.
-            score: confidence score from object detector.
-            crop_window_dir: the path to the window used for classifying the crop.
-        """
-        self.col = col
-        self.row = row
-        self.projection = projection
-        self.score = score
-        self.crop_window_dir = crop_window_dir
+    # Basic required information.
+    projection: Projection
+    bounds: PixelBounds
+
+    # Optional time range -- if provided, it is passed on to the Window.
+    time_range: tuple[datetime, datetime] | None = None
+
+    # Optional Item -- if provided, we write the layer metadatas (items.json) in the
+    # window to skip prepare step so that the correct item is always read.
+    item: Item | None = None
 
 
 class FormattedPrediction(TypedDict):
@@ -85,10 +82,7 @@ class FormattedPrediction(TypedDict):
 
 def get_vessel_detections(
     ds_path: UPath,
-    projection: Projection,
-    bounds: tuple[int, int, int, int],
-    time_range: tuple[datetime, datetime] | None = None,
-    item: Item | None = None,
+    scene_data: SceneData,
 ) -> list[VesselDetection]:
     """Apply the vessel detector.
 
@@ -98,29 +92,27 @@ def get_vessel_detections(
     Args:
         ds_path: the dataset path that will be populated with a new window to apply the
             detector.
-        projection: the projection to apply the detector in.
-        bounds: the bounds to apply the detector in.
-        time_range: optional time range to apply the detector in (in case the data
-            source needs an actual time range).
-        item: only ingest this item. This is set if we are getting the scene directly
-            from a Landsat data source, not local file.
+        scene_data: the SceneData to apply the detector in.
     """
     # Create a window for applying detector.
     group = "default"
-    window_path = ds_path / "windows" / group / "default"
+    window_name = "default"
+    window_path = Window.get_window_root(ds_path, group, window_name)
     window = Window(
         path=window_path,
         group=group,
-        name="default",
-        projection=projection,
-        bounds=bounds,
-        time_range=time_range,
+        name=window_name,
+        projection=scene_data.projection,
+        bounds=scene_data.bounds,
+        time_range=scene_data.time_range,
     )
     window.save()
 
     # Restrict to the item if set.
-    if item:
-        layer_data = WindowLayerData(LANDSAT_LAYER_NAME, [[item.serialize()]])
+    if scene_data.item:
+        layer_data = WindowLayerData(
+            LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+        )
         window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     logger.info("materialize dataset")
@@ -136,29 +128,33 @@ def get_vessel_detections(
         ),
     )
     materialize_dataset(ds_path, materialize_pipeline_args)
-    assert (window_path / "layers" / LANDSAT_LAYER_NAME / "B8" / "geotiff.tif").exists()
+
+    # Sanity check that the layer is completed.
+    if not window.is_layer_completed(LANDSAT_LAYER_NAME):
+        raise ValueError("landsat layer did not get materialized")
 
     # Run object detector.
     run_model_predict(DETECT_MODEL_CONFIG, ds_path)
 
     # Read the detections.
-    output_fname = window_path / "layers" / "output" / "data.geojson"
+    layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
+    features = GeojsonVectorFormat().decode_vector(layer_dir, window.bounds)
     detections: list[VesselDetection] = []
-    with output_fname.open() as f:
-        feature_collection = json.load(f)
-    for feature in feature_collection["features"]:
-        shp = shapely.geometry.shape(feature["geometry"])
-        col = int(shp.centroid.x)
-        row = int(shp.centroid.y)
-        score = feature["properties"]["score"]
-        detections.append(
-            VesselDetection(
-                col=col,
-                row=row,
-                projection=projection,
-                score=score,
-            )
+    for feature in features:
+        geometry = feature.geometry
+        score = feature.properties["score"]
+
+        detection = VesselDetection(
+            source=LANDSAT_SOURCE,
+            col=int(geometry.shp.centroid.x),
+            row=int(geometry.shp.centroid.y),
+            projection=geometry.projection,
+            score=score,
         )
+        if scene_data.item:
+            detection.scene_id = scene_data.item.name
+            detection.ts = scene_data.item.geometry.time_range[0]
+        detections.append(detection)
 
     return detections
 
@@ -166,8 +162,7 @@ def get_vessel_detections(
 def run_classifier(
     ds_path: UPath,
     detections: list[VesselDetection],
-    time_range: tuple[datetime, datetime] | None = None,
-    item: Item | None = None,
+    scene_data: SceneData,
 ) -> list[VesselDetection]:
     """Run the classifier to try to prune false positive detections.
 
@@ -175,9 +170,7 @@ def run_classifier(
         ds_path: the dataset path that will be populated with new windows to apply the
             classifier.
         detections: the detections from the detector.
-        time_range: optional time range to apply the detector in (in case the data
-            source needs an actual time range).
-        item: only ingest this item.
+        scene_data: the SceneData.
 
     Returns:
         the subset of detections that pass the classifier.
@@ -188,11 +181,10 @@ def run_classifier(
 
     # Create windows for applying classifier.
     group = "classify_predict"
-    window_paths: list[UPath] = []
+    windows: list[Window] = []
     for detection in detections:
         window_name = f"{detection.col}_{detection.row}"
         window_path = ds_path / "windows" / group / window_name
-        detection.crop_window_dir = window_path
         bounds = [
             detection.col - CLASSIFY_WINDOW_SIZE // 2,
             detection.row - CLASSIFY_WINDOW_SIZE // 2,
@@ -205,17 +197,20 @@ def run_classifier(
             name=window_name,
             projection=detection.projection,
             bounds=bounds,
-            time_range=time_range,
+            time_range=scene_data.time_range,
         )
         window.save()
-        window_paths.append(window_path)
+        windows.append(window)
+        detection.metadata["crop_window"] = window
 
-        if item:
-            layer_data = WindowLayerData(LANDSAT_LAYER_NAME, [[item.serialize()]])
+        if scene_data.item:
+            layer_data = WindowLayerData(
+                LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+            )
             window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     logger.info("materialize dataset")
-    apply_windows_args = ApplyWindowsArgs(group=group)
+    apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
     materialize_pipeline_args = MaterializePipelineArgs(
         disabled_layers=[],
         prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
@@ -228,21 +223,20 @@ def run_classifier(
     )
     materialize_dataset(ds_path, materialize_pipeline_args)
 
-    for window_path in window_paths:
-        assert (
-            window_path / "layers" / LANDSAT_LAYER_NAME / "B8" / "geotiff.tif"
-        ).exists()
+    # Verify that no window is unmaterialized.
+    for window in windows:
+        if not window.is_layer_completed(LANDSAT_LAYER_NAME):
+            raise ValueError(f"window {window.name} does not have materialized Landsat")
 
     # Run classification model.
     run_model_predict(CLASSIFY_MODEL_CONFIG, ds_path, groups=[group])
 
     # Read the results.
     good_detections = []
-    for detection, window_path in zip(detections, window_paths):
-        output_fname = window_path / "layers" / "output" / "data.geojson"
-        with output_fname.open() as f:
-            feature_collection = json.load(f)
-        category = feature_collection["features"][0]["properties"]["label"]
+    for detection, window in zip(detections, windows):
+        layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
+        features = GeojsonVectorFormat().decode_vector(layer_dir, window.bounds)
+        category = features[0].properties["label"]
         if category == "correct":
             good_detections.append(detection)
 
@@ -267,40 +261,34 @@ def download_and_unzip_scene(
     print(f"unzipped {local_zip_path} to {extract_to}")
 
 
-def predict_pipeline(
+def setup_dataset(
+    ds_path: UPath,
     scene_id: str | None = None,
     scene_zip_path: str | None = None,
     image_files: dict[str, str] | None = None,
     window_path: str | None = None,
-    json_path: str | None = None,
-    scratch_path: str | None = None,
-    crop_path: str | None = None,
-) -> list[FormattedPrediction]:
-    """Run the Landsat vessel prediction pipeline.
+) -> SceneData:
+    """Setup the rslearn dataset and get SceneData.
 
-    This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
-    vessel detections. It produces a CSV containing the vessel detection locations
-    along with crops of each detection.
+    This handles the diverse range of supported inputs, and ensures that an appropriate
+    rslearn dataset configuration file is copied and also returns all the information
+    in SceneData in a uniform way.
+
+    Potential inputs:
+    - Scene ID.
+    - Scene zip path.
+    - Map from bands to GeoTIFFs.
+    - Window metadata path (directly specifying the bounds and time range).
 
     Args:
+        ds_path: the dataset path.
         scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
             specified.
         scene_zip_path: path to the zip file containing the Landsat scene.
         image_files: map from band name like "B8" to the path of the image. The path
             will be converted to UPath so it can include protocol like gs://...
         window_path: path to the metadata.json file for the window.
-        json_path: path to write vessel detections as JSON file.
-        scratch_path: directory to use to store temporary dataset.
-        crop_path: path to write the vessel crop images.
     """
-    if scratch_path is None:
-        tmp_scratch_dir = tempfile.TemporaryDirectory()
-        scratch_path = tmp_scratch_dir.name
-    else:
-        tmp_scratch_dir = None
-
-    ds_path = UPath(scratch_path)
-    ds_path.mkdir(parents=True, exist_ok=True)
     item = None
 
     if (
@@ -315,16 +303,18 @@ def predict_pipeline(
 
     if scene_zip_path:
         # Download the zip file and create image_files locally.
-        tmp_zip_dir = tempfile.TemporaryDirectory()
-        zip_dir = tmp_zip_dir.name
         scene_id = scene_zip_path.split("/")[-1].split(".")[0]
+        zip_dir = (ds_path / "scene_zip").absolute()
+        zip_dir.mkdir(exist_ok=True)
         local_zip_path = os.path.join(zip_dir, scene_id + ".zip")
         download_and_unzip_scene(scene_zip_path, local_zip_path, zip_dir)
         image_files = {}
         for band in LANDSAT_BANDS:
-            image_files[band] = f"{zip_dir}/{scene_id}/{scene_id}_{band}.TIF"
-    else:
-        tmp_zip_dir = None
+            # TODO: have helper utility function that gets str() of UPath with protocol
+            image_fname = str(zip_dir / scene_id / f"{scene_id}_{band}.TIF")
+            if "://" not in image_fname:
+                image_fname = f"file://{image_fname}"
+            image_files[band] = image_fname
 
     if image_files:
         # Setup the dataset configuration file with the provided image files.
@@ -407,22 +397,61 @@ def predict_pipeline(
                 else None
             )
 
+    return SceneData(projection, scene_bounds, time_range, item)
+
+
+def predict_pipeline(
+    scene_id: str | None = None,
+    scene_zip_path: str | None = None,
+    image_files: dict[str, str] | None = None,
+    window_path: str | None = None,
+    json_path: str | None = None,
+    scratch_path: str | None = None,
+    crop_path: str | None = None,
+    geojson_path: str | None = None,
+) -> list[FormattedPrediction]:
+    """Run the Landsat vessel prediction pipeline.
+
+    This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
+    vessel detections. It produces a CSV containing the vessel detection locations
+    along with crops of each detection.
+
+    Args:
+        scene_id: Landsat scene ID. Exactly one of image_files or scene_id should be
+            specified.
+        scene_zip_path: path to the zip file containing the Landsat scene.
+        image_files: map from band name like "B8" to the path of the image. The path
+            will be converted to UPath so it can include protocol like gs://...
+        window_path: path to the metadata.json file for the window.
+        json_path: path to write vessel detections as JSON file.
+        scratch_path: directory to use to store temporary dataset.
+        crop_path: path to write the vessel crop images.
+        geojson_path: path to write vessel detections as GeoJSON file.
+    """
+    if scratch_path is None:
+        tmp_scratch_dir = tempfile.TemporaryDirectory()
+        scratch_path = tmp_scratch_dir.name
+    else:
+        tmp_scratch_dir = None
+
+    ds_path = UPath(scratch_path)
+    ds_path.mkdir(parents=True, exist_ok=True)
+
+    # Determine which of the arguments to use and setup dataset and get SceneData
+    # appropriately.
+    scene_data = setup_dataset(
+        ds_path,
+        scene_id=scene_id,
+        scene_zip_path=scene_zip_path,
+        image_files=image_files,
+        window_path=window_path,
+    )
+
     # Run pipeline.
     print("run detector")
-    detections = get_vessel_detections(
-        ds_path,
-        projection,
-        scene_bounds,
-        time_range=time_range,
-        item=item,
-    )
+    detections = get_vessel_detections(ds_path, scene_data)
     print("run classifier")
-    detections = run_classifier(
-        ds_path,
-        detections=detections,
-        time_range=time_range,
-        item=item,
-    )
+    detections = run_classifier(ds_path, detections=detections, scene_data=scene_data)
 
     # Write JSON and crops.
     if crop_path:
@@ -430,35 +459,39 @@ def predict_pipeline(
         crop_upath.mkdir(parents=True, exist_ok=True)
 
     json_data = []
+    geojson_features = []
     near_infra_filter = NearInfraFilter(infra_distance_threshold=INFRA_THRESHOLD_KM)
+    raster_format = GeotiffRasterFormat()
     infra_detections = 0
     for idx, detection in enumerate(detections):
-        # Get longitude/latitude.
-        src_geom = STGeometry(
-            detection.projection, shapely.Point(detection.col, detection.row), None
-        )
-        dst_geom = src_geom.to_projection(WGS84_PROJECTION)
-        lon = dst_geom.shp.x
-        lat = dst_geom.shp.y
         # Apply near infra filter (True -> filter out, False -> keep)
-        if near_infra_filter.should_filter(lat, lon):
+        lon, lat = detection.get_lon_lat()
+        if near_infra_filter.should_filter(lon, lat):
             infra_detections += 1
             continue
-        # Load crops from the window directory.
+
+        # Load crops from the window directory for writing output PNGs.
+        # We create two PNGs:
+        # - b8.png: just has B8 (panchromatic band).
+        # - rgb.png: true color with pan-sharpening. The RGB is from B4, B3, and B2
+        #   respectively while B8 is used for pan-sharpening.
         images = {}
-        if detection.crop_window_dir is None:
-            raise ValueError("Crop window directory is None")
+        crop_window: Window = detection.metadata["crop_window"]
+        if crop_window is None:
+            raise ValueError("Crop window is None")
         for band in ["B2", "B3", "B4", "B8"]:
-            image_fname = (
-                detection.crop_window_dir
-                / "layers"
-                / LANDSAT_LAYER_NAME
-                / band
-                / "geotiff.tif"
-            )
-            with image_fname.open("rb") as f:
-                with rasterio.open(f) as src:
-                    images[band] = src.read(1)
+            raster_dir = crop_window.get_raster_dir(LANDSAT_LAYER_NAME, [band])
+
+            # Different bands are in different resolutions so get the bounds from the
+            # raster since anyway we just want to read the whole raster.
+            band_bounds = raster_format.get_raster_bounds(raster_dir)
+            image = raster_format.decode_raster(raster_dir, band_bounds)
+            if image.shape[0] != 1:
+                raise ValueError(
+                    f"expected single-band image for {band} but got {image.shape[0]} bands"
+                )
+
+            images[band] = image[0, :, :]
 
         # Apply simple pan-sharpening for the RGB.
         # This is just linearly scaling RGB bands to add up to B8, which is captured at
@@ -499,10 +532,23 @@ def predict_pipeline(
                 b8_fname=str(b8_fname),
             ),
         )
+        geojson_features.append(detection.to_feature())
 
     if json_path:
         json_upath = UPath(json_path)
         with json_upath.open("w") as f:
             json.dump(json_data, f)
+
+    if geojson_path:
+        geojson_upath = UPath(geojson_path)
+        with geojson_upath.open("w") as f:
+            json.dump(
+                {
+                    "type": "FeatureCollection",
+                    "properties": {},
+                    "features": geojson_features,
+                },
+                f,
+            )
 
     return json_data

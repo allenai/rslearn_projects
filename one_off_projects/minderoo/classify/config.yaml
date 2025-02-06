@@ -17,14 +17,15 @@ model:
                 num_fc_layers: 1
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
-    plateau_factor: 0.1
-    plateau_patience: 10
+    plateau: true
+    plateau_factor: 0.5
+    plateau_patience: 2
     plateau_min_lr: 0
-    plateau_cooldown: 0
+    plateau_cooldown: 5
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    root_dir: /data/favyenb/dvim/rslearn_classify/
+    path: /data/favyenb/dvim/rslearn_classify/
     inputs:
       image:
         data_type: "raster"
@@ -88,8 +89,14 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        root_dir: /data/favyenb/dvim/rslearn_classify/
+        path: /data/favyenb/dvim/rslearn_classify/
         output_layer: output
         selector: ["class"]
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_class/accuracy
+        mode: max
 rslp_project: minderoo_classify
-rslp_experiment: data_20240811_satlaspretrain_flip_256_00
+rslp_experiment: data_20241028_satlaspretrain_flip_256_00
