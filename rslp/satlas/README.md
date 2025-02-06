@@ -90,6 +90,8 @@ Here:
   `gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/merged/2024-07.geojson`.
 
 Second, smooth the points across timesteps. This runs a Viterbi smoothing operation.
+Note that the Viterbi smoothing is implemented in a separate Go application at
+`rslp/satlas/scripts/smooth_point_labels_viterbi.go`.
 
     python -m rslp.main satlas smooth_points MARINE_INFRA 2024-07 gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/merged/ gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/smoothed/
 
