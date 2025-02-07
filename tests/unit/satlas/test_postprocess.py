@@ -62,7 +62,7 @@ class TestMergePoints:
         with open(fname, "w") as f:
             json.dump(fc, f)
 
-    def two_crs_merged(self, tmp_path: pathlib.Path) -> None:
+    def test_two_crs_merged(self, tmp_path: pathlib.Path) -> None:
         """Verify that when merging across two CRS it is successful."""
         proj32601 = Projection(CRS.from_epsg(32601), 10, -10)
         proj32602 = Projection(CRS.from_epsg(32602), 10, -10)
@@ -95,10 +95,10 @@ class TestMergePoints:
         # And the valid patches should be merged, with one in 32601 and two in 32602.
         valid_patches = fc["properties"]["valid_patches"]
         assert len(valid_patches) == 2
-        patches32601 = valid_patches[str(proj32601)]
+        patches32601 = valid_patches[str(proj32601.crs)]
         patches32601.sort()
         assert patches32601 == [[0, 0], [1, 1]]
-        patches32602 = valid_patches[str(proj32602)]
+        patches32602 = valid_patches[str(proj32602.crs)]
         patches32602.sort()
         assert patches32602 == [[0, 0]]
 
