@@ -161,6 +161,8 @@ def merge_points(
     # We merge both the predicted points along with the valid patches (patches
     # processed by the task that had available input images).
     for fname, cur_fc in tqdm.tqdm(outputs, total=len(fnames)):
+        logger.debug("merging points from %s", fname)
+
         # The projection information may be missing if there are no valid patches.
         # In that case we can skip the file since it has neither valid patches that we
         # need to track nor any predicted points.
@@ -205,6 +207,7 @@ def merge_points(
     p.close()
 
     merged_upath = UPath(merged_path)
+    merged_upath.mkdir(parents=True, exist_ok=True)
     merged_fname = merged_upath / f"{label}.geojson"
     with merged_fname.open("w") as f:
         json.dump(
