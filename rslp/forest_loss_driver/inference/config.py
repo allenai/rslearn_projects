@@ -9,6 +9,7 @@ from pathlib import Path
 from upath import UPath
 
 from rslp.utils.rslearn import (
+    ApplyWindowsArgs,
     IngestArgs,
     MaterializeArgs,
     MaterializePipelineArgs,
@@ -110,7 +111,11 @@ class ForestLossDriverMaterializeArgs(MaterializePipelineArgs):
     disabled_layers: list[str] = field(
         default_factory=lambda: VISUALIZATION_ONLY_LAYERS
     )
-    prepare_args: PrepareArgs = field(default_factory=lambda: PrepareArgs())
+    prepare_args: PrepareArgs = field(
+        default_factory=lambda: PrepareArgs(
+            ApplyWindowsArgs(use_initial_job=True),
+        )
+    )
     ingest_args: IngestArgs = field(
         default_factory=lambda: IngestArgs(
             ignore_errors=True,

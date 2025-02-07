@@ -8,10 +8,10 @@ services:
       dockerfile: Dockerfile
     image: base-image:latest   # Tag it as "base-image"
 
-  # Define the forest-loss-driver service
+  # Define the forest_loss_driver service
   # This is just used for building the Docker image in Github Action.
   # See .github/workflows/forest_loss_driver_prediction.yaml.
-  forest-loss-driver:
+  forest_loss_driver:
     build:
       context: .
       dockerfile: Dockerfile

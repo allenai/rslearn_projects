@@ -12,7 +12,7 @@ WINDOWS_FNAME = "good_windows.json"
 GEOJSON_FNAME = "forest_loss_events.geojson"
 
 # Where to store tiles. These need to be in a publicly accessible bucket.
-DEFAULT_TILE_PATH = "gs://ai2-rslearn-projects-data/forest_loss_driver/"
+DEFAULT_TILE_PATH = "gs://ai2-rslearn-projects-data/forest_loss_driver/tiles/"
 
 # A special file indicating that this dataset is ready to serve from the web app.
 READY_FOR_SERVING_FNAME = "ready_for_serving"

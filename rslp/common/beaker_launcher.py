@@ -1,9 +1,10 @@
 """Launch a Beaker job that executes one or more rslp workflows."""
 
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 
-from beaker import Beaker, EnvVar, ExperimentSpec, ImageSource
+from beaker import Beaker, DataMount, DataSource, EnvVar, ExperimentSpec, ImageSource
 from beaker.exceptions import ImageNotFound
 
 from rslp.log_utils import get_logger
@@ -34,6 +35,23 @@ def get_command(project: str, workflow: str, extra_args: list[str]) -> list[str]
     return ["python", "-m", "rslp.main", project, workflow] + extra_args
 
 
+@dataclass
+class WekaMount:
+    """Specification of a Weka mount within a Beaker job."""
+
+    bucket_name: str
+    mount_path: str
+    sub_path: str | None = None
+
+    def to_data_mount(self) -> DataMount:
+        """Convert this WekaMount to a Beaker DataMount object."""
+        return DataMount(
+            source=DataSource(weka=self.bucket_name),
+            mount_path=self.mount_path,
+            sub_path=self.sub_path,
+        )
+
+
 def launch_job(
     project: str,
     workflow: str,
@@ -48,6 +66,7 @@ def launch_job(
     budget: str = DEFAULT_BUDGET,
     workspace: str = DEFAULT_WORKSPACE,
     preemptible: bool = True,
+    weka_mounts: list[WekaMount] = [],
 ) -> None:
     """Launch a Beaker job to run an rslp workflow.
 
@@ -65,12 +84,13 @@ def launch_job(
         task_name: name for the Beaker job.
         gpu_count: number of GPUs to assign.
         shared_memory: amount of shared memory.
-        priority: priority of the Beake rjob.
+        priority: priority of the Beaker job.
         task_specific_env_vars: additional task-specific environment variables to pass
             to the Beaker job.
         budget: the Beaker budget.
         workspace: the Beaker workspace.
         preemptible: whether to make the Beaker job preemptible.
+        weka_mounts: list of weka mounts for Beaker job.
     """
     if task_name is None:
         task_name = f"{project}_{workflow}"
@@ -84,6 +104,8 @@ def launch_job(
         logger.info("Generating task name...")
         task_uuid = str(uuid.uuid4())[0:8]
         unique_task_name = f"{task_name}_{task_uuid}"
+
+        # Check for existing image and create image if it doesn't exist.
         try:
             beaker.image.get(image)
             logger.info(f"Image already exists: {image}")
@@ -93,8 +115,10 @@ def launch_job(
             # Handle image upload
             image_source = upload_image(image, workspace, beaker)
             logger.info(f"Image uploaded: {image_source.beaker}")
-        # Potentially we might want to have many different tasks as part of a job but this is very simple for now
+
         logger.info("Creating experiment spec...")
+        datasets = [create_gcp_credentials_mount()]
+        datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
         experiment_spec = ExperimentSpec.new(
             budget=budget,
             task_name=unique_task_name,
@@ -104,7 +128,7 @@ def launch_job(
             cluster=clusters,
             command=get_command(project, workflow, extra_args),
             env_vars=base_env_vars + task_specific_env_vars,
-            datasets=[create_gcp_credentials_mount()],
+            datasets=datasets,
             resources={"gpuCount": gpu_count, "sharedMemory": shared_memory},
             preemptible=preemptible,
         )
