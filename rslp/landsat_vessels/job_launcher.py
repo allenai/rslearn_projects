@@ -19,8 +19,7 @@ from beaker import (
 )
 from upath import UPath
 
-from rslp import launcher_lib
-from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE
+from rslp.utils.beaker import DEFAULT_BUDGET, DEFAULT_WORKSPACE, get_base_env_vars
 
 
 def launch_job(
@@ -61,7 +60,7 @@ def launch_job(
     }
 
     with beaker.session():
-        env_vars = launcher_lib.get_base_env_vars(use_weka_prefix=use_weka_prefix)
+        env_vars = get_base_env_vars(use_weka_prefix=use_weka_prefix)
 
         # Add AWS credentials for downloading data
         env_vars.append(
@@ -77,7 +76,7 @@ def launch_job(
             )
         )
         spec = ExperimentSpec.new(
-            budget=BUDGET,
+            budget=DEFAULT_BUDGET,
             description=f"landsat_vessel_{job_id}",
             beaker_image=image_name,
             command=["python", "-m", "rslp.main"],
