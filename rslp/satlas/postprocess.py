@@ -73,7 +73,9 @@ def apply_nms(
     redundant detections across these boundaries.
 
     Args:
-        features: the list of JSON Feature objects.
+        features: the list of JSON Feature objects. The features must be Point with
+            longitude/latitude coordinates, and must have a "score" property indicating
+            the confidence.
         distance_threshold: the distance threshold to match points.
 
     Returns:
@@ -106,7 +108,7 @@ def apply_nms(
             other_feat = features[other_idx]
             if idx == other_idx:
                 continue
-            if feat["properties"]["score"] < other_feat["properties"]["score"]:
+            if feat["properties"]["score"] > other_feat["properties"]["score"]:
                 continue
             other_coordinates = other_feat["geometry"]["coordinates"]
             distance = math.sqrt(
