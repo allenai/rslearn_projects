@@ -29,7 +29,7 @@ import struct
 import time
 from collections.abc import Generator
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 from typing import Any
 
 import google.cloud.bigtable.row
@@ -234,7 +234,7 @@ def get_bigtable() -> google.cloud.bigtable.table.Table:
     return bkt_files_table
 
 
-class DecodeMode(StrEnum):
+class DecodeMode(str, Enum):
     """Mode indicating how items should be decoded when downloading in parallel.
 
     This is used in functions like download_bkts so that the worker processes can

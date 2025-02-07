@@ -7,13 +7,13 @@ from datetime import datetime, timedelta, timezone
 
 import shapely
 import tqdm
-from google.cloud import pubsub_v1
 from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_proj_bounds
 from upath import UPath
 
+import rslp.common.worker
 from rslp.log_utils import get_logger
 
 from .predict_pipeline import Application, PredictTaskArgs, get_output_fname
@@ -220,23 +220,6 @@ def get_jobs(
     return jobs
 
 
-def _write_jobs_to_topic(
-    jobs: list[list[str]],
-    project_id: str,
-    topic_id: str,
-) -> None:
-    publisher = pubsub_v1.PublisherClient()
-    topic_path = publisher.topic_path(project_id, topic_id)
-    for job in tqdm.tqdm(jobs, desc="Writing jobs to Pub/Sub topic"):
-        json_data = dict(
-            project="satlas",
-            workflow="predict_multi",
-            args=job,
-        )
-        data = json.dumps(json_data).encode()
-        publisher.publish(topic_path, data).result()
-
-
 def write_jobs(
     application: Application,
     time_range: tuple[datetime, datetime],
@@ -271,7 +254,7 @@ def write_jobs(
         batch_size=batch_size,
         count=count,
     )
-    _write_jobs_to_topic(jobs, project_id, topic_id)
+    rslp.common.worker.write_jobs(project_id, topic_id, "satlas", "predict_multi", jobs)
 
 
 def write_jobs_for_year_months(
@@ -321,4 +304,4 @@ def write_jobs_for_year_months(
         jobs.extend(cur_jobs)
 
     logger.info("got a total of %d jobs across year-months", len(jobs))
-    _write_jobs_to_topic(jobs, project_id, topic_id)
+    rslp.common.worker.write_jobs(project_id, topic_id, "satlas", "predict_multi", jobs)
