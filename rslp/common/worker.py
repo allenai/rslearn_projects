@@ -197,15 +197,6 @@ def worker_pipeline(
         streaming_pull_future.result()
 
 
-def launch_worker(project_id: str, subscription_id: str) -> None:
-    """Launch a worker job.
-
-    Args:
-        project_id: the Google Cloud project ID.
-        subscription_id: the Pub/Sub subscription ID.
-    """
-
-
 def launch_workers(
     image_name: str,
     project_id: str,
