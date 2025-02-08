@@ -209,6 +209,7 @@ def smooth_points(
         )  # nosec
 
         # Now we can upload the smoothed per-timestep files.
+        smoothed_upath.mkdir(parents=True, exist_ok=True)
         for label in labels:
             src_path = tmp_smoothed_dir / f"{label}.geojson"
             dst_path = smoothed_upath / f"{label}.geojson"
