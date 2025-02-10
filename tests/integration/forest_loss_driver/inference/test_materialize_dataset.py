@@ -1,6 +1,5 @@
 """Integration test for dataset materialization for the forest loss driver inference pipeline."""
 
-import multiprocessing
 import shutil
 import tempfile
 import uuid
@@ -25,20 +24,8 @@ def test_unmaterialized_dataset_path() -> UPath:
     )
 
 
-@pytest.fixture
-def materialize_pipeline_args() -> ForestLossDriverMaterializeArgs:
-    """The materialize pipeline arguments."""
-    num_workers = max(1, multiprocessing.cpu_count() - 2)
-    materialize_args = ForestLossDriverMaterializeArgs()
-    materialize_args.prepare_args.apply_windows_args.workers = num_workers
-    materialize_args.ingest_args.apply_windows_args.workers = num_workers
-    materialize_args.materialize_args.apply_windows_args.workers = num_workers
-    return materialize_args
-
-
 def test_materialize_forest_loss_driver_dataset(
     test_unmaterialized_dataset_path: UPath,
-    materialize_pipeline_args: ForestLossDriverMaterializeArgs,
 ) -> None:
     """Test materializing the forest loss driver dataset."""
     # copy the unmaterialized dataset to a temp directory that won't be automatically removed
@@ -53,7 +40,7 @@ def test_materialize_forest_loss_driver_dataset(
             )
         shutil.copytree(test_unmaterialized_dataset_path, tmp_dir, dirs_exist_ok=True)
 
-        materialize_dataset(UPath(tmp_dir), materialize_pipeline_args)
+        materialize_dataset(UPath(tmp_dir), ForestLossDriverMaterializeArgs())
         # Output of Prepare Step
         items_json_path = (
             Path(tmp_dir)

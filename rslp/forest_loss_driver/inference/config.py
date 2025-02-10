@@ -34,7 +34,7 @@ FOREST_LOSS_GEOTIFF_FILENAMES = [
 
 def get_default_workers() -> int:
     """Get the default number of workers."""
-    return max(1, multiprocessing.cpu_count() - 10)
+    return multiprocessing.cpu_count()
 
 
 @dataclass
@@ -76,7 +76,7 @@ class ExtractAlertsArgs:
     min_area: float = 16.0
     max_number_of_events: int | None = None
     group: str | None = None
-    workers: int = field(default_factory=get_default_workers)
+    workers: int = get_default_workers()
 
     # Parameters to fill in for the dataset configuration file.
     # Absolute paths are preferred here so that these directories can be shared across
@@ -112,17 +112,21 @@ class ForestLossDriverMaterializeArgs(MaterializePipelineArgs):
     )
     prepare_args: PrepareArgs = field(
         default_factory=lambda: PrepareArgs(
-            ApplyWindowsArgs(use_initial_job=True),
+            apply_windows_args=ApplyWindowsArgs(
+                use_initial_job=True, workers=get_default_workers()
+            ),
         )
     )
     ingest_args: IngestArgs = field(
         default_factory=lambda: IngestArgs(
             ignore_errors=True,
+            apply_windows_args=ApplyWindowsArgs(workers=get_default_workers()),
         )
     )
     materialize_args: MaterializeArgs = field(
         default_factory=lambda: MaterializeArgs(
             ignore_errors=True,
+            apply_windows_args=ApplyWindowsArgs(workers=get_default_workers()),
         ),
     )
 
@@ -139,7 +143,7 @@ class SelectLeastCloudyImagesArgs:
 
     min_choices: int = 5
     num_outs: int = 3
-    workers: int = field(default_factory=get_default_workers)
+    workers: int = get_default_workers()
 
 
 @dataclass
