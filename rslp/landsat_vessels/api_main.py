@@ -69,10 +69,12 @@ class LandsatResponse(BaseModel):
     Attributes:
         status: A list of status messages.
         predictions: A list of formatted predictions.
+        error_message: Optional, error message if the request failed.
     """
 
     status: StatusEnum
     predictions: list[FormattedPrediction]
+    error_message: str | None = None
 
 
 class LandsatRequest(BaseModel):
@@ -185,13 +187,25 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             scratch_path=info.scratch_path,
             crop_path=info.crop_path,
         )
-        return LandsatResponse(status=StatusEnum.SUCCESS, predictions=json_data)
+        return LandsatResponse(
+            status=StatusEnum.SUCCESS,
+            predictions=json_data,
+            error_message=None,
+        )
     except ValueError as e:
         logger.error(f"ValueError in prediction pipeline: {e}", exc_info=True)
-        return LandsatResponse(status=StatusEnum.ERROR, predictions=[])
+        return LandsatResponse(
+            status=StatusEnum.ERROR,
+            predictions=[],
+            error_message="Invalid input data",
+        )
     except Exception as e:
         logger.error(f"Unexpected error in prediction pipeline: {e}", exc_info=True)
-        return LandsatResponse(status=StatusEnum.ERROR, predictions=[])
+        return LandsatResponse(
+            status=StatusEnum.ERROR,
+            predictions=[],
+            error_message="An unexpected error occurred",
+        )
 
 
 if __name__ == "__main__":
