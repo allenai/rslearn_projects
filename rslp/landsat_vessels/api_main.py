@@ -197,14 +197,14 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
         return LandsatResponse(
             status=StatusEnum.ERROR,
             predictions=[],
-            error_message="Invalid input data.",
+            error_message=f"ValueError in prediction pipeline: {e}",
         )
     except Exception as e:
         logger.error(f"Unexpected error in prediction pipeline: {e}", exc_info=True)
         return LandsatResponse(
             status=StatusEnum.ERROR,
             predictions=[],
-            error_message="An unexpected error occurred in the prediction pipeline.",
+            error_message=f"Unexpected error in prediction pipeline: {e}",
         )
 
 
