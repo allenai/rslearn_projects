@@ -10,7 +10,8 @@ from .webapp.make_tiles import MakeTilesArgs, make_tiles
 
 
 def integrated_pipeline(
-    pred_pipeline_config: PredictPipelineConfig, make_tiles_args: MakeTilesArgs
+    pred_pipeline_config: PredictPipelineConfig,
+    make_tiles_args: MakeTilesArgs | None = None,
 ) -> None:
     """Integrated pipeline that runs all stages for forest loss driver model.
 
@@ -22,14 +23,18 @@ def integrated_pipeline(
     Args:
         pred_pipeline_config: the PredictPipelineConfig used by the dataset extraction
             and model prediction steps.
-        make_tiles_args: arguments for the make tiles step. The ds_root can be left as
-            a placeholder since it will be overridden by the prediction pipeline's
-            choice.
+        make_tiles_args: arguments for the make tiles step. The ds_root will be
+            overwritten by the one selected by pred_pipeline_config.
     """
     extract_dataset_main(pred_pipeline_config)
     run_model_predict_main(pred_pipeline_config)
     index_windows(pred_pipeline_config.ds_root)
-    make_tiles_args.ds_root = pred_pipeline_config.ds_root
+
+    if make_tiles_args is None:
+        make_tiles_args = MakeTilesArgs(ds_root=pred_pipeline_config.ds_root)
+    else:
+        # Override the ds_root to match what we used for dataset extraction.
+        make_tiles_args.ds_root = pred_pipeline_config.ds_root
     make_tiles(make_tiles_args)
 
 

@@ -387,6 +387,7 @@ def extract_alerts_pipeline(
     # Skip extraction if it was marked completed.
     completed_fname = ds_root / COMPLETED_FNAME
     if completed_fname.exists():
+        logger.info(f"Skipping alert extraction since {completed_fname} exists")
         return
 
     # Create the dataset configuration file.
@@ -469,4 +470,7 @@ def extract_alerts_pipeline(
         )
 
     # Mark it completed so we don't run this again in case user reruns the pipeline.
+    logger.debug(
+        f"Alert extraction completed, creating completed file at {completed_fname}"
+    )
     completed_fname.touch()

@@ -3,12 +3,11 @@
 from pathlib import Path
 
 from rslp.log_utils import get_logger
-from rslp.utils.rslearn import materialize_dataset
+from rslp.utils.rslearn import materialize_dataset, run_model_predict
 
 from .inference import (
     PredictPipelineConfig,
     extract_alerts_pipeline,
-    forest_loss_driver_model_predict,
     select_least_cloudy_images_pipeline,
 )
 
@@ -67,9 +66,9 @@ class ForestLossDriverPredictionPipeline:
         """Run the model predict."""
         # TODO: Add some validation that the extract dataset step is done by checking the dataset bucket
         logger.info(f"running model predict with config: {self.pred_config}")
-        forest_loss_driver_model_predict(
+        run_model_predict(
+            self.pred_config.model_cfg_fname,
             self.pred_config.path,
-            self.pred_config.model_predict_args,
         )
 
 

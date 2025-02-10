@@ -97,6 +97,6 @@ jobs:
             [{
               "bucket_name": "dfive-default",
               "mount_path": "/tile_store_root_dir",
-              "sub_path": "rslearn-eai/datasets/forest_loss_driver"
+              "sub_path": "rslearn-eai/datasets/forest_loss_driver/tile_store_root_dir"
             }]
           RSLP_PREFIX: ${{ secrets.RSLP_PREFIX }}

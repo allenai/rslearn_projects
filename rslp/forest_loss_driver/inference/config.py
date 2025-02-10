@@ -4,7 +4,6 @@ import multiprocessing
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from upath import UPath
 
@@ -144,25 +143,6 @@ class SelectLeastCloudyImagesArgs:
 
 
 @dataclass
-class ModelPredictArgs:
-    """Arguments for model_predict.
-
-    Args:
-        model_cfg_fname: the path to the model configuration file.
-        data_load_workers: the number of workers to use for data loading.
-    """
-
-    model_cfg_fname: str
-    data_load_workers: int = field(default_factory=get_default_workers)
-
-    def __post_init__(self) -> None:
-        """Convert relative paths to absolute paths using repo root."""
-        if not self.model_cfg_fname.startswith(("gs://", "/")):
-            repo_root = Path(__file__).resolve().parents[3]
-            self.model_cfg_fname = str(repo_root / self.model_cfg_fname)
-
-
-@dataclass
 class PredictPipelineConfig:
     """Prediction pipeline config for forest loss driver classification.
 
@@ -171,7 +151,7 @@ class PredictPipelineConfig:
 
     Args:
         ds_root: the root path to the dataset.
-        model_predict_args: the arguments for the model_predict step. (Required)
+        model_cfg_fname: the model configuration filename to apply.
         extract_alerts_args: the arguments for the extract_alerts step.
         materialize_pipeline_args: the arguments for the materialize step.
         select_least_cloudy_images_args: the arguments for the select_least_cloudy_images step.
@@ -188,9 +168,9 @@ class PredictPipelineConfig:
     def _default_ds_root() -> str:
         friday = PredictPipelineConfig._get_most_recent_friday()
         dated_dataset_name = f"dataset_{friday.strftime('%Y%m%d')}"
-        return f"{os.environ['RSLP_PREFIX']}/datasets/forest_loss_driver/prediction/{dated_dataset_name}"
+        return f"weka://dfive-default/rslearn-eai/datasets/forest_loss_driver/prediction/{dated_dataset_name}"
 
-    model_predict_args: ModelPredictArgs
+    model_cfg_fname: str = "data/forest_loss_driver/config.yaml"
     ds_root: str = field(default_factory=_default_ds_root)
     extract_alerts_args: ExtractAlertsArgs = field(default_factory=ExtractAlertsArgs)
     materialize_pipeline_args: ForestLossDriverMaterializeArgs = field(
@@ -220,4 +200,3 @@ class PredictPipelineConfig:
             num_workers
         )
         self.select_least_cloudy_images_args.workers = num_workers
-        self.model_predict_args.data_load_workers = num_workers
