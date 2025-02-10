@@ -71,7 +71,7 @@ class LandsatResponse(BaseModel):
         predictions: A list of formatted predictions.
     """
 
-    status: list[StatusEnum]
+    status: StatusEnum
     predictions: list[FormattedPrediction]
 
 
@@ -185,13 +185,13 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             scratch_path=info.scratch_path,
             crop_path=info.crop_path,
         )
-        return LandsatResponse(status=[StatusEnum.SUCCESS], predictions=json_data)
+        return LandsatResponse(status=StatusEnum.SUCCESS, predictions=json_data)
     except ValueError as e:
         logger.error(f"ValueError in prediction pipeline: {e}", exc_info=True)
-        return LandsatResponse(status=[StatusEnum.ERROR], predictions=[])
+        return LandsatResponse(status=StatusEnum.ERROR, predictions=[])
     except Exception as e:
         logger.error(f"Unexpected error in prediction pipeline: {e}", exc_info=True)
-        return LandsatResponse(status=[StatusEnum.ERROR], predictions=[])
+        return LandsatResponse(status=StatusEnum.ERROR, predictions=[])
 
 
 if __name__ == "__main__":
