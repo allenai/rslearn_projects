@@ -384,6 +384,8 @@ def extract_alerts_pipeline(
         ds_root: the root path to the dataset.
         extract_alerts_args: the extract_alerts_args
     """
+    ds_root.mkdir(parents=True, exist_ok=True)
+
     # Skip extraction if it was marked completed.
     completed_fname = ds_root / COMPLETED_FNAME
     if completed_fname.exists():

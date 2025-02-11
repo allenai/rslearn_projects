@@ -96,7 +96,6 @@ jobs:
           WEKA_MOUNTS: |
             [{
               "bucket_name": "dfive-default",
-              "mount_path": "/tile_store_root_dir",
-              "sub_path": "rslearn-eai/datasets/forest_loss_driver/tile_store_root_dir"
+              "mount_path": "/dfive-default"
             }]
           RSLP_PREFIX: ${{ secrets.RSLP_PREFIX }}

@@ -31,6 +31,8 @@ FOREST_LOSS_GEOTIFF_FILENAMES = [
     "080W_20S_070W_10S.tif",
 ]
 
+DEFAULT_MODEL_CFG_FNAME = "data/forest_loss_driver/config.yaml"
+
 
 def get_default_workers() -> int:
     """Get the default number of workers."""
@@ -172,9 +174,9 @@ class PredictPipelineConfig:
     def _default_ds_root() -> str:
         friday = PredictPipelineConfig._get_most_recent_friday()
         dated_dataset_name = f"dataset_{friday.strftime('%Y%m%d')}"
-        return f"weka://dfive-default/rslearn-eai/datasets/forest_loss_driver/prediction/{dated_dataset_name}"
+        return f"/dfive-default/rslearn-eai/datasets/forest_loss_driver/prediction/{dated_dataset_name}"
 
-    model_cfg_fname: str = "data/forest_loss_driver/config.yaml"
+    model_cfg_fname: str = DEFAULT_MODEL_CFG_FNAME
     ds_root: str = field(default_factory=_default_ds_root)
     extract_alerts_args: ExtractAlertsArgs = field(default_factory=ExtractAlertsArgs)
     materialize_pipeline_args: ForestLossDriverMaterializeArgs = field(
@@ -189,18 +191,3 @@ class PredictPipelineConfig:
     def path(self) -> UPath:
         """The path to the dataset."""
         return UPath(self.ds_root)
-
-    def set_num_workers_for_all_steps(self, num_workers: int) -> None:
-        """Convenience method to set the number of workers for all steps."""
-        # TODO: have this be able to be set via the yaml instead of just for testing
-        self.extract_alerts_args.workers = num_workers
-        self.materialize_pipeline_args.prepare_args.apply_windows_args.workers = (
-            num_workers
-        )
-        self.materialize_pipeline_args.ingest_args.apply_windows_args.workers = (
-            num_workers
-        )
-        self.materialize_pipeline_args.materialize_args.apply_windows_args.workers = (
-            num_workers
-        )
-        self.select_least_cloudy_images_args.workers = num_workers

@@ -1,8 +1,6 @@
 """Integration tests for the best image selector."""
 
 import shutil
-import tempfile
-import uuid
 from pathlib import Path
 
 import pytest
@@ -21,22 +19,20 @@ def select_least_cloudy_images_args() -> SelectLeastCloudyImagesArgs:
 def test_select_least_cloudy_images_pipeline(
     test_materialized_dataset_path: UPath,
     select_least_cloudy_images_args: SelectLeastCloudyImagesArgs,
+    tmp_path: Path,
 ) -> None:
     """Test the least cloudy image selector pipeline."""
     # Want to make sure we have the best times for each layer?
     # Will all layers in config be present? Is there the case of no best images? What is expected behavior?
-    with tempfile.TemporaryDirectory(prefix=f"test_{uuid.uuid4()}_") as temp_dir:
-        shutil.copytree(test_materialized_dataset_path, temp_dir, dirs_exist_ok=True)
-        select_least_cloudy_images_pipeline(
-            UPath(temp_dir), select_least_cloudy_images_args
-        )
-        least_cloudy_times_path = (
-            Path(temp_dir)
-            / "windows"
-            / "default"
-            / "feat_x_1281600_2146388_5_2221"
-            / "least_cloudy_times.json"
-        )
-        assert (
-            least_cloudy_times_path.exists()
-        ), f"{least_cloudy_times_path} does not exist"
+    shutil.copytree(test_materialized_dataset_path, tmp_path, dirs_exist_ok=True)
+    select_least_cloudy_images_pipeline(
+        UPath(tmp_path), select_least_cloudy_images_args
+    )
+    least_cloudy_times_path = (
+        tmp_path
+        / "windows"
+        / "default"
+        / "feat_x_1281600_2146388_5_2221"
+        / "least_cloudy_times.json"
+    )
+    assert least_cloudy_times_path.exists(), f"{least_cloudy_times_path} does not exist"
