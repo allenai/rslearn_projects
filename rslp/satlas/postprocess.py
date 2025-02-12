@@ -1,7 +1,6 @@
 """Postprocessing outputs from Satlas models."""
 
 import json
-import math
 import multiprocessing
 import shutil
 import subprocess  # nosec
@@ -12,21 +11,15 @@ import shapely
 import tqdm
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import Projection, STGeometry
-from rslearn.utils.grid_index import GridIndex
 from upath import UPath
 
 from rslp.log_utils import get_logger
 
 from .predict_pipeline import Application
 
-# Approximate maximum meters in one degree latitude/longitude.
-MAX_METERS_PER_DEGREE = 111111
-
-# Threshold on Euclidean distance between lat/lon for NMS.
-# We just do Euclidean distance for speed/simplicity since NMS doesn't need to be super
-# exact.
-NMS_DISTANCE_THRESHOLD = 100 / MAX_METERS_PER_DEGREE
-
+# Individual Satlas applications use different category names than the global ones that
+# we want to serve. We should adjust this but for now this map helps to rename the
+# categories.
 APP_CATEGORY_MAPS = {
     Application.MARINE_INFRA: {
         "platform": "offshore_platform",
@@ -53,61 +46,6 @@ def _get_fc(fname: UPath) -> tuple[UPath, dict[str, Any]]:
     """
     with fname.open() as f:
         return fname, json.load(f)
-
-
-def apply_nms(
-    features: list[dict[str, Any]],
-    distance_threshold: float,
-) -> list[dict[str, Any]]:
-    """Apply non-maximum suppression over the points.
-
-    Args:
-        features: the list of JSON Feature objects.
-        distance_threshold: the distance threshold to match points.
-
-    Returns:
-        new Features with NMS applied.
-    """
-    # A few multiples of the distance threshold is generally a good grid size.
-    grid_index = GridIndex(distance_threshold * 10)
-
-    # Insert features into the index.
-    for idx, feat in enumerate(features):
-        coordinates = feat["geometry"]["coordinates"]
-        box = (coordinates[0], coordinates[1], coordinates[0], coordinates[1])
-        grid_index.insert(box, idx)
-
-    good_features = []
-    for idx, feat in enumerate(features):
-        coordinates = feat["geometry"]["coordinates"]
-        # Create search box with distance threshold padding.
-        box = (
-            coordinates[0] - distance_threshold,
-            coordinates[1] - distance_threshold,
-            coordinates[0] + distance_threshold,
-            coordinates[1] + distance_threshold,
-        )
-        is_feat_okay = True
-        for other_idx in grid_index.query(box):
-            other_feat = features[other_idx]
-            if idx == other_idx:
-                continue
-            if feat["properties"]["score"] < other_feat["properties"]["score"]:
-                continue
-            other_coordinates = other_feat["geometry"]["coordinates"]
-            distance = math.sqrt(
-                (coordinates[0] - other_coordinates[0]) ** 2
-                + (coordinates[1] - other_coordinates[1]) ** 2
-            )
-            if distance > distance_threshold:
-                continue
-            is_feat_okay = False
-            break
-
-        if is_feat_okay:
-            good_features.append(feat)
-
-    return good_features
 
 
 def merge_points(
@@ -141,8 +79,15 @@ def merge_points(
     # Get category remapping in case one is specified for this application.
     category_map = APP_CATEGORY_MAPS.get(application, {})
 
+    # Iterate over each of the files produced by a prediction task.
+    # We merge both the predicted points along with the valid patches (patches
+    # processed by the task that had available input images).
     for fname, cur_fc in tqdm.tqdm(outputs, total=len(fnames)):
+        logger.debug("merging points from %s", fname)
+
         # The projection information may be missing if there are no valid patches.
+        # In that case we can skip the file since it has neither valid patches that we
+        # need to track nor any predicted points.
         if "crs" not in cur_fc["properties"]:
             # Just do some sanity checks, there should be no features and no valid
             # patches.
@@ -184,6 +129,7 @@ def merge_points(
     p.close()
 
     merged_upath = UPath(merged_path)
+    merged_upath.mkdir(parents=True, exist_ok=True)
     merged_fname = merged_upath / f"{label}.geojson"
     with merged_fname.open("w") as f:
         json.dump(
@@ -243,9 +189,11 @@ def smooth_points(
                     shutil.copyfileobj(src, dst)
             labels.append(label)
 
-        # Sort by YYYY-MM.
+        # Sort by YYYY-MM, since the smoothing function expects us to provide all of
+        # the labels in temporal order.
         labels.sort()
 
+        # Smoothing is handled by a Go script.
         subprocess.check_call(
             [
                 "rslp/satlas/scripts/smooth_point_labels_viterbi",
@@ -260,6 +208,8 @@ def smooth_points(
             ],
         )  # nosec
 
+        # Now we can upload the smoothed per-timestep files.
+        smoothed_upath.mkdir(parents=True, exist_ok=True)
         for label in labels:
             src_path = tmp_smoothed_dir / f"{label}.geojson"
             dst_path = smoothed_upath / f"{label}.geojson"
@@ -267,6 +217,12 @@ def smooth_points(
                 with dst_path.open("wb") as dst:
                     shutil.copyfileobj(src, dst)
 
+        # The smoothing also produces a history GeoJSON containing all of the points
+        # annotated with start/end properties indicating the first and last timesteps
+        # when the point was detected. (In this case, points detected over time are
+        # merged into a single GeoJSON feature.) So we upload that too.
+        # This history file is the one that used to create vector tiles for the web
+        # application.
         dst_path = smoothed_upath / "history.geojson"
         with tmp_hist_fname.open("rb") as src:
             with dst_path.open("wb") as dst:

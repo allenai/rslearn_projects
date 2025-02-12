@@ -120,7 +120,14 @@ jobs:
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
             -e RSLP_BUCKET=rslearn-eai \
             -e RSLP_PREFIX=gs://rslearn-eai \
-            test pytest tests/integration/ --ignore tests/integration_slow/ -vv
+            -e BKT_PROJECT_ID=ai2-prior-satlas \
+            -e BKT_BUCKET_NAME=satlas-explorer-data \
+            -e BKT_BIGTABLE_PROJECT_ID=ai2-prior-satlas \
+            -e BKT_BIGTABLE_INSTANCE_ID=satlas \
+            -e TEST_PUBSUB_PROJECT=earthsystem-dev-c3po \
+            -e TEST_PUBSUB_TOPIC=rslearn_projects_test_topic \
+            -e TEST_PUBSUB_SUBSCRIPTION=rslearn_projects_test_subscription \
+            test pytest tests/integration/ -vv
 
 
       - name: Clean up

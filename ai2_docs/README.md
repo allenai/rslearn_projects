@@ -33,6 +33,10 @@ rslearn datasets, model checkpoints, etc. The easiest way is to create a `.env` 
 
     RSLP_PREFIX=gs://rslearn-eai
     RSLP_WEKA_PREFIX=weka://dfive-default/rslearn-eai
+    BKT_PROJECT_ID=ai2-prior-satlas
+    BKT_BUCKET_NAME=satlas-explorer-data
+    BKT_BIGTABLE_PROJECT_ID=ai2-prior-satlas
+    BKT_BIGTABLE_INSTANCE_ID=satlas
 
 You will also need to setup GCP credentials that have access to this bucket.
 
@@ -41,19 +45,6 @@ Training additionally depends on credentials for W&B. If you train directly usin
 launcher like `rslp.launch_beaker`, then it isn't needed since the credentials are
 already configured as secrets on the platform, but you would need to setup your Beaker
 or other platform credentials to be able to launch the jobs.
-
-TODO: update GCP/W&B to use service accounts.
-
-Currently, until https://github.com/allenai/rslearn/issues/33 is resolved, model config
-files use S3-compatable API to access GCS rather than GCS directly. Therefore, you need
-to set up environment variables to provide the appropriate credentials:
-
-    S3_ACCESS_KEY_ID=GOOG...
-    S3_SECRET_ACCESS_KEY=...
-
-You can create these credentials at
-https://console.cloud.google.com/storage/settings;tab=interoperability?hl=en&project=skylight-proto-1
-under "Access keys for your user account".
 
 
 Usage

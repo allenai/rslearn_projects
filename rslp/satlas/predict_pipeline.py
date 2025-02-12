@@ -32,6 +32,30 @@ PATCH_SIZE = 2048
 # Layers not to use when seeing which patches are valid.
 VALIDITY_EXCLUDE_LAYERS = ["mask", "output", "label"]
 
+PREDICTION_GROUP = "predict"
+SATLAS_MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
+    disabled_layers=[],
+    # Use initial job for prepare since it involves locally caching the tile index
+    # and other steps that should only be performed once.
+    prepare_args=PrepareArgs(
+        apply_windows_args=ApplyWindowsArgs(
+            group=PREDICTION_GROUP, workers=32, use_initial_job=True
+        )
+    ),
+    ingest_args=IngestArgs(
+        ignore_errors=False,
+        apply_windows_args=ApplyWindowsArgs(
+            group=PREDICTION_GROUP, workers=32, use_initial_job=False
+        ),
+    ),
+    materialize_args=MaterializeArgs(
+        ignore_errors=False,
+        apply_windows_args=ApplyWindowsArgs(
+            group=PREDICTION_GROUP, workers=32, use_initial_job=False
+        ),
+    ),
+)
+
 logger = get_logger(__name__)
 
 
@@ -75,6 +99,76 @@ def get_output_fname(
             UPath(out_path) / f"{str(projection.crs)}_{bounds[0]}_{bounds[1]}.geojson"
         )
     return out_fname
+
+
+def merge_and_upload_points(
+    projection: Projection,
+    windows: list[Window],
+    out_fname: UPath,
+) -> None:
+    """Helper function to merge and upload point data after prediction is complete.
+
+    Args:
+        projection: the UTM projection that we are working in.
+        windows: the windows that were used for prediction.
+        out_fname: the filename to write the merged result.
+    """
+    # Merge the features across the windows.
+    # Here we also add valid patches attribute indicating which windows (patches)
+    # were non-zero. This is used to distinguish a point not being detected because
+    # it wasn't there vs not being detected just because there was no image
+    # available there.
+    fc = None
+    valid_patches = []
+    for window in windows:
+        window_output_fname = window.path / "layers" / "output" / "data.geojson"
+
+        if not window_output_fname.exists():
+            continue
+
+        with window_output_fname.open() as f:
+            cur_fc = json.load(f)
+
+        if fc is None:
+            fc = cur_fc
+        else:
+            fc["features"].extend(cur_fc["features"])
+
+        valid_patches.append(
+            (window.bounds[0] // PATCH_SIZE, window.bounds[1] // PATCH_SIZE)
+        )
+
+    if fc is None:
+        # So there was no image here.
+        # We still want to write an empty GeoJSON so the job is marked completed.
+        fc = {
+            "type": "FeatureCollection",
+            "features": [],
+        }
+
+    if "properties" not in fc:
+        fc["properties"] = {}
+    fc["properties"]["valid_patches"] = {
+        str(projection.crs): list(valid_patches),
+    }
+
+    # The object detector predicts bounding boxes but we want to make all features
+    # just points.
+    for feat in fc["features"]:
+        assert feat["geometry"]["type"] == "Polygon"
+        coords = feat["geometry"]["coordinates"][0]
+        xs = [coord[0] for coord in coords]
+        ys = [coord[1] for coord in coords]
+        feat["geometry"] = {
+            "type": "Point",
+            "coordinates": [
+                (min(xs) + max(xs)) / 2,
+                (min(ys) + max(ys)) / 2,
+            ],
+        }
+
+    with out_fname.open("w") as f:
+        json.dump(fc, f)
 
 
 def predict_pipeline(
@@ -155,7 +249,6 @@ def predict_pipeline(
     # Note that bounds must be multiple of patch size.
     for value in bounds:
         assert value % PATCH_SIZE == 0
-    group = "predict"
     tile_to_window = {}
     for tile_col in range(bounds[0] // PATCH_SIZE, bounds[2] // PATCH_SIZE):
         for tile_row in range(bounds[1] // PATCH_SIZE, bounds[3] // PATCH_SIZE):
@@ -166,10 +259,10 @@ def predict_pipeline(
                 (tile_col + 1) * PATCH_SIZE,
                 (tile_row + 1) * PATCH_SIZE,
             )
-            window_path = ds_path / "windows" / group / window_name
+            window_path = ds_path / "windows" / PREDICTION_GROUP / window_name
             window = Window(
                 path=window_path,
-                group=group,
+                group=PREDICTION_GROUP,
                 name=window_name,
                 projection=projection,
                 bounds=window_bounds,
@@ -203,39 +296,20 @@ def predict_pipeline(
 
     # Populate the windows.
     logger.info("materialize dataset")
-    materialize_pipeline_args = MaterializePipelineArgs(
-        disabled_layers=[],
-        # Use initial job for prepare since it involves locally caching the tile index
-        # and other steps that should only be performed once.
-        prepare_args=PrepareArgs(
-            apply_windows_args=ApplyWindowsArgs(
-                group=group, workers=32, use_initial_job=True
-            )
-        ),
-        ingest_args=IngestArgs(
-            ignore_errors=False,
-            apply_windows_args=ApplyWindowsArgs(
-                group=group, workers=32, use_initial_job=False
-            ),
-        ),
-        materialize_args=MaterializeArgs(
-            ignore_errors=False,
-            apply_windows_args=ApplyWindowsArgs(
-                group=group, workers=32, use_initial_job=False
-            ),
-        ),
+    materialize_dataset(
+        ds_path, materialize_pipeline_args=SATLAS_MATERIALIZE_PIPELINE_ARGS
     )
-    materialize_dataset(ds_path, materialize_pipeline_args=materialize_pipeline_args)
 
     # Run the model, only if at least one window has some data.
     completed_fnames = ds_path.glob(
-        f"windows/{group}/*/layers/{image_layer_names[0]}/completed"
+        f"windows/{PREDICTION_GROUP}/*/layers/{image_layer_names[0]}/completed"
     )
     if len(list(completed_fnames)) == 0:
         logger.info("skipping prediction since no windows seem to have data")
     else:
         run_model_predict(model_config_fname, ds_path)
 
+    # Merge and upload the outputs.
     if APP_IS_RASTER[application]:
         src_fname = window_path / "layers" / "output" / "output" / "geotiff.tif"
 
@@ -246,62 +320,7 @@ def predict_pipeline(
         raise NotImplementedError
 
     else:
-        # Merge the features across the windows.
-        # Here we also add valid patches attribute indicating which windows (patches)
-        # were non-zero. This is used to distinguish a point not being detected because
-        # it wasn't there vs not being detected just because there was no image
-        # available there.
-        fc = None
-        valid_patches = []
-        for window in tile_to_window.values():
-            window_output_fname = window.path / "layers" / "output" / "data.geojson"
-
-            if not window_output_fname.exists():
-                continue
-
-            with window_output_fname.open() as f:
-                cur_fc = json.load(f)
-
-            if fc is None:
-                fc = cur_fc
-            else:
-                fc["features"].extend(cur_fc["features"])
-
-            valid_patches.append(
-                (window.bounds[0] // PATCH_SIZE, window.bounds[1] // PATCH_SIZE)
-            )
-
-        if fc is None:
-            # So there was no image here.
-            # We still want to write an empty GeoJSON so the job is marked completed.
-            fc = {
-                "type": "FeatureCollection",
-                "features": [],
-            }
-
-        if "properties" not in fc:
-            fc["properties"] = {}
-        fc["properties"]["valid_patches"] = {
-            str(projection.crs): list(valid_patches),
-        }
-
-        # The object detector predicts bounding boxes but we want to make all features
-        # just points.
-        for feat in fc["features"]:
-            assert feat["geometry"]["type"] == "Polygon"
-            coords = feat["geometry"]["coordinates"][0]
-            xs = [coord[0] for coord in coords]
-            ys = [coord[1] for coord in coords]
-            feat["geometry"] = {
-                "type": "Point",
-                "coordinates": [
-                    (min(xs) + max(xs)) / 2,
-                    (min(ys) + max(ys)) / 2,
-                ],
-            }
-
-        with out_fname.open("w") as f:
-            json.dump(fc, f)
+        merge_and_upload_points(projection, list(tile_to_window.values()), out_fname)
 
 
 class PredictTaskArgs:
