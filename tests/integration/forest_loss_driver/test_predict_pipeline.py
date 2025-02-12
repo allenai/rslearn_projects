@@ -72,13 +72,7 @@ def test_predict_pipeline(
 ) -> None:
     """Test the predict pipeline."""
     ds_path = UPath(tmp_path) / "dataset_20241023"
-    index_cache_dir = UPath(tmp_path) / "index_cache"
-    tile_store_root_dir = UPath(tmp_path) / "tile_store"
     predict_pipeline_config.ds_root = ds_path
-    os.environ["INDEX_CACHE_DIR"] = str(index_cache_dir)
-    os.environ["TILE_STORE_ROOT_DIR"] = str(tile_store_root_dir)
-    if "RSLP_PREFIX" not in os.environ:
-        raise OSError("RSLP_PREFIX must be set in the environment for the test bucket")
     prediction_pipeline = ForestLossDriverPredictionPipeline(
         pred_pipeline_config=predict_pipeline_config
     )
