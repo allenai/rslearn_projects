@@ -127,7 +127,7 @@ jobs:
             -e TEST_PUBSUB_PROJECT=earthsystem-dev-c3po \
             -e TEST_PUBSUB_TOPIC=rslearn_projects_test_topic \
             -e TEST_PUBSUB_SUBSCRIPTION=rslearn_projects_test_subscription \
-            test pytest tests/integration/ --ignore tests/integration_slow/ -vv
+            test pytest tests/integration/ -vv
 
 
       - name: Clean up
