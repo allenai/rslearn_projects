@@ -101,6 +101,7 @@ def make_tiles(args: MakeTilesArgs) -> None:
         args: the MakeTilesArgs parameters.
     """
     ds_path = UPath(args.ds_root)
+    dst_dir = args.get_tile_dir()
 
     # Create the GeoJSON file that we will apply tippecanoe on to create the vector
     # tiles. To do so, we enumerate the windows in good_windows.json, and extract a
@@ -152,7 +153,6 @@ def make_tiles(args: MakeTilesArgs) -> None:
 
         # Copy to GCS from which we serve the tiles.
         src_fnames = UPath(local_tile_dir).glob("*/*/*.pbf")
-        dst_dir = args.get_tile_dir()
         copy_jobs = []
         for src_fname in src_fnames:
             dst_fname = (
@@ -172,7 +172,7 @@ def make_tiles(args: MakeTilesArgs) -> None:
         for _ in tqdm.tqdm(outputs, total=len(copy_jobs)):
             pass
 
-    # Create an extra file to mark the dataset ready to serve from web app.
-    (ds_path / READY_FOR_SERVING_FNAME).touch()
+    # Create an extra file to mark the tiles ready to serve from web app.
+    (dst_dir / READY_FOR_SERVING_FNAME).touch()
 
     p.close()
