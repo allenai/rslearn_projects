@@ -3,7 +3,6 @@
 import json
 import multiprocessing
 import os
-import shutil
 import subprocess  # nosec
 import tempfile
 from typing import Any
@@ -20,6 +19,7 @@ from rslp.forest_loss_driver.const import (
     READY_FOR_SERVING_FNAME,
     WINDOWS_FNAME,
 )
+from rslp.utils.fs import copy_file
 
 DEFAULT_NUM_WORKERS = 32
 
@@ -64,16 +64,6 @@ def get_geojson_feature(index: int, window_root: UPath) -> dict[str, Any]:
             layer=category,
         ),
     }
-
-
-def copy_file(src_fname: UPath, dst_fname: UPath) -> None:
-    """Copy a file from src to dst.
-
-    This is mainly for use with multiprocessing.
-    """
-    with src_fname.open("rb") as src:
-        with dst_fname.open("wb") as dst:
-            shutil.copyfileobj(src, dst)
 
 
 class MakeTilesArgs:

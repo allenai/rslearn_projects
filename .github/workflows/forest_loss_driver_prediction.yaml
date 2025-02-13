@@ -85,6 +85,7 @@ jobs:
             --gpu_count 1 \
             --preemptible false \
             --weka_mounts "${WEKA_MOUNTS}"
+            --task_specific_env_vars "${TASK_ENV_VARS}"
         env:
           EXTRA_ARGS: |
             [
@@ -96,7 +97,11 @@ jobs:
           WEKA_MOUNTS: |
             [{
               "bucket_name": "dfive-default",
-              "mount_path": "/tile_store_root_dir",
-              "sub_path": "rslearn-eai/datasets/forest_loss_driver"
+              "mount_path": "/dfive-default"
             }]
           RSLP_PREFIX: ${{ secrets.RSLP_PREFIX }}
+          TASK_ENV_VARS: |
+            [{
+              "name": "PL_API_KEY",
+              "secret": "NICFI_PL_API_KEY",
+            }]

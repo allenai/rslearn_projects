@@ -1,13 +1,25 @@
 """fsspec-related utilities."""
 
 import os
+import shutil
 from typing import Any
 
 import fsspec
 import upath.registry
 from s3fs import S3FileSystem
+from upath import UPath
 from upath._flavour import WrappedFileSystemFlavour
 from upath.implementations.cloud import CloudPath
+
+
+def copy_file(src_fname: UPath, dst_fname: UPath) -> None:
+    """Copy a file from src to dst.
+
+    This is mainly for use with multiprocessing.
+    """
+    with src_fname.open("rb") as src:
+        with dst_fname.open("wb") as dst:
+            shutil.copyfileobj(src, dst)
 
 
 class WekaFileSystem(S3FileSystem):

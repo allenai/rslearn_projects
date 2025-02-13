@@ -1,7 +1,6 @@
 """Postprocessing outputs from Satlas models."""
 
 import json
-import math
 import multiprocessing
 import shutil
 import subprocess  # nosec
@@ -12,22 +11,11 @@ import shapely
 import tqdm
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import Projection, STGeometry
-from rslearn.utils.grid_index import GridIndex
 from upath import UPath
 
 from rslp.log_utils import get_logger
 
 from .predict_pipeline import Application
-
-# Approximate maximum meters in one degree latitude/longitude.
-# Above/below the equator there will be fewer meters.
-# This is used to compute the NMS_DISTANCE_THRESHOLD below.
-MAX_METERS_PER_DEGREE = 111111
-
-# Threshold on Euclidean distance between lat/lon for NMS.
-# We just do Euclidean distance for speed/simplicity since NMS doesn't need to be super
-# exact (instead of spherical distance).
-NMS_DISTANCE_THRESHOLD = 100 / MAX_METERS_PER_DEGREE
 
 # Individual Satlas applications use different category names than the global ones that
 # we want to serve. We should adjust this but for now this map helps to rename the
@@ -58,70 +46,6 @@ def _get_fc(fname: UPath) -> tuple[UPath, dict[str, Any]]:
     """
     with fname.open() as f:
         return fname, json.load(f)
-
-
-def apply_nms(
-    features: list[dict[str, Any]],
-    distance_threshold: float,
-) -> list[dict[str, Any]]:
-    """Apply non-maximum suppression over the points.
-
-    Although we run NMS inside the object detector, we need to run a global NMS again
-    because there two levels where we are dividing into patches -- at the global level,
-    where we start different prediction tasks for every 32768x32768 patch, and again
-    within the tasks, where we process each 2048x2048 sub-patch. So there can be
-    redundant detections across these boundaries.
-
-    Args:
-        features: the list of JSON Feature objects.
-        distance_threshold: the distance threshold to match points.
-
-    Returns:
-        new Features with NMS applied.
-    """
-    # A few multiples of the distance threshold is generally a good grid size.
-    grid_index = GridIndex(distance_threshold * 10)
-
-    # Insert features into the index.
-    for idx, feat in enumerate(features):
-        coordinates = feat["geometry"]["coordinates"]
-        box = (coordinates[0], coordinates[1], coordinates[0], coordinates[1])
-        grid_index.insert(box, idx)
-
-    # Now we iterate over the features and use the index to identify other features
-    # that are nearby. If the other feature has a higher score then we delete the
-    # feature.
-    good_features = []
-    for idx, feat in enumerate(features):
-        coordinates = feat["geometry"]["coordinates"]
-        # Create search box with distance threshold padding.
-        box = (
-            coordinates[0] - distance_threshold,
-            coordinates[1] - distance_threshold,
-            coordinates[0] + distance_threshold,
-            coordinates[1] + distance_threshold,
-        )
-        is_feat_okay = True
-        for other_idx in grid_index.query(box):
-            other_feat = features[other_idx]
-            if idx == other_idx:
-                continue
-            if feat["properties"]["score"] < other_feat["properties"]["score"]:
-                continue
-            other_coordinates = other_feat["geometry"]["coordinates"]
-            distance = math.sqrt(
-                (coordinates[0] - other_coordinates[0]) ** 2
-                + (coordinates[1] - other_coordinates[1]) ** 2
-            )
-            if distance > distance_threshold:
-                continue
-            is_feat_okay = False
-            break
-
-        if is_feat_okay:
-            good_features.append(feat)
-
-    return good_features
 
 
 def merge_points(
@@ -159,6 +83,8 @@ def merge_points(
     # We merge both the predicted points along with the valid patches (patches
     # processed by the task that had available input images).
     for fname, cur_fc in tqdm.tqdm(outputs, total=len(fnames)):
+        logger.debug("merging points from %s", fname)
+
         # The projection information may be missing if there are no valid patches.
         # In that case we can skip the file since it has neither valid patches that we
         # need to track nor any predicted points.
@@ -203,6 +129,7 @@ def merge_points(
     p.close()
 
     merged_upath = UPath(merged_path)
+    merged_upath.mkdir(parents=True, exist_ok=True)
     merged_fname = merged_upath / f"{label}.geojson"
     with merged_fname.open("w") as f:
         json.dump(
@@ -282,6 +209,7 @@ def smooth_points(
         )  # nosec
 
         # Now we can upload the smoothed per-timestep files.
+        smoothed_upath.mkdir(parents=True, exist_ok=True)
         for label in labels:
             src_path = tmp_smoothed_dir / f"{label}.geojson"
             dst_path = smoothed_upath / f"{label}.geojson"

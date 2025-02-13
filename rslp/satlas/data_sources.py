@@ -20,12 +20,35 @@ from upath import UPath
 def _find_monthly_matches(
     geometry: STGeometry, item_list: list[Item], period_days: int, max_matches: int
 ) -> list[list[Item]]:
-    # Find matches across the periods.
-    # For each period, we create an STGeometry with modified time range
-    # matching the period, and obtain matching mosaic.
-    # We start from the end of the time range because we care more about recent
-    # periods and so we want to make sure that they align correctly with the
-    # end.
+    """Match items to the geometry with one mosaic per period.
+
+    We divide the time range of the geometry into shorter periods. Within each period,
+    we use the items corresponding to that period to create a mosaic. The returned item
+    groups include one group per period, starting from the most recent periods, up to
+    the provided max_matches.
+
+    This is used e.g. when a model should process three mosaics, where each mosaic
+    should come from a different month. This gives more diversity of images, since
+    simply searching for the least cloudy images could result in selecting all of the
+    images from the same month.
+
+    max_matches may be smaller than the total number of periods in the given time
+    range. In this case, we prefer to use mosaics of the most recent periods. However,
+    sometimes there may be no items in a period; in that case, the older periods are
+    used as a fallback.
+
+    Args:
+        geometry: the window geometry to match items to.
+        item_list: the list of items.
+        period_days: the length of one period in days.
+        max_matches: the number of per-period mosaics to create.
+
+    Returns:
+        the matched item groups, where each group contains items that yield a
+            per-period mosaic.
+    """
+    # For each period, we create an STGeometry with modified time range matching that
+    # period, and use it with match_candidate_items_to_window to get a mosaic.
     cur_groups: list[list[Item]] = []
     period_end = geometry.time_range[1]
     while period_end > geometry.time_range[0] and len(cur_groups) < max_matches:

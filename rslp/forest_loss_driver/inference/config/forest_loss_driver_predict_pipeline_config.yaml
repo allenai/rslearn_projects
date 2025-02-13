@@ -1,18 +1,8 @@
 extract_alerts_args:
-  index_cache_dir: /tmp/index_cache_dir/
-  tile_store_dir: file:///tile_store_root_dir/
+  index_cache_dir: "file:///tmp/index_cache_dir/"
+  tile_store_dir: "file:///dfive-default/rslearn-eai/datasets/forest_loss_driver/tile_store_root_dir/"
   workers: 112
-materialize_pipeline_args:
-  prepare_args:
-    apply_windows_args:
-      workers: 112
-  ingest_args:
-    apply_windows_args:
-      workers: 112
-  materialize_args:
-    apply_windows_args:
-      workers: 112
 select_least_cloudy_images_args:
   workers: 112
-model_predict_args:
-  model_cfg_fname: "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml" # should be path from the top of the repo IF NOT ABSOLUTE PATH
+model_cfg_fname: "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml" # should be path from the top of the repo IF NOT ABSOLUTE PATH
+ds_root: "placeholder" # will be overwritten by integrated pipeline

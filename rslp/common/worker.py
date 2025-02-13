@@ -39,6 +39,12 @@ MAX_JOB_HOURS = 4
 # Scratch directory that jobs can use and it will be managed by this module.
 SCRATCH_DIRECTORY = "/tmp/scratch"
 
+# Directory to store SCRATCH_DIRECTORY (via symlink) in case
+# manage_scratch_dir_on_data_disk is used.
+# This is because some Beaker machines have much bigger /data disk than what's
+# available for ephemeral storage within the Docker container, so we need to use that
+# for disk-intensive tasks to avoid running out of disk space. But we also need to make
+# sure we delete everything we wrote, so worker.py manages the folder.
 DATA_DISK = "/data/rslearn_projects"
 
 
@@ -150,8 +156,11 @@ def worker_pipeline(
                 is_processing = False
                 last_message_time = time.time()
 
+    # We limit to a single message at a time and a single worker since tasks should use
+    # all of the available CPU/GPU resources.
     flow_control = pubsub_v1.types.FlowControl(
         max_messages=1,
+        # Tasks may take several hours so we allow extending the lease for up to a day.
         max_lease_duration=24 * 3600,
     )
     executor = futures.ThreadPoolExecutor(max_workers=1)
@@ -163,6 +172,9 @@ def worker_pipeline(
         scheduler=scheduler,
     )
     logger.info("worker listening for messages on %s", subscription_path)
+    # We use the loop below to make the worker exit if there are no more messages (by
+    # guessing based on the provided idle timeout). We also need to exit if there have
+    # been too many consecutive errors.
     try:
         while True:
             time.sleep(idle_timeout)
@@ -193,6 +205,7 @@ def worker_pipeline(
             logger.info("worker exiting due to idle timeout")
             break
     finally:
+        # Exit the worker process.
         streaming_pull_future.cancel()
         streaming_pull_future.result()
 
@@ -202,10 +215,10 @@ def launch_workers(
     project_id: str,
     subscription_id: str,
     num_workers: int,
+    cluster: list[str],
     gpus: int = 0,
     shared_memory: str | None = None,
     priority: Priority = Priority.low,
-    cluster: list[str] = ["ai2/augusta-google-1"],
     manage_scratch_dir_on_data_disk: bool = False,
 ) -> None:
     """Start workers for the prediction jobs.
@@ -215,10 +228,10 @@ def launch_workers(
         project_id: the Google Cloud project ID.
         subscription_id: the Pub/Sub subscription ID.
         num_workers: number of workers to launch
+        cluster: clusters to target.
         gpus: number of GPUs to request per worker.
         shared_memory: shared memory string like "256GiB".
         priority: priority to assign the Beaker jobs.
-        cluster: clusters to target.
         manage_scratch_dir_on_data_disk: see worker_pipeline.
     """
     beaker = Beaker.from_env(default_workspace=DEFAULT_WORKSPACE)
@@ -260,3 +273,31 @@ def launch_workers(
             )
             unique_id = str(uuid.uuid4())[0:8]
             beaker.experiment.create(f"worker_{unique_id}", spec)
+
+
+def write_jobs(
+    project_id: str,
+    topic_id: str,
+    rslp_project: str,
+    rslp_workflow: str,
+    args_list: list[list[str]],
+) -> None:
+    """Write tasks to the PubSub topic.
+
+    Args:
+        project_id: the project ID for the PubSub topic.
+        topic_id: the topic ID for the PubSub topic.
+        rslp_project: the rslp project to run.
+        rslp_workflow: the workflow in the project to run.
+        args_list: list of arguments fo reach task.
+    """
+    publisher = pubsub_v1.PublisherClient()
+    topic_path = publisher.topic_path(project_id, topic_id)
+    for args in tqdm.tqdm(args_list, desc="Writing jobs to Pub/Sub topic"):
+        json_data = dict(
+            project=rslp_project,
+            workflow=rslp_workflow,
+            args=args,
+        )
+        data = json.dumps(json_data).encode()
+        publisher.publish(topic_path, data).result()
