@@ -4,7 +4,9 @@ import json
 
 # Landsat config
 LANDSAT_LAYER_NAME = "landsat"
+OUTPUT_LAYER_NAME = "output"
 LANDSAT_RESOLUTION = 15
+LANDSAT_SOURCE = "landsat"
 
 # Data config
 LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"

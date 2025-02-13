@@ -1,13 +1,13 @@
 # Landsat Vessel Detection API
 
-The Landsat Vessel Detection API provides a way to apply the Landsat scenes for vessel detection. This guide explains how to set up and use the API, including running it locally or using prebuilt Docker images hosted on [GitHub Container Registry (GHCR)](https://github.com/allenai/rslearn_projects/pkgs/container/landsat-vessel-detection) and [Google Container Registry (GCR)](https://console.cloud.google.com/gcr/images/skylight-proto-1?referrer=search&inv=1&invt=Abh22Q&project=skylight-proto-1).
+The Landsat Vessel Detection API provides a way to apply the Landsat scenes for vessel detection. This guide explains how to set up and use the API, including running it locally or using prebuilt Docker images hosted on [GitHub Container Registry (GHCR)](https://github.com/allenai/rslearn_projects/pkgs/container/landsat-vessel-detection).
 
 
 ## Overview
 - **Model Name**: Landsat Vessel Detection
-- **Model Version**: `v0.0.1`
-- **Tag**: `landsat_vessels_v0.0.1`
-- **Last Updated**: `2024-11-21`
+- **Model Version**: `v0.0.2`
+- **Tag**: `landsat_vessels_v0.0.2`
+- **Last Updated**: `2025-02-10`
 
 
 ## Setting Up the Environment
@@ -44,14 +44,14 @@ This will start the API server on the specified host and port, and will rewrite 
 
 ## Using Docker Images for API Deployment
 
-Prebuilt Docker images are available on both GHCR and GCR. Use the following steps to pull and run the image (make sure the `.env` file is in the same directory as the Dockerfile, and at least 15GB of shared memory is available):
+Prebuilt Docker images are available on GHCR. Use the following steps to pull and run the image (make sure the `.env` file is in the same directory as the Dockerfile, and at least 15GB of shared memory is available):
 
 ### GHCR image
 
 1. Pull the image from GHCR.
 
     ```bash
-    docker pull ghcr.io/allenai/landsat-vessel-detection:v0.0.1
+    docker pull ghcr.io/allenai/landsat-vessel-detection:v0.0.2
     ```
 
 2. Run the container. Note that you need to replace the `<port_number>` and `<path_to_service_account_key>` with the actual `LANDSAT_PORT` (if you use the default port, set it to `5555`) and path to your local service account key file, and keep the other arguments unchanged.
@@ -64,28 +64,7 @@ Prebuilt Docker images are available on both GHCR and GCR. Use the following ste
     --env-file .env \
     --shm-size=15g \
     --gpus all \
-    ghcr.io/allenai/landsat-vessel-detection:v0.0.1
-    ```
-
-### GCR image
-
-1. Pull the image from GCR.
-
-    ```bash
-    docker pull gcr.io/skylight-proto-1/landsat-vessel-detection:v0.0.1
-    ```
-
-2. Run the container. Note that you need to replace the `<port_number>` and `<path_to_service_account_key>` with the actual `LANDSAT_PORT` (if you use the default port, set it to `5555`) and path to your local service account key file, and keep the other arguments unchanged.
-
-    ```bash
-    docker run \
-    --rm -p <port_number>:<port_number> \
-    -e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/key.json \
-    -v <path_to_service_account_key>:/app/credentials/key.json \
-    --env-file .env \
-    --shm-size=15g \
-    --gpus all \
-    gcr.io/skylight-proto-1/landsat-vessel-detection:v0.0.1
+    ghcr.io/allenai/landsat-vessel-detection:v0.0.2
     ```
 
 ## Making Requests to the API
