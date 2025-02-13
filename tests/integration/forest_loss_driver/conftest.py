@@ -112,10 +112,4 @@ def download_test_data() -> Generator[None, None, None]:
 
             logger.info(f"Finished downloading {folder}")
 
-    # Log contents of test data folder
-    logger.info("\nTest data directory contents:")
-    for path in sorted(test_data_path.rglob("*")):
-        logger.debug(f"  {path.relative_to(test_data_path)}")
-        if path.is_dir():
-            logger.info(f"    {path.relative_to(test_data_path)}")
     yield

@@ -82,11 +82,10 @@ def output_forest_event_metadata(
     fname: str,
     ds_path: UPath,
     mercator_point: tuple[int, int],
-    projection: Projection,
 ) -> None:
     """Output the info.json metadata for a forest loss event."""
     polygon_wgs84_shp: shapely.Polygon = event.polygon_geom.to_projection(
-        projection
+        WGS84_PROJECTION
     ).shp
     with (ds_path / "info.json").open("w") as f:
         json.dump(
@@ -103,29 +102,25 @@ def output_forest_event_metadata(
 
 def output_mask_raster(
     event: ForestLossEvent,
-    ds_path: UPath,
-    bounds: tuple[int, int, int, int],
     window: Window,
-    projection: Projection,
     window_size: int = WINDOW_SIZE,
 ) -> None:
     """Output the mask raster for a forest loss event."""
     # Get pixel coordinates of the mask.
-    polygon_webm_shp = event.polygon_geom.to_projection(projection).shp
+    polygon_webm_shp = event.polygon_geom.to_projection(window.projection).shp
 
     def to_out_pixel(points: np.ndarray) -> np.ndarray:
-        points[:, 0] -= bounds[0]
-        points[:, 1] -= bounds[1]
+        points[:, 0] -= window.bounds[0]
+        points[:, 1] -= window.bounds[1]
         return points
 
     polygon_out_shp = shapely.transform(polygon_webm_shp, to_out_pixel)
     mask_im = rasterio.features.rasterize(
         [(polygon_out_shp, 255)],
         out_shape=(window_size, window_size),
-        # If out is not provided, dtype is required according to the docs.
-        dtype=np.int32,
+        dtype=np.uint8,
     )
-    layer_dir = ds_path / "layers" / "mask"
+    layer_dir = window.path / "layers" / "mask"
     SingleImageRasterFormat().encode_raster(
         layer_dir / "mask",
         window.projection,
@@ -173,7 +168,7 @@ def output_window_metadata(event: ForestLossEvent, ds_path: UPath) -> tuple:
         time_range=time_range,
     )
     window.save()
-    return window, window_path, mercator_point, bounds
+    return window, window_path, mercator_point
 
 
 def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
@@ -190,13 +185,11 @@ def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
         fname: the GeoTIFF filename that this alert came from.
         ds_path: the path of dataset to write to.
     """
-    window, window_path, mercator_point, bounds = output_window_metadata(event, ds_path)
+    window, window_path, mercator_point = output_window_metadata(event, ds_path)
 
-    output_forest_event_metadata(
-        event, fname, window_path, mercator_point, WGS84_PROJECTION
-    )
+    output_forest_event_metadata(event, fname, window_path, mercator_point)
 
-    output_mask_raster(event, window_path, bounds, window, WEB_MERCATOR_PROJECTION)
+    output_mask_raster(event, window_path, window)
 
 
 def load_country_polygon(country_data_path: UPath) -> shapely.Polygon:
@@ -288,11 +281,12 @@ def process_shapes_into_events(
         # Get center point (clipped to shape) and note the corresponding date.
         center_shp, _ = shapely.ops.nearest_points(shp, shp.centroid)
         center_pixel = (int(center_shp.x), int(center_shp.y))
-        cur_days = int(
-            date_data[center_pixel[1], center_pixel[0]]
-        )  # WE should document if date data is inverted coords
+        cur_days = int(date_data[center_pixel[1], center_pixel[0]])
         cur_date = BASE_DATETIME + timedelta(days=cur_days)
-        center_proj_coords = conf_raster.xy(center_pixel[1], center_pixel[0])
+        center_proj_coords = conf_raster.xy(
+            col=center_pixel[0],
+            row=center_pixel[1],
+        )
         center_proj_shp = shapely.Point(center_proj_coords[0], center_proj_coords[1])
         center_proj_geom = STGeometry(
             Projection(conf_raster.crs, 1, 1), center_proj_shp, None
@@ -302,12 +296,14 @@ def process_shapes_into_events(
         center_wgs84_shp = center_proj_geom.to_projection(WGS84_PROJECTION).shp
         if not country_wgs84_shp.contains(center_wgs84_shp):
             country_skip_count += 1
-            # logger.debug("skipping shape not in Peru")
             continue
 
         def raster_pixel_to_proj(points: np.ndarray) -> np.ndarray:
             for i in range(points.shape[0]):
-                points[i, 0:2] = conf_raster.xy(points[i, 1], points[i, 0])
+                points[i, 0:2] = conf_raster.xy(
+                    column=points[i, 0],
+                    row=points[i, 1],
+                )
             return points
 
         polygon_proj_shp = shapely.transform(shp, raster_pixel_to_proj)
@@ -318,6 +314,7 @@ def process_shapes_into_events(
             polygon_proj_geom, center_proj_geom, center_pixel, cur_date
         )
         events.append(forest_loss_event)
+
     logger.debug(f"Skipped {background_skip_count} shapes as background")
     logger.debug(f"Skipped {area_skip_count} shapes due to area")
     logger.debug(f"Skipped {country_skip_count} shapes not in country polygon")
@@ -349,9 +346,8 @@ def create_forest_loss_mask(
     date_mask = date_data >= min_days
     conf_mask = conf_data >= min_confidence
     mask = date_mask & conf_mask
-    return mask.astype(
-        np.uint8
-    )  # THis seems to be causing issues for writing unless we change it when we write it
+    # Convert bool to the expected 8-bit data.
+    return mask.astype(np.uint8)
 
 
 def save_inference_dataset_config(
@@ -442,12 +438,15 @@ def extract_alerts_pipeline(
         # Close raster files
         conf_raster.close()
         date_raster.close()
+
+        # Limit to maximum number of events if desired.
         if extract_alerts_args.max_number_of_events is not None:
             logger.info(
                 f"Limiting to {extract_alerts_args.max_number_of_events} \
                         events"
             )
             events = events[: extract_alerts_args.max_number_of_events]
+
         logger.info(f"Writing {len(events)} windows")
         total_events += len(events)
         jobs = [
@@ -463,6 +462,7 @@ def extract_alerts_pipeline(
         for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
             pass
         p.close()
+
     logger.info(f"Total events: {total_events}")
     if total_events == 0:
         # Raise an error since this likely means there is a misconfiguration.

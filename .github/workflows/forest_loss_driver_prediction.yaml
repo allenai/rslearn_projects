@@ -20,7 +20,7 @@ env:
   BEAKER_ADDR: ${{ secrets.BEAKER_ADDR }}
   # Name of Docker image created by build step.
   # This is from the docker-compose.yaml file.
-  DOCKER_IMAGE_NAME: forest_loss_driver
+  DOCKER_IMAGE_NAME: rslearn_projects-test
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -52,9 +52,8 @@ jobs:
           token: ${{ env.BEAKER_TOKEN }}
           workspace: "ai2/earth-systems"
 
-      # This step produces a Docker image called forest_loss_driver.
+      # This step produces a Docker image called rslearn_projects-test.
       - name: Build Docker Image
-        working-directory: rslp/${{ env.RSLP_PROJECT }}
         run: |
           docker compose build
 
