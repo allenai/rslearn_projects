@@ -21,6 +21,8 @@ from rslp.forest_loss_driver.const import (
 )
 from rslp.utils.fs import copy_file
 
+from .index_windows import OUTPUT_GEOJSON_SUFFIX
+
 DEFAULT_NUM_WORKERS = 32
 
 
@@ -42,7 +44,7 @@ def get_geojson_feature(index: int, window_root: UPath) -> dict[str, Any]:
     geom_dict = json.loads(shapely.to_geojson(shp))
 
     # Get the predicted category.
-    with (window_root / "layers" / "output" / "data.geojson").open() as f:
+    with (window_root / OUTPUT_GEOJSON_SUFFIX).open() as f:
         output_data = json.load(f)
     category = output_data["features"][0]["properties"]["new_label"]
 

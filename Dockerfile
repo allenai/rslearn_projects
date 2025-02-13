@@ -8,6 +8,13 @@ RUN wget https://go.dev/dl/go1.22.12.linux-amd64.tar.gz
 RUN rm -rf /usr/local/go && tar -C /usr/local -xzf go1.22.12.linux-amd64.tar.gz
 ENV PATH="${PATH}:/usr/local/go/bin"
 
+# Install tippecanoe (used by forest loss driver).
+RUN apt install -y build-essential libsqlite3-dev zlib1g-dev
+RUN git clone https://github.com/mapbox/tippecanoe /opt/tippecanoe
+WORKDIR /opt/tippecanoe
+RUN make -j
+RUN make install
+
 # Install rslearn.
 # We use git clone and then git checkout instead of git clone -b so that the user could
 # specify a commit name or branch instead of only accepting a branch.
