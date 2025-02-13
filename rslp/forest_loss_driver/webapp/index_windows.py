@@ -10,6 +10,7 @@ from upath import UPath
 from rslp.forest_loss_driver.const import GROUP, WINDOWS_FNAME
 
 DEFAULT_WORKERS = 32
+OUTPUT_GEOJSON_SUFFIX = "layers/output/data.geojson"
 
 
 def _check_window(window_root: UPath) -> tuple[str, bool]:
@@ -22,7 +23,7 @@ def _check_window(window_root: UPath) -> tuple[str, bool]:
         a tuple (window_name, is_good) where is_good indicates whether the window has a
             prediction computed.
     """
-    output_fname = window_root / "layers" / "output" / "data.geojson"
+    output_fname = window_root / OUTPUT_GEOJSON_SUFFIX
     return window_root.name, output_fname.exists()
 
 

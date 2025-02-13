@@ -85,6 +85,7 @@ jobs:
             --gpu_count 1 \
             --preemptible false \
             --weka_mounts "${WEKA_MOUNTS}"
+            --task_specific_env_vars "${TASK_ENV_VARS}"
         env:
           EXTRA_ARGS: |
             [
@@ -99,3 +100,8 @@ jobs:
               "mount_path": "/dfive-default"
             }]
           RSLP_PREFIX: ${{ secrets.RSLP_PREFIX }}
+          TASK_ENV_VARS: |
+            [{
+              "name": "PL_API_KEY",
+              "secret": "NICFI_PL_API_KEY",
+            }]

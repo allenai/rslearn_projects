@@ -215,10 +215,10 @@ def launch_workers(
     project_id: str,
     subscription_id: str,
     num_workers: int,
+    cluster: list[str],
     gpus: int = 0,
     shared_memory: str | None = None,
     priority: Priority = Priority.low,
-    cluster: list[str] = ["ai2/augusta-google-1"],
     manage_scratch_dir_on_data_disk: bool = False,
 ) -> None:
     """Start workers for the prediction jobs.
@@ -228,10 +228,10 @@ def launch_workers(
         project_id: the Google Cloud project ID.
         subscription_id: the Pub/Sub subscription ID.
         num_workers: number of workers to launch
+        cluster: clusters to target.
         gpus: number of GPUs to request per worker.
         shared_memory: shared memory string like "256GiB".
         priority: priority to assign the Beaker jobs.
-        cluster: clusters to target.
         manage_scratch_dir_on_data_disk: see worker_pipeline.
     """
     beaker = Beaker.from_env(default_workspace=DEFAULT_WORKSPACE)

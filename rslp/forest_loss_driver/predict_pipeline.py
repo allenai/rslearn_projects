@@ -54,7 +54,12 @@ class ForestLossDriverPredictionPipeline:
 
         materialize_dataset(
             self.pred_config.path,
-            self.pred_config.materialize_pipeline_args,
+            self.pred_config.inference_materialize_args,
+        )
+
+        materialize_dataset(
+            self.pred_config.path,
+            self.pred_config.vis_materialize_args,
         )
 
         select_least_cloudy_images_pipeline(

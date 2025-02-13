@@ -3,7 +3,7 @@
 import multiprocessing
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from upath import UPath
 
@@ -16,12 +16,23 @@ from rslp.utils.rslearn import (
 )
 
 VISUALIZATION_ONLY_LAYERS = [
-    "planet_post_0",
-    "planet_post_1",
-    "planet_post_2",
     "planet_pre_0",
     "planet_pre_1",
     "planet_pre_2",
+    "planet_post_0",
+    "planet_post_1",
+    "planet_post_2",
+]
+
+INFERENCE_LAYERS = [
+    "pre_0",
+    "pre_1",
+    "pre_2",
+    "pre_3",
+    "pre_4",
+    "pre_5",
+    "pre_6",
+    "post",
 ]
 
 FOREST_LOSS_GEOTIFF_FILENAMES = [
@@ -32,11 +43,13 @@ FOREST_LOSS_GEOTIFF_FILENAMES = [
 ]
 
 DEFAULT_MODEL_CFG_FNAME = "data/forest_loss_driver/config.yaml"
+DEFAULT_VIS_LAYER_WORKERS = 32
 
 
 def get_default_workers() -> int:
     """Get the default number of workers."""
-    return multiprocessing.cpu_count()
+    # Past 128 workers, the disk I/O and network throughput will likely be bottleneck.
+    return min(multiprocessing.cpu_count(), 128)
 
 
 @dataclass
@@ -99,8 +112,8 @@ class ExtractAlertsArgs:
 
 
 @dataclass
-class ForestLossDriverMaterializeArgs(MaterializePipelineArgs):
-    """Arguments for materialize_dataset, with defaults for forest loss application.
+class InferenceLayerMaterializeArgs(MaterializePipelineArgs):
+    """Arguments for materialize_dataset, with defaults for non-visualization layers.
 
     Args:
         disabled_layers: the list of layers to disable for prepare/ingest/materialize.
@@ -110,7 +123,7 @@ class ForestLossDriverMaterializeArgs(MaterializePipelineArgs):
     """
 
     disabled_layers: list[str] = field(
-        default_factory=lambda: VISUALIZATION_ONLY_LAYERS
+        default_factory=lambda: list(VISUALIZATION_ONLY_LAYERS)
     )
     prepare_args: PrepareArgs = field(
         default_factory=lambda: PrepareArgs(
@@ -129,6 +142,41 @@ class ForestLossDriverMaterializeArgs(MaterializePipelineArgs):
         default_factory=lambda: MaterializeArgs(
             ignore_errors=True,
             apply_windows_args=ApplyWindowsArgs(workers=get_default_workers()),
+        ),
+    )
+
+
+@dataclass
+class VisLayerMaterializeArgs(MaterializePipelineArgs):
+    """Arguments for materialize_dataset, with defaults for the visualization layers.
+
+    These layers require fewer workers to operate properly due to API rate limit.
+
+    Args:
+        disabled_layers: the list of layers to disable for prepare/ingest/materialize.
+        prepare_args: the arguments for the prepare step.
+        ingest_args: the arguments for the ingest step.
+        materialize_args: the arguments for the materialize step.
+    """
+
+    disabled_layers: list[str] = field(default_factory=lambda: list(INFERENCE_LAYERS))
+    prepare_args: PrepareArgs = field(
+        default_factory=lambda: PrepareArgs(
+            apply_windows_args=ApplyWindowsArgs(
+                use_initial_job=True, workers=DEFAULT_VIS_LAYER_WORKERS
+            ),
+        )
+    )
+    ingest_args: IngestArgs = field(
+        default_factory=lambda: IngestArgs(
+            ignore_errors=True,
+            apply_windows_args=ApplyWindowsArgs(workers=DEFAULT_VIS_LAYER_WORKERS),
+        )
+    )
+    materialize_args: MaterializeArgs = field(
+        default_factory=lambda: MaterializeArgs(
+            ignore_errors=True,
+            apply_windows_args=ApplyWindowsArgs(workers=DEFAULT_VIS_LAYER_WORKERS),
         ),
     )
 
@@ -159,32 +207,23 @@ class PredictPipelineConfig:
         ds_root: the root path to the dataset.
         model_cfg_fname: the model configuration filename to apply.
         extract_alerts_args: the arguments for the extract_alerts step.
-        materialize_pipeline_args: the arguments for the materialize step.
+        inference_materialize_args: arguments for materializing inference layers.
+        vis_materialize_args: arguments for materializing visualization layers.
         select_least_cloudy_images_args: the arguments for the select_least_cloudy_images step.
     """
 
-    @staticmethod
-    def _get_most_recent_friday() -> datetime:
-        """Get the most recent Friday."""
-        now = datetime.now()
-        friday = now - timedelta(days=(now.weekday() - 4) % 7)
-        return friday
-
-    @staticmethod
-    def _default_ds_root() -> str:
-        friday = PredictPipelineConfig._get_most_recent_friday()
-        dated_dataset_name = f"dataset_{friday.strftime('%Y%m%d')}"
-        return f"/dfive-default/rslearn-eai/datasets/forest_loss_driver/prediction/{dated_dataset_name}"
-
+    ds_root: str
     model_cfg_fname: str = DEFAULT_MODEL_CFG_FNAME
-    ds_root: str = field(default_factory=_default_ds_root)
     extract_alerts_args: ExtractAlertsArgs = field(default_factory=ExtractAlertsArgs)
-    materialize_pipeline_args: ForestLossDriverMaterializeArgs = field(
-        default_factory=ForestLossDriverMaterializeArgs
+    inference_materialize_args: InferenceLayerMaterializeArgs = field(
+        default_factory=InferenceLayerMaterializeArgs
+    )
+    vis_materialize_args: VisLayerMaterializeArgs = field(
+        default_factory=VisLayerMaterializeArgs
     )
 
     select_least_cloudy_images_args: SelectLeastCloudyImagesArgs = field(
-        default_factory=lambda: SelectLeastCloudyImagesArgs()
+        default_factory=SelectLeastCloudyImagesArgs
     )
 
     @property
