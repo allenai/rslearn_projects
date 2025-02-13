@@ -168,6 +168,95 @@ class CustomLightningCLI(RslearnLightningCLI):
             default=False,
         )
 
+    def _get_checkpoint_path(
+        self, checkpoint_dir: UPath, load_best: bool = False, autoresume: bool = False
+    ) -> str | None:
+        """Get path to checkpoint to load from, or None to not restore checkpoint.
+
+        With --load_best=true, we load the best-performing checkpoint. An error is
+        thrown if the checkpoint doesn't exist.
+
+        With --autoresume=true, we load last.ckpt if it exists, but proceed with
+        default initialization otherwise.
+
+        Otherwise, we do not restore any existing checkpoint (i.e., we use default
+        initialization), and throw an error if there is an existing checkpoint.
+
+        When training, it is suggested to use no option (don't expect to restart
+        training) or --autoresume=true (if restart is expected, e.g. due to
+        preemption). For inference, it is suggested to use --load_best=true.
+
+        Args:
+            checkpoint_dir: the directory where checkpoints are stored.
+            load_best: whether to load the best performing checkpoint and require a
+                checkpoint to exist.
+            autoresume: whether to load the checkpoint if it exists but proceed even
+                if it does not.
+
+        Returns:
+            the path to the checkpoint for setting c.ckpt_path, or None if no
+                checkpoint should be restored.
+        """
+        if load_best:
+            # Checkpoints should be either:
+            # - last.ckpt
+            # - of the form "A=B-C=D-....ckpt" with one key being epoch=X
+            # So we want the one with the highest epoch, and only use last.ckpt if
+            # it's the only option.
+            # User should set save_top_k=1 so there's just one, otherwise we won't
+            # actually know which one is the best.
+            best_checkpoint = None
+            best_epochs = None
+            for option in checkpoint_dir.iterdir():
+                if not option.name.endswith(".ckpt"):
+                    continue
+
+                # Try to see what epochs this checkpoint is at.
+                # If it is some other format, then set it 0 so we only use it if it's
+                # the only option.
+                # If it is last.ckpt then we set it -100 to only use it if there is not
+                # even another format like "best.ckpt".
+                extracted_epochs = 0
+                if option.name == "last.ckpt":
+                    extracted_epochs = -100
+
+                parts = option.name.split(".ckpt")[0].split("-")
+                for part in parts:
+                    kv_parts = part.split("=")
+                    if len(kv_parts) != 2:
+                        continue
+                    if kv_parts[0] != "epoch":
+                        continue
+                    extracted_epochs = int(kv_parts[1])
+
+                if best_checkpoint is None or extracted_epochs > best_epochs:
+                    best_checkpoint = option
+                    best_epochs = extracted_epochs
+
+            if best_checkpoint is None:
+                raise ValueError(
+                    f"load_best enabled but no checkpoint is available in {checkpoint_dir}"
+                )
+
+            # Cache the checkpoint so we only need to download once in case we
+            # reuse it later.
+            # We only cache with --load_best since this is the only scenario where it
+            return get_cached_checkpoint(best_checkpoint)
+
+        elif autoresume:
+            last_checkpoint_path = checkpoint_dir / "last.ckpt"
+            if last_checkpoint_path.exists():
+                return last_checkpoint_path
+            else:
+                return None
+
+        else:
+            last_checkpoint_path = checkpoint_dir / "last.ckpt"
+            if last_checkpoint_path.exists():
+                raise ValueError("autoresume is off but checkpoint already exists")
+            else:
+                return None
+
     def before_instantiate_classes(self) -> None:
         """Called before Lightning class initialization."""
         super().before_instantiate_classes()
@@ -260,57 +349,12 @@ class CustomLightningCLI(RslearnLightningCLI):
                 )
                 c.trainer.callbacks.append(upload_wandb_callback)
 
-        # Check if there is an existing checkpoint.
-        # If so, and autoresume/load_best are disabled, we should throw error.
-        # If autoresume is enabled, then we should resume from last.ckpt.
-        # If load_best is enabled, then we should try to identify the best checkpoint.
-        # We still use last.ckpt to see if checkpoint exists since last.ckpt should
-        # always be written.
-        if (checkpoint_dir / "last.ckpt").exists():
-            if c.load_best:
-                # Checkpoints should be either:
-                # - last.ckpt
-                # - of the form "A=B-C=D-....ckpt" with one key being epoch=X
-                # So we want the one with the highest epoch, and only use last.ckpt if
-                # it's the only option.
-                # User should set save_top_k=1 so there's just one, otherwise we won't
-                # actually know which one is the best.
-                best_checkpoint = None
-                best_epochs = None
-                for option in checkpoint_dir.iterdir():
-                    if not option.name.endswith(".ckpt"):
-                        continue
-
-                    # Try to see what epochs this checkpoint is at.
-                    # If it is last.ckpt or some other format, then set it 0 so we only
-                    # use it if it's the only option.
-                    extracted_epochs = 0
-                    parts = option.name.split(".ckpt")[0].split("-")
-                    for part in parts:
-                        kv_parts = part.split("=")
-                        if len(kv_parts) != 2:
-                            continue
-                        if kv_parts[0] != "epoch":
-                            continue
-                        extracted_epochs = int(kv_parts[1])
-
-                    if best_checkpoint is None or extracted_epochs > best_epochs:
-                        best_checkpoint = option
-                        best_epochs = extracted_epochs
-
-                # Cache the checkpoint so we only need to download once in case we
-                # reuse it later.
-                c.ckpt_path = get_cached_checkpoint(best_checkpoint)
-
-            elif c.autoresume:
-                # Don't cache the checkpoint here since last.ckpt could change if the
-                # model is trained further.
-                c.ckpt_path = str(checkpoint_dir / "last.ckpt")
-
-            else:
-                raise ValueError("autoresume is off but checkpoint already exists")
-
-            logger.info(f"found checkpoint to resume from at {c.ckpt_path}")
+        checkpoint_path = self._get_checkpoint_path(
+            checkpoint_dir, load_best=c.load_best, autoresume=c.autoresume
+        )
+        if checkpoint_path is not None:
+            logger.info(f"found checkpoint to resume from at {checkpoint_path}")
+            c.ckpt_path = checkpoint_path
 
             wandb_id = launcher_lib.download_wandb_id(
                 c.rslp_project, c.rslp_experiment, run_id

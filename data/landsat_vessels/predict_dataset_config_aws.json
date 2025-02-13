@@ -154,6 +154,7 @@
         "metadata_cache_dir": "cache/landsat",
         "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs"
       },
+      "resampling_method": "nearest",
       "type": "raster"
     },
     "output": {
