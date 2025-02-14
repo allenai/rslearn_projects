@@ -7,7 +7,7 @@ The Landsat Vessel Detection API provides a way to apply the Landsat scenes for 
 - **Model Name**: Landsat Vessel Detection
 - **Model Version**: `v0.0.3`
 - **Tag**: `landsat_vessels_v0.0.3`
-- **Last Updated**: `2025-02-10`
+- **Last Updated**: `2025-02-14`
 
 
 ## Setting Up the Environment

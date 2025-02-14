@@ -4,7 +4,7 @@
 - **Model Name**: Landsat Vessel Detection
 - **Model Version**: `v0.0.3`
 - **Tag**: `landsat_vessels_v0.0.3`
-- **Last Updated**: `2025-02-10`
+- **Last Updated**: `2025-02-14`
 
 ---
 
