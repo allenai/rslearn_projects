@@ -103,7 +103,6 @@ def output_forest_event_metadata(
 def output_mask_raster(
     event: ForestLossEvent,
     window: Window,
-    window_size: int = WINDOW_SIZE,
 ) -> None:
     """Output the mask raster for a forest loss event."""
     # Get pixel coordinates of the mask.
@@ -117,7 +116,10 @@ def output_mask_raster(
     polygon_out_shp = shapely.transform(polygon_webm_shp, to_out_pixel)
     mask_im = rasterio.features.rasterize(
         [(polygon_out_shp, 255)],
-        out_shape=(window_size, window_size),
+        out_shape=(
+            window.bounds[3] - window.bounds[1],
+            window.bounds[2] - window.bounds[0],
+        ),
         dtype=np.uint8,
     )
     layer_dir = window.path / "layers" / "mask"
@@ -189,7 +191,7 @@ def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
 
     output_forest_event_metadata(event, fname, window_path, mercator_point)
 
-    output_mask_raster(event, window_path, window)
+    output_mask_raster(event, window)
 
 
 def load_country_polygon(country_data_path: UPath) -> shapely.Polygon:
@@ -301,7 +303,7 @@ def process_shapes_into_events(
         def raster_pixel_to_proj(points: np.ndarray) -> np.ndarray:
             for i in range(points.shape[0]):
                 points[i, 0:2] = conf_raster.xy(
-                    column=points[i, 0],
+                    col=points[i, 0],
                     row=points[i, 1],
                 )
             return points
