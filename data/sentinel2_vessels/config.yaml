@@ -35,7 +35,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gs://rslearn-eai/datasets/sentinel2_vessels/dataset_v1/20240927/
+    path: gs://rslearn-eai/datasets/sentinel2_vessels/dataset_v1/20250213/
     inputs:
       image:
         data_type: "raster"
@@ -122,7 +122,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: gs://rslearn-eai/datasets/sentinel2_vessels/dataset_v1/20240927/
+        path: gs://rslearn-eai/datasets/sentinel2_vessels/dataset_v1/20250213/
         output_layer: output
         selector: ["detect"]
         merger:
@@ -139,4 +139,4 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 rslp_project: sentinel2_vessels
-rslp_experiment: data_20240927_satlaspretrain_patch512_00
+rslp_experiment: data_20240213_00

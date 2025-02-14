@@ -65,3 +65,76 @@ To visualize outputs on the validation set:
 
     mkdir vis
     python -m rslp.rslearn_main model test --config data/sentinel2_vessels/config.yaml --data.init_args.path project_data/datasets/sentinel2_vessels/ --model.init_args.visualize_dir vis/ --load_best true
+
+
+Model Version History
+---------------------
+
+The version names correspond to the `rslp_experiment` field in the model configuration
+file (`data/sentinel2_vessels/config.yaml`).
+
+- `data_20240927_satlaspretrain_patch512_00`: initial model.
+- `data_20240213_00`: Some of the windows contained blank images. I re-ingested the
+  dataset and the issue seems to be fixed. The model is re-trained.
+
+
+Model Performance
+-----------------
+
+TODO
+
+
+Docker Container with FastAPI
+-----------------------------
+
+We also have a Docker container that exposes a FastAPI interface to apply vessel
+detection on Sentinel-2 scenes. This section explains how to setup the API.
+
+### Run the Docker container
+
+The Docker container does not contain the model weights. Instead, it expects the model
+weights to be present in a directory based on the `RSLP_PREFIX` environment variable.
+So download the model checkpoint:
+
+    mkdir -p project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/best.ckpt
+
+Run the container:
+
+```bash
+export SENTINEL2_PORT=5555
+docker run \
+    --rm -p $SENTINEL2_PORT:$SENTINEL2_PORT \
+    -e RSLP_PREFIX=/project_data \
+    -e SENTINEL2_PORT=$SENTINEL2_PORT \
+    -v project_data/ /project_data/ \
+    --shm-size=15g \
+    --gpus all \
+    ghcr.io/allenai/sentinel2-vessel-detection:v0.0.1
+```
+
+### Auto Documentation
+
+This API has enabled Swagger UI (`http://<your_address>:<port_number>/docs`) and ReDoc (`http://<your_address>:<port_number>/redoc`).
+
+### Making Requests
+
+Process a scene by its Sentinel-2 scene ID. Note that the crop path is optional.
+
+```bash
+curl -X POST http://localhost:${SENTINEL2_PORT}/detections -H "Content-Type: application/json" -d '{"scene_id": "S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425", "crop_path": "crops/"}'
+```
+
+The API will respond with the vessel detection results in JSON format.
+
+Alternatively, process the scene by providing the paths to the image assets. Currently
+only the TCI asset is needed (the bands must be named [R, G, B]). The paths can be URIs
+but must be accessible from the Docker container.
+
+```bash
+curl -X POST http://localhost:${SENTINEL2_PORT}/detections -H "Content-Type: application/json" -d '{"image_files": [{"bands": ["R", "G", "B"], "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_TCI.jp2"}]}'
+```
+
+### Docker Container Version History
+
+- v0.0.1: initial version. It uses model `data_20240213_00`.
