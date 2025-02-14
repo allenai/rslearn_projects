@@ -1,16 +1,16 @@
-name: Landsat-Vessel-Detection
+name: Sentinel2-Vessel-Detection
 
 on:
   workflow_dispatch: # Manual trigger
   push:
     tags:
-      - "landsat_vessels_v*" # Trigger only when a version tag (e.g., landsat_vessels_v0.0.1) is pushed
+      - "sentinel2_vessels_v*" # Trigger only when a version tag (e.g., sentinel2_vessels_v0.0.1) is pushed
 
 jobs:
   build-and-push:
     uses: allenai/rslearn_projects/.github/workflows/publish_project_docker_image.yaml@master
     with:
-      rslp_project: "landsat_vessels"
-      image_name: "landsat-vessel-detection"
+      rslp_project: "sentinel2_vessels"
+      image_name: "sentinel2-vessel-detection"
     secrets:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,64 @@
+name: Publish-Project-Docker-Image
+
+# This is a reusable workflow called by project-specific workflows to build and publish
+# a Docker image on Github Container Registry (GHCR).
+on:
+  workflow_call:
+    inputs:
+      rslp_project:
+        required: true
+        type: string
+      image_name:
+        required: true
+        type: string
+    secrets:
+      GITHUB_TOKEN:
+        required: true
+
+env:
+  REGISTRY: ghcr.io
+  ORG_NAME: "allenai"
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # Step 1: Checkout the repository and fetch all tags
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Ensure all history and tags are fetched
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      # Step 2: Extract the version from the latest tag and its associated commit SHA
+      - name: Get latest tag and associated SHA
+        id: version
+        run: |
+          LATEST_TAG=$(git tag --list "${{ inputs.rslp_project }}_v*" --sort=-v:refname | head -n 1)
+          TAG_COMMIT=$(git rev-list -n 1 $LATEST_TAG)
+          SHORT_SHA=$(git rev-parse --short $TAG_COMMIT)
+          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+          echo "SHORT_SHA=$SHORT_SHA" >> $GITHUB_ENV
+
+      # Step 3: Log in to GHCR
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 4: Build and Push Docker Image
+      - name: Build and Push Docker Image
+        working-directory: rslp/${{ inputs.rslp_project }}
+        run: |
+          docker compose build
+          docker tag ${{ inputs.rslp_project }}:latest ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ inputs.image_name }}:sha-${{ env.SHORT_SHA }}
+          docker tag ${{ inputs.rslp_project }}:latest ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ inputs.image_name }}:${{ env.LATEST_TAG }}
+          docker push ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ inputs.image_name }}:sha-${{ env.SHORT_SHA }}
+          docker push ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ inputs.image_name }}:${{ env.LATEST_TAG }}
