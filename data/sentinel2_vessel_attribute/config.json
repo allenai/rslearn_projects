@@ -83,7 +83,8 @@
         "compress": "zstd",
         "predictor": 2,
         "zstd_level": 1
-      }
+      },
+      "path_suffix": "gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20241212/tiles"
     }
   }
 }
