@@ -12,9 +12,9 @@ from rslearn.config import (
 )
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import DataSource
-from rslearn.data_sources.azure_sentinel1 import Sentinel1
-from rslearn.data_sources.azure_sentinel2 import Sentinel2 as AzureSentinel2
 from rslearn.data_sources.gcp_public_data import Sentinel2 as Sentinel2
+from rslearn.data_sources.planetary_computer import Sentinel1
+from rslearn.data_sources.planetary_computer import Sentinel2 as AzureSentinel2
 from rslearn.utils.geometry import STGeometry
 from upath import UPath
 

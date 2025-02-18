@@ -6,10 +6,10 @@ from typing import Any
 import shapely
 from rslearn.config import LayerConfig, QueryConfig, RasterLayerConfig, SpaceMode
 from rslearn.const import WGS84_PROJECTION
-from rslearn.data_sources.azure_sentinel1 import Sentinel1
-from rslearn.data_sources.azure_sentinel2 import Sentinel2 as AzureSentinel2
 from rslearn.data_sources.data_source import DataSource, Item
 from rslearn.data_sources.gcp_public_data import Sentinel2 as GcpSentinel2
+from rslearn.data_sources.planetary_computer import Sentinel1
+from rslearn.data_sources.planetary_computer import Sentinel2 as AzureSentinel2
 from rslearn.data_sources.utils import match_candidate_items_to_window
 from rslearn.dataset import Window
 from rslearn.tile_stores import TileStore
