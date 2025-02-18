@@ -2,6 +2,8 @@
 
 from datetime import datetime, timedelta
 
+from upath import UPath
+
 from .copy import copy_dataset
 from .predict_pipeline import (
     PredictPipelineConfig,
@@ -60,7 +62,7 @@ def integrated_pipeline(
     extract_dataset_main(pred_pipeline_config)
     run_model_predict_main(pred_pipeline_config)
     index_windows(pred_pipeline_config.ds_root)
-    copy_dataset(weka_ds_root, gcs_ds_root)
+    copy_dataset(UPath(weka_ds_root), UPath(gcs_ds_root))
     make_tiles(make_tiles_args)
 
 
