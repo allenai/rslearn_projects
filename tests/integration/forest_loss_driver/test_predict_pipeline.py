@@ -46,13 +46,15 @@ def predict_pipeline_config_path() -> str:
 
 @pytest.fixture
 def predict_pipeline_config(
-    inference_dataset_config_path: str,
+    tmp_path: pathlib.Path,
     alert_tiffs_prefix: str,
     alert_date_tiffs_prefix: str,
     tiff_filename: str,
 ) -> PredictPipelineConfig:
     """The predict pipeline config."""
+    ds_path = UPath(tmp_path) / "dataset_20241023"
     predict_pipeline_config = PredictPipelineConfig(
+        ds_root=str(ds_path.absolute().as_uri()),
         extract_alerts_args=ExtractAlertsArgs(
             gcs_tiff_filenames=[tiff_filename],
             min_confidence=1,
@@ -68,11 +70,9 @@ def predict_pipeline_config(
 
 def test_predict_pipeline(
     predict_pipeline_config: PredictPipelineConfig,
-    tmp_path: pathlib.Path,
 ) -> None:
     """Test the predict pipeline."""
-    ds_path = UPath(tmp_path) / "dataset_20241023"
-    predict_pipeline_config.ds_root = ds_path
+    ds_path = UPath(predict_pipeline_config.ds_root)
     prediction_pipeline = ForestLossDriverPredictionPipeline(
         pred_pipeline_config=predict_pipeline_config
     )

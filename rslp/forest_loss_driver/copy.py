@@ -90,6 +90,10 @@ def get_copy_jobs_for_window(
     # Copy additional JSON files.
     for window_suffix in ["info.json", "metadata.json", "least_cloudy_times.json"]:
         src_fname = window.path / window_suffix
+        if not src_fname.exists():
+            # Could happen if the window did not end up being used due to missing some
+            # layers.
+            continue
         dst_fname = dst_path / get_relative_suffix(src_path, src_fname)
         copy_file_jobs.append(
             dict(
