@@ -38,17 +38,6 @@ def alert_date_tiffs_prefix() -> str:
 
 
 @pytest.fixture
-def inference_dataset_config_path() -> str:
-    """The path to the inference dataset config."""
-    return str(
-        Path(__file__).resolve().parents[3]
-        / "data"
-        / "forest_loss_driver"
-        / "config.json"
-    )
-
-
-@pytest.fixture
 def test_materialized_dataset_path() -> UPath:
     """The path to the test materialized dataset."""
     return UPath(
