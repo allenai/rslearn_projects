@@ -83,12 +83,13 @@ file (`data/sentinel2_vessels/config.yaml`).
 Model Performance
 -----------------
 
-### data_20240213_00
+### data_20240213_01_add_freezing_and_fix_fpn_restore
 
 - Selected threshold: 0.8
 - Results on validation set (split1, split7, sargassum_val)
   - Precision: 78.0%
   - Recall: 77.6%
+- Note it should be 20250213 but there is typo.
 
 Docker Container with FastAPI
 -----------------------------
@@ -142,4 +143,4 @@ curl -X POST http://localhost:${SENTINEL2_PORT}/detections -H "Content-Type: app
 
 ### Docker Container Version History
 
-- v0.0.1: initial version. It uses model `data_20240213_00`.
+- v0.0.1: initial version. It uses model `data_20240213_01_add_freezing_and_fix_fpn_restore`.
