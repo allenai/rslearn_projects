@@ -11,9 +11,6 @@ on:
       image_name:
         required: true
         type: string
-    secrets:
-      GITHUB_TOKEN:
-        required: true
 
 env:
   REGISTRY: ghcr.io

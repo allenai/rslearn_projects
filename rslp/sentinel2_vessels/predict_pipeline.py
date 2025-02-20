@@ -342,7 +342,9 @@ def get_vessel_crop_windows(
     group = "crops"
     crop_windows: list[UPath] = []
     for detection in detections:
-        window_name = f"{detection.scene_id}_{detection.col}_{detection.row}"
+        window_name = (
+            f"{detection.metadata['task_idx']}_{detection.col}_{detection.row}"
+        )
         window_path = Window.get_window_root(ds_path, group, window_name)
         bounds = (
             detection.col - CROP_WINDOW_SIZE // 2,

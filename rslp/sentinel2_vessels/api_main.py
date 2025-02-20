@@ -108,36 +108,77 @@ class Sentinel2Request(BaseModel):
                 {
                     "description": "Example with scene_id",
                     "value": {
-                        "scene_id": "LC08_L1TP_123032_20200716_20200722_01_T1",
+                        "scene_id": "S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425",
                     },
                 },
                 {
-                    "description": "Example with scene_id and paths",
+                    "description": "Example with scene_id and crop output path",
                     "value": {
-                        "scene_id": "LC08_L1TP_123032_20200716_20200722_01_T1",
-                        "crop_path": "gs://path/to/crop",
-                        "scratch_path": "gs://path/to/scratch",
-                        "json_path": "gs://path/to/output.json",
-                    },
-                },
-                {
-                    "description": "Example with scene_zip_path",
-                    "value": {
-                        "scene_zip_path": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT.zip",
+                        "scene_id": "S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425",
+                        "crop_path": "gs://path/to/write/crops",
                     },
                 },
                 {
                     "description": "Example with image_files",
                     "value": {
-                        "image_files": {
-                            "B2": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B2.TIF",
-                            "B3": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B3.TIF",
-                            "B4": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B4.TIF",
-                            "B5": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B5.TIF",
-                            "B6": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B6.TIF",
-                            "B7": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B7.TIF",
-                            "B8": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B8.TIF",
-                        },
+                        "image_files": [
+                            {
+                                "bands": ["R", "G", "B"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_TCI.jp2",
+                            },
+                            {
+                                "bands": ["B01"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B01.jp2",
+                            },
+                            {
+                                "bands": ["B02"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B02.jp2",
+                            },
+                            {
+                                "bands": ["B03"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B03.jp2",
+                            },
+                            {
+                                "bands": ["B04"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B04.jp2",
+                            },
+                            {
+                                "bands": ["B05"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B05.jp2",
+                            },
+                            {
+                                "bands": ["B06"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B06.jp2",
+                            },
+                            {
+                                "bands": ["B07"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B07.jp2",
+                            },
+                            {
+                                "bands": ["B08"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B08.jp2",
+                            },
+                            {
+                                "bands": ["B8A"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B8A.jp2",
+                            },
+                            {
+                                "bands": ["B09"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B09.jp2",
+                            },
+                            {
+                                "bands": ["B10"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B10.jp2",
+                            },
+                            {
+                                "bands": ["B11"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B11.jp2",
+                            },
+                            {
+                                "bands": ["B12"],
+                                "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B12.jp2",
+                            },
+                        ],
                     },
                 },
             ]
@@ -166,7 +207,7 @@ async def get_detections(
     """Returns vessel detections for a given request.
 
     Args:
-        info (LandsatRequest): Sentinel2Request object containing the request data.
+        info (Sentinel2Request): Sentinel2Request object containing the request data.
         response (Response): FastAPI Response object to manage the response state.
 
     Returns:
