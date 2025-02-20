@@ -85,9 +85,7 @@ class TestGetItems:
     def test_sentinel1(self) -> None:
         """Run apply_test with MonthlySentinel1."""
         sentinel1 = MonthlySentinel1(
-            sentinel1=Sentinel1(
-                RasterLayerConfig(LayerType.RASTER, []),
-            ),
+            sentinel1=Sentinel1(["vv"]),
             period_days=PERIOD_DAYS,
         )
         self.apply_test(sentinel1)
@@ -107,9 +105,7 @@ class TestGetItems:
     def test_azure_sentinel2(self) -> None:
         """Run apply_test with MonthlyAzureSentinel2."""
         sentinel2 = MonthlyAzureSentinel2(
-            sentinel2=AzureSentinel2(
-                RasterLayerConfig(LayerType.RASTER, []),
-            ),
+            sentinel2=AzureSentinel2(["B04"]),
             period_days=PERIOD_DAYS,
         )
         self.apply_test(sentinel2)
