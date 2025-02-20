@@ -81,8 +81,12 @@ file (`data/sentinel2_vessels/config.yaml`).
 Model Performance
 -----------------
 
-TODO
+### data_20240213_00
 
+- Selected threshold: 0.8
+- Results on validation set (split1, split7, sargassum_val)
+  - Precision: 78.0%
+  - Recall: 77.6%
 
 Docker Container with FastAPI
 -----------------------------
@@ -127,12 +131,11 @@ curl -X POST http://localhost:${SENTINEL2_PORT}/detections -H "Content-Type: app
 
 The API will respond with the vessel detection results in JSON format.
 
-Alternatively, process the scene by providing the paths to the image assets. Currently
-only the TCI asset is needed (the bands must be named [R, G, B]). The paths can be URIs
-but must be accessible from the Docker container.
+Alternatively, process the scene by providing the paths to the image assets. The paths
+can be URIs but must be accessible from the Docker container.
 
 ```bash
-curl -X POST http://localhost:${SENTINEL2_PORT}/detections -H "Content-Type: application/json" -d '{"image_files": [{"bands": ["R", "G", "B"], "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_TCI.jp2"}]}'
+curl -X POST http://localhost:${SENTINEL2_PORT}/detections -H "Content-Type: application/json" -d '{"image_files": [{"bands": ["R", "G", "B"], "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_TCI.jp2"}, {"bands": ["B08", "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B08.jp2"]}]}'
 ```
 
 ### Docker Container Version History
