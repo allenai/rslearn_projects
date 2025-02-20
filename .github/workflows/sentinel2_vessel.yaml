@@ -12,5 +12,3 @@ jobs:
     with:
       rslp_project: "sentinel2_vessels"
       image_name: "sentinel2-vessel-detection"
-    secrets:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
