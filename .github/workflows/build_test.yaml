@@ -123,7 +123,7 @@ jobs:
             -e BKT_PROJECT_ID=earthsystem-dev-c3po \
             -e BKT_BUCKET_NAME=rslp-tests \
             -e BKT_BIGTABLE_PROJECT_ID=earthsystem-dev-c3po \
-            -e BKT_BIGTABLE_INSTANCE_ID=rslp-bigtable-test-instance-c1 \
+            -e BKT_BIGTABLE_INSTANCE_ID=rslp-bigtable-test-instance \
             -e TEST_PUBSUB_PROJECT=earthsystem-dev-c3po \
             -e TEST_PUBSUB_TOPIC=rslearn_projects_test_topic \
             -e TEST_PUBSUB_SUBSCRIPTION=rslearn_projects_test_subscription \
