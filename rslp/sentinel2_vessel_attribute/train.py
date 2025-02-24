@@ -12,6 +12,7 @@ import wandb
 from PIL import Image, ImageDraw
 from rslearn.train.lightning_module import RslearnLightningModule
 from rslearn.train.tasks.multi_task import MultiTask
+from rslearn.train.tasks.regression import RegressionTask
 from rslearn.train.tasks.task import BasicTask, Task
 from rslearn.utils import Feature
 from torchmetrics import Metric, MetricCollection
@@ -269,6 +270,7 @@ class VesselAttributeMultiTask(MultiTask):
                 s += f" ({gt_cog:.1f})"
             lines.append(s)
 
+        # only visualize heading mis-predictions
         # angle_difference = abs(pred_cog - gt_cog) % 360
         # if angle_difference > 180:
         #    angle_difference = 360 - angle_difference
@@ -307,73 +309,23 @@ class VesselAttributeMultiTask(MultiTask):
 class VesselAttributeLightningModule(RslearnLightningModule):
     """Extend LM to produce confusion matrices for each attribute."""
 
-    def on_validation_epoch_start(self) -> None:
-        """Called when at beginning of validation epoch.
-
-        Here we initialize the confusion matrix.
-        """
-        self.val_probs: list[npt.NDArray[npt.float32]] = []
-        self.val_y_true: list[npt.NDArray[np.int32]] = []
-
-    def validation_step(
-        self, batch: Any, batch_idx: int, dataloader_idx: int = 0
-    ) -> None:
-        """Validation step extended with confusion matrix."""
-        # Code below is copied from RslearnLightningModule.validation_step.
-        inputs, targets, _ = batch
-        batch_size = len(inputs)
-        outputs, loss_dict = self(inputs, targets)
-        val_loss = sum(loss_dict.values())
-        self.log_dict(
-            {"val_" + k: v for k, v in loss_dict.items()},
-            batch_size=batch_size,
-            on_step=False,
-            on_epoch=True,
-        )
-        self.log(
-            "val_loss",
-            val_loss,
-            batch_size=batch_size,
-            prog_bar=True,
-            on_step=False,
-            on_epoch=True,
-        )
-        self.val_metrics.update(outputs, targets)
-        self.log_dict(self.val_metrics, batch_size=batch_size, on_epoch=True)
-
-        # Now we hook in part to compute confusion matrix.
-        for output, target in zip(outputs, targets):
-            if not target["ship_type"]["valid"]:
-                continue
-            self.val_probs.append(output["ship_type"].cpu().numpy())
-            self.val_y_true.append(target["ship_type"]["class"].cpu().numpy())
-
-    def on_validation_epoch_end(self) -> None:
-        """Push the confusion matrix to W&B."""
-        self.logger.experiment.log(
-            {
-                "val_type_cm": wandb.plot.confusion_matrix(
-                    probs=np.stack(self.val_probs),
-                    y_true=np.stack(self.val_y_true),
-                    class_names=SHIP_TYPE_CATEGORIES,
-                )
-            }
-        )
-
     def on_test_epoch_start(self) -> None:
         """Called when at beginning of test epoch.
 
         Here we initialize the confusion matrices.
         """
-        self.test_type_probs: list[npt.NDArray[npt.float32]] = []
-        self.test_type_y_true: list[npt.NDArray[np.int32]] = []
-
-        self.test_length_probs: list[npt.NDArray[npt.float32]] = []
-        self.test_length_gt: list[npt.NDArray[np.int32]] = []
-        self.test_width_probs: list[npt.NDArray[npt.float32]] = []
-        self.test_width_gt: list[npt.NDArray[np.int32]] = []
-        self.test_speed_probs: list[npt.NDArray[npt.float32]] = []
-        self.test_speed_gt: list[npt.NDArray[np.int32]] = []
+        self.test_cm_probs: dict[str, list[npt.NDArray[npt.float32]]] = {
+            "ship_type": [],
+            "length": [],
+            "width": [],
+            "speed": [],
+        }
+        self.test_cm_gt: dict[str, list[npt.NDArray[np.int32]]] = {
+            "ship_type": [],
+            "length": [],
+            "width": [],
+            "speed": [],
+        }
 
     def test_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
         """Test step extended with confusion matrix."""
@@ -406,74 +358,80 @@ class VesselAttributeLightningModule(RslearnLightningModule):
                     )
                     Image.fromarray(image).save(out_fname)
 
-        # Now we hook in part to compute confusion matrix.
-        for output, target in zip(outputs, targets):
-            if not target["ship_type"]["valid"]:
-                continue
-            self.test_type_probs.append(output["ship_type"].cpu().numpy())
-            self.test_type_y_true.append(target["ship_type"]["class"].cpu().numpy())
+        # Now we hook in part to compute confusion matrices.
+        # For length/width/speed, they could be either classification task or
+        # regression. If it is regression, we need to convert the predicted and gt
+        # values to a class (bucket). The buckets are specified in the Task.
+        vessel_attribute_multi_task = self.task
+        assert isinstance(vessel_attribute_multi_task, VesselAttributeMultiTask)
 
-        # Create other confusion matrices too.
-        if output["length"].shape != ():
-            for output, target in zip(outputs, targets):
-                if not target["length"]["valid"]:
+        for output, target in zip(outputs, targets):
+            if target["ship_type"]["valid"]:
+                self.test_cm_probs["ship_type"].append(
+                    output["ship_type"].cpu().numpy()
+                )
+                self.test_cm_gt["ship_type"].append(
+                    target["ship_type"]["class"].cpu().numpy()
+                )
+
+            for task_name in ["length", "width", "speed"]:
+                if not target[task_name]["valid"]:
                     continue
-                self.test_length_probs.append(output["length"].cpu().numpy())
-                self.test_length_gt.append(target["length"]["class"].cpu().numpy())
-        if output["width"].shape != ():
-            for output, target in zip(outputs, targets):
-                if not target["width"]["valid"]:
-                    continue
-                self.test_width_probs.append(output["width"].cpu().numpy())
-                self.test_width_gt.append(target["width"]["class"].cpu().numpy())
-        if output["speed"].shape != ():
-            for output, target in zip(outputs, targets):
-                if not target["speed"]["valid"]:
-                    continue
-                self.test_speed_probs.append(output["speed"].cpu().numpy())
-                self.test_speed_gt.append(target["speed"]["class"].cpu().numpy())
+
+                if output[task_name].shape == ():
+                    # This means it is using regression (output is a scalar).
+                    # So we need to convert to bucket.
+                    buckets = vessel_attribute_multi_task.buckets[task_name]
+                    sub_task = vessel_attribute_multi_task.tasks[task_name]
+                    assert isinstance(sub_task, RegressionTask)
+                    scale_factor = sub_task.scale_factor
+                    output_bucket = vessel_attribute_multi_task._get_bucket(
+                        buckets,
+                        output[task_name].cpu().numpy() / scale_factor,
+                    )
+                    # Make fake probabilities for it.
+                    output_probs = np.zeros((len(buckets) + 1,), dtype=np.float32)
+                    output_probs[output_bucket] = 1
+
+                    gt_bucket = vessel_attribute_multi_task._get_bucket(
+                        buckets,
+                        target[task_name]["value"].cpu().numpy() / scale_factor,
+                    )
+                    self.test_cm_probs[task_name].append(output_probs)
+                    self.test_cm_gt[task_name].append(gt_bucket)
+
+                else:
+                    # It is classification so it is already in buckets.
+                    self.test_cm_probs[task_name].append(
+                        output[task_name].cpu().numpy()
+                    )
+                    self.test_cm_gt[task_name].append(
+                        target[task_name]["class"].cpu().numpy()
+                    )
 
     def on_test_epoch_end(self) -> None:
         """Push the confusion matrices to W&B."""
-        self.logger.experiment.log(
-            {
-                "test_type_cm": wandb.plot.confusion_matrix(
-                    probs=np.stack(self.test_type_probs),
-                    y_true=np.stack(self.test_type_y_true),
-                    class_names=SHIP_TYPE_CATEGORIES,
-                )
-            }
-        )
-        if len(self.test_length_probs) > 0:
-            num_buckets = max(self.test_length_gt) + 1
+        vessel_attribute_multi_task = self.task
+        assert isinstance(vessel_attribute_multi_task, VesselAttributeMultiTask)
+
+        for task_name, probs_list in self.test_cm_probs.items():
+            if len(probs_list) == 0:
+                continue
+            gt_list = self.test_cm_gt[task_name]
+
+            if task_name == "ship_type":
+                class_names = SHIP_TYPE_CATEGORIES
+            else:
+                buckets = vessel_attribute_multi_task.buckets[task_name]
+                num_buckets = len(buckets) + 1
+                class_names = [f"bucket{idx}" for idx in range(num_buckets)]
+
             self.logger.experiment.log(
                 {
-                    "test_length_cm": wandb.plot.confusion_matrix(
-                        probs=np.stack(self.test_length_probs),
-                        y_true=np.stack(self.test_length_gt),
-                        class_names=[f"bucket{idx}" for idx in range(num_buckets)],
-                    )
-                }
-            )
-        if len(self.test_width_probs) > 0:
-            num_buckets = max(self.test_width_gt) + 1
-            self.logger.experiment.log(
-                {
-                    "test_width_cm": wandb.plot.confusion_matrix(
-                        probs=np.stack(self.test_width_probs),
-                        y_true=np.stack(self.test_width_gt),
-                        class_names=[f"bucket{idx}" for idx in range(num_buckets)],
-                    )
-                }
-            )
-        if len(self.test_speed_probs) > 0:
-            num_buckets = max(self.test_speed_gt) + 1
-            self.logger.experiment.log(
-                {
-                    "test_speed_cm": wandb.plot.confusion_matrix(
-                        probs=np.stack(self.test_speed_probs),
-                        y_true=np.stack(self.test_speed_gt),
-                        class_names=[f"bucket{idx}" for idx in range(num_buckets)],
+                    f"test_{task_name}_cm": wandb.plot.confusion_matrix(
+                        probs=np.stack(probs_list),
+                        y_true=np.stack(gt_list),
+                        class_names=class_names,
                     )
                 }
             )
@@ -490,7 +448,7 @@ class VesselAttributeFlip(torch.nn.Module):
         horizontal: bool = True,
         vertical: bool = True,
     ):
-        """Initialize a new MyFlip.
+        """Initialize a new VesselAttributeFlip.
 
         Args:
             horizontal: whether to randomly flip horizontally

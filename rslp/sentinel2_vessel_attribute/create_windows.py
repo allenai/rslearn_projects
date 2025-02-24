@@ -108,7 +108,7 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
             f,
         )
 
-    info_dir = window_root / "layers" / "info"
+    info_dir = window.get_layer_dir("info")
     info_dir.mkdir(parents=True, exist_ok=True)
     gt_layer_fname = info_dir / "data.geojson"
     properties: dict[str, Any] = {
@@ -140,6 +140,7 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
             },
             f,
         )
+    window.mark_layer_completed("info")
 
 
 def create_windows(group: str, csv_dir: str, ds_path: str, workers: int = 32) -> None:

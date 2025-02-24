@@ -1,5 +1,5 @@
 model:
-  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeLightningModule
   init_args:
     model:
       class_path: rslearn.models.multitask.MultiTaskModel
@@ -66,7 +66,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20241212/
+    path: gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20250205/
     inputs:
       image:
         data_type: "raster"
@@ -81,6 +81,9 @@ data:
     task:
       class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeMultiTask
       init_args:
+        length_buckets: [10, 20, 30, 50, 75, 100, 150, 200]
+        width_buckets: [5, 10, 20]
+        speed_buckets: [2, 4, 8]
         tasks:
           length:
             class_path: rslearn.train.tasks.regression.RegressionTask
@@ -184,4 +187,4 @@ trainer:
         monitor: val_loss
         mode: min
 rslp_project: sentinel2_vessel_attribute
-rslp_experiment: data_20241212_model_20241212_ms_flip_satlaspretrain_00
+rslp_experiment: data_20250205_regress_00
