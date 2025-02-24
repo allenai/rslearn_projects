@@ -22,7 +22,7 @@ LANDSAT_BANDS = [
 # Model config
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config_detector.yaml"
 CLASSIFY_MODEL_CONFIG = "data/landsat_vessels/config_classifier.yaml"
-CLASSIFY_WINDOW_SIZE = 64
+CLASSIFY_WINDOW_SIZE = 128
 
 # Filter config
 INFRA_THRESHOLD_KM = 0.03  # max-distance between marine infra and prediction

@@ -2,9 +2,9 @@
 
 ## Overview
 - **Model Name**: Landsat Vessel Detection
-- **Model Version**: `v0.0.2`
-- **Tag**: `landsat_vessels_v0.0.2`
-- **Last Updated**: `2025-02-10`
+- **Model Version**: `v0.0.3`
+- **Tag**: `landsat_vessels_v0.0.3`
+- **Last Updated**: `2025-02-14`
 
 ---
 
@@ -58,3 +58,4 @@ Below is an example of the missed vessels, a lot of them are only visible in the
 ## Changelog
 - **`v0.0.1`**: Initial model release. Offline evaluation metrics reported.
 - **`v0.0.2`**: Improved pansharpening, added error message to LandsatResponse.
+- **`v0.0.3`**: Increase crop size.
