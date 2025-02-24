@@ -407,6 +407,10 @@ def predict_pipeline(
     Returns:
         list of vessel detections for each task.
     """
+    if len(tasks) == 0:
+        # Avoid error with below with checking tasks[0].scene_id.
+        return []
+
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
 
