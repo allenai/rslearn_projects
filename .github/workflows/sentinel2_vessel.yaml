@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-push:
-    uses: allenai/rslearn_projects/.github/workflows/publish_project_docker_image.yaml@favyen/sentinel2_detector_update
+    uses: ./.github/workflows/publish_project_docker_image.yaml
     with:
       rslp_project: "sentinel2_vessels"
       image_name: "sentinel2-vessel-detection"
