@@ -26,6 +26,12 @@ NEEDED_LAYERS = [
     "best_post_0",
     "best_post_1",
     "best_post_2",
+    "planet_pre_0",
+    "planet_pre_1",
+    "planet_pre_2",
+    "planet_post_0",
+    "planet_post_1",
+    "planet_post_2",
     "mask",
     "output",
 ]
