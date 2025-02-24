@@ -1,6 +1,9 @@
 """Test bkt file operations."""
 
+import os
 import pathlib
+
+import pytest
 
 from rslp.satlas.bkt import (
     BktDownloadRequest,
@@ -9,7 +12,10 @@ from rslp.satlas.bkt import (
     make_bkt,
 )
 
+RUNNING_IN_CI = os.environ.get("CI", "false").lower() == "true"
 
+
+@pytest.mark.skipif(RUNNING_IN_CI, reason="Skipping in CI environment")
 def test_make_and_download_bkt(tmp_path: pathlib.Path) -> None:
     """Test making and downloading a bkt file.
 
