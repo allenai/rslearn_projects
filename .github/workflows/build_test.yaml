@@ -109,18 +109,27 @@ jobs:
       - name: Run unit tests with Docker Compose
         run: |
           docker compose -f docker-compose.yaml run \
+            -e CI="true" \
             test pytest tests/unit/
 
       - name: Run tests with Docker Compose
         run: |
           docker compose -f docker-compose.yaml run \
+            -e CI="true" \
             -e AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }} \
             -e AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
             -v ${{env.GOOGLE_GHA_CREDS_PATH}}:/tmp/gcp-credentials.json:ro \
             -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-credentials.json \
             -e RSLP_BUCKET=rslearn-eai \
             -e RSLP_PREFIX=gs://rslearn-eai \
-            test pytest tests/integration/ --ignore tests/integration_slow/ -vv
+            -e BKT_PROJECT_ID=earthsystem-dev-c3po \
+            -e BKT_BUCKET_NAME=rslp-tests \
+            -e BKT_BIGTABLE_PROJECT_ID=earthsystem-dev-c3po \
+            -e BKT_BIGTABLE_INSTANCE_ID=rslp-bigtable-test-instance \
+            -e TEST_PUBSUB_PROJECT=earthsystem-dev-c3po \
+            -e TEST_PUBSUB_TOPIC=rslearn_projects_test_topic \
+            -e TEST_PUBSUB_SUBSCRIPTION=rslearn_projects_test_subscription \
+            test pytest tests/integration/ -vv
 
 
       - name: Clean up

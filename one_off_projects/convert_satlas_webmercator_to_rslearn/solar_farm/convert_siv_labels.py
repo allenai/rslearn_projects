@@ -9,8 +9,10 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import rasterio.features
 import shapely
-from PIL import Image
+from upath import UPath
 
+from rslearn.utils.vector_format import GeojsonVectorFormat
+from rslearn.utils.raster_format import SingleImageRasterFormat
 from ..lib import convert_window
 
 db_path = "/home/ubuntu/siv_renewable/data/siv.sqlite3"
@@ -36,7 +38,7 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
         ts = ts.replace(tzinfo=timezone.utc)
     time_range = (
         ts - timedelta(days=120),
-        ts + timedelta(days=30),
+        ts + timedelta(days=60),
     )
 
     db.execute(
@@ -55,7 +57,7 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
         labels.append((polygon, properties))
 
     window = convert_window(
-        root_dir=out_dir,
+        root_dir=UPath(out_dir),
         group=group,
         zoom=15,
         bounds=bounds,
@@ -64,15 +66,18 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
     )
 
     # Create raster version of the label.
+    layer_dir = window.get_layer_dir("label")
+    features = GeojsonVectorFormat().decode_vector(layer_dir, bounds)
+
     shapes = []
-    with window.file_api.open("layers/label/data.geojson", "r") as f:
-        for feat in json.load(f)["features"]:
-            geometry = feat["geometry"]
-            assert geometry["type"] == "Polygon"
-            geometry["coordinates"] = (
-                np.array(geometry["coordinates"]) - [window.bounds[0], window.bounds[1]]
-            ).tolist()
-            shapes.append((geometry, 255))
+    for feat in features:
+        assert feat.geometry.projection == window.projection
+        geometry = json.loads(shapely.to_geojson(feat.geometry.shp))
+        assert geometry["type"] == "Polygon"
+        geometry["coordinates"] = (
+            np.array(geometry["coordinates"]) - [window.bounds[0], window.bounds[1]]
+        ).tolist()
+        shapes.append((geometry, 1))
     if shapes:
         mask = rasterio.features.rasterize(
             shapes,
@@ -87,5 +92,7 @@ for w_id, im_time, w_col, w_row, w_width, w_height in db.fetchall():
             (window.bounds[3] - window.bounds[1], window.bounds[2] - window.bounds[0]),
             dtype=np.uint8,
         )
-    with window.file_api.get_folder("layers/label_raster").open("image.png", "wb") as f:
-        Image.fromarray(mask).save(f, format="PNG")
+    layer_name = "label_raster"
+    raster_dir = window.get_raster_dir(layer_name, ["label"])
+    SingleImageRasterFormat().encode_raster(raster_dir, window.projection, window.bounds, mask[None, :, :])
+    window.mark_layer_completed(layer_name)

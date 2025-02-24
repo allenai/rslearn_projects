@@ -21,7 +21,8 @@
     "output": {
       "type": "vector"
     },
-    "sentinel2": {
+    "sentinel2_a": {
+      "alias": "sentinel2",
       "band_sets": [
         {
           "bands": [
@@ -56,19 +57,21 @@
       ],
       "data_source": {
         "harmonize": true,
-        "index_cache_dir": "/data/favyenb/rslearn_datasets_satlas/solar_farm/cache/sentinel2",
+        "index_cache_dir": "cache/sentinel2",
         "max_time_delta": "1d",
         "modality": "L1C",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
-          "max_matches": 3,
+          "max_matches": 2,
           "space_mode": "CONTAINS"
         },
-        "sort_by": "cloud_cover"
+        "sort_by": "cloud_cover",
+        "use_rtree_index": false
       },
       "type": "raster"
     },
-    "sentinel2.1": {
+    "sentinel2_b": {
+      "alias": "sentinel2",
       "band_sets": [
         {
           "bands": [
@@ -101,9 +104,24 @@
           "zoom_offset": -2
         }
       ],
+      "data_source": {
+        "harmonize": true,
+        "index_cache_dir": "cache/sentinel2",
+        "max_time_delta": "1d",
+        "modality": "L1C",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 2,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-90d",
+        "use_rtree_index": false
+      },
       "type": "raster"
     },
-    "sentinel2.2": {
+    "sentinel2_c": {
+      "alias": "sentinel2",
       "band_sets": [
         {
           "bands": [
@@ -136,6 +154,20 @@
           "zoom_offset": -2
         }
       ],
+      "data_source": {
+        "harmonize": true,
+        "index_cache_dir": "cache/sentinel2",
+        "max_time_delta": "1d",
+        "modality": "L1C",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "query_config": {
+          "max_matches": 2,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-180d",
+        "use_rtree_index": false
+      },
       "type": "raster"
     }
   },
