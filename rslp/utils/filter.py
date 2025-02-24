@@ -10,12 +10,12 @@ from upath import UPath
 class Filter:
     """Base class for filters."""
 
-    def should_filter(self, lat: float, lon: float) -> bool:
-        """Check if the input (latitude and longitude) should be filtered.
+    def should_filter(self, lon: float, lat: float) -> bool:
+        """Check if the input (longitude and latitude) should be filtered.
 
         Args:
-            lat: latitude of the target point.
-            lon: longitude of the target point.
+            lon: latitude of the target point.
+            lat: longitude of the target point.
 
         Returns:
             True to filter out, False to keep.
@@ -31,26 +31,26 @@ DEFAULT_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
 
 @functools.cache
-def get_infra_latlons(infra_path: UPath) -> tuple[np.ndarray, np.ndarray]:
-    """Fetch and cache the infrastructure latitudes and longitudes.
+def get_infra_lonlats(infra_path: UPath) -> tuple[np.ndarray, np.ndarray]:
+    """Fetch and cache the infrastructure longitudes and latitudes.
 
     Args:
         infra_path: path to the marine infrastructure GeoJSON file.
 
     Returns:
-        A tuple of arrays: (latitudes, longitudes).
+        A tuple of arrays: (longitudes, latitudes).
     """
     with infra_path.open("r") as f:
         geojson_data = json.load(f)
 
-    lats = np.array(
-        [feature["geometry"]["coordinates"][1] for feature in geojson_data["features"]]
-    )
     lons = np.array(
         [feature["geometry"]["coordinates"][0] for feature in geojson_data["features"]]
     )
+    lats = np.array(
+        [feature["geometry"]["coordinates"][1] for feature in geojson_data["features"]]
+    )
 
-    return lats, lons
+    return lons, lats
 
 
 class NearInfraFilter(Filter):
@@ -68,30 +68,30 @@ class NearInfraFilter(Filter):
             infra_distance_threshold: distance threshold for marine infrastructure.
         """
         self.infra_url = infra_url
-        self.infra_latlons = get_infra_latlons(UPath(self.infra_url))
+        self.infra_lonlats = get_infra_lonlats(UPath(self.infra_url))
         self.infra_distance_threshold = infra_distance_threshold
 
     def _get_haversine_distances(
         self,
-        target_lat: float,
         target_lon: float,
-        latlons: tuple[np.ndarray, np.ndarray],
+        target_lat: float,
+        lonlats: tuple[np.ndarray, np.ndarray],
     ) -> np.ndarray:
         """Get the haversine distances between a target point and a set of points.
 
         Args:
-            target_lat: latitude of the target point.
             target_lon: longitude of the target point.
-            latlons: a tuple of latitude and longitude arrays.
+            target_lat: latitude of the target point.
+            lonlats: a tuple of longitude and latitude arrays.
 
         Returns:
             distances: an array of haversine distances (unit: km).
         """
-        # Convert latitude and longitude from degrees to radians
-        target_lat = np.radians(target_lat)
+        # Convert longitude and latitude from degrees to radians
         target_lon = np.radians(target_lon)
-        lats = np.radians(latlons[0])
-        lons = np.radians(latlons[1])
+        target_lat = np.radians(target_lat)
+        lons = np.radians(lonlats[0])
+        lats = np.radians(lonlats[1])
 
         # Haversine formula
         dlon = lons - target_lon
@@ -108,17 +108,17 @@ class NearInfraFilter(Filter):
 
         return distances
 
-    def should_filter(self, lat: float, lon: float) -> bool:
+    def should_filter(self, lon: float, lat: float) -> bool:
         """Check if the input is too close to marine infrastructure.
 
         Args:
-            lat: latitude of the target point.
             lon: longitude of the target point.
+            lat: latitude of the target point.
 
         Returns:
             True if it is too close to marine infrastructure, False otherwise.
         """
-        distances = self._get_haversine_distances(lat, lon, self.infra_latlons)
+        distances = self._get_haversine_distances(lon, lat, self.infra_lonlats)
         return np.any(distances < self.infra_distance_threshold)
 
 
