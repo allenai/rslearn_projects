@@ -31,7 +31,6 @@ from rslp.landsat_vessels.config import (
     LANDSAT_BANDS,
     LANDSAT_LAYER_NAME,
     LANDSAT_RESOLUTION,
-    LANDSAT_SOURCE,
     LOCAL_FILES_DATASET_CONFIG,
     OUTPUT_LAYER_NAME,
 )
@@ -46,7 +45,7 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
-from rslp.vessels import VesselDetection
+from rslp.vessels import VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
 
@@ -145,7 +144,7 @@ def get_vessel_detections(
         score = feature.properties["score"]
 
         detection = VesselDetection(
-            source=LANDSAT_SOURCE,
+            source=VesselDetectionSource.LANDSAT,
             col=int(geometry.shp.centroid.x),
             row=int(geometry.shp.centroid.y),
             projection=geometry.projection,
