@@ -1,6 +1,7 @@
 """Shared classes across vessel detection tasks."""
 
 from datetime import datetime
+from enum import Enum
 from typing import Any
 
 import shapely
@@ -8,6 +9,13 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import Projection, STGeometry
 from typing_extensions import TypedDict
 from upath import UPath
+
+
+class VesselDetectionSource(str, Enum):
+    """The sensor that the vessel detection came from."""
+
+    SENTINEL2 = "sentinel2"
+    LANDSAT = "landsat"
 
 
 class VesselDetectionDict(TypedDict):
@@ -26,7 +34,7 @@ class VesselDetectionDict(TypedDict):
         latitude: the latitude position of the vessel detection.
     """
 
-    source: str
+    source: VesselDetectionSource
     col: int
     row: int
     projection: dict[str, Any]
@@ -43,7 +51,7 @@ class VesselDetection:
 
     def __init__(
         self,
-        source: str,
+        source: VesselDetectionSource,
         col: int,
         row: int,
         projection: Projection,
