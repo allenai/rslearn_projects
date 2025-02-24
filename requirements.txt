@@ -1,9 +1,12 @@
 beaker-py>=1.32
 fastapi>=0.115
+google-cloud-bigtable>=2.18
+google-cloud-pubsub>=2.18
 interrogate>=1.7
 pydantic>=2.8
 pytest>=8.2
 python-dotenv>=1.0
 ruff>=0.7
+scikit-image>=0.23
 typing-extensions>=4.11
 uvicorn>=0.32

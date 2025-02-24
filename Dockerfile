@@ -1,7 +1,7 @@
 FROM pytorch/pytorch:2.5.0-cuda11.8-cudnn9-runtime@sha256:d15e9803095e462e351f097fb1f5e7cdaa4f5e855d7ff6d6f36ec4c2aa2938ea
 
 RUN apt update
-RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git
+RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
 
 # Install rslearn.
 # We use git clone and then git checkout instead of git clone -b so that the user could
@@ -27,4 +27,12 @@ ENV PYTHONPATH="${PYTHONPATH}:."
 COPY . /opt/rslearn_projects/
 # install rslp package
 RUN pip install --no-cache-dir /opt/rslearn_projects
+
+# Build Satlas smooth_point_labels_viterbi.go program.
+WORKDIR /opt/rslearn_projects/rslp/satlas/scripts
+RUN wget https://go.dev/dl/go1.22.12.linux-amd64.tar.gz
+RUN rm -rf /usr/local/go && tar -C /usr/local -xzf go1.22.12.linux-amd64.tar.gz
+ENV PATH="${PATH}:/usr/local/go/bin"
+RUN go build smooth_point_labels_viterbi.go
+
 WORKDIR /opt/rslearn_projects

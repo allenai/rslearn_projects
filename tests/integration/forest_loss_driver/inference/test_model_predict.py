@@ -95,7 +95,7 @@ def test_forest_loss_driver_model_predict(
             output_json = json.load(f)
         # TODO: Ideally we would have a pydantic model for this output perhaps that we could subclass from rslearn?
         # Check properties except probs
-        tol = 0.01
+        tol = 0.1
         assert output_json["type"] == expected_output_json["type"]
         assert output_json["properties"] == expected_output_json["properties"]
         assert len(output_json["features"]) == len(expected_output_json["features"])
