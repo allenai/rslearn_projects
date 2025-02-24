@@ -29,12 +29,9 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
-from rslp.vessels import VesselDetection
+from rslp.vessels import VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
-
-# Name to use for source attribute in VesselDetection.
-SENTINEL2_SOURCE = "sentinel2"
 
 # Name to use in rslearn dataset for layer containing Sentinel-2 images.
 SENTINEL2_LAYER_NAME = "sentinel2"
@@ -304,7 +301,7 @@ def get_vessel_detections(
             score = feature.properties["score"]
 
             detection = VesselDetection(
-                source=SENTINEL2_SOURCE,
+                source=VesselDetectionSource.SENTINEL2,
                 col=int(geometry.shp.centroid.x),
                 row=int(geometry.shp.centroid.y),
                 projection=geometry.projection,
