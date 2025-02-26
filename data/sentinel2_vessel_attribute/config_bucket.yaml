@@ -66,7 +66,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20241212/
+    path: gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20250205/
     inputs:
       image:
         data_type: "raster"
@@ -187,4 +187,4 @@ trainer:
         monitor: val_loss
         mode: min
 rslp_project: sentinel2_vessel_attribute
-rslp_experiment: data_20241212_model_20250106_bucket_00
+rslp_experiment: data_20250205_bucket_00
