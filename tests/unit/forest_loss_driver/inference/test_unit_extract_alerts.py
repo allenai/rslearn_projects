@@ -1,7 +1,7 @@
 """Unit tests for the predict pipeline."""
 
 import json
-import tempfile
+import pathlib
 from datetime import datetime, timezone
 
 import numpy as np
@@ -49,46 +49,32 @@ def forest_loss_event() -> ForestLossEvent:
     return event
 
 
-def test_write_event(forest_loss_event: ForestLossEvent) -> None:
+def test_write_event(
+    forest_loss_event: ForestLossEvent, tmp_path: pathlib.Path
+) -> None:
     """Tests writing an event to a file."""
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        write_event(forest_loss_event, "test_filename.tif", UPath(temp_dir))
+    write_event(forest_loss_event, "test_filename.tif", UPath(tmp_path))
 
-        expected_subdirectory = "windows/default/feat_x_1281712_2146968_101_42718/"
-        assert (
-            UPath(temp_dir)
-            / expected_subdirectory
-            / "layers"
-            / "mask"
-            / "mask"
-            / "image.png"
-        ).exists(), "image.png not found"
+    window_dir = (
+        UPath(tmp_path) / "windows" / "default" / "feat_x_1281712_2146968_101_42718"
+    )
+    assert (
+        window_dir / "layers" / "mask" / "mask" / "image.png"
+    ).exists(), "image.png not found"
 
-        assert (
-            UPath(temp_dir) / expected_subdirectory / "metadata.json"
-        ).exists(), "window metadata.json not found"
+    assert (window_dir / "metadata.json").exists(), "window metadata.json not found"
 
-        with (
-            UPath(temp_dir)
-            / expected_subdirectory
-            / "layers"
-            / "mask"
-            / "mask"
-            / "metadata.json"
-        ).open() as f:
-            metadata = json.load(f)
-        assert metadata == {
-            "bounds": [-815504, 49752, -815376, 49880]
-        }, "forest loss event metadata.json is incorrect"
+    with (window_dir / "layers" / "mask" / "mask" / "metadata.json").open() as f:
+        metadata = json.load(f)
+    assert metadata == {
+        "bounds": [-815504, 49752, -815376, 49880]
+    }, "forest loss event metadata.json is incorrect"
 
-        # assert completed file exists
-        expected_layers_subdirectory = (
-            "windows/default/feat_x_1281712_2146968_101_42718/layers/mask"
-        )
-        assert (
-            UPath(temp_dir) / expected_layers_subdirectory / "completed"
-        ).exists(), "completed file not found"
+    # assert completed file exists for mask layer
+    assert (
+        window_dir / "layers" / "mask" / "completed"
+    ).exists(), "completed file not found"
 
 
 def test_create_forest_loss_mask_events_found() -> None:

@@ -20,8 +20,7 @@ from beaker import (
 from rslearn.utils.mp import star_imap_unordered
 from upath import UPath
 
-from rslp import launcher_lib
-from rslp.launch_beaker import BUDGET, DEFAULT_WORKSPACE
+from rslp.utils.beaker import DEFAULT_BUDGET, DEFAULT_WORKSPACE, get_base_env_vars
 
 from .predict_pipeline import PredictionTask
 
@@ -49,10 +48,10 @@ def launch_job(image_name: str, tasks: list[PredictionTask]) -> None:
     ]
 
     with beaker.session():
-        env_vars = launcher_lib.get_base_env_vars(use_weka_prefix=True)
+        env_vars = get_base_env_vars(use_weka_prefix=True)
 
         spec = ExperimentSpec.new(
-            budget=BUDGET,
+            budget=DEFAULT_BUDGET,
             description=f"sentinel2_vessel_{first_scene_id}",
             beaker_image=image_name,
             priority=Priority.low,
