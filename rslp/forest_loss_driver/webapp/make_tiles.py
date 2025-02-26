@@ -130,8 +130,8 @@ def make_tiles(args: MakeTilesArgs) -> None:
         with open(local_fname, "w") as f:
             json.dump(fc, f)
 
-        # Save the GeoJSON with the rslearn dataset in case we want to inspect it.
-        copy_file(UPath(local_fname), ds_path / GEOJSON_FNAME)
+        # Save the GeoJSON with the tiles so it can be downloaded.
+        copy_file(UPath(local_fname), dst_dir / GEOJSON_FNAME)
 
         # Apply tippecanoe to convert the GeoJSON into a set of vector tiles.
         local_tile_dir = os.path.join(tmp_dir, "tiles")
