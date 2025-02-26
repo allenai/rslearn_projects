@@ -1,12 +1,49 @@
 """Shared classes across vessel detection tasks."""
 
 from datetime import datetime
+from enum import Enum
 from typing import Any
 
 import shapely
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import Projection, STGeometry
+from typing_extensions import TypedDict
 from upath import UPath
+
+
+class VesselDetectionSource(str, Enum):
+    """The sensor that the vessel detection came from."""
+
+    SENTINEL2 = "sentinel2"
+    LANDSAT = "landsat"
+
+
+class VesselDetectionDict(TypedDict):
+    """Serializable metadata about a VesselDetection.
+
+    Args:
+        source: the type of satellite imagery used.
+        col: the column in projection coordinates.
+        row: the row in projection coordinates.
+        projection: the projection used.
+        score: confidence score from object detector.
+        ts: datetime fo the window (if known).
+        scene_id: the scene ID that the vessel was detected in (if known).
+        crop_fname: filename where crop image for this vessel is stored.
+        longitude: the longitude position of the vessel detection.
+        latitude: the latitude position of the vessel detection.
+    """
+
+    source: VesselDetectionSource
+    col: int
+    row: int
+    projection: dict[str, Any]
+    score: float
+    ts: str | None
+    scene_id: str | None
+    crop_fname: str | None
+    longitude: float
+    latitude: float
 
 
 class VesselDetection:
@@ -14,7 +51,7 @@ class VesselDetection:
 
     def __init__(
         self,
-        source: str,
+        source: VesselDetectionSource,
         col: int,
         row: int,
         projection: Projection,
@@ -61,10 +98,10 @@ class VesselDetection:
         dst_geom = src_geom.to_projection(WGS84_PROJECTION)
         return (dst_geom.shp.x, dst_geom.shp.y)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> VesselDetectionDict:
         """Serialize this detection to a JSON-encodable dictionary."""
         lon, lat = self.get_lon_lat()
-        return dict(
+        return VesselDetectionDict(
             source=self.source,
             col=self.col,
             row=self.row,
