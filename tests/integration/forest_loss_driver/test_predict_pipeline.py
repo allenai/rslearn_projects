@@ -13,8 +13,10 @@ from google.cloud import storage
 from upath import UPath
 
 from rslp.forest_loss_driver.inference.config import (
+    VISUALIZATION_ONLY_LAYERS,
     ExtractAlertsArgs,
     PredictPipelineConfig,
+    VisLayerMaterializeArgs,
 )
 from rslp.forest_loss_driver.predict_pipeline import ForestLossDriverPredictionPipeline
 from rslp.log_utils import get_logger
@@ -63,6 +65,9 @@ def predict_pipeline_config(
             date_prefix=alert_date_tiffs_prefix,
             prediction_utc_time=datetime(2024, 10, 23, tzinfo=timezone.utc),
             max_number_of_events=1,
+        ),
+        vis_materialize_args=VisLayerMaterializeArgs(
+            disabled_layers=VISUALIZATION_ONLY_LAYERS
         ),
     )
     return predict_pipeline_config

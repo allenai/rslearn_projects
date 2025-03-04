@@ -67,7 +67,6 @@ jobs:
       # This runs inside a Docker image, so although `rslp common beaker_launcher`
       # in theory supports uploading image, we can't use that functionality here.
       - name: Run integrated pipeline in Beaker job
-        working-directory: rslp/${{ env.RSLP_PROJECT }}
         run: |
           docker compose -f docker-compose.yaml run \
             -e BEAKER_TOKEN="${BEAKER_TOKEN}" \
