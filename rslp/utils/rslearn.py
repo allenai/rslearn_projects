@@ -1,6 +1,7 @@
 """Utilities for using rslearn datasets and models."""
 
 from dataclasses import asdict, dataclass, field
+from datetime import timedelta
 
 from rslearn.dataset import Dataset
 
@@ -21,7 +22,6 @@ from rslp.log_utils import get_logger
 logger = get_logger(__name__)
 
 
-# TODO: We should get this from rslearn and there should be no defaults in this
 @dataclass
 class ApplyWindowsArgs:
     """Arguments for apply_on_windows."""
@@ -41,26 +41,32 @@ class PrepareArgs:
     apply_windows_args: ApplyWindowsArgs = field(
         default_factory=lambda: ApplyWindowsArgs()
     )
+    retry_max_attempts: int = 0
+    retry_backoff: timedelta = timedelta(minutes=1)
 
 
 @dataclass
 class IngestArgs:
     """Arguments for ingest operation."""
 
-    ignore_errors: bool
+    ignore_errors: bool = False
     apply_windows_args: ApplyWindowsArgs = field(
         default_factory=lambda: ApplyWindowsArgs()
     )
+    retry_max_attempts: int = 0
+    retry_backoff: timedelta = timedelta(minutes=1)
 
 
 @dataclass
 class MaterializeArgs:
     """Arguments for materialize operation."""
 
-    ignore_errors: bool
+    ignore_errors: bool = False
     apply_windows_args: ApplyWindowsArgs = field(
         default_factory=lambda: ApplyWindowsArgs()
     )
+    retry_max_attempts: int = 0
+    retry_backoff: timedelta = timedelta(minutes=1)
 
 
 @dataclass

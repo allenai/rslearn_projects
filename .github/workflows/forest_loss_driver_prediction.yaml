@@ -21,6 +21,7 @@ env:
   # Name of Docker image created by build step.
   # This is from the docker-compose.yaml file.
   DOCKER_IMAGE_NAME: rslearn_projects-test
+  DOCKER_SERVICE_NAME: test
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -72,7 +73,7 @@ jobs:
             -e BEAKER_TOKEN="${BEAKER_TOKEN}" \
             -e BEAKER_ADDR="${BEAKER_ADDR}" \
             -e RSLP_PREFIX="${RSLP_PREFIX}" \
-            "${DOCKER_IMAGE_NAME}" python -m rslp.main \
+            "${DOCKER_SERVICE_NAME}" python -m rslp.main \
             common \
             beaker_launcher \
             "${RSLP_PROJECT}" \
@@ -82,7 +83,7 @@ jobs:
             "${CLUSTERS}" \
             --gpu_count 1 \
             --preemptible false \
-            --weka_mounts "${WEKA_MOUNTS}"
+            --weka_mounts "${WEKA_MOUNTS}" \
             --task_specific_env_vars "${TASK_ENV_VARS}"
         env:
           EXTRA_ARGS: |
