@@ -165,12 +165,13 @@ class VisLayerMaterializeArgs(MaterializePipelineArgs):
             apply_windows_args=ApplyWindowsArgs(
                 use_initial_job=True, workers=DEFAULT_VIS_LAYER_WORKERS
             ),
-        )
+            retry_max_attempts=5,
+        ),
     )
     ingest_args: IngestArgs = field(
         default_factory=lambda: IngestArgs(
-            ignore_errors=True,
             apply_windows_args=ApplyWindowsArgs(workers=DEFAULT_VIS_LAYER_WORKERS),
+            retry_max_attempts=5,
         )
     )
     materialize_args: MaterializeArgs = field(

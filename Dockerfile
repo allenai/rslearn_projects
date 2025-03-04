@@ -18,7 +18,7 @@ RUN make install
 # Install rslearn.
 # We use git clone and then git checkout instead of git clone -b so that the user could
 # specify a commit name or branch instead of only accepting a branch.
-ARG RSLEARN_BRANCH=master
+ARG RSLEARN_BRANCH=favyen/dev2
 RUN git clone https://github.com/allenai/rslearn.git /opt/rslearn
 WORKDIR /opt/rslearn
 RUN git checkout $RSLEARN_BRANCH
