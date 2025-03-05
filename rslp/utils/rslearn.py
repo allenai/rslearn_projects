@@ -96,14 +96,20 @@ def materialize_dataset(
     logger.debug("materialize_pipeline_args: %s", materialize_pipeline_args)
     logger.info("Running prepare step")
     apply_on_windows(
-        PrepareHandler(force=False),
+        PrepareHandler(
+            force=False,
+            retry_max_attempts=materialize_pipeline_args.prepare_args.retry_max_attempts,
+            retry_backoff=materialize_pipeline_args.prepare_args.retry_backoff,
+        ),
         dataset,
         **asdict(materialize_pipeline_args.prepare_args.apply_windows_args),
     )
     logger.info("Running ingest step")
     apply_on_windows(
         IngestHandler(
-            ignore_errors=materialize_pipeline_args.ingest_args.ignore_errors
+            ignore_errors=materialize_pipeline_args.ingest_args.ignore_errors,
+            retry_max_attempts=materialize_pipeline_args.ingest_args.retry_max_attempts,
+            retry_backoff=materialize_pipeline_args.ingest_args.retry_backoff,
         ),
         dataset,
         **asdict(materialize_pipeline_args.ingest_args.apply_windows_args),
@@ -111,7 +117,9 @@ def materialize_dataset(
     logger.info("Running materialize step")
     apply_on_windows(
         MaterializeHandler(
-            ignore_errors=materialize_pipeline_args.materialize_args.ignore_errors
+            ignore_errors=materialize_pipeline_args.materialize_args.ignore_errors,
+            retry_max_attempts=materialize_pipeline_args.materialize_args.retry_max_attempts,
+            retry_backoff=materialize_pipeline_args.materialize_args.retry_backoff,
         ),
         dataset,
         **asdict(materialize_pipeline_args.materialize_args.apply_windows_args),
