@@ -28,7 +28,11 @@ def get_base_env_vars(use_weka_prefix: bool = False) -> list[EnvVar]:
         ),
         EnvVar(
             name="GCLOUD_PROJECT",  # nosec
-            value="prior-satlas",  # nosec
+            value="earthsystem-dev-c3po",  # nosec
+        ),
+        EnvVar(
+            name="GOOGLE_CLOUD_PROJECT",  # nosec
+            value="earthsystem-dev-c3po",  # nosec
         ),
         EnvVar(
             name="WEKA_ACCESS_KEY_ID",  # nosec
