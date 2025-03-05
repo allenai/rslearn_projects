@@ -16,6 +16,7 @@ from rslearn.utils.feature import Feature
 from rslearn.utils.geometry import STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.mp import star_imap_unordered
+from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 from .ship_types import VESSEL_CATEGORIES
@@ -110,7 +111,6 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
 
     info_dir = window.get_layer_dir("info")
     info_dir.mkdir(parents=True, exist_ok=True)
-    gt_layer_fname = info_dir / "data.geojson"
     properties: dict[str, Any] = {
         "event_id": event_id,
     }
@@ -132,14 +132,7 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
     if ship_type and ship_type in VESSEL_CATEGORIES:
         properties["type"] = VESSEL_CATEGORIES[ship_type]
     feat = Feature(dst_geometry, properties)
-    with gt_layer_fname.open("w") as f:
-        json.dump(
-            {
-                "type": "FeatureCollection",
-                "features": [feat.to_geojson()],
-            },
-            f,
-        )
+    GeojsonVectorFormat().encode_vector(info_dir, [feat])
     window.mark_layer_completed("info")
 
 

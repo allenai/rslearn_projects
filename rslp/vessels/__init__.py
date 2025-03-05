@@ -32,6 +32,9 @@ class VesselDetectionDict(TypedDict):
         crop_fname: filename where crop image for this vessel is stored.
         longitude: the longitude position of the vessel detection.
         latitude: the latitude position of the vessel detection.
+        length: the predicted length (if attribute model is available).
+        width: the predicted width (if attribute model is available).
+        speed: the predicted speed (if attribute model is available).
     """
 
     source: VesselDetectionSource
@@ -44,6 +47,9 @@ class VesselDetectionDict(TypedDict):
     crop_fname: str | None
     longitude: float
     latitude: float
+    length: float | None
+    width: float | None
+    speed: float | None
 
 
 class VesselDetection:
@@ -60,6 +66,9 @@ class VesselDetection:
         scene_id: str | None = None,
         crop_fname: UPath | None = None,
         metadata: dict[str, Any] | None = None,
+        length: float | None = None,
+        width: float | None = None,
+        speed: float | None = None,
     ) -> None:
         """Create a new VesselDetection.
 
@@ -73,6 +82,9 @@ class VesselDetection:
             scene_id: the scene ID that the vessel was detected in (if known).
             crop_fname: filename where crop image for this vessel is stored.
             metadata: additional metadata that caller wants to store with this detection.
+            length: the predicted length (if attribute model is available).
+            width: the predicted width (if attribute model is available).
+            speed: the predicted speed (if attribute model is available).
         """
         self.source = source
         self.col = col
@@ -82,6 +94,9 @@ class VesselDetection:
         self.ts = ts
         self.scene_id = scene_id
         self.crop_fname = crop_fname
+        self.length = length
+        self.width = width
+        self.speed = speed
 
         if metadata is None:
             self.metadata = {}
@@ -112,6 +127,9 @@ class VesselDetection:
             crop_fname=str(self.crop_fname) if self.crop_fname else None,
             longitude=lon,
             latitude=lat,
+            length=self.length,
+            width=self.width,
+            speed=self.speed,
         )
 
     def to_feature(self) -> dict[str, Any]:

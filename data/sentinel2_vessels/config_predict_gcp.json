@@ -1,10 +1,22 @@
 {
   "layers": {
-    "info": {
-      "format": {
-        "name": "geojson"
-      },
+    "label": {
       "type": "vector"
+    },
+    "mask": {
+      "band_sets": [
+        {
+          "bands": [
+            "mask"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
     },
     "output": {
       "type": "vector"
@@ -38,14 +50,6 @@
             "B12"
           ],
           "dtype": "uint16",
-          "format": {
-            "geotiff_options": {
-              "compress": "zstd",
-              "predictor": 2,
-              "zstd_level": 1
-            },
-            "name": "geotiff"
-          },
           "zoom_offset": -1
         },
         {
@@ -55,39 +59,21 @@
             "B10"
           ],
           "dtype": "uint16",
-          "format": {
-            "geotiff_options": {
-              "compress": "zstd",
-              "predictor": 2,
-              "zstd_level": 1
-            },
-            "name": "geotiff"
-          },
           "zoom_offset": -2
         }
       ],
       "data_source": {
         "harmonize": true,
-        "index_cache_dir": "cache/sentinel2/",
-        "max_time_delta": "0d",
+        "index_cache_dir": "cache/sentinel2",
+        "max_time_delta": "1d",
+        "modality": "L1C",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
-        "query_config": {
-          "max_matches": 1
-        },
         "use_rtree_index": false
       },
       "type": "raster"
     }
   },
   "tile_store": {
-    "class_path": "rslearn.tile_stores.default.DefaultTileStore",
-    "init_args": {
-      "geotiff_options": {
-        "compress": "zstd",
-        "predictor": 2,
-        "zstd_level": 1
-      },
-      "path_suffix": "gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20241212/tiles"
-    }
+    "class_path": "rslearn.tile_stores.default.DefaultTileStore"
   }
 }
