@@ -4,5 +4,5 @@ extract_alerts_args:
   workers: 112
 select_least_cloudy_images_args:
   workers: 112
-model_cfg_fname: "data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml" # should be path from the top of the repo IF NOT ABSOLUTE PATH
+model_cfg_fname: "data/forest_loss_driver/config.yaml" # should be path from the top of the repo IF NOT ABSOLUTE PATH
 ds_root: "placeholder" # will be overwritten by integrated pipeline
