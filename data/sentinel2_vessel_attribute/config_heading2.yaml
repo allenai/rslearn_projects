@@ -1,3 +1,5 @@
+# Use heading2 task which treats forward/backward orientation, and predicts the vessel
+# direction separately.
 model:
   class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeLightningModule
   init_args:
@@ -14,42 +16,50 @@ model:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: 128
-                out_channels: 9
+                out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
-            - class_path: rslearn.train.tasks.classification.ClassificationHead
+            - class_path: rslearn.train.tasks.regression.RegressionHead
           width:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: 128
-                out_channels: 4
+                out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
-            - class_path: rslearn.train.tasks.classification.ClassificationHead
+            - class_path: rslearn.train.tasks.regression.RegressionHead
           speed:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: 128
-                out_channels: 4
+                out_channels: 1
+                num_conv_layers: 1
+                num_fc_layers: 2
+            - class_path: rslearn.train.tasks.regression.RegressionHead
+          heading2_x:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: 128
+                out_channels: 1
+                num_conv_layers: 1
+                num_fc_layers: 2
+            - class_path: rslearn.train.tasks.regression.RegressionHead
+          heading2_y:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: 128
+                out_channels: 1
+                num_conv_layers: 1
+                num_fc_layers: 2
+            - class_path: rslearn.train.tasks.regression.RegressionHead
+          heading2_direction:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: 128
+                out_channels: 2
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.classification.ClassificationHead
-          heading_x:
-            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
-              init_args:
-                in_channels: 128
-                out_channels: 1
-                num_conv_layers: 1
-                num_fc_layers: 2
-            - class_path: rslearn.train.tasks.regression.RegressionHead
-          heading_y:
-            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
-              init_args:
-                in_channels: 128
-                out_channels: 1
-                num_conv_layers: 1
-                num_fc_layers: 2
-            - class_path: rslearn.train.tasks.regression.RegressionHead
           ship_type:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -84,46 +94,49 @@ data:
         length_buckets: [10, 20, 30, 50, 75, 100, 150, 200]
         width_buckets: [5, 10, 20]
         speed_buckets: [2, 4, 8]
+        heading_mode: "xyd"
         tasks:
           length:
-            class_path: rslearn.train.tasks.classification.ClassificationTask
+            class_path: rslearn.train.tasks.regression.RegressionTask
             init_args:
-              property_name: "length_bucket"
-              read_class_id: true
+              property_name: "length"
               allow_invalid: true
-              classes: ["0-10", "10-20", "20-30", "30-50", "50-75", "75-100", "100-150", "150-200", "200+"]
-              metric_kwargs:
-                average: "micro"
+              scale_factor: 0.01
+              metric_mode: l1
           width:
-            class_path: rslearn.train.tasks.classification.ClassificationTask
+            class_path: rslearn.train.tasks.regression.RegressionTask
             init_args:
-              property_name: "width_bucket"
-              read_class_id: true
+              property_name: "width"
               allow_invalid: true
-              classes: ["0-5", "5-10", "10-20", "20+"]
-              metric_kwargs:
-                average: "micro"
+              scale_factor: 0.01
+              metric_mode: l1
           speed:
+            class_path: rslearn.train.tasks.regression.RegressionTask
+            init_args:
+              property_name: "sog"
+              allow_invalid: true
+              scale_factor: 0.01
+              metric_mode: l1
+          heading2_x:
+            class_path: rslearn.train.tasks.regression.RegressionTask
+            init_args:
+              property_name: "cog2_x"
+              allow_invalid: true
+              metric_mode: l1
+          heading2_y:
+            class_path: rslearn.train.tasks.regression.RegressionTask
+            init_args:
+              property_name: "cog2_y"
+              allow_invalid: true
+              metric_mode: l1
+          heading2_direction:
             class_path: rslearn.train.tasks.classification.ClassificationTask
             init_args:
-              property_name: "sog_bucket"
-              read_class_id: true
+              property_name: "cog2_direction"
               allow_invalid: true
-              classes: ["0-2", "2-4", "4-8", "8+"]
+              classes: ["<180", ">180"]
               metric_kwargs:
                 average: "micro"
-          heading_x:
-            class_path: rslearn.train.tasks.regression.RegressionTask
-            init_args:
-              property_name: "cog_x"
-              allow_invalid: true
-              metric_mode: l1
-          heading_y:
-            class_path: rslearn.train.tasks.regression.RegressionTask
-            init_args:
-              property_name: "cog_y"
-              allow_invalid: true
-              metric_mode: l1
           ship_type:
             class_path: rslearn.train.tasks.classification.ClassificationTask
             init_args:
@@ -139,9 +152,11 @@ data:
             info: "targets"
           speed:
             info: "targets"
-          heading_x:
+          heading2_x:
             info: "targets"
-          heading_y:
+          heading2_y:
+            info: "targets"
+          heading2_direction:
             info: "targets"
           ship_type:
             info: "targets"
@@ -170,6 +185,9 @@ data:
     test_config:
       tags:
         split: "val"
+    predict_config:
+      groups: ["attribute_predict"]
+      skip_targets: true
 trainer:
   max_epochs: 100
   callbacks:
@@ -182,5 +200,9 @@ trainer:
         save_last: true
         monitor: val_loss
         mode: min
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: placeholder
+        output_layer: output
 rslp_project: sentinel2_vessel_attribute
-rslp_experiment: data_20250205_bucket_00
+rslp_experiment: data_20250205_heading2_00

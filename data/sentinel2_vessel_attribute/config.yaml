@@ -92,8 +92,6 @@ data:
               allow_invalid: true
               scale_factor: 0.01
               metric_mode: l1
-              use_within_factor_metric: true
-              within_factor: 0.25
           width:
             class_path: rslearn.train.tasks.regression.RegressionTask
             init_args:
@@ -101,8 +99,6 @@ data:
               allow_invalid: true
               scale_factor: 0.01
               metric_mode: l1
-              use_within_factor_metric: true
-              within_factor: 0.25
           speed:
             class_path: rslearn.train.tasks.regression.RegressionTask
             init_args:
@@ -110,24 +106,18 @@ data:
               allow_invalid: true
               scale_factor: 0.01
               metric_mode: l1
-              use_within_factor_metric: true
-              within_factor: 0.25
           heading_x:
             class_path: rslearn.train.tasks.regression.RegressionTask
             init_args:
               property_name: "cog_x"
               allow_invalid: true
               metric_mode: l1
-              use_within_factor_metric: true
-              within_factor: 0.25
           heading_y:
             class_path: rslearn.train.tasks.regression.RegressionTask
             init_args:
               property_name: "cog_y"
               allow_invalid: true
               metric_mode: l1
-              use_within_factor_metric: true
-              within_factor: 0.25
           ship_type:
             class_path: rslearn.train.tasks.classification.ClassificationTask
             init_args:

@@ -2,6 +2,7 @@
 
 import math
 import os
+from enum import Enum
 from typing import Any
 
 import numpy as np
@@ -30,11 +31,11 @@ SHIP_TYPE_CATEGORIES = [
 ]
 
 
-class HeadingMetric(Metric):
+class HeadingXYMetric(Metric):
     """Metric for heading which comes from heading_x and heading_y combination."""
 
     def __init__(self, degrees_tolerance: float = 10):
-        """Create a new HeadingMetric.
+        """Create a new HeadingXYMetric.
 
         Args:
             degrees_tolerance: consider prediction correct as long as it is within this
@@ -93,6 +94,111 @@ class HeadingMetric(Metric):
         return None
 
 
+class HeadingXYDMetric(Metric):
+    """A metric for predicting direction separately from the angle.
+
+    JoeR's suggestion:
+    Try to predict sin(2*theta), cos(2*theta), p(theta > pi).
+
+    VesselAttributeMultiTask will populate cog2_x, cog2_y, and cog2_direction.
+    User should set up regression task for the first two and classification task for
+    the direction. It should be called heading2_x, heading2_y, and heading2_direction
+    respectively.
+    """
+
+    def __init__(self, degrees_tolerance: float = 10):
+        """Create a new HeadingXYDMetric.
+
+        Args:
+            degrees_tolerance: consider prediction correct as long as it is within this
+                many degrees of the ground truth.
+        """
+        super().__init__()
+        self.degrees_tolerance = degrees_tolerance
+        self.correct = 0
+        self.total = 0
+
+    def _get_original_angle(
+        self, heading2_x: float, heading2_y: float, heading2_direction: int
+    ) -> float:
+        """Get the original angle from the x/y/direction.
+
+        Args:
+            heading2_x: the predicted or ground truth x component.
+            heading2_y: the predicted or ground truth y component.
+            heading2_direction: the predicted or ground truth direction.
+
+        Returns:
+            angle that corresponds to these values.
+        """
+        # Compute the angle that went into the cos/sin.
+        angle = math.atan2(heading2_y, heading2_x) * 180 / math.pi
+        # The original angle was doubled, so we need to halve the angle.
+        # However the actual angle could be this one or the opposite.
+        angle = angle / 2
+        # Normalize it to be the smaller angle.
+        angle = angle % 360
+        if angle > 180:
+            angle = angle - 180
+        # Now if the direction is 1 then we need to flip it back.
+        if heading2_direction == 1:
+            angle = angle + 180
+        return angle
+
+    def update(
+        self, preds: list[dict[str, Any]], targets: list[dict[str, Any]]
+    ) -> None:
+        """Update metric.
+
+        Args:
+            preds: the predictions
+            targets: the targets
+        """
+        for output, target_dict in zip(preds, targets):
+            if not target_dict["heading2_x"]["valid"]:
+                continue
+
+            pred_cog = self._get_original_angle(
+                output["heading2_x"].item(),
+                output["heading2_y"].item(),
+                output["heading2_direction"].argmax().item(),
+            )
+            gt_cog = self._get_original_angle(
+                target_dict["heading2_x"]["value"].item(),
+                target_dict["heading2_y"]["value"].item(),
+                target_dict["heading2_direction"]["class"].item(),
+            )
+
+            angle_difference = abs(pred_cog - gt_cog) % 360
+            if angle_difference > 180:
+                angle_difference = 360 - angle_difference
+
+            if angle_difference <= self.degrees_tolerance:
+                self.correct += 1
+            self.total += 1
+
+    def compute(self) -> Any:
+        """Returns the computed metric."""
+        return torch.tensor(self.correct / self.total)
+
+    def reset(self) -> None:
+        """Reset metric."""
+        super().reset()
+        self.correct = 0
+        self.total = 0
+
+    def plot(self, *args: list[Any], **kwargs: dict[str, Any]) -> Any:
+        """Returns a plot of the metric."""
+        return None
+
+
+class HeadingMode(str, Enum):
+    """The method by which we are representing the heading to the model."""
+
+    XY = "xy"
+    XYD = "xyd"
+
+
 class VesselAttributeMultiTask(MultiTask):
     """Extension of MultiTask with custom input pre-processing and visualization."""
 
@@ -103,6 +209,7 @@ class VesselAttributeMultiTask(MultiTask):
         length_buckets: list[float] = [],
         width_buckets: list[float] = [],
         speed_buckets: list[float] = [],
+        heading_mode: HeadingMode = HeadingMode.XY,
     ):
         """Create a new VesselAttributeMultiTask.
 
@@ -112,8 +219,10 @@ class VesselAttributeMultiTask(MultiTask):
             length_buckets: which buckets to use for length attribute.
             width_buckets: which buckets to use for width attribute.
             speed_buckets: which attributes to use for speed attribute.
+            heading_mode: how heading should be predicted
         """
         super().__init__(tasks, input_mapping)
+        self.heading_mode = heading_mode
         self.buckets = dict(
             length=length_buckets,
             width=width_buckets,
@@ -175,13 +284,27 @@ class VesselAttributeMultiTask(MultiTask):
             tuple (input_dict, target_dict) containing the processed inputs and targets
                 that are compatible with both metrics and loss functions
         """
-        # Add cog x/y components and then pass to superclass.
+        # Add various derived properties to support different versions of tasks, like
+        # predicting cog x/y components with regression (instead of directly predicting
+        # the angle) and classifying the length/width/speed by bucket.
+        # Then we pass to superclass to handle what each sub-task needs.
         if load_targets:
             for feat in raw_inputs["info"]:
                 if "cog" in feat.properties:
-                    angle = 90 - feat.properties["cog"]
-                    feat.properties["cog_x"] = math.cos(angle * math.pi / 180)
-                    feat.properties["cog_y"] = math.sin(angle * math.pi / 180)
+                    if self.heading_mode == HeadingMode.XY:
+                        # Compute x/y components of the angle.
+                        angle = 90 - feat.properties["cog"]
+                        feat.properties["cog_x"] = math.cos(angle * math.pi / 180)
+                        feat.properties["cog_y"] = math.sin(angle * math.pi / 180)
+
+                    if self.heading_mode == HeadingMode.XYD:
+                        # For HeadingXYDMetric (see that class for details).
+                        feat.properties["cog2_x"] = math.cos(angle * math.pi / 180 * 2)
+                        feat.properties["cog2_y"] = math.sin(angle * math.pi / 180 * 2)
+                        if angle % 360 > 180:
+                            feat.properties["cog2_direction"] = 1
+                        else:
+                            feat.properties["cog2_direction"] = 0
 
                 for task in ["length", "width", "speed"]:
                     if task == "speed":
@@ -328,7 +451,10 @@ class VesselAttributeMultiTask(MultiTask):
     def get_metrics(self) -> MetricCollection:
         """Get metrics for this task."""
         metrics = super().get_metrics()
-        metrics.add_metrics({"heading_accuracy": HeadingMetric()})
+        if self.heading_mode == HeadingMode.XY:
+            metrics.add_metrics({"heading_accuracy": HeadingXYMetric()})
+        elif self.heading_mode == HeadingMode.XYD:
+            metrics.add_metrics({"heading_accuracy": HeadingXYDMetric()})
         return metrics
 
 
