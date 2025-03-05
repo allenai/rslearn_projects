@@ -14,7 +14,7 @@ from rslearn.train.lightning_module import RslearnLightningModule
 from rslearn.train.tasks.multi_task import MultiTask
 from rslearn.train.tasks.regression import RegressionTask
 from rslearn.train.tasks.task import BasicTask, Task
-from rslearn.utils import Feature
+from rslearn.utils.feature import Feature
 from torchmetrics import Metric, MetricCollection
 
 SHIP_TYPE_CATEGORIES = [
@@ -196,6 +196,32 @@ class VesselAttributeMultiTask(MultiTask):
                     )
 
         return super().process_inputs(raw_inputs, metadata, load_targets)
+
+    def process_output(self, raw_output: Any, metadata: dict[str, Any]) -> Feature:
+        """Processes an output into raster or vector data.
+
+        Args:
+            raw_output: the output from prediction head.
+            metadata: metadata about the patch being read
+
+        Returns:
+            either raster or vector data.
+        """
+        # Merge the Features from the regression and classification tasks into a single
+        # feature that has all of those properties.
+        feature = None
+        for task_name, task in self.tasks.items():
+            task_output = task.process_output(raw_output[task_name], metadata)
+            task_feature = task_output[0]
+            if not isinstance(task_feature, Feature):
+                raise ValueError(
+                    f"expected task {task_name} to output a Feature but got {task_feature}"
+                )
+            if feature is None:
+                feature = task_feature
+            else:
+                feature.properties.update(task_feature.properties)
+        return [feature]
 
     def visualize(
         self,

@@ -174,6 +174,9 @@ data:
     test_config:
       tags:
         split: "val"
+    predict_config:
+      groups: ["attribute_predict"]
+      skip_targets: true
 trainer:
   max_epochs: 100
   callbacks:
@@ -186,5 +189,9 @@ trainer:
         save_last: true
         monitor: val_loss
         mode: min
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: placeholder
+        output_layer: output
 rslp_project: sentinel2_vessel_attribute
 rslp_experiment: data_20250205_regress_00
