@@ -291,9 +291,9 @@ class VesselAttributeMultiTask(MultiTask):
         if load_targets:
             for feat in raw_inputs["info"]:
                 if "cog" in feat.properties:
+                    angle = 90 - feat.properties["cog"]
                     if self.heading_mode == HeadingMode.XY:
                         # Compute x/y components of the angle.
-                        angle = 90 - feat.properties["cog"]
                         feat.properties["cog_x"] = math.cos(angle * math.pi / 180)
                         feat.properties["cog_y"] = math.sin(angle * math.pi / 180)
 
