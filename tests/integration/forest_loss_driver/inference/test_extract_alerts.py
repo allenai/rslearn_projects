@@ -1,7 +1,6 @@
 """Integration tests for extract_alerts.py step of the inference pipeline."""
 
-import os
-import tempfile
+import pathlib
 import uuid
 from datetime import datetime, timezone
 
@@ -99,77 +98,54 @@ def test_extract_alerts(
     tiff_filename: str,
     alert_tiffs_prefix: str,
     alert_date_tiffs_prefix: str,
-    inference_dataset_config_path: str,
     country_data_path: UPath,
+    tmp_path: pathlib.Path,
 ) -> None:
     """Tests extracting alerts from a single GeoTIFF file."""
-    with tempfile.TemporaryDirectory(prefix=f"test_{TEST_ID}_") as temp_dir:
-        index_cache_dir = UPath(temp_dir) / "index_cache"
-        tile_store_root_dir = UPath(temp_dir) / "tile_store"
-        os.environ["INFERENCE_DATASET_CONFIG"] = inference_dataset_config_path
-        os.environ["INDEX_CACHE_DIR"] = str(index_cache_dir)
-        os.environ["TILE_STORE_ROOT_DIR"] = str(tile_store_root_dir)
-        ds_root = (
-            UPath(temp_dir)
-            / "datasets"
-            / "forest_loss_driver"
-            / "prediction"
-            / "dataset_20241023"
-        )
-        extract_alerts_args = ExtractAlertsArgs(
-            gcs_tiff_filenames=[tiff_filename],
-            workers=1,
-            days=365,
-            min_confidence=1,
-            min_area=16.0,
-            conf_prefix=alert_tiffs_prefix,
-            date_prefix=alert_date_tiffs_prefix,
-            prediction_utc_time=datetime(2024, 10, 23, tzinfo=timezone.utc),
-            country_data_path=country_data_path,
-        )
-        extract_alerts_pipeline(ds_root, extract_alerts_args)
+    ds_root = (
+        UPath(tmp_path)
+        / "datasets"
+        / "forest_loss_driver"
+        / "prediction"
+        / "dataset_20241023"
+    )
+    extract_alerts_args = ExtractAlertsArgs(
+        gcs_tiff_filenames=[tiff_filename],
+        workers=1,
+        days=365,
+        min_confidence=1,
+        min_area=16.0,
+        conf_prefix=alert_tiffs_prefix,
+        date_prefix=alert_date_tiffs_prefix,
+        prediction_utc_time=datetime(2024, 10, 23, tzinfo=timezone.utc),
+        country_data_path=country_data_path,
+    )
+    extract_alerts_pipeline(ds_root, extract_alerts_args)
 
-        # Assert one of the windows has all the info
-        expected_image_path = (
-            UPath(temp_dir)
-            / "datasets/forest_loss_driver/prediction/dataset_20241023/windows/default/feat_x_1281600_2146388_5_2221/layers/mask/mask/image.png"
-        )
-        expected_info_json_path = (
-            UPath(temp_dir)
-            / "datasets/forest_loss_driver/prediction/dataset_20241023/windows/default/feat_x_1281600_2146388_5_2221/info.json"
-        )
-        expected_metadata_json_path = (
-            UPath(temp_dir)
-            / "datasets/forest_loss_driver/prediction/dataset_20241023/windows/default/feat_x_1281600_2146388_5_2221/metadata.json"
-        )
-        expected_image_metadata_json_path = (
-            UPath(temp_dir)
-            / "datasets/forest_loss_driver/prediction/dataset_20241023/windows/default/feat_x_1281600_2146388_5_2221/layers/mask/mask/metadata.json"
-        )
-        expected_completed_path = (
-            UPath(temp_dir)
-            / "datasets/forest_loss_driver/prediction/dataset_20241023/windows/default/feat_x_1281600_2146388_5_2221/layers/mask/completed"
-        )
-        expected_dataset_config_path = (
-            UPath(temp_dir)
-            / "datasets/forest_loss_driver/prediction/dataset_20241023/config.json"
-        )
-        # add step looking for the config.json
-        assert (
-            expected_image_path.exists()
-        ), f"Path {expected_image_path} does not exist"
-        assert (
-            expected_info_json_path.exists()
-        ), f"Path {expected_info_json_path} does not exist"
-        assert (
-            expected_metadata_json_path.exists()
-        ), f"Path {expected_metadata_json_path} does not exist"
-        assert (
-            expected_image_metadata_json_path.exists()
-        ), f"Path {expected_image_metadata_json_path} does not exist"
-        assert (
-            expected_completed_path.exists()
-        ), f"Path {expected_completed_path} does not exist"
-        assert (
-            expected_dataset_config_path.exists()
-        ), f"Path {expected_dataset_config_path} does not exist"
+    # Assert one of the windows has all the info
+    window_dir = ds_root / "windows" / "default" / "feat_x_1281600_2146388_5_2221"
+    expected_image_path = window_dir / "layers" / "mask" / "mask" / "image.png"
+    expected_info_json_path = window_dir / "info.json"
+    expected_metadata_json_path = window_dir / "metadata.json"
+    expected_image_metadata_json_path = (
+        window_dir / "layers" / "mask" / "mask" / "metadata.json"
+    )
+    expected_completed_path = window_dir / "layers" / "mask" / "completed"
+    expected_dataset_config_path = ds_root / "config.json"
+    # add step looking for the config.json
+    assert expected_image_path.exists(), f"Path {expected_image_path} does not exist"
+    assert (
+        expected_info_json_path.exists()
+    ), f"Path {expected_info_json_path} does not exist"
+    assert (
+        expected_metadata_json_path.exists()
+    ), f"Path {expected_metadata_json_path} does not exist"
+    assert (
+        expected_image_metadata_json_path.exists()
+    ), f"Path {expected_image_metadata_json_path} does not exist"
+    assert (
+        expected_completed_path.exists()
+    ), f"Path {expected_completed_path} does not exist"
+    assert (
+        expected_dataset_config_path.exists()
+    ), f"Path {expected_dataset_config_path} does not exist"

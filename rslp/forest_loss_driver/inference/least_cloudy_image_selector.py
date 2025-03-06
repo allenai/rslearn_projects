@@ -94,6 +94,10 @@ def select_least_cloudy_images(
             layer_dir = window_path / "layers" / dst_layer
             (layer_dir / "R_G_B").mkdir(parents=True, exist_ok=True)
             fname.fs.cp(fname.path, (layer_dir / "R_G_B" / "image.png").path)
+            fname.fs.cp(
+                (fname.parent / "metadata.json").path,
+                (layer_dir / "R_G_B" / "metadata.json").path,
+            )
             (layer_dir / "completed").touch()
             src_layer = fname.parent.parent.name
             layer_time = layer_times[src_layer]

@@ -24,4 +24,12 @@ Then you can launch the worker. To test on one machine:
 
 And to launch 100 workers on Beaker:
 
-    python -m rslp.main common launch BEAKER_IMAGE_NAME skylight-proto-1 rslp-job-queue-YOURNAME-sub 100 --gpus 1 --shared_memory 256GiB
+    python -m rslp.main common launch BEAKER_IMAGE_NAME skylight-proto-1 rslp-job-queue-YOURNAME-sub 100 --gpus 1 --shared_memory 256GiB --cluster '["ai2/jupiter-cirrascale-2"]'
+
+
+Beaker Launcher
+---------------
+
+`beaker_launcher.py` launches a Beaker job that runs an rslp workflow. It offers a
+range of parameters to customize the job setup, such as which Beaker clusters to target
+and application-specific environment variables.
