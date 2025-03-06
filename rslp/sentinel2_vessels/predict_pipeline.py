@@ -211,13 +211,13 @@ def setup_dataset_with_image_files(
         # Look for an image at the highest resolution. It is required.
         hr_fname: UPath | None = None
         for image_file in image_files:
-            if image_file.bands != HIGH_RES_BAND_SET[0]:
+            if image_file.bands != [HIGH_RES_BAND_SET[0]]:
                 continue
             hr_fname = UPath(image_file.fname)
 
         if hr_fname is None:
             raise ValueError(
-                "provided list of image files does not have band {HIGH_RES_BAND_SET[0]}"
+                f"provided list of image files does not have band {HIGH_RES_BAND_SET[0]}"
             )
 
         with open_rasterio_upath_reader(hr_fname) as raster:
