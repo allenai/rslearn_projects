@@ -177,7 +177,8 @@ data:
             mean: 0
             std: 10000
             valid_range: [0, 1]
-        - class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeFlip
+# disable flip for now since it doesn't support xyd heading mode
+#        - class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeFlip
       tags:
         split: "train"
     val_config:
