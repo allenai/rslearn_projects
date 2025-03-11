@@ -177,8 +177,9 @@ data:
             mean: 0
             std: 10000
             valid_range: [0, 1]
-# disable flip for now since it doesn't support xyd heading mode
-#        - class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeFlip
+        - class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeFlip
+          init_args:
+            heading_mode: "XYD"
       tags:
         split: "train"
     val_config:
@@ -207,4 +208,4 @@ trainer:
         path: placeholder
         output_layer: output
 rslp_project: sentinel2_vessel_attribute
-rslp_experiment: data_20250205_heading2_00
+rslp_experiment: data_20250205_heading2_with_flipping_01

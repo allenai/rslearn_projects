@@ -31,108 +31,32 @@ SHIP_TYPE_CATEGORIES = [
 ]
 
 
-class HeadingXYMetric(Metric):
-    """Metric for heading which comes from heading_x and heading_y combination."""
+class HeadingMode(str, Enum):
+    """The method by which we are representing the heading to the model.
 
-    def __init__(self, degrees_tolerance: float = 10):
-        """Create a new HeadingXYMetric.
+    The heading here is represented as the angle counterclockwise from the positive x
+    axis. It is derived from the north-based course over ground in
+    VesselAttributeMultiTask.
 
-        Args:
-            degrees_tolerance: consider prediction correct as long as it is within this
-                many degrees of the ground truth.
-        """
-        super().__init__()
-        self.degrees_tolerance = degrees_tolerance
-        self.correct = 0
-        self.total = 0
+    XY simply computes cos(angle) and sin(angle).
 
-    def update(
-        self, preds: list[dict[str, Any]], targets: list[dict[str, Any]]
-    ) -> None:
-        """Update metric.
-
-        Args:
-            preds: the predictions
-            targets: the targets
-        """
-        for output, target_dict in zip(preds, targets):
-            if not target_dict["heading_x"]["valid"]:
-                continue
-
-            pred_cog = (
-                math.atan2(output["heading_y"], output["heading_x"]) * 180 / math.pi
-            )
-            gt_cog = (
-                math.atan2(
-                    target_dict["heading_y"]["value"],
-                    target_dict["heading_x"]["value"],
-                )
-                * 180
-                / math.pi
-            )
-
-            angle_difference = abs(pred_cog - gt_cog) % 360
-            if angle_difference > 180:
-                angle_difference = 360 - angle_difference
-
-            if angle_difference <= self.degrees_tolerance:
-                self.correct += 1
-            self.total += 1
-
-    def compute(self) -> Any:
-        """Returns the computed metric."""
-        return torch.tensor(self.correct / self.total)
-
-    def reset(self) -> None:
-        """Reset metric."""
-        super().reset()
-        self.correct = 0
-        self.total = 0
-
-    def plot(self, *args: list[Any], **kwargs: dict[str, Any]) -> Any:
-        """Returns a plot of the metric."""
-        return None
-
-
-class HeadingXYDMetric(Metric):
-    """A metric for predicting direction separately from the angle.
-
-    JoeR's suggestion:
-    Try to predict sin(2*theta), cos(2*theta), p(theta > pi).
-
-    VesselAttributeMultiTask will populate cog2_x, cog2_y, and cog2_direction.
-    User should set up regression task for the first two and classification task for
-    the direction. It should be called heading2_x, heading2_y, and heading2_direction
-    respectively.
+    XYD computes cos(2*angle) and sin(2*angle), which makes angle and (angle + 180)
+    have the same x/y components. Then, it separately predicts P[angle > 180]. This
+    way, the model does not have to guess as much about the direction of the vessel
+    when predicting the x/y components.
     """
 
-    def __init__(self, degrees_tolerance: float = 10):
-        """Create a new HeadingXYDMetric.
+    XY = "xy"
+    XYD = "xyd"
 
-        Args:
-            degrees_tolerance: consider prediction correct as long as it is within this
-                many degrees of the ground truth.
-        """
-        super().__init__()
-        self.degrees_tolerance = degrees_tolerance
-        self.correct = 0
-        self.total = 0
+    def _get_xy_angle(self, x: float, y: float) -> float:
+        """Returns the angle for XY mode given x/y components."""
+        return math.atan2(y, x) * 180 / math.pi
 
-    def _get_original_angle(
-        self, heading2_x: float, heading2_y: float, heading2_direction: int
-    ) -> float:
-        """Get the original angle from the x/y/direction.
-
-        Args:
-            heading2_x: the predicted or ground truth x component.
-            heading2_y: the predicted or ground truth y component.
-            heading2_direction: the predicted or ground truth direction.
-
-        Returns:
-            angle that corresponds to these values.
-        """
+    def _get_xyd_angle(self, x: float, y: float, direction: int) -> float:
+        """Returns the angle for XYD mode given x/y/direction."""
         # Compute the angle that went into the cos/sin.
-        angle = math.atan2(heading2_y, heading2_x) * 180 / math.pi
+        angle = math.atan2(y, x) * 180 / math.pi
         # The original angle was doubled, so we need to halve the angle.
         # However the actual angle could be this one or the opposite.
         angle = angle / 2
@@ -141,9 +65,66 @@ class HeadingXYDMetric(Metric):
         if angle > 180:
             angle = angle - 180
         # Now if the direction is 1 then we need to flip it back.
-        if heading2_direction == 1:
+        if direction == 1:
             angle = angle + 180
         return angle
+
+    def get_output_angle(self, output: dict[str, Any]) -> float:
+        """Get the predicted angle from the output dictionary."""
+        if self == HeadingMode.XY:
+            return self._get_xy_angle(
+                output["heading_x"].item(),
+                output["heading_y"].item(),
+            )
+        elif self == HeadingMode.XYD:
+            return self._get_xyd_angle(
+                output["heading2_x"].item(),
+                output["heading2_y"].item(),
+                output["heading2_direction"].argmax().item(),
+            )
+        # Should not be possible.
+        assert False
+
+    def get_target_angle(self, target: dict[str, Any]) -> float | None:
+        """Get the angle label from the target dictionary.
+
+        Returns None of the example did not have a label for the angle attribute.
+        """
+        if self == HeadingMode.XY:
+            if not target["heading_x"]["valid"]:
+                return None
+            return self._get_xy_angle(
+                target["heading_x"]["value"].item(),
+                target["heading_y"]["value"].item(),
+            )
+        elif self == HeadingMode.XYD:
+            if not target["heading2_x"]["valid"]:
+                return None
+            return self._get_xyd_angle(
+                target["heading2_x"]["value"].item(),
+                target["heading2_y"]["value"].item(),
+                target["heading2_direction"]["class"].item(),
+            )
+        # Should not be possible.
+        assert False
+
+
+class HeadingMetric(Metric):
+    """Metric for heading which comes from heading_x and heading_y combination."""
+
+    def __init__(self, heading_mode: HeadingMode, degrees_tolerance: float = 10):
+        """Create a new HeadingMetric.
+
+        Args:
+            heading_mode: how the heading is being represented.
+            degrees_tolerance: consider prediction correct as long as it is within this
+                many degrees of the ground truth.
+        """
+        super().__init__()
+        self.heading_mode = heading_mode
+        self.degrees_tolerance = degrees_tolerance
+        self.correct = 0
+        self.total = 0
 
     def update(
         self, preds: list[dict[str, Any]], targets: list[dict[str, Any]]
@@ -155,19 +136,11 @@ class HeadingXYDMetric(Metric):
             targets: the targets
         """
         for output, target_dict in zip(preds, targets):
-            if not target_dict["heading2_x"]["valid"]:
+            gt_cog = self.heading_mode.get_target_angle(target_dict)
+            if gt_cog is None:
+                # Means this task is invalid for this example.
                 continue
-
-            pred_cog = self._get_original_angle(
-                output["heading2_x"].item(),
-                output["heading2_y"].item(),
-                output["heading2_direction"].argmax().item(),
-            )
-            gt_cog = self._get_original_angle(
-                target_dict["heading2_x"]["value"].item(),
-                target_dict["heading2_y"]["value"].item(),
-                target_dict["heading2_direction"]["class"].item(),
-            )
+            pred_cog = self.heading_mode.get_output_angle(output)
 
             angle_difference = abs(pred_cog - gt_cog) % 360
             if angle_difference > 180:
@@ -190,13 +163,6 @@ class HeadingXYDMetric(Metric):
     def plot(self, *args: list[Any], **kwargs: dict[str, Any]) -> Any:
         """Returns a plot of the metric."""
         return None
-
-
-class HeadingMode(str, Enum):
-    """The method by which we are representing the heading to the model."""
-
-    XY = "xy"
-    XYD = "xyd"
 
 
 class VesselAttributeMultiTask(MultiTask):
@@ -298,7 +264,7 @@ class VesselAttributeMultiTask(MultiTask):
                         feat.properties["cog_y"] = math.sin(angle * math.pi / 180)
 
                     if self.heading_mode == HeadingMode.XYD:
-                        # For HeadingXYDMetric (see that class for details).
+                        # Compute x/y/direction (see that HeadingMode for details).
                         feat.properties["cog2_x"] = math.cos(angle * math.pi / 180 * 2)
                         feat.properties["cog2_y"] = math.sin(angle * math.pi / 180 * 2)
                         if angle % 360 > 180:
@@ -344,6 +310,12 @@ class VesselAttributeMultiTask(MultiTask):
                 feature = task_feature
             else:
                 feature.properties.update(task_feature.properties)
+
+        # Add heading based on the heading mode.
+        angle = self.heading_mode.get_output_angle(raw_output)
+        assert feature is not None
+        feature.properties["heading"] = 90 - angle
+
         return [feature]
 
     def visualize(
@@ -451,10 +423,9 @@ class VesselAttributeMultiTask(MultiTask):
     def get_metrics(self) -> MetricCollection:
         """Get metrics for this task."""
         metrics = super().get_metrics()
-        if self.heading_mode == HeadingMode.XY:
-            metrics.add_metrics({"heading_accuracy": HeadingXYMetric()})
-        elif self.heading_mode == HeadingMode.XYD:
-            metrics.add_metrics({"heading_accuracy": HeadingXYDMetric()})
+        metrics.add_metrics(
+            {"heading_accuracy": HeadingMetric(heading_mode=self.heading_mode)}
+        )
         return metrics
 
 
@@ -599,16 +570,19 @@ class VesselAttributeFlip(torch.nn.Module):
         self,
         horizontal: bool = True,
         vertical: bool = True,
+        heading_mode: HeadingMode = HeadingMode.XY,
     ):
         """Initialize a new VesselAttributeFlip.
 
         Args:
             horizontal: whether to randomly flip horizontally
             vertical: whether to randomly flip vertically
+            heading_mode: how the heading is being represented.
         """
         super().__init__()
         self.horizontal = horizontal
         self.vertical = vertical
+        self.heading_mode = heading_mode
 
     def sample_state(self) -> dict[str, bool]:
         """Randomly decide how to transform the input.
@@ -632,7 +606,7 @@ class VesselAttributeFlip(torch.nn.Module):
         state: dict[str, bool],
         d: dict[str, Any],
         image_keys: list[str],
-        heading_keys: list[str],
+        update_heading: bool,
     ) -> None:
         """Apply the flipping.
 
@@ -640,7 +614,7 @@ class VesselAttributeFlip(torch.nn.Module):
             state: the sampled state from sample_state.
             d: the input or target dict.
             image_keys: image keys to flip.
-            heading_keys: heading keys to flip.
+            update_heading: whether this is target and so heading should be updated.
         """
         for k in image_keys:
             if state["horizontal"]:
@@ -648,11 +622,32 @@ class VesselAttributeFlip(torch.nn.Module):
             if state["vertical"]:
                 d[k] = torch.flip(d[k], dims=[-2])
 
-        for k in heading_keys:
-            if state["horizontal"]:
-                d[k + "_x"]["value"] *= -1
-            if state["vertical"]:
-                d[k + "_y"]["value"] *= -1
+        if update_heading:
+            if self.heading_mode == HeadingMode.XY:
+                if state["horizontal"]:
+                    d["heading_x"]["value"] *= -1
+                if state["vertical"]:
+                    d["heading_y"]["value"] *= -1
+            elif self.heading_mode == HeadingMode.XYD:
+                # This case is more complicated so we just flip the original angle.
+                angle = self.heading_mode.get_target_angle(d)
+
+                if angle is not None:
+                    if state["horizontal"]:
+                        angle = 180 - angle
+                    if state["vertical"]:
+                        angle = -angle
+
+                    d["heading2_x"]["value"].fill_(math.cos(angle * math.pi / 180 * 2))
+                    d["heading2_y"]["value"].fill_(math.sin(angle * math.pi / 180 * 2))
+                    if angle % 360 > 180:
+                        d["heading2_direction"]["class"].fill_(1)
+                    else:
+                        d["heading2_direction"]["class"].fill_(0)
+            else:
+                raise ValueError(
+                    f"unsupported flip for heading mode {self.heading_mode}"
+                )
 
     def forward(
         self, input_dict: dict[str, Any], target_dict: dict[str, Any]
@@ -667,8 +662,8 @@ class VesselAttributeFlip(torch.nn.Module):
             transformed (input_dicts, target_dicts) tuple
         """
         state = self.sample_state()
-        self.apply_state(state, input_dict, ["image"], [])
-        self.apply_state(state, target_dict, [], ["heading"])
+        self.apply_state(state, input_dict, ["image"], False)
+        self.apply_state(state, target_dict, [], True)
         return input_dict, target_dict
 
 

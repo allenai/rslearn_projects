@@ -169,5 +169,13 @@ These bands must be provided. In this case the scene must be processed with proc
 
 ### Docker Container Version History
 
-- v0.0.2: add attribute prediction and use model `data_20250213_02_all_bands`.
+- v0.0.2: add attribute prediction (`data_20250205_regress_00`) and use model `data_20250213_02_all_bands`.
 - v0.0.1: initial version. It uses model `data_20240213_01_add_freezing_and_fix_fpn_restore`.
+
+
+Vessel Attribute Prediction
+---------------------------
+
+The vessel attribute prediction model predicts the vessel type, length, width, speed,
+and heading of each detected vessel. The predicted values are available under the
+"attributes" key of the JSON or GeoJSON vessel object.

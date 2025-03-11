@@ -30,7 +30,7 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
-from rslp.vessels import VesselDetection, VesselDetectionSource
+from rslp.vessels import VesselAttributes, VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
 
@@ -417,9 +417,13 @@ def run_attribute_model(
             layer_dir, window.projection, window.bounds
         )
         properties = features[0].properties
-        detection.length = properties["length"]
-        detection.width = properties["width"]
-        detection.speed = properties["sog"]
+        detection.attributes = VesselAttributes(
+            length=properties["length"],
+            width=properties["width"],
+            speed=properties["sog"],
+            heading=properties["heading"],
+            vessel_type=properties["type"],
+        )
 
     return windows
 
