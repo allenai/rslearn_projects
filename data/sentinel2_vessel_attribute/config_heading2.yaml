@@ -94,7 +94,7 @@ data:
         length_buckets: [10, 20, 30, 50, 75, 100, 150, 200]
         width_buckets: [5, 10, 20]
         speed_buckets: [2, 4, 8]
-        heading_mode: "xyd"
+        heading_mode: "XYD"
         tasks:
           length:
             class_path: rslearn.train.tasks.regression.RegressionTask
@@ -135,6 +135,7 @@ data:
               property_name: "cog2_direction"
               allow_invalid: true
               classes: ["<180", ">180"]
+              read_class_id: true
               metric_kwargs:
                 average: "micro"
           ship_type:
@@ -177,6 +178,8 @@ data:
             std: 10000
             valid_range: [0, 1]
         - class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeFlip
+          init_args:
+            heading_mode: "XYD"
       tags:
         split: "train"
     val_config:
@@ -205,4 +208,4 @@ trainer:
         path: placeholder
         output_layer: output
 rslp_project: sentinel2_vessel_attribute
-rslp_experiment: data_20250205_heading2_00
+rslp_experiment: data_20250205_heading2_with_flipping_01

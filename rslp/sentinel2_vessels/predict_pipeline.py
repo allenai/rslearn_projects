@@ -30,7 +30,7 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
-from rslp.vessels import VesselDetection, VesselDetectionSource
+from rslp.vessels import VesselAttributes, VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
 
@@ -211,13 +211,13 @@ def setup_dataset_with_image_files(
         # Look for an image at the highest resolution. It is required.
         hr_fname: UPath | None = None
         for image_file in image_files:
-            if image_file.bands != HIGH_RES_BAND_SET[0]:
+            if image_file.bands != [HIGH_RES_BAND_SET[0]]:
                 continue
             hr_fname = UPath(image_file.fname)
 
         if hr_fname is None:
             raise ValueError(
-                "provided list of image files does not have band {HIGH_RES_BAND_SET[0]}"
+                f"provided list of image files does not have band {HIGH_RES_BAND_SET[0]}"
             )
 
         with open_rasterio_upath_reader(hr_fname) as raster:
@@ -417,9 +417,13 @@ def run_attribute_model(
             layer_dir, window.projection, window.bounds
         )
         properties = features[0].properties
-        detection.length = properties["length"]
-        detection.width = properties["width"]
-        detection.speed = properties["sog"]
+        detection.attributes = VesselAttributes(
+            length=properties["length"],
+            width=properties["width"],
+            speed=properties["sog"],
+            heading=properties["heading"],
+            vessel_type=properties["type"],
+        )
 
     return windows
 

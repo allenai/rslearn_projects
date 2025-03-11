@@ -20,7 +20,7 @@ First, download the model checkpoint to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
     mkdir -p project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20240213_01_add_freezing_and_fix_fpn_restore/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20240213_01_add_freezing_and_fix_fpn_restore/checkpoints/best.ckpt
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/data_20250213_02_all_bands/data_20240213_01_add_freezing_and_fix_fpn_restore/checkpoints/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in
 `rslp/sentinel2_vessels/predict_pipeline.py`. It accepts a Sentinel-2 scene ID and
@@ -73,6 +73,9 @@ Model Version History
 The version names correspond to the `rslp_experiment` field in the model configuration
 file (`data/sentinel2_vessels/config.yaml`).
 
+- `data_20250213_02_all_bands`: Train on all bands instead of just RGB. Note that it
+  uses B01-B12 instead of TCI so it needs "harmonization" (subtracting 1000 from new
+  Sentinel-2 products).
 - `data_20240213_01_add_freezing_and_fix_fpn_restore`: Freeze the pre-trained model for
   the first few epochs before unfreezing.
 - `data_20240213_00`: Some of the windows contained blank images. I re-ingested the
@@ -82,6 +85,13 @@ file (`data/sentinel2_vessels/config.yaml`).
 
 Model Performance
 -----------------
+
+### data_20250213_02_all_bands
+
+- Selected threshold: 0.8
+- Results on validation set (split1, split7, sargassum_val)
+  - Precision: 77.2%
+  - Recall: 78.6%
 
 ### data_20240213_01_add_freezing_and_fix_fpn_restore
 
@@ -103,8 +113,8 @@ The Docker container does not contain the model weights. Instead, it expects the
 weights to be present in a directory based on the `RSLP_PREFIX` environment variable.
 So download the model checkpoint:
 
-    mkdir -p project_data/projects/sentinel2_vessels/data_20240213_01_add_freezing_and_fix_fpn_restore/checkpoints/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20240213_01_add_freezing_and_fix_fpn_restore/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20240213_01_add_freezing_and_fix_fpn_restore/checkpoints/best.ckpt
+    mkdir -p project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt
 
 Run the container:
 
@@ -138,9 +148,34 @@ Alternatively, process the scene by providing the paths to the image assets. The
 can be URIs but must be accessible from the Docker container.
 
 ```bash
-curl -X POST http://localhost:${SENTINEL2_PORT}/detections -H "Content-Type: application/json" -d '{"image_files": [{"bands": ["R", "G", "B"], "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_TCI.jp2"}, {"bands": ["B08"], "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B08.jp2"}]}'
+curl -X POST http://localhost:${SENTINEL2_PORT}/detections -H "Content-Type: application/json" -d '{"image_files": [{"bands": ["B08"], "fname": "gs://gcp-public-data-sentinel-2/tiles/30/U/YD/S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425.SAFE/GRANULE/L1C_T30UYD_A016722_20180904T110820/IMG_DATA/T30UYD_20180904T110621_B08.jp2"}, ...]}'
 ```
+
+These bands must be provided. In this case the scene must be processed with processing baseline 04.00 or later (i.e. has N0400 or higher in the scene ID) since it is assumed to be the newer type where the same intensity has 1000 higher pixel value (we subtract 1000 in `data/sentinel2_vessels/config_predict_local_files.json`, see [GEE Harmonized Sentinel-2](https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED) for details).
+
+- B01
+- B02
+- B03
+- B04
+- B05
+- B06
+- B07
+- B08
+- B09
+- B10
+- B11
+- B12
+- B8A
 
 ### Docker Container Version History
 
+- v0.0.2: add attribute prediction (`data_20250205_regress_00`) and use model `data_20250213_02_all_bands`.
 - v0.0.1: initial version. It uses model `data_20240213_01_add_freezing_and_fix_fpn_restore`.
+
+
+Vessel Attribute Prediction
+---------------------------
+
+The vessel attribute prediction model predicts the vessel type, length, width, speed,
+and heading of each detected vessel. The predicted values are available under the
+"attributes" key of the JSON or GeoJSON vessel object.
