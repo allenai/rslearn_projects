@@ -34,6 +34,7 @@ from rslp.landsat_vessels.config import (
     LOCAL_FILES_DATASET_CONFIG,
     OUTPUT_LAYER_NAME,
 )
+from rslp.landsat_vessels.prom_metrics import time_operation, TimerOperations
 from rslp.log_utils import get_logger
 from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import (
@@ -126,14 +127,16 @@ def get_vessel_detections(
             ignore_errors=False, apply_windows_args=apply_windows_args
         ),
     )
-    materialize_dataset(ds_path, materialize_pipeline_args)
+    with time_operation(TimerOperations.MaterializeDataset):
+        materialize_dataset(ds_path, materialize_pipeline_args)
 
     # Sanity check that the layer is completed.
     if not window.is_layer_completed(LANDSAT_LAYER_NAME):
         raise ValueError("landsat layer did not get materialized")
 
     # Run object detector.
-    run_model_predict(DETECT_MODEL_CONFIG, ds_path)
+    with time_operation(TimerOperations.RunModelPredict):
+        run_model_predict(DETECT_MODEL_CONFIG, ds_path)
 
     # Read the detections.
     layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
@@ -438,100 +441,23 @@ def predict_pipeline(
 
     # Determine which of the arguments to use and setup dataset and get SceneData
     # appropriately.
-    scene_data = setup_dataset(
-        ds_path,
-        scene_id=scene_id,
-        scene_zip_path=scene_zip_path,
-        image_files=image_files,
-        window_path=window_path,
-    )
+    with time_operation(TimerOperations.SetupDataset):
+        scene_data = setup_dataset(
+            ds_path,
+            scene_id=scene_id,
+            scene_zip_path=scene_zip_path,
+            image_files=image_files,
+            window_path=window_path,
+        )
 
     # Run pipeline.
-    print("run detector")
-    detections = get_vessel_detections(ds_path, scene_data)
-    print("run classifier")
-    detections = run_classifier(ds_path, detections=detections, scene_data=scene_data)
+    with time_operation(TimerOperations.GetVesselDetections):
+        detections = get_vessel_detections(ds_path, scene_data)
+    with time_operation(TimerOperations.RunClassifier):
+        detections = run_classifier(ds_path, detections=detections, scene_data=scene_data)
 
-    # Write JSON and crops.
-    if crop_path:
-        crop_upath = UPath(crop_path)
-        crop_upath.mkdir(parents=True, exist_ok=True)
-
-    json_data = []
-    geojson_features = []
-    near_infra_filter = NearInfraFilter(infra_distance_threshold=INFRA_THRESHOLD_KM)
-    raster_format = GeotiffRasterFormat()
-    infra_detections = 0
-    for idx, detection in enumerate(detections):
-        # Apply near infra filter (True -> filter out, False -> keep)
-        lon, lat = detection.get_lon_lat()
-        if near_infra_filter.should_filter(lon, lat):
-            infra_detections += 1
-            continue
-
-        # Load crops from the window directory for writing output PNGs.
-        # We create two PNGs:
-        # - b8.png: just has B8 (panchromatic band).
-        # - rgb.png: true color with pan-sharpening. The RGB is from B4, B3, and B2
-        #   respectively while B8 is used for pan-sharpening.
-        images = {}
-        crop_window: Window = detection.metadata["crop_window"]
-        if crop_window is None:
-            raise ValueError("Crop window is None")
-        for band in ["B2", "B3", "B4", "B8"]:
-            raster_dir = crop_window.get_raster_dir(LANDSAT_LAYER_NAME, [band])
-
-            # Different bands are in different resolutions so get the bounds from the
-            # raster since anyway we just want to read the whole raster.
-            band_bounds = raster_format.get_raster_bounds(raster_dir)
-            image = raster_format.decode_raster(raster_dir, band_bounds)
-            if image.shape[0] != 1:
-                raise ValueError(
-                    f"expected single-band image for {band} but got {image.shape[0]} bands"
-                )
-
-            images[band] = image[0, :, :]
-
-        # Apply simple pan-sharpening for the RGB.
-        # This is just linearly scaling RGB bands to add up to B8, which is captured at
-        # a higher resolution.
-        for band in ["B2", "B3", "B4"]:
-            sharp = images[band].astype(np.int32)
-            sharp = sharp.repeat(repeats=2, axis=0).repeat(repeats=2, axis=1)
-            images[band + "_sharp"] = sharp
-        total = np.clip(
-            (images["B2_sharp"] + images["B3_sharp"] + images["B4_sharp"]) // 3, 1, 255
-        )
-        for band in ["B2", "B3", "B4"]:
-            images[band + "_sharp"] = np.clip(
-                images[band + "_sharp"] * images["B8"] // total, 0, 255
-            ).astype(np.uint8)
-        rgb = np.stack(
-            [images["B4_sharp"], images["B3_sharp"], images["B2_sharp"]], axis=2
-        )
-
-        if crop_path:
-            rgb_fname = crop_upath / f"{idx}_rgb.png"
-            with rgb_fname.open("wb") as f:
-                Image.fromarray(rgb).save(f, format="PNG")
-
-            b8_fname = crop_upath / f"{idx}_b8.png"
-            with b8_fname.open("wb") as f:
-                Image.fromarray(images["B8"]).save(f, format="PNG")
-        else:
-            rgb_fname = ""
-            b8_fname = ""
-
-        json_data.append(
-            FormattedPrediction(
-                longitude=lon,
-                latitude=lat,
-                score=detection.score,
-                rgb_fname=str(rgb_fname),
-                b8_fname=str(b8_fname),
-            ),
-        )
-        geojson_features.append(detection.to_feature())
+    with time_operation(TimerOperations.BuildPredictionsAndCrops):
+        json_data = _build_predictions_and_crops(detections, crop_path)
 
     if json_path:
         json_upath = UPath(json_path)
@@ -539,6 +465,7 @@ def predict_pipeline(
             json.dump(json_data, f)
 
     if geojson_path:
+        geojson_features = [d.to_feature() for d in detections]
         geojson_upath = UPath(geojson_path)
         with geojson_upath.open("w") as f:
             json.dump(
@@ -551,3 +478,95 @@ def predict_pipeline(
             )
 
     return json_data
+
+def _build_predictions_and_crops(detections: list[VesselDetection], crop_path: str | None) -> list[FormattedPrediction]:
+    # Write JSON and crops.
+    if crop_path:
+        crop_upath = UPath(crop_path)
+        crop_upath.mkdir(parents=True, exist_ok=True)
+
+    json_data = []
+    near_infra_filter = NearInfraFilter(infra_distance_threshold=INFRA_THRESHOLD_KM)
+    infra_detections = 0
+    for idx, detection in enumerate(detections):
+        # Apply near infra filter (True -> filter out, False -> keep)
+        lon, lat = detection.get_lon_lat()
+        if near_infra_filter.should_filter(lon, lat):
+            infra_detections += 1
+            continue
+
+        if crop_path:
+            crops = _write_detection_crop(detection, crop_upath, idx)
+            rgb_fname = crops.rgb_fname
+            b8_fname = crops.b8_fname
+        else:
+            rgb_fname, b8_fname = "", ""
+
+        json_data.append(
+            FormattedPrediction(
+                longitude=lon,
+                latitude=lat,
+                score=detection.score,
+                rgb_fname=str(rgb_fname),
+                b8_fname=str(b8_fname),
+            ),
+        )
+    return json_data
+
+@dataclass
+class DetectionCrop:
+    rgb_fname: UPath
+    b8_fname: UPath
+
+def _write_detection_crop(detection: VesselDetection, crop_upath: UPath, idx: int) -> DetectionCrop:
+    # Load crops from the window directory for writing output PNGs.
+    # We create two PNGs:
+    # - b8.png: just has B8 (panchromatic band).
+    # - rgb.png: true color with pan-sharpening. The RGB is from B4, B3, and B2
+    #   respectively while B8 is used for pan-sharpening.
+    images = {}
+    crop_window: Window = detection.metadata["crop_window"]
+    if crop_window is None:
+        raise ValueError("Crop window is None")
+    for band in ["B2", "B3", "B4", "B8"]:
+        raster_dir = crop_window.get_raster_dir(LANDSAT_LAYER_NAME, [band])
+
+        # Different bands are in different resolutions so get the bounds from the
+        # raster since anyway we just want to read the whole raster.
+        raster_format = GeotiffRasterFormat()
+        band_bounds = raster_format.get_raster_bounds(raster_dir)
+        image = raster_format.decode_raster(raster_dir, band_bounds)
+        if image.shape[0] != 1:
+            raise ValueError(
+                f"expected single-band image for {band} but got {image.shape[0]} bands"
+            )
+
+        images[band] = image[0, :, :]
+
+    # Apply simple pan-sharpening for the RGB.
+    # This is just linearly scaling RGB bands to add up to B8, which is captured at
+    # a higher resolution.
+    for band in ["B2", "B3", "B4"]:
+        sharp = images[band].astype(np.int32)
+        sharp = sharp.repeat(repeats=2, axis=0).repeat(repeats=2, axis=1)
+        images[band + "_sharp"] = sharp
+    total = np.clip(
+        (images["B2_sharp"] + images["B3_sharp"] + images["B4_sharp"]) // 3, 1, 255
+    )
+    for band in ["B2", "B3", "B4"]:
+        images[band + "_sharp"] = np.clip(
+            images[band + "_sharp"] * images["B8"] // total, 0, 255
+        ).astype(np.uint8)
+    rgb = np.stack(
+        [images["B4_sharp"], images["B3_sharp"], images["B2_sharp"]], axis=2
+    )
+
+    rgb_fname = crop_upath / f"{idx}_rgb.png"
+    with rgb_fname.open("wb") as f:
+        Image.fromarray(rgb).save(f, format="PNG")
+
+    b8_fname = crop_upath / f"{idx}_b8.png"
+    with b8_fname.open("wb") as f:
+        Image.fromarray(images["B8"]).save(f, format="PNG")
+
+    return DetectionCrop(rgb_fname=rgb_fname, b8_fname=b8_fname)

@@ -6,13 +6,17 @@ import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import Enum
+from typing import Any
 
+import prometheus_client
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
+from prometheus_client import make_asgi_app, multiprocess
 from pydantic import BaseModel
 
 from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_pipeline
+from rslp.landsat_vessels.prom_metrics import time_operation, TimerOperations
 from rslp.log_utils import get_logger
 from rslp.utils.mp import init_mp
 
@@ -179,14 +183,15 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
         )
     try:
         logger.info("Processing request with input data.")
-        json_data = predict_pipeline(
-            scene_id=info.scene_id,
-            scene_zip_path=info.scene_zip_path,
-            image_files=info.image_files,
-            json_path=info.json_path,
-            scratch_path=info.scratch_path,
-            crop_path=info.crop_path,
-        )
+        with time_operation(TimerOperations.TotalInferenceTime):
+            json_data = predict_pipeline(
+                scene_id=info.scene_id,
+                scene_zip_path=info.scene_zip_path,
+                image_files=info.image_files,
+                json_path=info.json_path,
+                scratch_path=info.scratch_path,
+                crop_path=info.crop_path,
+            )
         return LandsatResponse(
             status=StatusEnum.SUCCESS,
             predictions=json_data,
@@ -206,6 +211,28 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             predictions=[],
             error_message=f"Unexpected error in prediction pipeline: {e}",
         )
+
+# Setup prometheus
+def setup_prom_metrics() -> Any:
+    multi_proc_dir = os.environ.get('PROMETHEUS_MULTIPROC_DIR')
+    if not multi_proc_dir:
+        # If we're not using multiproc, then just use the default registry
+        return make_asgi_app()
+
+    # Otherwise setup prometheus multiproc mode.
+    if os.path.isdir(multi_proc_dir):
+        for multi_proc_file in os.scandir(multi_proc_dir):
+            os.remove(multi_proc_file.path)
+    else:
+        os.makedirs(multi_proc_dir)
+
+    # Create the multiproc collector, and set it up to be connected to fastapi
+    registry = prometheus_client.CollectorRegistry()
+    multiprocess.MultiProcessCollector(registry, path=multi_proc_dir)
+    return make_asgi_app(registry=registry)
+
+
+app.mount("/metrics", setup_prom_metrics())
 
 
 if __name__ == "__main__":
