@@ -454,7 +454,9 @@ def predict_pipeline(
     with time_operation(TimerOperations.GetVesselDetections):
         detections = get_vessel_detections(ds_path, scene_data)
     with time_operation(TimerOperations.RunClassifier):
-        detections = run_classifier(ds_path, detections=detections, scene_data=scene_data)
+        detections = run_classifier(
+            ds_path, detections=detections, scene_data=scene_data
+        )
 
     with time_operation(TimerOperations.BuildPredictionsAndCrops):
         json_data = _build_predictions_and_crops(detections, crop_path)
@@ -479,7 +481,10 @@ def predict_pipeline(
 
     return json_data
 
-def _build_predictions_and_crops(detections: list[VesselDetection], crop_path: str | None) -> list[FormattedPrediction]:
+
+def _build_predictions_and_crops(
+    detections: list[VesselDetection], crop_path: str | None
+) -> list[FormattedPrediction]:
     # Write JSON and crops.
     if crop_path:
         crop_upath = UPath(crop_path)
@@ -513,13 +518,18 @@ def _build_predictions_and_crops(detections: list[VesselDetection], crop_path: s
         )
     return json_data
 
+
 @dataclass
 class DetectionCrop:
     """Dataclass for return type from generating crops."""
+
     rgb_fname: UPath
     b8_fname: UPath
 
-def _write_detection_crop(detection: VesselDetection, crop_upath: UPath, idx: int) -> DetectionCrop:
+
+def _write_detection_crop(
+    detection: VesselDetection, crop_upath: UPath, idx: int
+) -> DetectionCrop:
     # Load crops from the window directory for writing output PNGs.
     # We create two PNGs:
     # - b8.png: just has B8 (panchromatic band).
@@ -558,9 +568,7 @@ def _write_detection_crop(detection: VesselDetection, crop_upath: UPath, idx: in
         images[band + "_sharp"] = np.clip(
             images[band + "_sharp"] * images["B8"] // total, 0, 255
         ).astype(np.uint8)
-    rgb = np.stack(
-        [images["B4_sharp"], images["B3_sharp"], images["B2_sharp"]], axis=2
-    )
+    rgb = np.stack([images["B4_sharp"], images["B3_sharp"], images["B2_sharp"]], axis=2)
 
     rgb_fname = crop_upath / f"{idx}_rgb.png"
     with rgb_fname.open("wb") as f:

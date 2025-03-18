@@ -12,6 +12,7 @@ request_timer = Histogram(
 
 class TimerOperations(StrEnum):
     """Constants for the operations that are timed during inference."""
+
     TotalInferenceTime = "TotalInferenceTime"
     SetupDataset = "SetupDataset"
     MaterializeDataset = "MaterializeDataset"

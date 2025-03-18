@@ -212,9 +212,10 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             error_message=f"Unexpected error in prediction pipeline: {e}",
         )
 
+
 # Setup prometheus
 def _setup_prom_metrics() -> Any:
-    multi_proc_dir = os.environ.get('PROMETHEUS_MULTIPROC_DIR')
+    multi_proc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
     if not multi_proc_dir:
         # If we're not using multiproc, then just use the default registry
         return make_asgi_app()
