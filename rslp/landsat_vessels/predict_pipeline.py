@@ -34,7 +34,7 @@ from rslp.landsat_vessels.config import (
     LOCAL_FILES_DATASET_CONFIG,
     OUTPUT_LAYER_NAME,
 )
-from rslp.landsat_vessels.prom_metrics import time_operation, TimerOperations
+from rslp.landsat_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.log_utils import get_logger
 from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import (
@@ -515,6 +515,7 @@ def _build_predictions_and_crops(detections: list[VesselDetection], crop_path: s
 
 @dataclass
 class DetectionCrop:
+    """Dataclass for return type from generating crops."""
     rgb_fname: UPath
     b8_fname: UPath
 

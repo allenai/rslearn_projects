@@ -16,7 +16,7 @@ from prometheus_client import make_asgi_app, multiprocess
 from pydantic import BaseModel
 
 from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_pipeline
-from rslp.landsat_vessels.prom_metrics import time_operation, TimerOperations
+from rslp.landsat_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.log_utils import get_logger
 from rslp.utils.mp import init_mp
 
@@ -213,7 +213,7 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
         )
 
 # Setup prometheus
-def setup_prom_metrics() -> Any:
+def _setup_prom_metrics() -> Any:
     multi_proc_dir = os.environ.get('PROMETHEUS_MULTIPROC_DIR')
     if not multi_proc_dir:
         # If we're not using multiproc, then just use the default registry
@@ -232,7 +232,7 @@ def setup_prom_metrics() -> Any:
     return make_asgi_app(registry=registry)
 
 
-app.mount("/metrics", setup_prom_metrics())
+app.mount("/metrics", _setup_prom_metrics())
 
 
 if __name__ == "__main__":

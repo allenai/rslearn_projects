@@ -1,7 +1,4 @@
-"""
-Definitions for prometheus metrics that are captured during inference to report on performance of the landsat
-detection service.
-"""
+"""Definitions for prometheus metrics that are captured during inference to report on performance of the landsat detection service."""
 
 from enum import StrEnum
 
@@ -14,6 +11,7 @@ request_timer = Histogram(
 
 
 class TimerOperations(StrEnum):
+    """Constants for the operations that are timed during inference."""
     TotalInferenceTime = "TotalInferenceTime"
     SetupDataset = "SetupDataset"
     MaterializeDataset = "MaterializeDataset"
@@ -24,4 +22,5 @@ class TimerOperations(StrEnum):
 
 
 def time_operation(operation: TimerOperations) -> Timer:
+    """Report how long an operation takes to Prometheus Metrics."""
     return request_timer.labels(operation=operation.value).time()
