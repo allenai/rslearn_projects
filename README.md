@@ -44,3 +44,4 @@ Applications
 - [Satlas: Marine Infrastructure Detection](docs/satlas_marine_infra.md)
 - [Forest Loss Driver Classification](docs/forest_loss_driver.md)
 - [Maldives Ecosystem Mapping](docs/maldives_ecosystem_mapping.md)
+- run tests!
