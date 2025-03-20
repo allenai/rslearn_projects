@@ -70,7 +70,7 @@ were written. Here we start 100 workers.
 
     python -m rslp.main common launch skylight-proto-1 rslp-job-queue-favyen-sub 100 --gpus 1 --shared_memory 256GiB
 
-### Post-processing.
+### Post-processing
 
 Post-processing for point tasks occurs locally (does not require starting jobs in parallel).
 
