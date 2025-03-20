@@ -13,7 +13,7 @@ TEST_TYPE=$1
 TEST_DIRS=("tests/$TEST_TYPE/*.py")
 
 # Get the list of changed files in the PR
-CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+CHANGED_FILES=$(git diff --name-only origin/master...HEAD)
 
 # Find directories inside tests/$TEST_TYPE
 for dir in tests/$TEST_TYPE/*/; do
