@@ -17,3 +17,6 @@ def test_scene() -> None:
     predictions = response.json()["predictions"]
     # There are many correct vessels in this scene.
     assert len(predictions) > 0
+    first_pred = predictions[0]
+    for attribute in ["length", "width", "speed", "vessel_type", "heading"]:
+        assert attribute in first_pred["attributes"]
