@@ -140,7 +140,7 @@ def get_vessel_detections(
 
     # Read the detections.
     layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
-    features = GeojsonVectorFormat().decode_vector(layer_dir, window.bounds)
+    features = GeojsonVectorFormat().decode_vector(layer_dir, window.projection, window.bounds)
     detections: list[VesselDetection] = []
     for feature in features:
         geometry = feature.geometry
@@ -237,7 +237,7 @@ def run_classifier(
     good_detections = []
     for detection, window in zip(detections, windows):
         layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
-        features = GeojsonVectorFormat().decode_vector(layer_dir, window.bounds)
+        features = GeojsonVectorFormat().decode_vector(layer_dir, window.projection, window.bounds)
         category = features[0].properties["label"]
         if category == "correct":
             good_detections.append(detection)
@@ -546,7 +546,7 @@ def _write_detection_crop(
         # raster since anyway we just want to read the whole raster.
         raster_format = GeotiffRasterFormat()
         band_bounds = raster_format.get_raster_bounds(raster_dir)
-        image = raster_format.decode_raster(raster_dir, band_bounds)
+        image = raster_format.decode_raster(raster_dir, crop_window.projection, band_bounds)
         if image.shape[0] != 1:
             raise ValueError(
                 f"expected single-band image for {band} but got {image.shape[0]} bands"
