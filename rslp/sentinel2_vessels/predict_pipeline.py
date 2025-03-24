@@ -405,7 +405,9 @@ def run_attribute_model(
     # Verify that no window is unmaterialized.
     for window in windows:
         if not window.is_layer_completed(SENTINEL2_LAYER_NAME):
-            raise ValueError(f"window {window.name} does not have materialized Landsat")
+            raise ValueError(
+                f"window {window.name} does not have materialized Sentinel-2 image"
+            )
 
     # Run classification model.
     run_model_predict(ATTRIBUTE_MODEL_CONFIG, ds_path, groups=[group])
