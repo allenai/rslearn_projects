@@ -1,5 +1,7 @@
 # Use heading2 task which treats forward/backward orientation, and predicts the vessel
 # direction separately.
+# It does not seem to work better than config.yaml for heading prediction, but it is
+# worth exploring further.
 model:
   class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeLightningModule
   init_args:
