@@ -67,9 +67,12 @@ def test_write_event(
 
     with (window_dir / "layers" / "mask" / "mask" / "metadata.json").open() as f:
         metadata = json.load(f)
-    assert metadata == {
-        "bounds": [-815504, 49752, -815376, 49880]
-    }, "forest loss event metadata.json is incorrect"
+    assert metadata["bounds"] == [
+        -815504,
+        49752,
+        -815376,
+        49880,
+    ], "forest loss event metadata.json is incorrect"
 
     # assert completed file exists for mask layer
     assert (

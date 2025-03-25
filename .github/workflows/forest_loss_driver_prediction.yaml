@@ -82,7 +82,7 @@ jobs:
             "${BEAKER_IMAGE_FULL_NAME}" \
             "${CLUSTERS}" \
             --gpu_count 1 \
-            --preemptible false \
+            --preemptible true \
             --weka_mounts "${WEKA_MOUNTS}" \
             --task_specific_env_vars "${TASK_ENV_VARS}"
         env:
