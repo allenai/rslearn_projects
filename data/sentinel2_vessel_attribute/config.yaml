@@ -1,3 +1,7 @@
+# Default model configuration where we predict the attributes using regression, except
+# ship type which is classification.
+# For heading, we predict the x/y components (i.e. cos(theta) and sin(theta)) with
+# regression.
 model:
   class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeLightningModule
   init_args:

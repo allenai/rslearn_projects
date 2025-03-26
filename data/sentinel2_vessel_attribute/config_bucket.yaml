@@ -1,3 +1,8 @@
+# Predict the length/width/speed using classification instead of regression.
+# This provides a nice way to analyze the results (confusion matrix).
+# However Skylight needs more precision that can be provided from classifying into
+# buckets so this model configuration is deprecated and just keeping it around for now
+# as a reference.
 model:
   class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeLightningModule
   init_args:

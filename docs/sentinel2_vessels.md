@@ -20,7 +20,9 @@ First, download the model checkpoint to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
     mkdir -p project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/data_20250213_02_all_bands/data_20240213_01_add_freezing_and_fix_fpn_restore/checkpoints/best.ckpt
+    mkdir -p project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in
 `rslp/sentinel2_vessels/predict_pipeline.py`. It accepts a Sentinel-2 scene ID and
@@ -114,7 +116,9 @@ weights to be present in a directory based on the `RSLP_PREFIX` environment vari
 So download the model checkpoint:
 
     mkdir -p project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/
+    mkdir -p project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt
 
 Run the container:
 
@@ -127,7 +131,7 @@ docker run \
     -v $PWD/project_data/:/project_data/ \
     --shm-size=15g \
     --gpus all \
-    ghcr.io/allenai/sentinel2-vessel-detection:sentinel2_vessels_v0.0.1
+    ghcr.io/allenai/sentinel2-vessel-detection:sentinel2_vessels_v0.0.2
 ```
 
 ### Auto Documentation

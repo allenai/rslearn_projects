@@ -41,6 +41,9 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
         else:
             return None
 
+    # Extract relevant information from the CSV row.
+    # Some columns might be empty string if the data is not known; if they are meant to
+    # be converted to float then we change it to None using get_optional_float.
     event_id = csv_row["event_id"]
     ts = datetime.fromisoformat(csv_row["event_time"])
     lat = float(csv_row["lat"])
@@ -60,6 +63,8 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
     else:
         time_to_closest_position = None
 
+    # Use ts/lon/lat to get the bounds and time range of the window in an appropriate
+    # UTM projection.
     src_point = shapely.Point(lon, lat)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
     dst_projection = get_utm_ups_projection(lon, lat, PIXEL_SIZE, -PIXEL_SIZE)
@@ -77,6 +82,7 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
     is_val = hashlib.sha256(event_id.encode()).hexdigest()[0] in ["0", "1"]
     split = "val" if is_val else "train"
 
+    # Create the window.
     window_name = event_id
     window_root = Window.get_window_root(ds_upath, group, window_name)
     window = Window(
@@ -92,7 +98,7 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
     )
     window.save()
 
-    # Save metadata.
+    # Save metadata in case we want to refer to it later.
     with (window_root / "info.json").open("w") as f:
         json.dump(
             {
@@ -109,15 +115,19 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
             f,
         )
 
+    # Create the vector "info" layer that is used as ground truth for model training.
     info_dir = window.get_layer_dir("info")
     info_dir.mkdir(parents=True, exist_ok=True)
     properties: dict[str, Any] = {
         "event_id": event_id,
     }
+    # Extreme lengths/widths are probably incorrect.
     if vessel_length and vessel_length >= 5 and vessel_length < 460:
         properties["length"] = vessel_length
     if vessel_width and vessel_width >= 2 and vessel_width < 120:
         properties["width"] = vessel_width
+    # Course is often incorrect for non-moving vessels, so we only try to predict it
+    # for vessels that are moving. Also it should be 0-360.
     if (
         vessel_cog
         and vessel_sog
@@ -127,6 +137,7 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
         and vessel_cog < 360
     ):
         properties["cog"] = vessel_cog
+    # Speed should be 0-60 (in knots).
     if vessel_sog and vessel_sog > 0 and vessel_sog < 60:
         properties["sog"] = vessel_sog
     if ship_type and ship_type in VESSEL_CATEGORIES:
