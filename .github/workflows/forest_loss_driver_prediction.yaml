@@ -84,7 +84,8 @@ jobs:
             --gpu_count 1 \
             --preemptible true \
             --weka_mounts "${WEKA_MOUNTS}" \
-            --task_specific_env_vars "${TASK_ENV_VARS}"
+            --task_specific_env_vars "${TASK_ENV_VARS}" \
+            --shared_memory 256GiB
         env:
           EXTRA_ARGS: |
             [
