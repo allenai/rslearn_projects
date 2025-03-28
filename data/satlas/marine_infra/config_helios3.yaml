@@ -7,31 +7,22 @@ model:
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
-              model_config:
-                encoder_config:
-                  supported_modality_names: ["sentinel2_l2a", "latlon", "sentinel1", "worldcover"]
-                  embedding_size: 192
-                  max_patch_size: 8
-                  num_heads: 3
-                  depth: 12
-                  mlp_ratio: 4.0
-                  drop_path: 0.1
-                  max_sequence_length: 12
-                  use_channel_embs: True
-                decoder_config:
-                  encoder_embedding_size: 192
-                  decoder_embedding_size: 192
-                  depth: 12
-                  mlp_ratio: 4.0
-                  num_heads: 3
-                  max_sequence_length: 12
-                  supported_modality_names: ["sentinel2_l2a", "latlon", "sentinel1", "worldcover"]
-                  learnable_channel_embeddings: True
+              checkpoint_path: "/dfive-default/helios/checkpoints/yawenzzzz/5latentmim_tiny_masking_modality_space_time_loss_all_discrimination_token_exit_half/step85000/"
               selector: ["encoder"]
               forward_kwargs:
                 patch_size: 8
         decoders:
           detect:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 192
+                out_channels: 192
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 192
+                out_channels: 192
+                kernel_size: 3
             - class_path: rslearn.models.faster_rcnn.FasterRCNN
               init_args:
                 downsample_factors: [8]
@@ -69,7 +60,8 @@ data:
               property_name: "category"
               classes: ["unknown", "platform", "turbine"]
               box_size: 15
-              remap_values: [[0, 1], [0, 255]]
+              remap_values: [[0, 0.25], [0, 255]]
+              image_bands: [2, 1, 0]
               exclude_by_center: true
               enable_map_metric: true
               enable_f1_metric: true
@@ -102,14 +94,17 @@ data:
       patch_size: 256
       tags:
         split: train
+        nonempty: "yes"
     val_config:
       patch_size: 256
       tags:
         split: val
+        nonempty: "yes"
     test_config:
       patch_size: 256
       tags:
         split: val
+        nonempty: "yes"
 trainer:
   max_epochs: 500
   callbacks:
@@ -128,4 +123,4 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 rslp_project: helios_finetuning
-rslp_experiment: train_on_marine_infra_00
+rslp_experiment: train_on_marine_infra_03

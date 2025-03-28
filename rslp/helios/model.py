@@ -1,13 +1,19 @@
 """Helios model wrapper for fine-tuning in rslearn."""
 
+import json
 from typing import Any
 
 import torch
 from einops import rearrange
 from helios.data.constants import Modality
 from helios.nn.flexihelios import TokensAndMasks
-from helios.nn.latent_mim import LatentMIMConfig
 from helios.train.masking import MaskedHeliosSample, MaskValue
+from olmo_core.config import Config
+from olmo_core.distributed.checkpoint import load_model_and_optim_state
+
+from rslp.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 MODALITY_NAMES = [
     "sentinel2_l2a",
@@ -22,17 +28,15 @@ class Helios(torch.nn.Module):
 
     def __init__(
         self,
-        # I tried to use generic Config here but jsonargparse struggled to
-        # initialize it with a subclass. So currently it has to be a concrete type
-        # instead of generic superclass.
-        model_config: LatentMIMConfig,
+        checkpoint_path: str,
         selector: list[str | int] = [],
         forward_kwargs: dict[str, Any] = {},
     ):
         """Create a new Helios model.
 
         Args:
-            model_config: the configuration object that specifies the model.
+            checkpoint_path: the checkpoint directory to load. It should contain
+                config.json file as well as model_and_optim folder.
             selector: an optional sequence of attribute names or list indices to select
                 the sub-module that should be applied on the input images.
             forward_kwargs: additional arguments to pass to forward pass besides the
@@ -41,7 +45,20 @@ class Helios(torch.nn.Module):
         super().__init__()
         self.forward_kwargs = forward_kwargs
 
+        # Load the model config and initialize it.
+        # We avoid loading the train module here because it depends on running within
+        # olmo_core.
+        with open(f"{checkpoint_path}/config.json") as f:
+            config_dict = json.load(f)
+            model_config = Config.from_dict(config_dict["model"])
+
         model = model_config.build()
+
+        # Load the checkpoint.
+        train_module_dir = f"{checkpoint_path}/model_and_optim"
+        load_model_and_optim_state(train_module_dir, model)
+
+        # Select just the portion of the model that we actually want to use.
         for part in selector:
             if isinstance(part, str):
                 model = getattr(model, part)
@@ -85,6 +102,9 @@ class Helios(torch.nn.Module):
         timestamps[:, :, 2] = 2024  # year
         kwargs["timestamps"] = timestamps
 
+        for k, v in kwargs.items():
+            print("INPUT", k, v.shape)
+
         sample = MaskedHeliosSample(**kwargs)
 
         # Currently we assume the provided model always returns a TokensAndMasks
@@ -95,6 +115,7 @@ class Helios(torch.nn.Module):
         features = []
         for modality in present_modalities:
             modality_features = getattr(tokens_and_masks, modality)
+            print("OUTPUT", modality, modality_features.shape)
             # Pool over band sets and timesteps (BHWTSC -> BHWC).
             pooled = modality_features.mean(dim=[3, 4])
             # We want BHWC -> BCHW.
@@ -102,5 +123,8 @@ class Helios(torch.nn.Module):
             features.append(pooled)
         # Pool over the modalities, so we get one BCHW feature map.
         pooled = torch.stack(features, dim=0).mean(dim=0)
+        if pooled.shape[0] >= 2:
+            print(pooled.shape, "first", pooled[0, 16:20, 16:20, 0:3])
+            print(pooled.shape, "second", pooled[1, 16:20, 16:20, 0:3])
 
         return [pooled]
