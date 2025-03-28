@@ -18,18 +18,13 @@ model:
                 in_channels: 192
                 out_channels: 192
                 kernel_size: 3
-            - class_path: rslearn.models.conv.Conv
-              init_args:
-                in_channels: 192
-                out_channels: 192
-                kernel_size: 3
             - class_path: rslearn.models.faster_rcnn.FasterRCNN
               init_args:
                 downsample_factors: [8]
                 num_channels: 192
                 num_classes: 3
                 anchor_sizes: [[32, 64, 128]]
-    lr: 0.00002
+    lr: 0.001
     plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
@@ -43,7 +38,7 @@ data:
       sentinel2_l2a:
         data_type: "raster"
         layers: ["sentinel2"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09", "B10"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
         dtype: FLOAT32
       targets:
@@ -78,12 +73,11 @@ data:
     num_workers: 32
     default_config:
       transforms:
-        - class_path: rslearn.train.transforms.normalize.Normalize
+        - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            mean: 0
-            std: 10000
-            valid_range: [0, 1]
-            selectors: ["sentinel2_l2a"]
+            config_fname: "/data/favyenb/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         # Copy to "image" key so it can be used by Faster R-CNN head.
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
@@ -94,17 +88,14 @@ data:
       patch_size: 256
       tags:
         split: train
-        nonempty: "yes"
     val_config:
       patch_size: 256
       tags:
         split: val
-        nonempty: "yes"
     test_config:
       patch_size: 256
       tags:
         split: val
-        nonempty: "yes"
 trainer:
   max_epochs: 500
   callbacks:
@@ -122,5 +113,9 @@ trainer:
         save_last: true
         monitor: val_detect/mAP
         mode: max
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 2
 rslp_project: helios_finetuning
-rslp_experiment: train_on_marine_infra_03
+rslp_experiment: marine_infra_helios_unfreeze_10

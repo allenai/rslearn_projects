@@ -70,7 +70,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20250205_sample1k/
+    path: gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20250205/
     inputs:
       image:
         data_type: "raster"
@@ -153,21 +153,17 @@ data:
             std: 10000
             valid_range: [0, 1]
     train_config:
-      transforms:
-        - class_path: rslearn.train.transforms.normalize.Normalize
-          init_args:
-            mean: 0
-            std: 10000
-            valid_range: [0, 1]
-        - class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeFlip
       tags:
         split: "train"
+      groups: ["detections_bigtable"]
     val_config:
       tags:
         split: "val"
+      groups: ["detections_bigtable"]
     test_config:
       tags:
         split: "val"
+      groups: ["detections_bigtable"]
     predict_config:
       groups: ["attribute_predict"]
       skip_targets: true
@@ -188,4 +184,4 @@ trainer:
         path: placeholder
         output_layer: output
 rslp_project: helios_finetuning
-rslp_experiment: train_on_vessel_attribute_baseline_00
+rslp_experiment: train_on_vessel_attribute_baseline_01
