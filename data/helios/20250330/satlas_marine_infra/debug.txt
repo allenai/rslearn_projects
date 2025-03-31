@@ -1,0 +1,140 @@
+import json
+from typing import Any
+
+import torch
+from einops import rearrange
+from helios.data.constants import Modality
+from helios.nn.flexihelios import TokensAndMasks
+from helios.train.masking import MaskedHeliosSample, MaskValue
+from olmo_core.config import Config
+from olmo_core.distributed.checkpoint import load_model_and_optim_state
+from helios.nn.flexihelios import get_modalities_to_process
+
+checkpoint_path = "/dfive-default/helios/checkpoints/yawenzzzz/5latentmim_tiny_masking_modality_space_time_loss_all_discrimination_token_exit_half/step85000/"
+with open(f"{checkpoint_path}/config.json") as f:
+    config_dict = json.load(f)
+    model_config = Config.from_dict(config_dict["model"])
+
+model = model_config.build()
+train_module_dir = f"{checkpoint_path}/model_and_optim"
+load_model_and_optim_state(train_module_dir, model)
+encoder = model.encoder
+
+# BHWTC
+sentinel2_l2a = torch.zeros((1, 32, 32, 1, 12), dtype=torch.float32)
+
+timestamps = torch.zeros((1, 1, 3), dtype=torch.int32)
+timestamps[:, :, 0] = 1  # day
+timestamps[:, :, 1] = 7  # month
+timestamps[:, :, 2] = 2024  # year
+
+sample = MaskedHeliosSample(
+    sentinel2_l2a=sentinel2_l2a,
+    sentinel2_l2a_mask=torch.zeros((1, 32, 32, 1, 3), dtype=torch.int32),
+    timestamps=timestamps,
+)
+
+patch_size = 8
+
+# -> encoder.patch_embeddings.forward
+output_dict = {}
+modalities_to_process = get_modalities_to_process(
+    sample.modalities, encoder.patch_embeddings.supported_modality_names
+)
+assert modalities_to_process == ["sentinel2_l2a"]
+modality = modalities_to_process[0]
+
+# -> -> encoder.patch_embeddings.apply_embedding_to_modality
+masked_modality_name = sample.get_masked_modality_name(modality)
+modality_mask = getattr(sample, masked_modality_name)
+modality_data = getattr(sample, modality)
+
+modality_spec = Modality.get(modality)
+
+modality_tokens, modality_masks = [], []
+for idx, channel_set_indices in enumerate(modality_spec.bandsets_as_indices()):
+    modality_specific_kwargs = {}
+    # TODO: update to use the modlaity spec property here
+    if modality_spec.get_tile_resolution() == 0:
+        # static in time
+        token_mask = modality_mask[..., idx]
+    else:
+        token_mask = modality_mask[:, 0::patch_size, 0::patch_size, ..., idx]
+        modality_specific_kwargs = {"patch_size": patch_size}
+    patchified_dims = token_mask.shape[1:]
+    # Now apply the embedding to
+    if encoder.patch_embeddings.is_any_data_seen_by_encoder(token_mask):
+        patchified_data = modality_data[..., channel_set_indices]
+
+        print("before", idx, channel_set_indices, patchified_data.shape)
+        patchified_data = encoder.patch_embeddings.per_modality_embeddings[modality][
+            encoder.patch_embeddings._get_embedding_module_name(modality, idx)
+        ](patchified_data, **modality_specific_kwargs)
+        print("after", patchified_data.shape, modality_specific_kwargs)
+    else:
+        print("NO GOOD")
+        patchified_data = torch.empty(
+            modality_data.shape[0],
+            *patchified_dims,
+            encoder.patch_embeddings.embedding_size,
+            dtype=modality_data.dtype,
+            device=modality_data.device,
+        )
+    modality_tokens.append(patchified_data)
+    modality_masks.append(token_mask)
+modality_tokens = torch.stack(modality_tokens, dim=-2)
+modality_masks = torch.stack(modality_masks, dim=-1)
+
+# -> encoder.patch_embeddings.forward (continued)
+output_dict[modality] = modality_tokens
+modality_mask_name = sample.get_masked_modality_name(modality)
+output_dict[modality_mask_name] = modality_masks
+
+
+
+
+
+
+patchified_tokens_and_masks = encoder.patch_embeddings.forward(sample, patch_size)
+
+
+
+
+
+
+x = patchified_tokens_and_masks
+token_exit_cfg = None
+exit_after_n_layers = None
+input_res = 10
+tokens_only_dict, original_masks_dict, modalities_to_dims_dict = (
+    encoder.split_tokens_masks_and_dims(x)
+)
+exit_ids_seq = encoder.create_exit_seqs(
+    tokens_only_dict, original_masks_dict, token_exit_cfg
+)
+# exited tokens are just the linear projection
+exited_tokens, _ = encoder.collapse_and_combine_hwtc(x)
+
+tokens_dict = encoder.composite_encodings.forward(
+    tokens_only_dict,
+    sample.timestamps,
+    patch_size,
+    input_res,
+)
+tokens_dict.update(original_masks_dict)
+x, mask = encoder.collapse_and_combine_hwtc(tokens_dict)
+
+new_mask = mask != MaskValue.ONLINE_ENCODER.value
+
+tokens, indices, new_mask = encoder.remove_masked_tokens(x, new_mask)
+
+
+
+
+tokens = encoder.norm(tokens)
+# we don't care about the mask returned by add_removed_tokens, since we will
+# just use the original, unclipped mask here
+tokens, _ = encoder.add_removed_tokens(tokens, indices, new_mask)
+tokens_per_modality_dict = encoder.split_and_expand_per_modality(
+    tokens, modalities_to_dims_dict
+)
