@@ -73,7 +73,7 @@ data:
       sentinel2_l2a:
         data_type: "raster"
         layers: ["sentinel2"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09", "B10"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
         dtype: FLOAT32
       info:
