@@ -15,7 +15,7 @@ model:
           length:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 128
+                in_channels: 768
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -23,7 +23,7 @@ model:
           width:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 128
+                in_channels: 768
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -31,7 +31,7 @@ model:
           speed:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 128
+                in_channels: 768
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -39,7 +39,7 @@ model:
           heading_x:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 128
+                in_channels: 768
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -47,7 +47,7 @@ model:
           heading_y:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 128
+                in_channels: 768
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -55,7 +55,7 @@ model:
           ship_type:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 128
+                in_channels: 768
                 out_channels: 9
                 num_conv_layers: 1
                 num_fc_layers: 2
