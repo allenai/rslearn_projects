@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+import numpy as np
 from PIL import Image
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import Item, data_source_from_config
@@ -29,7 +30,7 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
-from rslp.vessels import VesselDetection, VesselDetectionSource
+from rslp.vessels import VesselAttributes, VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
 
@@ -39,9 +40,10 @@ SENTINEL2_LAYER_NAME = "sentinel2"
 # Name of layer containing the output.
 OUTPUT_LAYER_NAME = "output"
 
-SCENE_ID_DATASET_CONFIG = "data/sentinel2_vessels/config.json"
-IMAGE_FILES_DATASET_CONFIG = "data/sentinel2_vessels/config_local_files.json"
+SCENE_ID_DATASET_CONFIG = "data/sentinel2_vessels/config_predict_gcp.json"
+IMAGE_FILES_DATASET_CONFIG = "data/sentinel2_vessels/config_predict_local_files.json"
 DETECT_MODEL_CONFIG = "data/sentinel2_vessels/config.yaml"
+ATTRIBUTE_MODEL_CONFIG = "data/sentinel2_vessel_attribute/config.yaml"
 
 SENTINEL2_RESOLUTION = 10
 CROP_WINDOW_SIZE = 128
@@ -50,8 +52,14 @@ CROP_WINDOW_SIZE = 128
 # 0.05 km = 50 m
 INFRA_DISTANCE_THRESHOLD = 0.05
 
-# The bands of the TCI image. It must be provided when using ImageFiles mode.
-TCI_BANDS = ["R", "G", "B"]
+# The bands in the 10 m/pixel band set.
+# The first band here is also used to determine projection/bounds in ImageFiles mode.
+# B02/B03/B04 are also used to create the RGB image.
+HIGH_RES_BAND_SET = ["B02", "B03", "B04", "B08"]
+RGB_BAND_INDICES = (2, 1, 0)
+
+# How much to divide B04/B03/B02 by to get 8-bit image.
+RGB_NORM_FACTOR = 10
 
 
 @dataclass
@@ -200,17 +208,19 @@ def setup_dataset_with_image_files(
     # Get the projection and scene bounds for each task from the TCI image.
     scene_datas: list[SceneData] = []
     for image_files in image_files_list:
-        # Look for TCI image. It is required.
-        tci_fname: UPath | None = None
+        # Look for an image at the highest resolution. It is required.
+        hr_fname: UPath | None = None
         for image_file in image_files:
-            if image_file.bands != TCI_BANDS:
+            if image_file.bands != [HIGH_RES_BAND_SET[0]]:
                 continue
-            tci_fname = UPath(image_file.fname)
+            hr_fname = UPath(image_file.fname)
 
-        if tci_fname is None:
-            raise ValueError("provided list of image files does not have TCI image")
+        if hr_fname is None:
+            raise ValueError(
+                f"provided list of image files does not have band {HIGH_RES_BAND_SET[0]}"
+            )
 
-        with open_rasterio_upath_reader(tci_fname) as raster:
+        with open_rasterio_upath_reader(hr_fname) as raster:
             projection = Projection(raster.crs, raster.transform.a, raster.transform.e)
             left = int(raster.transform.c / projection.x_resolution)
             top = int(raster.transform.f / projection.y_resolution)
@@ -295,7 +305,9 @@ def get_vessel_detections(
     detections: list[VesselDetection] = []
     for task_idx, (window, scene_data) in enumerate(zip(windows, scene_datas)):
         layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
-        features = GeojsonVectorFormat().decode_vector(layer_dir, window.bounds)
+        features = GeojsonVectorFormat().decode_vector(
+            layer_dir, window.projection, window.bounds
+        )
         for feature in features:
             geometry = feature.geometry
             score = feature.properties["score"]
@@ -320,35 +332,37 @@ def get_vessel_detections(
     return detections
 
 
-def get_vessel_crop_windows(
-    ds_path: UPath, detections: list[VesselDetection], scene_datas: list[SceneData]
+def run_attribute_model(
+    ds_path: UPath,
+    detections: list[VesselDetection],
+    scene_datas: list[SceneData],
 ) -> list[Window]:
-    """Create a window for each vessel to obtain a cropped image for it.
+    """Run the attribute prediction model.
 
     Args:
-        ds_path: the rslearn dataset path (same one used for object detector -- we will
-            put the crop windows in a different group).
-        detections: list of vessel detections.
-        scene_datas: list of SceneDatas that we are processing.
+        ds_path: the dataset path that will be populated with new windows to apply the
+            attribute model.
+        detections: the detections from the detector.
+        scene_datas: the list of SceneDatas.
 
     Returns:
-        list of windows corresponding to the detection list, where cropped images have
-            been materialized.
+        the new windows. The detections will also be updated with the predicted
+            attributes.
     """
-    # Create the windows.
-    group = "crops"
-    crop_windows: list[UPath] = []
+    # Create windows for applying attribute prediction model.
+    group = "attribute_predict"
+    windows: list[Window] = []
     for detection in detections:
         window_name = (
             f"{detection.metadata['task_idx']}_{detection.col}_{detection.row}"
         )
         window_path = Window.get_window_root(ds_path, group, window_name)
-        bounds = (
+        bounds = [
             detection.col - CROP_WINDOW_SIZE // 2,
             detection.row - CROP_WINDOW_SIZE // 2,
             detection.col + CROP_WINDOW_SIZE // 2,
             detection.row + CROP_WINDOW_SIZE // 2,
-        )
+        ]
 
         # task_idx metadata is always set in sentinel2_vessels.
         task_idx = detection.metadata["task_idx"]
@@ -362,6 +376,8 @@ def get_vessel_crop_windows(
             time_range=scene_data.time_range,
         )
         window.save()
+        windows.append(window)
+        detection.metadata["crop_window"] = window
 
         if scene_data.item:
             layer_data = WindowLayerData(
@@ -369,9 +385,8 @@ def get_vessel_crop_windows(
             )
             window.save_layer_datas({SENTINEL2_LAYER_NAME: layer_data})
 
-        crop_windows.append(window)
-
-    # Materialize the windows.
+    # Materialize the dataset.
+    logger.info("materialize dataset")
     apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
     materialize_pipeline_args = MaterializePipelineArgs(
         disabled_layers=[],
@@ -387,7 +402,32 @@ def get_vessel_crop_windows(
     if len(detections) > 0:
         materialize_dataset(ds_path, materialize_pipeline_args)
 
-    return crop_windows
+    # Verify that no window is unmaterialized.
+    for window in windows:
+        if not window.is_layer_completed(SENTINEL2_LAYER_NAME):
+            raise ValueError(
+                f"window {window.name} does not have materialized Sentinel-2 image"
+            )
+
+    # Run classification model.
+    run_model_predict(ATTRIBUTE_MODEL_CONFIG, ds_path, groups=[group])
+
+    # Read the results.
+    for detection, window in zip(detections, windows):
+        layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
+        features = GeojsonVectorFormat().decode_vector(
+            layer_dir, window.projection, window.bounds
+        )
+        properties = features[0].properties
+        detection.attributes = VesselAttributes(
+            length=properties["length"],
+            width=properties["width"],
+            speed=properties["sog"],
+            heading=properties["heading"],
+            vessel_type=properties["type"],
+        )
+
+    return windows
 
 
 def predict_pipeline(
@@ -437,8 +477,9 @@ def predict_pipeline(
     # Apply the vessel detection model.
     detections = get_vessel_detections(ds_path, scene_datas)
 
-    # Create and materialize windows that correspond to a crop of each detection.
-    crop_windows = get_vessel_crop_windows(ds_path, detections, scene_datas)
+    # Apply the attribute prediction model.
+    # This also collects vessel crop windows.
+    crop_windows = run_attribute_model(ds_path, detections, scene_datas)
 
     # Write crops and prepare the JSON data.
     json_vessels_by_task: list[list[dict[str, Any]]] = [[] for _ in tasks]
@@ -448,7 +489,6 @@ def predict_pipeline(
     near_infra_filter = NearInfraFilter(
         infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
     )
-    raster_format = GeotiffRasterFormat()
     for detection, crop_window in zip(detections, crop_windows):
         # Apply near infra filter (True -> filter out, False -> keep)
         lon, lat = detection.get_lon_lat()
@@ -465,15 +505,19 @@ def predict_pipeline(
 
             # Get RGB crop.
             raster_dir = crop_window.get_raster_dir(
-                SENTINEL2_LAYER_NAME, ["R", "G", "B"]
+                SENTINEL2_LAYER_NAME,
+                HIGH_RES_BAND_SET,
             )
-            raster_bounds = raster_format.get_raster_bounds(raster_dir)
-            image = GeotiffRasterFormat().decode_raster(raster_dir, raster_bounds)
+            image = GeotiffRasterFormat().decode_raster(
+                raster_dir, crop_window.projection, crop_window.bounds
+            )
+            rgb_image = image[RGB_BAND_INDICES, :, :]
+            rgb_image = np.clip(rgb_image // RGB_NORM_FACTOR, 0, 255).astype(np.uint8)
 
             # And save it under the specified crop path.
             detection.crop_fname = crop_upath / f"{detection.col}_{detection.row}.png"
             with detection.crop_fname.open("wb") as f:
-                Image.fromarray(image.transpose(1, 2, 0)).save(f, format="PNG")
+                Image.fromarray(rgb_image.transpose(1, 2, 0)).save(f, format="PNG")
 
         json_vessels_by_task[task_idx].append(detection.to_dict())
         geojson_vessels_by_task[task_idx].append(detection.to_feature())
