@@ -44,7 +44,7 @@ def test_single_task(tmp_path: pathlib.Path) -> None:
     worker_pipeline(
         project_id=os.environ["TEST_PUBSUB_PROJECT"],
         subscription_id=os.environ["TEST_PUBSUB_SUBSCRIPTION"],
-        idle_timeout=1,
+        idle_timeout=2,
     )
     # Verify that the file was created.
     assert dst_fname.exists()
