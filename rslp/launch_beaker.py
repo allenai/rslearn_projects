@@ -9,14 +9,18 @@ import dotenv
 from beaker import Beaker, Constraints, EnvVar, ExperimentSpec, Priority, TaskResources
 
 from rslp import launcher_lib
-
-DEFAULT_WORKSPACE = "ai2/earth-systems"
-BUDGET = "ai2/prior"
+from rslp.utils.beaker import (
+    DEFAULT_BUDGET,
+    DEFAULT_WORKSPACE,
+    create_gcp_credentials_mount,
+    get_base_env_vars,
+)
 
 
 def launch_job(
     config_path: str,
     image_name: str,
+    cluster: list[str],
     hparams_config_path: str | None = None,
     mode: str = "fit",
     run_id: str = "",
@@ -31,6 +35,7 @@ def launch_job(
         config_path: the relative path from rslearn_projects/ to the YAML configuration
             file.
         image_name: the name of the Beaker image to use for the job.
+        cluster: list of Beaker clusters to target.
         hparams_config_path: the relative path from rslearn_projects/ to the YAML configuration
             file containing the hyperparameters to be combined with the base config.
         mode: Mode to run the model ('fit', 'validate', 'test', or 'predict').
@@ -63,7 +68,7 @@ def launch_job(
 
     for run_id, config_path in config_paths.items():
         with beaker.session():
-            env_vars = launcher_lib.get_base_env_vars()
+            env_vars = get_base_env_vars()
             env_vars.extend(
                 [
                     EnvVar(
@@ -88,7 +93,7 @@ def launch_job(
                     )
                 )
             spec = ExperimentSpec.new(
-                budget=BUDGET,
+                budget=DEFAULT_BUDGET,
                 description=f"{project_id}/{experiment_id}/{run_id}",
                 beaker_image=image_name,
                 priority=Priority.high,
@@ -101,10 +106,10 @@ def launch_job(
                     "--autoresume=true",
                 ],
                 constraints=Constraints(
-                    cluster=["ai2/jupiter-cirrascale-2", "ai2/augusta-google-1"]
+                    cluster=cluster,
                 ),
                 preemptible=True,
-                datasets=[launcher_lib.create_gcp_credentials_mount()],
+                datasets=[create_gcp_credentials_mount()],
                 env_vars=env_vars,
                 resources=TaskResources(gpu_count=gpus, shared_memory=shared_memory),
             )
@@ -127,6 +132,12 @@ if __name__ == "__main__":
         "--image_name",
         type=str,
         help="Name of the Beaker image to use for the job",
+        required=True,
+    )
+    parser.add_argument(
+        "--cluster",
+        type=str,
+        help="Comma-separated list of clusters to target",
         required=True,
     )
     parser.add_argument(
@@ -179,6 +190,7 @@ if __name__ == "__main__":
     launch_job(
         config_path=args.config_path,
         image_name=args.image_name,
+        cluster=args.cluster.split(","),
         hparams_config_path=args.hparams_config_path,
         mode=args.mode,
         run_id=args.run_id,
