@@ -72,6 +72,7 @@ def worker_pipeline(
     retry_sleep: int = 60,
     idle_timeout: int = 10,
     manage_scratch_dir_on_data_disk: bool = False,
+    flush_messages: bool = False,
 ) -> None:
     """Start a worker to run jobs from a Pub/Sub subscription.
 
@@ -90,6 +91,8 @@ def worker_pipeline(
         idle_timeout: seconds before we terminate if there is no activity.
         manage_scratch_dir_on_data_disk: whether to create SCRATCH_DIRECTORY on the
             /data disk and manage it to ensure it is deleted in case of SIGTERM.
+        flush_messages: whether to just flesh messages without actually running the
+            requested workflows. This is to just delete all the messages in a topic.
     """
     if manage_scratch_dir_on_data_disk:
         # Some tasks use SCRATCH_DIRECTORY, and if management is enabled, it means we
@@ -127,6 +130,13 @@ def worker_pipeline(
 
     def callback(message: pubsub_v1.subscriber.message.Message) -> None:
         nonlocal is_processing, last_message_time, consecutive_errors
+
+        # If we are just flushing the messages from the subscription, then we can
+        # return immediately.
+        if flush_messages:
+            message.ack()
+            return
+
         try:
             with lock:
                 is_processing = True
