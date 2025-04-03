@@ -38,17 +38,6 @@ def alert_date_tiffs_prefix() -> str:
 
 
 @pytest.fixture
-def inference_dataset_config_path() -> str:
-    """The path to the inference dataset config."""
-    return str(
-        Path(__file__).resolve().parents[3]
-        / "data"
-        / "forest_loss_driver"
-        / "config.json"
-    )
-
-
-@pytest.fixture
 def test_materialized_dataset_path() -> UPath:
     """The path to the test materialized dataset."""
     return UPath(
@@ -112,10 +101,4 @@ def download_test_data() -> Generator[None, None, None]:
 
             logger.info(f"Finished downloading {folder}")
 
-    # Log contents of test data folder
-    logger.info("\nTest data directory contents:")
-    for path in sorted(test_data_path.rglob("*")):
-        logger.debug(f"  {path.relative_to(test_data_path)}")
-        if path.is_dir():
-            logger.info(f"    {path.relative_to(test_data_path)}")
     yield
