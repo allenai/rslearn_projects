@@ -102,11 +102,6 @@ class Helios(torch.nn.Module):
         timestamps[:, :, 2] = 2024  # year
         kwargs["timestamps"] = timestamps
 
-        for k, v in kwargs.items():
-            print(
-                "INPUT", k, v.shape, v.min(), v.max(), v.float().mean(), v.float().std()
-            )
-
         sample = MaskedHeliosSample(**kwargs)
 
         # Currently we assume the provided model always returns a TokensAndMasks
@@ -117,7 +112,6 @@ class Helios(torch.nn.Module):
         features = []
         for modality in present_modalities:
             modality_features = getattr(tokens_and_masks, modality)
-            print("OUTPUT", modality, modality_features.shape)
             # Pool over band sets and timesteps (BHWTSC -> BHWC).
             pooled = modality_features.mean(dim=[3, 4])
             # We want BHWC -> BCHW.
@@ -125,11 +119,5 @@ class Helios(torch.nn.Module):
             features.append(pooled)
         # Pool over the modalities, so we get one BCHW feature map.
         pooled = torch.stack(features, dim=0).mean(dim=0)
-        if pooled.shape[0] >= 2:
-            print(pooled.shape, "first", pooled[0, 4:8, 4:8, 0:3])
-            print(pooled.shape, "second", pooled[1, 4:8, 4:8, 0:3])
-
-        print("feat1", self.model.blocks[1].mlp.fc1.weight.flatten()[0:3])
-        print("feat2", self.model.blocks[2].attn.q.weight.flatten()[0:3])
 
         return [pooled]

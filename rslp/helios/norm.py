@@ -5,10 +5,6 @@ from typing import Any
 
 from rslearn.train.transforms.transform import Transform
 
-from rslp.log_utils import get_logger
-
-logger = get_logger(__name__)
-
 
 class HeliosNormalize(Transform):
     """Normalize using Helios JSON config."""
