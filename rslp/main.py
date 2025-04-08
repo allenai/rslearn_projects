@@ -51,7 +51,7 @@ def run_workflow(project: str, workflow: str, args: list[str]) -> None:
     workflow_fn = module.workflows[workflow]
     logger.info(f"running {workflow} for {project}")
     logger.info(f"args: {args}")
-    jsonargparse.CLI(workflow_fn, args=args)
+    jsonargparse.CLI(workflow_fn, args=args, as_positional=False)
 
 
 def main() -> None:

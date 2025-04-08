@@ -44,7 +44,7 @@ Cloud Pub/Sub topic, and then launch workers that will read from the topic.
 
 Then, we start by writing the tasks:
 
-    python -m rslp.main satlas write_jobs_for_year_months '[[2024, 7]]' MARINE_INFRA 'gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/{year:04d}-{month:02d}/' skylight-proto-1 rslp-job-queue-favyen --days_before 120 --days_after 90
+    python -m rslp.main satlas write_jobs_for_year_months --year_months '[[2024, 7]]' --application MARINE_INFRA --out_path 'gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/{year:04d}-{month:02d}/' --project_id earthsystem-dev-c3po --topic_id rslp-job-queue-favyen --days_before 120 --days_after 90
 
 Here:
 
@@ -58,7 +58,7 @@ Here:
   `EPSG:32601_65536_-524288.geojson` where `EPSG:32601` is the UTM projection, and
   65536 and -524288 are the starting column and row (respectively) of the tile. The
   path should have a year and month placeholder.
-- `skylight-proto-1` is the project of the Pub/Sub topic.
+- `earthsystem-dev-c3po` is the project of the Pub/Sub topic.
 - `rslp-job-queue-favyen` is the name of the Pub/Sub topic.
 - The inference tasks should create a window spanning 120 days before the specified
   timestamp (to use images before the quarter when necessary) and 90 days after the
@@ -66,9 +66,11 @@ Here:
 
 Then start the workers. See `rslp/common/README.md` for details. In this example,
 `rslp-job-queue-favyen-sub` should be a subscription for the topic to which the tasks
-were written. Here we start 100 workers.
+were written. Here we start 100 workers. But you actually need to start one worker
+first to populate the rtree index before starting the rest.
 
-    python -m rslp.main common launch skylight-proto-1 rslp-job-queue-favyen-sub 100 --gpus 1 --shared_memory 256GiB
+    python -m rslp.main common launch --image_name favyen/rslp_image --project_id earthsystem-dev-c3po --subscription_id rslp-job-queue-favyen-sub --num_workers 100 --cluster "['ai2/jupiter-cirrascale-2']" --gpus 1 --shared_memory 256GiB --manage_scratch_dir_on_data_disk=true
+    python -m rslp.main common launch --image_name favyen/rslp_image --project_id earthsystem-dev-c3po --subscription_id rslp-job-queue-favyen-sub --num_workers 100 --cluster "['ai2/augusta-google-1']" --gpus 1 --shared_memory 256GiB --manage_scratch_dir_on_data_disk=false
 
 ### Post-processing.
 
@@ -76,7 +78,7 @@ Post-processing for point tasks occurs locally (does not require starting jobs i
 
 First, merge the points computed across all of the different tasks:
 
-    python -m rslp.main satlas merge_points MARINE_INFRA 2024-07 gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/2024-07/ gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/merged/
+    python -m rslp.main satlas merge_points --application MARINE_INFRA --label 2024-07 --predict_path gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/2024-07/ --merged_path gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/merged/
 
 Here:
 
@@ -93,13 +95,13 @@ Second, smooth the points across timesteps. This runs a Viterbi smoothing operat
 Note that the Viterbi smoothing is implemented in a separate Go application at
 `rslp/satlas/scripts/smooth_point_labels_viterbi.go`.
 
-    python -m rslp.main satlas smooth_points MARINE_INFRA 2024-07 gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/merged/ gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/smoothed/
+    python -m rslp.main satlas smooth_points --application MARINE_INFRA --label 2024-07 --merged_path gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/merged/ --smoothed_path gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/smoothed/
 
 Finally, publish the outputs to Cloudflare R2. This requires
 [tippecanoe](https://github.com/mapbox/tippecanoe) since it is used to generate the
 vector tiles.
 
-    python -m rslp.main satlas publish_points MARINE_INFRA gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/smoothed/ 'marine-default-cluster@v4'
+    python -m rslp.main satlas publish_points --application MARINE_INFRA --smoothed_path gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/smoothed/ --version 'marine-default-cluster@v4'
 
 ## Wind Turbine
 
@@ -113,12 +115,12 @@ Training:
 
 Inference:
 
-    python -m rslp.main satlas write_jobs_for_year_months '[[2024, 1]]' WIND_TURBINE 'gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/{year:04d}-{month:02d}/' skylight-proto-1 rslp-job-queue-favyen --days_before 90 --days_after 181
+    python -m rslp.main satlas write_jobs_for_year_months --year_months '[[2024, 1]]' --application WIND_TURBINE --out_path 'gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/{year:04d}-{month:02d}/' --project_id earthsystem-dev-c3po --topic_id rslp-job-queue-favyen --days_before 90 --days_after 181
 
 Post-processing:
 
-    python -m rslp.main satlas merge_points WIND_TURBINE 2024-01 gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/2024-01/ gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/merged/
-    python -m rslp.main satlas smooth_points WIND_TURBINE 2024-01 gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/merged/ gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/smoothed/
+    python -m rslp.main satlas merge_points --application WIND_TURBINE --label 2024-01 --predict_path gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/2024-01/ --merged_path gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/merged/
+    python -m rslp.main satlas smooth_points --application WIND_TURBINE --label 2024-01 --merged_path gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/merged/ --smoothed_path gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/smoothed/
 
 Publishing for wind turbine is not supported yet since it needs to be combined with the
 detected solar farms and published as "renewable energy" GeoJSON.

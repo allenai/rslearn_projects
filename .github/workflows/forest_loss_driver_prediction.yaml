@@ -76,11 +76,11 @@ jobs:
             "${DOCKER_SERVICE_NAME}" python -m rslp.main \
             common \
             beaker_launcher \
-            "${RSLP_PROJECT}" \
-            "${RSLP_WORKFLOW}" \
-            "${EXTRA_ARGS}" \
-            "${BEAKER_IMAGE_FULL_NAME}" \
-            "${CLUSTERS}" \
+            --project "${RSLP_PROJECT}" \
+            --workflow "${RSLP_WORKFLOW}" \
+            --extra_args "${EXTRA_ARGS}" \
+            --image "${BEAKER_IMAGE_FULL_NAME}" \
+            --clusters "${CLUSTERS}" \
             --gpu_count 1 \
             --preemptible true \
             --weka_mounts "${WEKA_MOUNTS}" \

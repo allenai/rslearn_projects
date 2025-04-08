@@ -178,12 +178,16 @@ def get_jobs(
     logger.info("Got %d total tasks", len(tasks))
 
     # Remove tasks where outputs are already computed.
-    existing_output_fnames = {out_fname.name for out_fname in UPath(out_path).iterdir()}
-    tasks = [
-        task
-        for task in tasks
-        if task.get_output_fname().name not in existing_output_fnames
-    ]
+    out_upath = UPath(out_path)
+    if out_upath.exists():
+        existing_output_fnames = {
+            out_fname.name for out_fname in UPath(out_path).iterdir()
+        }
+        tasks = [
+            task
+            for task in tasks
+            if task.get_output_fname().name not in existing_output_fnames
+        ]
     logger.info("Got %d tasks that are uncompleted", len(tasks))
 
     # Sample tasks down to user-provided count (max # tasks to run), if provided.

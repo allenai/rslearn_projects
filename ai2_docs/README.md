@@ -11,7 +11,7 @@ Tooling
 The additional tooling comes into play when training and deploying models. This is an
 outline of the steps the tooling takes care of when training models:
 
-1. User runs e.g. `python -m rslp.launch_beaker --config_path path/to/config.yaml`.
+1. User runs e.g. `python -m rslp.main common beaker_train --config_path path/to/config.yaml`.
 2. Launcher uploads the code to a canonical path on Google Cloud Storage (GCS), based
    on the project ID and experiment ID specified in `config.yaml`.
 3. Launcher then starts a job, in this case on Beaker, to train the model.
@@ -42,7 +42,7 @@ You will also need to setup GCP credentials that have access to this bucket.
 
 Training additionally depends on credentials for W&B. If you train directly using
 `rslp.rslearn_main`, then you will need to setup these credentials. If you use a
-launcher like `rslp.launch_beaker`, then it isn't needed since the credentials are
+launcher like `rslp.main common beaker_train`, then it isn't needed since the credentials are
 already configured as secrets on the platform, but you would need to setup your Beaker
 or other platform credentials to be able to launch the jobs.
 
@@ -66,16 +66,15 @@ Execute a data processing pipeline:
 
     python -m rslp.main maldives_ecosystem_mapping data --dp_config.workers 32
 
-Launch training on Beaker:
-
-    python -m rslp.main maldives_ecosystem_mapping train_maxar
-
 Manually train locally:
 
     python -m rslp.rslearn_main model fit --config_path data/maldives_ecosystem_mapping/config.yaml
 
+To launch training on Beaker, first build and push a Docker image:
 
-Projects
---------
+    docker build -t rslp .
+    beaker image create --name rslp rslp
 
-- [Forest Loss Driver](rslp/forest_loss_driver/README.md)
+Launch training on Beaker:
+
+    python -m rslp.main common beaker_train --config_path data/maldives_ecosystem_mapping/config_planetscope_plus_sentinel2.yaml --image_name [YOUR_BEAKER_USERNAME]/rslp --cluster '["ai2/jupiter-cirrascale-2"]'

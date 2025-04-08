@@ -1,16 +1,16 @@
 """Launch a Beaker job that executes one or more rslp workflows."""
 
 import uuid
-from dataclasses import dataclass
 from datetime import datetime
 
-from beaker import Beaker, DataMount, DataSource, EnvVar, ExperimentSpec, ImageSource
+from beaker import Beaker, EnvVar, ExperimentSpec, ImageSource
 from beaker.exceptions import ImageNotFound
 
 from rslp.log_utils import get_logger
 from rslp.utils.beaker import (
     DEFAULT_BUDGET,
     DEFAULT_WORKSPACE,
+    WekaMount,
     create_gcp_credentials_mount,
     get_base_env_vars,
     upload_image,
@@ -33,23 +33,6 @@ def get_command(project: str, workflow: str, extra_args: list[str]) -> list[str]
         extra_args: list of arguments to pass to the workflow.
     """
     return ["python", "-m", "rslp.main", project, workflow] + extra_args
-
-
-@dataclass
-class WekaMount:
-    """Specification of a Weka mount within a Beaker job."""
-
-    bucket_name: str
-    mount_path: str
-    sub_path: str | None = None
-
-    def to_data_mount(self) -> DataMount:
-        """Convert this WekaMount to a Beaker DataMount object."""
-        return DataMount(
-            source=DataSource(weka=self.bucket_name),
-            mount_path=self.mount_path,
-            sub_path=self.sub_path,
-        )
 
 
 def launch_job(

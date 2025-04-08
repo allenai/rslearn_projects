@@ -19,6 +19,7 @@ CODE_EXCLUDES = [
     ".env",
     ".mypy_cache",
     "lightning_logs",
+    "test_data",
     "wandb",
 ]
 

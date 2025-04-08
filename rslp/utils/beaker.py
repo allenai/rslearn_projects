@@ -1,12 +1,30 @@
 """Utilities relating to Beaker jobs."""
 
 import os
+from dataclasses import dataclass
 
 from beaker import DataMount, DataSource, EnvVar, ImageSource
 from beaker.client import Beaker
 
 DEFAULT_WORKSPACE = "ai2/earth-systems"
 DEFAULT_BUDGET = "ai2/d5"
+
+
+@dataclass
+class WekaMount:
+    """Specification of a Weka mount within a Beaker job."""
+
+    bucket_name: str
+    mount_path: str
+    sub_path: str | None = None
+
+    def to_data_mount(self) -> DataMount:
+        """Convert this WekaMount to a Beaker DataMount object."""
+        return DataMount(
+            source=DataSource(weka=self.bucket_name),
+            mount_path=self.mount_path,
+            sub_path=self.sub_path,
+        )
 
 
 def get_base_env_vars(use_weka_prefix: bool = False) -> list[EnvVar]:

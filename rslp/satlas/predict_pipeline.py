@@ -118,7 +118,11 @@ def merge_and_upload_points(
     # were non-zero. This is used to distinguish a point not being detected because
     # it wasn't there vs not being detected just because there was no image
     # available there.
-    fc = None
+    fc = {
+        "type": "FeatureCollection",
+        "features": [],
+        "properties": projection.serialize(),
+    }
     valid_patches = []
     for window in windows:
         window_output_fname = window.path / "layers" / "output" / "data.geojson"
@@ -129,25 +133,23 @@ def merge_and_upload_points(
         with window_output_fname.open() as f:
             cur_fc = json.load(f)
 
-        if fc is None:
-            fc = cur_fc
-        else:
-            fc["features"].extend(cur_fc["features"])
+        # As a sanity check, if there is at least one feature here, then the projection
+        # should match. This verifies that the features were stored in the right
+        # projection, which is important since we are overriding the properties of the
+        # FeatureCollection here.
+        # If there are zero features, then GeojsonVectorFormat uses WGS84.
+        if len(cur_fc["features"]) == 0:
+            continue
+        if Projection.deserialize(cur_fc["properties"]) != projection:
+            raise ValueError(
+                f"expected projection {projection} but got {cur_fc['properties']}"
+            )
 
+        fc["features"].extend(cur_fc["features"])
         valid_patches.append(
             (window.bounds[0] // PATCH_SIZE, window.bounds[1] // PATCH_SIZE)
         )
 
-    if fc is None:
-        # So there was no image here.
-        # We still want to write an empty GeoJSON so the job is marked completed.
-        fc = {
-            "type": "FeatureCollection",
-            "features": [],
-        }
-
-    if "properties" not in fc:
-        fc["properties"] = {}
     fc["properties"]["valid_patches"] = {
         str(projection.crs): list(valid_patches),
     }
