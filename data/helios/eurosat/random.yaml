@@ -11,6 +11,7 @@ model:
               selector: ["encoder"]
               forward_kwargs:
                 patch_size: {PATCH_SIZE}
+              random_initialization: true
         decoders:
           eurosat:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
@@ -88,9 +89,5 @@ trainer:
       init_args:
         path: placeholder
         output_layer: output
-    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
-      init_args:
-        module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
 rslp_project: helios_finetuning
 rslp_experiment: placeholder

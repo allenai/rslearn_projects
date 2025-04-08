@@ -11,6 +11,7 @@ model:
               selector: ["encoder"]
               forward_kwargs:
                 patch_size: {PATCH_SIZE}
+              random_initialization: true
         decoders:
           detect:
             - class_path: rslearn.models.conv.Conv
@@ -144,9 +145,5 @@ trainer:
         save_last: true
         monitor: val_detect/mAP
         mode: max
-    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
-      init_args:
-        module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
 rslp_project: helios_finetuning
 rslp_experiment: placeholder

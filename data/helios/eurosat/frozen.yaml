@@ -10,12 +10,12 @@ model:
               checkpoint_path: "{CHECKPOINT_PATH}"
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 8
+                patch_size: {PATCH_SIZE}
         decoders:
           eurosat:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 768
+                in_channels: {ENCODER_EMBEDDING_SIZE}
                 out_channels: 10
                 num_conv_layers: 1
                 num_fc_layers: 2

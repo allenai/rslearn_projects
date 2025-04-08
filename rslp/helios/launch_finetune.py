@@ -23,7 +23,10 @@ def launch_finetune(
     helios_checkpoint_path: str,
     experiment_prefix: str,
     image_name: str,
+    encoder_embedding_size: int,
+    patch_size: int,
     tasks: list[str] | None = None,
+    configs: list[str] | None = None,
     rslp_project: str = DEFAULT_RSLP_PROJECT,
     cluster: list[str] = DEFAULT_CLUSTER,
 ) -> None:
@@ -33,8 +36,13 @@ def launch_finetune(
         helios_checkpoint_path: path to Helios checkpoint to fine-tune from.
         experiment_prefix: prefix for the run name on W&B.
         image_name: what Beaker image to use.
+        encoder_embedding_size: the embedding size of the encoder.
+        patch_size: the patch size to use.
         tasks: optional list of tasks to launch, e.g. ["eurosat",
             "satlas_marine_infra"]. Default is to launch all tasks.
+        configs: optionally limit to configuration files with this name, e.g.
+            ["finetune", "frozen", "random"]. Default is to launch experiments for all
+            config files.
         rslp_project: optional override for W&B project to use.
         cluster: see beaker_train.
     """
@@ -50,9 +58,11 @@ def launch_finetune(
 
         for task_dir in task_dirs:
             for config_fname in task_dir.iterdir():
-                experiment_id = (
-                    f"{experiment_prefix}_{task_dir.name}_{config_fname.name}"
-                )
+                config_label = config_fname.name.split(".")[0]
+                if configs and config_label not in configs:
+                    continue
+
+                experiment_id = f"{experiment_prefix}_{task_dir.name}_{config_label}"
 
                 # I can't figure out how to override Helios checkpoint_path from
                 # command-line since it appears in a list, so instead we create a copy
@@ -61,6 +71,10 @@ def launch_finetune(
                     config_str = f.read()
                 config_str = config_str.replace(
                     "{CHECKPOINT_PATH}", helios_checkpoint_path
+                )
+                config_str = config_str.replace("{PATCH_SIZE}", str(patch_size))
+                config_str = config_str.replace(
+                    "{ENCODER_EMBEDDING_SIZE}", str(encoder_embedding_size)
                 )
 
                 tmp_config_fname = os.path.join(tmp_dir, f"{experiment_id}.yaml")

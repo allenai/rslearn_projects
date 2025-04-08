@@ -7,15 +7,15 @@ model:
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
-              checkpoint_path: "CHECKPOINT_PATH"
+              checkpoint_path: "{CHECKPOINT_PATH}"
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 8
+                patch_size: {PATCH_SIZE}
         decoders:
           detect:
             - class_path: rslearn.models.conv.Conv
               init_args:
-                in_channels: 768
+                in_channels: {ENCODER_EMBEDDING_SIZE}
                 out_channels: 192
                 kernel_size: 3
             - class_path: rslearn.models.conv.Conv
