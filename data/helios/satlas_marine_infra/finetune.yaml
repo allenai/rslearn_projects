@@ -26,7 +26,7 @@ model:
                 activation:
                   class_path: torch.nn.LayerNorm
                   init_args:
-                    normalized_shape: [192, 32, 32]
+                    normalized_shape: [192, {256/PATCH_SIZE}, {256/PATCH_SIZE}]
             - class_path: rslearn.models.conv.Conv
               init_args:
                 in_channels: 192
@@ -41,7 +41,7 @@ model:
                   class_path: torch.nn.Identity
             - class_path: rslearn.models.faster_rcnn.FasterRCNN
               init_args:
-                downsample_factors: [8]
+                downsample_factors: [{PATCH_SIZE}]
                 num_channels: 192
                 num_classes: 3
                 anchor_sizes: [[32]]

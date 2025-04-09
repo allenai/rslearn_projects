@@ -74,6 +74,9 @@ def launch_finetune(
                 )
                 config_str = config_str.replace("{PATCH_SIZE}", str(patch_size))
                 config_str = config_str.replace(
+                    "{256/PATCH_SIZE}", str(256 // patch_size)
+                )
+                config_str = config_str.replace(
                     "{ENCODER_EMBEDDING_SIZE}", str(encoder_embedding_size)
                 )
 
