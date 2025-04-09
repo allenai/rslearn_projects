@@ -31,6 +31,7 @@ class Helios(torch.nn.Module):
         checkpoint_path: str,
         selector: list[str | int] = [],
         forward_kwargs: dict[str, Any] = {},
+        random_initialization: bool = False,
     ):
         """Create a new Helios model.
 
@@ -41,6 +42,9 @@ class Helios(torch.nn.Module):
                 the sub-module that should be applied on the input images.
             forward_kwargs: additional arguments to pass to forward pass besides the
                 MaskedHeliosSample.
+            random_initialization: whether to skip loading the checkpoint so the
+                weights are randomly initialized. In this case, the checkpoint is only
+                used to define the model architecture.
         """
         super().__init__()
         self.forward_kwargs = forward_kwargs
@@ -55,8 +59,9 @@ class Helios(torch.nn.Module):
         model = model_config.build()
 
         # Load the checkpoint.
-        train_module_dir = f"{checkpoint_path}/model_and_optim"
-        load_model_and_optim_state(train_module_dir, model)
+        if not random_initialization:
+            train_module_dir = f"{checkpoint_path}/model_and_optim"
+            load_model_and_optim_state(train_module_dir, model)
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:

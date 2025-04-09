@@ -31,7 +31,7 @@ automatically downloads the scene images from a
 
     mkdir output_crops
     mkdir scratch_dir
-    python -m rslp.main sentinel2_vessels predict '[{"scene_id": "S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425", "geojson_path": "out.geojson", "crop_path": "output_crops/"}]' scratch_dir/
+    python -m rslp.main sentinel2_vessels predict --tasks '[{"scene_id": "S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425", "geojson_path": "out.geojson", "crop_path": "output_crops/"}]' --scratch_path scratch_dir/
     qgis out.geojson scratch_dir/windows/default/default/layers/sentinel2/R_G_B/geotiff.tif
 
 Then, `out.geojson` will contain a GeoJSON of detected ships while `output_crops` will

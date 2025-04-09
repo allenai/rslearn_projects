@@ -20,11 +20,11 @@ See `satlas/write_jobs.py` for an example of this.
 
 Then you can launch the worker. To test on one machine:
 
-    python -m rslp.main common worker skylight-proto-1 rslp-job-queue-YOURNAME-sub
+    python -m rslp.main common worker --project_id skylight-proto-1 --subscription_id rslp-job-queue-YOURNAME-sub
 
 And to launch 100 workers on Beaker:
 
-    python -m rslp.main common launch BEAKER_IMAGE_NAME skylight-proto-1 rslp-job-queue-YOURNAME-sub 100 --gpus 1 --shared_memory 256GiB --cluster '["ai2/jupiter-cirrascale-2"]'
+    python -m rslp.main common launch --image_name BEAKER_IMAGE_NAME --project_id skylight-proto-1 --subscription_id rslp-job-queue-YOURNAME-sub --num_workers 100 --gpus 1 --shared_memory 256GiB --cluster '["ai2/jupiter-cirrascale-2"]'
 
 
 Beaker Launcher

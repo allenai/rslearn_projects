@@ -59,7 +59,9 @@ def launch_job(image_name: str, tasks: list[PredictionTask]) -> None:
             arguments=[
                 "sentinel2_vessels",
                 "predict",
+                "--tasks",
                 json.dumps(encoded_tasks),
+                "--scratch_path",
                 "/tmp/x/",
             ],
             constraints=Constraints(
