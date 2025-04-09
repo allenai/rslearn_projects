@@ -184,9 +184,9 @@ def setup_dataset_with_image_files(
         a list of SceneData corresponding to image_files_list.
     """
     # Write dataset configuration file.
-    # We need to override the item_specs placeholders.
-    # src_dir is a placeholder too but we don't need to override it since we use
-    # absolute paths only here.
+    # We need to override the item_specs and src_dir placeholders.
+    # The src_dir is only used to store summary.json, since we require absolute paths
+    # for the actual image files and they will be set directly.
     with open(IMAGE_FILES_DATASET_CONFIG) as f:
         cfg = json.load(f)
     item_specs = []
@@ -201,6 +201,10 @@ def setup_dataset_with_image_files(
             item_spec["bands"].append(image_file.bands)
         item_specs.append(item_spec)
     cfg["layers"][SENTINEL2_LAYER_NAME]["data_source"]["item_specs"] = item_specs
+
+    src_dir = ds_path / "source_dir"
+    src_dir.mkdir(parents=True)
+    cfg["layers"][SENTINEL2_LAYER_NAME]["data_source"]["src_dir"] = src_dir.name
 
     with (ds_path / "config.json").open("w") as f:
         json.dump(cfg, f)
@@ -349,6 +353,11 @@ def run_attribute_model(
         the new windows. The detections will also be updated with the predicted
             attributes.
     """
+    # Avoid errors with materialize_dataset and run_model_predict when there are no
+    # detections to process.
+    if len(detections) == 0:
+        return []
+
     # Create windows for applying attribute prediction model.
     group = "attribute_predict"
     windows: list[Window] = []
@@ -398,9 +407,7 @@ def run_attribute_model(
             ignore_errors=False, apply_windows_args=apply_windows_args
         ),
     )
-    # Avoid error in case of no detections.
-    if len(detections) > 0:
-        materialize_dataset(ds_path, materialize_pipeline_args)
+    materialize_dataset(ds_path, materialize_pipeline_args)
 
     # Verify that no window is unmaterialized.
     for window in windows:
