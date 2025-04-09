@@ -7,6 +7,8 @@ from collections.abc import Callable
 
 from rslp.common.worker import worker_pipeline, write_jobs
 
+IDLE_TIMEOUT = 2
+
 
 class TestWorker:
     """Test the rslp.common.worker module."""
@@ -17,25 +19,24 @@ class TestWorker:
         worker_pipeline(
             project_id=os.environ["TEST_PUBSUB_PROJECT"],
             subscription_id=os.environ["TEST_PUBSUB_SUBSCRIPTION"],
-            idle_timeout=1,
+            idle_timeout=IDLE_TIMEOUT,
             flush_messages=True,
         )
         print("done flushing messages")
 
     def test_idle_timeout(self) -> None:
         """Verify that worker exits within about the idle timeout."""
-        idle_timeout = 2
         start_time = time.time()
         worker_pipeline(
             project_id=os.environ["TEST_PUBSUB_PROJECT"],
             subscription_id=os.environ["TEST_PUBSUB_SUBSCRIPTION"],
-            idle_timeout=idle_timeout,
+            idle_timeout=IDLE_TIMEOUT,
         )
         end_time = time.time()
         elapsed = end_time - start_time
         # Use 3 here in case worker decides to sleep twice (and then some extra time
         # elapses).
-        assert elapsed >= idle_timeout and elapsed <= 3 * idle_timeout
+        assert elapsed >= IDLE_TIMEOUT and elapsed <= 3 * IDLE_TIMEOUT
 
     def test_single_task(self, tmp_path: pathlib.Path) -> None:
         """Check that worker can do one task."""
@@ -59,7 +60,7 @@ class TestWorker:
         worker_pipeline(
             project_id=os.environ["TEST_PUBSUB_PROJECT"],
             subscription_id=os.environ["TEST_PUBSUB_SUBSCRIPTION"],
-            idle_timeout=1,
+            idle_timeout=IDLE_TIMEOUT,
         )
         # Verify that the file was created.
         assert dst_fname.exists()
