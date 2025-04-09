@@ -1,0 +1,31 @@
+Collecting planetary_computer
+  Downloading planetary_computer-1.0.0-py3-none-any.whl (14 kB)
+Collecting pystac>=1.0.0
+  Downloading pystac-1.12.2-py3-none-any.whl (194 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 194.2/194.2 kB 11.3 MB/s eta 0:00:00
+Requirement already satisfied: requests>=2.25.1 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from planetary_computer) (2.32.3)
+Requirement already satisfied: packaging in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from planetary_computer) (24.2)
+Collecting python-dotenv
+  Downloading python_dotenv-1.1.0-py3-none-any.whl (20 kB)
+Collecting pystac-client>=0.2.0
+  Downloading pystac_client-0.8.6-py3-none-any.whl (41 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 41.4/41.4 kB 19.6 MB/s eta 0:00:00
+Requirement already satisfied: pydantic>=1.7.3 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from planetary_computer) (2.10.6)
+Requirement already satisfied: pytz>=2020.5 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from planetary_computer) (2025.1)
+Requirement already satisfied: click>=7.1 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from planetary_computer) (8.1.8)
+Requirement already satisfied: pydantic-core==2.27.2 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from pydantic>=1.7.3->planetary_computer) (2.27.2)
+Requirement already satisfied: annotated-types>=0.6.0 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from pydantic>=1.7.3->planetary_computer) (0.7.0)
+Requirement already satisfied: typing-extensions>=4.12.2 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from pydantic>=1.7.3->planetary_computer) (4.12.2)
+Requirement already satisfied: python-dateutil>=2.7.0 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from pystac>=1.0.0->planetary_computer) (2.9.0.post0)
+Requirement already satisfied: idna<4,>=2.5 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from requests>=2.25.1->planetary_computer) (3.10)
+Requirement already satisfied: certifi>=2017.4.17 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from requests>=2.25.1->planetary_computer) (2025.1.31)
+Requirement already satisfied: charset-normalizer<4,>=2 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from requests>=2.25.1->planetary_computer) (3.4.1)
+Requirement already satisfied: urllib3<3,>=1.21.1 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from requests>=2.25.1->planetary_computer) (2.3.0)
+Requirement already satisfied: jsonschema~=4.18 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from pystac>=1.0.0->planetary_computer) (4.23.0)
+Requirement already satisfied: six>=1.5 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from python-dateutil>=2.7.0->pystac>=1.0.0->planetary_computer) (1.17.0)
+Requirement already satisfied: attrs>=22.2.0 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from jsonschema~=4.18->pystac>=1.0.0->planetary_computer) (25.1.0)
+Requirement already satisfied: referencing>=0.28.4 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from jsonschema~=4.18->pystac>=1.0.0->planetary_computer) (0.36.2)
+Requirement already satisfied: rpds-py>=0.7.1 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from jsonschema~=4.18->pystac>=1.0.0->planetary_computer) (0.23.1)
+Requirement already satisfied: jsonschema-specifications>=2023.03.6 in /weka/dfive-default/yawenz/.venv-helios/lib/python3.10/site-packages (from jsonschema~=4.18->pystac>=1.0.0->planetary_computer) (2024.10.1)
+Installing collected packages: python-dotenv, pystac, pystac-client, planetary_computer
+Successfully installed planetary_computer-1.0.0 pystac-1.12.2 pystac-client-0.8.6 python-dotenv-1.1.0
