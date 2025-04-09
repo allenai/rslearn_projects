@@ -19,6 +19,9 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 from rslearn.utils.mp import star_imap_unordered
+from rslearn.utils.feature import Feature
+from rslearn.utils.raster_format import get_raster_projection_and_bounds, GeotiffRasterFormat
+from rslearn.utils.vector_format import GeojsonVectorFormat
 
 # For pixel time-series classification
 WINDOW_SIZE = 1
@@ -117,7 +120,15 @@ def create_window(csv_row: pd.Series, ds_path: UPath):
             "category": category,
         }
     )
-    window.save()
+    # window.save()
+    # Add the label.
+    LABEL_LAYER = "label"
+    feature = Feature(window.get_geometry(), {
+        "category": category,
+    })
+    layer_dir = window.get_layer_dir(LABEL_LAYER)
+    GeojsonVectorFormat().encode_vector(layer_dir, [feature])
+    window.mark_layer_completed(LABEL_LAYER)
 
 
 def create_windows_from_csv(csv_path: UPath, ds_path: UPath):
