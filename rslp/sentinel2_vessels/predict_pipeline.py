@@ -353,6 +353,11 @@ def run_attribute_model(
         the new windows. The detections will also be updated with the predicted
             attributes.
     """
+    # Avoid errors with materialize_dataset and run_model_predict when there are no
+    # detections to process.
+    if len(detections) == 0:
+        return []
+
     # Create windows for applying attribute prediction model.
     group = "attribute_predict"
     windows: list[Window] = []
@@ -402,9 +407,7 @@ def run_attribute_model(
             ignore_errors=False, apply_windows_args=apply_windows_args
         ),
     )
-    # Avoid error in case of no detections.
-    if len(detections) > 0:
-        materialize_dataset(ds_path, materialize_pipeline_args)
+    materialize_dataset(ds_path, materialize_pipeline_args)
 
     # Verify that no window is unmaterialized.
     for window in windows:

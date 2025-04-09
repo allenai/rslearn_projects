@@ -1,23 +1,22 @@
 """Launch train jobs on Beaker."""
 
-import argparse
 import os
 import shutil
 import uuid
 
-import dotenv
 from beaker import Beaker, Constraints, EnvVar, ExperimentSpec, Priority, TaskResources
 
 from rslp import launcher_lib
 from rslp.utils.beaker import (
     DEFAULT_BUDGET,
     DEFAULT_WORKSPACE,
+    WekaMount,
     create_gcp_credentials_mount,
     get_base_env_vars,
 )
 
 
-def launch_job(
+def beaker_train(
     config_path: str,
     image_name: str,
     cluster: list[str],
@@ -28,6 +27,10 @@ def launch_job(
     username: str | None = None,
     gpus: int = 1,
     shared_memory: str = "256GiB",
+    weka_mounts: list[WekaMount] = [],
+    project_id: str | None = None,
+    experiment_id: str | None = None,
+    extra_args: list[str] = [],
 ) -> None:
     """Launch training for the specified config on Beaker.
 
@@ -44,6 +47,10 @@ def launch_job(
         username: optional W&B username to associate with the W&B run for this job.
         gpus: number of GPUs to use.
         shared_memory: shared memory resource string to use, e.g. "256GiB".
+        weka_mounts: list of Weka mounts to include.
+        project_id: override the project ID.
+        experiment_id: override the experiment ID.
+        extra_args: extra arguments to pass in the Beaker job.
     """
     hparams_configs_dir = None
 
@@ -58,7 +65,16 @@ def launch_job(
         # run_id can be specified in predict jobs
         config_paths = {run_id: config_path}
 
-    project_id, experiment_id = launcher_lib.get_project_and_experiment(config_path)
+    # Get the project and experiment ID to use based on the config or user-provided
+    # override. This is used for uploading code here and then downloading it back in
+    # in the Beaker job.
+    config_project_id, config_experiment_id = launcher_lib.get_project_and_experiment(
+        config_path
+    )
+    if project_id is None:
+        project_id = config_project_id
+    if experiment_id is None:
+        experiment_id = config_experiment_id
     launcher_lib.upload_code(project_id, experiment_id)
 
     if hparams_configs_dir is not None:
@@ -92,6 +108,8 @@ def launch_job(
                         value=username,
                     )
                 )
+            datasets = [create_gcp_credentials_mount()]
+            datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
             spec = ExperimentSpec.new(
                 budget=DEFAULT_BUDGET,
                 description=f"{project_id}/{experiment_id}/{run_id}",
@@ -104,98 +122,21 @@ def launch_job(
                     "--config",
                     config_path,
                     "--autoresume=true",
-                ],
+                    # Ensure that the experiment/project are correctly set (in case the
+                    # user overwrote the one in the configuration file).
+                    "--rslp_experiment",
+                    experiment_id,
+                    "--rslp_project",
+                    project_id,
+                ]
+                + extra_args,
                 constraints=Constraints(
                     cluster=cluster,
                 ),
                 preemptible=True,
-                datasets=[create_gcp_credentials_mount()],
+                datasets=datasets,
                 env_vars=env_vars,
                 resources=TaskResources(gpu_count=gpus, shared_memory=shared_memory),
             )
             unique_id = str(uuid.uuid4())[0:8]
             beaker.experiment.create(f"{project_id}_{experiment_id}_{unique_id}", spec)
-
-
-if __name__ == "__main__":
-    dotenv.load_dotenv()
-    parser = argparse.ArgumentParser(
-        description="Launch beaker experiment for rslearn_projects",
-    )
-    parser.add_argument(
-        "--config_path",
-        type=str,
-        help="Path to configuration file relative to rslearn_projects repository root",
-        required=True,
-    )
-    parser.add_argument(
-        "--image_name",
-        type=str,
-        help="Name of the Beaker image to use for the job",
-        required=True,
-    )
-    parser.add_argument(
-        "--cluster",
-        type=str,
-        help="Comma-separated list of clusters to target",
-        required=True,
-    )
-    parser.add_argument(
-        "--hparams_config_path",
-        type=str,
-        help="Path to hyperparameters configuration file relative to rslearn_projects repository root",
-        required=False,
-        default=None,
-    )
-    parser.add_argument(
-        "--mode",
-        type=str,
-        choices=["fit", "validate", "test", "predict"],
-        help="Mode to run the model ('fit', 'validate', 'test', or 'predict')",
-        required=False,
-        default="fit",
-    )
-    parser.add_argument(
-        "--run_id",
-        type=str,
-        help="The run ID to associate with this job, used to specify an existing run on GCS",
-        required=False,
-        default="",
-    )
-    parser.add_argument(
-        "--workspace",
-        type=str,
-        help="Which workspace to run the experiment in",
-        default=DEFAULT_WORKSPACE,
-    )
-    parser.add_argument(
-        "--username",
-        type=str,
-        help="Associate a W&B user with this run in W&B",
-        default=None,
-    )
-    parser.add_argument(
-        "--gpus",
-        type=int,
-        help="Number of GPUs",
-        default=1,
-    )
-    parser.add_argument(
-        "--shared_memory",
-        type=str,
-        help="Shared memory",
-        default="256GiB",
-    )
-    args = parser.parse_args()
-    launch_job(
-        config_path=args.config_path,
-        image_name=args.image_name,
-        cluster=args.cluster.split(","),
-        hparams_config_path=args.hparams_config_path,
-        mode=args.mode,
-        run_id=args.run_id,
-        workspace=args.workspace,
-        username=args.username,
-        gpus=args.gpus,
-        shared_memory=args.shared_memory,
-    )

@@ -31,7 +31,7 @@ automatically downloads the scene images from a
 
     mkdir output_crops
     mkdir scratch_dir
-    python -m rslp.main sentinel2_vessels predict '[{"scene_id": "S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425", "geojson_path": "out.geojson", "crop_path": "output_crops/"}]' scratch_dir/
+    python -m rslp.main sentinel2_vessels predict --tasks '[{"scene_id": "S2A_MSIL1C_20180904T110621_N0206_R137_T30UYD_20180904T133425", "geojson_path": "out.geojson", "crop_path": "output_crops/"}]' --scratch_path scratch_dir/
     qgis out.geojson scratch_dir/windows/default/default/layers/sentinel2/R_G_B/geotiff.tif
 
 Then, `out.geojson` will contain a GeoJSON of detected ships while `output_crops` will
@@ -131,7 +131,7 @@ docker run \
     -v $PWD/project_data/:/project_data/ \
     --shm-size=15g \
     --gpus all \
-    ghcr.io/allenai/sentinel2-vessel-detection:sentinel2_vessels_v0.0.3
+    ghcr.io/allenai/sentinel2-vessel-detection:sentinel2_vessels_v0.0.4
 ```
 
 ### Auto Documentation
@@ -173,6 +173,7 @@ These bands must be provided. In this case the scene must be processed with proc
 
 ### Docker Container Version History
 
+- v0.0.4: fix bug predicting attributes in scenes with zero vessel detections.
 - v0.0.3: fix bug with image_files execution.
 - v0.0.2: add attribute prediction (`data_20250205_regress_00`) and use model `data_20250213_02_all_bands`.
 - v0.0.1: initial version. It uses model `data_20240213_01_add_freezing_and_fix_fpn_restore`.

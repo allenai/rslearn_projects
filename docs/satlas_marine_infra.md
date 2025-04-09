@@ -61,7 +61,7 @@ time range, it should be a seven month range to give enough options to pick the 
 30-day mosaics, note that the timestamps are ISO 8601 formatted.
 
     mkdir out_dir
-    python -m rslp.main satlas predict MARINE_INFRA '{"crs": "EPSG:32651", "x_resolution": 10, "y_resolution": -10}' '[18432, -268288, 22528, -264192]' '["2024-01-01T00:00:00+00:00", "2024-08-01T00:00:00+00:00"]' out_dir/ scratch_dir/ --use_rtree_index false
+    python -m rslp.main satlas predict --application MARINE_INFRA --projection_json '{"crs": "EPSG:32651", "x_resolution": 10, "y_resolution": -10}' --bounds '[18432, -268288, 22528, -264192]' --time_range '["2024-01-01T00:00:00+00:00", "2024-08-01T00:00:00+00:00"]' --out_path out_dir/ --scratch_path scratch_dir/ --use_rtree_index false
 
 You may need to delete the "scratch_dir" directory if it exists already. This is used
 to store a temporary rslearn dataset for ingesting the Sentinel-2 input images.
@@ -71,7 +71,7 @@ longitude/latitude coordinates using this script (which can also be used to merg
 multiple GeoJSONs produced by the prediction pipeline):
 
     mkdir merged_dir
-    python -m rslp.main satlas merge_points MARINE_INFRA 2024-01 out_dir/ merged_dir/
+    python -m rslp.main satlas merge_points --application MARINE_INFRA --label 2024-01 --predict_path out_dir/ --merged_path merged_dir/
 
 Now you can open the GeoJSON to view predicted positions of marine infrastructure, e.g.
 in qgis:

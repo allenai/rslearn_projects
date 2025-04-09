@@ -85,17 +85,6 @@ def merge_points(
     for fname, cur_fc in tqdm.tqdm(outputs, total=len(fnames)):
         logger.debug("merging points from %s", fname)
 
-        # The projection information may be missing if there are no valid patches.
-        # In that case we can skip the file since it has neither valid patches that we
-        # need to track nor any predicted points.
-        if "crs" not in cur_fc["properties"]:
-            # Just do some sanity checks, there should be no features and no valid
-            # patches.
-            assert len(cur_fc["features"]) == 0
-            patch_list = list(cur_fc["properties"]["valid_patches"].values())
-            assert len(patch_list) == 1 and len(patch_list[0]) == 0
-            continue
-
         src_projection = Projection.deserialize(cur_fc["properties"])
         crs_str = str(src_projection.crs)
 

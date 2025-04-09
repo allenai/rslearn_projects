@@ -25,10 +25,9 @@ from beaker import (
 )
 from google.cloud import pubsub_v1
 
-from rslp.launch_beaker import DEFAULT_WORKSPACE
 from rslp.log_utils import get_logger
 from rslp.main import run_workflow
-from rslp.utils.beaker import DEFAULT_BUDGET, get_base_env_vars
+from rslp.utils.beaker import DEFAULT_BUDGET, DEFAULT_WORKSPACE, get_base_env_vars
 
 logger = get_logger(__name__)
 
