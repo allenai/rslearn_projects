@@ -214,9 +214,13 @@ def get_jobs(
             )
 
         cur_args = [
+            "--application",
             application.value.upper(),
+            "--out_path",
             out_path,
+            "--scratch_path",
             "/tmp/scratch/",
+            "--tasks",
             json.dumps([predict_task.serialize() for predict_task in predict_tasks]),
         ]
         jobs.append(cur_args)

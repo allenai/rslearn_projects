@@ -43,8 +43,9 @@ class TestWorker:
         dst_fname = tmp_path / "test_file"
         # Write the task to the test topic.
         job_args = [
+            "--fname",
             str(dst_fname),
-            # The contents to write.
+            "--contents",
             "abc",
         ]
         write_jobs(
