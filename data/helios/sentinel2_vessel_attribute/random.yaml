@@ -62,6 +62,7 @@ model:
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
+    plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
     plateau_min_lr: 0
