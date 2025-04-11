@@ -23,16 +23,15 @@ from rslearn.utils.feature import Feature
 from rslearn.utils.raster_format import get_raster_projection_and_bounds, GeotiffRasterFormat
 from rslearn.utils.vector_format import GeojsonVectorFormat
 
-# For pixel time-series classification
-WINDOW_SIZE = 1
+
+WINDOW_SIZE = 32
 WINDOW_RESOLUTION = 10
 
-# Use center time
+LABEL_LAYER = "label"
+
+# Use center month between "2022-09-30" and "2023-09-30"
 START_TIME = datetime(2023, 3, 1, tzinfo=timezone.utc)
 END_TIME = datetime(2023, 3, 31, tzinfo=timezone.utc)
-
-# START_TIME = datetime.fromisoformat("2022-09-30")
-# END_TIME = datetime.fromisoformat("2023-09-30")
 
 
 def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
@@ -42,28 +41,35 @@ def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
         csv_path: path to the csv file
         num_points: number of points to sample from each polygon
     """
-    # First, convert shapefile to 10-m points, then sample N points per polygons
-    # Load the csv file, make sure we got all metadata (polygon id, category, planted and harvested dates)
     df = pd.read_csv(csv_path)
     df["latitude"], df["longitude"] = df["y"], df["x"]
 
-    # select the columns we need
     df = df[["unique_id", "latitude", "longitude", "LR_plantin", "LR_Harvest", "LR_harvetd", "Category"]]
+    print(df.groupby("Category").size())
+    print(df["unique_id"].nunique())  # 812 (819 in total)
     
+    # Sample per polygon
     df_sampled = df.groupby("unique_id").apply(lambda x: x.sample(num_pixels, random_state=42) if len(x) > num_pixels else x).reset_index(drop=True)
     print(df_sampled.shape)
     print(df_sampled.groupby("Category").size())
+    print(df_sampled["unique_id"].nunique())
 
-    # Category stats:
-    # Coffee                  977
-    # Exoticetrees/forest     695
-    # Grassland              1020
-    # Legumes                 440
-    # Maize                  1336
-    # Nativetrees/forest      231
-    # Sugarcane               964
-    # Tea                     979
-    # Vegetables              282
+    # # Category stats:
+    # # Coffee                  977
+    # # Exoticetrees/forest     695
+    # # Grassland              1020
+    # # Legumes                 440
+    # # Maize                  1336
+    # # Nativetrees/forest      231
+    # # Sugarcane               964
+    # # Tea                     979
+    # # Vegetables              282
+
+    # # Sample per category, allow replacement to better mimic the RF training samples
+    # df_sampled = df.groupby("Category").apply(lambda x: x.sample(num_pixels, random_state=42, replace=True)).reset_index(drop=True)
+    # print(df_sampled.shape)
+    # print(df_sampled.groupby("Category").size())
+    # print(df_sampled)
 
     return df_sampled
 
@@ -76,6 +82,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath):
         ds_path: path to the dataset
     """
     # Get sample metadata
+    index = csv_row.name
     polygon_id = csv_row["unique_id"]
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
     planted_date, harvested_or_not, harvested_date = csv_row["LR_plantin"], csv_row["LR_Harvest"], csv_row["LR_harvetd"]
@@ -87,18 +94,25 @@ def create_window(csv_row: pd.Series, ds_path: UPath):
     dst_projection = Projection(dst_crs, WINDOW_RESOLUTION, -WINDOW_RESOLUTION)
     dst_geometry = src_geometry.to_projection(dst_projection)
 
+    # bounds = (
+    #     int(dst_geometry.shp.x),
+    #     int(dst_geometry.shp.y),
+    #     int(dst_geometry.shp.x) + WINDOW_SIZE,
+    #     int(dst_geometry.shp.y) + WINDOW_SIZE,
+    # )
     bounds = (
-        int(dst_geometry.shp.x),
-        int(dst_geometry.shp.y),
-        int(dst_geometry.shp.x) + WINDOW_SIZE,
-        int(dst_geometry.shp.y) + WINDOW_SIZE,
+        int(dst_geometry.shp.x) - WINDOW_SIZE // 2,
+        int(dst_geometry.shp.y) - WINDOW_SIZE // 2,
+        int(dst_geometry.shp.x) + WINDOW_SIZE // 2,
+        int(dst_geometry.shp.y) + WINDOW_SIZE // 2,
     )
 
     # Check if train or val.
-    group = "default"
+    group = "window_32_copy"
     window_name = f"{polygon_id}_{latitude}_{longitude}"
     window_path = ds_path / "windows" / group / window_name
     
+    # Split train/val by polygon id.
     is_val = hashlib.md5(window_name.encode()).hexdigest()[0] in ["0", "1"]
     if is_val:
         split = "val"
@@ -118,17 +132,18 @@ def create_window(csv_row: pd.Series, ds_path: UPath):
             "harvested_or_not": harvested_or_not,
             "harvested_date": harvested_date,
             "category": category,
+            "weight": 1
         }
     )
-    # window.save()
-    # Add the label.
-    LABEL_LAYER = "label"
-    feature = Feature(window.get_geometry(), {
-        "category": category,
-    })
-    layer_dir = window.get_layer_dir(LABEL_LAYER)
-    GeojsonVectorFormat().encode_vector(layer_dir, [feature])
-    window.mark_layer_completed(LABEL_LAYER)
+    window.save()
+    
+    # # Add the label.
+    # feature = Feature(window.get_geometry(), {
+    #     "category": category,
+    # })
+    # layer_dir = window.get_layer_dir(LABEL_LAYER)
+    # GeojsonVectorFormat().encode_vector(layer_dir, [feature])
+    # window.mark_layer_completed(LABEL_LAYER)
 
 
 def create_windows_from_csv(csv_path: UPath, ds_path: UPath):

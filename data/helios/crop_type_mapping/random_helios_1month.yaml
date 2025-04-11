@@ -11,6 +11,7 @@ model:
               selector: ["encoder"]
               forward_kwargs:
                 patch_size: {PATCH_SIZE}
+              random_initialization: true
         decoders:
           crop_type_mapping:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
@@ -21,6 +22,7 @@ model:
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
+    plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
     plateau_min_lr: 0
@@ -32,7 +34,7 @@ data:
     inputs:
       sentinel2_l2a:
         data_type: "raster"
-        layers: ["sentinel2_l2a_mo12"]
+        layers: ["sentinel2_l2a_mo08"]
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
         dtype: FLOAT32
@@ -64,16 +66,20 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
+      groups: ["window_32_split_by_polygon"]
       tags:
         split: "train"
     val_config:
+      groups: ["window_32_split_by_polygon"]
       tags:
         split: "val"
     test_config:
+      groups: ["window_32_split_by_polygon"]
       tags:
         split: "val"
+
 trainer:
-  max_epochs: 100
+  max_epochs: 500
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
