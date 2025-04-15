@@ -20,11 +20,11 @@ logger = get_logger(__name__)
 
 
 def launch_finetune(
+    helios_checkpoint_path: str,
     experiment_prefix: str,
     image_name: str,
-    helios_checkpoint_path: str = None,
-    encoder_embedding_size: int = None,
-    patch_size: int = None,
+    encoder_embedding_size: int,
+    patch_size: int,
     tasks: list[str] | None = None,
     configs: list[str] | None = None,
     rslp_project: str = DEFAULT_RSLP_PROJECT,
@@ -58,8 +58,6 @@ def launch_finetune(
 
         for task_dir in task_dirs:
             for config_fname in task_dir.iterdir():
-                if not config_fname.suffix == ".yaml":
-                    continue
                 config_label = config_fname.name.split(".")[0]
                 if configs and config_label not in configs:
                     continue
@@ -71,17 +69,16 @@ def launch_finetune(
                 # of the configuration file in a temporary directory.
                 with config_fname.open() as f:
                     config_str = f.read()
-                if helios_checkpoint_path is not None:
-                    config_str = config_str.replace(
-                        "{CHECKPOINT_PATH}", helios_checkpoint_path
-                    )
-                    config_str = config_str.replace("{PATCH_SIZE}", str(patch_size))
-                    config_str = config_str.replace(
-                        "{256/PATCH_SIZE}", str(256 // patch_size)
-                    )
-                    config_str = config_str.replace(
-                        "{ENCODER_EMBEDDING_SIZE}", str(encoder_embedding_size)
-                    )
+                config_str = config_str.replace(
+                    "{CHECKPOINT_PATH}", helios_checkpoint_path
+                )
+                config_str = config_str.replace("{PATCH_SIZE}", str(patch_size))
+                config_str = config_str.replace(
+                    "{256/PATCH_SIZE}", str(256 // patch_size)
+                )
+                config_str = config_str.replace(
+                    "{ENCODER_EMBEDDING_SIZE}", str(encoder_embedding_size)
+                )
 
                 tmp_config_fname = os.path.join(tmp_dir, f"{experiment_id}.yaml")
                 with open(tmp_config_fname, "w") as f:

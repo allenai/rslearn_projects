@@ -24,12 +24,12 @@ from rslearn.utils.raster_format import get_raster_projection_and_bounds, Geotif
 from rslearn.utils.vector_format import GeojsonVectorFormat
 
 
-WINDOW_SIZE = 32
+
 WINDOW_RESOLUTION = 10
 
 LABEL_LAYER = "label"
 
-# Use center month between "2022-09-30" and "2023-09-30"
+# Center month between "2022-09-30" and "2023-09-30"
 START_TIME = datetime(2023, 3, 1, tzinfo=timezone.utc)
 END_TIME = datetime(2023, 3, 31, tzinfo=timezone.utc)
 
@@ -50,36 +50,44 @@ def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
     
     # Sample per polygon
     df_sampled = df.groupby("unique_id").apply(lambda x: x.sample(num_pixels, random_state=42) if len(x) > num_pixels else x).reset_index(drop=True)
+
+    # Post-process on category.
+    df_sampled.loc[df_sampled["Category"] == "Exoticetrees/forest", "Category"] = "Trees"
+    df_sampled.loc[df_sampled["Category"] == "Nativetrees/forest", "Category"] = "Trees"
+    df_sampled = df_sampled[~df_sampled["Category"].isin(["Vegetables", "Legumes"])]
     print(df_sampled.shape)
     print(df_sampled.groupby("Category").size())
     print(df_sampled["unique_id"].nunique())
 
     # # Category stats:
     # # Coffee                  977
-    # # Exoticetrees/forest     695
+    # # Exoticetrees/forest     695 - trees
     # # Grassland              1020
-    # # Legumes                 440
+    # # Legumes                 440 - drop
     # # Maize                  1336
-    # # Nativetrees/forest      231
+    # # Nativetrees/forest      231 - trees
     # # Sugarcane               964
     # # Tea                     979
-    # # Vegetables              282
+    # # Vegetables              282 - drop
 
-    # # Sample per category, allow replacement to better mimic the RF training samples
-    # df_sampled = df.groupby("Category").apply(lambda x: x.sample(num_pixels, random_state=42, replace=True)).reset_index(drop=True)
-    # print(df_sampled.shape)
-    # print(df_sampled.groupby("Category").size())
-    # print(df_sampled)
+    # Coffee        977
+    # Grassland    1020
+    # Maize        1336
+    # Sugarcane     964
+    # Tea           979
+    # Trees         926
 
     return df_sampled
 
 
-def create_window(csv_row: pd.Series, ds_path: UPath):
+def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, window_size: int):
     """Create windows for crop type mapping.
 
     Args:
         csv_row: a row of the dataframe
         ds_path: path to the dataset
+        split_by_polygon: whether to split by polygon
+        window_size: window size
     """
     # Get sample metadata
     index = csv_row.name
@@ -93,27 +101,38 @@ def create_window(csv_row: pd.Series, ds_path: UPath):
     dst_crs = get_utm_ups_crs(longitude, latitude)
     dst_projection = Projection(dst_crs, WINDOW_RESOLUTION, -WINDOW_RESOLUTION)
     dst_geometry = src_geometry.to_projection(dst_projection)
-
-    # bounds = (
-    #     int(dst_geometry.shp.x),
-    #     int(dst_geometry.shp.y),
-    #     int(dst_geometry.shp.x) + WINDOW_SIZE,
-    #     int(dst_geometry.shp.y) + WINDOW_SIZE,
-    # )
-    bounds = (
-        int(dst_geometry.shp.x) - WINDOW_SIZE // 2,
-        int(dst_geometry.shp.y) - WINDOW_SIZE // 2,
-        int(dst_geometry.shp.x) + WINDOW_SIZE // 2,
-        int(dst_geometry.shp.y) + WINDOW_SIZE // 2,
-    )
+    
+    # This is specific for window size = 1.
+    if window_size == 1:
+        bounds = (
+            int(dst_geometry.shp.x),
+            int(dst_geometry.shp.y) - window_size,
+            int(dst_geometry.shp.x) + window_size,
+            int(dst_geometry.shp.y),
+        )
+    else:
+        bounds = (
+            int(dst_geometry.shp.x),
+            int(dst_geometry.shp.y),
+            int(dst_geometry.shp.x) + window_size // 2,
+            int(dst_geometry.shp.y) + window_size // 2,
+        )
 
     # Check if train or val.
-    group = "window_32_copy"
+    if split_by_polygon:
+        group = "post_polygon_split"
+    else:
+        group = "post_random_split"
     window_name = f"{polygon_id}_{latitude}_{longitude}"
     window_path = ds_path / "windows" / group / window_name
     
-    # Split train/val by polygon id.
-    is_val = hashlib.md5(window_name.encode()).hexdigest()[0] in ["0", "1"]
+    # If split by polygon id, no samples from the same polygon will be in the same split.
+    # If split by window name, samples from the same polygon may be in the same split.
+    if split_by_polygon:   
+        is_val = hashlib.md5(str(polygon_id).encode()).hexdigest()[0] in ["0", "1"]
+    else:
+        is_val = hashlib.md5(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
+
     if is_val:
         split = "val"
     else:
@@ -137,22 +156,22 @@ def create_window(csv_row: pd.Series, ds_path: UPath):
     )
     window.save()
     
-    # # Add the label.
-    # feature = Feature(window.get_geometry(), {
-    #     "category": category,
-    # })
-    # layer_dir = window.get_layer_dir(LABEL_LAYER)
-    # GeojsonVectorFormat().encode_vector(layer_dir, [feature])
-    # window.mark_layer_completed(LABEL_LAYER)
+    # Add the label.
+    feature = Feature(window.get_geometry(), {
+        "category": category,
+    })
+    layer_dir = window.get_layer_dir(LABEL_LAYER)
+    GeojsonVectorFormat().encode_vector(layer_dir, [feature])
+    window.mark_layer_completed(LABEL_LAYER)
 
 
-def create_windows_from_csv(csv_path: UPath, ds_path: UPath):
+def create_windows_from_csv(csv_path: UPath, ds_path: UPath, split_by_polygon: bool, window_size: int):
     df_sampled = process_csv(csv_path)
     csv_rows = []
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
 
-    jobs = [dict(csv_row=row, ds_path=ds_path) for row in csv_rows]
+    jobs = [dict(csv_row=row, ds_path=ds_path, split_by_polygon=split_by_polygon, window_size=window_size) for row in csv_rows]
     p = multiprocessing.Pool(32)
     outputs = star_imap_unordered(p, create_window, jobs)
     for _ in tqdm.tqdm(outputs, total=len(jobs)):
@@ -178,12 +197,37 @@ if __name__ == "__main__":
         help="Path to the dataset",
         default="/weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi"
     )
+    parser.add_argument(
+        "--window_size",
+        type=int,
+        required=False,
+        help="Window size",
+        default=1
+    )
+    parser.add_argument(
+        "--split_by_polygon",
+        type=bool,
+        required=False,
+        help="Split by polygon",
+        default=True
+    )
     args = parser.parse_args()
-    
     create_windows_from_csv(
         UPath(args.csv_path),
-        UPath(args.ds_path)
+        UPath(args.ds_path),
+        split_by_polygon=args.split_by_polygon,
+        window_size=args.window_size
     )
+
+
+# Create rslearn dataset from the windows.
+# rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group post_polygon_split --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+# rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group post_polygon_split --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+
+# rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group post_random_split --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+# rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group post_random_split --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+
+
 
 
 

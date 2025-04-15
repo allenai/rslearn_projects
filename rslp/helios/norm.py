@@ -6,6 +6,13 @@ from typing import Any
 from rslearn.train.transforms.transform import Transform
 
 
+MODALITY_NAMES = [
+    "sentinel2_l2a",
+    "sentinel1",
+    "worldcover",
+    "openstreetmap_raster",
+]
+
 class HeliosNormalize(Transform):
     """Normalize using Helios JSON config."""
 
@@ -35,7 +42,11 @@ class HeliosNormalize(Transform):
             normalized (input_dicts, target_dicts) tuple
         """
         for modality_name, cur_band_names in self.band_names.items():
-            band_norms = self.norm_config[modality_name]
+            # Find the short modality name as it may be like "sentinel2_l2a_mo01"
+            for short_modality_name in MODALITY_NAMES:
+                if short_modality_name in modality_name:
+                    break
+            band_norms = self.norm_config[short_modality_name]
             image = input_dict[modality_name]
             # Keep a set of indices to make sure that we normalize all of them.
             needed_band_indices = set(range(image.shape[0]))

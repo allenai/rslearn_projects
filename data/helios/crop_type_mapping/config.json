@@ -1,5 +1,8 @@
 {
   "layers": {
+    "label": {
+      "type": "vector"
+    },
     "sentinel2_l2a_mo01": {
       "alias": "sentinel2_l2a",
      "band_sets": [

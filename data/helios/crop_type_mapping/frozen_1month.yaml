@@ -16,7 +16,7 @@ model:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
-                out_channels: 9
+                out_channels: 6
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.classification.ClassificationHead
@@ -49,7 +49,7 @@ data:
             class_path: rslearn.train.tasks.classification.ClassificationTask
             init_args:
               property_name: "category" 
-              classes: ["Coffee", "Exoticetrees/forest", "Grassland", "Legumes", "Maize", "Nativetrees/forest", "Sugarcane", "Tea", "Vegetables"]
+              classes: ["Coffee", "Trees", "Grassland", "Maize", "Sugarcane", "Tea"]
               enable_f1_metric: true
               metric_kwargs:
                 average: "micro"
@@ -66,25 +66,20 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      groups: ["window_32_split_by_polygon"]
+      groups: ["post_polygon_split"]
       tags:
         split: "train"
-      sampler:
-        class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
-        init_args:
-          option_key: "weight"
-          num_samples: 4000
     val_config:
-      groups: ["window_32_split_by_polygon"]
+      groups: ["post_polygon_split"]
       tags:
         split: "val"
     test_config:
-      groups: ["window_32_split_by_polygon"]
+      groups: ["post_polygon_split"]
       tags:
         split: "val"
 
 trainer:
-  max_epochs: 500
+  max_epochs: 300
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -98,6 +93,5 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
 rslp_project: helios_finetuning
 rslp_experiment: placeholder

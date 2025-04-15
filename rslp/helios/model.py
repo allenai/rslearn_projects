@@ -77,7 +77,8 @@ class Helios(torch.nn.Module):
         Returns:
             List[List[int]]: List of downsample factors and corresponding channel counts at each scale.
         """
-        return [[1, 128]]
+        # Mainly for rslearn.models.simple_time_series.SimpleTimeSeries
+        return [[1, self.model.embedding_size]]
 
     def forward(self, inputs: list[dict[str, Any]]) -> list[torch.Tensor]:
         """Compute feature maps from the Helios backbone.
@@ -132,5 +133,4 @@ class Helios(torch.nn.Module):
             features.append(pooled)
         # Pool over the modalities, so we get one BCHW feature map.
         pooled = torch.stack(features, dim=0).mean(dim=0)
-
         return [pooled]
