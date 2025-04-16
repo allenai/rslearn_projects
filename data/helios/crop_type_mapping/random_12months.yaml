@@ -14,6 +14,7 @@ model:
                   selector: ["encoder"]
                   forward_kwargs:
                     patch_size: {PATCH_SIZE}
+                  random_initialization: true
               image_channels: 12
         decoders:
           crop_type_mapping:
@@ -164,11 +165,6 @@ data:
       groups: ["post_random_split"]
       tags:
         split: "train"
-      sampler:
-        class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
-        init_args:
-          option_key: "weight"
-          num_samples: 6000
     val_config:
       groups: ["post_random_split"]
       tags:
@@ -193,6 +189,5 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
-        unfreeze_at_epoch: 2
 rslp_project: helios_finetuning
 rslp_experiment: placeholder

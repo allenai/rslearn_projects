@@ -16,6 +16,7 @@ from rslp.log_utils import get_logger
 logger = get_logger(__name__)
 
 MODALITY_NAMES = [
+    "image",
     "sentinel2_l2a",
     "sentinel1",
     "worldcover",
@@ -93,20 +94,25 @@ class Helios(torch.nn.Module):
         for modality in MODALITY_NAMES:
             if modality not in inputs[0]:
                 continue
-            present_modalities.append(modality)
+            # TODO (yawenz): Concatenate then normalize, work for both SimpleTimeSeries and Helios
+            if modality == "image":
+                modality_name = "sentinel2_l2a"
+            else:
+                modality_name = modality
+            present_modalities.append(modality_name)
             cur = torch.stack([inp[modality] for inp in inputs], dim=0)
             device = cur.device
             # Reshape BCHW to BHWTC, currently we assume one timestep.
             cur = rearrange(cur, "b c h w -> b h w 1 c")
-            kwargs[modality] = cur
+            kwargs[modality_name] = cur
             # Create mask array which is BHWTS (without channels but with band sets).
-            num_band_sets = len(Modality.get(modality).band_sets)
+            num_band_sets = len(Modality.get(modality_name).band_sets)
             mask_shape = cur.shape[0:4] + (num_band_sets,)
             mask = (
                 torch.ones(mask_shape, dtype=torch.int32, device=device)
                 * MaskValue.ONLINE_ENCODER.value
             )
-            kwargs[f"{modality}_mask"] = mask
+            kwargs[f"{modality_name}_mask"] = mask
 
         # Timestamps is required.
         # For now we assume one timestep and assign it an arbitrary value.

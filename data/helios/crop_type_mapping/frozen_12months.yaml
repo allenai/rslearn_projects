@@ -22,7 +22,7 @@ model:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
                 out_channels: 6
             - class_path: rslearn.train.tasks.classification.ClassificationHead
-    lr: 0.0001
+    lr: 0.1
     plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
@@ -164,11 +164,6 @@ data:
       groups: ["post_random_split"]
       tags:
         split: "train"
-      sampler:
-        class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
-        init_args:
-          option_key: "weight"
-          num_samples: 6000
     val_config:
       groups: ["post_random_split"]
       tags:
@@ -193,6 +188,5 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
-        unfreeze_at_epoch: 2
 rslp_project: helios_finetuning
 rslp_experiment: placeholder

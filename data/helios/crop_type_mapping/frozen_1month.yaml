@@ -17,8 +17,6 @@ model:
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
                 out_channels: 6
-                num_conv_layers: 1
-                num_fc_layers: 2
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
     plateau: true
@@ -66,15 +64,15 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      groups: ["post_polygon_split"]
+      groups: ["post_random_split"]
       tags:
         split: "train"
     val_config:
-      groups: ["post_polygon_split"]
+      groups: ["post_random_split"]
       tags:
         split: "val"
     test_config:
-      groups: ["post_polygon_split"]
+      groups: ["post_random_split"]
       tags:
         split: "val"
 
