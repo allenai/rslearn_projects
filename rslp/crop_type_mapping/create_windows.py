@@ -37,7 +37,7 @@ def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
 
     Args:
         csv_path: path to the csv file
-        num_points: number of points to sample from each polygon
+        num_pixels: number of points to sample from each polygon
     """
     df = pd.read_csv(csv_path)
     df["latitude"], df["longitude"] = df["y"], df["x"]
@@ -60,7 +60,7 @@ def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
     return df_sampled
 
 
-def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, window_size: int):
+def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, window_size: int) -> None:
     """Create windows for crop type mapping.
 
     Args:
@@ -70,7 +70,6 @@ def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, wi
         window_size: window size
     """
     # Get sample metadata
-    index = csv_row.name
     polygon_id = csv_row["unique_id"]
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
     planted_date, harvested_or_not, harvested_date = csv_row["LR_plantin"], csv_row["LR_Harvest"], csv_row["LR_harvetd"]
@@ -104,10 +103,8 @@ def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, wi
     else:
         group = "post_random_split"
     window_name = f"{polygon_id}_{latitude}_{longitude}"
-    window_path = ds_path / "windows" / group / window_name
     
     # If split by polygon id, no samples from the same polygon will be in the same split.
-    # If split by window name, samples from the same polygon may be in the same split.
     if split_by_polygon:   
         is_val = hashlib.md5(str(polygon_id).encode()).hexdigest()[0] in ["0", "1"]
     else:
@@ -145,8 +142,17 @@ def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, wi
     window.mark_layer_completed(LABEL_LAYER)
 
 
-def create_windows_from_csv(csv_path: UPath, ds_path: UPath, split_by_polygon: bool, window_size: int):
-    df_sampled = process_csv(csv_path)
+def create_windows_from_csv(csv_path: UPath, ds_path: UPath, split_by_polygon: bool, window_size: int, num_pixels: int) -> None:
+    """Create windows from csv.
+
+    Args:
+        csv_path: path to the csv file
+        ds_path: path to the dataset
+        split_by_polygon: whether to split by polygon
+        window_size: window size
+        num_pixels: number of pixels to sample from each polygon
+    """
+    df_sampled = process_csv(csv_path, num_pixels)
     csv_rows = []
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
@@ -185,6 +191,13 @@ if __name__ == "__main__":
         default=1
     )
     parser.add_argument(
+        "--num_pixels",
+        type=int,
+        required=False,
+        help="Number of pixels to sample from each polygon",
+        default=10
+    )
+    parser.add_argument(
         "--split_by_polygon",
         type=bool,
         required=False,
@@ -196,7 +209,8 @@ if __name__ == "__main__":
         UPath(args.csv_path),
         UPath(args.ds_path),
         split_by_polygon=args.split_by_polygon,
-        window_size=args.window_size
+        window_size=args.window_size,
+        num_pixels=args.num_pixels
     )
 
 
