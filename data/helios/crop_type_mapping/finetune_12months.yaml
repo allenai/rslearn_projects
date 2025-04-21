@@ -112,7 +112,7 @@ data:
           crop_type_mapping:
             class_path: rslearn.train.tasks.classification.ClassificationTask
             init_args:
-              property_name: "category" 
+              property_name: "category"
               classes: ["Coffee", "Trees", "Grassland", "Maize", "Sugarcane", "Tea"]
               enable_f1_metric: true
               metric_kwargs:

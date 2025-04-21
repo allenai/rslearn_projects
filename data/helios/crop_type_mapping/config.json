@@ -5,25 +5,25 @@
     },
     "sentinel2_l2a_mo01": {
       "alias": "sentinel2_l2a",
-     "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -38,24 +38,24 @@
     "sentinel2_l2a_mo02": {
       "alias": "sentinel2_l2a",
       "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -70,24 +70,24 @@
     "sentinel2_l2a_mo03": {
       "alias": "sentinel2_l2a",
       "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -102,24 +102,24 @@
     "sentinel2_l2a_mo04": {
       "alias": "sentinel2_l2a",
       "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -134,24 +134,24 @@
     "sentinel2_l2a_mo05": {
       "alias": "sentinel2_l2a",
       "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -166,24 +166,24 @@
     "sentinel2_l2a_mo06": {
       "alias": "sentinel2_l2a",
       "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -197,25 +197,25 @@
     },
     "sentinel2_l2a_mo07": {
       "alias": "sentinel2_l2a",
-     "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -230,24 +230,24 @@
     "sentinel2_l2a_mo08": {
       "alias": "sentinel2_l2a",
       "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -262,24 +262,24 @@
     "sentinel2_l2a_mo09": {
       "alias": "sentinel2_l2a",
       "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -294,24 +294,24 @@
     "sentinel2_l2a_mo10": {
       "alias": "sentinel2_l2a",
       "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -326,24 +326,24 @@
     "sentinel2_l2a_mo11": {
       "alias": "sentinel2_l2a",
       "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
@@ -358,24 +358,24 @@
     "sentinel2_l2a_mo12": {
       "alias": "sentinel2_l2a",
       "band_sets": [
-      {
-        "bands": [
-          "B01",
-          "B02",
-          "B03",
-          "B04",
-          "B05",
-          "B06",
-          "B07",
-          "B08",
-          "B09",
-          "B11",
-          "B12",
-          "B8A"
-        ],
-        "dtype": "uint16"
-      }
-    ],
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B09",
+            "B11",
+            "B12",
+            "B8A"
+          ],
+          "dtype": "uint16"
+        }
+      ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
         "duration": "30d",
