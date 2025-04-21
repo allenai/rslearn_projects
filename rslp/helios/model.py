@@ -117,9 +117,13 @@ class Helios(torch.nn.Module):
         # Timestamps is required.
         # Note that only months (0 to 11) are used in Helios position encoding.
         # For now, we assign same timestamps to all inputs, but later we should handle varying timestamps per input.
-        timestamps = torch.zeros((len(inputs), max_timesteps, 3), dtype=torch.int32, device=device)
+        timestamps = torch.zeros(
+            (len(inputs), max_timesteps, 3), dtype=torch.int32, device=device
+        )
         timestamps[:, :, 0] = 1  # day
-        timestamps[:, :, 1] = torch.arange(max_timesteps, device=device)[None, :]  # month
+        timestamps[:, :, 1] = torch.arange(max_timesteps, device=device)[
+            None, :
+        ]  # month
         timestamps[:, :, 2] = 2024  # year
         kwargs["timestamps"] = timestamps
 
