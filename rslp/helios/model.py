@@ -16,7 +16,6 @@ from rslp.log_utils import get_logger
 logger = get_logger(__name__)
 
 MODALITY_NAMES = [
-    "image",
     "sentinel2_l2a",
     "sentinel1",
     "worldcover",
@@ -91,34 +90,36 @@ class Helios(torch.nn.Module):
         kwargs = {}
         present_modalities = []
         device = None
+        # Handle the case where some modalities are multitemporal and some are not.
+        # We assume all multitemporal modalities have the same number of timesteps.
+        max_timesteps = 1
         for modality in MODALITY_NAMES:
             if modality not in inputs[0]:
                 continue
-            # TODO (yawenz): Concatenate then normalize, work for both SimpleTimeSeries and Helios
-            if modality == "image":
-                modality_name = "sentinel2_l2a"
-            else:
-                modality_name = modality
-            present_modalities.append(modality_name)
+            present_modalities.append(modality)
             cur = torch.stack([inp[modality] for inp in inputs], dim=0)
             device = cur.device
-            # Reshape BCHW to BHWTC, currently we assume one timestep.
-            cur = rearrange(cur, "b c h w -> b h w 1 c")
-            kwargs[modality_name] = cur
+            # Check if it's single or multitemporal, and reshape accordingly
+            num_bands = Modality.get(modality).num_bands
+            num_timesteps = cur.shape[1] // num_bands
+            max_timesteps = max(max_timesteps, num_timesteps)
+            cur = rearrange(cur, "b (t c) h w -> b h w t c", t=num_timesteps)
+            kwargs[modality] = cur
             # Create mask array which is BHWTS (without channels but with band sets).
-            num_band_sets = len(Modality.get(modality_name).band_sets)
+            num_band_sets = len(Modality.get(modality).band_sets)
             mask_shape = cur.shape[0:4] + (num_band_sets,)
             mask = (
                 torch.ones(mask_shape, dtype=torch.int32, device=device)
                 * MaskValue.ONLINE_ENCODER.value
             )
-            kwargs[f"{modality_name}_mask"] = mask
+            kwargs[f"{modality}_mask"] = mask
 
         # Timestamps is required.
-        # For now we assume one timestep and assign it an arbitrary value.
-        timestamps = torch.zeros((len(inputs), 1, 3), dtype=torch.int32, device=device)
+        # Note that only months (0 to 11) are used in Helios position encoding.
+        # For now, we assign same timestamps to all inputs, but later we should handle varying timestamps per input.
+        timestamps = torch.zeros((len(inputs), max_timesteps, 3), dtype=torch.int32, device=device)
         timestamps[:, :, 0] = 1  # day
-        timestamps[:, :, 1] = 7  # month
+        timestamps[:, :, 1] = torch.arange(max_timesteps, device=device)[None, :]  # month
         timestamps[:, :, 2] = 2024  # year
         kwargs["timestamps"] = timestamps
 

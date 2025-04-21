@@ -5,16 +5,12 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+          - class_path: rslp.helios.model.Helios
             init_args:
-              encoder:
-                class_path: rslp.helios.model.Helios
-                init_args:
-                  checkpoint_path: "{CHECKPOINT_PATH}"
-                  selector: ["encoder"]
-                  forward_kwargs:
-                    patch_size: {PATCH_SIZE}
-              image_channels: 12
+              checkpoint_path: "{CHECKPOINT_PATH}"
+              selector: ["encoder"]
+              forward_kwargs:
+                patch_size: {PATCH_SIZE}
         decoders:
           crop_type_mapping:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
@@ -22,7 +18,7 @@ model:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
                 out_channels: 6
             - class_path: rslearn.train.tasks.classification.ClassificationHead
-    lr: 0.1
+    lr: 0.0001
     plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
@@ -159,7 +155,7 @@ data:
             sentinel2_l2a_mo10: []
             sentinel2_l2a_mo11: []
             sentinel2_l2a_mo12: []
-          output_selector: image
+          output_selector: sentinel2_l2a
     train_config:
       groups: ["post_random_split"]
       tags:
@@ -187,6 +183,6 @@ trainer:
         mode: min
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
-        module_selector: ["model", "encoder", 0, "encoder", "model"]
+        module_selector: ["model", "encoder", 0]
 rslp_project: helios_finetuning
 rslp_experiment: placeholder

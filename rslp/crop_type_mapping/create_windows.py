@@ -24,9 +24,7 @@ from rslearn.utils.raster_format import get_raster_projection_and_bounds, Geotif
 from rslearn.utils.vector_format import GeojsonVectorFormat
 
 
-
 WINDOW_RESOLUTION = 10
-
 LABEL_LAYER = "label"
 
 # Center month between "2022-09-30" and "2023-09-30"
@@ -46,7 +44,7 @@ def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
 
     df = df[["unique_id", "latitude", "longitude", "LR_plantin", "LR_Harvest", "LR_harvetd", "Category"]]
     print(df.groupby("Category").size())
-    print(df["unique_id"].nunique())  # 812 (819 in total)
+    print(df["unique_id"].nunique())  # 812 in total
     
     # Sample per polygon
     df_sampled = df.groupby("unique_id").apply(lambda x: x.sample(num_pixels, random_state=42) if len(x) > num_pixels else x).reset_index(drop=True)
@@ -58,24 +56,6 @@ def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
     print(df_sampled.shape)
     print(df_sampled.groupby("Category").size())
     print(df_sampled["unique_id"].nunique())
-
-    # # Category stats:
-    # # Coffee                  977
-    # # Exoticetrees/forest     695 - trees
-    # # Grassland              1020
-    # # Legumes                 440 - drop
-    # # Maize                  1336
-    # # Nativetrees/forest      231 - trees
-    # # Sugarcane               964
-    # # Tea                     979
-    # # Vegetables              282 - drop
-
-    # Coffee        977
-    # Grassland    1020
-    # Maize        1336
-    # Sugarcane     964
-    # Tea           979
-    # Trees         926
 
     return df_sampled
 
@@ -209,7 +189,7 @@ if __name__ == "__main__":
         type=bool,
         required=False,
         help="Split by polygon",
-        default=True
+        default=False
     )
     args = parser.parse_args()
     create_windows_from_csv(
@@ -220,12 +200,6 @@ if __name__ == "__main__":
     )
 
 
-# Create rslearn dataset from the windows.
-# rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group post_polygon_split --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-# rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group post_polygon_split --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-
-# rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group post_random_split --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-# rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group post_random_split --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 
 
 
