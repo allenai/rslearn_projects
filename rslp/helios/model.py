@@ -71,15 +71,6 @@ class Helios(torch.nn.Module):
                 model = model[part]
         self.model = model
 
-    def get_backbone_channels(self) -> list[list[int]]:
-        """Returns the output channels of the encoder at different scales.
-
-        Returns:
-            List[List[int]]: List of downsample factors and corresponding channel counts at each scale.
-        """
-        # Mainly for rslearn.models.simple_time_series.SimpleTimeSeries
-        return [[1, self.model.embedding_size]]
-
     def forward(self, inputs: list[dict[str, Any]]) -> list[torch.Tensor]:
         """Compute feature maps from the Helios backbone.
 
