@@ -1,28 +1,20 @@
 """Create windows for crop type mapping."""
 
-from upath import UPath
-import pandas as pd
-import matplotlib.pyplot as plt
-from datetime import datetime
 import argparse
-import csv
 import hashlib
-import json
 import multiprocessing
-import os
-import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
+import pandas as pd
 import shapely
 import tqdm
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
-from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.feature import Feature
-from rslearn.utils.raster_format import get_raster_projection_and_bounds, GeotiffRasterFormat
+from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.vector_format import GeojsonVectorFormat
-
+from upath import UPath
 
 WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
@@ -42,15 +34,35 @@ def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
     df["latitude"], df["longitude"] = df["y"], df["x"]
 
-    df = df[["unique_id", "latitude", "longitude", "LR_plantin", "LR_Harvest", "LR_harvetd", "Category"]]
+    df = df[
+        [
+            "unique_id",
+            "latitude",
+            "longitude",
+            "LR_plantin",
+            "LR_Harvest",
+            "LR_harvetd",
+            "Category",
+        ]
+    ]
     print(df.groupby("Category").size())
     print(df["unique_id"].nunique())  # 812 in total
-    
+
     # Sample per polygon
-    df_sampled = df.groupby("unique_id").apply(lambda x: x.sample(num_pixels, random_state=42) if len(x) > num_pixels else x).reset_index(drop=True)
+    df_sampled = (
+        df.groupby("unique_id")
+        .apply(
+            lambda x: x.sample(num_pixels, random_state=42)
+            if len(x) > num_pixels
+            else x
+        )
+        .reset_index(drop=True)
+    )
 
     # Post-process on category.
-    df_sampled.loc[df_sampled["Category"] == "Exoticetrees/forest", "Category"] = "Trees"
+    df_sampled.loc[df_sampled["Category"] == "Exoticetrees/forest", "Category"] = (
+        "Trees"
+    )
     df_sampled.loc[df_sampled["Category"] == "Nativetrees/forest", "Category"] = "Trees"
     df_sampled = df_sampled[~df_sampled["Category"].isin(["Vegetables", "Legumes"])]
     print(df_sampled.shape)
@@ -60,7 +72,9 @@ def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
     return df_sampled
 
 
-def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, window_size: int) -> None:
+def create_window(
+    csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, window_size: int
+) -> None:
     """Create windows for crop type mapping.
 
     Args:
@@ -72,7 +86,11 @@ def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, wi
     # Get sample metadata
     polygon_id = csv_row["unique_id"]
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
-    planted_date, harvested_or_not, harvested_date = csv_row["LR_plantin"], csv_row["LR_Harvest"], csv_row["LR_harvetd"]
+    planted_date, harvested_or_not, harvested_date = (
+        csv_row["LR_plantin"],
+        csv_row["LR_Harvest"],
+        csv_row["LR_harvetd"],
+    )
     category = csv_row["Category"]
 
     src_point = shapely.Point(longitude, latitude)
@@ -80,7 +98,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, wi
     dst_crs = get_utm_ups_crs(longitude, latitude)
     dst_projection = Projection(dst_crs, WINDOW_RESOLUTION, -WINDOW_RESOLUTION)
     dst_geometry = src_geometry.to_projection(dst_projection)
-    
+
     # This is specific for window size = 1.
     if window_size == 1:
         bounds = (
@@ -103,9 +121,9 @@ def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, wi
     else:
         group = "post_random_split"
     window_name = f"{polygon_id}_{latitude}_{longitude}"
-    
+
     # If split by polygon id, no samples from the same polygon will be in the same split.
-    if split_by_polygon:   
+    if split_by_polygon:
         is_val = hashlib.md5(str(polygon_id).encode()).hexdigest()[0] in ["0", "1"]
     else:
         is_val = hashlib.md5(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
@@ -114,7 +132,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, wi
         split = "val"
     else:
         split = "train"
-        
+
     window = Window(
         path=Window.get_window_root(ds_path, group, window_name),
         group=group,
@@ -128,21 +146,30 @@ def create_window(csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, wi
             "harvested_or_not": harvested_or_not,
             "harvested_date": harvested_date,
             "category": category,
-            "weight": 1
-        }
+            "weight": 1,
+        },
     )
     window.save()
-    
+
     # Add the label.
-    feature = Feature(window.get_geometry(), {
-        "category": category,
-    })
+    feature = Feature(
+        window.get_geometry(),
+        {
+            "category": category,
+        },
+    )
     layer_dir = window.get_layer_dir(LABEL_LAYER)
     GeojsonVectorFormat().encode_vector(layer_dir, [feature])
     window.mark_layer_completed(LABEL_LAYER)
 
 
-def create_windows_from_csv(csv_path: UPath, ds_path: UPath, split_by_polygon: bool, window_size: int, num_pixels: int) -> None:
+def create_windows_from_csv(
+    csv_path: UPath,
+    ds_path: UPath,
+    split_by_polygon: bool,
+    window_size: int,
+    num_pixels: int,
+) -> None:
     """Create windows from csv.
 
     Args:
@@ -157,7 +184,15 @@ def create_windows_from_csv(csv_path: UPath, ds_path: UPath, split_by_polygon: b
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
 
-    jobs = [dict(csv_row=row, ds_path=ds_path, split_by_polygon=split_by_polygon, window_size=window_size) for row in csv_rows]
+    jobs = [
+        dict(
+            csv_row=row,
+            ds_path=ds_path,
+            split_by_polygon=split_by_polygon,
+            window_size=window_size,
+        )
+        for row in csv_rows
+    ]
     p = multiprocessing.Pool(32)
     outputs = star_imap_unordered(p, create_window, jobs)
     for _ in tqdm.tqdm(outputs, total=len(jobs)):
@@ -166,7 +201,6 @@ def create_windows_from_csv(csv_path: UPath, ds_path: UPath, split_by_polygon: b
 
 
 if __name__ == "__main__":
-
     multiprocessing.set_start_method("forkserver")
     parser = argparse.ArgumentParser(description="Create windows from csv")
     parser.add_argument(
@@ -174,35 +208,31 @@ if __name__ == "__main__":
         type=str,
         required=False,
         help="Path to the csv file",
-        default="gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv"
+        default="gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv",
     )
     parser.add_argument(
-        "--ds_path", 
-        type=str, 
-        required=False, 
-        help="Path to the dataset",
-        default="/weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi"
-    )
-    parser.add_argument(
-        "--window_size",
-        type=int,
+        "--ds_path",
+        type=str,
         required=False,
-        help="Window size",
-        default=1
+        help="Path to the dataset",
+        default="/weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi",
+    )
+    parser.add_argument(
+        "--window_size", type=int, required=False, help="Window size", default=1
     )
     parser.add_argument(
         "--num_pixels",
         type=int,
         required=False,
         help="Number of pixels to sample from each polygon",
-        default=10
+        default=10,
     )
     parser.add_argument(
         "--split_by_polygon",
         type=bool,
         required=False,
         help="Split by polygon",
-        default=False
+        default=False,
     )
     args = parser.parse_args()
     create_windows_from_csv(
@@ -210,12 +240,5 @@ if __name__ == "__main__":
         UPath(args.ds_path),
         split_by_polygon=args.split_by_polygon,
         window_size=args.window_size,
-        num_pixels=args.num_pixels
+        num_pixels=args.num_pixels,
     )
-
-
-
-
-
-
-
