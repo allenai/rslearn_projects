@@ -158,7 +158,6 @@ data:
       groups: ["post_random_split"]
       tags:
         split: "val"
-
 trainer:
   max_epochs: 300
   callbacks:
