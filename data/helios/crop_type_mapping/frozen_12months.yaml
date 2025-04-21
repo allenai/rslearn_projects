@@ -124,22 +124,6 @@ data:
     num_workers: 32
     default_config:
       transforms:
-      - class_path: rslp.helios.norm.HeliosNormalize
-        init_args:
-          config_fname: "/opt/helios/data/norm_configs/computed.json"
-          band_names:
-            sentinel2_l2a_mo01: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo02: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo03: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo04: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo05: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo06: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo07: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo08: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo09: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo10: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo11: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-            sentinel2_l2a_mo12: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
       - class_path: rslearn.train.transforms.concatenate.Concatenate
         init_args:
           selections:
@@ -156,6 +140,11 @@ data:
             sentinel2_l2a_mo11: []
             sentinel2_l2a_mo12: []
           output_selector: sentinel2_l2a
+      - class_path: rslp.helios.norm.HeliosNormalize
+        init_args:
+          config_fname: "/weka/dfive-default/yawenz/helios/data/norm_configs/computed.json"
+          band_names:
+            sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
       groups: ["post_random_split"]
       tags:
