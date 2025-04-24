@@ -39,13 +39,16 @@ class HeliosNormalize(Transform):
             image = input_dict[modality_name]
             # Keep a set of indices to make sure that we normalize all of them.
             needed_band_indices = set(range(image.shape[0]))
+            num_timesteps = image.shape[0] // len(cur_band_names)
 
             for band, norm_dict in band_norms.items():
-                band_idx = cur_band_names.index(band)
-                min_val = norm_dict["mean"] - self.std_multiplier * norm_dict["std"]
-                max_val = norm_dict["mean"] + self.std_multiplier * norm_dict["std"]
-                image[band_idx] = (image[band_idx] - min_val) / (max_val - min_val)
-                needed_band_indices.remove(band_idx)
+                # If multitemporal, normalize each timestep separately.
+                for t in range(num_timesteps):
+                    band_idx = cur_band_names.index(band) + t * len(cur_band_names)
+                    min_val = norm_dict["mean"] - self.std_multiplier * norm_dict["std"]
+                    max_val = norm_dict["mean"] + self.std_multiplier * norm_dict["std"]
+                    image[band_idx] = (image[band_idx] - min_val) / (max_val - min_val)
+                    needed_band_indices.remove(band_idx)
 
             if len(needed_band_indices) > 0:
                 raise ValueError(
