@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import rasterio
-import rasterio.features
 from PIL import Image
+from rasterio.enums import Resampling
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources import Item, data_source_from_config
 from rslearn.data_sources.aws_landsat import LandsatOliTirs
@@ -331,7 +331,9 @@ def setup_dataset(
             "bands": [],
         }
         for band, image_path in image_files.items():
-            cfg["src_dir"] = str(UPath(image_path).parent)
+            cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["src_dir"] = str(
+                UPath(image_path).parent
+            )
             item_spec["fnames"].append(image_path)
             item_spec["bands"].append([band])
         cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["item_specs"] = [item_spec]
@@ -546,12 +548,15 @@ def _write_detection_crop(
     for band in ["B2", "B3", "B4", "B8"]:
         raster_dir = crop_window.get_raster_dir(LANDSAT_LAYER_NAME, [band])
 
-        # Different bands are in different resolutions so get the bounds from the
-        # raster since anyway we just want to read the whole raster.
+        # Use nearest neighbor resampling to reduce blur effect.
+        # This means B2/B3/B4 (the RGB bands) are resampled to 15 m/pixel using nearest
+        # neighbor resampling.
         raster_format = GeotiffRasterFormat()
-        band_bounds = raster_format.get_raster_bounds(raster_dir)
         image = raster_format.decode_raster(
-            raster_dir, crop_window.projection, band_bounds
+            raster_dir,
+            crop_window.projection,
+            crop_window.bounds,
+            resampling=Resampling.nearest,
         )
         if image.shape[0] != 1:
             raise ValueError(
@@ -565,7 +570,6 @@ def _write_detection_crop(
     # a higher resolution.
     for band in ["B2", "B3", "B4"]:
         sharp = images[band].astype(np.int32)
-        sharp = sharp.repeat(repeats=2, axis=0).repeat(repeats=2, axis=1)
         images[band + "_sharp"] = sharp
     total = np.clip(
         (images["B2_sharp"] + images["B3_sharp"] + images["B4_sharp"]) // 3, 1, 255
