@@ -62,3 +62,4 @@ Below is an example of the missed vessels, a lot of them are only visible in the
 - **`v0.0.4`**: Add Prometheus timers.
 - **`v0.0.5`**: Fix for new version of rslearn.
 - **`v0.0.6`**: Fix bug with RGB crops.
+- **`v0.0.7`**: Fix Docker container bug.
