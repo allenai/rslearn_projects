@@ -19,7 +19,9 @@ from rslp.sentinel2_vessels.predict_pipeline import (
     PredictionTask,
     predict_pipeline,
 )
+from rslp.sentinel2_vessels.prom_metrics import time_operation, TimerOperations
 from rslp.utils.mp import init_mp
+from rslp.utils.prometheus import setup_prom_metrics
 from rslp.vessels import VesselDetectionDict
 
 # Load environment variables from the .env file
@@ -236,10 +238,11 @@ async def get_detections(
 
     try:
         logger.info("Processing request with input data.")
-        vessel_detections = predict_pipeline(
-            tasks=[task],
-            scratch_path=scratch_path,
-        )[0]
+        with time_operation(TimerOperations.TotalInferenceTime):
+            vessel_detections = predict_pipeline(
+                tasks=[task],
+                scratch_path=scratch_path,
+            )[0]
         return Sentinel2Response(
             status=StatusEnum.SUCCESS,
             predictions=[detection.to_dict() for detection in vessel_detections],
@@ -259,6 +262,9 @@ async def get_detections(
             predictions=[],
             error_message=f"Unexpected error in prediction pipeline: {e}",
         )
+
+
+app.mount("/metrics", setup_prom_metrics())
 
 
 if __name__ == "__main__":

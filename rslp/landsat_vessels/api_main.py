@@ -19,6 +19,7 @@ from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_p
 from rslp.landsat_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.log_utils import get_logger
 from rslp.utils.mp import init_mp
+from rslp.utils.prometheus import setup_prom_metrics
 
 # Load environment variables from the .env file
 load_dotenv(override=True)
@@ -212,28 +213,7 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             error_message=f"Unexpected error in prediction pipeline: {e}",
         )
 
-
-# Setup prometheus
-def _setup_prom_metrics() -> Any:
-    multi_proc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
-    if not multi_proc_dir:
-        # If we're not using multiproc, then just use the default registry
-        return make_asgi_app()
-
-    # Otherwise setup prometheus multiproc mode.
-    if os.path.isdir(multi_proc_dir):
-        for multi_proc_file in os.scandir(multi_proc_dir):
-            os.remove(multi_proc_file.path)
-    else:
-        os.makedirs(multi_proc_dir)
-
-    # Create the multiproc collector, and set it up to be connected to fastapi
-    registry = prometheus_client.CollectorRegistry()
-    multiprocess.MultiProcessCollector(registry, path=multi_proc_dir)
-    return make_asgi_app(registry=registry)
-
-
-app.mount("/metrics", _setup_prom_metrics())
+app.mount("/metrics", setup_prom_metrics())
 
 
 if __name__ == "__main__":
