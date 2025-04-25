@@ -1,4 +1,5 @@
 """Utility functions for using Prometheus Metrics inside RSLP APIs."""
+
 import os
 from typing import Any
 

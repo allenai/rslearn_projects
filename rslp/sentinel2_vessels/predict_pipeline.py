@@ -495,7 +495,9 @@ def predict_pipeline(
 
     # Write crops and prepare the JSON data.
     with time_operation(TimerOperations.BuildPredictionsAndCrops):
-        detections_by_task = _build_predictions_and_crops(detections, crop_windows, tasks)
+        detections_by_task = _build_predictions_and_crops(
+            detections, crop_windows, tasks
+        )
 
     for task_idx in range(0, len(tasks)):
         task = tasks[task_idx]
@@ -522,14 +524,13 @@ def predict_pipeline(
                     f,
                 )
 
-
     return detections_by_task
 
 
 def _build_predictions_and_crops(
-        detections: list[VesselDetection],
-        crop_windows: list[Window],
-        tasks: list[PredictionTask]
+    detections: list[VesselDetection],
+    crop_windows: list[Window],
+    tasks: list[PredictionTask],
 ) -> list[list[VesselDetection]]:
     detections_by_task: list[list[VesselDetection]] = [[] for _ in tasks]
 

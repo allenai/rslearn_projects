@@ -210,6 +210,7 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             error_message=f"Unexpected error in prediction pipeline: {e}",
         )
 
+
 app.mount("/metrics", setup_prom_metrics())
 
 
