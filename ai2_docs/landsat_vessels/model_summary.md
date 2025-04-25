@@ -59,4 +59,6 @@ Below is an example of the missed vessels, a lot of them are only visible in the
 - **`v0.0.1`**: Initial model release. Offline evaluation metrics reported.
 - **`v0.0.2`**: Improved pansharpening, added error message to LandsatResponse.
 - **`v0.0.3`**: Increase crop size.
-- **`v0.0.4`**: Fix bug with RGB crops.
+- **`v0.0.4`**: Add Prometheus timers.
+- **`v0.0.5`**: Fix for new version of rslearn.
+- **`v0.0.6`**: Fix bug with RGB crops.
