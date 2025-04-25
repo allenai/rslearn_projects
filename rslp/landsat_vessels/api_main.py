@@ -6,13 +6,10 @@ import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import Enum
-from typing import Any
 
-import prometheus_client
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
-from prometheus_client import make_asgi_app, multiprocess
 from pydantic import BaseModel
 
 from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_pipeline

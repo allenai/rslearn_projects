@@ -19,7 +19,7 @@ from rslp.sentinel2_vessels.predict_pipeline import (
     PredictionTask,
     predict_pipeline,
 )
-from rslp.sentinel2_vessels.prom_metrics import time_operation, TimerOperations
+from rslp.sentinel2_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.mp import init_mp
 from rslp.utils.prometheus import setup_prom_metrics
 from rslp.vessels import VesselDetectionDict

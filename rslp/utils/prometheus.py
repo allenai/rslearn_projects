@@ -1,3 +1,4 @@
+"""Utility functions for using Prometheus Metrics inside RSLP APIs."""
 import os
 from typing import Any
 
@@ -5,8 +6,8 @@ import prometheus_client
 from prometheus_client import make_asgi_app, multiprocess
 
 
-# Create Prometheus asgi app for Fastapi
 def setup_prom_metrics() -> Any:
+    """Create Prometheus asgi app for Fastapi."""
     multi_proc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
     if not multi_proc_dir:
         # If we're not using multiproc, then just use the default registry

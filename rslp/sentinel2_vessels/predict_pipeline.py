@@ -4,7 +4,6 @@ import json
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -20,7 +19,7 @@ from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
-from rslp.sentinel2_vessels.prom_metrics import time_operation, TimerOperations
+from rslp.sentinel2_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import (
     ApplyWindowsArgs,
