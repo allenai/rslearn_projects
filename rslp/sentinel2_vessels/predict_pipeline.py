@@ -4,7 +4,6 @@ import json
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -20,6 +19,7 @@ from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
+from rslp.sentinel2_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import (
     ApplyWindowsArgs,
@@ -295,7 +295,8 @@ def get_vessel_detections(
             ignore_errors=False, apply_windows_args=apply_windows_args
         ),
     )
-    materialize_dataset(ds_path, materialize_pipeline_args)
+    with time_operation(TimerOperations.MaterializeDataset):
+        materialize_dataset(ds_path, materialize_pipeline_args)
     for window in windows:
         if not window.is_layer_completed(SENTINEL2_LAYER_NAME):
             raise ValueError(
@@ -303,7 +304,8 @@ def get_vessel_detections(
             )
 
     # Run object detector.
-    run_model_predict(DETECT_MODEL_CONFIG, ds_path)
+    with time_operation(TimerOperations.RunModelPredict):
+        run_model_predict(DETECT_MODEL_CONFIG, ds_path)
 
     # Read the detections.
     detections: list[VesselDetection] = []
@@ -461,36 +463,75 @@ def predict_pipeline(
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
 
-    if tasks[0].scene_id is not None:
-        scene_ids: list[str] = []
-        for task in tasks:
-            if task.scene_id is None:
-                raise ValueError(
-                    "all tasks must specify scene IDs or all tasks must specify image files"
-                )
-            scene_ids.append(task.scene_id)
-        scene_datas = setup_dataset_with_scene_ids(ds_path, scene_ids)
+    with time_operation(TimerOperations.SetupDataset):
+        if tasks[0].scene_id is not None:
+            scene_ids: list[str] = []
+            for task in tasks:
+                if task.scene_id is None:
+                    raise ValueError(
+                        "all tasks must specify scene IDs or all tasks must specify image files"
+                    )
+                scene_ids.append(task.scene_id)
+            scene_datas = setup_dataset_with_scene_ids(ds_path, scene_ids)
 
-    else:
-        image_files_list: list[list[ImageFile]] = []
-        for task in tasks:
-            if task.image_files is None:
-                raise ValueError(
-                    "all tasks must specify scene IDs or all tasks must specify image files"
-                )
-            image_files_list.append(task.image_files)
-        scene_datas = setup_dataset_with_image_files(ds_path, image_files_list)
+        else:
+            image_files_list: list[list[ImageFile]] = []
+            for task in tasks:
+                if task.image_files is None:
+                    raise ValueError(
+                        "all tasks must specify scene IDs or all tasks must specify image files"
+                    )
+                image_files_list.append(task.image_files)
+            scene_datas = setup_dataset_with_image_files(ds_path, image_files_list)
 
     # Apply the vessel detection model.
-    detections = get_vessel_detections(ds_path, scene_datas)
+    with time_operation(TimerOperations.GetVesselDetections):
+        detections = get_vessel_detections(ds_path, scene_datas)
 
     # Apply the attribute prediction model.
     # This also collects vessel crop windows.
-    crop_windows = run_attribute_model(ds_path, detections, scene_datas)
+    with time_operation(TimerOperations.RunAttributeModel):
+        crop_windows = run_attribute_model(ds_path, detections, scene_datas)
 
     # Write crops and prepare the JSON data.
-    json_vessels_by_task: list[list[dict[str, Any]]] = [[] for _ in tasks]
-    geojson_vessels_by_task: list[list[dict[str, Any]]] = [[] for _ in tasks]
+    with time_operation(TimerOperations.BuildPredictionsAndCrops):
+        detections_by_task = _build_predictions_and_crops(
+            detections, crop_windows, tasks
+        )
+
+    for task_idx in range(0, len(tasks)):
+        task = tasks[task_idx]
+        detections = detections_by_task[task_idx]
+
+        if task.json_path is not None:
+            json_upath = UPath(task.json_path)
+            json_upath.parent.mkdir(parents=True, exist_ok=True)
+            json_data = [d.to_dict() for d in detections]
+            with json_upath.open("w") as f:
+                json.dump(json_data, f)
+
+        if task.geojson_path is not None:
+            geojson_upath = UPath(task.geojson_path)
+            geojson_upath.parent.mkdir(parents=True, exist_ok=True)
+            geojson_features = [d.to_feature() for d in detections]
+            with geojson_upath.open("w") as f:
+                json.dump(
+                    {
+                        "type": "FeatureCollection",
+                        "properties": {},
+                        "features": geojson_features,
+                    },
+                    f,
+                )
+
+    return detections_by_task
+
+
+def _build_predictions_and_crops(
+    detections: list[VesselDetection],
+    crop_windows: list[Window],
+    tasks: list[PredictionTask],
+) -> list[list[VesselDetection]]:
     detections_by_task: list[list[VesselDetection]] = [[] for _ in tasks]
 
     near_infra_filter = NearInfraFilter(
@@ -526,32 +567,5 @@ def predict_pipeline(
             with detection.crop_fname.open("wb") as f:
                 Image.fromarray(rgb_image.transpose(1, 2, 0)).save(f, format="PNG")
 
-        json_vessels_by_task[task_idx].append(detection.to_dict())
-        geojson_vessels_by_task[task_idx].append(detection.to_feature())
         detections_by_task[task_idx].append(detection)
-
-    for task_idx, (json_data, geojson_features) in enumerate(
-        zip(json_vessels_by_task, geojson_vessels_by_task)
-    ):
-        task = tasks[task_idx]
-
-        if task.json_path is not None:
-            json_upath = UPath(task.json_path)
-            json_upath.parent.mkdir(parents=True, exist_ok=True)
-            with json_upath.open("w") as f:
-                json.dump(json_data, f)
-
-        if task.geojson_path is not None:
-            geojson_upath = UPath(task.geojson_path)
-            geojson_upath.parent.mkdir(parents=True, exist_ok=True)
-            with geojson_upath.open("w") as f:
-                json.dump(
-                    {
-                        "type": "FeatureCollection",
-                        "properties": {},
-                        "features": geojson_features,
-                    },
-                    f,
-                )
-
     return detections_by_task
