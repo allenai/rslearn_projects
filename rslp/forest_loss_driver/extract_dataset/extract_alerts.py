@@ -4,7 +4,10 @@ import io
 import json
 import math
 import multiprocessing
-from datetime import datetime, timedelta, timezone
+import os
+import random
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import fiona
@@ -18,20 +21,21 @@ import tqdm
 from rasterio.crs import CRS
 from rslearn.const import SHAPEFILE_AUX_EXTENSIONS, WGS84_PROJECTION
 from rslearn.dataset import Window
-from rslearn.utils import Projection, STGeometry
+from rslearn.utils.feature import Feature
 from rslearn.utils.fsspec import get_upath_local
+from rslearn.utils.geometry import Projection, STGeometry
 from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.raster_format import SingleImageRasterFormat
+from rslearn.utils.vector_format import GeojsonCoordinateMode, GeojsonVectorFormat
 from upath import UPath
 
 from rslp.forest_loss_driver.const import GROUP
-from rslp.forest_loss_driver.inference.config import ExtractAlertsArgs
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 
 # Time corresponding to 0 in alertDate GeoTIFF files.
-BASE_DATETIME = datetime(2019, 1, 1, tzinfo=timezone.utc)
+BASE_DATETIME = datetime(2019, 1, 1, tzinfo=UTC)
 
 # How big the rslearn windows should be.
 WINDOW_SIZE = 128
@@ -49,6 +53,58 @@ INFERENCE_DATASET_CONFIG = str(
 
 # Filename used to indicate that alert extraction is done for a given dataset.
 COMPLETED_FNAME = "extract_alerts_completed"
+
+
+@dataclass
+class ExtractAlertsArgs:
+    """Arguments for extract_alerts_pipeline.
+
+    Args:
+        gcs_tiff_filenames: the list of GCS TIFF filenames to extract alerts from.
+        country_data_path: the path to the country shapefile.
+        countries: limit alerts to those falling in these countries. It is a list of
+            two-letter uppercase country codes, e.g. ["PE"] for Peru only.
+        conf_prefix: the prefix for the confidence raster of the forest loss alerts.
+        date_prefix: the prefix for the date raster of the forest loss alerts.
+        prediction_utc_time: the UTC time of the prediction.
+        min_confidence: the minimum confidence threshold.
+        days: the number of days to consider before the prediction time.
+        min_area: the minimum area threshold for an event to be extracted.
+        max_number_of_events: the maximum number of events to extract per GLAD tile.
+    """
+
+    gcs_tiff_filenames: list[str] = field(default_factory=list)
+    country_data_path: UPath = UPath(
+        f"gcs://{os.environ.get('RSLP_BUCKET', 'rslearn-eai')}/artifacts/natural_earth_countries/20240830/ne_10m_admin_0_countries.shp"
+    )
+    countries: list[str] | None = None
+
+    conf_prefix: str = "gs://earthenginepartners-hansen/S2alert/alert/"
+    date_prefix: str = "gs://earthenginepartners-hansen/S2alert/alertDate/"
+    prediction_utc_time: datetime = field(default_factory=lambda: datetime.now(UTC))
+    min_confidence: int = 2
+    days: int = 365
+    min_area: float = 16.0
+    max_number_of_events: int | None = None
+    group: str = GROUP
+    workers: int = min(multiprocessing.cpu_count(), 128)
+
+    # Parameters to fill in for the dataset configuration file.
+    # Absolute paths are preferred here so that these directories can be shared across
+    # different runs of the pipeline.
+    # The default empty string results in using relative path within the dataset root.
+    index_cache_dir: str = ""
+    tile_store_dir: str = ""
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        self.country_data_path = UPath(self.country_data_path)
+        if self.min_confidence < 0:
+            raise ValueError("min_confidence must be non-negative")
+        if self.workers < 1:
+            raise ValueError("workers must be at least 1")
+        if self.min_area <= 0:
+            raise ValueError("min_area must be positive")
 
 
 class ForestLossEvent:
@@ -79,15 +135,15 @@ class ForestLossEvent:
 
 def output_forest_event_metadata(
     event: ForestLossEvent,
+    window: Window,
     fname: str,
-    ds_path: UPath,
     mercator_point: tuple[int, int],
 ) -> None:
     """Output the info.json metadata for a forest loss event."""
     polygon_wgs84_shp: shapely.Polygon = event.polygon_geom.to_projection(
         WGS84_PROJECTION
     ).shp
-    with (ds_path / "info.json").open("w") as f:
+    with (window.path / "info.json").open("w") as f:
         json.dump(
             {
                 "fname": fname,
@@ -114,6 +170,7 @@ def output_mask_raster(
         return points
 
     polygon_out_shp = shapely.transform(polygon_webm_shp, to_out_pixel)
+    # Rasterize the mask and save it.
     mask_im = rasterio.features.rasterize(
         [(polygon_out_shp, 255)],
         out_shape=(
@@ -122,20 +179,38 @@ def output_mask_raster(
         ),
         dtype=np.uint8,
     )
-    layer_dir = window.path / "layers" / "mask"
+    raster_dir = window.get_raster_dir("mask", ["mask"])
     SingleImageRasterFormat().encode_raster(
-        layer_dir / "mask",
+        raster_dir,
         window.projection,
         window.bounds,
         mask_im[None, :, :],
     )
-    # Should this happen every time we encode the raster
-    with (layer_dir / "completed").open("w"):
-        pass
+    window.mark_layer_completed("mask")
+
+    # Save the vector version of the mask as well.
+    vector_format = GeojsonVectorFormat(coordinate_mode=GeojsonCoordinateMode.WGS84)
+    layer_dir = window.get_layer_dir("mask_vector")
+    vector_format.encode_vector(layer_dir, [Feature(event.polygon_geom)])
+    window.mark_layer_completed("mask_vector")
 
 
-def output_window_metadata(event: ForestLossEvent, ds_path: UPath) -> tuple:
-    """Output the window metadata."""
+def write_event(
+    event: ForestLossEvent, fname: str, ds_path: UPath, args: ExtractAlertsArgs
+) -> None:
+    """Write a window for this forest loss event.
+
+    This function creates several output files for each forest loss event:
+    1. Saves the window metadata to ds_path/windows/default/feat_x_.../ directory.
+    2. Saves the info.json metadata to the same directory.
+    3. Saves the mask and mask_vector layers containing the forest loss event polygon.
+
+    Args:
+        event: the event details.
+        fname: the GeoTIFF filename that this alert came from.
+        ds_path: the path of dataset to write to.
+        args: the ExtractAlertsArgs config.
+    """
     # Transform the center to Web-Mercator for populating the window.
     center_webm_shp = event.center_geom.to_projection(WEB_MERCATOR_PROJECTION).shp
 
@@ -160,37 +235,19 @@ def output_window_metadata(event: ForestLossEvent, ds_path: UPath) -> tuple:
 
     # Create the new rslearn windows.
     window_name = f"feat_x_{mercator_point[0]}_{mercator_point[1]}_{event.center_pixel[0]}_{event.center_pixel[1]}"
-    window_path = ds_path / "windows" / GROUP / window_name
     window = Window(
-        path=window_path,
-        group=GROUP,
+        path=Window.get_window_root(ds_path, args.group, window_name),
+        group=args.group,
         name=window_name,
         projection=WEB_MERCATOR_PROJECTION,
         bounds=bounds,
         time_range=time_range,
     )
     window.save()
-    return window, window_path, mercator_point
 
-
-def write_event(event: ForestLossEvent, fname: str, ds_path: UPath) -> None:
-    """Write a window for this forest loss event.
-
-    This function creates several output files for each forest loss event:
-    1. Saves the window metadata to ds_path/windows/default/feat_x_.../ directory.
-    2. Saves the info.json metadata to the same directory.
-    3. Saves the mask image to ds_path/windows/default/feat_x_.../layers/mask/
-    4. Creates an empty 'completed' file to indicate successful processing.
-
-    Args:
-        event: the event details.
-        fname: the GeoTIFF filename that this alert came from.
-        ds_path: the path of dataset to write to.
-    """
-    window, window_path, mercator_point = output_window_metadata(event, ds_path)
-
-    output_forest_event_metadata(event, fname, window_path, mercator_point)
-
+    # Create info.json file containing metadata about the forest loss event.
+    output_forest_event_metadata(event, window, fname, mercator_point)
+    # Populate the mask and mask_vector layers in the rslearn dataset.
     output_mask_raster(event, window)
 
 
@@ -328,7 +385,7 @@ def create_forest_loss_mask(
     date_data: np.ndarray,
     min_confidence: int,
     days: int,
-    current_utc_time: datetime = datetime.now(timezone.utc),
+    current_utc_time: datetime = datetime.now(UTC),
 ) -> np.ndarray:
     """Create a mask based on the given time range and confidence threshold.
 
@@ -372,27 +429,28 @@ def save_inference_dataset_config(
         json.dump(config_json, f)
 
 
-def extract_alerts_pipeline(
-    ds_root: UPath,
+def extract_alerts(
+    ds_path: str | UPath,
     extract_alerts_args: ExtractAlertsArgs,
 ) -> None:
     """Extract alerts from a single GeoTIFF file.
 
     Args:
-        ds_root: the root path to the dataset.
+        ds_path: the root path to the dataset.
         extract_alerts_args: the extract_alerts_args
     """
-    ds_root.mkdir(parents=True, exist_ok=True)
+    ds_path = UPath(ds_path) if not isinstance(ds_path, UPath) else ds_path
+    ds_path.mkdir(parents=True, exist_ok=True)
 
     # Skip extraction if it was marked completed.
-    completed_fname = ds_root / COMPLETED_FNAME
+    completed_fname = ds_path / COMPLETED_FNAME
     if completed_fname.exists():
         logger.info(f"Skipping alert extraction since {completed_fname} exists")
         return
 
     # Create the dataset configuration file.
     save_inference_dataset_config(
-        ds_root,
+        ds_path,
         index_cache_dir=extract_alerts_args.index_cache_dir,
         tile_store_dir=extract_alerts_args.tile_store_dir,
     )
@@ -442,12 +500,15 @@ def extract_alerts_pipeline(
         date_raster.close()
 
         # Limit to maximum number of events if desired.
-        if extract_alerts_args.max_number_of_events is not None:
+        if (
+            extract_alerts_args.max_number_of_events is not None
+            and len(events) > extract_alerts_args.max_number_of_events
+        ):
             logger.info(
                 f"Limiting to {extract_alerts_args.max_number_of_events} \
                         events"
             )
-            events = events[: extract_alerts_args.max_number_of_events]
+            events = random.sample(events, extract_alerts_args.max_number_of_events)
 
         logger.info(f"Writing {len(events)} windows")
         total_events += len(events)
@@ -455,7 +516,8 @@ def extract_alerts_pipeline(
             dict(
                 event=event,
                 fname=fname,
-                ds_path=ds_root,
+                ds_path=ds_path,
+                args=extract_alerts_args,
             )
             for event in events
         ]
