@@ -7,7 +7,7 @@ import multiprocessing
 import os
 import random
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import fiona
@@ -35,7 +35,7 @@ from rslp.log_utils import get_logger
 logger = get_logger(__name__)
 
 # Time corresponding to 0 in alertDate GeoTIFF files.
-BASE_DATETIME = datetime(2019, 1, 1, tzinfo=UTC)
+BASE_DATETIME = datetime(2019, 1, 1, tzinfo=timezone.utc)
 
 # How big the rslearn windows should be.
 WINDOW_SIZE = 128
@@ -81,7 +81,9 @@ class ExtractAlertsArgs:
 
     conf_prefix: str = "gs://earthenginepartners-hansen/S2alert/alert/"
     date_prefix: str = "gs://earthenginepartners-hansen/S2alert/alertDate/"
-    prediction_utc_time: datetime = field(default_factory=lambda: datetime.now(UTC))
+    prediction_utc_time: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     min_confidence: int = 2
     days: int = 365
     min_area: float = 16.0
@@ -385,7 +387,7 @@ def create_forest_loss_mask(
     date_data: np.ndarray,
     min_confidence: int,
     days: int,
-    current_utc_time: datetime = datetime.now(UTC),
+    current_utc_time: datetime = datetime.now(timezone.utc),
 ) -> np.ndarray:
     """Create a mask based on the given time range and confidence threshold.
 
