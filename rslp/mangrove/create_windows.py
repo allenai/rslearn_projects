@@ -3,7 +3,7 @@
 import argparse
 import hashlib
 import multiprocessing
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pandas as pd
 import shapely
@@ -19,6 +19,10 @@ from upath import UPath
 WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
 
+# We want to get the whole year of 2020
+START_TIME = datetime(2020, 6, 15, tzinfo=timezone.utc)
+END_TIME = datetime(2020, 7, 15, tzinfo=timezone.utc)
+
 
 def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     """Create windows for crop type mapping.
@@ -31,20 +35,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     # Get sample metadata
     sample_id = csv_row["fid"]
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
-
-    valid_time = datetime.strptime(csv_row["valid_time"], "%Y-%m-%d").replace(
-        tzinfo=timezone.utc
-    )
-    start_time, end_time = (
-        valid_time - timedelta(days=15),
-        valid_time + timedelta(days=15),
-    )
-
-    level_123 = str(csv_row["level_123"])
-    ewoc_code = str(csv_row["ewoc_code"])
-    h3_l3_cell = str(csv_row["h3_l3_cell"])
-    quality_score_lc = csv_row["quality_score_lc"]
-    quality_score_ct = csv_row["quality_score_ct"]
+    label = str(csv_row["ref_cls"])
 
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
@@ -69,8 +60,8 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         )
 
     # Check if train or val.
-    group = "h3_sample100_66K"
-    window_name = f"{h3_l3_cell}_{latitude}_{longitude}"
+    group = "sample_100K"
+    window_name = f"{sample_id}_{latitude}_{longitude}"
 
     is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
 
@@ -85,15 +76,11 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         name=window_name,
         projection=dst_projection,
         bounds=bounds,
-        time_range=(start_time, end_time),
+        time_range=(START_TIME, END_TIME),
         options={
             "split": split,
             "sample_id": sample_id,
-            "ewoc_code": ewoc_code,
-            "level_123": level_123,
-            "h3_l3_cell": h3_l3_cell,
-            "quality_score_lc": quality_score_lc,
-            "quality_score_ct": quality_score_ct,
+            "label": label,
             "weight": 1,
         },
     )
@@ -103,7 +90,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     feature = Feature(
         window.get_geometry(),
         {
-            "category": level_123,
+            "category": label,
         },
     )
     layer_dir = window.get_layer_dir(LABEL_LAYER)
