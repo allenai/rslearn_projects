@@ -31,7 +31,7 @@ class ApplyWindowsArgs:
     use_initial_job: bool = False  # TODO: mathc no use_initial_job
     jobs_per_process: int | None = None
     group: str | None = None
-    window: str | None = None
+    names: list[str] | None = None
 
 
 @dataclass
