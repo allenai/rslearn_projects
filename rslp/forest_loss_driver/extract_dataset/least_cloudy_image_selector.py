@@ -10,7 +10,7 @@ import numpy as np
 import tqdm
 from rslearn.config import RasterFormatConfig, RasterLayerConfig
 from rslearn.data_sources import Item
-from rslearn.dataset import Dataset, Window
+from rslearn.dataset import Dataset, Window, WindowLayerData
 from rslearn.utils.raster_format import load_raster_format
 from upath import UPath
 
@@ -129,7 +129,11 @@ def select_least_cloudy_images(
 
     # Determine the least cloudy pre and post images.
     # We copy those images to a new "best_X" layer.
-    # Keep track of the timestamps and write them to a separate file.
+    # We keep track of the timestamps of the source images and write them to a separate
+    # file, which is used by forest-loss.allen.ai. We also copy the layer datas to
+    # match with the new layer, so that any users trying to find the time range via the
+    # layer data (such as earth-system-studio rslearn_import.py script) can find it
+    # there.
     least_cloudy_times = {}
     for pre_or_post in ["pre", "post"]:
         image_list = [
@@ -151,10 +155,21 @@ def select_least_cloudy_images(
 
             layer_time = layer_times[(layer_name, group_idx)]
             least_cloudy_times[dst_layer_name] = layer_time.isoformat()
+
+            # Copy the items for the source layer under the destination layer.
+            serialized_items = layer_datas[layer_name].serialized_item_groups[group_idx]
+            layer_datas[dst_layer_name] = WindowLayerData(
+                layer_name=dst_layer_name,
+                serialized_item_groups=[serialized_items],
+            )
+
     output_fname = "least_cloudy_times.json"
-    logger.info(f"Writing least cloudy times to {window.path / output_fname}...")
+    logger.debug(f"Writing least cloudy times to {window.path / output_fname}...")
     with (window.path / output_fname).open("w") as f:
         json.dump(least_cloudy_times, f)
+
+    logger.debug(f"Saving updated layer datas for {window.path}")
+    window.save_layer_datas(layer_datas)
 
 
 def select_least_cloudy_images_pipeline(
