@@ -251,7 +251,9 @@ def write_event(
     output_mask_raster(event, window)
 
 
-def load_country_polygon(country_data_path: UPath) -> shapely.Polygon:
+def load_country_polygon(
+    country_data_path: UPath, countries: list[str] | None
+) -> shapely.Geometry:
     """Load the country polygon.
 
     Please make sure the necessary AUX Shapefiles are in the same directory as the
@@ -262,11 +264,14 @@ def load_country_polygon(country_data_path: UPath) -> shapely.Polygon:
     aux_files: list[UPath] = []
     for ext in SHAPEFILE_AUX_EXTENSIONS:
         aux_files.append(country_data_path.parent / (prefix + ext))
-    country_wgs84_shp: shapely.Polygon | None = None
+    country_wgs84_shp: shapely.Geometry | None = None
     with get_upath_local(country_data_path, extra_paths=aux_files) as local_fname:
         with fiona.open(local_fname) as src:
             for feat in src:
-                if feat["properties"]["ISO_A2"] != "PE":
+                if (
+                    countries is not None
+                    and feat["properties"]["ISO_A2"] not in countries
+                ):
                     continue
                 cur_shp = shapely.geometry.shape(feat["geometry"])
                 if country_wgs84_shp:
@@ -461,7 +466,9 @@ def extract_alerts(
     # select pixels with recent forest loss based on specified number of days).
     total_events = 0
     logger.info(f"Extract_alerts for {str(extract_alerts_args)}")
-    country_wgs84_shp = load_country_polygon(extract_alerts_args.country_data_path)
+    country_wgs84_shp = load_country_polygon(
+        extract_alerts_args.country_data_path, extract_alerts_args.countries
+    )
     for fname in extract_alerts_args.gcs_tiff_filenames:
         logger.info(f"Read confidences for {fname}")
         conf_data, conf_raster = read_forest_alerts_confidence_raster(
