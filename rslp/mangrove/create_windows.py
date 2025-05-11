@@ -24,13 +24,16 @@ START_TIME = datetime(2020, 6, 15, tzinfo=timezone.utc)
 END_TIME = datetime(2020, 7, 15, tzinfo=timezone.utc)
 
 
-def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
+def create_window(
+    csv_row: pd.Series, ds_path: UPath, window_size: int, group_name: str
+) -> None:
     """Create windows for crop type mapping.
 
     Args:
         csv_row: a row of the dataframe
         ds_path: path to the dataset
         window_size: window size
+        group_name: group name
     """
     # Get sample metadata
     sample_id = csv_row["fid"]
@@ -60,7 +63,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         )
 
     # Check if train or val.
-    group = "sample_100K"
+    group = group_name
     window_name = f"{sample_id}_{latitude}_{longitude}"
 
     is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
@@ -102,6 +105,8 @@ def create_windows_from_csv(
     csv_path: UPath,
     ds_path: UPath,
     window_size: int,
+    is_reference: bool,
+    group_name: str,
 ) -> None:
     """Create windows from csv.
 
@@ -109,10 +114,23 @@ def create_windows_from_csv(
         csv_path: path to the csv file
         ds_path: path to the dataset
         window_size: window size
+        is_reference: whether this is reference points
+        group_name: group name
     """
     df = pd.read_csv(csv_path)
     df.rename(columns={"x": "longitude", "y": "latitude"}, inplace=True)
-    df_sampled = df.sample(100000, random_state=42)
+    # Extract steps for reference points
+    if is_reference:
+        df.index.name = "fid"
+        df.reset_index(inplace=True)
+        cls_lookup = {
+            "Mangrove": 1,
+            "Water": 2,
+            "Other": 3,
+        }
+        df["ref_cls"] = df["res_col"].apply(lambda x: cls_lookup[x])
+    else:
+        df_sampled = df.sample(100000, random_state=42)
     #     ref_cls
     # 1    45850
     # 2    24177
@@ -127,6 +145,7 @@ def create_windows_from_csv(
             csv_row=row,
             ds_path=ds_path,
             window_size=window_size,
+            group_name=group_name,
         )
         for row in csv_rows
     ]
@@ -140,6 +159,12 @@ def create_windows_from_csv(
 if __name__ == "__main__":
     multiprocessing.set_start_method("forkserver")
     parser = argparse.ArgumentParser(description="Create windows from csv")
+    # Whether this is reference points
+    parser.add_argument(
+        "--is_reference",
+        action="store_true",
+        help="Whether this is reference points",
+    )
     parser.add_argument(
         "--csv_path",
         type=str,
@@ -154,6 +179,14 @@ if __name__ == "__main__":
         help="Path to the dataset",
         default="/weka/dfive-default/rslearn-eai/datasets/mangrove/20250508_mangrove",
     )
+    # add group name
+    parser.add_argument(
+        "--group_name",
+        type=str,
+        required=False,
+        help="Group name",
+        default="sample_100K",
+    )
     parser.add_argument(
         "--window_size", type=int, required=False, help="Window size", default=1
     )
@@ -162,4 +195,6 @@ if __name__ == "__main__":
         UPath(args.csv_path),
         UPath(args.ds_path),
         window_size=args.window_size,
+        is_reference=args.is_reference,
+        group_name=args.group_name,
     )
