@@ -128,7 +128,9 @@ def create_windows_from_csv(
             "Water": 2,
             "Other": 3,
         }
-        df["ref_cls"] = df["res_col"].apply(lambda x: cls_lookup[x])
+        # There's no Water in the reference points, Water and Other are combined.
+        df["ref_cls"] = df["ref_col"].apply(lambda x: cls_lookup[x])
+        df_sampled = df
     else:
         df_sampled = df.sample(100000, random_state=42)
     #     ref_cls
