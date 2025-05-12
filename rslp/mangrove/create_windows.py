@@ -36,7 +36,7 @@ def create_window(
         group_name: group name
     """
     # Get sample metadata
-    sample_id = csv_row["fid"]
+    sample_id = int(csv_row["fid"])
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
     label = str(csv_row["ref_cls"])
 
@@ -123,16 +123,19 @@ def create_windows_from_csv(
     if is_reference:
         df.index.name = "fid"
         df.reset_index(inplace=True)
-        cls_lookup = {
-            "Mangrove": 1,
-            "Water": 2,
-            "Other": 3,
-        }
         # There's no Water in the reference points, Water and Other are combined.
-        df["ref_cls"] = df["ref_col"].apply(lambda x: cls_lookup[x])
+        df["ref_cls"] = df["ref_col"]
         df_sampled = df
     else:
         df_sampled = df.sample(100000, random_state=42)
+        cls_lookup = {
+            1: "Mangrove",
+            2: "Water",
+            3: "Other",
+        }
+        df_sampled["ref_cls"] = df_sampled["ref_cls"].apply(
+            lambda x: cls_lookup[int(x)]
+        )
     #     ref_cls
     # 1    45850
     # 2    24177
@@ -172,7 +175,7 @@ if __name__ == "__main__":
         type=str,
         required=False,
         help="Path to the csv file",
-        default="/weka/dfive-default/yawenz/rslearn_projects/rslp/mangrove/csv/gmw_v4_points.csv",
+        default="/weka/dfive-default/yawenz/datasets/Mangrove/csv/gmw_v4_points.csv",
     )
     parser.add_argument(
         "--ds_path",
