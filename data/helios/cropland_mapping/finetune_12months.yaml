@@ -12,7 +12,7 @@ model:
               forward_kwargs:
                 patch_size: {PATCH_SIZE}
         decoders:
-          mangrove:
+          cropland:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
@@ -109,7 +109,7 @@ data:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
         tasks:
-          mangrove:
+          cropland:
             class_path: rslearn.train.tasks.classification.ClassificationTask
             init_args:
               property_name: "category"
@@ -118,7 +118,7 @@ data:
               metric_kwargs:
                 average: "micro"
         input_mapping:
-          mangrove:
+          cropland:
             label: "targets"
     batch_size: 16
     num_workers: 32
