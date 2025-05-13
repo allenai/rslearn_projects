@@ -20,9 +20,7 @@ WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
 
 
-def create_window(
-    csv_row: pd.Series, ds_path: UPath, window_size: int
-) -> None:
+def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     """Create windows for crop type mapping.
 
     Args:
@@ -33,23 +31,33 @@ def create_window(
     # Get sample metadata
     sample_id = csv_row["sample_id"]
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
-    
-    valid_time = datetime.strptime(csv_row["valid_time"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    start_time, end_time = valid_time - timedelta(days=15), valid_time + timedelta(days=15)
-    
+
+    valid_time = datetime.strptime(csv_row["valid_time"], "%Y-%m-%d").replace(
+        tzinfo=timezone.utc
+    )
+    start_time, end_time = (
+        valid_time - timedelta(days=15),
+        valid_time + timedelta(days=15),
+    )
+
+    level_1 = str(csv_row["level_1"])
+    cropland_classes = ["10", "11", "12", "14", "15"]
+
+    # Treat as a binary classification task
+    category = "Cropland" if level_1 in cropland_classes else "Non-Cropland"
+
     level_123 = str(csv_row["level_123"])
     ewoc_code = str(csv_row["ewoc_code"])
     h3_l3_cell = str(csv_row["h3_l3_cell"])
     quality_score_lc = csv_row["quality_score_lc"]
     quality_score_ct = csv_row["quality_score_ct"]
-    
+
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
     dst_crs = get_utm_ups_crs(longitude, latitude)
     dst_projection = Projection(dst_crs, WINDOW_RESOLUTION, -WINDOW_RESOLUTION)
     dst_geometry = src_geometry.to_projection(dst_projection)
 
-    # This is specific for window size = 1.
     if window_size == 1:
         bounds = (
             int(dst_geometry.shp.x),
@@ -94,13 +102,13 @@ def create_window(
             "weight": 1,
         },
     )
-    window.save()
+    # window.save()
 
     # Add the label.
     feature = Feature(
         window.get_geometry(),
         {
-            "category": level_123,
+            "category": category,
         },
     )
     layer_dir = window.get_layer_dir(LABEL_LAYER)
@@ -121,9 +129,6 @@ def create_windows_from_csv(
         window_size: window size
     """
     df_sampled = pd.read_csv(csv_path)
-    # print(df_sampled["valid_time"].min(), df_sampled["valid_time"].max())  # 2017-01-06 2023-10-20
-    # remove rows with latitude > 60, due to S2 images are not available
-    # df_sampled = df_sampled[df_sampled["latitude"] < 60]
     csv_rows = []
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
@@ -151,7 +156,7 @@ if __name__ == "__main__":
         type=str,
         required=False,
         help="Path to the csv file",
-        default="/weka/dfive-default/yawenz/rslearn_projects/rslp/crop_type_mapping/csv/worldcereal_points_filtered_level_123.csv",
+        default="/weka/dfive-default/yawenz/datasets/WorldCereal/csv/worldcereal_points_filtered_level_123.csv",
     )
     parser.add_argument(
         "--ds_path",
