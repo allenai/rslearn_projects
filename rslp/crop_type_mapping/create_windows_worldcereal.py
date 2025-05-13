@@ -102,7 +102,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
             "weight": 1,
         },
     )
-    # window.save()
+    window.save()
 
     # Add the label.
     feature = Feature(
