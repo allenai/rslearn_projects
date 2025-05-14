@@ -109,8 +109,6 @@ data:
               metric_kwargs:
                 average: "micro"
               enable_miou_metric: true
-              miou_metric_kwargs:
-                include_background: false
         input_mapping:
           segment:
             targets: "targets"
