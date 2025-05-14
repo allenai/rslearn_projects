@@ -7,63 +7,44 @@ model:
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
-              #checkpoint_path: "{CHECKPOINT_PATH}"
-              checkpoint_path: "/weka/dfive-default/helios/checkpoints/favyen/20250502_train_budget6000/step168500"
+              checkpoint_path: "{CHECKPOINT_PATH}"
               selector: ["encoder"]
               forward_kwargs:
-                #patch_size: {PATCH_SIZE}
-                patch_size: 8
+                patch_size: {PATCH_SIZE}
         decoders:
           detect:
-            #- class_path: rslearn.models.conv.Conv
-            #  init_args:
-            #    #in_channels: {ENCODER_EMBEDDING_SIZE}
-            #    in_channels: 768
-            #    out_channels: 192
-            #    kernel_size: 3
-            #- class_path: rslearn.models.conv.Conv
-            #  init_args:
-            #    in_channels: 192
-            #    out_channels: 192
-            #    kernel_size: 3
-            #    activation:
-            #      class_path: torch.nn.LayerNorm
-            #      init_args:
-            #        #normalized_shape: [192, {256/PATCH_SIZE}, {256/PATCH_SIZE}]
-            #        normalized_shape: [192, 32, 32]
-            #- class_path: rslearn.models.conv.Conv
-            #  init_args:
-            #    in_channels: 192
-            #    out_channels: 192
-            #    kernel_size: 3
-            #- class_path: rslearn.models.conv.Conv
-            #  init_args:
-            #    in_channels: 192
-            #    out_channels: 192
-            #    kernel_size: 3
-            #    activation:
-            #      class_path: torch.nn.Identity
             - class_path: rslearn.models.conv.Conv
               init_args:
-                #in_channels: {ENCODER_EMBEDDING_SIZE}
-                in_channels: 768
-                out_channels: 256
+                in_channels: {ENCODER_EMBEDDING_SIZE}
+                out_channels: 192
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 192
+                out_channels: 192
+                kernel_size: 3
+                activation:
+                  class_path: torch.nn.LayerNorm
+                  init_args:
+                    normalized_shape: [192, {128/PATCH_SIZE}, {128/PATCH_SIZE}]
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 192
+                out_channels: 192
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 192
+                out_channels: 192
                 kernel_size: 3
                 activation:
                   class_path: torch.nn.Identity
-            - class_path: rslearn.models.detr.Detr
+            - class_path: rslearn.models.faster_rcnn.FasterRCNN
               init_args:
-                predictor:
-                  in_channels: 256
-                  num_classes: 2
-                  num_queries: 32
-                  transformer:
-                    num_encoder_layers: 4
-                    num_decoder_layers: 4
-                    d_model: 256
-                  aux_loss: true
-                criterion:
-                  num_classes: 2
+                downsample_factors: [{PATCH_SIZE}]
+                num_channels: 192
+                num_classes: 3
+                anchor_sizes: [[32]]
     lr: 0.0001
     plateau: true
     plateau_factor: 0.2
@@ -100,7 +81,7 @@ data:
             class_path: rslp.satlas.train.MarineInfraTask
             init_args:
               property_name: "category"
-              classes: ["platform", "turbine"]
+              classes: ["unknown", "platform", "turbine"]
               box_size: 15
               remap_values: [[0, 0.25], [0, 255]]
               image_bands: [2, 1, 0]
@@ -168,7 +149,6 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 30
+        unfreeze_at_epoch: 2
 rslp_project: helios_finetuning
-#rslp_experiment: placeholder
-rslp_experiment: 20250514_marine_20250502_train_budget6000_detr_00
+rslp_experiment: placeholder
