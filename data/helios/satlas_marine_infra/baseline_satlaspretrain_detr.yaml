@@ -5,52 +5,13 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslp.helios.model.Helios
+          - class_path: rslearn.models.swin.Swin
             init_args:
-              #checkpoint_path: "{CHECKPOINT_PATH}"
-              checkpoint_path: "/weka/dfive-default/helios/checkpoints/favyen/20250502_train_budget6000/step168500"
-              selector: ["encoder"]
-              forward_kwargs:
-                #patch_size: {PATCH_SIZE}
-                patch_size: 8
+              pretrained: true
+              input_channels: 9
+              output_layers: [3]
         decoders:
           detect:
-            #- class_path: rslearn.models.conv.Conv
-            #  init_args:
-            #    #in_channels: {ENCODER_EMBEDDING_SIZE}
-            #    in_channels: 768
-            #    out_channels: 192
-            #    kernel_size: 3
-            #- class_path: rslearn.models.conv.Conv
-            #  init_args:
-            #    in_channels: 192
-            #    out_channels: 192
-            #    kernel_size: 3
-            #    activation:
-            #      class_path: torch.nn.LayerNorm
-            #      init_args:
-            #        #normalized_shape: [192, {256/PATCH_SIZE}, {256/PATCH_SIZE}]
-            #        normalized_shape: [192, 32, 32]
-            #- class_path: rslearn.models.conv.Conv
-            #  init_args:
-            #    in_channels: 192
-            #    out_channels: 192
-            #    kernel_size: 3
-            #- class_path: rslearn.models.conv.Conv
-            #  init_args:
-            #    in_channels: 192
-            #    out_channels: 192
-            #    kernel_size: 3
-            #    activation:
-            #      class_path: torch.nn.Identity
-            - class_path: rslearn.models.conv.Conv
-              init_args:
-                #in_channels: {ENCODER_EMBEDDING_SIZE}
-                in_channels: 768
-                out_channels: 256
-                kernel_size: 3
-                activation:
-                  class_path: torch.nn.Identity
             - class_path: rslearn.models.detr.Detr
               init_args:
                 predictor:
@@ -70,6 +31,10 @@ model:
     plateau_patience: 2
     plateau_min_lr: 0
     plateau_cooldown: 10
+    restore_config:
+      restore_path: https://ai2-public-datasets.s3.amazonaws.com/satlas/satlas-model-v1-lowres-band-multi.pth
+      remap_prefixes:
+        - ["backbone.backbone.backbone.", "encoder.0.model."]
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
@@ -78,7 +43,7 @@ data:
       image:
         data_type: "raster"
         layers: ["sentinel2"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
         passthrough: true
         dtype: FLOAT32
       mask:
@@ -120,17 +85,19 @@ data:
     num_workers: 32
     default_config:
       transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 3000
+            valid_range: [0, 1]
+            bands: [0, 1, 2]
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 8160
+            valid_range: [0, 1]
+            bands: [3, 4, 5, 6, 7, 8]
         - class_path: rslp.transforms.mask.Mask
-        - class_path: rslearn.train.transforms.concatenate.Concatenate
-          init_args:
-            selections:
-              image: []
-            output_selector: sentinel2_l2a
-        - class_path: rslp.helios.norm.HeliosNormalize
-          init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
-            band_names:
-              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
       patch_size: 128
       tags:
@@ -165,10 +132,5 @@ trainer:
         save_last: true
         monitor: val_detect/mAP
         mode: max
-    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
-      init_args:
-        module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 30
 rslp_project: helios_finetuning
-#rslp_experiment: placeholder
-rslp_experiment: 20250514_marine_20250502_train_budget6000_detr_00
+rslp_experiment: 20250514_marine_satlaspretrain_swinb_detr_00
