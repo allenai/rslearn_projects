@@ -149,11 +149,7 @@ data:
       groups: ["sample_100K"]
       tags:
         split: "train"
-      sampler:
-        class_path: rslearn.train.dataset.WeightedRandomSamplerFactory
-        init_args:
-          option_key: "weight"
-          num_samples: 50000
+      num_samples: 5000
     val_config:
       groups: ["sample_100K"]
       tags:
