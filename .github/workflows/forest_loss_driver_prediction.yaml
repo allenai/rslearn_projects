@@ -89,8 +89,8 @@ jobs:
         env:
           EXTRA_ARGS: |
             [
-              "--pred_pipeline_config",
-              "rslp/forest_loss_driver/inference/config/forest_loss_driver_predict_pipeline_config.yaml",
+              "--integrated_config",
+              "rslp/forest_loss_driver/config/forest_loss_driver_predict_pipeline_config.yaml",
             ]
           CLUSTERS: |
             ["ai2/jupiter-cirrascale-2"]
