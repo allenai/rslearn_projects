@@ -3,8 +3,8 @@
 import uuid
 from datetime import datetime
 
-from beaker import Beaker, EnvVar, ExperimentSpec, ImageSource
-from beaker.exceptions import ImageNotFound
+from beaker import Beaker, BeakerEnvVar, BeakerExperimentSpec, BeakerImageSource
+from beaker.exceptions import BeakerImageNotFound
 
 from rslp.log_utils import get_logger
 from rslp.utils.beaker import (
@@ -45,7 +45,7 @@ def launch_job(
     gpu_count: int = 0,
     shared_memory: str | None = None,
     priority: str = DEFAULT_PRIORITY,
-    task_specific_env_vars: list[EnvVar] = [],
+    task_specific_env_vars: list[BeakerEnvVar] = [],
     budget: str = DEFAULT_BUDGET,
     workspace: str = DEFAULT_WORKSPACE,
     preemptible: bool = True,
@@ -80,8 +80,7 @@ def launch_job(
 
     logger.info("Starting Beaker client...")
     logger.info(f"Workspace: {workspace}")
-    beaker = Beaker.from_env(default_workspace=workspace)
-    with beaker.session():
+    with Beaker.from_env(default_workspace=workspace) as beaker:
         logger.info("Getting base env vars...")
         base_env_vars = get_base_env_vars()
         logger.info("Generating task name...")
@@ -92,8 +91,8 @@ def launch_job(
         try:
             beaker.image.get(image)
             logger.info(f"Image already exists: {image}")
-            image_source = ImageSource(beaker=image)
-        except ImageNotFound:
+            image_source = BeakerImageSource(beaker=image)
+        except BeakerImageNotFound:
             logger.info(f"Uploading image: {image}")
             # Handle image upload
             image_source = upload_image(image, workspace, beaker)
@@ -102,7 +101,7 @@ def launch_job(
         logger.info("Creating experiment spec...")
         datasets = [create_gcp_credentials_mount()]
         datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
-        experiment_spec = ExperimentSpec.new(
+        experiment_spec = BeakerExperimentSpec.new(
             budget=budget,
             task_name=unique_task_name,
             beaker_image=image_source.beaker,
