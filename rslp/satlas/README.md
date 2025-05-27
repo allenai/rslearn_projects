@@ -124,3 +124,26 @@ Post-processing:
 
 Publishing for wind turbine is not supported yet since it needs to be combined with the
 detected solar farms and published as "renewable energy" GeoJSON.
+
+
+## Solar Farm
+
+The solar farm model segments images for solar farms, i.e., it classifies whether each
+pixel intersects a solar farm or is not-solar-farm. It is meant to be run on a
+quarterly basis, and inputs four Sentinel-2 images (each one being a 30-day mosaic).
+
+Training:
+
+    python -m rslp.rslearn_main model fit --config data/satlas/solar_farm/config.yaml
+
+Inference:
+
+    python -m rslp.main satlas write_jobs_for_year_months --year_months '[[2024, 1]]' --application SOLAR_FARM --out_path 'gs://rslearn-eai/projects/satlas/solar_farm/version-20250108/{year:04d}-{month:02d}/' --project_id earthsystem-dev-c3po --topic_id rslp-job-queue-favyen --days_before 120 --days_after 90
+
+Post-processing:
+
+    TODO
+
+Publishing:
+
+    TODO

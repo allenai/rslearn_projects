@@ -2,15 +2,17 @@
 
 import json
 import os
-import shutil
 import tempfile
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
+import numpy as np
+from PIL import Image
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils.geometry import PixelBounds, Projection
+from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
@@ -72,7 +74,7 @@ APP_IS_RASTER = {
     Application.SOLAR_FARM: True,
     Application.WIND_TURBINE: False,
     Application.MARINE_INFRA: False,
-    Application.SOLAR_FARM: True,
+    Application.TREE_COVER: True,
 }
 
 
@@ -171,6 +173,55 @@ def merge_and_upload_points(
 
     with out_fname.open("w") as f:
         json.dump(fc, f)
+
+
+def merge_and_upload_raster(
+    projection: Projection,
+    bounds: PixelBounds,
+    windows: list[Window],
+    out_fname: UPath,
+) -> None:
+    """Helper function to merge and upload raster predictions.
+
+    Part of the functionality is to inform smoothing of which patches had image data
+    and where the images were actually missing. This is done by using 0 to indicate no
+    data, and incrementing the predicted class otherwise (so that the predicted classes
+    start from 1 instead of from 0).
+
+    Args:
+        projection: the UTM projection that we are working in.
+        windows: the windows that were used for prediction.
+        bounds: the overall bouds of this task.
+        out_fname: the filename to write the merged result.
+    """
+    # Initialize prediction to the invalid value.
+    prediction = np.zeros(
+        (bounds[3] - bounds[1], bounds[2] - bounds[0]), dtype=np.uint8
+    )
+
+    # Collect predictions from each window.
+    for window in windows:
+        if window.projection != projection:
+            raise ValueError(
+                "expected projection of window to match the task projection"
+            )
+
+        window_output_fname = window.path / "layers" / "output" / "image.png"
+        if not window_output_fname.exists():
+            continue
+
+        with window_output_fname.open() as f:
+            cur_im = np.array(Image.open(f))
+
+        col_offset = window.bounds[0] - bounds[0]
+        row_offset = window.bounds[1] - bounds[1]
+        prediction[
+            row_offset : row_offset + PATCH_SIZE, col_offset : col_offset + PATCH_SIZE
+        ] = cur_im + 1
+
+    GeotiffRasterFormat().encode_raster(
+        out_fname.parent, projection, bounds, prediction, fname=out_fname.name
+    )
 
 
 def predict_pipeline(
@@ -313,14 +364,9 @@ def predict_pipeline(
 
     # Merge and upload the outputs.
     if APP_IS_RASTER[application]:
-        src_fname = window_path / "layers" / "output" / "output" / "geotiff.tif"
-
-        with src_fname.open("rb") as src:
-            with out_fname.open("wb") as dst:
-                shutil.copyfileobj(src, dst)
-        # TODO: implement valid patches and such.
-        raise NotImplementedError
-
+        merge_and_upload_raster(
+            projection, bounds, list(tile_to_window.values()), out_fname
+        )
     else:
         merge_and_upload_points(projection, list(tile_to_window.values()), out_fname)
 
