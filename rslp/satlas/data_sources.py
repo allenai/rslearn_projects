@@ -1,5 +1,6 @@
 """Customized data sources for Satlas models."""
 
+import json
 from datetime import timedelta
 from typing import Any
 
@@ -264,6 +265,15 @@ class MonthlyAzureSentinel2(DataSource):
                 self.sentinel2._stac_item_to_item(stac_item) for stac_item in stac_items
             ]
 
+            # Since we made the STAC request, might as well save these to the cache.
+            if self.sentinel2.cache_dir is not None:
+                for item in candidate_items:
+                    cache_fname = self.sentinel2.cache_dir / f"{item.name}.json"
+                    if cache_fname.exists():
+                        continue
+                    with cache_fname.open("w") as f:
+                        json.dump(item.serialize(), f)
+
             # Now we use _find_monthly_matches.
             cur_groups = _find_monthly_matches(
                 geometry, candidate_items, self.period_days, query_config.max_matches
@@ -376,6 +386,15 @@ class MonthlySentinel1(DataSource):
             candidate_items = [
                 self.sentinel1._stac_item_to_item(stac_item) for stac_item in stac_items
             ]
+
+            # Since we made the STAC request, might as well save these to the cache.
+            if self.sentinel1.cache_dir is not None:
+                for item in candidate_items:
+                    cache_fname = self.sentinel1.cache_dir / f"{item.name}.json"
+                    if cache_fname.exists():
+                        continue
+                    with cache_fname.open("w") as f:
+                        json.dump(item.serialize(), f)
 
             # Now we use _find_monthly_matches.
             cur_groups = _find_monthly_matches(
