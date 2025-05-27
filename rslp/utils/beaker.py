@@ -3,7 +3,7 @@
 import os
 from dataclasses import dataclass
 
-from beaker import DataMount, DataSource, EnvVar, ImageSource
+from beaker import BeakerDataMount, BeakerDataSource, BeakerEnvVar, BeakerImageSource
 from beaker.client import Beaker
 
 DEFAULT_WORKSPACE = "ai2/earth-systems"
@@ -18,16 +18,16 @@ class WekaMount:
     mount_path: str
     sub_path: str | None = None
 
-    def to_data_mount(self) -> DataMount:
+    def to_data_mount(self) -> BeakerDataMount:
         """Convert this WekaMount to a Beaker DataMount object."""
-        return DataMount(
-            source=DataSource(weka=self.bucket_name),
+        return BeakerDataMount(
+            source=BeakerDataSource(weka=self.bucket_name),
             mount_path=self.mount_path,
             sub_path=self.sub_path,
         )
 
 
-def get_base_env_vars(use_weka_prefix: bool = False) -> list[EnvVar]:
+def get_base_env_vars(use_weka_prefix: bool = False) -> list[BeakerEnvVar]:
     """Get basic environment variables that should be common across all Beaker jobs.
 
     Args:
@@ -36,50 +36,54 @@ def get_base_env_vars(use_weka_prefix: bool = False) -> list[EnvVar]:
             Weka.
     """
     env_vars = [
-        EnvVar(
+        BeakerEnvVar(
             name="WANDB_API_KEY",  # nosec
             secret="RSLEARN_WANDB_API_KEY",  # nosec
         ),
-        EnvVar(
+        BeakerEnvVar(
             name="GOOGLE_APPLICATION_CREDENTIALS",  # nosec
             value="/etc/credentials/gcp_credentials.json",  # nosec
         ),
-        EnvVar(
+        BeakerEnvVar(
             name="GCLOUD_PROJECT",  # nosec
             value="earthsystem-dev-c3po",  # nosec
         ),
-        EnvVar(
+        BeakerEnvVar(
             name="GOOGLE_CLOUD_PROJECT",  # nosec
             value="earthsystem-dev-c3po",  # nosec
         ),
-        EnvVar(
+        BeakerEnvVar(
             name="WEKA_ACCESS_KEY_ID",  # nosec
             secret="RSLEARN_WEKA_KEY",  # nosec
         ),
-        EnvVar(
+        BeakerEnvVar(
             name="WEKA_SECRET_ACCESS_KEY",  # nosec
             secret="RSLEARN_WEKA_SECRET",  # nosec
         ),
-        EnvVar(
+        BeakerEnvVar(
             name="WEKA_ENDPOINT_URL",  # nosec
             value="https://weka-aus.beaker.org:9000",  # nosec
         ),
-        EnvVar(
+        BeakerEnvVar(
             name="MKL_THREADING_LAYER",
             value="GNU",
+        ),
+        BeakerEnvVar(
+            name="BEAKER_TOKEN",  # nosec
+            secret="RSLP_BEAKER_TOKEN",  # nosec
         ),
     ]
 
     if use_weka_prefix:
         env_vars.append(
-            EnvVar(
+            BeakerEnvVar(
                 name="RSLP_PREFIX",
                 value=os.environ["RSLP_WEKA_PREFIX"],
             )
         )
     else:
         env_vars.append(
-            EnvVar(
+            BeakerEnvVar(
                 name="RSLP_PREFIX",
                 value=os.environ["RSLP_PREFIX"],
             )
@@ -87,7 +91,9 @@ def get_base_env_vars(use_weka_prefix: bool = False) -> list[EnvVar]:
     return env_vars
 
 
-def upload_image(image_name: str, workspace: str, beaker_client: Beaker) -> ImageSource:
+def upload_image(
+    image_name: str, workspace: str, beaker_client: Beaker
+) -> BeakerImageSource:
     """Upload an image to Beaker.
 
     This function handles uploading a Docker image to Beaker's image registry. It creates
@@ -116,14 +122,14 @@ def upload_image(image_name: str, workspace: str, beaker_client: Beaker) -> Imag
         'beaker://my-workspace/myimage'
     """
     image = beaker_client.image.create(image_name, image_name, workspace=workspace)
-    image_source = ImageSource(beaker=image.full_name)
+    image_source = BeakerImageSource(beaker=image.full_name)
     return image_source
 
 
 def create_gcp_credentials_mount(
     secret: str = "RSLEARN_GCP_CREDENTIALS",
     mount_path: str = "/etc/credentials/gcp_credentials.json",
-) -> DataMount:
+) -> BeakerDataMount:
     """Create a mount for the GCP credentials.
 
     Args:
@@ -133,7 +139,7 @@ def create_gcp_credentials_mount(
     Returns:
         DataMount: A Beaker DataMount object that can be used in an experiment specification.
     """
-    return DataMount(
-        source=DataSource(secret=secret),  # nosec
+    return BeakerDataMount(
+        source=BeakerDataSource(secret=secret),  # nosec
         mount_path=mount_path,  # nosec
     )
