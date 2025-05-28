@@ -305,7 +305,11 @@ def get_vessel_detections(
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
-        run_model_predict(DETECT_MODEL_CONFIG, ds_path, extra_args=["--trainer.enable_progress_bar", "false"])
+        run_model_predict(
+            DETECT_MODEL_CONFIG,
+            ds_path,
+            extra_args=["--trainer.enable_progress_bar", "false"],
+        )
 
     # Read the detections.
     detections: list[VesselDetection] = []
