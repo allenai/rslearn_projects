@@ -122,7 +122,7 @@ class Helios(torch.nn.Module):
 
         # Currently we assume the provided model always returns a TokensAndMasks
         # object.
-        tokens_and_masks: TokensAndMasks = self.model(sample, **self.forward_kwargs)
+        tokens_and_masks: TokensAndMasks = self.model(sample, **self.forward_kwargs)[0]
 
         # Apply temporal/modality pooling so we just have one feature per patch.
         features = []
