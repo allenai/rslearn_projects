@@ -136,7 +136,11 @@ def get_vessel_detections(
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
-        run_model_predict(DETECT_MODEL_CONFIG, ds_path)
+        run_model_predict(
+            DETECT_MODEL_CONFIG,
+            ds_path,
+            extra_args=["--trainer.enable_progress_bar", "false"],
+        )
 
     # Read the detections.
     layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
