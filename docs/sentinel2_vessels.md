@@ -131,7 +131,7 @@ docker run \
     -v $PWD/project_data/:/project_data/ \
     --shm-size=15g \
     --gpus all \
-    ghcr.io/allenai/sentinel2-vessel-detection:sentinel2_vessels_v0.0.4
+    ghcr.io/allenai/sentinel2-vessel-detection:sentinel2_vessels_v0.0.6
 ```
 
 ### Auto Documentation
@@ -173,6 +173,8 @@ These bands must be provided. In this case the scene must be processed with proc
 
 ### Docker Container Version History
 
+- v0.0.6: enable Pytorch Lightning environment variable parsing to allow disabling progress bar via environment variable.
+- v0.0.5: add Prometheus metrics.
 - v0.0.4: fix bug predicting attributes in scenes with zero vessel detections.
 - v0.0.3: fix bug with image_files execution.
 - v0.0.2: add attribute prediction (`data_20250205_regress_00`) and use model `data_20250213_02_all_bands`.
