@@ -29,6 +29,7 @@ def launch_finetune(
     configs: list[str] | None = None,
     rslp_project: str = DEFAULT_RSLP_PROJECT,
     cluster: list[str] = DEFAULT_CLUSTER,
+    gpus: int = 1,
 ) -> None:
     """Launch Helios fine-tuning experiments.
 
@@ -45,6 +46,7 @@ def launch_finetune(
             config files.
         rslp_project: optional override for W&B project to use.
         cluster: see beaker_train.
+        gpus: how many GPUs to assign in the Beaker job.
     """
     if tasks is None:
         task_dirs = list(CONFIG_BASE_DIR.iterdir())
@@ -77,6 +79,9 @@ def launch_finetune(
                     "{256/PATCH_SIZE}", str(256 // patch_size)
                 )
                 config_str = config_str.replace(
+                    "{128/PATCH_SIZE}", str(128 // patch_size)
+                )
+                config_str = config_str.replace(
                     "{ENCODER_EMBEDDING_SIZE}", str(encoder_embedding_size)
                 )
 
@@ -102,6 +107,8 @@ def launch_finetune(
                     json.dumps(cluster),
                     "--weka_mounts",
                     json.dumps(weka_mounts),
+                    "--gpus",
+                    str(gpus),
                     "--project_id",
                     rslp_project,
                     "--experiment_id",
