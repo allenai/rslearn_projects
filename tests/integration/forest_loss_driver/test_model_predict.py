@@ -7,13 +7,11 @@ from typing import Any
 
 from upath import UPath
 
-from rslp.forest_loss_driver.inference import (
+from rslp.forest_loss_driver.extract_dataset.least_cloudy_image_selector import (
+    SelectLeastCloudyImagesArgs,
     select_least_cloudy_images_pipeline,
 )
-from rslp.forest_loss_driver.inference.config import (
-    DEFAULT_MODEL_CFG_FNAME,
-    SelectLeastCloudyImagesArgs,
-)
+from rslp.forest_loss_driver.predict_pipeline import MODEL_CFG_FNAME
 from rslp.forest_loss_driver.train import CATEGORIES
 from rslp.log_utils import get_logger
 from rslp.utils.rslearn import run_model_predict
@@ -30,7 +28,7 @@ def test_forest_loss_driver_model_predict(
     # Set up Materialized dataset for best times
     select_least_cloudy_images_pipeline(UPath(tmp_path), SelectLeastCloudyImagesArgs())
     # Run model predict
-    run_model_predict(DEFAULT_MODEL_CFG_FNAME, UPath(tmp_path))
+    run_model_predict(MODEL_CFG_FNAME, UPath(tmp_path))
     output_path = (
         UPath(tmp_path)
         / "windows"
