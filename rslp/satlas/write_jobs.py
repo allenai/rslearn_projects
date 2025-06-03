@@ -232,8 +232,7 @@ def write_jobs(
     application: Application,
     time_range: tuple[datetime, datetime],
     out_path: str,
-    project_id: str,
-    topic_id: str,
+    queue_name: str,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     batch_size: int = 1,
@@ -245,8 +244,7 @@ def write_jobs(
         application: which application to run.
         time_range: the time range to run within. Must have timezone.
         out_path: the output path. It should be specific to the time range.
-        project_id: project containing the Pub/Sub topic.
-        topic_id: the Pub/Sub topic to write the jobs to.
+        queue_name: the Beaker queue to write the job entries to.
         epsg_code: limit tasks to this UTM zone (specified by its EPSG code), default
             run in all UTM zones.
         wgs84_bounds: limit tasks to ones that intersect these WGS84 bounds.
@@ -262,15 +260,14 @@ def write_jobs(
         batch_size=batch_size,
         count=count,
     )
-    rslp.common.worker.write_jobs(project_id, topic_id, "satlas", "predict_multi", jobs)
+    rslp.common.worker.write_jobs(queue_name, "satlas", "predict_multi", jobs)
 
 
 def write_jobs_for_year_months(
     year_months: list[tuple[int, int]],
     application: Application,
     out_path: str,
-    project_id: str,
-    topic_id: str,
+    queue_name: str,
     batch_size: int = 1,
     days_before: int = DEFAULT_DAYS_BEFORE,
     days_after: int = DEFAULT_DAYS_AFTER,
@@ -282,8 +279,7 @@ def write_jobs_for_year_months(
         year_months: list of year-month pairs.
         application: the application to run.
         out_path: the output path with year and month placeholders.
-        project_id: project containing the Pub/Sub topic.
-        topic_id: the Pub/Sub topic to write the jobs to.
+        queue_name: the Beaker queue to write the job entries to.
         worker_params: the worker parameters.
         batch_size: the batch size.
         days_before: how much to pad windows before the year/month.
@@ -312,4 +308,4 @@ def write_jobs_for_year_months(
         jobs.extend(cur_jobs)
 
     logger.info("got a total of %d jobs across year-months", len(jobs))
-    rslp.common.worker.write_jobs(project_id, topic_id, "satlas", "predict_multi", jobs)
+    rslp.common.worker.write_jobs(queue_name, "satlas", "predict_multi", jobs)
