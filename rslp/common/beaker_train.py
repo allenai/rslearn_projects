@@ -9,7 +9,9 @@ from beaker import (
     BeakerConstraints,
     BeakerEnvVar,
     BeakerExperimentSpec,
+    BeakerRetrySpec,
     BeakerTaskResources,
+    BeakerTaskSpec,
 )
 
 from rslp import launcher_lib
@@ -38,6 +40,7 @@ def beaker_train(
     experiment_id: str | None = None,
     extra_args: list[str] = [],
     priority: str = "high",
+    retries: int = 0,
 ) -> None:
     """Launch training for the specified config on Beaker.
 
@@ -59,6 +62,7 @@ def beaker_train(
         experiment_id: override the experiment ID.
         extra_args: extra arguments to pass in the Beaker job.
         priority: the priority to assign to the Beaker job.
+        retries: how many times to retry the Beaker job.
     """
     hparams_configs_dir = None
 
@@ -116,35 +120,41 @@ def beaker_train(
                 )
             datasets = [create_gcp_credentials_mount()]
             datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
-            spec = BeakerExperimentSpec.new(
+            spec = BeakerExperimentSpec(
                 budget=DEFAULT_BUDGET,
                 description=f"{project_id}/{experiment_id}/{run_id}",
-                beaker_image=image_name,
-                priority=priority,
-                command=["python", "-m", "rslp.docker_entrypoint"],
-                arguments=[
-                    "model",
-                    mode,
-                    "--config",
-                    config_path,
-                    "--autoresume=true",
-                    # Ensure that the experiment/project are correctly set (in case the
-                    # user overwrote the one in the configuration file).
-                    "--rslp_experiment",
-                    experiment_id,
-                    "--rslp_project",
-                    project_id,
-                ]
-                + extra_args,
-                constraints=BeakerConstraints(
-                    cluster=cluster,
-                ),
-                preemptible=True,
-                datasets=datasets,
-                env_vars=env_vars,
-                resources=BeakerTaskResources(
-                    gpu_count=gpus, shared_memory=shared_memory
-                ),
+                retry=BeakerRetrySpec(allowed_task_retries=retries),
+                tasks=[
+                    BeakerTaskSpec.new(
+                        beaker_image=image_name,
+                        priority=priority,
+                        command=["python", "-m", "rslp.docker_entrypoint"],
+                        arguments=[
+                            "model",
+                            mode,
+                            "--config",
+                            config_path,
+                            "--autoresume=true",
+                            # Ensure that the experiment/project are correctly set (in case the
+                            # user overwrote the one in the configuration file).
+                            "--rslp_experiment",
+                            experiment_id,
+                            "--rslp_project",
+                            project_id,
+                        ]
+                        + extra_args,
+                        constraints=BeakerConstraints(
+                            cluster=cluster,
+                        ),
+                        preemptible=True,
+                        datasets=datasets,
+                        env_vars=env_vars,
+                        resources=BeakerTaskResources(
+                            gpu_count=gpus, shared_memory=shared_memory
+                        ),
+                        name="main",
+                    )
+                ],
             )
             unique_id = str(uuid.uuid4())[0:8]
             beaker.experiment.create(
