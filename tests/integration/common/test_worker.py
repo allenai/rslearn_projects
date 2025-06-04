@@ -17,8 +17,7 @@ class TestWorker:
         """Flush messages that may be in the test subscription."""
         print("begin flushing messages for test subscription")
         worker_pipeline(
-            project_id=os.environ["TEST_PUBSUB_PROJECT"],
-            subscription_id=os.environ["TEST_PUBSUB_SUBSCRIPTION"],
+            queue_name=os.environ["TEST_QUEUE_NAME"],
             idle_timeout=IDLE_TIMEOUT,
             flush_messages=True,
         )
@@ -28,8 +27,7 @@ class TestWorker:
         """Verify that worker exits within about the idle timeout."""
         start_time = time.time()
         worker_pipeline(
-            project_id=os.environ["TEST_PUBSUB_PROJECT"],
-            subscription_id=os.environ["TEST_PUBSUB_SUBSCRIPTION"],
+            queue_name=os.environ["TEST_QUEUE_NAME"],
             idle_timeout=IDLE_TIMEOUT,
         )
         end_time = time.time()
@@ -50,16 +48,14 @@ class TestWorker:
             "abc",
         ]
         write_jobs(
-            project_id=os.environ["TEST_PUBSUB_PROJECT"],
-            topic_id=os.environ["TEST_PUBSUB_TOPIC"],
+            queue_name=os.environ["TEST_QUEUE_NAME"],
             rslp_project="common",
             rslp_workflow="write_file",
             args_list=[job_args],
         )
         # Run the worker.
         worker_pipeline(
-            project_id=os.environ["TEST_PUBSUB_PROJECT"],
-            subscription_id=os.environ["TEST_PUBSUB_SUBSCRIPTION"],
+            queue_name=os.environ["TEST_QUEUE_NAME"],
             idle_timeout=IDLE_TIMEOUT,
         )
         # Verify that the file was created.
