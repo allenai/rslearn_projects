@@ -117,9 +117,9 @@ def create_window(
 
     # Check if train or val.
     if split_by_polygon:
-        group = "post_polygon_split"
+        group = f"post_polygon_split_window_{window_size}"
     else:
-        group = "post_random_split"
+        group = f"post_random_split_window_{window_size}"
     window_name = f"{polygon_id}_{latitude}_{longitude}"
 
     # If split by polygon id, no samples from the same polygon will be in the same split.
