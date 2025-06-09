@@ -1,0 +1,154 @@
+model:
+  class_path: rslp.maldives_ecosystem_mapping.train.CMLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslp.helios.model.Helios
+            init_args:
+              checkpoint_path: "/weka/dfive-default/helios/checkpoints/henryh/3_galileo_contrastive_base_decoder_4_lr_0.0001_weight_0.05/step312250"
+              selector: ["encoder"]
+              forward_kwargs:
+                patch_size: 4
+        decoders:
+          segment:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[4, 768]]
+                out_channels: 17
+                conv_layers_per_resolution: 2
+                num_channels: {2: 256, 1: 128}
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+    lr: 0.0001
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
+    plateau_min_lr: 0
+    plateau_cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: gs://rslearn-eai/datasets/maldives_ecosystem_mapping/dataset_v1/20241017/
+    inputs:
+      sentinel2_0:
+        data_type: "raster"
+        layers: ["sentinel2_with_planet"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+      sentinel2_1:
+        data_type: "raster"
+        layers: ["sentinel2_with_planet.1"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+      sentinel2_2:
+        data_type: "raster"
+        layers: ["sentinel2_with_planet.2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+      sentinel2_3:
+        data_type: "raster"
+        layers: ["sentinel2_with_planet.3"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+      sentinel2_4:
+        data_type: "raster"
+        layers: ["sentinel2_with_planet.4"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+      sentinel2_5:
+        data_type: "raster"
+        layers: ["sentinel2_with_planet.5"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+      targets:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["label"]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          segment:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 17
+              remap_values: [[0, 1], [0, 255]]
+              zero_is_invalid: true
+              metric_kwargs:
+                average: "micro"
+        input_mapping:
+          segment:
+            targets: "targets"
+    batch_size: 2
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2_0: []
+              sentinel2_1: []
+              sentinel2_2: []
+              sentinel2_3: []
+              sentinel2_4: []
+              sentinel2_5: []
+            output_selector: sentinel2_l2a
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    train_config:
+      patch_size: 128
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2_0: []
+              sentinel2_1: []
+              sentinel2_2: []
+              sentinel2_3: []
+              sentinel2_4: []
+              sentinel2_5: []
+            output_selector: sentinel2_l2a
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+      groups: ["crops_planetscope"]
+      tags:
+        split: train
+    val_config:
+      patch_size: 128
+      groups: ["crops_planetscope"]
+      tags:
+        split: val
+    test_config:
+      patch_size: 128
+      groups: ["crops_planetscope"]
+      tags:
+        split: val
+trainer:
+  max_epochs: 500
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        every_n_epochs: 50
+        save_last: true
+        monitor: val_segment/accuracy
+        mode: max
+rslp_project: 2025_04_29_helios_comparison
+rslp_experiment: 20250501_ecosystem_helios_galileo_frozen_00
