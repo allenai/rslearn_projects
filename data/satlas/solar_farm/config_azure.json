@@ -3,6 +3,21 @@
     "label": {
       "type": "vector"
     },
+    "label_raster": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
     "landsat": {
       "band_sets": [
         {
@@ -33,7 +48,7 @@
         "metadata_cache_dir": "cache/landsat",
         "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
         "query_config": {
-          "max_matches": 6
+          "max_matches": 4
         },
         "sort_by": "cloud_cover"
       },
@@ -55,7 +70,19 @@
       "type": "raster"
     },
     "output": {
-      "type": "vector"
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
     },
     "sentinel1_ascending": {
       "band_sets": [
@@ -86,7 +113,7 @@
           }
         },
         "query_config": {
-          "max_matches": 6
+          "max_matches": 4
         }
       },
       "type": "raster"
@@ -120,7 +147,7 @@
           }
         },
         "query_config": {
-          "max_matches": 6
+          "max_matches": 4
         }
       },
       "type": "raster"
@@ -165,7 +192,7 @@
         "max_cloud_cover": 50,
         "name": "rslp.satlas.data_sources.MonthlyAzureSentinel2",
         "query_config": {
-          "max_matches": 6
+          "max_matches": 4
         },
         "sort_by": "eo:cloud_cover"
       },
