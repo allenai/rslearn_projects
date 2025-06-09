@@ -2,8 +2,7 @@
 
 ## Overview
 - **Model Name**: Landsat Vessel Detection
-- **Model Version**: `v0.0.3`
-- **Tag**: `landsat_vessels_v0.0.3`
+- **Tag**: `landsat_vessels_v0.0.8`
 - **Last Updated**: `2025-02-14`
 
 ---
@@ -63,3 +62,4 @@ Below is an example of the missed vessels, a lot of them are only visible in the
 - **`v0.0.5`**: Fix for new version of rslearn.
 - **`v0.0.6`**: Fix bug with RGB crops.
 - **`v0.0.7`**: Fix Docker container bug.
+- **`v0.0.8`**: enable Pytorch Lightning environment variable parsing to allow disabling progress bar via environment variable.
