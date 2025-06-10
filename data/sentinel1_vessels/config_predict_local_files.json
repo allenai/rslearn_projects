@@ -1,0 +1,66 @@
+{
+  "layers": {
+    "label": {
+      "type": "vector"
+    },
+    "mask": {
+      "band_sets": [
+        {
+          "bands": [
+            "mask"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "type": "vector"
+    },
+    "sentinel1": {
+      "alias": "sentinel1",
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "item_specs": "PLACEHOLDER",
+        "name": "rslearn.data_sources.local_files.LocalFiles",
+        "src_dir": "PLACEHOLDER"
+      },
+      "resampling_method": "cubic",
+      "type": "raster"
+    },
+    "sentinel1_historical": {
+      "alias": "sentinel1",
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "item_specs": "PLACEHOLDER",
+        "name": "rslearn.data_sources.local_files.LocalFiles",
+        "query_config": {
+          "max_matches": 2
+        },
+        "src_dir": "PLACEHOLDER"
+      },
+      "resampling_method": "cubic",
+      "type": "raster"
+    }
+  }
+}
