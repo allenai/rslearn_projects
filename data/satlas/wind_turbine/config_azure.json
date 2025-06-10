@@ -69,6 +69,7 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
+        "duration": "271d",
         "ingest": false,
         "name": "rslp.satlas.data_sources.MonthlySentinel1",
         "query": {
@@ -87,7 +88,8 @@
         },
         "query_config": {
           "max_matches": 6
-        }
+        },
+        "time_offset": "-90d"
       },
       "type": "raster"
     },
@@ -103,6 +105,7 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
+        "duration": "271d",
         "ingest": false,
         "name": "rslp.satlas.data_sources.MonthlySentinel1",
         "query": {
@@ -121,7 +124,8 @@
         },
         "query_config": {
           "max_matches": 6
-        }
+        },
+        "time_offset": "-90d"
       },
       "type": "raster"
     },
@@ -151,8 +155,7 @@
         {
           "bands": [
             "B01",
-            "B09",
-            "B10"
+            "B09"
           ],
           "dtype": "uint16",
           "zoom_offset": -2
@@ -160,6 +163,7 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
+        "duration": "271d",
         "harmonize": true,
         "ingest": false,
         "max_cloud_cover": 50,
@@ -167,7 +171,8 @@
         "query_config": {
           "max_matches": 6
         },
-        "sort_by": "eo:cloud_cover"
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-90d"
       },
       "type": "raster"
     }
