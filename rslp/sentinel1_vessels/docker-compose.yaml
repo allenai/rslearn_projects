@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  # Define the base image
+  base-image:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: base-image:latest   # Tag it as "base-image"
+
+  # Define the sentinel2-vessels service
+  sentinel2-vessels:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sentinel2_vessels:latest
+    depends_on:
+      - base-image
+    ports:
+      - 5555:5555
+    shm_size: '15G'  # Add the shared memory size
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all  # Make all GPUs visible
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]  # Ensure this service can access GPUs
+    runtime: nvidia  # Use the NVIDIA runtime
