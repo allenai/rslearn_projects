@@ -120,6 +120,12 @@ data:
           init_args:
             image_selectors:
               - sentinel2_l2a
+        # To support visualization via image key.
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              pre_0: [2, 1, 0]
+            output_selector: image
       groups: ["peru_interesting", "peru3", "peru3_flagged_in_peru", "nadia2", "nadia3", "brazil_interesting"]
     train_config:
       tags:
