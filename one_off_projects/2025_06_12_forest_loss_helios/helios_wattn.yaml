@@ -126,6 +126,10 @@ data:
             selections:
               pre_0: [2, 1, 0]
             output_selector: image
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 10
       groups: ["peru_interesting", "peru3", "peru3_flagged_in_peru", "nadia2", "nadia3", "brazil_interesting"]
     train_config:
       tags:
