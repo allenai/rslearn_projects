@@ -1,3 +1,9 @@
+This is to train Helios model for forest loss driver classification by adapting the older config at
+`one_off_projects/2025_04_29_helios_comparison/forest_loss_driver/helios_st_finetune.yaml` for new
+version of Helios.
+
+The updated config is at `one_off_projects/2025_06_12_forest_loss_helios/helios_wattn.yaml`.
+
 Setup environment:
 
 ```
@@ -40,5 +46,5 @@ python -m rslp.main forest_loss_driver extract_dataset --ds_path /tmp/rslearn_da
 Apply the model on this dataset:
 
 ```
-python -m rslp rslearn_main model predict --config one_off_projects/2025_06_12_forest_loss_helios/helios_wattn.yaml --data.init_args.path=/tmp/rslearn_dataset/ --load_best=true
+python -m rslp.rslearn_main model predict --config one_off_projects/2025_06_12_forest_loss_helios/helios_wattn.yaml --data.init_args.path=/tmp/rslearn_dataset/ --load_best=true
 ```
