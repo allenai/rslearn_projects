@@ -39,7 +39,7 @@ https://console.cloud.google.com/storage/browser/earthenginepartners-hansen/S2al
 to five examples.
 
 ```
-python -m rslp.main forest_loss_driver extract_alerts --ds_path /tmp/rslearn_dataset/ --extract_alerts_args.gcs_tiff_filenames ["080W_20S_070W_10S.tif"] --extract_alerts_args.countries ["PE"] --extract_alerts_args.tile_store_dir file:///tmp/tile_store/ --extract_alerts_args.index_cache_dir file:///tmp/index_cache_dir/ --extract_alerts_args.workers 32 --extract_alerts_args.max_number_of_events 5 --extract_alerts_args.days 90
+python -m rslp.main forest_loss_driver extract_alerts --ds_path /tmp/rslearn_dataset/ --extract_alerts_args.gcs_tiff_filenames ["080W_20S_070W_10S.tif"] --extract_alerts_args.countries ["PE"] --extract_alerts_args.tile_store_dir file:///tmp/tile_store/ --extract_alerts_args.index_cache_dir file:///tmp/index_cache_dir/ --extract_alerts_args.workers 32 --extract_alerts_args.max_number_of_events 5 --extract_alerts_args.days 90 --extract_alerts_args.prediction_utc_time "2025-03-01 00:00:00+00:00"
 cp data/forest_loss_driver/config_ms.json /tmp/rslearn_dataset/config.json
 mkdir -p /tmp/rslearn_dataset/cache/planetary_computer
 python -m rslp.rslearn_main dataset prepare --root /tmp/rslearn_dataset --workers 32 --retry-max-attempts 5 --retry-backoff-seconds 5
