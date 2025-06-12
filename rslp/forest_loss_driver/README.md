@@ -57,3 +57,56 @@ The current pipeline configuration is stored in [forest_loss_driver_predict_pipe
 
 training doc \
 deployment doc \
+
+## Adding Examples to ES Studio
+
+Here are the steps for adding forest loss driver classification tasks in Brazil and
+Colombia to ES Studio.
+
+First, run the alert extraction pipeline:
+
+   python -m rslp.main forest_loss_driver extract_alerts --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --extract_alerts_args.gcs_tiff_filenames '["080W_00N_070W_10N.tif", "080W_10S_070W_00N.tif", "070W_10S_060W_00N.tif", "070W_00N_060W_10N.tif"]' --extract_alerts_args.countries '["CO"]' --extract_alerts_args.tile_store_dir "file:///weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/tile_store_root_dir/" --extract_alerts_args.index_cache_dir "file:///tmp/index_cache_dir/" --extract_alerts_args.workers 128 --extract_alerts_args.max_number_of_events 5000 --extract_alerts_args.group 20250428_colombia --extract_alerts_args.days 1095 --extract_alerts_args.prediction_utc_time "2025-03-01 00:00:00+00:00"
+   python -m rslp.main forest_loss_driver extract_alerts --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --extract_alerts_args.gcs_tiff_filenames '["050W_20S_040W_10S.tif", "060W_20S_050W_10S.tif", "070W_20S_060W_10S.tif", "040W_10S_030W_00N.tif", "050W_10S_040W_00N.tif", "060W_10S_050W_00N.tif", "070W_10S_060W_00N.tif", "080W_10S_070W_00N.tif", "050W_00N_040W_10N.tif", "060W_00N_050W_10N.tif", "070W_00N_060W_10N.tif", "080W_00N_070W_10N.tif"]' --extract_alerts_args.countries '["BR"]' --extract_alerts_args.tile_store_dir "file:///weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/tile_store_root_dir/" --extract_alerts_args.index_cache_dir "file:///tmp/index_cache_dir/" --extract_alerts_args.workers 128 --extract_alerts_args.max_number_of_events 5000 --extract_alerts_args.group 20250428_brazil --extract_alerts_args.days 1095 --extract_alerts_args.prediction_utc_time "2025-03-01 00:00:00+00:00"
+
+Switch the rslearn dataset configuration file with the one in
+`data/forest_loss_driver/config_rgb_geotiff.json`. This obtains an 8-bit RGB GeoTIFF
+for the Sentinel-2 data, along with Planet Labs imagery. Then run the standard prepare,
+ingest, and materialize steps.
+
+Use this script to populate a label layer:
+
+```python
+import json
+import multiprocessing
+
+import tqdm
+from upath import UPath
+
+def process_window(window_dir):
+    with (window_dir / "layers" / "mask_vector" / "data.geojson").open() as f:
+        fc = json.load(f)
+        assert len(fc["features"]) == 1
+    fc["features"][0]["properties"]["old_label"] = "unknown"
+    fc["features"][0]["properties"]["new_label"] = "unknown"
+    dst_fname = window_dir / "layers" / "label" / "data.geojson"
+    dst_fname.parent.mkdir(parents=True, exist_ok=True)
+    with dst_fname.open("w") as f:
+        json.dump(fc, f)
+    (dst_fname.parent / "completed").touch()
+
+
+if __name__ == "__main__":
+    multiprocessing.set_start_method("forkserver")
+    ds_path = UPath("/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/")
+    window_dirs = list(ds_path.glob("windows/*/*"))
+    p = multiprocessing.Pool(64)
+    outputs = p.imap_unordered(process_window, window_dirs)
+    for _ in tqdm.tqdm(outputs, total=len(window_dirs)):
+        pass
+    p.close()
+```
+
+Now import into ES Studio:
+
+   python tools/rslearn_import.py --dataset-path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --layers best_pre_0 best_pre_1 best_pre_2 best_post_0 best_post_1 best_post_2 label planet_monthly --api-url https://earth-system-studio.allen.ai --project-name 'Forest Loss Driver Brazil 7' --always-upload-rasters --workers 64 --groups 20250428_brazil_phase1
+   python tools/rslearn_import.py --dataset-path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --layers best_pre_0 best_pre_1 best_pre_2 best_post_0 best_post_1 best_post_2 label planet_monthly --api-url https://earth-system-studio.allen.ai --project-name 'Forest Loss Driver Colombia 7' --always-upload-rasters --workers 64 --groups 20250428_colombia_phase1

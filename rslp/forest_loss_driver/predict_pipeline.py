@@ -1,93 +1,21 @@
 """Forest loss driver prediction pipeline."""
 
-from pathlib import Path
+from upath import UPath
 
 from rslp.log_utils import get_logger
-from rslp.utils.rslearn import materialize_dataset, run_model_predict
+from rslp.utils.rslearn import run_model_predict
 
-from .inference import (
-    PredictPipelineConfig,
-    extract_alerts_pipeline,
-    select_least_cloudy_images_pipeline,
-)
+MODEL_CFG_FNAME = "data/forest_loss_driver/config.yaml"
 
 logger = get_logger(__name__)
 
-GCS_FILENAMES = [
-    "070W_10S_060W_00N.tif",
-    "070W_20S_060W_10S.tif",
-    "080W_10S_070W_00N.tif",
-    "080W_20S_070W_10S.tif",
-]
 
-WINDOW_SIZE = 128
-
-# PIPELINE CONFIG USED FOR INFERENCE
-DEFAULT_PREDICT_PIPELINE_CONFIG_PATH = str(
-    Path(__file__).parent
-    / "inference"
-    / "config"
-    / "forest_loss_driver_predict_pipeline_config.yaml"
-)
-
-
-# TODO: Add Data vlaidation steps after each step to check to ensure the directory structure is correct
-class ForestLossDriverPredictionPipeline:
-    """Forest loss driver prediction pipeline."""
-
-    def __init__(self, pred_pipeline_config: PredictPipelineConfig) -> None:
-        """Initialize the pipeline.
-
-        Args:
-            pred_pipeline_config: the prediction pipeline config,
-
-        """
-        self.pred_config = pred_pipeline_config
-        logger.info(f"Initialized pipeline with config: {self.pred_config}")
-
-    def extract_dataset(self) -> None:
-        """Extract the dataset."""
-        extract_alerts_pipeline(
-            self.pred_config.path,
-            self.pred_config.extract_alerts_args,
-        )
-
-        materialize_dataset(
-            self.pred_config.path,
-            self.pred_config.inference_materialize_args,
-        )
-
-        materialize_dataset(
-            self.pred_config.path,
-            self.pred_config.vis_materialize_args,
-        )
-
-        select_least_cloudy_images_pipeline(
-            self.pred_config.path,
-            self.pred_config.select_least_cloudy_images_args,
-        )
-
-    def run_model_predict(self) -> None:
-        """Run the model predict."""
-        # TODO: Add some validation that the extract dataset step is done by checking the dataset bucket
-        logger.info(f"running model predict with config: {self.pred_config}")
-        run_model_predict(
-            self.pred_config.model_cfg_fname,
-            self.pred_config.path,
-        )
-
-
-def extract_dataset_main(pred_pipeline_config: PredictPipelineConfig) -> None:
-    """Extract the dataset."""
-    pipeline = ForestLossDriverPredictionPipeline(
-        pred_pipeline_config=pred_pipeline_config
+def predict_pipeline(
+    ds_path: UPath | str,
+) -> None:
+    """Apply the model on the specified dataset."""
+    ds_path = UPath(ds_path) if not isinstance(ds_path, UPath) else ds_path
+    logger.info(
+        f"running model predict with config {MODEL_CFG_FNAME} on dataset {ds_path}"
     )
-    pipeline.extract_dataset()
-
-
-def run_model_predict_main(pred_pipeline_config: PredictPipelineConfig) -> None:
-    """Run the model predict."""
-    pipeline = ForestLossDriverPredictionPipeline(
-        pred_pipeline_config=pred_pipeline_config
-    )
-    pipeline.run_model_predict()
+    run_model_predict(MODEL_CFG_FNAME, ds_path)
