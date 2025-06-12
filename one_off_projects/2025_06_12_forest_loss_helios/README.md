@@ -36,11 +36,15 @@ python -m rslp.rslearn_main model test --config one_off_projects/2025_06_12_fore
 Build a new unlabeled dataset populated from GLAD forest loss alerts. The example here limits to
 Peru with the 080W_20S_070W_10S.tif grid (see
 https://console.cloud.google.com/storage/browser/earthenginepartners-hansen/S2alert), and limits
-to five examples. We restrict `vis_materialize_args` so that it doesn't try to download Planet
-Labs images (these arguments are for visualization-only layers so it won't affect inference).
+to five examples.
 
 ```
-python -m rslp.main forest_loss_driver extract_dataset --ds_path /tmp/rslearn_dataset/ --extract_alerts_args.gcs_tiff_filenames ["080W_20S_070W_10S.tif"] --extract_alerts_args.countries ["PE"] --extract_alerts_args.tile_store_dir file:///tmp/tile_store/ --extract_alerts_args.index_cache_dir file:///tmp/index_cache_dir/ --extract_alerts_args.workers 128 --extract_alerts_args.max_number_of_events 5 --extract_alerts_args.days 90 --vis_materialize_args.disabled_layers+=planet_pre_0 --vis_materialize_args.disabled_layers+=planet_pre_1 --vis_materialize_args.disabled_layers+=planet_pre_2 --vis_materialize_args.disabled_layers+=planet_post_0 --vis_materialize_args.disabled_layers+=planet_post_1 --vis_materialize_args.disabled_layers+=planet_post_2
+python -m rslp.main forest_loss_driver extract_alerts --ds_path /tmp/rslearn_dataset/ --extract_alerts_args.gcs_tiff_filenames ["080W_20S_070W_10S.tif"] --extract_alerts_args.countries ["PE"] --extract_alerts_args.tile_store_dir file:///tmp/tile_store/ --extract_alerts_args.index_cache_dir file:///tmp/index_cache_dir/ --extract_alerts_args.workers 32 --extract_alerts_args.max_number_of_events 5 --extract_alerts_args.days 90
+cp data/forest_loss_driver/config_ms.json /tmp/rslearn_dataset/config.json
+mkdir -p /tmp/rslearn_dataset/cache/planetary_computer
+python -m rslp.rslearn_main dataset prepare --root /tmp/rslearn_dataset --workers 32 --retry-max-attempts 5 --retry-backoff-seconds 5
+python -m rslp.rslearn_main dataset materialize --root /tmp/rslearn_dataset --workers 32 --retry-max-attempts 5 --retry-backoff-seconds 5 --no-use-initial-job
+python -m rslp.main forest_loss_driver select_least_cloudy_images --ds_path /tmp/rslearn_dataset --select_least_cloudy_images_args.workers=32
 ```
 
 Apply the model on this dataset:
