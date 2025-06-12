@@ -13,3 +13,11 @@ Dataset Versions
   layers (so that the timestamps appear for those layers in ES Studio).
 - 20250605: keep the Planet images but get 6 pre and 6 post Sentinel-2 L2A, Sentinel-1,
   and Landsat images from Planetary Computer and AWS.
+
+
+Dataset Configurations
+----------------------
+
+- config.json: current inference config that uses RGB PNGs.
+- config_ms.json: corresponds to dataset 20250429, it gets L2A images with all bands
+  stored as GeoTIFF.

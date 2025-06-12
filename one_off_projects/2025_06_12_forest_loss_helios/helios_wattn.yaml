@@ -140,6 +140,9 @@ data:
     test_config:
       tags:
         split: val
+    predict_config:
+      groups: ["default"]
+      skip_targets: true
 trainer:
   max_epochs: 100
   callbacks:
@@ -156,5 +159,10 @@ trainer:
         save_last: true
         monitor: val_class/accuracy
         mode: max
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: placeholder
+        output_layer: output
+        selector: ["class"]
 rslp_project: 2025_06_12_forest_loss_helios
 rslp_experiment: 20250612_forest_loss_driver_helios_wattn_finetune_00
