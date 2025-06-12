@@ -17,7 +17,9 @@ Train the model (see `rslp/helios/README.md` for how the image is created):
 python -m rslp.main common beaker_train --config_path one_off_projects/2025_06_12_forest_loss_helios/helios_wattn.yaml --image_name favyen/rslphelios2 --cluster+=ai2/jupiter-cirrascale-2 --weka_mounts+='{"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}'
 ```
 
-Apply the model on the test set and produce visualizations:
+Apply the model on the test set and produce visualizations. Note that this may have an error at the
+end due to error writing confusion matrix since W&B is not enabled by default (unless
+`--force_log=true` is passed), but the visualizations should still be produced.
 
 ```
 ln -s /PATH/TO/HELIOS /opt/helios
