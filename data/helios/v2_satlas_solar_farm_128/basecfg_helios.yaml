@@ -1,0 +1,65 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslp.helios.model.Helios
+            init_args:
+              checkpoint_path: "{CHECKPOINT_PATH}"
+              selector: ["encoder"]
+              forward_kwargs:
+                patch_size: {PATCH_SIZE}
+        decoders:
+          segment:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[{PATCH_SIZE}, {ENCODER_EMBEDDING_SIZE}]]
+                out_channels: 2
+                conv_layers_per_resolution: 2
+                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+data:
+  init_args:
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+      mask:
+        data_type: "raster"
+        layers: ["mask"]
+        bands: ["mask"]
+        passthrough: true
+        dtype: FLOAT32
+        is_target: true
+      targets:
+        data_type: "raster"
+        layers: ["label_raster"]
+        bands: ["label"]
+        dtype: INT32
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslp.transforms.mask.Mask
+          init_args:
+            selectors: ["sentinel2_l2a"]
+    train_config:
+      transforms:
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslp.transforms.mask.Mask
+          init_args:
+            selectors: ["sentinel2_l2a"]
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]

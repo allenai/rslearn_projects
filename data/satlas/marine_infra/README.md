@@ -1,0 +1,2 @@
+- Original dataset with Sentinel-2 L1C images (config.json): `rslearn-eai/datasets/marine_infra/dataset_v1/20241210/`
+- Dataset with Sentinel-2 L2A, Landsat, and Sentinel-1 images (config_azure.json): `rslearn-eai/datasets/marine_infra/dataset_v1/20250605/`

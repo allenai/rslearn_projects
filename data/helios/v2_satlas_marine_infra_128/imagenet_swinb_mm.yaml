@@ -1,0 +1,18 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+            init_args:
+              encoder:
+                class_path: rslearn.models.swin.Swin
+                init_args:
+                  pretrained: true
+                  input_channels: 24
+                  output_layers: [1, 3, 5, 7]
+              image_channels: 24
+          - class_path: rslearn.models.fpn.Fpn
+            init_args:
+              in_channels: [128, 256, 512, 1024]
+              out_channels: 128

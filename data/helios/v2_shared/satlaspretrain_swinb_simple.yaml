@@ -1,0 +1,6 @@
+model:
+  init_args:
+    restore_config:
+      restore_path: https://ai2-public-datasets.s3.amazonaws.com/satlas/satlas-model-v1-lowres-band-multi.pth
+      remap_prefixes:
+        - ["backbone.backbone.backbone.", "encoder.0.model."]

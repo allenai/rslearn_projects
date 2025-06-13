@@ -238,7 +238,7 @@ def generate_combinations(base_config: dict, hparams_config: dict) -> list[dict]
 
 def create_custom_configs(
     config_path: str, hparams_config_path: str, custom_dir: str
-) -> dict[str, str]:
+) -> dict[str, list[str]]:
     """Create custom configs with different hyperparameter combinations.
 
     Args:
@@ -261,5 +261,5 @@ def create_custom_configs(
         config_filename = os.path.join(custom_dir, f"{experiment_id}_{idx}.yaml")
         with open(config_filename, "w") as f:
             yaml.dump(config, f)
-        configs_paths[f"run_{idx}"] = config_filename
+        configs_paths[f"run_{idx}"] = [config_filename]
     return configs_paths

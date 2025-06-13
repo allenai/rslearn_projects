@@ -3,6 +3,42 @@
     "label": {
       "type": "vector"
     },
+    "landsat": {
+      "band_sets": [
+        {
+          "bands": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B9",
+            "B10",
+            "B11"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B8"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "ingest": false,
+        "metadata_cache_dir": "cache/landsat",
+        "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
+        "query_config": {
+          "max_matches": 6
+        },
+        "sort_by": "cloud_cover"
+      },
+      "type": "raster"
+    },
     "mask": {
       "band_sets": [
         {
@@ -21,7 +57,7 @@
     "output": {
       "type": "vector"
     },
-    "sentinel1": {
+    "sentinel1_ascending": {
       "band_sets": [
         {
           "bands": [
@@ -32,6 +68,8 @@
         }
       ],
       "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "271d",
         "ingest": false,
         "name": "rslp.satlas.data_sources.MonthlySentinel1",
         "query": {
@@ -43,11 +81,51 @@
               "VV",
               "VH"
             ]
+          },
+          "sat:orbit_state": {
+            "eq": "ascending"
           }
         },
         "query_config": {
           "max_matches": 6
+        },
+        "time_offset": "-90d"
+      },
+      "type": "raster"
+    },
+    "sentinel1_descending": {
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
         }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "271d",
+        "ingest": false,
+        "name": "rslp.satlas.data_sources.MonthlySentinel1",
+        "query": {
+          "sar:instrument_mode": {
+            "eq": "IW"
+          },
+          "sar:polarizations": {
+            "eq": [
+              "VV",
+              "VH"
+            ]
+          },
+          "sat:orbit_state": {
+            "eq": "descending"
+          }
+        },
+        "query_config": {
+          "max_matches": 6
+        },
+        "time_offset": "-90d"
       },
       "type": "raster"
     },
@@ -77,14 +155,15 @@
         {
           "bands": [
             "B01",
-            "B09",
-            "B10"
+            "B09"
           ],
           "dtype": "uint16",
           "zoom_offset": -2
         }
       ],
       "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "271d",
         "harmonize": true,
         "ingest": false,
         "max_cloud_cover": 50,
@@ -92,19 +171,10 @@
         "query_config": {
           "max_matches": 6
         },
-        "sort_by": "eo:cloud_cover"
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-90d"
       },
       "type": "raster"
-    }
-  },
-  "tile_store": {
-    "class_path": "rslearn.tile_stores.default.DefaultTileStore",
-    "init_args": {
-      "geotiff_options": {
-        "compress": "zstd",
-        "predictor": 2,
-        "zstd_level": 1
-      }
     }
   }
 }

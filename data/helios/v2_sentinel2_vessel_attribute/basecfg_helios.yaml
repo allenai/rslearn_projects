@@ -1,0 +1,100 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslp.helios.model.Helios
+            init_args:
+              checkpoint_path: "{CHECKPOINT_PATH}"
+              selector: ["encoder"]
+              forward_kwargs:
+                patch_size: {PATCH_SIZE}
+        decoders:
+          length:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: {ENCODER_EMBEDDING_SIZE}
+                out_channels: 1
+                num_conv_layers: 1
+                num_fc_layers: 2
+            - class_path: rslearn.train.tasks.regression.RegressionHead
+          width:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: {ENCODER_EMBEDDING_SIZE}
+                out_channels: 1
+                num_conv_layers: 1
+                num_fc_layers: 2
+            - class_path: rslearn.train.tasks.regression.RegressionHead
+          speed:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: {ENCODER_EMBEDDING_SIZE}
+                out_channels: 1
+                num_conv_layers: 1
+                num_fc_layers: 2
+            - class_path: rslearn.train.tasks.regression.RegressionHead
+          heading_x:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: {ENCODER_EMBEDDING_SIZE}
+                out_channels: 1
+                num_conv_layers: 1
+                num_fc_layers: 2
+            - class_path: rslearn.train.tasks.regression.RegressionHead
+          heading_y:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: {ENCODER_EMBEDDING_SIZE}
+                out_channels: 1
+                num_conv_layers: 1
+                num_fc_layers: 2
+            - class_path: rslearn.train.tasks.regression.RegressionHead
+          ship_type:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: {ENCODER_EMBEDDING_SIZE}
+                out_channels: 9
+                num_conv_layers: 1
+                num_fc_layers: 2
+            - class_path: rslearn.train.tasks.classification.ClassificationHead
+data:
+  init_args:
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+      info:
+        data_type: "vector"
+        layers: ["info"]
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              image: []
+            output_selector: sentinel2_l2a
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    train_config:
+      transforms:
+        - class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeFlip
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              image: []
+            output_selector: sentinel2_l2a
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
