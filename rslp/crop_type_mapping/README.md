@@ -54,4 +54,6 @@ rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop
 ### Step 3. Finetune Helios
 
 - Helios Checkpoint: `/weka/dfive-default/helios/checkpoints/joer/v0.1_base_latent_mim_space_time/step165000`
-- Model Configuration:
+- Model Configuration: `data/helios/v2_crop_type_mapping/finetune_s1_s2.yaml`
+
+Run the command to start finetuning Helios for crop type classification.
