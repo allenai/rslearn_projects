@@ -4,7 +4,13 @@ import os
 import shutil
 import uuid
 
-from beaker import Beaker, Constraints, EnvVar, ExperimentSpec, Priority, TaskResources
+from beaker import (
+    Beaker,
+    BeakerConstraints,
+    BeakerEnvVar,
+    BeakerExperimentSpec,
+    BeakerTaskResources,
+)
 
 from rslp import launcher_lib
 from rslp.utils.beaker import (
@@ -31,6 +37,7 @@ def beaker_train(
     project_id: str | None = None,
     experiment_id: str | None = None,
     extra_args: list[str] = [],
+    priority: str = "high",
 ) -> None:
     """Launch training for the specified config on Beaker.
 
@@ -51,6 +58,7 @@ def beaker_train(
         project_id: override the project ID.
         experiment_id: override the experiment ID.
         extra_args: extra arguments to pass in the Beaker job.
+        priority: the priority to assign to the Beaker job.
     """
     hparams_configs_dir = None
 
@@ -80,22 +88,20 @@ def beaker_train(
     if hparams_configs_dir is not None:
         shutil.rmtree(hparams_configs_dir)
 
-    beaker = Beaker.from_env(default_workspace=workspace)
-
-    for run_id, config_path in config_paths.items():
-        with beaker.session():
+    with Beaker.from_env(default_workspace=workspace) as beaker:
+        for run_id, config_path in config_paths.items():
             env_vars = get_base_env_vars()
             env_vars.extend(
                 [
-                    EnvVar(
+                    BeakerEnvVar(
                         name="RSLP_PROJECT",  # nosec
                         value=project_id,
                     ),
-                    EnvVar(
+                    BeakerEnvVar(
                         name="RSLP_EXPERIMENT",
                         value=experiment_id,
                     ),
-                    EnvVar(
+                    BeakerEnvVar(
                         name="RSLP_RUN_ID",
                         value=run_id,
                     ),
@@ -103,18 +109,18 @@ def beaker_train(
             )
             if username:
                 env_vars.append(
-                    EnvVar(
+                    BeakerEnvVar(
                         name="WANDB_USERNAME",
                         value=username,
                     )
                 )
             datasets = [create_gcp_credentials_mount()]
             datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
-            spec = ExperimentSpec.new(
+            spec = BeakerExperimentSpec.new(
                 budget=DEFAULT_BUDGET,
                 description=f"{project_id}/{experiment_id}/{run_id}",
                 beaker_image=image_name,
-                priority=Priority.high,
+                priority=priority,
                 command=["python", "-m", "rslp.docker_entrypoint"],
                 arguments=[
                     "model",
@@ -130,13 +136,17 @@ def beaker_train(
                     project_id,
                 ]
                 + extra_args,
-                constraints=Constraints(
+                constraints=BeakerConstraints(
                     cluster=cluster,
                 ),
                 preemptible=True,
                 datasets=datasets,
                 env_vars=env_vars,
-                resources=TaskResources(gpu_count=gpus, shared_memory=shared_memory),
+                resources=BeakerTaskResources(
+                    gpu_count=gpus, shared_memory=shared_memory
+                ),
             )
             unique_id = str(uuid.uuid4())[0:8]
-            beaker.experiment.create(f"{project_id}_{experiment_id}_{unique_id}", spec)
+            beaker.experiment.create(
+                name=f"{project_id}_{experiment_id}_{unique_id}", spec=spec
+            )
