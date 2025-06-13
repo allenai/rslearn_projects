@@ -30,6 +30,8 @@ def launch_finetune(
     rslp_project: str = DEFAULT_RSLP_PROJECT,
     cluster: list[str] = DEFAULT_CLUSTER,
     gpus: int = 1,
+    priority: str = "high",
+    retries: int = 0,
 ) -> None:
     """Launch Helios fine-tuning experiments.
 
@@ -47,6 +49,8 @@ def launch_finetune(
         rslp_project: optional override for W&B project to use.
         cluster: see beaker_train.
         gpus: how many GPUs to assign in the Beaker job.
+        priority: what priority to use.
+        retries: Beaker job retries.
     """
     if tasks is None:
         task_dirs = list(CONFIG_BASE_DIR.iterdir())
@@ -113,6 +117,10 @@ def launch_finetune(
                     rslp_project,
                     "--experiment_id",
                     experiment_id,
+                    "--priority",
+                    priority,
+                    "--retries",
+                    str(retries),
                 ]
                 logger.info(f"Launching job by running: {args}")
                 subprocess.check_call(args)  # nosec

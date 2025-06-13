@@ -1,4 +1,4 @@
-beaker-py>=1.32,<2.0
+beaker-py>=2.0
 fastapi>=0.115
 google-cloud-bigtable>=2.18
 google-cloud-pubsub>=2.18
