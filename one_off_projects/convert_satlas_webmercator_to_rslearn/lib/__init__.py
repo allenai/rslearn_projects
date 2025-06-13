@@ -109,7 +109,7 @@ def convert_window(
 
     layer_name = "label"
     layer_dir = window.get_layer_dir(layer_name)
-    GeojsonVectorFormat().encode_vector(layer_dir, dst_projection, features)
+    GeojsonVectorFormat().encode_vector(layer_dir, features)
     window.mark_layer_completed(layer_name)
 
     # (3) Write mask corresponding to old window projected onto new window.

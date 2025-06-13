@@ -1,0 +1,54 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.swin.Swin
+            init_args:
+              pretrained: false
+              input_channels: 2
+              output_layers: [1, 3, 5, 7]
+          - class_path: rslearn.models.fpn.Fpn
+            init_args:
+              in_channels: [128, 256, 512, 1024]
+              out_channels: 128
+data:
+  init_args:
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["sentinel1"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      mask:
+        data_type: "raster"
+        layers: ["mask"]
+        bands: ["mask"]
+        passthrough: true
+        dtype: INT32
+        is_target: true
+      targets:
+        data_type: "vector"
+        layers: ["label"]
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 250
+            valid_range: [0, 4]
+        - class_path: rslp.transforms.mask.Mask
+    train_config:
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 250
+            valid_range: [0, 4]
+        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["image"]
+            box_selectors: ["target/detect"]

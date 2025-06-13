@@ -2,3 +2,5 @@
 wandb/
 rslp/__pycache__/
 **__pycache__
+rslp/crop_type_mapping/csv/
+rslp/crop_type_mapping/geoparquets/

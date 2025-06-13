@@ -23,75 +23,53 @@ LABEL_LAYER = "label"
 START_TIME = datetime(2023, 3, 1, tzinfo=timezone.utc)
 END_TIME = datetime(2023, 3, 31, tzinfo=timezone.utc)
 
+# https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v200
+WORLDCOVER_CLASSES = {
+    10: "Tree cover",
+    20: "Shrubland",
+    30: "Grassland",
+    40: "Cropland",
+    50: "Built-up",
+    60: "Bare/sparse vegetation",
+    70: "Snow and ice",
+    80: "Water",
+    90: "Herbaceous wetland",
+    95: "Mangroves",
+    100: "Moss and lichen",
+}
 
-def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
+
+def process_csv(csv_path: UPath) -> pd.DataFrame:
     """Create windows for crop type mapping.
 
     Args:
         csv_path: path to the csv file
-        num_pixels: number of points to sample from each polygon
     """
     df = pd.read_csv(csv_path)
-    df["latitude"], df["longitude"] = df["y"], df["x"]
+    print(df.groupby("value").size())
 
-    df = df[
-        [
-            "unique_id",
-            "latitude",
-            "longitude",
-            "LR_plantin",
-            "LR_Harvest",
-            "LR_harvetd",
-            "Category",
-        ]
-    ]
-    print(df.groupby("Category").size())
-    print(df["unique_id"].nunique())  # 812 in total
+    # Only keep Water/Built-up.
+    df = df[df["value"].isin([80, 50])]
+    df["category"] = df["value"].apply(lambda x: WORLDCOVER_CLASSES[int(x)])
 
-    # Sample per polygon
-    df_sampled = (
-        df.groupby("unique_id")
-        .apply(
-            lambda x: x.sample(num_pixels, random_state=42)
-            if len(x) > num_pixels
-            else x
-        )
-        .reset_index(drop=True)
-    )
-
-    # Post-process on category.
-    df_sampled.loc[df_sampled["Category"] == "Exoticetrees/forest", "Category"] = (
-        "Trees"
-    )
-    df_sampled.loc[df_sampled["Category"] == "Nativetrees/forest", "Category"] = "Trees"
-    df_sampled = df_sampled[~df_sampled["Category"].isin(["Vegetables", "Legumes"])]
-    print(df_sampled.shape)
-    print(df_sampled.groupby("Category").size())
-    print(df_sampled["unique_id"].nunique())
-
-    return df_sampled
+    return df
 
 
 def create_window(
-    csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, window_size: int
+    csv_row: pd.Series, ds_path: UPath, group_name: str, window_size: int
 ) -> None:
     """Create windows for crop type mapping.
 
     Args:
         csv_row: a row of the dataframe
         ds_path: path to the dataset
-        split_by_polygon: whether to split by polygon
+        group_name: name of the group
         window_size: window size
     """
     # Get sample metadata
-    polygon_id = csv_row["unique_id"]
+    unique_id = csv_row.name
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
-    planted_date, harvested_or_not, harvested_date = (
-        csv_row["LR_plantin"],
-        csv_row["LR_Harvest"],
-        csv_row["LR_harvetd"],
-    )
-    category = csv_row["Category"]
+    category = csv_row["category"]
 
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
@@ -115,18 +93,10 @@ def create_window(
             int(dst_geometry.shp.y) + window_size // 2,
         )
 
-    # Check if train or val.
-    if split_by_polygon:
-        group = "post_polygon_split"
-    else:
-        group = "post_random_split"
-    window_name = f"{polygon_id}_{latitude}_{longitude}"
+    group = f"{group_name}_window_{window_size}"
+    window_name = f"{unique_id}_{latitude}_{longitude}"
 
-    # If split by polygon id, no samples from the same polygon will be in the same split.
-    if split_by_polygon:
-        is_val = hashlib.md5(str(polygon_id).encode()).hexdigest()[0] in ["0", "1"]
-    else:
-        is_val = hashlib.md5(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
+    is_val = hashlib.md5(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
 
     if is_val:
         split = "val"
@@ -142,11 +112,7 @@ def create_window(
         time_range=(START_TIME, END_TIME),
         options={
             "split": split,
-            "planted_date": planted_date,
-            "harvested_or_not": harvested_or_not,
-            "harvested_date": harvested_date,
             "category": category,
-            "weight": 1,
         },
     )
     window.save()
@@ -166,20 +132,18 @@ def create_window(
 def create_windows_from_csv(
     csv_path: UPath,
     ds_path: UPath,
-    split_by_polygon: bool,
+    group_name: str,
     window_size: int,
-    num_pixels: int,
 ) -> None:
     """Create windows from csv.
 
     Args:
         csv_path: path to the csv file
         ds_path: path to the dataset
-        split_by_polygon: whether to split by polygon
+        group_name: name of the group
         window_size: window size
-        num_pixels: number of pixels to sample from each polygon
     """
-    df_sampled = process_csv(csv_path, num_pixels)
+    df_sampled = process_csv(csv_path)
     csv_rows = []
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
@@ -188,7 +152,7 @@ def create_windows_from_csv(
         dict(
             csv_row=row,
             ds_path=ds_path,
-            split_by_polygon=split_by_polygon,
+            group_name=group_name,
             window_size=window_size,
         )
         for row in csv_rows
@@ -206,39 +170,33 @@ if __name__ == "__main__":
     parser.add_argument(
         "--csv_path",
         type=str,
-        required=False,
+        required=True,
         help="Path to the csv file",
-        default="gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv",
     )
     parser.add_argument(
         "--ds_path",
         type=str,
-        required=False,
+        required=True,
         help="Path to the dataset",
-        default="/weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi",
     )
     parser.add_argument(
-        "--window_size", type=int, required=False, help="Window size", default=1
+        "--group_name",
+        type=str,
+        required=False,
+        help="Window group name",
+        default="worldcover",
     )
     parser.add_argument(
-        "--num_pixels",
+        "--window_size",
         type=int,
         required=False,
-        help="Number of pixels to sample from each polygon",
-        default=10,
-    )
-    parser.add_argument(
-        "--split_by_polygon",
-        type=bool,
-        required=False,
-        help="Split by polygon",
-        default=False,
+        help="Window size",
+        default=1,
     )
     args = parser.parse_args()
     create_windows_from_csv(
         UPath(args.csv_path),
         UPath(args.ds_path),
-        split_by_polygon=args.split_by_polygon,
-        window_size=args.window_size,
-        num_pixels=args.num_pixels,
+        args.group_name,
+        args.window_size,
     )

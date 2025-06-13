@@ -1,0 +1,2 @@
+- Original dataset with Sentinel-2 L1C images (config.json): `rslearn-eai/datasets/solar_farm/dataset_v1/20250108/`
+- Dataset with Sentinel-2 L2A, Landsat, and Sentinel-1 images (config_azure.json): `rslearn-eai/datasets/solar_farm/dataset_v1/20250605/`
