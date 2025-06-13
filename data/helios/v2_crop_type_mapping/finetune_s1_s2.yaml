@@ -16,7 +16,7 @@ model:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
-                out_channels: 12
+                out_channels: 11
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
     plateau: true
@@ -27,6 +27,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
+    path: weka://dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi
     inputs:
       sentinel2_0:
         data_type: "raster"
@@ -145,9 +146,6 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
               sentinel1: ["vv", "vh"]
-        - class_path: rslp.transforms.mask.Mask
-          init_args:
-            selectors: ["sentinel2_l2a", "sentinel1"]
     train_config:
       groups: ["groundtruth_random_split_window_32", "worldcover_window_32"]
       tags:
