@@ -56,4 +56,7 @@ rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop
 - Helios Checkpoint: `/weka/dfive-default/helios/checkpoints/joer/v0.1_base_latent_mim_space_time/step165000`
 - Model Configuration: `data/helios/v2_crop_type_mapping/finetune_s1_s2.yaml`
 
-Run the command to start finetuning Helios for crop type classification.
+Run the command to start finetuning Helios for crop type classification:
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/joer/v0.1_base_latent_mim_space_time/step165000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios2 --config_paths+=data/helios/v2_crop_type_mapping/finetune_s1_s2.yaml --cluster+=ai2/ceres-cirrascale --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_11_helios_finetuning --experiment_id v2_crop_type_classification_helios_S1_S2
+```
