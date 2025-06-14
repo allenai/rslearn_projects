@@ -4,9 +4,12 @@ import pandas as pd
 import requests
 
 
-def process_worldcereal_data(api_url: str = "https://ewoc-rdm-api.iiasa.ac.at") -> None:
-    """Fetch and process WorldCereal collections data."""
-    # Define a timeout for requests
+def process_worldcereal_data(api_url: str) -> None:
+    """Fetch and process WorldCereal collections data.
+
+    Args:
+        api_url (str): The URL of the WorldCereal API.
+    """
     timeout = 10  # seconds
 
     # Initial request to get collections
@@ -36,9 +39,8 @@ def process_worldcereal_data(api_url: str = "https://ewoc-rdm-api.iiasa.ac.at") 
         accumulated_count += len(res2["items"])
         print(f"Accumulated Collections Count: {accumulated_count}")
 
-    print(items[0])  # Print the first item for inspection
+    print(items[0])
 
-    # Put all items into a pandas dataframe
     df = pd.DataFrame(items)
     df.to_csv("worldcereal_collections.csv", index=False)
 
@@ -73,5 +75,4 @@ def process_worldcereal_data(api_url: str = "https://ewoc-rdm-api.iiasa.ac.at") 
                     file.write(response.content)
 
 
-# Call the function to execute the process
-process_worldcereal_data()
+process_worldcereal_data("https://ewoc-rdm-api.iiasa.ac.at")
