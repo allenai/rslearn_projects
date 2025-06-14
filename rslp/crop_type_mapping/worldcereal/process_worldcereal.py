@@ -15,7 +15,6 @@ def process_worldcereal_data(data_dir: str, output_csv: str) -> None:
     """
     all_items = []
 
-    # for each file in the directory, read the file, and print the number of features
     for file in os.listdir(data_dir):
         gdf = gpd.read_parquet(os.path.join(data_dir, file))
         print(f"{file}: {len(gdf)}")
@@ -40,14 +39,11 @@ def process_worldcereal_data(data_dir: str, output_csv: str) -> None:
 
         all_items.extend(items)
 
-    # convert all_items to a pandas dataframe
     df = pd.DataFrame(all_items)
-
-    # save the dataframe to a csv file
     df.to_csv(output_csv, index=True)
 
 
-# Example usage
+# Save the WorldCereal data to a csv file
 WC_DATA_DIR = (
     "/weka/dfive-default/yawenz/rslearn_projects/rslp/crop_type_mapping/geoparquets"
 )
