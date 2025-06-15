@@ -1,4 +1,4 @@
-"""This script processes the WorldCereal dataset to create global labels."""
+"""This script requests the WorldCereal collections data."""
 
 import pandas as pd
 import requests

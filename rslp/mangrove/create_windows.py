@@ -164,7 +164,6 @@ def create_windows_from_csv(
 if __name__ == "__main__":
     multiprocessing.set_start_method("forkserver")
     parser = argparse.ArgumentParser(description="Create windows from csv")
-    # Whether this is reference points
     parser.add_argument(
         "--is_reference",
         action="store_true",
