@@ -1,26 +1,32 @@
 """This script is used to analyze the WorldCereal dataset."""
 
+import os
+
 import pandas as pd
 
-# df = pd.read_csv("/weka/dfive-default/yawenz/rslearn_projects/rslp/crop_type_mapping/csv/worldcereal_points.csv")
+# Load the WorldCereal dataset
+csv_dir = "/weka/dfive-default/yawenz/datasets/WorldCereal/csv"
+df = pd.read_csv(os.path.join(csv_dir, "worldcereal_points.csv"))
 
+print(df["ewoc_code"].nunique())  # 549
+print(df["h3_l3_cell"].nunique())  # 1378
 
-# print(df["ewoc_code"].nunique())  # 549
-# print(df["h3_l3_cell"].nunique())  # 1378
-
-# # each h3_l3_cell sample 100 points, if less then 100 points, sample what is available
-# df_filtered = df.groupby("h3_l3_cell").apply(lambda x: x.sample(min(100, len(x)))).reset_index(drop=True)
-# print(df_filtered.shape)  # (1378, 10)
-
-# # save the filtered dataframe to a csv file
-# df_filtered.to_csv("worldcereal_points_filtered.csv")
-
-df = pd.read_csv(
-    "/weka/dfive-default/yawenz/rslearn_projects/rslp/crop_type_mapping/csv/worldcereal_points_filtered.csv"
+# Each h3_l3_cell sample 100 points, if less then 100 points, sample what is available
+df_filtered = (
+    df.groupby("h3_l3_cell")
+    .apply(lambda x: x.sample(min(100, len(x))))
+    .reset_index(drop=True)
 )
+print(df_filtered.shape)  # (1378, 10)
+
+# Save the filtered dataframe to a csv file
+df_filtered.to_csv(os.path.join(csv_dir, "worldcereal_points_filtered.csv"))
+
+# Load the filtered dataframe
+df = pd.read_csv(os.path.join(csv_dir, "worldcereal_points_filtered.csv"))
 print(df.shape)  # (66000, 10)
 
-# get the specific classes from the ewoc_code column
+# Get the specific classes from the ewoc_code column
 df["level_1"] = df["ewoc_code"].apply(lambda x: str(x)[0:2])
 df["level_2"] = df["ewoc_code"].apply(lambda x: str(x)[2:4])
 df["level_3"] = df["ewoc_code"].apply(lambda x: str(x)[4:6])
@@ -47,7 +53,9 @@ level_1_lookup = {
 }
 
 # There is no "unknown" in the level_1 column
-# print(df["level_1"].unique())  # ['20' '25' '12' '43' '11' '42' '41' '40' '14' '16' '30' '50' '60' '70' '15' '10']
+print(
+    df["level_1"].unique()
+)  # ['20' '25' '12' '43' '11' '42' '41' '40' '14' '16' '30' '50' '60' '70' '15' '10']
 
 # level_1
 # 10      497
@@ -71,7 +79,7 @@ level_1_lookup = {
 # Non-cropland: 30,166
 
 df["level_123"] = df["ewoc_code"].apply(lambda x: str(x)[0:6])
-df.to_csv("worldcereal_points_filtered_level_123.csv")
+df.to_csv(os.path.join(csv_dir, "worldcereal_points_filtered_level_123.csv"))
 print(df["level_123"].nunique())  # 91 classes
 df_level_123 = df.groupby(["level_123", "h3_l3_cell"]).size().reset_index()
-df_level_123.to_csv("worldcereal_level_123.csv")
+df_level_123.to_csv(os.path.join(csv_dir, "worldcereal_level_123.csv"))

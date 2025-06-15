@@ -44,7 +44,5 @@ def process_worldcereal_data(data_dir: str, output_csv: str) -> None:
 
 
 # Save the WorldCereal data to a csv file
-WC_DATA_DIR = (
-    "/weka/dfive-default/yawenz/rslearn_projects/rslp/crop_type_mapping/geoparquets"
-)
+WC_DATA_DIR = "/weka/dfive-default/yawenz/datasets/WorldCereal/geoparquets"
 process_worldcereal_data(WC_DATA_DIR, "worldcereal_points.csv")
