@@ -14,7 +14,7 @@ The original categories didn’t include water or built-up areas. To support Lan
 
 Run the command to create windows for the groundtruth points:
 ```
-python rslp/crop/kenya_nandi/create_windows_for_groundtruth.py --csv_path=gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --window_size=32
+python rslp/crop/kenya_nandi/create_windows_for_groundtruth.py --csv_path=gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616 --window_size=32
 ```
 
 By default, we sample at most 10 pixels per polygon, to avoid the case where one polygon creates many homogeneous points with the same category. Also, following the CGIAR/IFPRI workflow (more details can be found [here](https://www.ifpri.org/blog/from-space-to-soil-advancing-crop-mapping-and-ecosystem-insights-for-smallholder-agriculture-in-kenya/)), we can optionally apply postprocessing on the original categories, by merging the "Exoticetrees/forests" and "Nativetrees/forest" into "Trees", and dropping the categories with less labels, mainly "Legumes" and "Vegatables". By default, we keep the original categories (9 classes in total).
@@ -24,31 +24,31 @@ By default, we sample at most 10 pixels per polygon, to avoid the case where one
 
 Run the command to create windows for the worldcover points (we sampled 1K points for Water and Built-up separately):
 ```
-python rslp/crop/kenya_nandi/create_windows_for_groundtruth.py --csv_path=gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --window_size=32
+python rslp/crop/kenya_nandi/create_windows_for_worldcover.py --csv_path=gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiWorldCoverPoints_sampled.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616 --window_size=32
 ```
 
-- rslearn dataset: `/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611`
+- rslearn dataset: `/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616`
 - GroundTruth group: `groundtruth_random_split_window_32`
 - WorldCover group: `worldcover_window_32`
 
 ### Step 2. Prepare/Materialize Windows
 
-- Data Configuration: `/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611/config.json`
+- Data Configuration: `/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616/config.json`
 
 For this task, we primarily use Sentinel-1 and Sentinel-2 L2A data, selecting the most recent 6 months (as defined by `max_matches` in the data configuration) from the 1-year data.
 
 Run the command to prepare and materialize groundtruth windows:
 ```
-rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --group groundtruth_random_split_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616 --group groundtruth_random_split_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 
-rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --group groundtruth_random_split_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616 --group groundtruth_random_split_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 ```
 
 Run the command to prepare and materialize worldcover windows:
 ```
-rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --group worldcover_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616 --group worldcover_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 
-rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --group worldcover_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616 --group worldcover_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 ```
 
 ### Step 3. Finetune Helios
