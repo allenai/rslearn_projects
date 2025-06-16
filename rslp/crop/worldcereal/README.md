@@ -35,5 +35,5 @@ Run the command to prepare and materialize groundtruth windows:
 ```
 rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop/worldcereal_cropland/20250615 --group h3_sample100_66K --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 
-rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop/worldcereal_cropland/20250615 --group h3_sample100_66K --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+python rslp/scripts/beaker_launcher.py --project worldcereal_cropland --ds_path /weka/dfive-default/rslearn-eai/datasets/crop/worldcereal_cropland/20250615 --group h3_sample100_66K --image_name favyen/rslp --clusters ai2/saturn-cirrascale --num_jobs 10
 ```
