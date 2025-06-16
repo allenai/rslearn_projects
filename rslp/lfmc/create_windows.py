@@ -18,6 +18,7 @@ from upath import UPath
 
 WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
+CUTOFF_VALUE = 302
 
 
 def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
@@ -28,29 +29,29 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         ds_path: path to the dataset
         window_size: window size
     """
+    # Cut off the LFMC value by 302 which is the 99.9% value
+    lfmc_value = csv_row["lfmc_value"]
+    if lfmc_value > CUTOFF_VALUE:
+        lfmc_value = CUTOFF_VALUE
+
     # Get sample metadata
-    sample_id = csv_row["sample_id"]
+    sample_id = csv_row.name
+    site_name, state_region, country = (
+        csv_row["site_name"],
+        csv_row["state_region"],
+        csv_row["country"],
+    )
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
 
-    valid_time = datetime.strptime(csv_row["valid_time"], "%Y-%m-%d").replace(
+    sampling_date = datetime.strptime(csv_row["sampling_date"], "%Y-%m-%d").replace(
         tzinfo=timezone.utc
     )
     start_time, end_time = (
-        valid_time - timedelta(days=15),
-        valid_time + timedelta(days=15),
+        sampling_date - timedelta(days=15),
+        sampling_date + timedelta(days=15),
     )
 
-    level_1 = str(csv_row["level_1"])
-    cropland_classes = ["10", "11", "12", "14", "15"]
-
-    # Treat as a binary classification task
-    category = "Cropland" if level_1 in cropland_classes else "Non-Cropland"
-
-    level_123 = str(csv_row["level_123"])
-    ewoc_code = str(csv_row["ewoc_code"])
-    h3_l3_cell = str(csv_row["h3_l3_cell"])
-    quality_score_lc = csv_row["quality_score_lc"]
-    quality_score_ct = csv_row["quality_score_ct"]
+    landcover, elevation = csv_row["landcover"], csv_row["elevation"]
 
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
@@ -74,8 +75,8 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         )
 
     # Check if train or val.
-    group = "h3_sample100_66K"
-    window_name = f"{h3_l3_cell}_{latitude}_{longitude}"
+    group = "global_lfmc"
+    window_name = f"{sample_id}_{latitude}_{longitude}"
 
     is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
 
@@ -93,12 +94,13 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         time_range=(start_time, end_time),
         options={
             "split": split,
-            "sample_id": sample_id,
-            "ewoc_code": ewoc_code,
-            "level_123": level_123,
-            "h3_l3_cell": h3_l3_cell,
-            "quality_score_lc": quality_score_lc,
-            "quality_score_ct": quality_score_ct,
+            "site_name": site_name,
+            "state_region": state_region,
+            "country": country,
+            "latitude": latitude,
+            "longitude": longitude,
+            "landcover": landcover,
+            "elevation": elevation,
         },
     )
     window.save()
@@ -107,7 +109,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     feature = Feature(
         window.get_geometry(),
         {
-            "category": category,
+            "lfmc_value": lfmc_value,
         },
     )
     layer_dir = window.get_layer_dir(LABEL_LAYER)

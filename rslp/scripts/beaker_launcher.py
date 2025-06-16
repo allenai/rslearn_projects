@@ -9,6 +9,7 @@ from beaker import (
     Constraints,
     DataMount,
     DataSource,
+    EnvVar,
     ExperimentSpec,
     Priority,
 )
@@ -93,6 +94,10 @@ def launch_job(
             resources=resources,
             preemptible=True,
             constraints=constraints,
+            env_vars=[
+                EnvVar(name="NASA_EARTHDATA_USERNAME", value="yawenz"),
+                EnvVar(name="NASA_EARTHDATA_PASSWORD", value="1989@Zyw1989@Zyw"),
+            ],
         )
         beaker.experiment.create(experiment_name, experiment_spec)
 
