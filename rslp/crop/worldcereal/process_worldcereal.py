@@ -45,4 +45,5 @@ def process_worldcereal_data(data_dir: str, output_csv: str) -> None:
 
 # Save the WorldCereal data to a csv file
 WC_DATA_DIR = "/weka/dfive-default/yawenz/datasets/WorldCereal/geoparquets"
-process_worldcereal_data(WC_DATA_DIR, "worldcereal_points.csv")
+CSV_DIR = "/weka/dfive-default/yawenz/datasets/WorldCereal/csv"
+process_worldcereal_data(WC_DATA_DIR, os.path.join(CSV_DIR, "worldcereal_points.csv"))

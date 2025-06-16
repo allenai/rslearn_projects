@@ -1,4 +1,4 @@
-# Kenya/Nandi county crop type mapping
+# Kenya/Nandi County Crop Type Classification
 
 The original dataset contains 819 polygons, which has been converted into about 19K points (at 10m resolution). The converted points include point_id, polygon_id, latitude (y), longitude (x), category, and other metadata (like planting date, harvest date).
 
@@ -14,49 +14,49 @@ The original categories didn’t include water or built-up areas. To support Lan
 
 Run the command to create windows for the groundtruth points:
 ```
-python rslp/crop_type_mapping/create_windows_for_groundtruth.py --csv_path=gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --window_size=32
+python rslp/crop/kenya_nandi/create_windows_for_groundtruth.py --csv_path=gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --window_size=32
 ```
 
 By default, we sample at most 10 pixels per polygon, to avoid the case where one polygon creates many homogeneous points with the same category. Also, following the CGIAR/IFPRI workflow (more details can be found [here](https://www.ifpri.org/blog/from-space-to-soil-advancing-crop-mapping-and-ecosystem-insights-for-smallholder-agriculture-in-kenya/)), we can optionally apply postprocessing on the original categories, by merging the "Exoticetrees/forests" and "Nativetrees/forest" into "Trees", and dropping the categories with less labels, mainly "Legumes" and "Vegatables". By default, we keep the original categories (9 classes in total).
 
-<img src="figures/categories.png" alt="Categories" width="50%">
+<img src="figures/categories.png" alt="Categories" width="40%">
 
 
 Run the command to create windows for the worldcover points (we sampled 1K points for Water and Built-up separately):
 ```
-python rslp/crop_type_mapping/create_windows_for_groundtruth.py --csv_path=gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --window_size=32
+python rslp/crop/kenya_nandi/create_windows_for_groundtruth.py --csv_path=gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --window_size=32
 ```
 
-- rslearn dataset: `/weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi`
+- rslearn dataset: `/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611`
 - GroundTruth group: `groundtruth_random_split_window_32`
 - WorldCover group: `worldcover_window_32`
 
 ### Step 2. Prepare/Materialize Windows
 
-- Data Configuration: `/weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi/config.json`
+- Data Configuration: `/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611/config.json`
 
 For this task, we primarily use Sentinel-1 and Sentinel-2 L2A data, selecting the most recent 6 months (as defined by `max_matches` in the data configuration) from the 1-year data.
 
 Run the command to prepare and materialize groundtruth windows:
 ```
-rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group groundtruth_random_split_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --group groundtruth_random_split_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 
-rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group groundtruth_random_split_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --group groundtruth_random_split_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 ```
 
 Run the command to prepare and materialize worldcover windows:
 ```
-rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group worldcover_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --group worldcover_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 
-rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi --group worldcover_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611 --group worldcover_window_32 --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 ```
 
 ### Step 3. Finetune Helios
 
 - Helios Checkpoint: `/weka/dfive-default/helios/checkpoints/joer/v0.1_base_latent_mim_space_time/step165000`
-- Model Configuration: `data/helios/v2_crop_type_mapping/finetune_s1_s2.yaml`
+- Model Configuration: `data/helios/v2_nandi_crop_type/finetune_s1_s2.yaml`
 
 Run the command to start finetuning Helios for crop type classification:
 ```
-python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/joer/v0.1_base_latent_mim_space_time/step165000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios2 --config_paths+=data/helios/v2_crop_type_mapping/finetune_s1_s2.yaml --cluster+=ai2/ceres-cirrascale --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_11_helios_finetuning --experiment_id v2_crop_type_classification_helios_S1_S2
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/joer/v0.1_base_latent_mim_space_time/step165000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios2 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s1_s2.yaml --cluster+=ai2/ceres-cirrascale --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_11_helios_finetuning --experiment_id v2_crop_type_classification_helios_S1_S2
 ```

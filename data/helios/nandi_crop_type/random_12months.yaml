@@ -28,7 +28,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: weka://dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi
+    path: weka://dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250409
     inputs:
       sentinel2_l2a_mo01:
         data_type: "raster"
@@ -143,7 +143,7 @@ data:
           output_selector: sentinel2_l2a
       - class_path: rslp.helios.norm.HeliosNormalize
         init_args:
-          config_fname: "/weka/dfive-default/yawenz/helios/data/norm_configs/computed.json"
+          config_fname: "/opt/helios/data/norm_configs/computed.json"
           band_names:
             sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
