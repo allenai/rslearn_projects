@@ -1,4 +1,4 @@
-"""Create windows for crop type mapping."""
+"""Create windows for cropland classification."""
 
 import argparse
 import hashlib
@@ -99,7 +99,6 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
             "h3_l3_cell": h3_l3_cell,
             "quality_score_lc": quality_score_lc,
             "quality_score_ct": quality_score_ct,
-            "weight": 1,
         },
     )
     window.save()
@@ -154,16 +153,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--csv_path",
         type=str,
-        required=False,
+        required=True,
         help="Path to the csv file",
-        default="/weka/dfive-default/yawenz/datasets/WorldCereal/csv/worldcereal_points_filtered_level_123.csv",
     )
     parser.add_argument(
         "--ds_path",
         type=str,
-        required=False,
+        required=True,
         help="Path to the dataset",
-        default="/weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250422_worldcereal",
     )
     parser.add_argument(
         "--window_size", type=int, required=False, help="Window size", default=1

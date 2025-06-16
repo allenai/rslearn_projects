@@ -27,7 +27,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: weka://dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi
+    path: weka://dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250611
     inputs:
       sentinel2_0:
         data_type: "raster"
