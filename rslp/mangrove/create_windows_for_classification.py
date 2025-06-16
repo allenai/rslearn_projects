@@ -172,27 +172,27 @@ if __name__ == "__main__":
     parser.add_argument(
         "--csv_path",
         type=str,
-        required=False,
+        required=True,
         help="Path to the csv file",
-        default="/weka/dfive-default/yawenz/datasets/Mangrove/csv/gmw_v4_points.csv",
     )
     parser.add_argument(
         "--ds_path",
         type=str,
-        required=False,
+        required=True,
         help="Path to the dataset",
-        default="/weka/dfive-default/rslearn-eai/datasets/mangrove/20250508_mangrove",
     )
-    # add group name
     parser.add_argument(
         "--group_name",
         type=str,
-        required=False,
+        required=True,
         help="Group name",
-        default="sample_100K",
     )
     parser.add_argument(
-        "--window_size", type=int, required=False, help="Window size", default=1
+        "--window_size",
+        type=int,
+        required=False,
+        help="Window size",
+        default=1,
     )
     args = parser.parse_args()
     create_windows_from_csv(
