@@ -37,18 +37,16 @@ def launch_job(
     project: str,
     image: str,
     ds_path: str,
-    modality: str,
     group: str,
     clusters: list[str] | None = None,
     hostname: str | None = None,
 ) -> None:
-    """Launch a Beaker job that materializes the specified modality.
+    """Launch a Beaker job that materializes the rslearn dataset.
 
     Args:
         project: the project to use for the jobs.
         image: the name of the Beaker image to use.
         ds_path: the dataset path.
-        modality: the modality to materialize.
         group: the group to use for the jobs.
         clusters: optional list of Beaker clusters to target. One of hostname or
             clusters must be set.
@@ -122,12 +120,6 @@ if __name__ == "__main__":
         required=True,
     )
     parser.add_argument(
-        "--modality",
-        type=str,
-        help="The modality to materialize in the jobs",
-        required=True,
-    )
-    parser.add_argument(
         "--image_name",
         type=str,
         help="Name of the Beaker image to use for the job",
@@ -159,7 +151,6 @@ if __name__ == "__main__":
                 image=args.image_name,
                 project=args.project,
                 ds_path=args.ds_path,
-                modality=args.modality,
                 group=args.group,
                 clusters=args.clusters.split(","),
             )
@@ -169,7 +160,6 @@ if __name__ == "__main__":
                 image=args.image_name,
                 project=args.project,
                 ds_path=args.ds_path,
-                modality=args.modality,
                 group=args.group,
                 hostname=host,
             )
