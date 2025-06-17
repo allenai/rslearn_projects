@@ -22,7 +22,7 @@ Run the following commands to prepare and materialize windows:
 ```
 rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/mangrove/classification/20250616 --group sample_100K --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 
-python rslp/scripts/beaker_launcher.py --project mangrove_classification --ds_path /weka/dfive-default/rslearn-eai/datasets/mangrove/classification/20250616 --group sample_100K --image_name favyen/rslp --clusters ai2/saturn-cirrascale --num_jobs 10
+python rslp/scripts/beaker_launcher.py --project mangrove_classification --ds_path /weka/dfive-default/rslearn-eai/datasets/mangrove/classification/20250616 --group sample_100K --image_name favyen/rslp --clusters ai2/ceres-cirrascale --num_jobs 10
 ```
 
 ## Task 2: Mangrove Loss Detection
