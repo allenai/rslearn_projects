@@ -1,0 +1,70 @@
+{
+  "layers": {
+    "label": {
+      "band_sets": [
+        {
+          "bands": [
+            "class"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "band_sets": [
+        {
+          "bands": [
+            "class"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "type": "raster"
+    },
+    "s1a": {
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "type": "raster"
+    },
+    "s1d": {
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "type": "raster"
+    }
+  }
+}

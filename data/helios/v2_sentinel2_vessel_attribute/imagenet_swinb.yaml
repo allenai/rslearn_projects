@@ -1,0 +1,10 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.swin.Swin
+            init_args:
+              pretrained: true
+              input_channels: 9
+              output_layers: [7]
