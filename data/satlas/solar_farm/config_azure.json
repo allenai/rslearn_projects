@@ -3,6 +3,21 @@
     "label": {
       "type": "vector"
     },
+    "label_raster": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
     "landsat": {
       "band_sets": [
         {
@@ -33,7 +48,7 @@
         "metadata_cache_dir": "cache/landsat",
         "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
         "query_config": {
-          "max_matches": 6
+          "max_matches": 4
         },
         "sort_by": "cloud_cover"
       },
@@ -55,7 +70,19 @@
       "type": "raster"
     },
     "output": {
-      "type": "vector"
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
     },
     "sentinel1_ascending": {
       "band_sets": [
@@ -69,7 +96,6 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
-        "duration": "271d",
         "ingest": false,
         "name": "rslp.satlas.data_sources.MonthlySentinel1",
         "query": {
@@ -87,9 +113,8 @@
           }
         },
         "query_config": {
-          "max_matches": 6
-        },
-        "time_offset": "-90d"
+          "max_matches": 4
+        }
       },
       "type": "raster"
     },
@@ -105,7 +130,6 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
-        "duration": "271d",
         "ingest": false,
         "name": "rslp.satlas.data_sources.MonthlySentinel1",
         "query": {
@@ -123,9 +147,8 @@
           }
         },
         "query_config": {
-          "max_matches": 6
-        },
-        "time_offset": "-90d"
+          "max_matches": 4
+        }
       },
       "type": "raster"
     },
@@ -155,7 +178,8 @@
         {
           "bands": [
             "B01",
-            "B09"
+            "B09",
+            "B10"
           ],
           "dtype": "uint16",
           "zoom_offset": -2
@@ -163,16 +187,14 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
-        "duration": "271d",
         "harmonize": true,
         "ingest": false,
         "max_cloud_cover": 50,
         "name": "rslp.satlas.data_sources.MonthlyAzureSentinel2",
         "query_config": {
-          "max_matches": 6
+          "max_matches": 4
         },
-        "sort_by": "eo:cloud_cover",
-        "time_offset": "-90d"
+        "sort_by": "eo:cloud_cover"
       },
       "type": "raster"
     }
