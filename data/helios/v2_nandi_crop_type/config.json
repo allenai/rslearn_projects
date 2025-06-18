@@ -3,9 +3,6 @@
     "label": {
       "type": "vector"
     },
-    "output": {
-      "type": "vector"
-    },
     "sentinel1_ascending": {
       "band_sets": [
         {
@@ -18,7 +15,7 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
-        "duration": "181d",
+        "duration": "366d",
         "ingest": false,
         "name": "rslp.satlas.data_sources.MonthlySentinel1",
         "query": {
@@ -36,7 +33,7 @@
           }
         },
         "query_config": {
-          "max_matches": 6
+          "max_matches": 12
         },
         "time_offset": "-180d"
       },
@@ -54,7 +51,7 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
-        "duration": "181d",
+        "duration": "366d",
         "ingest": false,
         "name": "rslp.satlas.data_sources.MonthlySentinel1",
         "query": {
@@ -72,7 +69,7 @@
           }
         },
         "query_config": {
-          "max_matches": 6
+          "max_matches": 12
         },
         "time_offset": "-180d"
       },
@@ -112,13 +109,13 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
-        "duration": "181d",
+        "duration": "366d",
         "harmonize": true,
         "ingest": false,
         "max_cloud_cover": 50,
         "name": "rslp.satlas.data_sources.MonthlyAzureSentinel2",
         "query_config": {
-          "max_matches": 6
+          "max_matches": 12
         },
         "sort_by": "eo:cloud_cover",
         "time_offset": "-180d"

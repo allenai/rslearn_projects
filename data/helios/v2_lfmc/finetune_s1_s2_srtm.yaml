@@ -12,12 +12,12 @@ model:
               forward_kwargs:
                 patch_size: {PATCH_SIZE}
         decoders:
-          crop_type_classification:
+          lfmc_estimation:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
-                out_channels: 11
-            - class_path: rslearn.train.tasks.classification.ClassificationHead
+                out_channels: 1
+            - class_path: rslearn.train.tasks.regression.RegressionHead
     lr: 0.0001
     plateau: true
     plateau_factor: 0.2
@@ -27,7 +27,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: weka://dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616
+    path: weka://dfive-default/rslearn-eai/datasets/lfmc/20250616
     inputs:
       sentinel2_0:
         data_type: "raster"
@@ -101,6 +101,84 @@ data:
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
         dtype: FLOAT32
+      sentinel1_0:
+        data_type: "raster"
+        layers: ["sentinel1_ascending"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_1:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.1"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_2:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.2"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_3:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.3"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_4:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.4"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_5:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.5"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_6:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.6"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_7:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.7"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_8:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.8"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_9:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.9"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_10:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.10"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      sentinel1_11:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.11"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      srtm:
+        data_type: "raster"
+        layers: ["srtm"]
+        bands: ["srtm"]
+        passthrough: true
+        dtype: FLOAT32
       label:
         data_type: "vector"
         layers: ["label"]
@@ -109,16 +187,14 @@ data:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
         tasks:
-          crop_type_classification:
-            class_path: rslearn.train.tasks.classification.ClassificationTask
+          lfmc_estimation:
+            class_path: rslearn.train.tasks.regression.RegressionTask
             init_args:
-              property_name: "category"
-              classes: ["Coffee", "Exoticetrees/forest", "Grassland", "Legumes","Maize", "Nativetrees/forest", "Sugarcane", "Tea", "Vegetables", "Water", "Built-up"]
-              enable_f1_metric: true
-              metric_kwargs:
-                average: "micro"
+              property_name: "lfmc_value"
+              allow_invalid: true
+              metric_mode: l1
         input_mapping:
-          crop_type_classification:
+          lfmc_estimation:
             label: "targets"
     batch_size: 16
     num_workers: 32
@@ -140,21 +216,38 @@ data:
               sentinel2_10: []
               sentinel2_11: []
             output_selector: sentinel2_l2a
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel1_0: []
+              sentinel1_1: []
+              sentinel1_2: []
+              sentinel1_3: []
+              sentinel1_4: []
+              sentinel1_5: []
+              sentinel1_6: []
+              sentinel1_7: []
+              sentinel1_8: []
+              sentinel1_9: []
+              sentinel1_10: []
+              sentinel1_11: []
+            output_selector: sentinel1
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+              sentinel1: ["vv", "vh"]
     train_config:
-      groups: ["groundtruth_random_split_window_32", "worldcover_window_32"]
+      groups: ["global_lfmc"]
       tags:
         split: "train"
     val_config:
-      groups: ["groundtruth_random_split_window_32", "worldcover_window_32"]
+      groups: ["global_lfmc"]
       tags:
         split: "val"
     test_config:
-      groups: ["groundtruth_random_split_window_32", "worldcover_window_32"]
+      groups: ["global_lfmc"]
       tags:
         split: "val"
 trainer:
