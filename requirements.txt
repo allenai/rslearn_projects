@@ -12,3 +12,4 @@ ruff>=0.7
 scikit-image>=0.23
 typing-extensions>=4.11
 uvicorn>=0.32
+geopandas>=1.1.0
