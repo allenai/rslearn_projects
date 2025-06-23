@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.7.0-cuda11.8-cudnn9-runtime
+FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
 
 RUN apt update
 RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
