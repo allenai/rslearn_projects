@@ -56,8 +56,8 @@ def create_window(
         )
     else:
         bounds = (
-            int(dst_geometry.shp.x),
-            int(dst_geometry.shp.y),
+            int(dst_geometry.shp.x) - window_size // 2,
+            int(dst_geometry.shp.y) - window_size // 2,
             int(dst_geometry.shp.x) + window_size // 2,
             int(dst_geometry.shp.y) + window_size // 2,
         )

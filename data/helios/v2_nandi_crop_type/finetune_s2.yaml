@@ -16,7 +16,7 @@ model:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
-                out_channels: 11
+                out_channels: 8
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
     plateau: true
@@ -27,7 +27,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: weka://dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616
+    path: weka://dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625
     inputs:
       sentinel2_0:
         data_type: "raster"
@@ -113,7 +113,7 @@ data:
             class_path: rslearn.train.tasks.classification.ClassificationTask
             init_args:
               property_name: "category"
-              classes: ["Coffee", "Exoticetrees/forest", "Grassland", "Legumes","Maize", "Nativetrees/forest", "Sugarcane", "Tea", "Vegetables", "Water", "Built-up"]
+              classes: ["Coffee", "Trees", "Grassland", "Maize", "Sugarcane", "Tea", "Water", "Built-up"]
               enable_f1_metric: true
               metric_kwargs:
                 average: "micro"
@@ -145,16 +145,21 @@ data:
             config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 8
+            mode: "center"
+            image_selectors: ["sentinel2_l2a"]
     train_config:
-      groups: ["groundtruth_random_split_window_32", "worldcover_window_32"]
+      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
       tags:
         split: "train"
     val_config:
-      groups: ["groundtruth_random_split_window_32", "worldcover_window_32"]
+      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
       tags:
         split: "val"
     test_config:
-      groups: ["groundtruth_random_split_window_32", "worldcover_window_32"]
+      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
       tags:
         split: "val"
 trainer:

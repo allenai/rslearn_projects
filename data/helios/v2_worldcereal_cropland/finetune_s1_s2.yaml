@@ -234,6 +234,10 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
               sentinel1: ["vv", "vh"]
+        - class_path: rslearn.train.transforms.crop.Crop
+          init_args:
+            crop_size: 1
+            image_selectors: ["sentinel2_l2a", "sentinel1"]
     train_config:
       groups: ["h3_sample100_66K"]
       tags:
