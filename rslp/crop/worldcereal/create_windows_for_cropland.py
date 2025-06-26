@@ -67,15 +67,16 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         )
     else:
         bounds = (
-            int(dst_geometry.shp.x),
-            int(dst_geometry.shp.y),
+            int(dst_geometry.shp.x) - window_size // 2,
+            int(dst_geometry.shp.y) - window_size // 2,
             int(dst_geometry.shp.x) + window_size // 2,
             int(dst_geometry.shp.y) + window_size // 2,
         )
 
     # Check if train or val.
     group = "h3_sample100_66K"
-    window_name = f"{h3_l3_cell}_{latitude}_{longitude}"
+    # Adding the valid_time to the window name to avoid duplicate windows
+    window_name = f"{h3_l3_cell}_{latitude}_{longitude}_{csv_row['valid_time']}"
 
     is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
 
@@ -128,6 +129,9 @@ def create_windows_from_csv(
         window_size: window size
     """
     df_sampled = pd.read_csv(csv_path)
+    df_sampled = df_sampled.drop_duplicates(
+        subset=["h3_l3_cell", "latitude", "longitude", "valid_time"]
+    )
     csv_rows = []
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)

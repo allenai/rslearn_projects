@@ -1,7 +1,6 @@
-"""Create windows for cropland classification."""
+"""Create windows for crop type mapping."""
 
 import argparse
-import hashlib
 import multiprocessing
 from datetime import datetime, timedelta, timezone
 
@@ -18,7 +17,6 @@ from upath import UPath
 
 WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
-CUTOFF_VALUE = 302
 
 
 def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
@@ -29,29 +27,23 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         ds_path: path to the dataset
         window_size: window size
     """
-    # Cut off the LFMC value by 302 which is the 99.9% value
-    lfmc_value = csv_row["lfmc_value"]
-    if lfmc_value > CUTOFF_VALUE:
-        lfmc_value = CUTOFF_VALUE
-
     # Get sample metadata
-    sample_id = csv_row.name
-    site_name, state_region, country = (
-        csv_row["site_name"],
-        csv_row["state_region"],
-        csv_row["country"],
-    )
+    sample_id = csv_row.fid
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
+    # Date format: 2021/01/30 23:00:00+00
+    first_obs_date, scr5_obs_date = (
+        csv_row["first_obs_date"].split(" ")[0],
+        csv_row["scr5_obs_date"].split(" ")[0],
+    )
+    scr5_obs_year = scr5_obs_date.split("/")[0]
 
-    sampling_date = datetime.strptime(csv_row["sampling_date"], "%Y-%m-%d").replace(
+    sampling_date = datetime.strptime(scr5_obs_date, "%Y/%m/%d").replace(
         tzinfo=timezone.utc
     )
     start_time, end_time = (
         sampling_date - timedelta(days=15),
         sampling_date + timedelta(days=15),
     )
-
-    landcover, elevation = csv_row["landcover"], csv_row["elevation"]
 
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
@@ -75,10 +67,10 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         )
 
     # Check if train or val.
-    group = "global_lfmc"
-    window_name = f"{sample_id}_{latitude}_{longitude}"
+    group = "sample_188K_temporal_split"
+    window_name = f"{sample_id}_{latitude}_{longitude}_{scr5_obs_year}"
 
-    is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
+    is_val = scr5_obs_year in ["2024", "2025"]
 
     if is_val:
         split = "val"
@@ -94,13 +86,10 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         time_range=(start_time, end_time),
         options={
             "split": split,
-            "site_name": site_name,
-            "state_region": state_region,
-            "country": country,
             "latitude": latitude,
             "longitude": longitude,
-            "landcover": landcover,
-            "elevation": elevation,
+            "first_obs_date": first_obs_date,
+            "scr5_obs_date": scr5_obs_date,
         },
     )
     window.save()
@@ -109,7 +98,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     feature = Feature(
         window.get_geometry(),
         {
-            "lfmc_value": lfmc_value,
+            "label": csv_row["label"],
         },
     )
     layer_dir = window.get_layer_dir(LABEL_LAYER)
@@ -118,18 +107,30 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
 
 
 def create_windows_from_csv(
-    csv_path: UPath,
+    true_positives_csv_path: UPath,
+    false_positives_csv_path: UPath,
     ds_path: UPath,
     window_size: int,
 ) -> None:
     """Create windows from csv.
 
     Args:
-        csv_path: path to the csv file
+        true_positives_csv_path: path to the csv file for true positives
+        false_positives_csv_path: path to the csv file for false positives
         ds_path: path to the dataset
         window_size: window size
     """
-    df_sampled = pd.read_csv(csv_path)
+    df_true_positives = pd.read_csv(true_positives_csv_path)
+    df_false_positives = pd.read_csv(false_positives_csv_path)
+    df_true_positives["label"] = "correct"
+    df_false_positives["label"] = "incorrect"
+
+    # Sample equal number of true positives and false positives
+    df_true_positives = df_true_positives.sample(
+        len(df_false_positives), random_state=42
+    )
+    df_sampled = pd.concat([df_true_positives, df_false_positives])
+
     csv_rows = []
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
@@ -153,10 +154,16 @@ if __name__ == "__main__":
     multiprocessing.set_start_method("forkserver")
     parser = argparse.ArgumentParser(description="Create windows from csv")
     parser.add_argument(
-        "--csv_path",
+        "--true_positives_csv_path",
         type=str,
         required=True,
-        help="Path to the csv file",
+        help="Path to the csv file for true positives",
+    )
+    parser.add_argument(
+        "--false_positives_csv_path",
+        type=str,
+        required=True,
+        help="Path to the csv file for false positives",
     )
     parser.add_argument(
         "--ds_path",
@@ -173,7 +180,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     create_windows_from_csv(
-        UPath(args.csv_path),
+        UPath(args.true_positives_csv_path),
+        UPath(args.false_positives_csv_path),
         UPath(args.ds_path),
         window_size=args.window_size,
     )

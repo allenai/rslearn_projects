@@ -121,8 +121,8 @@ def create_window(
         )
     else:
         bounds = (
-            int(dst_geometry.shp.x),
-            int(dst_geometry.shp.y),
+            int(dst_geometry.shp.x) - window_size // 2,
+            int(dst_geometry.shp.y) - window_size // 2,
             int(dst_geometry.shp.x) + window_size // 2,
             int(dst_geometry.shp.y) + window_size // 2,
         )
@@ -243,7 +243,7 @@ if __name__ == "__main__":
         type=bool,
         required=False,
         help="Postprocess categories",
-        default=False,
+        default=True,
     )
     parser.add_argument(
         "--window_size",
@@ -264,7 +264,7 @@ if __name__ == "__main__":
         type=bool,
         required=False,
         help="Split by polygon",
-        default=False,
+        default=True,
     )
     args = parser.parse_args()
     create_windows_from_csv(
