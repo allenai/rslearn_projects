@@ -25,6 +25,17 @@ rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/mangrove
 python rslp/scripts/beaker_launcher.py --project mangrove_classification --ds_path /weka/dfive-default/rslearn-eai/datasets/mangrove/classification/20250626 --group sample_100K --image_name favyen/rslp --clusters ai2/ceres-cirrascale --num_jobs 10
 ```
 
+Finetune:
+
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_classification/finetune_s1_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_classification_helios_base_S1_S2_ts_ws2_ps2
+```
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_classification/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_classification_helios_base_S2_ts_ws2_ps2
+```
+
 ## Task 2: Mangrove Loss Detection
 
 From 2021 to April 2025, there were 575K true alerts and 94K false alerts in total. Each alert is a point representing 20x20m area on the ground (i.e., a Sentinel2 pixel where the 10m bands were resampled to the 20m bands). The baseline method is based on a scoring system that applies thresholding to the NDVI time series, as described in [paper](https://doi.org/10.3390/rs15082050).

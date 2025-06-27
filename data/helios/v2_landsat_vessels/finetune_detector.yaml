@@ -103,10 +103,10 @@ data:
             config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               landsat: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
-        - class_path: rslearn.train.transforms.flip.Flip
-          init_args:
-            image_selectors: ["image", "landsat"]
-            box_selectors: ["target/detect"]
+        # - class_path: rslearn.train.transforms.flip.Flip
+        #   init_args:
+        #     image_selectors: ["image", "landsat"]
+        #     box_selectors: ["target/detect"]
     val_config:
       patch_size: 128
       load_all_patches: true
