@@ -56,3 +56,13 @@ Experiments:
 ```
 python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/joer/v0.1_base_latent_mim_space_time/step165000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios2 --config_paths+=data/helios/v2_worldcereal_cropland/finetune_s2.yaml --cluster+=ai2/ceres-cirrascale --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_17_helios_finetuning --experiment_id v2_cropland_classification_helios_S2_only_ws1_ps1
 ```
+
+New!
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_worldcereal_cropland/finetune_s1_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_cropland_classification_helios_base_S1_S2_ts_ws1_ps1
+```
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_worldcereal_cropland/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_cropland_classification_helios_base_S2_ts_ws8_ps8
+```

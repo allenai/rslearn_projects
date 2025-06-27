@@ -61,11 +61,11 @@ rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop
 Run the command to start finetuning Helios for crop type classification:
 
 ```
-python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s1_s2.yaml --cluster+=ai2/titan-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S1_S2_ts_ws8_ps8
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s1_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S1_S2_ts_ws1_ps1
 ```
 
 ```
-python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2.yaml --cluster+=ai2/titan-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S2_ts_ws8_ps8
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S2_ts_ws2_ps1
 ```
 
 Experiments:
@@ -83,3 +83,8 @@ rslearn dataset add_windows --root $DATASET_PATH --group nandi_county --utm --re
 ```
 
 Split by grids, right now, we're seeing better performance with the window size 32, but it could just be some data leakage, as some polygons may be closer to each other, especially the one with the same category.
+
+Prediction
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S2_ts_ws2_ps2 --mode predict
+```
