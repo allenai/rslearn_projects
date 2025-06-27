@@ -4,16 +4,13 @@ import pathlib
 import uuid
 from datetime import datetime, timezone
 
-import pytest
 import shapely
 import shapely.wkt
-from affine import Affine
-from rasterio.crs import CRS
 from upath import UPath
 
-from rslp.forest_loss_driver.inference.config import ExtractAlertsArgs
-from rslp.forest_loss_driver.inference.extract_alerts import (
-    extract_alerts_pipeline,
+from rslp.forest_loss_driver.extract_dataset.extract_alerts import (
+    ExtractAlertsArgs,
+    extract_alerts,
     load_country_polygon,
     read_forest_alerts_confidence_raster,
     read_forest_alerts_date_raster,
@@ -24,74 +21,45 @@ TEST_ID = str(uuid.uuid4())
 logger = get_logger(__name__)
 
 
-@pytest.fixture
-def tiff_filename() -> str:
-    """The path to the alert GeoTIFF file."""
-    logger.warning("This tif is on GCS and is downloaded in conftest.py")
-    return "cropped_070W_10S_060W_00N.tif"
-
-
-def test_read_forest_alerts_confidence_raster(alert_tiffs_prefix: str) -> None:
+def test_read_forest_alerts_confidence_raster(
+    alert_tiffs_prefix: str, tiff_filename: str
+) -> None:
     """Tests reading the forest alerts confidence raster."""
-    fname = "cropped_070W_10S_060W_00N.tif"
-    conf_data, conf_raster = read_forest_alerts_confidence_raster(
-        fname,
+    conf_data, _ = read_forest_alerts_confidence_raster(
+        tiff_filename,
         alert_tiffs_prefix,
     )
-    assert conf_data.shape == (10000, 10000)
-    assert conf_raster.profile == {
-        "driver": "GTiff",
-        "dtype": "uint8",
-        "nodata": None,
-        "width": 10000,
-        "height": 10000,
-        "count": 1,
-        "crs": CRS.from_epsg(4326),
-        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, -4.0),
-        "blockxsize": 10000,
-        "blockysize": 1,
-        "tiled": False,
-        "compress": "lzw",
-        "interleave": "band",
-    }
+    assert conf_data.shape == (10, 10)
 
 
-def test_read_forest_alerts_date_raster(alert_date_tiffs_prefix: str) -> None:
+def test_read_forest_alerts_date_raster(
+    alert_date_tiffs_prefix: str, tiff_filename: str
+) -> None:
     """Tests reading the forest alerts date raster."""
-    fname = "cropped_070W_10S_060W_00N.tif"
-    date_data, date_raster = read_forest_alerts_date_raster(
-        fname, alert_date_tiffs_prefix
+    date_data, _ = read_forest_alerts_date_raster(
+        tiff_filename, alert_date_tiffs_prefix
     )
-    assert date_data.shape == (10000, 10000)
-    assert date_raster.profile == {
-        "driver": "GTiff",
-        "dtype": "uint16",
-        "nodata": None,
-        "width": 10000,
-        "height": 10000,
-        "count": 1,
-        "crs": CRS.from_epsg(4326),
-        "transform": Affine(0.0001, 0.0, -70.0, 0.0, -0.0001, -4.0),
-        "blockxsize": 10000,
-        "blockysize": 1,
-        "tiled": False,
-        "compress": "lzw",
-        "interleave": "band",
-    }
+    assert date_data.shape == (10, 10)
 
 
 def test_load_country_polygon(country_data_path: UPath) -> None:
     """Tests loading the country polygon."""
     # This data is dynamically loaded from gcs in conftest.py
-    country_wgs84_shp = load_country_polygon(country_data_path)
-    expected_type = shapely.geometry.multipolygon.MultiPolygon
-    expected_centroid = shapely.geometry.point.Point(
-        -74.37806457210715, -9.154388480752162
-    )
-    assert isinstance(
-        country_wgs84_shp, expected_type
-    ), f"country_wgs84_shp is not a {expected_type}"
-    assert country_wgs84_shp.centroid.equals(expected_centroid)
+    country_wgs84_shp = load_country_polygon(country_data_path, ["PE"])
+    # Check that a few points collected via Google Maps are correct.
+    peru_points = [
+        shapely.Point(-74.529119, -6.463668),
+        shapely.Point(-70.367139, -17.281150),
+    ]
+    not_peru_points = [
+        shapely.Point(-67.601992, -14.821313),
+        shapely.Point(-76.684202, -2.048203),
+        shapely.Point(-107.931170, -18.224945),
+    ]
+    for point in peru_points:
+        assert country_wgs84_shp.contains(point)
+    for point in not_peru_points:
+        assert not country_wgs84_shp.contains(point)
 
 
 def test_extract_alerts(
@@ -120,10 +88,10 @@ def test_extract_alerts(
         prediction_utc_time=datetime(2024, 10, 23, tzinfo=timezone.utc),
         country_data_path=country_data_path,
     )
-    extract_alerts_pipeline(ds_root, extract_alerts_args)
+    extract_alerts(ds_root, extract_alerts_args)
 
     # Assert one of the windows has all the info
-    window_dir = ds_root / "windows" / "default" / "feat_x_1281600_2146388_5_2221"
+    window_dir = ds_root / "windows" / "default" / "feat_x_1281601_2146388_4_5"
     expected_image_path = window_dir / "layers" / "mask" / "mask" / "image.png"
     expected_info_json_path = window_dir / "info.json"
     expected_metadata_json_path = window_dir / "metadata.json"

@@ -38,6 +38,13 @@ def alert_date_tiffs_prefix() -> str:
 
 
 @pytest.fixture
+def tiff_filename() -> str:
+    """The path to the alert GeoTIFF file."""
+    logger.warning("This tif is on GCS and is downloaded in conftest.py")
+    return "cropped_070W_10S_060W_00N.tif"
+
+
+@pytest.fixture
 def test_materialized_dataset_path() -> UPath:
     """The path to the test materialized dataset."""
     return UPath(
