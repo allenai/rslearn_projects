@@ -50,3 +50,13 @@ rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/mangrove
 
 python rslp/scripts/beaker_launcher.py --project mangrove_loss_detection --ds_path /weka/dfive-default/rslearn-eai/datasets/mangrove/loss_detection/20250626 --group sample_188K_temporal_split --image_name favyen/rslp --clusters ai2/titan-cirrascale --num_jobs 15
 ```
+
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_loss/finetune_s1_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_loss_helios_base_S1_S2_ts_ws2_ps2
+```
+
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_loss/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_loss_helios_base_S2_ts_ws2_ps2
+```
