@@ -170,7 +170,7 @@ class CustomLightningCLI(RslearnLightningCLI):
         parser.add_argument(
             "--profiler",
             type=str,
-            help="Profiler to use for training. Can be 'simple' or 'advanced'
+            help="Profiler to use for training. Can be 'simple' or 'advanced'",
             default=None,
         )
 

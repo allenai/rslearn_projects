@@ -1,5 +1,6 @@
 .env
 wandb/
+project_data
 rslp/__pycache__/
 **__pycache__
 rslp/crop_type_mapping/csv/
