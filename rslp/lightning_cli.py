@@ -167,6 +167,12 @@ class CustomLightningCLI(RslearnLightningCLI):
             help="Disable W&B logging for fit",
             default=False,
         )
+        parser.add_argument(
+            "--profiler",
+            type=str,
+            help="Profiler to use for training. Can be 'simple' or 'advanced'
+            default=None,
+        )
 
     def _get_checkpoint_path(
         self, checkpoint_dir: UPath, load_best: bool = False, autoresume: bool = False
@@ -297,6 +303,11 @@ class CustomLightningCLI(RslearnLightningCLI):
                     ),
                 }
             )
+
+            # Configure profiler if specified
+            if c.profiler:
+                c.trainer.profiler = c.profiler
+                logger.info(f"Using profiler: {c.profiler}")
 
         if subcommand == "fit" and not c.no_log:
             # Set the checkpoint directory to canonical GCS location.

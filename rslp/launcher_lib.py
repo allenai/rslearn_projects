@@ -96,8 +96,11 @@ def upload_code(project_id: str, experiment_id: str) -> None:
         blob_path = CODE_BLOB_PATH.format(
             project_id=project_id, experiment_id=experiment_id
         )
+        target_path = rslp_prefix / blob_path
+        # Create parent directories if they don't exist
+        target_path.parent.mkdir(parents=True, exist_ok=True)
         with open(zip_fname, "rb") as src:
-            with (rslp_prefix / blob_path).open("wb") as dst:
+            with target_path.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
         print("upload complete")
 
@@ -142,7 +145,10 @@ def upload_wandb_id(
     blob_path = WANDB_ID_BLOB_PATH.format(
         project_id=project_id, experiment_id=experiment_id, run_id=run_id_path
     )
-    with (rslp_prefix / blob_path).open("w") as f:
+    target_path = rslp_prefix / blob_path
+    # Create parent directories if they don't exist
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    with target_path.open("w") as f:
         f.write(wandb_id)
 
 
