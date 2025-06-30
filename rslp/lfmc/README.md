@@ -34,3 +34,19 @@ python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-
 ```
 python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_lfmc/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_lfmc_helios_base_S2_ts_ws32_ps8
 ```
+
+Single TS experiment:
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_lfmc/finetune_s1_s2_srtm_single_ts.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_lfmc_helios_base_S1_S2_SRTM_single_ts_ws32_ps8
+```
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_lfmc/finetune_s2_single_ts.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_lfmc_helios_base_S2_single_ts_ws32_ps8
+```
+
+Random experiment:
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_lfmc/random_s1_s2_srtm.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_lfmc_helios_base_random_initialized_ws32_ps8
+```

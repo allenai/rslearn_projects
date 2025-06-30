@@ -236,7 +236,7 @@ data:
               sentinel1: ["vv", "vh"]
         - class_path: rslearn.train.transforms.pad.Pad
           init_args:
-            size: 1
+            size: 8
             mode: "center"
             image_selectors: ["sentinel2_l2a", "sentinel1"]
     train_config:

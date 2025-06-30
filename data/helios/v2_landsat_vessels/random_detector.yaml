@@ -11,6 +11,7 @@ model:
               selector: ["encoder"]
               forward_kwargs:
                 patch_size: {PATCH_SIZE}
+              random_initialization: true
         decoders:
           vessel_detection:
             - class_path: rslearn.models.faster_rcnn.FasterRCNN

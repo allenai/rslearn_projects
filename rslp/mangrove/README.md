@@ -27,7 +27,6 @@ python rslp/scripts/beaker_launcher.py --project mangrove_classification --ds_pa
 
 Finetune:
 
-
 ```
 python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_classification/finetune_s1_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_classification_helios_base_S1_S2_ts_ws2_ps2
 ```
@@ -35,6 +34,23 @@ python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-
 ```
 python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_classification/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_classification_helios_base_S2_ts_ws2_ps2
 ```
+
+Time-series experiments:
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_classification/finetune_s1_s2_single_ts.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_classification_helios_base_S1_S2_single_ts_ws2_ps2
+```
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_classification/finetune_s2_single_ts.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_classification_helios_base_S2_single_ts_ws2_ps2
+```
+
+Number of samples:
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_classification/finetune_s2.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_classification_helios_base_S2_ts_ws2_ps2_1K_samples
+```
+
 
 ## Task 2: Mangrove Loss Detection
 

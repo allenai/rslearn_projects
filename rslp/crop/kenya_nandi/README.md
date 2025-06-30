@@ -61,11 +61,11 @@ rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/crop
 Run the command to start finetuning Helios for crop type classification:
 
 ```
-python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s1_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S1_S2_ts_ws1_ps1
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s1_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S1_S2_ts_ws8_ps1
 ```
 
 ```
-python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S2_ts_ws2_ps1
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S2_ts_ws8_ps1
 ```
 
 Experiments:
@@ -73,6 +73,28 @@ Experiments:
 - Use polygon split, since we need to generate maps for the whole Nandi county
 - Ready for inference: window_size = 1, patch_size = 1 (run this one first, then prediction pipeline)
 - Comparison (window_size, patch_size): (32, 8), (8, 2), (4, 1), (1, 1)
+
+Random experiments:
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/random_s2.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_random_initialized_S2_ts_ws8_ps1
+```
+
+Other checkpoints:
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/joer/v0.2_latent_mim_128_space_time_r2/step215000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios2 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_latentmim_st_S2_ts_ws8_ps1
+```
+
+Single TS experiments:
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s1_s2_single_ts.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S1_S2_single_ts_ws8_ps1
+```
+
+```
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 1 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_single_ts.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S2_single_ts_ws8_ps1
+```
 
 
 ### Step 4. Make Maps!
