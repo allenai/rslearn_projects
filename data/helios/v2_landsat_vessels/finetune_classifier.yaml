@@ -53,9 +53,6 @@ data:
               enable_f1_metric: true
               metric_kwargs:
                 average: "micro"
-              prob_property: "prob"
-              positive_class: "correct"
-              positive_class_threshold: 0.85
         input_mapping:
           vessel_classification:
             label: "targets"

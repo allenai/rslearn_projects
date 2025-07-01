@@ -30,5 +30,5 @@ python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-
 Swin ImageNet
 
 ```
-python -m rslp.main common beaker_train --image_name favyen/rslphelios2 --config_paths+=data/helios/v2_landsat_vessels/finetune_detector_swin_imagenet.yaml --cluster+=ai2/saturn-cirrascale --project_id 2025_06_26_helios_finetuning --experiment_id v2_landsat_vessel_detection_swin_imagenet_ps4 '--weka_mounts+={"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}' --gpus 2
+python -m rslp.main common beaker_train --image_name favyen/rslphelios2 --config_paths+=data/helios/v2_landsat_vessels/finetune_detector_swinb.yaml --cluster+=ai2/saturn-cirrascale --project_id 2025_06_26_helios_finetuning --experiment_id v2_landsat_vessel_detection_swin_imagenet_ps4 '--weka_mounts+={"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}' --gpus 2
 ```
