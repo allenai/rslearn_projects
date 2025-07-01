@@ -28,31 +28,6 @@ START_TIME = datetime(2019, 12, 1, tzinfo=timezone.utc)
 END_TIME = datetime(2020, 12, 31, tzinfo=timezone.utc)
 
 
-def process_files(shapefile_path: UPath) -> pd.DataFrame:
-    """Create windows for crop type mapping.
-
-    Args:
-        csv_path: path to the csv file
-        num_pixels: number of points to sample from each polygon
-        postprocess_categories: whether to postprocess categories
-    """
-    df = geopandas.read_file(shapefile_path)
-    is_crop = 1
-    if "non" in shapefile_path.name.lower():
-        is_crop = 0
-
-    df["is_crop"] = is_crop
-
-    df["longitude"] = df.geometry.centroid.x
-    df["latitude"] = df.geometry.centroid.y
-
-    df["org_file"] = shapefile_path.name
-    df.reset_index()
-    df["unique_id"] = df.apply(lambda x: f"{x.name}-{x.org_file}", axis=1)
-
-    return df[["is_crop", "geometry", "latitude", "longitude", "org_file", "unique_id"]]
-
-
 def create_window(
     csv_row: pd.Series,
     ds_path: UPath,
@@ -148,8 +123,8 @@ def create_windows_from_csv(
         group_name: name of the group
         window_size: window size
     """
-    for filename in ["crop_merged_v2", "noncrop_merged_v2"]:
-        df_sampled = process_files(csv_paths / filename)
+    for filename in ["crop_merged_v2.csv", "noncrop_merged_v2.csv"]:
+        df_sampled = pd.read_csv(csv_paths / filename)
         csv_rows = []
         for _, row in df_sampled.iterrows():
             csv_rows.append(row)
@@ -177,7 +152,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--csv_paths",
         type=str,
-        required=True,
+        default="gs://ai2-helios-us-central1/evaluations/crop_type_mapping/togo_2020",
         help="Path to the csv file",
     )
     parser.add_argument(
