@@ -11,6 +11,7 @@ from helios.train.masking import MaskedHeliosSample, MaskValue
 from olmo_core.config import Config
 from olmo_core.distributed.checkpoint import load_model_and_optim_state
 
+from rslp.helios.alpa import inject_alpa
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -71,6 +72,10 @@ class Helios(torch.nn.Module):
             train_module_dir = f"{checkpoint_path}/model_and_optim"
             load_model_and_optim_state(train_module_dir, model)
 
+            # Monkey patch attention modules after weights are loaded
+            # to apply APLA (https://arxiv.org/pdf/2503.11335v2)
+            self._patch_attention_modules(model)
+
         # Select just the portion of the model that we actually want to use.
         for part in selector:
             if isinstance(part, str):
@@ -78,6 +83,29 @@ class Helios(torch.nn.Module):
             else:
                 model = model[part]
         self.model = model
+
+    def _patch_attention_modules(self, model):
+        """
+        Split projection weights in attention modules into trainable and frozen parts.
+        This is to apply APLA (https://arxiv.org/pdf/2503.11335v2)
+        """
+        logger.info("patching attention modules for alpa")
+        if hasattr(model, 'encoder') and hasattr(model.encoder, 'blocks'):
+            for layer in model.encoder.blocks:
+                if hasattr(layer, 'attn'):
+                    inject_alpa(layer.attn)
+
+        logger.info("setting requires_grad for attn.proj")
+        n_trainable = 0
+        n_frozen = 0
+        for name, param in model.named_parameters():
+            if "attn.proj" in name:
+                n_trainable += param.numel()
+                param.requires_grad = True
+            else:
+                n_frozen += param.numel()
+                param.requires_grad = False
+        logger.info(f"peft: {n_trainable / int(1e6)}M trainable, {n_frozen / int(1e6)}M frozen")
 
     def forward(self, inputs: list[dict[str, Any]]) -> list[torch.Tensor]:
         """Compute feature maps from the Helios backbone.
