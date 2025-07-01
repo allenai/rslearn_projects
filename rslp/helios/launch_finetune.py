@@ -5,10 +5,12 @@ import os
 import subprocess  # nosec
 import tempfile
 from pathlib import Path
+import yaml
 from rslp.log_utils import get_logger
 
 DEFAULT_RSLP_PROJECT = "helios_finetuning"
 CONFIG_BASE_DIR = Path("data/helios")
+EVAL_BASE_DIR = "helios/eval_sweeps"
 
 logger = get_logger(__name__)
 
@@ -19,15 +21,16 @@ def launch_finetune(
     image_name: str,
     encoder_embedding_size: int,
     patch_size: int,
-    cluster: list[str],
-    config_paths: list[str],
+    cluster: "list[str]",
+    config_paths: "list[str]",
     rslp_project: str = DEFAULT_RSLP_PROJECT,
     gpus: int = 1,
     priority: str = "high",
     retries: int = 0,
     mode: str = "fit",
-    profiler: str | None = None,
+    profiler: "str | None" = None,
     local: bool = False,
+    do_eval: bool = False,
 ) -> None:
     """Launch Helios fine-tuning experiments.
 
@@ -47,6 +50,7 @@ def launch_finetune(
         mode: Mode to run the model ('fit', 'validate', 'test', or 'predict').
         profiler: Profiler to use for training. Can be 'simple' or 'advanced'.
         local: Whether to run the command locally instead of spawning a Beaker job.
+        do_eval: Whether to just run evals.
     """
     # Go into each config file (including the base ones) and make replacements as
     # needed.
@@ -54,14 +58,22 @@ def launch_finetune(
     # command-line since it appears in a list, so instead we create a copy
     # of all these configuration files in a temporary directory.
     with tempfile.TemporaryDirectory(dir=".") as tmp_dir:
+        weka_mounts = [
+            dict(bucket_name="dfive-default", mount_path="/weka/dfive-default")
+        ]
+        full_eval_dir = os.path.join(weka_mounts[0]["mount_path"], EVAL_BASE_DIR)
+        os.makedirs(full_eval_dir, exist_ok=True)
+
         # Need to use relative path from rslearn_projects folder since the config file
         # will be copied into the Beaker experiment's rslearn_projects copy.
         tmp_dir = os.path.relpath(tmp_dir)
 
         tmp_config_fnames: list[str] = []
         for config_idx, cur_config_fname in enumerate(config_paths):
+            # Load the config file as string for template substitution
             with open(cur_config_fname) as f:
                 config_str = f.read()
+
             config_str = config_str.replace("{CHECKPOINT_PATH}", helios_checkpoint_path)
             config_str = config_str.replace("{PATCH_SIZE}", str(patch_size))
             config_str = config_str.replace("{256/PATCH_SIZE}", str(256 // patch_size))
@@ -70,16 +82,22 @@ def launch_finetune(
                 "{ENCODER_EMBEDDING_SIZE}", str(encoder_embedding_size)
             )
 
+            # String to yaml to add test metrics file key
+            config = yaml.safe_load(config_str)
+            if do_eval and "model" in config and "init_args" in config["model"]:
+                model_name = "_".join(helios_checkpoint_path.split(os.path.sep)[-2:])  # "modelname_stepX"
+                eval_task = config_paths[0].split(os.path.sep)[-2]
+                path = os.path.join(full_eval_dir, f"{model_name}__{eval_task}.json")
+                config["model"]["init_args"]["metrics_file"] = path
+                logger.info(f"Saving test metrics to {path}")
+
+            # Save the config file to the temporary directory
             tmp_config_fname = os.path.join(
                 tmp_dir, f"{experiment_id}_{config_idx}.yaml"
             )
             with open(tmp_config_fname, "w") as f:
-                f.write(config_str)
+                yaml.dump(config, f, default_flow_style=False)
             tmp_config_fnames.append(tmp_config_fname)
-
-        weka_mounts = [
-            dict(bucket_name="dfive-default", mount_path="/weka/dfive-default")
-        ]
 
         if local:
             # If running locally, assume we are in a gpu session
@@ -90,7 +108,7 @@ def launch_finetune(
                 "-m",
                 "rslp.rslearn_main",
                 "model",
-                "fit"
+                "fit" if not do_eval else "test"
             ]
             paths = []
             for i, _ in enumerate(config_paths):
@@ -98,16 +116,19 @@ def launch_finetune(
                 path = f"{tmp_dir}/debug_profiling_{i}.yaml"
                 paths.append(path)
                 args.append(path)
+
             args.extend([
-                "--autoresume=true",
                 "--rslp_experiment",
                 experiment_id,
                 "--rslp_project",
                 rslp_project
             ])
+
             if profiler:
                 args.append("--profiler")
                 args.append(profiler)
+            args.append("--autoresume=true")
+
             print("=" * 80)
             print("DEBUG: Command being spawned:")
             print(" ".join(args))
@@ -124,9 +145,13 @@ def launch_finetune(
                 )
                 with open(path, "w") as f:
                     f.write(string)
+            input("Press Enter to continue...")
             subprocess.check_call(args)
 
         else:
+            if do_eval:
+                raise NotImplementedError("Eval mode not supported for Beaker job")
+
             extra_args = []
             if profiler:
                 extra_args.extend(["--profiler", profiler])

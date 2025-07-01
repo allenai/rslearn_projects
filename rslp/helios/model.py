@@ -74,7 +74,7 @@ class Helios(torch.nn.Module):
 
             # Monkey patch attention modules after weights are loaded
             # to apply APLA (https://arxiv.org/pdf/2503.11335v2)
-            self._patch_attention_modules(model)
+            # self._patch_attention_modules(model)
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:
