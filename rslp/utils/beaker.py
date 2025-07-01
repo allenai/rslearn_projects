@@ -7,7 +7,7 @@ from beaker import BeakerDataMount, BeakerDataSource, BeakerEnvVar, BeakerImageS
 from beaker.client import Beaker
 
 DEFAULT_WORKSPACE = "ai2/earth-systems"
-DEFAULT_BUDGET = "ai2/d5"
+DEFAULT_BUDGET = "ai2/es-platform"
 
 
 @dataclass
