@@ -240,15 +240,15 @@ data:
             mode: "center"
             image_selectors: ["sentinel2_l2a", "sentinel1"]
     train_config:
-      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
+      groups: ["groundtruth_window_32"]
       tags:
         split: "train"
     val_config:
-      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
+      groups: ["groundtruth_window_32"]
       tags:
         split: "val"
     test_config:
-      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
+      groups: ["groundtruth_window_32"]
       tags:
         split: "val"
 trainer:
