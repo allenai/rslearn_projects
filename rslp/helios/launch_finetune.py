@@ -5,7 +5,6 @@ import os
 import subprocess  # nosec
 import tempfile
 from pathlib import Path
-
 from rslp.log_utils import get_logger
 
 DEFAULT_RSLP_PROJECT = "helios_finetuning"
@@ -27,6 +26,8 @@ def launch_finetune(
     priority: str = "high",
     retries: int = 0,
     mode: str = "fit",
+    profiler: str | None = None,
+    local: bool = False,
 ) -> None:
     """Launch Helios fine-tuning experiments.
 
@@ -44,6 +45,8 @@ def launch_finetune(
         priority: what priority to use.
         retries: Beaker job retries.
         mode: Mode to run the model ('fit', 'validate', 'test', or 'predict').
+        profiler: Profiler to use for training. Can be 'simple' or 'advanced'.
+        local: Whether to run the command locally instead of spawning a Beaker job.
     """
     # Go into each config file (including the base ones) and make replacements as
     # needed.
@@ -78,33 +81,84 @@ def launch_finetune(
             dict(bucket_name="dfive-default", mount_path="/weka/dfive-default")
         ]
 
-        # OK now we can prepare all the command-line arguments to beaker_train.
-        args = [
-            "python",
-            "-m",
-            "rslp.main",
-            "common",
-            "beaker_train",
-            "--mode",
-            mode,
-            "--config_paths",
-            json.dumps(tmp_config_fnames),
-            "--image_name",
-            image_name,
-            "--cluster",
-            json.dumps(cluster),
-            "--weka_mounts",
-            json.dumps(weka_mounts),
-            "--gpus",
-            str(gpus),
-            "--project_id",
-            rslp_project,
-            "--experiment_id",
-            experiment_id,
-            "--priority",
-            priority,
-            "--retries",
-            str(retries),
-        ]
-        logger.info(f"Launching job by running: {args}")
-        subprocess.check_call(args)  # nosec
+        if local:
+            # If running locally, assume we are in a gpu session
+            # NOTE: assuming that all the args are passed through to the config file and do NOT get 
+            # passed through the final call to rslp.rslearn_main (except for profiler)
+            args = [
+                "python",
+                "-m",
+                "rslp.rslearn_main",
+                "model",
+                "fit"
+            ]
+            paths = []
+            for i, _ in enumerate(config_paths):
+                args.append("--config")
+                path = f"{tmp_dir}/debug_profiling_{i}.yaml"
+                paths.append(path)
+                args.append(path)
+            args.extend([
+                "--autoresume=true",
+                "--rslp_experiment",
+                experiment_id,
+                "--rslp_project",
+                rslp_project
+            ])
+            if profiler:
+                args.append("--profiler")
+                args.append(profiler)
+            print("=" * 80)
+            print("DEBUG: Command being spawned:")
+            print(" ".join(args))
+            print("=" * 80)
+
+            # Need to monkeypatch configs to fix helios config path for local run
+            # not great but works for now
+            for path in paths:
+                with open(path, "r") as f:
+                    string = f.read()
+                string = string.replace(
+                    "/opt/helios/data/norm_configs/computed.json",
+                    "./helios/data/norm_configs/computed.json"
+                )
+                with open(path, "w") as f:
+                    f.write(string)
+            subprocess.check_call(args)
+
+        else:
+            extra_args = []
+            if profiler:
+                extra_args.extend(["--profiler", profiler])
+                
+            args = [
+                "python",
+                "-m",
+                "rslp.main",
+                "common",
+                "beaker_train",
+                "--mode",
+                mode,
+                "--config_paths",
+                json.dumps(tmp_config_fnames),
+                "--image_name",
+                image_name,
+                "--cluster",
+                json.dumps(cluster),
+                "--weka_mounts",
+                json.dumps(weka_mounts),
+                "--gpus",
+                str(gpus),
+                "--project_id",
+                rslp_project,
+                "--experiment_id",
+                experiment_id,
+                "--priority",
+                priority,
+                "--retries",
+                str(retries),
+            ]
+            if extra_args:
+                args.extend(["--extra_args", json.dumps(extra_args)])
+            logger.info(f"Launching job by running: {args}")
+            subprocess.check_call(args)  # nosec

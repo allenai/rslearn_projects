@@ -306,8 +306,11 @@ class CustomLightningCLI(RslearnLightningCLI):
 
             # Configure profiler if specified
             if c.profiler:
+                max_steps = 100
                 c.trainer.profiler = c.profiler
+                c.trainer.max_steps = max_steps
                 logger.info(f"Using profiler: {c.profiler}")
+                logger.info(f"Setting max_steps to {max_steps}")
 
         if subcommand == "fit" and not c.no_log:
             # Set the checkpoint directory to canonical GCS location.
