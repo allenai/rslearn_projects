@@ -1,19 +1,19 @@
-"""
+"""Turn shapefiles into csvs.
+
 It's easier for google cloud if the files are in a single csv instead of
 in a shapefile, so we process it into csvs.
 """
-from upath import UPath
-import pandas as pd
+
 import geopandas
+import pandas as pd
+from upath import UPath
 
 
 def process_files(shapefile_path: UPath) -> pd.DataFrame:
     """Create windows for crop type mapping.
 
     Args:
-        csv_path: path to the csv file
-        num_pixels: number of points to sample from each polygon
-        postprocess_categories: whether to postprocess categories
+        shapefile_path: path to the shapefile
     """
     df = geopandas.read_file(shapefile_path)
     is_crop = 1

@@ -8,7 +8,6 @@ import hashlib
 import multiprocessing
 from datetime import datetime, timezone
 
-import geopandas
 import pandas as pd
 import shapely
 import tqdm
@@ -118,7 +117,7 @@ def create_windows_from_csv(
     """Create windows from csv.
 
     Args:
-        csv_path: path to the csv file
+        csv_paths: path to the csv files
         ds_path: path to the dataset
         group_name: name of the group
         window_size: window size
@@ -146,7 +145,6 @@ def create_windows_from_csv(
 
 
 if __name__ == "__main__":
-
     multiprocessing.set_start_method("forkserver")
     parser = argparse.ArgumentParser(description="Create windows from csv")
     parser.add_argument(

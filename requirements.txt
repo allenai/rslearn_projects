@@ -1,5 +1,6 @@
 beaker-py>=2.0
 fastapi>=0.115
+geopandas>=1.1.0
 google-cloud-bigtable>=2.18
 google-cloud-pubsub>=2.18
 interrogate>=1.7
@@ -12,4 +13,3 @@ ruff>=0.7
 scikit-image>=0.23
 typing-extensions>=4.11
 uvicorn>=0.32
-geopandas>=1.1.0
