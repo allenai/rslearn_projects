@@ -33,6 +33,10 @@ def process_files(shapefile_path: UPath) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    for filename in ["crop_merged_v2", "noncrop_merged_v2"]:
+    for filename in ["crop_merged_v2", "noncrop_merged_v2", "togo_test_majority"]:
+        csv_name = UPath(".") / f"{UPath(filename).stem}.csv"
+        if csv_name.exists():
+            print(f"{csv_name} exists - skipping")
+            continue
         df = process_files(UPath(filename))
-        df.to_csv(f"{UPath(filename).stem}.csv")
+        df.to_csv(csv_name)
