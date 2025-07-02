@@ -28,7 +28,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: weka://dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625
+    path: /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625
     inputs:
       sentinel2_0:
         data_type: "raster"
@@ -163,12 +163,6 @@ data:
       groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
       tags:
         split: "val"
-    # predict_config:
-    #   groups: ["nandi_county"]
-    #   load_all_patches: true
-    #   skip_targets: true
-    #   patch_size: 2
-    #   overlap_ratio: 0.5
 trainer:
   max_epochs: 100
   callbacks:
@@ -185,10 +179,5 @@ trainer:
       init_args:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 2
-    # - class_path: rslearn.train.prediction_writer.RslearnWriter
-    #   init_args:
-    #     path: weka://dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625
-    #     output_layer: output
-    #     selector: ["category"]
 rslp_project: placeholder
 rslp_experiment: placeholder

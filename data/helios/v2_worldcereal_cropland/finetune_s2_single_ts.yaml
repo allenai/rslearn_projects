@@ -27,7 +27,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: weka://dfive-default/rslearn-eai/datasets/crop/worldcereal_cropland/20250626
+    path: /weka/dfive-default/rslearn-eai/datasets/crop/worldcereal_cropland/20250626
     inputs:
       sentinel2_11:
         data_type: "raster"
@@ -70,7 +70,7 @@ data:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         - class_path: rslearn.train.transforms.pad.Pad
           init_args:
-            size: 8
+            size: 2
             mode: "center"
             image_selectors: ["sentinel2_l2a"]
     train_config:

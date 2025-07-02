@@ -28,7 +28,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: weka://dfive-default/rslearn-eai/datasets/landsat_vessel_detection/classifier/dataset_20250624
+    path: /weka/dfive-default/rslearn-eai/datasets/landsat_vessel_detection/classifier/dataset_20250624
     inputs:
       landsat:
         data_type: "raster"

@@ -27,7 +27,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: weka://dfive-default/rslearn-eai/datasets/mangrove/classification/20250626
+    path: /weka/dfive-default/rslearn-eai/datasets/mangrove/classification/20250626
     inputs:
       sentinel2_0:
         data_type: "raster"
@@ -154,7 +154,7 @@ data:
       groups: ["sample_100K"]
       tags:
         split: "train"
-      num_samples: 1000
+      num_samples: 10000
     val_config:
       groups: ["sample_100K"]
       tags:

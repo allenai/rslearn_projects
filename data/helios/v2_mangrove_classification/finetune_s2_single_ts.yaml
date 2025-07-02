@@ -27,7 +27,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: weka://dfive-default/rslearn-eai/datasets/mangrove/classification/20250626
+    path: /weka/dfive-default/rslearn-eai/datasets/mangrove/classification/20250626
     inputs:
       sentinel2_11:
         data_type: "raster"

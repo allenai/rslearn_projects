@@ -17,36 +17,28 @@ python rslp/lfmc/create_windows.py --csv_path /weka/dfive-default/yawenz/dataset
 
 Run the command to prepare/ingest/materialize groundtruth windows (the ingestion is mainly for SRTM):
 ```
-rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/lfmc/20250626 --group global_lfmc --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-
-rslearn dataset ingest --root /weka/dfive-default/rslearn-eai/datasets/lfmc/20250626 --group global_lfmc --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-
-python rslp/scripts/beaker_launcher.py --project lfmc --ds_path /weka/dfive-default/rslearn-eai/datasets/lfmc/20250626 --group global_lfmc --image_name favyen/rslp --clusters ai2/saturn-cirrascale --num_jobs 10
+export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/lfmc/20250626
+export DATASET_GROUP=global_lfmc
+rslearn dataset prepare --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset ingest --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+python rslp/scripts/beaker_launcher.py --project lfmc --ds_path DATASET_PATH --group DATASET_GROUP --image_name favyen/rslp --clusters ai2/saturn-cirrascale --num_jobs 10
 ```
 
-Note that to run these commands, we will need to set the environmental variables of `NASA_EARTHDATA_USERNAME` and `NASA_EARTHDATA_PASSWORD` for getting SRTM data.
+Note that to run these commands, we will need to set the environmental variables of `NASA_EARTHDATA_USERNAME` and `NASA_EARTHDATA_PASSWORD` ([Link](https://urs.earthdata.nasa.gov/)) for accessing SRTM data.
 
+### 3. Finetune Helios
 
-```
-python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_lfmc/finetune_s1_s2_srtm.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_lfmc_helios_base_S1_S2_SRTM_ts_ws32_ps8
-```
-
+Experiment 1: Single modality (Sentinel2) + time-series (12 months), window_size = 32, patch_size = 8
 ```
 python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_lfmc/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_lfmc_helios_base_S2_ts_ws32_ps8
 ```
 
-Single TS experiment:
-
+Experiment 2: Multimodal (Sentinel2 + Sentinel1 + SRTM) + time-series (12 months), window_size = 32, patch_size = 8
 ```
-python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_lfmc/finetune_s1_s2_srtm_single_ts.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_lfmc_helios_base_S1_S2_SRTM_single_ts_ws32_ps8
-```
-
-```
-python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_lfmc/finetune_s2_single_ts.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_lfmc_helios_base_S2_single_ts_ws32_ps8
+python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_lfmc/finetune_s1_s2_srtm.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_lfmc_helios_base_S1_S2_SRTM_ts_ws32_ps8
 ```
 
-Random experiment:
-
+Experiment 3: Random initialized Helios (same setup as Experiment 2)
 ```
 python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_lfmc/random_s1_s2_srtm.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_lfmc_helios_base_random_initialized_ws32_ps8
 ```
