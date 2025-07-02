@@ -212,7 +212,7 @@ def merge_and_upload_raster(
             # no prediction was made.
             continue
 
-        with window_output_fname.open() as f:
+        with window_output_fname.open("rb") as f:
             cur_im = np.array(Image.open(f))
 
         col_offset = window.bounds[0] - bounds[0]
