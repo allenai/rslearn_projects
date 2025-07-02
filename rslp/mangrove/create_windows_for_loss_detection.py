@@ -1,4 +1,4 @@
-"""Create windows for crop type mapping."""
+"""Create windows for mangrove loss detection."""
 
 import argparse
 import multiprocessing

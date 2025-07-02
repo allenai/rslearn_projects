@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 
 
-def process_worldcereal_data(api_url: str) -> None:
+def request_worldcereal_data(api_url: str) -> None:
     """Fetch and process WorldCereal collections data.
 
     Args:
@@ -75,4 +75,4 @@ def process_worldcereal_data(api_url: str) -> None:
                     file.write(response.content)
 
 
-process_worldcereal_data("https://ewoc-rdm-api.iiasa.ac.at")
+request_worldcereal_data("https://ewoc-rdm-api.iiasa.ac.at")

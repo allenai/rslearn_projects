@@ -1,4 +1,4 @@
-"""Create windows for crop type mapping."""
+"""Create windows for mangrove classification."""
 
 import argparse
 import hashlib

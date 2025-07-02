@@ -136,9 +136,9 @@ def create_window(
 
     # If split by polygon id, no samples from the same polygon will be in the same split.
     if split_by_polygon:
-        is_val = hashlib.md5(str(polygon_id).encode()).hexdigest()[0] in ["0", "1"]
+        is_val = hashlib.sha256(str(polygon_id).encode()).hexdigest()[0] in ["0", "1"]
     else:
-        is_val = hashlib.md5(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
+        is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
 
     if is_val:
         split = "val"

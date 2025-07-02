@@ -1,4 +1,4 @@
-"""This script is used to analyze the WorldCereal dataset."""
+"""This script is used to sample the WorldCereal dataset by H3 cells, and create two output csv files: 1. worldcereal_points_filtered_level_123.csv: the sampled points, 2. worldcereal_level_123.csv: the size per H3 cell and level_123 class."""
 
 import os
 

@@ -1,4 +1,4 @@
-"""Create windows for cropland classification."""
+"""Create windows for LFMC estimation."""
 
 import argparse
 import hashlib
