@@ -138,6 +138,7 @@ def create_windows_from_csv(
                 ds_path=ds_path,
                 group_name=group_name,
                 window_size=window_size,
+                is_test="test" in filename,
             )
             for row in csv_rows
         ]
