@@ -1,5 +1,6 @@
 """Helios model wrapper for fine-tuning in rslearn."""
 
+import os
 import json
 from typing import Any
 
@@ -11,7 +12,6 @@ from helios.train.masking import MaskedHeliosSample, MaskValue
 from olmo_core.config import Config
 from olmo_core.distributed.checkpoint import load_model_and_optim_state
 
-from rslp.helios.alpa import inject_alpa
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -70,11 +70,29 @@ class Helios(torch.nn.Module):
         # Load the checkpoint.
         if not random_initialization:
             train_module_dir = f"{checkpoint_path}/model_and_optim"
-            load_model_and_optim_state(train_module_dir, model)
+            if os.path.exists(train_module_dir):
+                load_model_and_optim_state(train_module_dir, model)
+                print("INFO: loaded model from model_and_optim folder")
 
-            # Monkey patch attention modules after weights are loaded
-            # to apply APLA (https://arxiv.org/pdf/2503.11335v2)
-            # self._patch_attention_modules(model)
+            else:
+                # if we load last.ckpt, we are loading from sft, so ignore decoder weights
+                ckpt_file = os.path.join(checkpoint_path, "last.ckpt")
+                print(f"INFO: could not find model_and_optim folder, looking for {ckpt_file}")
+
+                state_dict = torch.load(ckpt_file)["state_dict"]
+                processed_state_dict = {}
+                for k, v in state_dict.items():
+                    if "model.decoders." not in k:
+                        k = k.replace("model.encoder.0.model.", "encoder.")
+                        processed_state_dict[k] = v
+                model.load_state_dict(processed_state_dict, strict=False)
+                print("INFO:remapped weights and loaded checkpoint")
+
+                assert all(
+                    k in processed_state_dict 
+                    for k in model.state_dict().keys()
+                    if k.startswith("encoder")
+                ), "all non-target encoder weights should be loaded"
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:
@@ -83,29 +101,6 @@ class Helios(torch.nn.Module):
             else:
                 model = model[part]
         self.model = model
-
-    def _patch_attention_modules(self, model):
-        """
-        Split projection weights in attention modules into trainable and frozen parts.
-        This is to apply APLA (https://arxiv.org/pdf/2503.11335v2)
-        """
-        logger.info("patching attention modules for alpa")
-        if hasattr(model, 'encoder') and hasattr(model.encoder, 'blocks'):
-            for layer in model.encoder.blocks:
-                if hasattr(layer, 'attn'):
-                    inject_alpa(layer.attn)
-
-        logger.info("setting requires_grad for attn.proj")
-        n_trainable = 0
-        n_frozen = 0
-        for name, param in model.named_parameters():
-            if "attn.proj" in name:
-                n_trainable += param.numel()
-                param.requires_grad = True
-            else:
-                n_frozen += param.numel()
-                param.requires_grad = False
-        logger.info(f"peft: {n_trainable / int(1e6)}M trainable, {n_frozen / int(1e6)}M frozen")
 
     def forward(self, inputs: list[dict[str, Any]]) -> list[torch.Tensor]:
         """Compute feature maps from the Helios backbone.
