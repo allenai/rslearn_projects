@@ -206,8 +206,10 @@ def merge_and_upload_raster(
                 "expected projection of window to match the task projection"
             )
 
-        window_output_fname = window.path / "layers" / "output" / "image.png"
+        window_output_fname = window.path / "layers" / "output" / "output" / "image.png"
         if not window_output_fname.exists():
+            # This indicates that some required input layers must have been missing so
+            # no prediction was made.
             continue
 
         with window_output_fname.open() as f:
@@ -220,7 +222,11 @@ def merge_and_upload_raster(
         ] = cur_im + 1
 
     GeotiffRasterFormat().encode_raster(
-        out_fname.parent, projection, bounds, prediction, fname=out_fname.name
+        out_fname.parent,
+        projection,
+        bounds,
+        prediction[None, :, :],
+        fname=out_fname.name,
     )
 
 

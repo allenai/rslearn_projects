@@ -39,12 +39,12 @@ yielding 600K inference tasks in total. For each task, an inference worker will:
 4. Copy the contents of that output layer to a location on GCS.
 
 The task queue system is implemented using `rslp.common.worker`, see
-`rslp/common/README.md` for details. Essentially, we first write tasks to a Google
-Cloud Pub/Sub topic, and then launch workers that will read from the topic.
+`rslp/common/README.md` for details. Essentially, we first write tasks to a Beaker
+queue, and then launch workers that will read from the queue.
 
-Then, we start by writing the tasks:
+We start by writing the tasks:
 
-    python -m rslp.main satlas write_jobs_for_year_months --year_months '[[2024, 7]]' --application MARINE_INFRA --out_path 'gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/{year:04d}-{month:02d}/' --project_id earthsystem-dev-c3po --topic_id rslp-job-queue-favyen --days_before 120 --days_after 90
+    python -m rslp.main satlas write_jobs_for_year_months --year_months '[[2024, 7]]' --application MARINE_INFRA --out_path 'gs://rslearn-eai/projects/satlas/marine_infra/version-20241212/{year:04d}-{month:02d}/' --queue_name favyen/satlas-prediction-queue --days_before 120 --days_after 90
 
 Here:
 
@@ -69,8 +69,8 @@ Then start the workers. See `rslp/common/README.md` for details. In this example
 were written. Here we start 100 workers. But you actually need to start one worker
 first to populate the rtree index before starting the rest.
 
-    python -m rslp.main common launch --image_name favyen/rslp_image --project_id earthsystem-dev-c3po --subscription_id rslp-job-queue-favyen-sub --num_workers 100 --cluster "['ai2/jupiter-cirrascale-2']" --gpus 1 --shared_memory 256GiB --manage_scratch_dir_on_data_disk=true
-    python -m rslp.main common launch --image_name favyen/rslp_image --project_id earthsystem-dev-c3po --subscription_id rslp-job-queue-favyen-sub --num_workers 100 --cluster "['ai2/augusta-google-1']" --gpus 1 --shared_memory 256GiB --manage_scratch_dir_on_data_disk=false
+    python -m rslp.main common launch --image_name favyen/rslp_image --queue_name favyen/satlas-prediction-queue --num_workers 100 --cluster "['ai2/jupiter-cirrascale-2', 'ai2/neptune-cirrascale', 'ai2/saturn-cirrascale', 'ai2/ceres-cirrascale']" --gpus 1 --shared_memory 256GiB
+    python -m rslp.main common launch --image_name favyen/rslp_image --queue_name favyen/satlas-prediction-queue --num_workers 100 --cluster "['ai2/augusta-google-1']" --gpus 1 --shared_memory 256GiB
 
 ### Post-processing.
 
@@ -115,7 +115,7 @@ Training:
 
 Inference:
 
-    python -m rslp.main satlas write_jobs_for_year_months --year_months '[[2024, 1]]' --application WIND_TURBINE --out_path 'gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/{year:04d}-{month:02d}/' --project_id earthsystem-dev-c3po --topic_id rslp-job-queue-favyen --days_before 90 --days_after 181
+    python -m rslp.main satlas write_jobs_for_year_months --year_months '[[2024, 1]]' --application WIND_TURBINE --out_path 'gs://rslearn-eai/projects/satlas/wind_turbine/version-20241210/{year:04d}-{month:02d}/' --queue_name favyen/satlas-prediction-queue --days_before 90 --days_after 181
 
 Post-processing:
 
@@ -138,7 +138,7 @@ Training:
 
 Inference:
 
-    python -m rslp.main satlas write_jobs_for_year_months --year_months '[[2024, 1]]' --application SOLAR_FARM --out_path 'gs://rslearn-eai/projects/satlas/solar_farm/version-20250108/{year:04d}-{month:02d}/' --project_id earthsystem-dev-c3po --topic_id rslp-job-queue-favyen --days_before 120 --days_after 90
+    python -m rslp.main satlas write_jobs_for_year_months --year_months '[[2024, 1]]' --application SOLAR_FARM --out_path 'gs://rslearn-eai/projects/satlas/solar_farm/version-20250108/{year:04d}-{month:02d}/' --queue_name favyen/satlas-prediction-queue --days_before 120 --days_after 90
 
 Post-processing:
 

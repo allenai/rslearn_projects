@@ -194,7 +194,7 @@ trainer:
       init_args:
         path: gs://rslearn-eai/datasets/solar_farm/dataset_v1/20250108/
         output_layer: output
-        selector: ["detect"]
+        selector: ["segment"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         save_top_k: 1
