@@ -122,7 +122,11 @@ def create_windows_from_csv(
         group_name: name of the group
         window_size: window size
     """
-    for filename in ["crop_merged_v2.csv", "noncrop_merged_v2.csv"]:
+    for filename in [
+        "crop_merged_v2.csv",
+        "noncrop_merged_v2.csv",
+        "togo_test_majority.csv",
+    ]:
         df_sampled = pd.read_csv(csv_paths / filename)
         csv_rows = []
         for _, row in df_sampled.iterrows():
