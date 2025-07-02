@@ -34,7 +34,19 @@
       "type": "raster"
     },
     "output": {
-      "type": "vector"
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
     },
     "sentinel2": {
       "band_sets": [
