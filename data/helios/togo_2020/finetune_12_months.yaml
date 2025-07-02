@@ -16,7 +16,7 @@ model:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
-                out_channels: 8
+                out_channels: 2
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
     plateau: true
