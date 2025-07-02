@@ -36,8 +36,8 @@ RSLP_PREFIX=gs://rslearn-eai \
 
 char_limit = 90  # beaker strings can't be >128 chars
 homepath = "/weka/dfive-default/ryanp/rslearn_projects"
-priority = "normal"
-rslp_project = "helios_cross_finetuning"
+priority = "high"
+rslp_project = "helios_cross_finetuning_v2"
 patch_size = 8
 embedding_size = 768
 image_name = "favyen/rslphelios3"
