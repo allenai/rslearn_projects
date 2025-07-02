@@ -185,7 +185,7 @@ data:
             class_path: rslearn.train.tasks.classification.ClassificationTask
             init_args:
               property_name: "category"
-              classes: ["Coffee", "Trees", "Grassland", "Maize", "Sugarcane", "Tea", "Water", "Built-up"]
+              classes: [1, 0]
               enable_f1_metric: true
               metric_kwargs:
                 average: "micro"
