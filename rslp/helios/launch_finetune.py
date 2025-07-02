@@ -113,7 +113,7 @@ def launch_finetune(
             paths = []
             for i, _ in enumerate(config_paths):
                 args.append("--config")
-                path = f"{tmp_dir}/debug_profiling_{i}.yaml"
+                path = f"{tmp_dir}/{experiment_id}_{i}.yaml"
                 paths.append(path)
                 args.append(path)
 
