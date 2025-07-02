@@ -156,4 +156,6 @@ def run_model_predict(
         subclass_mode_model=True,
         subclass_mode_data=True,
         save_config_kwargs={"overwrite": True},
+        # We allow environment var overrides for flexibility in deployment.
+        parser_kwargs={"default_env": True},
     )
