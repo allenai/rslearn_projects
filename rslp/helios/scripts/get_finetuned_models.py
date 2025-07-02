@@ -1,9 +1,11 @@
 """
 Get the best finetuned models from W&B and download them to a local directory.
+Usage: WANDB_PROJECT=?? WANDB_ENTITY=?? GCLOUD_PROJECT_ID=?? python3 get_finetuned_models.py
 """
 
 import subprocess
 import os
+import shutil
 import wandb
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -47,9 +49,11 @@ def get_best_runs():
 
         if best_run:
             dirpath = best_run.config["trainer"]["callbacks"][1]["init_args"]["dirpath"]
+            pretrained = best_run.config["model"]["init_args"]["model"]["init_args"]["encoder"][0]["init_args"]["checkpoint_path"]
             best_runs[metric] = {
                 "run_name": best_run.name,
-                "dirpath": dirpath
+                "dirpath": dirpath,
+                "pretrained": pretrained
             }
 
     return best_runs
@@ -83,18 +87,17 @@ if __name__ == "__main__":
 
     # Collect all download tasks
     download_tasks = []
+    checkpoint = "last.ckpt"
     
     for metric, run_info in best_runs.items():
         gs_path = run_info["dirpath"]
         bucket_name = gs_path.split("/")[2]
-        blob_path = "/".join(gs_path.split("/")[3:]) + "/last.ckpt"
+        blob_path = os.path.join("/".join(gs_path.split("/")[3:]), checkpoint)
         
         print(f"Processing {metric}: {gs_path}")
         print(f"Looking for: gs://{bucket_name}/{blob_path}")
         
-        # Use gcloud to list blobs and download them
         try:
-            # List blobs with the prefix
             print(f"Listing blobs with prefix: {blob_path}")
             list_cmd = ["gcloud", "storage", "ls", f"gs://{bucket_name}/{blob_path}"]
             print(f"Running: {' '.join(list_cmd)}")
@@ -110,7 +113,13 @@ if __name__ == "__main__":
                     
                     # Add to download tasks
                     download_tasks.append((blob_path, local_path, metric))
-                    
+
+                    # Also, copy the config.json file from "pretrained" key in run_info
+                    config_dest = local_path.replace(checkpoint, "config.json")
+                    config_src = os.path.join(run_info["pretrained"], "config.json")
+                    print(f"Copying config.json from {config_src} to {config_dest}")
+                    shutil.copy(config_src, config_dest)
+ 
         except subprocess.CalledProcessError as e:
             print(f"Error processing {metric}: {e}")
             print(f"stdout: {e.stdout}")
@@ -120,16 +129,14 @@ if __name__ == "__main__":
 
     # Execute all downloads in parallel
     print(f"\nStarting parallel download of {len(download_tasks)} files...")
-    max_workers = min(10, len(download_tasks))  # Limit to 10 concurrent downloads
+    max_workers = min(10, len(download_tasks))
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all download tasks
         future_to_task = {
             executor.submit(download_blob_async, blob_path, local_path, metric): (blob_path, local_path, metric)
             for blob_path, local_path, metric in download_tasks
         }
         
-        # Process completed downloads
         completed = 0
         failed = 0
         for future in as_completed(future_to_task):
