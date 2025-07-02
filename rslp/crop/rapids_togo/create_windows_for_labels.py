@@ -28,10 +28,7 @@ END_TIME = datetime(2020, 12, 31, tzinfo=timezone.utc)
 
 
 def create_window(
-    csv_row: pd.Series,
-    ds_path: UPath,
-    group_name: str,
-    window_size: int,
+    csv_row: pd.Series, ds_path: UPath, group_name: str, window_size: int, is_test: bool
 ) -> None:
     """Create windows for crop type mapping.
 
@@ -40,6 +37,7 @@ def create_window(
         ds_path: path to the dataset
         group_name: name of the group
         window_size: window size
+        is_test: whether or not this is a test window
     """
     # Get sample metadata
     polygon_id = csv_row["unique_id"]
@@ -69,17 +67,19 @@ def create_window(
             int(dst_geometry.shp.y) + window_size // 2,
         )
 
-    # Check if train or val.
     group = f"{group_name}_window_{window_size}"
     window_name = f"{polygon_id}_{latitude}_{longitude}"
+    if not is_test:
+        # Check if train or val.
+        # If split by polygon id, no samples from the same polygon will be in the same split.
+        is_val = hashlib.md5(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
 
-    # If split by polygon id, no samples from the same polygon will be in the same split.
-    is_val = hashlib.md5(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
-
-    if is_val:
-        split = "val"
+        if is_val:
+            split = "val"
+        else:
+            split = "train"
     else:
-        split = "train"
+        split = "test"
 
     window = Window(
         path=Window.get_window_root(ds_path, group, window_name),
