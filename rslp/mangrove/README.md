@@ -23,7 +23,7 @@ Run the following commands to prepare and materialize windows:
 export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/mangrove/classification/20250626
 export DATASET_GROUP=sample_100K
 rslearn dataset prepare --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-python rslp/scripts/beaker_launcher.py --project mangrove_classification --ds_path DATASET_PATH --group DATASET_GROUP --image_name favyen/rslp --clusters ai2/ceres-cirrascale --num_jobs 10
+python rslp/scripts/launch_beaker_data_materialization.py --project mangrove_classification --ds_path DATASET_PATH --group DATASET_GROUP --image_name favyen/rslp --clusters ai2/ceres-cirrascale --num_jobs 10
 ```
 
 ### 3. Finetune Helios
@@ -66,7 +66,7 @@ Run the following commands to prepare and materialize windows:
 export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/mangrove/loss_detection/20250626
 export DATASET_GROUP=sample_188K_temporal_split
 rslearn dataset prepare --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-python rslp/scripts/beaker_launcher.py --project mangrove_loss_detection --ds_path DATASET_PATH --group DATASET_GROUP --image_name favyen/rslp --clusters ai2/titan-cirrascale --num_jobs 15
+python rslp/scripts/launch_beaker_data_materialization.py --project mangrove_loss_detection --ds_path DATASET_PATH --group DATASET_GROUP --image_name favyen/rslp --clusters ai2/titan-cirrascale --num_jobs 15
 ```
 
 ### 3. Finetune Helios

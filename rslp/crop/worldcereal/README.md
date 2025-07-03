@@ -34,7 +34,7 @@ Run the command to prepare and materialize groundtruth windows:
 export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/crop/worldcereal_cropland/20250626
 export DATASET_GROUP=h3_sample100_66K
 rslearn dataset prepare --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-python rslp/scripts/beaker_launcher.py --project worldcereal_cropland --ds_path DATASET_PATH --group DATASET_GROUP --image_name favyen/rslp --clusters ai2/saturn-cirrascale --num_jobs 10
+python rslp/scripts/launch_beaker_data_materialization.py --project worldcereal_cropland --ds_path DATASET_PATH --group DATASET_GROUP --image_name favyen/rslp --clusters ai2/saturn-cirrascale --num_jobs 10
 ```
 
 ### 3. Finetune Helios

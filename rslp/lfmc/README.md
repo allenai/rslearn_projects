@@ -21,7 +21,7 @@ export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/lfmc/20250626
 export DATASET_GROUP=global_lfmc
 rslearn dataset prepare --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 rslearn dataset ingest --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-python rslp/scripts/beaker_launcher.py --project lfmc --ds_path DATASET_PATH --group DATASET_GROUP --image_name favyen/rslp --clusters ai2/saturn-cirrascale --num_jobs 10
+python rslp/scripts/launch_beaker_data_materialization.py --project lfmc --ds_path DATASET_PATH --group DATASET_GROUP --image_name favyen/rslp --clusters ai2/saturn-cirrascale --num_jobs 10
 ```
 
 Note that to run these commands, we will need to set the environmental variables of `NASA_EARTHDATA_USERNAME` and `NASA_EARTHDATA_PASSWORD` ([Link](https://urs.earthdata.nasa.gov/)) for accessing SRTM data.
