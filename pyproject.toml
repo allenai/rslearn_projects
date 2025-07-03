@@ -23,6 +23,7 @@ include = ["rslp*"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
+optional-dependencies = {ai2 = { file = ["ai2_requirements.txt"] }}
 
 [tool.ruff]
 fix = true
