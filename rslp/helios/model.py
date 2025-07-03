@@ -1,5 +1,6 @@
 """Helios model wrapper for fine-tuning in rslearn."""
 
+import os
 import json
 from contextlib import nullcontext
 from typing import Any
@@ -83,7 +84,29 @@ class Helios(torch.nn.Module):
         # Load the checkpoint.
         if not random_initialization:
             train_module_dir = f"{checkpoint_path}/model_and_optim"
-            load_model_and_optim_state(train_module_dir, model)
+            if os.path.exists(train_module_dir):
+                load_model_and_optim_state(train_module_dir, model)
+                print("INFO: loaded model from model_and_optim folder")
+
+            else:
+                # if we load last.ckpt, we are loading from sft, so ignore decoder weights
+                ckpt_file = os.path.join(checkpoint_path, "last.ckpt")
+                print(f"INFO: could not find model_and_optim folder, looking for {ckpt_file}")
+
+                state_dict = torch.load(ckpt_file)["state_dict"]
+                processed_state_dict = {}
+                for k, v in state_dict.items():
+                    if "model.decoders." not in k:
+                        k = k.replace("model.encoder.0.model.", "encoder.")
+                        processed_state_dict[k] = v
+                model.load_state_dict(processed_state_dict, strict=False)
+                print("INFO: remapped weights and loaded checkpoint")
+
+                assert all(
+                    k in processed_state_dict 
+                    for k in model.state_dict().keys()
+                    if k.startswith("encoder")
+                ), "all non-target encoder weights should be loaded"
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:
