@@ -16,6 +16,8 @@ from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
+from rslp.utils.windows import calculate_bounds
+
 WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
 CUTOFF_VALUE = 302
@@ -58,21 +60,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     dst_crs = get_utm_ups_crs(longitude, latitude)
     dst_projection = Projection(dst_crs, WINDOW_RESOLUTION, -WINDOW_RESOLUTION)
     dst_geometry = src_geometry.to_projection(dst_projection)
-
-    if window_size == 1:
-        bounds = (
-            int(dst_geometry.shp.x),
-            int(dst_geometry.shp.y) - window_size,
-            int(dst_geometry.shp.x) + window_size,
-            int(dst_geometry.shp.y),
-        )
-    else:
-        bounds = (
-            int(dst_geometry.shp.x) - window_size // 2,
-            int(dst_geometry.shp.y) - window_size // 2,
-            int(dst_geometry.shp.x) + window_size // 2,
-            int(dst_geometry.shp.y) + window_size // 2,
-        )
+    bounds = calculate_bounds(dst_geometry, window_size)
 
     # Check if train or val.
     group = "global_lfmc"
