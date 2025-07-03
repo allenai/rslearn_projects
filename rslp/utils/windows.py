@@ -15,19 +15,18 @@ def calculate_bounds(
     if window_size <= 0:
         raise ValueError("Window size must be greater than 0")
 
-    # This is specific for window size = 1.
-    if window_size == 1:
-        bounds = (
-            int(geometry.shp.x),
-            int(geometry.shp.y) - window_size,
-            int(geometry.shp.x) + window_size,
-            int(geometry.shp.y),
-        )
-    else:
+    if window_size % 2 == 0:
         bounds = (
             int(geometry.shp.x) - window_size // 2,
             int(geometry.shp.y) - window_size // 2,
             int(geometry.shp.x) + window_size // 2,
+            int(geometry.shp.y) + window_size // 2,
+        )
+    else:
+        bounds = (
+            int(geometry.shp.x) - window_size // 2,
+            int(geometry.shp.y) - window_size // 2 - 1,
+            int(geometry.shp.x) + window_size // 2 + 1,
             int(geometry.shp.y) + window_size // 2,
         )
 
