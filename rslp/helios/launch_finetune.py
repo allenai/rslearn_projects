@@ -86,7 +86,7 @@ def launch_finetune(
             config = yaml.safe_load(config_str)
             if do_eval and "model" in config and "init_args" in config["model"]:
                 model_name = "_".join(helios_checkpoint_path.split(os.path.sep)[-2:])  # "modelname_stepX"
-                eval_task = config_paths[0].split(os.path.sep)[-2]
+                eval_task = "__".join(config_paths[0].split(os.path.sep)[-2:]).strip(".yaml")
                 path = os.path.join(full_eval_dir, f"{model_name}__{eval_task}.json")
                 config["model"]["init_args"]["metrics_file"] = path
                 logger.info(f"Saving test metrics to {path}")
@@ -108,7 +108,7 @@ def launch_finetune(
                 "-m",
                 "rslp.rslearn_main",
                 "model",
-                "fit" if not do_eval else "test"
+                "fit" if not do_eval else "validate"
             ]
             paths = []
             for i, _ in enumerate(config_paths):
@@ -134,19 +134,20 @@ def launch_finetune(
             print(" ".join(args))
             print("=" * 80)
 
-            # Need to monkeypatch configs to fix helios config path for local run
-            # not great but works for now
+            if local:
+                env = os.environ.copy()
+                env["RSLP_LOCAL"] = "1"
+            
+            # Monkeypatch paths that are hardcoded in the config files
             for path in paths:
                 with open(path, "r") as f:
                     string = f.read()
-                string = string.replace(
-                    "/opt/helios/data/norm_configs/computed.json",
-                    "./helios/data/norm_configs/computed.json"
-                )
+                string = string.replace("/opt/", "./")
                 with open(path, "w") as f:
                     f.write(string)
-            input("Press Enter to continue...")
-            subprocess.check_call(args)
+
+            # input("Press Enter to continue...")
+            subprocess.check_call(args, env=env)
 
         else:
             if do_eval:

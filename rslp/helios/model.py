@@ -86,7 +86,7 @@ class Helios(torch.nn.Module):
                         k = k.replace("model.encoder.0.model.", "encoder.")
                         processed_state_dict[k] = v
                 model.load_state_dict(processed_state_dict, strict=False)
-                print("INFO:remapped weights and loaded checkpoint")
+                print("INFO: remapped weights and loaded checkpoint")
 
                 assert all(
                     k in processed_state_dict 
