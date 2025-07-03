@@ -1,24 +1,20 @@
 """
 Get the best finetuned models from W&B and download them to a local directory.
-Usage: WANDB_PROJECT=?? WANDB_ENTITY=?? GCLOUD_PROJECT_ID=?? python3 get_finetuned_models.py
+Usage: python3 get_finetuned_models.py --workspace ??? --project ??? --entity ???
 """
 
 import subprocess
 import os
 import shutil
+import argparse
 import wandb
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-BEAKER_WORKSPACE = "ai2/earth-systems"
-PROJECT_ID = os.environ["GCLOUD_PROJECT_ID"]
-PROJECT = os.environ["WANDB_PROJECT"]
-ENTITY = os.environ["WANDB_ENTITY"]
 
-
-def get_best_runs():
+def get_best_runs(project, entity, download_all=False):
     api = wandb.Api()
-    runs = api.runs(f"{ENTITY}/{PROJECT}")
+    runs = api.runs(f"{entity}/{project}")
 
     metric_names = set()
     for run in runs:
@@ -35,31 +31,37 @@ def get_best_runs():
             ):
                 metric_names.add(metric)
 
-    best_runs = {}
+    saved_runs = {}
     for metric in metric_names:
-        best_run = None
-        best_value = None
-
         for run in runs:
-            metric_value = run.summary.get(metric)
-            if metric_value is not None:
-                if best_value is None or metric_value > best_value:
-                    best_value = metric_value
-                    best_run = run
-
-        if best_run:
-            dirpath = best_run.config["trainer"]["callbacks"][1]["init_args"]["dirpath"]
-            pretrained = best_run.config["model"]["init_args"]["model"]["init_args"]["encoder"][0]["init_args"]["checkpoint_path"]
-            best_runs[metric] = {
-                "run_name": best_run.name,
+            dirpath = run.config["trainer"]["callbacks"][1]["init_args"]["dirpath"]
+            pretrained = run.config["model"]["init_args"]["model"]["init_args"]["encoder"][0]["init_args"]["checkpoint_path"]
+            info = {
+                "metric": metric,
+                "run_name": run.name,
                 "dirpath": dirpath,
                 "pretrained": pretrained
             }
+            try:
+                saved_runs[metric].append(info)
+            except KeyError:
+                saved_runs[metric] = [info]
+    
+    if not download_all:
+        for metric, run_infos in saved_runs.items():
+            best_run = max(run_infos, key=lambda x: x["metric"])
+            saved_runs[metric] = [best_run]
 
-    return best_runs
+    return saved_runs
  
 
 if __name__ == "__main__":
+    args = argparse.ArgumentParser()
+    args.add_argument("--project", type=str, required=True, help="WandB project")
+    args.add_argument("--entity", type=str, required=True, help="WandB entity")
+    args.add_argument("--download_all", action="store_true", help="Download all models, not just the best ones")
+    args = args.parse_args()
+
     user = subprocess.check_output(
         "beaker account whoami --format json | jq -r '.[0].name'", shell=True
     ).decode("utf-8").strip()
@@ -67,8 +69,8 @@ if __name__ == "__main__":
     os.makedirs(local_dir, exist_ok=True)
     print(f"Downloading finetuned models to {local_dir}")
 
-    best_runs = get_best_runs()
-    print(json.dumps(best_runs, indent=4))
+    runs = get_best_runs(args.project, args.entity, args.download_all)
+    print(json.dumps(runs, indent=4))
 
     def download_blob_async(blob_path, local_path, metric_name):
         """Download a single blob asynchronously."""
@@ -88,44 +90,31 @@ if __name__ == "__main__":
     # Collect all download tasks
     download_tasks = []
     checkpoint = "last.ckpt"
-    
-    for metric, run_info in best_runs.items():
-        gs_path = run_info["dirpath"]
-        bucket_name = gs_path.split("/")[2]
-        blob_path = os.path.join("/".join(gs_path.split("/")[3:]), checkpoint)
-        
-        print(f"Processing {metric}: {gs_path}")
-        print(f"Looking for: gs://{bucket_name}/{blob_path}")
-        
-        try:
-            print(f"Listing blobs with prefix: {blob_path}")
-            list_cmd = ["gcloud", "storage", "ls", f"gs://{bucket_name}/{blob_path}"]
-            print(f"Running: {' '.join(list_cmd)}")
-            result = subprocess.run(list_cmd, capture_output=True, text=True, check=True)
-            blob_paths = result.stdout.strip().split('\n')
+    for metric, run_infos in runs.items():
+        for run_info in run_infos:
+            gs_path = run_info["dirpath"]
+            bucket_name = gs_path.split("/")[2]
+            blob_path = os.path.join("/".join(gs_path.split("/")[3:]), checkpoint)
             
-            for blob_path in blob_paths:
-                if blob_path and not blob_path.endswith('/'):
-                    # Extract the filename from the blob path
-                    blob_name = blob_path.split('/')[-1]
-                    local_path = os.path.join(local_dir, run_info["run_name"], blob_name)
-                    os.makedirs(os.path.dirname(local_path), exist_ok=True)
-                    
-                    # Add to download tasks
-                    download_tasks.append((blob_path, local_path, metric))
+            print(f"Processing {metric}: {gs_path}")
+            
+            try:
+                # Construct full GCS path
+                full_blob_path = f"gs://{bucket_name}/{blob_path}"
+                local_path = os.path.join(local_dir, run_info["run_name"], checkpoint)
+                os.makedirs(os.path.dirname(local_path), exist_ok=True)
+                
+                # Add to download tasks
+                download_tasks.append((full_blob_path, local_path, metric))
 
-                    # Also, copy the config.json file from "pretrained" key in run_info
-                    config_dest = local_path.replace(checkpoint, "config.json")
-                    config_src = os.path.join(run_info["pretrained"], "config.json")
-                    print(f"Copying config.json from {config_src} to {config_dest}")
-                    shutil.copy(config_src, config_dest)
- 
-        except subprocess.CalledProcessError as e:
-            print(f"Error processing {metric}: {e}")
-            print(f"stdout: {e.stdout}")
-            print(f"stderr: {e.stderr}")
-        except Exception as e:
-            print(f"Unexpected error processing {metric}: {e}")
+                # Also, copy the config.json file from "pretrained" key in run_info
+                config_dest = local_path.replace(checkpoint, "config.json")
+                config_src = os.path.join(run_info["pretrained"], "config.json")
+                print(f"Copying config.json from {config_src} to {config_dest}")
+                shutil.copy(config_src, config_dest)
+
+            except Exception as e:
+                print(f"Unexpected error processing {metric}: {e}")
 
     # Execute all downloads in parallel
     print(f"\nStarting parallel download of {len(download_tasks)} files...")

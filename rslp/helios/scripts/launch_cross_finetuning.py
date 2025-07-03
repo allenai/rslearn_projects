@@ -37,7 +37,7 @@ RSLP_PREFIX=gs://rslearn-eai \
 char_limit = 90  # beaker strings can't be >128 chars
 homepath = "/weka/dfive-default/ryanp/rslearn_projects"
 priority = "high"
-rslp_project = "helios_cross_finetuning_v2"
+rslp_project = "helios_cross_finetuning_v4"
 patch_size = 8
 embedding_size = 768
 image_name = "favyen/rslphelios3"
@@ -50,7 +50,6 @@ models = [
     "v2_base"
 ]
 benchmarks = {
-    "v2_pastis": None,
     "v2_nandi_crop_type": ["finetune_s2"],
     "v2_worldcereal_cropland": ["finetune_s2"],
     "v2_landsat_vessels": ["finetune_classifier", "finetune_detector"],
