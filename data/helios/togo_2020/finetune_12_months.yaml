@@ -250,7 +250,7 @@ data:
     test_config:
       groups: ["groundtruth_window_32"]
       tags:
-        split: "val"
+        split: "test"
 trainer:
   max_epochs: 100
   callbacks:
