@@ -26,6 +26,7 @@ def launch_finetune(
     gpus: int = 1,
     priority: str = "high",
     retries: int = 0,
+    mode: str = "fit",
 ) -> None:
     """Launch Helios fine-tuning experiments.
 
@@ -42,6 +43,7 @@ def launch_finetune(
         gpus: how many GPUs to assign in the Beaker job.
         priority: what priority to use.
         retries: Beaker job retries.
+        mode: Mode to run the model ('fit', 'validate', 'test', or 'predict').
     """
     # Go into each config file (including the base ones) and make replacements as
     # needed.
@@ -83,6 +85,8 @@ def launch_finetune(
             "rslp.main",
             "common",
             "beaker_train",
+            "--mode",
+            mode,
             "--config_paths",
             json.dumps(tmp_config_fnames),
             "--image_name",
