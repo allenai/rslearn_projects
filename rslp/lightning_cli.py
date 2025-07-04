@@ -5,13 +5,10 @@ import json
 import os
 import shutil
 import tempfile
-from pathlib import Path
-from typing import Any, Dict
 
 import fsspec
 import jsonargparse
 import wandb
-import yaml
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.utilities import rank_zero_only
@@ -30,73 +27,6 @@ CHECKPOINT_DIR = (
 )
 
 logger = get_logger(__name__)
-
-
-def local_mode_monkeypatch(path: str) -> str:
-    if os.environ.get("RSLP_LOCAL") == "1":
-        return path.replace("/opt/", "./")
-    return path
-
-
-def resolve_yaml_references(config: Dict[str, Any], base_path: Path | str) -> Dict[str, Any]:
-    """Resolve YAML references in the configuration.
-    
-    This function looks for dataset configurations that contain a `_ref` key pointing
-    to another YAML file, and replaces the entire dataset config with the referenced content.
-    
-    Args:
-        config: The configuration dictionary to process
-        base_path: Base path for resolving relative references
-        
-    Returns:
-        The configuration with references resolved
-    """
-    # Handle dataset_configs specifically for multi-dataset configurations
-    if "data" in config and "init_args" in config["data"]:
-        data_args = config["data"]["init_args"]
-        resolved_configs = []
-        for dataset_config in data_args["dataset_configs"]:
-            if isinstance(dataset_config, dict) and "_ref" in dataset_config:
-                ref_path = Path(dataset_config["_ref"])
-                if not ref_path.is_absolute():
-                    ref_path = base_path / ref_path
-                
-                ref_path = Path(local_mode_monkeypatch(str(ref_path)))
-                logger.info(f"Resolving reference: {ref_path}")
-                if not ref_path.exists():
-                    raise FileNotFoundError(f"Referenced config file not found: {ref_path}")
-                with open(ref_path, 'r') as f:
-                    referenced_config = yaml.safe_load(f)
-                
-                ref_data_args = referenced_config["data"]["init_args"]
-                resolved_config = ref_data_args.copy()
-                for key, value in dataset_config.items():
-                    if key != "_ref":
-                        resolved_config[key] = value
-                resolved_configs.append(resolved_config)
-
-            else:
-                resolved_configs.append(dataset_config)
-    
-        data_args["dataset_configs"] = resolved_configs
-    
-    # Recursively process nested dictionaries
-    for key, value in config.items():
-        if isinstance(value, dict):
-            config[key] = resolve_yaml_references(value, base_path)
-        elif isinstance(value, list):
-            config[key] = [
-                resolve_yaml_references(item, base_path) 
-                if isinstance(item, dict) else item
-                for item in value
-            ]
-    
-    # Handle monkeypatching for other paths in the config
-    config_str = yaml.dump(config, default_flow_style=False)
-    config_str = local_mode_monkeypatch(config_str)
-    config = yaml.safe_load(config_str)
-
-    return config
 
 
 def get_cached_checkpoint(checkpoint_fname: UPath) -> str:
@@ -335,67 +265,9 @@ class CustomLightningCLI(RslearnLightningCLI):
 
     def before_instantiate_classes(self) -> None:
         """Called before Lightning class initialization."""
+        super().before_instantiate_classes()
         subcommand = self.config.subcommand
         c = self.config[subcommand]
-        is_multi_dataset = (
-            hasattr(c, 'data') and 
-            hasattr(c.data, 'init_args') and 
-            hasattr(c.data.init_args, 'dataset_configs')
-        )
-
-        # Check if we have a MultiDatasetDataModule and resolve references
-        if is_multi_dataset:
-            dataset_configs = c.data.init_args.dataset_configs
-            resolved_configs = []
-            for config in dataset_configs:
-                if isinstance(config, dict) and '_ref' in config:
-                    ref_path = config['_ref']
-                    if os.environ.get("RSLP_LOCAL") == "1":
-                        ref_path = local_mode_monkeypatch(ref_path)
-                    
-                    logger.info(f"Resolving reference: {ref_path}")
-                    with open(ref_path, 'r') as f:
-                        ref_config = yaml.safe_load(f)
-                    
-                    if 'data' in ref_config and 'init_args' in ref_config['data']:
-                        resolved_config = ref_config['data']['init_args']
-                        resolved_configs.append(resolved_config)
-                    else:
-                        raise ValueError(f"Referenced config {ref_path} does not contain data.init_args")
-                else:
-                    resolved_configs.append(config)
-            c.data.init_args.dataset_configs = resolved_configs
-
-        # Aggregate dataset tasks and input mappings into the main task configuration
-        # Need to flatten the multitask configs (assume they are all multitask)
-        # The parent class will then link model.init_args.task to the aggregated task
-        tasks = {}
-        input_mappings = {}
-        class_path = None
-        for i in range(len(c.data.init_args.dataset_configs)):
-            if class_path is None:
-                class_path = c.data.init_args.dataset_configs[i]["task"]["class_path"]
-            assert class_path == c.data.init_args.dataset_configs[i]["task"]["class_path"], \
-                "All dataset configs must have the same task class path"
-
-            curr_tasks = c.data.init_args.dataset_configs[i]["task"]["init_args"]["tasks"]
-            curr_input_mapping = c.data.init_args.dataset_configs[i]["task"]["init_args"]["input_mapping"]
-            iter_ = zip(curr_tasks.items(), curr_input_mapping.items())
-            for (task_key, task_value), (input_mapping_key, input_mapping_value) in iter_:
-                tasks[task_key] = task_value
-                input_mappings[input_mapping_key] = input_mapping_value
-    
-        tasks = {
-            "class_path": class_path,
-            "init_args": {
-                "tasks": tasks,
-                "input_mapping": input_mappings,
-            }
-        }
-        c.model.init_args.task = tasks
-        c.data.init_args.task = tasks
-
-        super().before_instantiate_classes()
 
         run_id = os.environ.get("RSLP_RUN_ID", None)
         run_id_path = f"{run_id}/" if run_id else ""
@@ -504,19 +376,3 @@ class CustomLightningCLI(RslearnLightningCLI):
             if wandb_id and subcommand == "fit":
                 logger.info(f"resuming wandb run {wandb_id}")
                 c.trainer.logger.init_args.id = wandb_id
-
-    def _get_datamodule_class(self, config: Any) -> Any:
-        """Override to handle MultiDatasetDataModule type validation.
-        
-        This method is called by the Lightning CLI framework to validate the datamodule class.
-        We override it to accept both RslearnDataModule and MultiDatasetDataModule.
-        """
-        # Check if the config specifies MultiDatasetDataModule
-        if hasattr(config, 'data') and hasattr(config.data, 'class_path'):
-            if 'MultiDatasetDataModule' in config.data.class_path:
-                # Import here to avoid circular imports
-                from rslp.multi_dataset.data_module import MultiDatasetDataModule
-                return MultiDatasetDataModule
-        
-        # Otherwise, use the default behavior
-        return super()._get_datamodule_class(config)
