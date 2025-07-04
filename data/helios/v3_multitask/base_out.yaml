@@ -1,5 +1,5 @@
 data:
-  class_path: rslp.multi_dataset.data_module.MultiDatasetDataModule
+  class_path: rslearn.train.data_module.MultiDatasetDataModule
   init_args:
     batch_size: 8
     dataset_configs:
@@ -298,6 +298,7 @@ model:
     model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
+        lazy_decode: true
         decoders:
           vessel_classification:
           - class_path: rslearn.models.pooling_decoder.PoolingDecoder

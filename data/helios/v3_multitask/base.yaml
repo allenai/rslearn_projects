@@ -12,6 +12,7 @@ model:
               forward_kwargs:
                 patch_size: {PATCH_SIZE}
         decoders:  # Filled in by make_multidataset_config.py
+        lazy_decode: true
     lr: 0.0001
     plateau: true
     plateau_factor: 0.2
@@ -20,7 +21,7 @@ model:
     plateau_cooldown: 10
 
 data:
-  class_path: rslp.multi_dataset.data_module.MultiDatasetDataModule
+  class_path: rslearn.train.data_module.MultiDatasetDataModule
   init_args:
     dataset_configs:  # Filled in by make_multidataset_config.py
     batch_size: 8
