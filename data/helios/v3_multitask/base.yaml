@@ -24,8 +24,6 @@ data:
   class_path: rslearn.train.data_module.MultiDatasetDataModule
   init_args:
     dataset_configs:  # Filled in by make_multidataset_config.py
-    batch_size: 8
-    num_workers: 32
 
 trainer:
   max_epochs: 100

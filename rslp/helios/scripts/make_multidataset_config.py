@@ -25,7 +25,8 @@ if __name__ == "__main__":
     parser.add_argument("--helios_checkpoint_path", type=str, required=True, help="Path to Helios checkpoint")
     parser.add_argument("--patch_size", type=int, default=8, help="Patch size")
     parser.add_argument("--encoder_embedding_size", type=int, default=768, help="Encoder embedding size")
-
+    parser.add_argument("--max_train_patches", type=int, default=None, help="Maximum number of train samples per task")
+    parser.add_argument("--max_val_patches", type=int, default=None, help="Maximum number of val samples per task")
     args = parser.parse_args()
 
     if args.output_path is None:
@@ -72,6 +73,11 @@ if __name__ == "__main__":
                     task_name = subtasks[0]
                     dataset_configs[task_name] = task_cfg["data"]
                     decoders.update(task_cfg["model"]["init_args"]["model"]["init_args"]["decoders"])
+
+                    if args.max_train_patches is not None:
+                        task_cfg["data"]["init_args"]["train_config"]["num_patches"] = args.max_train_patches
+                    if args.max_val_patches is not None:
+                        task_cfg["data"]["init_args"]["val_config"]["num_patches"] = args.max_val_patches
 
                     for k, v in task_cfg["data"]["init_args"]["task"]["init_args"].items(): 
                         try:
