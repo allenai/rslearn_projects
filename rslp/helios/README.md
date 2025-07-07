@@ -18,3 +18,6 @@ with subfolders `rslearn` (containing https://github.com/allenai/rslearn) and
 
     docker build -t rslphelios -f helios.Dockerfile .
     beaker image create --name rslphelios rslphelios
+
+You may need to remove the version specification on `beaker-py` in `helios/requirements.txt`, this is due to `olmo-core` (and so
+`helios` as well) requiring an outdated version of `beaker-py` imcompatible with `rslearn`.
