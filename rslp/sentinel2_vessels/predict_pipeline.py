@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -440,7 +441,8 @@ def run_attribute_model(
 
 
 def predict_pipeline(
-    tasks: list[PredictionTask], scratch_path: str
+    tasks: list[PredictionTask],
+    scratch_path: str | None = None,
 ) -> list[list[VesselDetection]]:
     """Run the Sentinel-2 vessel prediction pipeline.
 
@@ -459,6 +461,10 @@ def predict_pipeline(
     if len(tasks) == 0:
         # Avoid error with below with checking tasks[0].scene_id.
         return []
+
+    if scratch_path is None:
+        tmp_dir = tempfile.TemporaryDirectory()
+        scratch_path = tmp_dir.name
 
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True, exist_ok=True)
