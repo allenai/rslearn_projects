@@ -102,6 +102,9 @@ jobs:
           RSLP_PREFIX: ${{ secrets.RSLP_PREFIX }}
           TASK_ENV_VARS: |
             [{
-              "name": "PL_API_KEY",
-              "secret": "NICFI_PL_API_KEY",
+              "class_path": "beaker.BeakerEnvVar",
+              "init_args": {
+                "name": "PL_API_KEY",
+                "secret": "NICFI_PL_API_KEY"
+              }
             }]
