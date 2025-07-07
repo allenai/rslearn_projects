@@ -27,6 +27,7 @@ if __name__ == "__main__":
     parser.add_argument("--encoder_embedding_size", type=int, default=768, help="Encoder embedding size")
     parser.add_argument("--max_train_patches", type=int, default=None, help="Maximum number of train samples per task")
     parser.add_argument("--max_val_patches", type=int, default=None, help="Maximum number of val samples per task")
+    parser.add_argument("--batch_size", type=int, default=32, help="Override batch size for all datasets")
     args = parser.parse_args()
 
     if args.output_path is None:
@@ -78,7 +79,9 @@ if __name__ == "__main__":
                         task_cfg["data"]["init_args"]["train_config"]["num_patches"] = args.max_train_patches
                     if args.max_val_patches is not None:
                         task_cfg["data"]["init_args"]["val_config"]["num_patches"] = args.max_val_patches
-
+                    if args.batch_size is not None:
+                        task_cfg["data"]["init_args"]["batch_size"] = args.batch_size
+                    
                     for k, v in task_cfg["data"]["init_args"]["task"]["init_args"].items(): 
                         try:
                             task["init_args"][k].update(v)
