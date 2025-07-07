@@ -1,0 +1,12 @@
+# Landsat vessel detection and pastis segmentation
+base_cfg: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/base.yaml
+task_cfgs:
+  - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_landsat_vessels/finetune_detector.yaml
+  - - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_pastis/basecfg.yaml
+    - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_pastis/basecfg_helios_mm.yaml
+    - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml
+patch_size: 8
+encoder_embedding_size: 768
+helios_checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
+output_path: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/OUT_small_v2.yaml
+batch_size: 32
