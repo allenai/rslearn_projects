@@ -1,0 +1,42 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslp.helios.model.Helios
+            init_args:
+              checkpoint_path: "{CHECKPOINT_PATH}"
+              selector: ["encoder"]
+              forward_kwargs:
+                patch_size: {PATCH_SIZE}
+        decoders:  # Filled in by make_multidataset_config.py
+        lazy_decode: true
+    lr: 0.0001
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
+    plateau_min_lr: 0
+    plateau_cooldown: 10
+
+data:
+  class_path: rslearn.train.data_module.MultiDatasetDataModule
+  init_args:
+    dataset_configs:  # Filled in by make_multidataset_config.py
+
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_loss
+        mode: min
+
+rslp_project: placeholder
+rslp_experiment: placeholder 
