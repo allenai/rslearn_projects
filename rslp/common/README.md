@@ -33,3 +33,24 @@ Beaker Launcher
 `beaker_launcher.py` launches a Beaker job that runs an rslp workflow. It offers a
 range of parameters to customize the job setup, such as which Beaker clusters to target
 and application-specific environment variables.
+
+
+Beaker Data Materialization
+---------------------------
+
+`beaker_data_materialization.py` launches Beaker jobs for materializing data in rslearn
+datasets. The command to run can be overridden via an argument to prepare or ingest
+data instead.
+
+First, build a Docker image with rslearn and rslearn_projects using the Dockerfile (or
+helios.Dockerfile), and push it as a Beaker image.
+
+Then, launch the Beaker jobs. The hostnames should be specified to ensure that the CPU
+Beaker jobs are scheduled on different hosts. WEKA is mounted so the `--ds_path` could
+be on WEKA instead.
+
+    python -m rslp.main common launch_data_materialization_jobs --image favyen/rslp_image --ds_path gs://path/to/rslearn_dataset/ --hosts+=jupiter-cs-aus-134.reviz.ai2.in
+
+Here is an example overriding the command to ingest instead:
+
+    python -m rslp.main common launch_data_materialization_jobs --image favyen/rslp_image --ds_path gs://path/to/rslearn_dataset/ --hosts+=jupiter-cs-aus-134.reviz.ai2.in --command '["rslearn", "dataset", "ingest", "--root", "gs://path/to/rslearn_dataset/", "--workers", "64", "--no-use-initial-job", "--retry-max-attempts", "5", "--retry-backoff-seconds", "60", "--ignore-errors"]'
