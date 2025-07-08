@@ -13,3 +13,4 @@ log*.txt
 # for local finetuning runs
 /config.yaml
 lightning_logs/
+/tmp*/
