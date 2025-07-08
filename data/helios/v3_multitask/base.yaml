@@ -2,7 +2,7 @@ model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     model:
-      class_path: rslearn.models.multitask.MultiTaskModel
+      class_path: rslearn.models.multitask.MultiDatasetMultiTaskModel
       init_args:
         encoder:
           - class_path: rslp.helios.model.Helios
@@ -12,7 +12,6 @@ model:
               forward_kwargs:
                 patch_size: {PATCH_SIZE}
         decoders:  # Filled in by make_multidataset_config.py
-        lazy_decode: true
     lr: 0.0001
     plateau: true
     plateau_factor: 0.2
