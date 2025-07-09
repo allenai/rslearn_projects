@@ -73,38 +73,10 @@ Switch the rslearn dataset configuration file with the one in
 for the Sentinel-2 data, along with Planet Labs imagery. Then run the standard prepare,
 ingest, and materialize steps.
 
-Use this script to populate a label layer:
-
-```python
-import json
-import multiprocessing
-
-import tqdm
-from upath import UPath
-
-def process_window(window_dir):
-    with (window_dir / "layers" / "mask_vector" / "data.geojson").open() as f:
-        fc = json.load(f)
-        assert len(fc["features"]) == 1
-    fc["features"][0]["properties"]["old_label"] = "unknown"
-    fc["features"][0]["properties"]["new_label"] = "unknown"
-    dst_fname = window_dir / "layers" / "label" / "data.geojson"
-    dst_fname.parent.mkdir(parents=True, exist_ok=True)
-    with dst_fname.open("w") as f:
-        json.dump(fc, f)
-    (dst_fname.parent / "completed").touch()
-
-
-if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
-    ds_path = UPath("/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/")
-    window_dirs = list(ds_path.glob("windows/*/*"))
-    p = multiprocessing.Pool(64)
-    outputs = p.imap_unordered(process_window, window_dirs)
-    for _ in tqdm.tqdm(outputs, total=len(window_dirs)):
-        pass
-    p.close()
-```
+Use the script `rslp/forest_loss_driver/scripts/populate_label_layer.py` to populate a
+placeholder label layer that contains the forest loss polygons. This isn't generated
+automatically by the alert extraction pipeline since that is primarily designed to
+create a dataset for inference.
 
 Now import into ES Studio:
 
