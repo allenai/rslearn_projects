@@ -117,4 +117,4 @@ def launch_job(
         current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         experiment_name = f"{task_name}_{task_uuid}_{current_time}"
         logger.info(f"Creating experiment: {experiment_name}")
-        beaker.experiment.create(experiment_name, experiment_spec)
+        beaker.experiment.create(name=experiment_name, spec=experiment_spec)
