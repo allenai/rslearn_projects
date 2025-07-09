@@ -121,6 +121,9 @@ class SaveConfigToProjectDirCallback(SaveConfigCallback):
         self, trainer: Trainer, pl_module: LightningModule, stage: str
     ) -> None:
         """Save the configuration."""
+        # Lightning handles ensuring that this function is only called on rank 0, so we
+        # don't need to worry about it ourselves.
+        # This is done in the setup function of SaveConfigCallback.
         run_id = os.environ.get("RSLP_RUN_ID", None)
         run_id_path = f"{run_id}/" if run_id else ""
         checkpoint_dir = UPath(
