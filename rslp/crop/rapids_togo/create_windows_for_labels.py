@@ -72,7 +72,7 @@ def create_window(
     if not is_test:
         # Check if train or val.
         # If split by polygon id, no samples from the same polygon will be in the same split.
-        is_val = hashlib.md5(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
+        is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
 
         if is_val:
             split = "val"
