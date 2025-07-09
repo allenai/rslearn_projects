@@ -16,39 +16,41 @@ logger = get_logger(__name__)
 
 
 def launch_finetune(
-    helios_checkpoint_path: str,
     experiment_id: str,
-    image_name: str,
-    encoder_embedding_size: int,
-    patch_size: int,
-    cluster: "list[str]",
     config_paths: "list[str]",
+    image_name: str | None = None,
+    cluster: list[str] | None = None,
+    helios_checkpoint_path: str | None = None,
+    encoder_embedding_size: int | None = None,
+    patch_size: int | None = None,
     rslp_project: str = DEFAULT_RSLP_PROJECT,
     gpus: int = 1,
     priority: str = "high",
     retries: int = 0,
     mode: str = "fit",
-    profiler: "str | None" = None,
+    profiler: str | None = None,
     local: bool = False,
     do_eval: bool = False,
 ) -> None:
     """Launch Helios fine-tuning experiments.
 
     Args:
-        helios_checkpoint_path: path to Helios checkpoint to fine-tune from.
         experiment_id: the experiment name.
-        image_name: what Beaker image to use.
-        encoder_embedding_size: the embedding size of the encoder.
-        patch_size: the patch size to use.
-        cluster: see beaker_train.
         config_paths: list of configuration files to use. Later config files override
             earlier configs in the list.
-        rslp_project: optional override for W&B project to use.
-        gpus: how many GPUs to assign in the Beaker job.
-        priority: what priority to use.
-        retries: Beaker job retries.
+        image_name: what Beaker image to use. Must be specified if not local.
+        cluster: see beaker_train. Must be specified if not local.
+        helios_checkpoint_path: path to Helios checkpoint to fine-tune from. If none, assume
+            it's already specified in the config.
+        encoder_embedding_size: the embedding size of the encoder. If none, assume
+            it's already specified in the config.
+        patch_size: the patch size to use. If none, assume it's already specified in the config.
+        rslp_project: optional override for W&B project to use. By default, uses DEFAULT_RSLP_PROJECT.
+        gpus: how many GPUs to assign in the Beaker job. By default, uses 1.
+        priority: what priority to use. By default, uses "high".
+        retries: Beaker job retries. By default, uses 0.
         mode: Mode to run the model ('fit', 'validate', 'test', or 'predict').
-        profiler: Profiler to use for training. Can be 'simple' or 'advanced'.
+        profiler: Profiler to use for training. Can be 'simple' or 'advanced' or None.
         local: Whether to run the command locally instead of spawning a Beaker job.
         do_eval: Whether to just run evals.
     """
@@ -74,18 +76,26 @@ def launch_finetune(
             with open(cur_config_fname) as f:
                 config_str = f.read()
 
-            config_str = config_str.replace("{CHECKPOINT_PATH}", helios_checkpoint_path)
-            config_str = config_str.replace("{PATCH_SIZE}", str(patch_size))
-            config_str = config_str.replace("{256/PATCH_SIZE}", str(256 // patch_size))
-            config_str = config_str.replace("{128/PATCH_SIZE}", str(128 // patch_size))
-            config_str = config_str.replace(
-                "{ENCODER_EMBEDDING_SIZE}", str(encoder_embedding_size)
-            )
+            if helios_checkpoint_path is not None:
+                config_str = config_str.replace("{CHECKPOINT_PATH}", helios_checkpoint_path)
+            if patch_size is not None:
+                config_str = config_str.replace("{PATCH_SIZE}", str(patch_size))
+                config_str = config_str.replace("{256/PATCH_SIZE}", str(256 // patch_size))
+                config_str = config_str.replace("{128/PATCH_SIZE}", str(128 // patch_size))
+            if encoder_embedding_size is not None:
+                config_str = config_str.replace(
+                    "{ENCODER_EMBEDDING_SIZE}", str(encoder_embedding_size)
+                )
 
             # String to yaml to add test metrics file key
             config = yaml.safe_load(config_str)
             if do_eval and "model" in config and "init_args" in config["model"]:
-                model_name = "_".join(helios_checkpoint_path.split(os.path.sep)[-2:])  # "modelname_stepX"
+                if helios_checkpoint_path is not None:
+                    model_name = "_".join(helios_checkpoint_path.split(os.path.sep)[-2:])  # "modelname_stepX"
+                else:
+                    model_path = config["model"]["init_args"]["model"]["init_args"]["checkpoint_path"]
+                    model_path_parts = model_path.split(os.path.sep)
+                    model_name = model_path_parts[-3] + "_" + model_path_parts[-1].replace(".ckpt", "")
                 eval_task = "__".join(config_paths[0].split(os.path.sep)[-2:]).strip(".yaml")
                 path = os.path.join(full_eval_dir, f"{model_name}__{eval_task}.json")
                 config["model"]["init_args"]["metrics_file"] = path
@@ -152,6 +162,10 @@ def launch_finetune(
         else:
             if do_eval:
                 raise NotImplementedError("Eval mode not supported for Beaker job")
+            if image_name is None:
+                raise ValueError("image_name must be specified if not local")
+            if cluster is None:
+                raise ValueError("cluster must be specified if not local")
 
             extra_args = []
             if profiler:
