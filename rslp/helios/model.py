@@ -189,9 +189,10 @@ class Helios(torch.nn.Module):
             # We want BHWC -> BCHW.
             pooled = rearrange(pooled, "b h w c -> b c h w")
             features.append(pooled)
-        # Pool over the modalities, so we get one BCHW feature map.
-        pooled = torch.stack(features, dim=0).mean(dim=0)
-        return [pooled]
+        # Do not pool until we get to the decoders
+        # Return a 1-list of a single MBCHW tensor
+        # TODO: why do we return a 1-list of a single MBCHW tensor?
+        return [torch.stack(features, dim=0)]
 
     def get_backbone_channels(self) -> list:
         """Returns the output channels of this model when used as a backbone.
