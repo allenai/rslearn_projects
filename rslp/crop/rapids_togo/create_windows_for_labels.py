@@ -23,8 +23,9 @@ WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
 
 # data was collected in May 2020, so we consider the 6 months before and after may
-START_TIME = datetime(2019, 12, 1, tzinfo=timezone.utc)
-END_TIME = datetime(2020, 12, 31, tzinfo=timezone.utc)
+# we pick the center month; the actual range will be managed by the offset in the config.
+START_TIME = datetime(2020, 5, 1, tzinfo=timezone.utc)
+END_TIME = datetime(2020, 5, 31, tzinfo=timezone.utc)
 
 
 def create_window(
