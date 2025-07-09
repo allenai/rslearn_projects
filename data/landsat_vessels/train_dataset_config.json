@@ -1,0 +1,174 @@
+{
+  "layers": {
+    "landsat": {
+      "band_sets": [
+        {
+          "bands": [
+            "B2"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B3"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B4"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B5"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B6"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B7"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B8"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "name": "geotiff"
+          },
+          "remap": {
+            "dst": [
+              0,
+              255
+            ],
+            "name": "linear",
+            "src": [
+              5000,
+              17000
+            ]
+          }
+        }
+      ],
+      "data_source": {
+        "metadata_cache_dir": "gs://rslearn-eai/datasets/landsat_vessel_detection/cache/landsat",
+        "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs"
+      },
+      "resampling_method": "nearest",
+      "type": "raster"
+    },
+    "output": {
+      "type": "vector"
+    }
+  },
+  "tile_store": {
+    "class_path": "rslearn.tile_stores.default.DefaultTileStore",
+    "init_args": {
+      "geotiff_options": {
+        "compress": "zstd",
+        "predictor": 2,
+        "zstd_level": 1
+      },
+      "path_suffix": "file:///mnt/landsat/tiles"
+    }
+  }
+}
