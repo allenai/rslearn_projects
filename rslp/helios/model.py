@@ -86,7 +86,7 @@ class Helios(torch.nn.Module):
             train_module_dir = f"{checkpoint_path}/model_and_optim"
             if os.path.exists(train_module_dir):
                 load_model_and_optim_state(train_module_dir, model)
-                print("INFO: loaded model from model_and_optim folder")
+                print(f"INFO: loaded helios encoder from {train_module_dir}/model_and_optim")
 
             else:
                 # if we load last.ckpt, we are loading from sft, so ignore decoder weights
@@ -100,7 +100,7 @@ class Helios(torch.nn.Module):
                         k = k.replace("model.encoder.0.model.", "encoder.")
                         processed_state_dict[k] = v
                 model.load_state_dict(processed_state_dict, strict=False)
-                print("INFO: remapped weights and loaded checkpoint")
+                print("INFO: remapped weights and loaded helios encoder from checkpoint")
 
                 assert all(
                     k in processed_state_dict 
