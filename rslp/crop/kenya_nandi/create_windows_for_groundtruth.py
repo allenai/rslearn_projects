@@ -16,6 +16,8 @@ from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
+from rslp.utils.windows import calculate_bounds
+
 WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
 
@@ -24,12 +26,15 @@ START_TIME = datetime(2023, 3, 1, tzinfo=timezone.utc)
 END_TIME = datetime(2023, 3, 31, tzinfo=timezone.utc)
 
 
-def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
+def process_csv(
+    csv_path: UPath, num_pixels: int = 10, postprocess_categories: bool = False
+) -> pd.DataFrame:
     """Create windows for crop type mapping.
 
     Args:
         csv_path: path to the csv file
         num_pixels: number of points to sample from each polygon
+        postprocess_categories: whether to postprocess categories
     """
     df = pd.read_csv(csv_path)
     df["latitude"], df["longitude"] = df["y"], df["x"]
@@ -59,12 +64,16 @@ def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
         .reset_index(drop=True)
     )
 
-    # Post-process on category.
-    df_sampled.loc[df_sampled["Category"] == "Exoticetrees/forest", "Category"] = (
-        "Trees"
-    )
-    df_sampled.loc[df_sampled["Category"] == "Nativetrees/forest", "Category"] = "Trees"
-    df_sampled = df_sampled[~df_sampled["Category"].isin(["Vegetables", "Legumes"])]
+    if postprocess_categories:
+        # Post-process on category.
+        df_sampled.loc[df_sampled["Category"] == "Exoticetrees/forest", "Category"] = (
+            "Trees"
+        )
+        df_sampled.loc[df_sampled["Category"] == "Nativetrees/forest", "Category"] = (
+            "Trees"
+        )
+        df_sampled = df_sampled[~df_sampled["Category"].isin(["Vegetables", "Legumes"])]
+
     print(df_sampled.shape)
     print(df_sampled.groupby("Category").size())
     print(df_sampled["unique_id"].nunique())
@@ -73,13 +82,18 @@ def process_csv(csv_path: UPath, num_pixels: int = 10) -> pd.DataFrame:
 
 
 def create_window(
-    csv_row: pd.Series, ds_path: UPath, split_by_polygon: bool, window_size: int
+    csv_row: pd.Series,
+    ds_path: UPath,
+    group_name: str,
+    split_by_polygon: bool,
+    window_size: int,
 ) -> None:
     """Create windows for crop type mapping.
 
     Args:
         csv_row: a row of the dataframe
         ds_path: path to the dataset
+        group_name: name of the group
         split_by_polygon: whether to split by polygon
         window_size: window size
     """
@@ -98,35 +112,20 @@ def create_window(
     dst_crs = get_utm_ups_crs(longitude, latitude)
     dst_projection = Projection(dst_crs, WINDOW_RESOLUTION, -WINDOW_RESOLUTION)
     dst_geometry = src_geometry.to_projection(dst_projection)
-
-    # This is specific for window size = 1.
-    if window_size == 1:
-        bounds = (
-            int(dst_geometry.shp.x),
-            int(dst_geometry.shp.y) - window_size,
-            int(dst_geometry.shp.x) + window_size,
-            int(dst_geometry.shp.y),
-        )
-    else:
-        bounds = (
-            int(dst_geometry.shp.x),
-            int(dst_geometry.shp.y),
-            int(dst_geometry.shp.x) + window_size // 2,
-            int(dst_geometry.shp.y) + window_size // 2,
-        )
+    bounds = calculate_bounds(dst_geometry, window_size)
 
     # Check if train or val.
     if split_by_polygon:
-        group = "post_polygon_split"
+        group = f"{group_name}_polygon_split_window_{window_size}"
     else:
-        group = "post_random_split"
+        group = f"{group_name}_random_split_window_{window_size}"
     window_name = f"{polygon_id}_{latitude}_{longitude}"
 
     # If split by polygon id, no samples from the same polygon will be in the same split.
     if split_by_polygon:
-        is_val = hashlib.md5(str(polygon_id).encode()).hexdigest()[0] in ["0", "1"]
+        is_val = hashlib.sha256(str(polygon_id).encode()).hexdigest()[0] in ["0", "1"]
     else:
-        is_val = hashlib.md5(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
+        is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
 
     if is_val:
         split = "val"
@@ -146,7 +145,6 @@ def create_window(
             "harvested_or_not": harvested_or_not,
             "harvested_date": harvested_date,
             "category": category,
-            "weight": 1,
         },
     )
     window.save()
@@ -166,20 +164,24 @@ def create_window(
 def create_windows_from_csv(
     csv_path: UPath,
     ds_path: UPath,
+    group_name: str,
     split_by_polygon: bool,
     window_size: int,
     num_pixels: int,
+    postprocess_categories: bool,
 ) -> None:
     """Create windows from csv.
 
     Args:
         csv_path: path to the csv file
         ds_path: path to the dataset
+        group_name: name of the group
         split_by_polygon: whether to split by polygon
         window_size: window size
         num_pixels: number of pixels to sample from each polygon
+        postprocess_categories: whether to postprocess categories
     """
-    df_sampled = process_csv(csv_path, num_pixels)
+    df_sampled = process_csv(csv_path, num_pixels, postprocess_categories)
     csv_rows = []
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
@@ -188,6 +190,7 @@ def create_windows_from_csv(
         dict(
             csv_row=row,
             ds_path=ds_path,
+            group_name=group_name,
             split_by_polygon=split_by_polygon,
             window_size=window_size,
         )
@@ -206,19 +209,35 @@ if __name__ == "__main__":
     parser.add_argument(
         "--csv_path",
         type=str,
-        required=False,
+        required=True,
         help="Path to the csv file",
-        default="gs://ai2-helios-us-central1/evaluations/crop_type_mapping/cgiar/NandiGroundTruthPoints.csv",
     )
     parser.add_argument(
         "--ds_path",
         type=str,
-        required=False,
+        required=True,
         help="Path to the dataset",
-        default="/weka/dfive-default/rslearn-eai/datasets/crop_type_mapping/20250409_kenya_nandi",
     )
     parser.add_argument(
-        "--window_size", type=int, required=False, help="Window size", default=1
+        "--group_name",
+        type=str,
+        required=False,
+        help="Name of the group",
+        default="groundtruth",
+    )
+    parser.add_argument(
+        "--postprocess_categories",
+        type=bool,
+        required=False,
+        help="Postprocess categories",
+        default=True,
+    )
+    parser.add_argument(
+        "--window_size",
+        type=int,
+        required=False,
+        help="Window size",
+        default=1,
     )
     parser.add_argument(
         "--num_pixels",
@@ -232,13 +251,15 @@ if __name__ == "__main__":
         type=bool,
         required=False,
         help="Split by polygon",
-        default=False,
+        default=True,
     )
     args = parser.parse_args()
     create_windows_from_csv(
         UPath(args.csv_path),
         UPath(args.ds_path),
+        args.group_name,
         split_by_polygon=args.split_by_polygon,
         window_size=args.window_size,
         num_pixels=args.num_pixels,
+        postprocess_categories=args.postprocess_categories,
     )

@@ -1,6 +1,7 @@
 """Helios model wrapper for fine-tuning in rslearn."""
 
 import json
+from contextlib import nullcontext
 from typing import Any
 
 import torch
@@ -20,7 +21,14 @@ MODALITY_NAMES = [
     "sentinel1",
     "worldcover",
     "openstreetmap_raster",
+    "landsat",
 ]
+
+AUTOCAST_DTYPE_MAP = {
+    "bfloat16": torch.bfloat16,
+    "float16": torch.float16,
+    "float32": torch.float32,
+}
 
 
 class Helios(torch.nn.Module):
@@ -34,6 +42,7 @@ class Helios(torch.nn.Module):
         random_initialization: bool = False,
         embedding_size: int | None = None,
         patch_size: int | None = None,
+        autocast_dtype: str | None = "bfloat16",
     ):
         """Create a new Helios model.
 
@@ -50,11 +59,17 @@ class Helios(torch.nn.Module):
             embedding_size: optional embedding size to report via
                 get_backbone_channels.
             patch_size: optional patch size to report via get_backbone_channels.
+            autocast_dtype: which dtype to use for autocasting, or set None to disable.
         """
         super().__init__()
         self.forward_kwargs = forward_kwargs
         self.embedding_size = embedding_size
         self.patch_size = patch_size
+
+        if autocast_dtype is not None:
+            self.autocast_dtype = AUTOCAST_DTYPE_MAP[autocast_dtype]
+        else:
+            self.autocast_dtype = None
 
         # Load the model config and initialize it.
         # We avoid loading the train module here because it depends on running within
@@ -127,11 +142,20 @@ class Helios(torch.nn.Module):
 
         sample = MaskedHeliosSample(**kwargs)
 
-        # Currently we assume the provided model always returns a TokensAndMasks
-        # object.
-        tokens_and_masks: TokensAndMasks = self.model(
-            sample, always_pass_none_mask_to_transformer=True, **self.forward_kwargs
-        )[0]
+        # Decide context based on self.autocast_dtype.
+        if self.autocast_dtype is None:
+            context = nullcontext()
+        else:
+            assert device is not None
+            context = torch.amp.autocast(
+                device_type=device.type, dtype=self.autocast_dtype
+            )
+
+        with context:
+            # Currently we assume the provided model always returns a TokensAndMasks object.
+            tokens_and_masks: TokensAndMasks = self.model(
+                sample, always_pass_none_mask_to_transformer=True, **self.forward_kwargs
+            )[0]
 
         # Apply temporal/modality pooling so we just have one feature per patch.
         features = []
