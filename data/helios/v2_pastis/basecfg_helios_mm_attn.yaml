@@ -14,8 +14,8 @@ model:
             - class_path: rslearn.models.pooling.AttentivePool
               init_args:
                 n_channels: {ENCODER_EMBEDDING_SIZE}
-                height: 1
-                width: 1
+                height: 16
+                width: 16
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
                 in_channels: [[{PATCH_SIZE}, {ENCODER_EMBEDDING_SIZE}]]
@@ -151,7 +151,7 @@ data:
         layers: ["label"]
         bands: ["class"]
         is_target: true
-    batch_size: 2
+    batch_size: 16
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate

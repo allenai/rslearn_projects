@@ -146,7 +146,7 @@ data:
         layers: ["label"]
         bands: ["class"]
         is_target: true
-    batch_size: 2
+    batch_size: 16
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
