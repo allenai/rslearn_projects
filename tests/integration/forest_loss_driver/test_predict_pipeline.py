@@ -7,7 +7,13 @@ from datetime import datetime, timezone
 
 from upath import UPath
 
-from rslp.forest_loss_driver.extract_dataset import ExtractAlertsArgs, extract_dataset
+from rslp.forest_loss_driver.extract_dataset import (
+    INFERENCE_LAYERS,
+    VISUALIZATION_ONLY_LAYERS,
+    ExtractAlertsArgs,
+    VisLayerMaterializeArgs,
+    extract_dataset,
+)
 from rslp.forest_loss_driver.predict_pipeline import predict_pipeline
 from rslp.log_utils import get_logger
 
@@ -23,6 +29,10 @@ def test_predict_pipeline(
 ) -> None:
     """Test the predict pipeline."""
     ds_path = UPath(tmp_path)
+    # Don't materialize the planet layers, which uses Planet quota.
+    vis_materialize_args = VisLayerMaterializeArgs(
+        disabled_layers=INFERENCE_LAYERS + VISUALIZATION_ONLY_LAYERS
+    )
     extract_dataset(
         ds_path,
         extract_alerts_args=ExtractAlertsArgs(
@@ -34,6 +44,7 @@ def test_predict_pipeline(
             min_confidence=1,
             min_area=16.0,
         ),
+        vis_materialize_args=vis_materialize_args,
     )
     predict_pipeline(ds_path)
 
