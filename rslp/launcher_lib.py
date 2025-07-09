@@ -76,7 +76,7 @@ def make_archive(
 
 
 def upload_code(project_id: str, experiment_id: str) -> None:
-    """Upload code to GCS that entrypoint should retrieve.
+    """Upload code to RSLP_PREFIX that entrypoint should retrieve.
 
     Called by the launcher.
 
@@ -94,20 +94,18 @@ def upload_code(project_id: str, experiment_id: str) -> None:
             exclude_prefixes=CODE_EXCLUDES,
         )
         print("uploading archive")
-        blob_path = CODE_BLOB_PATH.format(
+        project_code_fname = rslp_prefix / CODE_BLOB_PATH.format(
             project_id=project_id, experiment_id=experiment_id
         )
-        target_path = rslp_prefix / blob_path
-        # Create parent directories if they don't exist
-        target_path.parent.mkdir(parents=True, exist_ok=True)
+        project_code_fname.parent.mkdir(parents=True, exist_ok=True)
         with open(zip_fname, "rb") as src:
-            with target_path.open("wb") as dst:
+            with project_code_fname.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
         print("upload complete")
 
 
 def download_code(project_id: str, experiment_id: str) -> None:
-    """Download code from GCS for this experiment.
+    """Download code from RSLP_PREFIX for this experiment.
 
     Called by the entrypoint.
 
@@ -118,11 +116,11 @@ def download_code(project_id: str, experiment_id: str) -> None:
     rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
     with tempfile.TemporaryDirectory() as tmpdirname:
         print("downloading code archive")
-        blob_path = CODE_BLOB_PATH.format(
+        project_code_fname = rslp_prefix / CODE_BLOB_PATH.format(
             project_id=project_id, experiment_id=experiment_id
         )
         zip_fname = os.path.join(tmpdirname, "archive.zip")
-        with (rslp_prefix / blob_path).open("rb") as src:
+        with project_code_fname.open("rb") as src:
             with open(zip_fname, "wb") as dst:
                 shutil.copyfileobj(src, dst)
         print("extracting archive")
@@ -133,7 +131,7 @@ def download_code(project_id: str, experiment_id: str) -> None:
 def upload_wandb_id(
     project_id: str, experiment_id: str, run_id: str | None, wandb_id: str
 ) -> None:
-    """Save a W&B run ID to GCS.
+    """Save a W&B run ID to RSLP_PREFIX.
 
     Args:
         project_id: the project ID.
@@ -143,20 +141,18 @@ def upload_wandb_id(
     """
     rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
     run_id_path = f"{run_id}/" if run_id else ""
-    blob_path = WANDB_ID_BLOB_PATH.format(
+    project_wandb_fname = rslp_prefix / WANDB_ID_BLOB_PATH.format(
         project_id=project_id, experiment_id=experiment_id, run_id=run_id_path
     )
-    target_path = rslp_prefix / blob_path
-    # Create parent directories if they don't exist
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    with target_path.open("w") as f:
+    project_wandb_fname.parent.mkdir(parents=True, exist_ok=True)
+    with project_wandb_fname.open("w") as f:
         f.write(wandb_id)
 
 
 def download_wandb_id(
     project_id: str, experiment_id: str, run_id: str | None
 ) -> str | None:
-    """Retrieve W&B run ID from GCS.
+    """Retrieve W&B run ID from RSLP_PREFIX.
 
     Args:
         project_id: the project ID.
@@ -168,13 +164,12 @@ def download_wandb_id(
     """
     rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
     run_id_path = f"{run_id}/" if run_id else ""
-    blob_path = WANDB_ID_BLOB_PATH.format(
+    project_wandb_fname = rslp_prefix / WANDB_ID_BLOB_PATH.format(
         project_id=project_id, experiment_id=experiment_id, run_id=run_id_path
     )
-    fname = rslp_prefix / blob_path
-    if not fname.exists():
+    if not project_wandb_fname.exists():
         return None
-    with fname.open() as f:
+    with project_wandb_fname.open() as f:
         return f.read().strip()
 
 
