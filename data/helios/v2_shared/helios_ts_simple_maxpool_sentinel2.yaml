@@ -1,0 +1,18 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+            init_args:
+              encoder:
+                class_path: rslp.helios.model.Helios
+                init_args:
+                  checkpoint_path: "{CHECKPOINT_PATH}"
+                  selector: ["encoder"]
+                  forward_kwargs:
+                    patch_size: {PATCH_SIZE}
+                  patch_size: {PATCH_SIZE}
+                  embedding_size: {ENCODER_EMBEDDING_SIZE}
+              image_channels: 12
+              image_key: "sentinel2_l2a"

@@ -12,7 +12,8 @@ from rasterio.crs import CRS
 from rslearn.utils import Projection, STGeometry
 from upath import UPath
 
-from rslp.forest_loss_driver.inference.extract_alerts import (
+from rslp.forest_loss_driver.extract_dataset.extract_alerts import (
+    ExtractAlertsArgs,
     ForestLossEvent,
     create_forest_loss_mask,
     write_event,
@@ -54,7 +55,9 @@ def test_write_event(
 ) -> None:
     """Tests writing an event to a file."""
 
-    write_event(forest_loss_event, "test_filename.tif", UPath(tmp_path))
+    write_event(
+        forest_loss_event, "test_filename.tif", UPath(tmp_path), ExtractAlertsArgs()
+    )
 
     window_dir = (
         UPath(tmp_path) / "windows" / "default" / "feat_x_1281712_2146968_101_42718"
