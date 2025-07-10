@@ -11,12 +11,13 @@ model:
                 patch_size: {PATCH_SIZE}
         decoders:
           segment:
-            - class_path: rslearn.models.pooling.DoubleAttentivePool
+            - class_path: rslearn.models.pooling.MHAPool
               init_args:
                 n_channels: {ENCODER_EMBEDDING_SIZE}
                 height: 16
                 width: 16
                 num_heads: 8
+                n_bandsets: 4
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
                 in_channels: [[{PATCH_SIZE}, {ENCODER_EMBEDDING_SIZE}]]

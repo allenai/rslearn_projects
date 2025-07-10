@@ -179,20 +179,15 @@ class Helios(torch.nn.Module):
             tokens_and_masks: TokensAndMasks = self.model(
                 sample, always_pass_none_mask_to_transformer=True, **self.forward_kwargs
             )[0]
-
-        # Apply temporal/modality pooling so we just have one feature per patch.
-        features = []
-        for modality in present_modalities:
-            modality_features = getattr(tokens_and_masks, modality)
-            # Pool over band sets and timesteps (BHWTSC -> BHWC).
-            pooled = modality_features.mean(dim=[3, 4])
-            # We want BHWC -> BCHW.
-            pooled = rearrange(pooled, "b h w c -> b c h w")
-            features.append(pooled)
-        # Do not pool until we get to the decoders
-        # Return a 1-list of a single MBCHW tensor
-        # TODO: why do we return a 1-list of a single MBCHW tensor?
-        return [torch.stack(features, dim=0)]
+        
+        # Fuse modality and bandset dimensions, and then take mean over time dimension
+        # Since most downstream tasks don't have a time dimension in the output, it seems
+        # reasonable to take mean over T to smooth out irregularities
+        features = [getattr(tokens_and_masks, modality) for modality in present_modalities]
+        features = torch.cat(features, dim=4)  # B x H x W x T x M x C
+        features = features.permute(4, 0, 5, 1, 2, 3)  # M x B x C x H x W x T
+        features = features.mean(dim=-1)  # M x B x C x H x W
+        return [features]
 
     def get_backbone_channels(self) -> list:
         """Returns the output channels of this model when used as a backbone.

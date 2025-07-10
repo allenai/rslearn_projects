@@ -13,12 +13,13 @@ model:
                 patch_size: {PATCH_SIZE}
         decoders:
           crop_type_classification:
-            - class_path: rslearn.models.pooling.DoubleAttentivePool
+            - class_path: rslearn.models.pooling.MHAPool
               init_args:
                 n_channels: {ENCODER_EMBEDDING_SIZE}
                 height: 1
                 width: 1
                 num_heads: 8
+                n_bandsets: 4
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}

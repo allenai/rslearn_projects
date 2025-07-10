@@ -18,6 +18,7 @@ model:
                 n_channels: {ENCODER_EMBEDDING_SIZE}
                 height: 1
                 width: 1
+                n_bandsets: 4
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
