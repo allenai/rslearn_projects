@@ -308,4 +308,7 @@ def write_jobs_for_year_months(
         jobs.extend(cur_jobs)
 
     logger.info("got a total of %d jobs across year-months", len(jobs))
+    # Shuffle the jobs so that we immediately start getting outputs from random parts
+    # of the world. This helps to debug sometimes.
+    random.shuffle(jobs)
     rslp.common.worker.write_jobs(queue_name, "satlas", "predict_multi", jobs)
