@@ -9,6 +9,7 @@ import yaml
 from rslp.log_utils import get_logger
 
 DEFAULT_RSLP_PREFIX = "gs://rslearn-eai"
+DEFAULT_RSLP_PREFIX_LOCAL = "project_data/"
 DEFAULT_RSLP_PROJECT = "helios_finetuning"
 CONFIG_BASE_DIR = Path("data/helios")
 EVAL_BASE_DIR = "helios/eval_sweeps"
@@ -114,6 +115,9 @@ def launch_finetune(
             # If running locally, assume we are in a gpu session
             # NOTE: assuming that all the args are passed through to the config file and do NOT get 
             # passed through the final call to rslp.rslearn_main (except for profiler)
+            if "RSLP_PREFIX" not in os.environ:
+                os.environ["RSLP_PREFIX"] = DEFAULT_RSLP_PREFIX_LOCAL
+                logger.info("Setting RSLP_PREFIX to %s", DEFAULT_RSLP_PREFIX_LOCAL)
             args = [
                 "python",
                 "-m",
@@ -144,10 +148,6 @@ def launch_finetune(
             print("DEBUG: Command being spawned:")
             print(" ".join(args))
             print("=" * 80)
-
-            if local:
-                env = os.environ.copy()
-                env["RSLP_LOCAL"] = "1"
             
             # Monkeypatch paths that are hardcoded in the config files
             for path in paths:

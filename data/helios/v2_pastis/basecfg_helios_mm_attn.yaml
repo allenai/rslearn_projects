@@ -240,3 +240,9 @@ data:
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["sentinel2_l2a", "sentinel1", "target/segment/classes", "target/segment/valid"]
+trainer:
+  callbacks+:
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 4
