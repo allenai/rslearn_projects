@@ -143,3 +143,19 @@ def create_gcp_credentials_mount(
         source=BeakerDataSource(secret=secret),  # nosec
         mount_path=mount_path,  # nosec
     )
+
+
+def create_gee_credentials_mount(
+    secret: str | None = None,
+    mount_path: str = "/etc/credentials/gee_credentials.json",
+) -> BeakerDataMount:
+    """Create a mount for the Google Earth Engine credentials.
+
+    If the secret is not specified, it defaults to "GCP_HELIOS_SERVICE_ACCOUNT", unless
+    the GEE_CREDENTIALS_MOUNT_SECRET environment variable is set.
+    """
+    if secret is None:
+        secret = os.environ.get(
+            "GEE_CREDENTIALS_MOUNT_SECRET", "GCP_HELIOS_SERVICE_ACCOUNT"
+        )
+    return create_gcp_credentials_mount(secret, mount_path)
