@@ -11,6 +11,8 @@ from typing import Any
 import yaml
 from upath import UPath
 
+from rslp.log_utils import get_logger
+
 CODE_BLOB_PATH = "projects/{project_id}/{experiment_id}/code.zip"
 WANDB_ID_BLOB_PATH = "projects/{project_id}/{experiment_id}/{run_id}wandb_id"
 CODE_EXCLUDES = [
@@ -23,6 +25,8 @@ CODE_EXCLUDES = [
     "wandb",
     "project_data"
 ]
+
+logger = get_logger(__name__)
 
 
 def get_project_and_experiment(config_path: str) -> tuple[str, str]:
@@ -86,14 +90,14 @@ def upload_code(project_id: str, experiment_id: str) -> None:
     """
     rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
     with tempfile.TemporaryDirectory() as tmpdirname:
-        print("creating archive of current code state")
+        logger.info("creating archive of current code state")
         zip_fname = os.path.join(tmpdirname, "archive.zip")
         make_archive(
             zip_fname,
             root_dir=".",
             exclude_prefixes=CODE_EXCLUDES,
         )
-        print("uploading archive")
+        logger.info("uploading archive")
         project_code_fname = rslp_prefix / CODE_BLOB_PATH.format(
             project_id=project_id, experiment_id=experiment_id
         )
@@ -101,7 +105,7 @@ def upload_code(project_id: str, experiment_id: str) -> None:
         with open(zip_fname, "rb") as src:
             with project_code_fname.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
-        print("upload complete")
+        logger.info("upload complete")
 
 
 def download_code(project_id: str, experiment_id: str) -> None:
@@ -115,7 +119,7 @@ def download_code(project_id: str, experiment_id: str) -> None:
     """
     rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
     with tempfile.TemporaryDirectory() as tmpdirname:
-        print("downloading code archive")
+        logger.info("downloading code archive")
         project_code_fname = rslp_prefix / CODE_BLOB_PATH.format(
             project_id=project_id, experiment_id=experiment_id
         )
@@ -123,9 +127,9 @@ def download_code(project_id: str, experiment_id: str) -> None:
         with project_code_fname.open("rb") as src:
             with open(zip_fname, "wb") as dst:
                 shutil.copyfileobj(src, dst)
-        print("extracting archive")
+        logger.info("extracting archive")
         shutil.unpack_archive(zip_fname, ".", "zip")
-        print("extraction complete", flush=True)
+        logger.info("extraction complete")
 
 
 def upload_wandb_id(

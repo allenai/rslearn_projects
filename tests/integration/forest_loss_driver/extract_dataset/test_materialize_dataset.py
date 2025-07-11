@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from upath import UPath
 
-from rslp.forest_loss_driver.inference.config import InferenceLayerMaterializeArgs
+from rslp.forest_loss_driver.extract_dataset import InferenceLayerMaterializeArgs
 from rslp.log_utils import get_logger
 from rslp.utils.rslearn import materialize_dataset
 

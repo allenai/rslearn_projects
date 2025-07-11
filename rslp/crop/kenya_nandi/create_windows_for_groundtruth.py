@@ -78,6 +78,9 @@ def process_csv(
     print(df_sampled.groupby("Category").size())
     print(df_sampled["unique_id"].nunique())
 
+    output_path = csv_path.with_name(csv_path.stem + "_sampled.csv")
+    df_sampled.reset_index(drop=True).to_csv(output_path, index=True)
+
     return df_sampled
 
 
