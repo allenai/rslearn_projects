@@ -197,7 +197,7 @@ model:
     model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
-        checkpoint_path: /weka/dfive-default/ryanp/rslearn_projects/project_data/projects/helios_cross_finetuning_v4/v2_landsat_vessels_finetune_detector__CROSS__v2_base/checkpoints/last.ckpt
+        checkpoint_path: /weka/dfive-default/ryanp/rslearn_projects/project_data/projects/helios_concat_finetune/crop_classify_s1s2__vessel_detect/checkpoints/last.ckpt
         decoders:
           vessel_detection:
           - class_path: rslearn.models.faster_rcnn.FasterRCNN

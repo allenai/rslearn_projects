@@ -10,13 +10,12 @@ import tempfile
 import fsspec
 import jsonargparse
 import wandb
+import lightning as L
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
-from rslearn.train.data_module import RslearnDataModule
-from rslearn.train.lightning_module import RslearnLightningModule
 from upath import UPath
 
 import rslp.utils.fs  # noqa: F401 (imported but unused)
@@ -417,9 +416,11 @@ def custom_model_handler() -> None:
 
     It also sets the save_config_callback.
     """
+    # Decreased strictness of type checking for model and datamodule classes
+    # to allow for multiple dataset training tasks
     CustomLightningCLI(
-        model_class=RslearnLightningModule,
-        datamodule_class=RslearnDataModule,
+        model_class=L.LightningModule,
+        datamodule_class=L.LightningDataModule,
         args=sys.argv[2:],
         subclass_mode_model=True,
         subclass_mode_data=True,
