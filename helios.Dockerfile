@@ -4,8 +4,8 @@ RUN apt update
 RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
 
 # Install rslearn and helios (need to be in local directory).
-COPY ./rslearn /opt/rslearn
-COPY ./helios /opt/helios
+COPY ./docker_build/rslearn /opt/rslearn
+COPY ./docker_build/helios /opt/helios
 COPY requirements.txt /opt/rslearn_projects/requirements.txt
 RUN pip install --no-cache-dir geobench==0.0.1
 RUN pip install --no-cache-dir --upgrade /opt/helios
