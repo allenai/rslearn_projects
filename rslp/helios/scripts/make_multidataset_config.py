@@ -114,8 +114,8 @@ if __name__ == "__main__":
                         except:
                             task["init_args"][k] = v.copy()
 
-            if maker_cfg.get("max_num_workers") is not None:
-                base_cfg["data"]["init_args"]["max_num_workers"] = maker_cfg["max_num_workers"]
+            if maker_cfg.get("num_workers") is not None:
+                base_cfg["data"]["init_args"]["num_workers"] = maker_cfg["num_workers"]
             base_cfg["data"]["init_args"]["dataset_configs"] = dataset_configs
             base_cfg["model"]["init_args"]["model"]["init_args"]["decoders"] = decoders
             base_cfg["data"]["init_args"]["task"] = deepcopy(task)

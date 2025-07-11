@@ -452,7 +452,7 @@ data:
             - worldcover_window_32
             tags:
               split: val
-    max_num_workers: 32
+    num_workers: 32
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
