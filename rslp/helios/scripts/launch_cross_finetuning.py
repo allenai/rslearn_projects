@@ -1,6 +1,12 @@
-import os
-import subprocess
+"""Launch cross-finetuning experiments for Helios models.
+
+This script launches multiple finetuning experiments by cross-training models
+on different benchmarks and configurations.
+"""
+
 import concurrent.futures
+import os
+import subprocess  # nosec
 
 cmd1 = """
 RSLP_PREFIX=gs://rslearn-eai \
@@ -47,7 +53,7 @@ models = [
     "v2_landsat_vessel_classification_helios_base_ps4_add_prob_threshold",
     "v2_landsat_vessel_detection_helios_base_ps4",
     "v2_cropland_classification_helios_base_S2_ts_ws8_ps8",
-    "v2_base"
+    "v2_base",
 ]
 benchmarks = {
     "v2_nandi_crop_type": ["finetune_s2"],
@@ -103,10 +109,19 @@ print("Number of commands:", len(commands))
 print("=" * 80)
 input("Press Enter to continue...")
 
-def run_command(cmd):
+
+def run_command(cmd: str) -> bool:
+    """Run a shell command and return success status.
+
+    Args:
+        cmd: The shell command to execute.
+
+    Returns:
+        True if the command succeeded, False otherwise.
+    """
     print(f"Running: {cmd}\n\n")
     try:
-        result = subprocess.run(cmd, shell=True)
+        result = subprocess.run(cmd, shell=True)  # nosec
         if result.returncode == 0:
             return True
         else:
@@ -114,6 +129,7 @@ def run_command(cmd):
     except Exception as e:
         print(f"Exception: {e}")
         return False
+
 
 max_workers = min(32, len(commands))
 with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:

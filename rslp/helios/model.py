@@ -1,7 +1,7 @@
 """Helios model wrapper for fine-tuning in rslearn."""
 
-import os
 import json
+import os
 from contextlib import nullcontext
 from typing import Any
 
@@ -86,12 +86,16 @@ class Helios(torch.nn.Module):
             train_module_dir = f"{checkpoint_path}/model_and_optim"
             if os.path.exists(train_module_dir):
                 load_model_and_optim_state(train_module_dir, model)
-                print(f"INFO: loaded helios encoder from {train_module_dir}/model_and_optim")
+                print(
+                    f"INFO: loaded helios encoder from {train_module_dir}/model_and_optim"
+                )
 
             else:
                 # if we load last.ckpt, we are loading from sft, so ignore decoder weights
                 ckpt_file = os.path.join(checkpoint_path, "last.ckpt")
-                print(f"INFO: could not find model_and_optim folder, looking for {ckpt_file}")
+                print(
+                    f"INFO: could not find model_and_optim folder, looking for {ckpt_file}"
+                )
 
                 state_dict = torch.load(ckpt_file)["state_dict"]
                 processed_state_dict = {}
@@ -100,10 +104,12 @@ class Helios(torch.nn.Module):
                         k = k.replace("model.encoder.0.model.", "encoder.")
                         processed_state_dict[k] = v
                 model.load_state_dict(processed_state_dict, strict=False)
-                print("INFO: remapped weights and loaded helios encoder from checkpoint")
+                print(
+                    "INFO: remapped weights and loaded helios encoder from checkpoint"
+                )
 
                 assert all(
-                    k in processed_state_dict 
+                    k in processed_state_dict
                     for k in model.state_dict().keys()
                     if k.startswith("encoder")
                 ), "all non-target encoder weights should be loaded"

@@ -1,9 +1,15 @@
+"""Evaluate cross-finetuned models on various tasks.
+
+This script evaluates models that have been cross-finetuned on different tasks
+by running evaluation commands for each model-task combination.
+"""
+
 import os
 
 ckpt_dir = "/weka/dfive-default/helios/checkpoints/ryanp/"
 config_dir = "/weka/dfive-default/ryanp/rslearn_projects/data/helios"
 root_dir = "/weka/dfive-default/ryanp/rslearn_projects"
-token = "__CROSS__"
+token = "__CROSS__"  # nosec
 patch_size = 8
 encoder_embedding_size = 768
 image_name = "favyen/rslphelios3"
@@ -33,20 +39,40 @@ python -m rslp.main helios launch_finetune \
     --do_eval true \
 """
 
-def find_task_and_cfg(task_and_cfg):
+
+def find_task_and_cfg(task_and_cfg: str) -> tuple[tuple[str, str], str]:
+    """Find the task and configuration from a task_and_cfg string.
+
+    Args:
+        task_and_cfg: String containing task and configuration information.
+
+    Returns:
+        Tuple of (task_tuple, cfg) where task_tuple is (task_name, cfg_name).
+
+    Raises:
+        ValueError: If no matching task is found.
+    """
     for task in tasks:
-        if task in task_and_cfg:
-            cfg = task_and_cfg.replace(f"{task}_", "")
+        if task[0] in task_and_cfg and task[1] in task_and_cfg:
+            cfg = task_and_cfg.replace(f"{task[0]}_{task[1]}_", "")
             return task, cfg
     raise ValueError(f"No matching task found for {task_and_cfg}")
 
-def get_base_task(run):
-    """Get base finetuning task from run name"""
+
+def get_base_task(run: str) -> str:
+    """Get base finetuning task from run name.
+
+    Args:
+        run: The run name to extract the base task from.
+
+    Returns:
+        The base task name.
+    """
     s = run.split(token)[1]
     search_str = "_helios_"
     if search_str not in s:
         return run
-    return s[:s.find(search_str)]
+    return s[: s.find(search_str)]
 
 
 cmds = []
@@ -54,8 +80,8 @@ for run in os.listdir(ckpt_dir):
     if token in run:
         ckpt_path = os.path.join(ckpt_dir, run)
         for task, cfg in tasks:
-            task_matches_base = (task_name_map.get(get_base_task(run)) == (task, cfg))
-            task_matches_finetune = (f"{task}_{cfg}" == run.split(token)[0])
+            task_matches_base = task_name_map.get(get_base_task(run)) == (task, cfg)
+            task_matches_finetune = f"{task}_{cfg}" == run.split(token)[0]
             if task_matches_base or task_matches_finetune:
                 config_path = os.path.join(config_dir, task, cfg + ".yaml")
                 filled_cmd = cmd.format(
@@ -66,7 +92,7 @@ for run in os.listdir(ckpt_dir):
                     config_path=config_path,
                     run=run,
                     task=task,
-                    cfg=cfg
+                    cfg=cfg,
                 )
                 print(filled_cmd)
                 print()
@@ -77,4 +103,4 @@ input("Continue? ")
 
 os.chdir(root_dir)
 for cmd in cmds:
-    os.system(cmd)
+    os.system(cmd)  # nosec

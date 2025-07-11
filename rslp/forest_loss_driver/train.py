@@ -5,11 +5,12 @@ from typing import Any
 
 import numpy as np
 import torch
-import wandb
 from PIL import Image
 from rslearn.train.lightning_module import RslearnLightningModule
 from rslearn.train.tasks.classification import ClassificationTask
 from rslearn.utils import Feature
+
+import wandb
 
 CATEGORIES = [
     "agriculture",
@@ -203,7 +204,7 @@ class ForestLossLightningModule(RslearnLightningModule):
         """Submit the val confusion matrix."""
         self.logger.experiment.log(
             {
-                "val_cm": wandb.plot.confusion_matrix(
+                "val_cm": wandb.plot.confusion_matrix(  # type: ignore[attr-defined]
                     probs=np.stack(self.probs),
                     y_true=np.stack(self.y_true),
                     class_names=CATEGORIES,
@@ -264,7 +265,7 @@ class ForestLossLightningModule(RslearnLightningModule):
         """Submit the test confusion matrix."""
         self.logger.experiment.log(
             {
-                "test_cm": wandb.plot.confusion_matrix(
+                "test_cm": wandb.plot.confusion_matrix(  # type: ignore[attr-defined]
                     probs=np.stack(self.probs),
                     y_true=np.stack(self.y_true),
                     class_names=CATEGORIES,
