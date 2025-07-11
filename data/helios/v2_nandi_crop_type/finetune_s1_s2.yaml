@@ -192,7 +192,7 @@ data:
         input_mapping:
           crop_type_classification:
             label: "targets"
-    batch_size: 8
+    batch_size: 32
     num_workers: 32
     default_config:
       transforms:

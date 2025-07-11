@@ -4,9 +4,10 @@ import os
 from typing import Any
 
 import numpy as np
-import wandb
 from PIL import Image
 from rslearn.train.lightning_module import RslearnLightningModule
+
+import wandb
 
 from .config import CATEGORIES
 
@@ -70,7 +71,7 @@ class CMLightningModule(RslearnLightningModule):
         """Submit the test confusion matrix."""
         self.logger.experiment.log(
             {
-                "test_cm": wandb.plot.confusion_matrix(
+                "test_cm": wandb.plot.confusion_matrix(  # type: ignore[attr-defined]
                     probs=np.concatenate(self.probs, axis=0),
                     y_true=np.concatenate(self.y_true, axis=0),
                     class_names=CATEGORIES,

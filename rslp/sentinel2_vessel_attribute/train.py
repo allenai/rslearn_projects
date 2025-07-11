@@ -9,7 +9,6 @@ import numpy as np
 import numpy.typing as npt
 import rslearn.main
 import torch
-import wandb
 from PIL import Image, ImageDraw
 from rslearn.train.lightning_module import RslearnLightningModule
 from rslearn.train.tasks.multi_task import MultiTask
@@ -17,6 +16,8 @@ from rslearn.train.tasks.regression import RegressionTask
 from rslearn.train.tasks.task import BasicTask, Task
 from rslearn.utils.feature import Feature
 from torchmetrics import Metric, MetricCollection
+
+import wandb
 
 SHIP_TYPE_CATEGORIES = [
     "cargo",
@@ -551,7 +552,7 @@ class VesselAttributeLightningModule(RslearnLightningModule):
 
             self.logger.experiment.log(
                 {
-                    f"test_{task_name}_cm": wandb.plot.confusion_matrix(
+                    f"test_{task_name}_cm": wandb.plot.confusion_matrix(  # type: ignore[attr-defined]
                         probs=np.stack(probs_list),
                         y_true=np.stack(gt_list),
                         class_names=class_names,

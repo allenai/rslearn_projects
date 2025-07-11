@@ -23,6 +23,7 @@ CODE_EXCLUDES = [
     "lightning_logs",
     "test_data",
     "wandb",
+    "project_data",
 ]
 
 logger = get_logger(__name__)
