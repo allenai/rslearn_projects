@@ -884,61 +884,6 @@ data:
             patch_size: 128
             tags:
               split: val
-    task:
-      class_path: rslearn.train.tasks.multi_task.MultiTask
-      init_args:
-        input_mapping:
-          segment:
-            targets: targets
-          vessel_detection:
-            targets: targets
-        tasks:
-          segment:
-            class_path: rslearn.train.tasks.segmentation.SegmentationTask
-            init_args:
-              enable_miou_metric: true
-              metric_kwargs:
-                average: micro
-              num_classes: 20
-              remap_values:
-              - - 0
-                - 1
-              - - 0
-                - 255
-              zero_is_invalid: true
-          vessel_detection:
-            class_path: rslearn.train.tasks.detection.DetectionTask
-            init_args:
-              box_size: 15
-              classes:
-              - unknown
-              - vessel
-              enable_f1_metric: true
-              enable_map_metric: true
-              exclude_by_center: true
-              f1_metric_kwargs:
-                cmp_mode: distance
-                cmp_threshold: 15
-                flatten_classes: true
-              f1_metric_thresholds:
-              - - 0.05
-                - 0.1
-                - 0.2
-                - 0.3
-                - 0.4
-                - 0.5
-                - 0.6
-                - 0.7
-                - 0.8
-                - 0.9
-                - 0.95
-              property_name: category
-              remap_values:
-              - - 0
-                - 1
-              - - 0
-                - 255
-              score_threshold: 0.7
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:

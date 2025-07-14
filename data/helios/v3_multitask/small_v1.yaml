@@ -1,6 +1,6 @@
 # Small test config for multi-dataset training, landsat vessel detection and worldcereal cropland classification
 base_cfg: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/base.yaml
-task_cfgs:
+dataset_cfgs:
   - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_worldcereal_cropland/finetune_s1_s2.yaml
   - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_landsat_vessels/finetune_detector.yaml
 patch_size: 8

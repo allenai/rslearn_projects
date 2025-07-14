@@ -1,6 +1,6 @@
 # Landsat vessel detection and pastis segmentation
 base_cfg: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/base.yaml
-task_cfgs:
+dataset_cfgs:
   - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_landsat_vessels/finetune_detector.yaml
   - - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_pastis/basecfg.yaml
     - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_pastis/basecfg_helios_mm.yaml

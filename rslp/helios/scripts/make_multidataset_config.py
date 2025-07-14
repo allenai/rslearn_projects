@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
     if maker_cfg["output_path"] is None:
         s = ""
-        for task_cfg in maker_cfg["task_cfgs"]:
+        for task_cfg in maker_cfg["dataset_cfgs"]:
             if isinstance(task_cfg, list):
                 task_cfg = task_cfg[0]
             basename = os.path.basename(task_cfg).replace(".yaml", "")
@@ -107,28 +107,28 @@ if __name__ == "__main__":
         )
 
     to_tmp = {}
-    task_cfgs_list = maker_cfg["task_cfgs"]
-    for i, cfg in enumerate([maker_cfg["base_cfg"]] + task_cfgs_list):
+    dataset_cfgs_list = maker_cfg["dataset_cfgs"]
+    for i, cfg in enumerate([maker_cfg["base_cfg"]] + dataset_cfgs_list):
         if isinstance(cfg, list):
             cfg_key = "__".join(cfg)
             to_tmp[cfg_key] = merge_configs(cfg, maker_cfg)
-            task_cfgs_list[i - 1] = cfg_key  # type: ignore[index]
+            dataset_cfgs_list[i - 1] = cfg_key  # type: ignore[index]
         else:
             with open(cfg) as f:
                 to_tmp[cfg] = apply_template(f.read(), maker_cfg)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_task_cfgs = {
+        tmp_dataset_cfgs = {
             cfg: os.path.join(tmpdir, f"{os.path.basename(cfg)}") for cfg in to_tmp
         }
-        tmp_task_buffers = [open(fp, "w+") for fp in tmp_task_cfgs.values()]
+        tmp_task_buffers = [open(fp, "w+") for fp in tmp_dataset_cfgs.values()]
         try:
             for cfg in to_tmp:
-                with open(tmp_task_cfgs[cfg], "w+") as f:
+                with open(tmp_dataset_cfgs[cfg], "w+") as f:
                     f.write(to_tmp[cfg])
                     f.flush()
 
-            with open(tmp_task_cfgs[maker_cfg["base_cfg"]]) as f:
+            with open(tmp_dataset_cfgs[maker_cfg["base_cfg"]]) as f:
                 base_cfg = yaml.safe_load(f)
 
             data_modules = {}
@@ -137,8 +137,8 @@ if __name__ == "__main__":
                 "class_path": "rslearn.train.tasks.multi_task.MultiTask",
                 "init_args": {},
             }
-            for task_cfg in tmp_task_cfgs.values():
-                if task_cfg == tmp_task_cfgs[maker_cfg["base_cfg"]]:
+            for task_cfg in tmp_dataset_cfgs.values():
+                if task_cfg == tmp_dataset_cfgs[maker_cfg["base_cfg"]]:
                     continue
                 with open(task_cfg) as f:
                     task_cfg = yaml.safe_load(f)
