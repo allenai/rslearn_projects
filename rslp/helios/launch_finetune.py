@@ -167,7 +167,7 @@ def launch_finetune(
             for path in paths:
                 with open(path) as f:
                     string = f.read()
-                string = string.replace("/opt/", "./")
+                string = string.replace("/opt/", "./docker_build/")
                 with open(path, "w") as f:
                     f.write(string)
 
