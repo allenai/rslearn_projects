@@ -10,6 +10,7 @@ import tempfile
 import fsspec
 import jsonargparse
 import lightning as L
+import wandb
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.cli import SaveConfigCallback
@@ -18,7 +19,6 @@ from rslearn.main import RslearnLightningCLI
 from upath import UPath
 
 import rslp.utils.fs  # noqa: F401 (imported but unused)
-import wandb
 from rslp import launcher_lib
 from rslp.log_utils import get_logger
 
@@ -104,13 +104,13 @@ class SaveWandbRunIdCallback(Callback):
             trainer: the Trainer object.
             pl_module: the LightningModule object.
         """
-        wandb_id = wandb.run.id  # type: ignore[attr-defined]
+        wandb_id = wandb.run.id
         launcher_lib.upload_wandb_id(
             self.project_id, self.experiment_id, self.run_id, wandb_id
         )
 
-        if self.config_str is not None and "rslp_project" not in wandb.config:  # type: ignore[attr-defined]
-            wandb.config.update(json.loads(self.config_str))  # type: ignore[attr-defined]
+        if self.config_str is not None and "rslp_project" not in wandb.config:
+            wandb.config.update(json.loads(self.config_str))
 
 
 class SaveConfigToProjectDirCallback(SaveConfigCallback):
