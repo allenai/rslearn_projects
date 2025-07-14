@@ -164,7 +164,7 @@ data:
       tags:
         split: "val"
     predict_config:
-      groups: ["nandi_county"]
+      groups: ["nandi_county_2018"]
       load_all_patches: true
       skip_targets: true
       patch_size: 32
