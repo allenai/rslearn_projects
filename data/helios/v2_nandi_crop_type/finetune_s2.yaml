@@ -146,11 +146,11 @@ data:
             config_fname: "/weka/dfive-default/yawenz/rslearn_projects/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        # - class_path: rslearn.train.transforms.pad.Pad
-        #   init_args:
-        #     size: 128
-        #     mode: "center"
-        #     image_selectors: ["sentinel2_l2a"]
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 4
+            mode: "center"
+            image_selectors: ["sentinel2_l2a"]
     train_config:
       groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
       tags:
