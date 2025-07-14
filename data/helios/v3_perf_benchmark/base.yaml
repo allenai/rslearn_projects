@@ -23,7 +23,7 @@ model:
 data:
   class_path: rslearn.train.data_module.MultiDatasetDataModule
   init_args:
-    dataset_configs:  # Filled in by make_multidataset_config.py
+    data_modules:  # Filled in by make_multidataset_config.py
 
 trainer:
   max_epochs: 100

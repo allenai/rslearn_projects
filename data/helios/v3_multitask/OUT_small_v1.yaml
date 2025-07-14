@@ -1,7 +1,7 @@
 data:
   class_path: rslearn.train.data_module.MultiDatasetDataModule
   init_args:
-    dataset_configs:
+    data_modules:
       cropland_classification:
         class_path: rslearn.train.data_module.RslearnDataModule
         init_args:

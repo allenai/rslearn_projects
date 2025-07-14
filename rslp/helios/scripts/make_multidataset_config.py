@@ -131,7 +131,7 @@ if __name__ == "__main__":
             with open(tmp_task_cfgs[maker_cfg["base_cfg"]]) as f:
                 base_cfg = yaml.safe_load(f)
 
-            dataset_configs = {}
+            data_modules = {}
             decoders = {}
             task = {
                 "class_path": "rslearn.train.tasks.multi_task.MultiTask",
@@ -150,7 +150,7 @@ if __name__ == "__main__":
                     assert len(subtasks) == 1, "Only one subtask per task is supported"
 
                     task_name = subtasks[0]
-                    dataset_configs[task_name] = task_cfg["data"]
+                    data_modules[task_name] = task_cfg["data"]
                     decoders.update(
                         task_cfg["model"]["init_args"]["model"]["init_args"]["decoders"]
                     )
@@ -178,11 +178,8 @@ if __name__ == "__main__":
 
             if maker_cfg.get("num_workers") is not None:
                 base_cfg["data"]["init_args"]["num_workers"] = maker_cfg["num_workers"]
-            base_cfg["data"]["init_args"]["dataset_configs"] = dataset_configs
+            base_cfg["data"]["init_args"]["data_modules"] = data_modules
             base_cfg["model"]["init_args"]["model"]["init_args"]["decoders"] = decoders
-            base_cfg["data"]["init_args"]["task"] = deepcopy(task)
-
-            # Shouldn't need this due to argument linking in lightning cli?
             base_cfg["model"]["init_args"]["task"] = deepcopy(task)
 
             with open(maker_cfg["output_path"], "w") as f:  # type: ignore
