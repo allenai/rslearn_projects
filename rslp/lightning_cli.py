@@ -10,6 +10,7 @@ import tempfile
 import fsspec
 import jsonargparse
 import lightning as L
+import wandb
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.cli import SaveConfigCallback
@@ -18,7 +19,6 @@ from rslearn.main import RslearnLightningCLI
 from upath import UPath
 
 import rslp.utils.fs  # noqa: F401 (imported but unused)
-import wandb
 from rslp import launcher_lib
 from rslp.log_utils import get_logger
 
