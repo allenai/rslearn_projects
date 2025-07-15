@@ -9,8 +9,8 @@ import tempfile
 
 import fsspec
 import jsonargparse
-import wandb
 import lightning as L
+import wandb
 from lightning.pytorch import LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.cli import SaveConfigCallback
@@ -343,6 +343,18 @@ class CustomLightningCLI(RslearnLightningCLI):
                 c.trainer.max_steps = max_steps
                 logger.info(f"Using profiler: {c.profiler}")
                 logger.info(f"Setting max_steps to {max_steps}")
+
+            # If we are using multi dataset, we have a custom batch sampler
+            # and so don't need lightning to wrap it for us
+            if c.data.class_path == "rslearn.train.data_module.MultiDatasetDataModule":
+                # Usually, it's fine to leave this flag on (lightning will detect
+                # a distributed sampler and leave it alone), but since we have a custom
+                # one not subclassing DistributedSampler, we need to turn it off manually
+                logger.info("Using custom distributed sampler")
+                logger.info(
+                    "Warnings about calling compute on an empty set of metrics may appear"
+                )
+                c.trainer.use_distributed_sampler = False
 
         if subcommand == "fit" and not c.no_log:
             # Set the checkpoint directory to canonical GCS location.

@@ -4,6 +4,7 @@ model:
     model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
+        checkpoint_path: /weka/dfive-default/ryanp/rslearn_projects/project_data/projects/helios_concat_finetune/crop_classify_s1s2__vessel_detect_OLD_SINGLE/checkpoints/last.ckpt
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
@@ -13,20 +14,13 @@ model:
                 patch_size: {PATCH_SIZE}
         decoders:
           cropland_classification:
-            - class_path: rslearn.models.pooling.MHAPool
-              init_args:
-                n_channels: {ENCODER_EMBEDDING_SIZE}
-                height: 1
-                width: 1
-                num_heads: 8
-                n_bandsets: 4
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
                 out_channels: 2
             - class_path: rslearn.train.tasks.classification.ClassificationHead
-    lr: 0.0001
-    plateau: true
+    lr: 0.00005
+    plateau: false
     plateau_factor: 0.2
     plateau_patience: 2
     plateau_min_lr: 0
@@ -199,8 +193,8 @@ data:
         input_mapping:
           cropland_classification:
             label: "targets"
-    batch_size: 32
-    num_workers: 16
+    batch_size: 16
+    num_workers: 32
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -270,9 +264,5 @@ trainer:
         save_last: true
         monitor: val_loss
         mode: min
-    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
-      init_args:
-        module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
 rslp_project: placeholder
 rslp_experiment: placeholder

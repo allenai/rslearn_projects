@@ -5,11 +5,18 @@ import os
 import subprocess  # nosec
 import tempfile
 from pathlib import Path
+
 import yaml
+
 from rslp.log_utils import get_logger
 
+<<<<<<< HEAD
 DEFAULT_RSLP_PREFIX = "gs://rslearn-eai"
 DEFAULT_RSLP_PREFIX_LOCAL = "project_data/"
+=======
+DEFAULT_RSLP_PREFIX = "project_data/"
+DEFAULT_RSLP_BUCKET = "gs://rslearn-eai"
+>>>>>>> ryanp/singletask
 DEFAULT_RSLP_PROJECT = "helios_finetuning"
 CONFIG_BASE_DIR = Path("data/helios")
 EVAL_BASE_DIR = "helios/eval_sweeps"
@@ -79,11 +86,17 @@ def launch_finetune(
                 config_str = f.read()
 
             if helios_checkpoint_path is not None:
-                config_str = config_str.replace("{CHECKPOINT_PATH}", helios_checkpoint_path)
+                config_str = config_str.replace(
+                    "{CHECKPOINT_PATH}", helios_checkpoint_path
+                )
             if patch_size is not None:
                 config_str = config_str.replace("{PATCH_SIZE}", str(patch_size))
-                config_str = config_str.replace("{256/PATCH_SIZE}", str(256 // patch_size))
-                config_str = config_str.replace("{128/PATCH_SIZE}", str(128 // patch_size))
+                config_str = config_str.replace(
+                    "{256/PATCH_SIZE}", str(256 // patch_size)
+                )
+                config_str = config_str.replace(
+                    "{128/PATCH_SIZE}", str(128 // patch_size)
+                )
             if encoder_embedding_size is not None:
                 config_str = config_str.replace(
                     "{ENCODER_EMBEDDING_SIZE}", str(encoder_embedding_size)
@@ -93,12 +106,22 @@ def launch_finetune(
             config = yaml.safe_load(config_str)
             if do_eval and "model" in config and "init_args" in config["model"]:
                 if helios_checkpoint_path is not None:
-                    model_name = "_".join(helios_checkpoint_path.split(os.path.sep)[-2:])  # "modelname_stepX"
+                    model_name = "_".join(
+                        helios_checkpoint_path.split(os.path.sep)[-2:]
+                    )  # "modelname_stepX"
                 else:
-                    model_path = config["model"]["init_args"]["model"]["init_args"]["checkpoint_path"]
+                    model_path = config["model"]["init_args"]["model"]["init_args"][
+                        "checkpoint_path"
+                    ]
                     model_path_parts = model_path.split(os.path.sep)
-                    model_name = model_path_parts[-3] + "_" + model_path_parts[-1].replace(".ckpt", "")
-                eval_task = "__".join(config_paths[0].split(os.path.sep)[-2:]).strip(".yaml")
+                    model_name = (
+                        model_path_parts[-3]
+                        + "_"
+                        + model_path_parts[-1].replace(".ckpt", "")
+                    )
+                eval_task = "__".join(config_paths[0].split(os.path.sep)[-2:]).strip(
+                    ".yaml"
+                )
                 path = os.path.join(full_eval_dir, f"{model_name}__{eval_task}.json")
                 config["model"]["init_args"]["metrics_file"] = path
                 logger.info(f"Saving test metrics to {path}")
@@ -113,17 +136,17 @@ def launch_finetune(
 
         if local:
             # If running locally, assume we are in a gpu session
-            # NOTE: assuming that all the args are passed through to the config file and do NOT get 
+            # NOTE: assuming that all the args are passed through to the config file and do NOT get
             # passed through the final call to rslp.rslearn_main (except for profiler)
             if "RSLP_PREFIX" not in os.environ:
-                os.environ["RSLP_PREFIX"] = DEFAULT_RSLP_PREFIX_LOCAL
-                logger.info("Setting RSLP_PREFIX to %s", DEFAULT_RSLP_PREFIX_LOCAL)
+                os.environ["RSLP_PREFIX"] = DEFAULT_RSLP_PREFIX
+                logger.info(f"Using {DEFAULT_RSLP_PREFIX} as default RSLP_PREFIX")
             args = [
                 "python",
                 "-m",
                 "rslp.rslearn_main",
                 "model",
-                "fit" if not do_eval else "validate"
+                "fit" if not do_eval else "validate",
             ]
             paths = []
             for i, _ in enumerate(config_paths):
@@ -132,12 +155,9 @@ def launch_finetune(
                 paths.append(path)
                 args.append(path)
 
-            args.extend([
-                "--rslp_experiment",
-                experiment_id,
-                "--rslp_project",
-                rslp_project
-            ])
+            args.extend(
+                ["--rslp_experiment", experiment_id, "--rslp_project", rslp_project]
+            )
 
             if profiler:
                 args.append("--profiler")
@@ -151,14 +171,13 @@ def launch_finetune(
             
             # Monkeypatch paths that are hardcoded in the config files
             for path in paths:
-                with open(path, "r") as f:
+                with open(path) as f:
                     string = f.read()
-                string = string.replace("/opt/", "./")
+                string = string.replace("/opt/", "./docker_build/")
                 with open(path, "w") as f:
                     f.write(string)
 
-            # input("Press Enter to continue...")
-            subprocess.check_call(args, env=env)
+            subprocess.check_call(args)  # nosec
 
         else:
             if "RSLP_PREFIX" not in os.environ:
@@ -170,11 +189,14 @@ def launch_finetune(
                 raise ValueError("image_name must be specified if not local")
             if cluster is None:
                 raise ValueError("cluster must be specified if not local")
+            if "RSLP_PREFIX" not in os.environ:
+                os.environ["RSLP_PREFIX"] = DEFAULT_RSLP_BUCKET
+                logger.info(f"Using {DEFAULT_RSLP_BUCKET} as default RSLP_PREFIX")
 
             extra_args = []
             if profiler:
                 extra_args.extend(["--profiler", profiler])
-                
+
             args = [
                 "python",
                 "-m",

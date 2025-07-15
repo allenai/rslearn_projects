@@ -1,7 +1,7 @@
 data:
   class_path: rslearn.train.data_module.MultiDatasetDataModule
   init_args:
-    dataset_configs:
+    data_modules:
       crop_type_classification:
         class_path: rslearn.train.data_module.RslearnDataModule
         init_args:
@@ -453,29 +453,6 @@ data:
             tags:
               split: val
     num_workers: 32
-    task:
-      class_path: rslearn.train.tasks.multi_task.MultiTask
-      init_args:
-        input_mapping:
-          crop_type_classification:
-            label: targets
-        tasks:
-          crop_type_classification:
-            class_path: rslearn.train.tasks.classification.ClassificationTask
-            init_args:
-              classes:
-              - Coffee
-              - Trees
-              - Grassland
-              - Maize
-              - Sugarcane
-              - Tea
-              - Water
-              - Built-up
-              enable_f1_metric: true
-              metric_kwargs:
-                average: micro
-              property_name: category
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:

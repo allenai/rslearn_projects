@@ -1,6 +1,6 @@
 # Benchmark performance via single-task (vessel detection) training
 base_cfg: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_perf_benchmark/base.yaml
-task_cfgs:
+dataset_cfgs:
   - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_landsat_vessels/finetune_detector_old.yaml
 patch_size: 8
 encoder_embedding_size: 768

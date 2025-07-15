@@ -1,7 +1,7 @@
 """Helios model wrapper for fine-tuning in rslearn."""
 
-import os
 import json
+import os
 from contextlib import nullcontext
 from typing import Any
 
@@ -12,6 +12,7 @@ from helios.nn.flexihelios import TokensAndMasks
 from helios.train.masking import MaskedHeliosSample, MaskValue
 from olmo_core.config import Config
 from olmo_core.distributed.checkpoint import load_model_and_optim_state
+from rslearn.train.lightning_module import RestoreConfig
 
 from rslp.log_utils import get_logger
 
@@ -86,27 +87,25 @@ class Helios(torch.nn.Module):
             train_module_dir = f"{checkpoint_path}/model_and_optim"
             if os.path.exists(train_module_dir):
                 load_model_and_optim_state(train_module_dir, model)
-                print(f"INFO: loaded helios encoder from {train_module_dir}/model_and_optim")
+                print(
+                    f"INFO: loaded helios encoder from {train_module_dir}/model_and_optim"
+                )
 
             else:
-                # if we load last.ckpt, we are loading from sft, so ignore decoder weights
-                ckpt_file = os.path.join(checkpoint_path, "last.ckpt")
-                print(f"INFO: could not find model_and_optim folder, looking for {ckpt_file}")
-
-                state_dict = torch.load(ckpt_file)["state_dict"]
-                processed_state_dict = {}
-                for k, v in state_dict.items():
-                    if "model.decoders." not in k:
-                        k = k.replace("model.encoder.0.model.", "encoder.")
-                        processed_state_dict[k] = v
-                model.load_state_dict(processed_state_dict, strict=False)
-                print("INFO: remapped weights and loaded helios encoder from checkpoint")
-
-                assert all(
-                    k in processed_state_dict 
-                    for k in model.state_dict().keys()
-                    if k.startswith("encoder")
-                ), "all non-target encoder weights should be loaded"
+                # If we load last.ckpt, we are loading from sft, so ignore decoder weights.
+                restore_config = RestoreConfig(
+                    restore_path=os.path.join(checkpoint_path, "last.ckpt"),
+                    selector=["state_dict"],
+                    ignore_prefixes=["model.decoders."],
+                    remap_prefixes=[("model.encoder.0.model.", "encoder.")],
+                )
+                state_dict = restore_config.get_state_dict()
+                result = model.load_state_dict(state_dict, strict=False)
+                if result.missing_keys:
+                    print(f"WARNING: missing keys: {result.missing_keys}")
+                if result.unexpected_keys:
+                    print(f"WARNING: unexpected keys: {result.unexpected_keys}")
+                print(f"INFO: loaded helios encoder from {checkpoint_path}/last.ckpt")
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:
