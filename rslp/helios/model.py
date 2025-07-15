@@ -95,12 +95,16 @@ class Helios(torch.nn.Module):
                 # If we load last.ckpt, we are loading from sft, so ignore decoder weights.
                 restore_config = RestoreConfig(
                     restore_path=os.path.join(checkpoint_path, "last.ckpt"),
-                    selector=["model.encoder.0.model"],
+                    selector=["state_dict"],
                     ignore_prefixes=["model.decoders."],
                     remap_prefixes=[("model.encoder.0.model.", "encoder.")],
                 )
                 state_dict = restore_config.get_state_dict()
-                model.load_state_dict(state_dict, strict=False)
+                result = model.load_state_dict(state_dict, strict=False)
+                if result.missing_keys:
+                    print(f"WARNING: missing keys: {result.missing_keys}")
+                if result.unexpected_keys:
+                    print(f"WARNING: unexpected keys: {result.unexpected_keys}")
                 print(f"INFO: loaded helios encoder from {checkpoint_path}/last.ckpt")
 
         # Select just the portion of the model that we actually want to use.

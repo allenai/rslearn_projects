@@ -20,10 +20,10 @@ python make_multidataset_config.py --cfg [BASE_CONFIG]
 
 ### 2. Running a multi-dataset job
 
-After generating a run config (see `v3_multitask/OUT*` for examples), it's straightforward to launch the multi-dataset job with `launch_finetune`. An example command is below. Note constants like `HELIOS_CHECKPOINT_PATH` are already substituted in by `make_multidataset_config`.
+After generating a run config (see `v3_multitask/OUT*` for examples), it's straightforward to launch the multi-dataset job with `launch_finetune`. An example command is below. Note constants like `HELIOS_CHECKPOINT_PATH`, `ENCODER_EMBEDDING_SIZE`, etc. are already substituted in by `make_multidataset_config`. If you are running with a config not generated with `make_multidataset_config`, you will have to specify these constants yourself, as usual.
 
 ```bash
 python -m rslp.main helios launch_finetune --config_paths+=[CONFIG] --rslp_project [PROJECT] --experiment_id [ID] --cluster+=[CLUSTER] --image_name [IMAGE_NAME]
 ```
 
-Optionally, specify `--local true` to run in the current Beaker session. Please use the Beaker image `henryh/rslp_multidataset` for the latest version.
+Optionally, specify `--local true` to run in the current Beaker session and `--do_eval true` for evaluation (only supported locally). If `RSLP_PREFIX` is not specified as an environment variable, it defaults to `project_data/` for local runs and `gs://rslearn-eai` otherwise. Please use the Beaker image `henryh/rslp_multidataset_stable`.

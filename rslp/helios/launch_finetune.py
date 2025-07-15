@@ -10,6 +10,8 @@ import yaml
 
 from rslp.log_utils import get_logger
 
+DEFAULT_RSLP_PREFIX = "project_data/"
+DEFAULT_RSLP_BUCKET = "gs://rslearn-eai"
 DEFAULT_RSLP_PROJECT = "helios_finetuning"
 CONFIG_BASE_DIR = Path("data/helios")
 EVAL_BASE_DIR = "helios/eval_sweeps"
@@ -131,6 +133,9 @@ def launch_finetune(
             # If running locally, assume we are in a gpu session
             # NOTE: assuming that all the args are passed through to the config file and do NOT get
             # passed through the final call to rslp.rslearn_main (except for profiler)
+            if "RSLP_PREFIX" not in os.environ:
+                os.environ["RSLP_PREFIX"] = DEFAULT_RSLP_PREFIX
+                logger.info(f"Using {DEFAULT_RSLP_PREFIX} as default RSLP_PREFIX")
             args = [
                 "python",
                 "-m",
@@ -181,6 +186,9 @@ def launch_finetune(
                 raise ValueError("image_name must be specified if not local")
             if cluster is None:
                 raise ValueError("cluster must be specified if not local")
+            if "RSLP_PREFIX" not in os.environ:
+                os.environ["RSLP_PREFIX"] = DEFAULT_RSLP_BUCKET
+                logger.info(f"Using {DEFAULT_RSLP_BUCKET} as default RSLP_PREFIX")
 
             extra_args = []
             if profiler:
