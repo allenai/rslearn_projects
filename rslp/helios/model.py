@@ -178,12 +178,14 @@ class Helios(torch.nn.Module):
             tokens_and_masks: TokensAndMasks = self.model(
                 sample, always_pass_none_mask_to_transformer=True, **self.forward_kwargs
             )[0]
-        
+
         # Fuse modality and bandset dimensions, and then take mean over time dimension
         # Since most downstream tasks don't have a time dimension in the output, it seems
         # reasonable to take mean over T to smooth out irregularities
-        features = [getattr(tokens_and_masks, modality) for modality in present_modalities]
-        features = torch.cat(features, dim=4)  # B x H x W x T x M x C
+        features_list = [
+            getattr(tokens_and_masks, modality) for modality in present_modalities
+        ]
+        features = torch.cat(features_list, dim=4)  # B x H x W x T x M x C
         features = features.permute(4, 0, 5, 1, 2, 3)  # M x B x C x H x W x T
         features = features.mean(dim=-1)  # M x B x C x H x W
         return [features]

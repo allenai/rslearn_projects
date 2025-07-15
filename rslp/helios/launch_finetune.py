@@ -10,13 +10,8 @@ import yaml
 
 from rslp.log_utils import get_logger
 
-<<<<<<< HEAD
-DEFAULT_RSLP_PREFIX = "gs://rslearn-eai"
-DEFAULT_RSLP_PREFIX_LOCAL = "project_data/"
-=======
 DEFAULT_RSLP_PREFIX = "project_data/"
 DEFAULT_RSLP_BUCKET = "gs://rslearn-eai"
->>>>>>> ryanp/singletask
 DEFAULT_RSLP_PROJECT = "helios_finetuning"
 CONFIG_BASE_DIR = Path("data/helios")
 EVAL_BASE_DIR = "helios/eval_sweeps"
@@ -168,7 +163,7 @@ def launch_finetune(
             print("DEBUG: Command being spawned:")
             print(" ".join(args))
             print("=" * 80)
-            
+
             # Monkeypatch paths that are hardcoded in the config files
             for path in paths:
                 with open(path) as f:
@@ -180,9 +175,6 @@ def launch_finetune(
             subprocess.check_call(args)  # nosec
 
         else:
-            if "RSLP_PREFIX" not in os.environ:
-                os.environ["RSLP_PREFIX"] = DEFAULT_RSLP_PREFIX
-                logger.info("Setting RSLP_PREFIX to %s", DEFAULT_RSLP_PREFIX)
             if do_eval:
                 raise NotImplementedError("Eval mode not supported for Beaker job")
             if image_name is None:
