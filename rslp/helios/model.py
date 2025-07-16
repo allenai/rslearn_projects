@@ -1,6 +1,7 @@
 """Helios model wrapper for fine-tuning in rslearn."""
 
 import json
+import os
 from contextlib import nullcontext
 from typing import Any
 
@@ -11,6 +12,7 @@ from helios.nn.flexihelios import TokensAndMasks
 from helios.train.masking import MaskedHeliosSample, MaskValue
 from olmo_core.config import Config
 from olmo_core.distributed.checkpoint import load_model_and_optim_state
+from rslearn.train.lightning_module import RestoreConfig
 
 from rslp.log_utils import get_logger
 
@@ -83,7 +85,27 @@ class Helios(torch.nn.Module):
         # Load the checkpoint.
         if not random_initialization:
             train_module_dir = f"{checkpoint_path}/model_and_optim"
-            load_model_and_optim_state(train_module_dir, model)
+            if os.path.exists(train_module_dir):
+                load_model_and_optim_state(train_module_dir, model)
+                print(
+                    f"INFO: loaded helios encoder from {train_module_dir}/model_and_optim"
+                )
+
+            else:
+                # If we load last.ckpt, we are loading from sft, so ignore decoder weights.
+                restore_config = RestoreConfig(
+                    restore_path=os.path.join(checkpoint_path, "last.ckpt"),
+                    selector=["state_dict"],
+                    ignore_prefixes=["model.decoders."],
+                    remap_prefixes=[("model.encoder.0.model.", "encoder.")],
+                )
+                state_dict = restore_config.get_state_dict()
+                result = model.load_state_dict(state_dict, strict=False)
+                if result.missing_keys:
+                    print(f"WARNING: missing keys: {result.missing_keys}")
+                if result.unexpected_keys:
+                    print(f"WARNING: unexpected keys: {result.unexpected_keys}")
+                print(f"INFO: loaded helios encoder from {checkpoint_path}/last.ckpt")
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:
@@ -157,18 +179,13 @@ class Helios(torch.nn.Module):
                 sample, always_pass_none_mask_to_transformer=True, **self.forward_kwargs
             )[0]
 
-        # Apply temporal/modality pooling so we just have one feature per patch.
-        features = []
-        for modality in present_modalities:
-            modality_features = getattr(tokens_and_masks, modality)
-            # Pool over band sets and timesteps (BHWTSC -> BHWC).
-            pooled = modality_features.mean(dim=[3, 4])
-            # We want BHWC -> BCHW.
-            pooled = rearrange(pooled, "b h w c -> b c h w")
-            features.append(pooled)
-        # Pool over the modalities, so we get one BCHW feature map.
-        pooled = torch.stack(features, dim=0).mean(dim=0)
-        return [pooled]
+        # Fuse modality and bandset dimensions, leave all other dimensions as is
+        features_list = [
+            getattr(tokens_and_masks, modality) for modality in present_modalities
+        ]
+        features = torch.cat(features_list, dim=4)  # B x H x W x T x M x C
+        features = features.permute(4, 0, 5, 1, 2, 3)  # M x B x C x H x W x T
+        return [features]
 
     def get_backbone_channels(self) -> list:
         """Returns the output channels of this model when used as a backbone.

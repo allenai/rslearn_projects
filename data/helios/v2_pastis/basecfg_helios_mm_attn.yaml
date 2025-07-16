@@ -11,6 +11,12 @@ model:
                 patch_size: {PATCH_SIZE}
         decoders:
           segment:
+            - class_path: rslearn.models.pooling.AttentivePool
+              init_args:
+                n_channels: {ENCODER_EMBEDDING_SIZE}
+                height: 16
+                width: 16
+                n_bandsets: 4
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
                 in_channels: [[{PATCH_SIZE}, {ENCODER_EMBEDDING_SIZE}]]
@@ -234,3 +240,9 @@ data:
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["sentinel2_l2a", "sentinel1", "target/segment/classes", "target/segment/valid"]
+trainer:
+  callbacks+:
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 4

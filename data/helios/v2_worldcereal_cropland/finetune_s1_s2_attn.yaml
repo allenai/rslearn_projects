@@ -13,6 +13,12 @@ model:
                 patch_size: {PATCH_SIZE}
         decoders:
           cropland_classification:
+            - class_path: rslearn.models.pooling.AttentivePool
+              init_args:
+                n_channels: {ENCODER_EMBEDDING_SIZE}
+                height: 1
+                width: 1
+                n_bandsets: 4
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: {ENCODER_EMBEDDING_SIZE}
@@ -266,6 +272,6 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
+        unfreeze_at_epoch: 4
 rslp_project: placeholder
 rslp_experiment: placeholder
