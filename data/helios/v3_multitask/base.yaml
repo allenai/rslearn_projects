@@ -14,11 +14,9 @@ model:
         decoders:  # Filled in by make_multidataset_config.py
         lazy_decode: true
     lr: 0.0001
-    plateau: true
-    plateau_factor: 0.2
-    plateau_patience: 2
-    plateau_min_lr: 0
-    plateau_cooldown: 10
+    plateau: false
+    cosine_anneal: true
+    cosine_max_iter: 150
 
 data:
   class_path: rslearn.train.data_module.MultiDatasetDataModule

@@ -6,5 +6,5 @@ dataset_cfgs:
 patch_size: 8
 encoder_embedding_size: 768
 helios_checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
-output_path: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/OUT_small_v1.yaml
-batch_size: 32
+output_path: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/OUT_small.yaml
+batch_size: 16

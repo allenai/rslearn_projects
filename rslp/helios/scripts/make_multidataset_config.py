@@ -107,12 +107,12 @@ if __name__ == "__main__":
         )
 
     to_tmp = {}
-    dataset_cfgs_list = maker_cfg["dataset_cfgs"]
-    for i, cfg in enumerate([maker_cfg["base_cfg"]] + dataset_cfgs_list):
+    for i, cfg in enumerate([maker_cfg["base_cfg"]] + maker_cfg["dataset_cfgs"]):
         if isinstance(cfg, list):
-            cfg_key = "__".join(cfg)
+            cfg_base_dir = os.path.basename(os.path.dirname(cfg[0]))
+            cfg_fnames = [os.path.splitext(os.path.basename(c))[0] for c in cfg]
+            cfg_key = f"{cfg_base_dir}__{"__".join(cfg_fnames)}.yaml"
             to_tmp[cfg_key] = merge_configs(cfg, maker_cfg)
-            dataset_cfgs_list[i - 1] = cfg_key  # type: ignore[index]
         else:
             with open(cfg) as f:
                 to_tmp[cfg] = apply_template(f.read(), maker_cfg)
@@ -185,7 +185,7 @@ if __name__ == "__main__":
             with open(maker_cfg["output_path"], "w") as f:  # type: ignore
                 yaml.dump(base_cfg, f)
 
-            print(json.dumps(base_cfg, indent=4))
+            # print(json.dumps(base_cfg, indent=4))
 
         finally:
             for f in tmp_task_buffers:
