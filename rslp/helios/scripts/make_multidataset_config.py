@@ -111,7 +111,7 @@ if __name__ == "__main__":
         if isinstance(cfg, list):
             cfg_base_dir = os.path.basename(os.path.dirname(cfg[0]))
             cfg_fnames = [os.path.splitext(os.path.basename(c))[0] for c in cfg]
-            cfg_key = f"{cfg_base_dir}__{"__".join(cfg_fnames)}.yaml"
+            cfg_key = f"{cfg_base_dir}__{'__'.join(cfg_fnames)}.yaml"
             to_tmp[cfg_key] = merge_configs(cfg, maker_cfg)
         else:
             with open(cfg) as f:
