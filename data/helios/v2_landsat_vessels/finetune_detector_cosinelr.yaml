@@ -20,9 +20,11 @@ model:
                 num_classes: 2
                 anchor_sizes: [[32]]
     lr: 0.0001
-    plateau: false
-    cosine_anneal: true
-    cosine_max_iter: 150
+    scheduler:
+      class_path: rslearn.train.scheduler.CosineAnnealingScheduler
+      init_args:
+        T_max: 150
+        eta_min: 0
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:

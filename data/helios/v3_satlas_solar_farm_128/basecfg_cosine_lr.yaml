@@ -13,9 +13,11 @@ model:
                 conv_layers_per_resolution: 2
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
-    plateau: false
-    cosine_anneal: true
-    cosine_max_iter: 150
+    scheduler:
+      class_path: rslearn.train.scheduler.CosineAnnealingScheduler
+      init_args:
+        T_max: 150
+        eta_min: 0
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:

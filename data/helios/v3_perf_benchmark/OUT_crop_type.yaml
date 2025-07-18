@@ -457,54 +457,13 @@ model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     lr: 0.0001
-    model:
-      class_path: rslearn.models.multitask.MultiTaskModel
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
       init_args:
-        decoders:
-          crop_type_classification:
-          - class_path: rslearn.models.pooling_decoder.PoolingDecoder
-            init_args:
-              in_channels: 768
-              out_channels: 8
-          - class_path: rslearn.train.tasks.classification.ClassificationHead
-        encoder:
-        - class_path: rslp.helios.model.Helios
-          init_args:
-            checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
-            forward_kwargs:
-              patch_size: 8
-            selector:
-            - encoder
-        lazy_decode: true
-    plateau: true
-    plateau_cooldown: 10
-    plateau_factor: 0.2
-    plateau_min_lr: 0
-    plateau_patience: 2
-    task:
-      class_path: rslearn.train.tasks.multi_task.MultiTask
-      init_args:
-        input_mapping:
-          crop_type_classification:
-            label: targets
-        tasks:
-          crop_type_classification:
-            class_path: rslearn.train.tasks.classification.ClassificationTask
-            init_args:
-              classes:
-              - Coffee
-              - Trees
-              - Grassland
-              - Maize
-              - Sugarcane
-              - Tea
-              - Water
-              - Built-up
-              enable_f1_metric: true
-              metric_kwargs:
-                average: micro
-              property_name: category
-rslp_experiment: placeholder
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
 rslp_project: placeholder
 trainer:
   callbacks:
