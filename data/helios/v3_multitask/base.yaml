@@ -23,9 +23,11 @@ model:
 data:
   class_path: rslearn.train.data_module.MultiDatasetDataModule
   init_args:
+    round_robin: true
     data_modules:  # Filled in by make_multidataset_config.py
 
 trainer:
+  accumulate_grad_batches: 16
   max_epochs: 100
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
@@ -40,7 +42,7 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
+        unfreeze_at_epoch: 10
 
 rslp_project: placeholder
 rslp_experiment: placeholder

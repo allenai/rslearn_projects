@@ -185,8 +185,6 @@ if __name__ == "__main__":
             with open(maker_cfg["output_path"], "w") as f:  # type: ignore
                 yaml.dump(base_cfg, f)
 
-            # print(json.dumps(base_cfg, indent=4))
-
         finally:
             for f in tmp_task_buffers:
                 f.close()

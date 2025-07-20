@@ -1,5 +1,6 @@
 base_cfg: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/base.yaml
 dataset_cfgs:
+  - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_landsat_vessels/finetune_classifier.yaml
   - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_landsat_vessels/finetune_detector.yaml
   - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_worldcereal_cropland/finetune_s1_s2.yaml
   - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_lfmc/finetune_s1_s2_srtm.yaml
@@ -9,5 +10,4 @@ patch_size: 8
 encoder_embedding_size: 768
 helios_checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
 output_path: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/OUT_medium.yaml
-batch_size: 16
 num_workers: 16
