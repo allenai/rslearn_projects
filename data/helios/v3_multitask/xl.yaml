@@ -1,4 +1,6 @@
 base_cfg: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/base.yaml
+output_path: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/OUT_xl.yaml
+
 dataset_cfgs:
   - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_landsat_vessels/finetune_classifier.yaml
   - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_landsat_vessels/finetune_detector.yaml
@@ -15,8 +17,13 @@ dataset_cfgs:
     - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_satlas_wind_turbine_128/basecfg_helios_mm.yaml
   - - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_pastis/basecfg.yaml
     - /weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_pastis/basecfg_helios_mm.yaml
-patch_size: 8
-encoder_embedding_size: 768
-helios_checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
-output_path: /weka/dfive-default/ryanp/rslearn_projects/data/helios/v3_multitask/OUT_xl.yaml
-num_workers: 16
+
+global_overrides:
+  trainer:
+    accumulate_grad_batches: 22
+ 
+substitutions:
+  patch_size: 8
+  encoder_embedding_size: 768
+  helios_checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
+  num_workers: 16

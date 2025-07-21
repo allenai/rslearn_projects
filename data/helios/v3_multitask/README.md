@@ -6,17 +6,29 @@ There are two stages to running a multi-dataset job: constructing a run configur
 
 ### 1. Constructing a run configuration
 
-First write a multi-dataset config like `v3_multitask/small_v1.yaml`. This will be used to generate a run-specific config passed to `rslearn`.
+First write a multi-dataset config like `v3_multitask/medium.yaml`. This will be used to generate a run-specific config passed to `rslearn`.
 
 Specify dataset-specific configs from `v2_*` in `dataset_cfgs`. If there are multiple config files, list them by override priority. Rather than specifying constants in a `launch_finetune` command, you must specify `patch_size`, `encoder_embedding_size`, and `helios_checkpoint_path` within the multi-dataset config itself. Be sure to also specify the `output_path` to the generated run configuration.
 
-The `base_cfg` key points to `base.yaml` by default, which specifies the Helios encoder backbone structure,  training callbacks, etc. It can generally be kept as is, unless you need to modify the callbacks.
+The `base_cfg` key points to `base.yaml` by default, which specifies the Helios encoder backbone structure,  training callbacks, etc. You can also change the learning rate scheduler, data loading options, etc.
 
 Once you have constructed this multi-dataset config, you can generate the run config via
 
 ```bash
 python make_multidataset_config.py --cfg [BASE_CONFIG]
 ```
+
+#### Multi-run dataset configurations
+
+Brief documentation on the structure of the config is below. See `v3_multitask/medium.yaml` for an example.
+| Key | Description |
+|-----|-------------|
+| `base_path` | Path to the base config |
+| `output_path` | Path to the output config |
+| `dataset_cfgs` | List of paths to the dataset configs |
+| `global_overrides` | Override global settings, like batch sizes across all datasets, or the number of workers, or actual trainer settings |
+| `local_overrides` | Local overrides for the dataset configs, like batch size for a single dataset. These will be collated and applied to the final config, but are lower in preference than global_overrides. If you specify a local override batch size, it will be overriden if there is a global batch size override |
+| `substitutions` | String substitutions for the base config, usually tied to a specific `helios` model |
 
 ### 2. Running a multi-dataset job
 
