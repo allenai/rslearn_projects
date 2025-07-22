@@ -7,6 +7,8 @@ RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
 COPY ./rslearn /opt/rslearn
 COPY ./helios /opt/helios
 COPY requirements.txt /opt/rslearn_projects/requirements.txt
+# We also install terratorch so that we can use the same Docker image for TerraMind
+# experiments.
 RUN pip install --no-cache-dir git+https://github.com/IBM/terratorch.git
 RUN pip install --no-cache-dir --upgrade /opt/rslearn[extra] /opt/helios -r /opt/rslearn_projects/requirements.txt
 
