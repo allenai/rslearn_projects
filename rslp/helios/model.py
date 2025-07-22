@@ -21,6 +21,7 @@ MODALITY_NAMES = [
     "sentinel1",
     "worldcover",
     "openstreetmap_raster",
+    "landsat",
 ]
 
 AUTOCAST_DTYPE_MAP = {

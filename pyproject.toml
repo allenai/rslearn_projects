@@ -12,7 +12,7 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.10"
 
-dynamic = ["dependencies"]
+dynamic = ["dependencies", "optional-dependencies"]
 
 [build-system]
 requires = ["setuptools>=61"]
@@ -23,6 +23,7 @@ include = ["rslp*"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
+optional-dependencies = {ai2 = { file = ["ai2_requirements.txt"] }}
 
 [tool.ruff]
 fix = true

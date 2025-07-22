@@ -30,7 +30,8 @@ RUN pip install --no-cache-dir /opt/rslearn[extra]
 # We do this in a separate step so it doesn't need to be rerun when other parts of the
 # context are modified.
 COPY requirements.txt /opt/rslearn_projects/requirements.txt
-RUN pip install --no-cache-dir --upgrade -r /opt/rslearn_projects/requirements.txt
+COPY ai2_requirements.txt /opt/rslearn_projects/ai2_requirements.txt
+RUN pip install --no-cache-dir --upgrade -r /opt/rslearn_projects/requirements.txt -r /opt/rslearn_projects/ai2_requirements.txt
 
 # Copy rslearn_projects.
 # For now we don't install it and instead just use PYTHONPATH.
