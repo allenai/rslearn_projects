@@ -1,5 +1,0 @@
-trainer:
-  callbacks+:
-    - class_path: rslearn.train.callbacks.peft.APLA
-      init_args:
-        r: 8

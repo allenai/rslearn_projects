@@ -10,7 +10,6 @@ import yaml
 
 from rslp.log_utils import get_logger
 
-DEFAULT_RSLP_PREFIX = "project_data/"
 DEFAULT_RSLP_BUCKET = "gs://rslearn-eai"
 DEFAULT_RSLP_PROJECT = "helios_finetuning"
 CONFIG_BASE_DIR = Path("data/helios")
@@ -21,7 +20,7 @@ logger = get_logger(__name__)
 
 def launch_finetune(
     experiment_id: str,
-    config_paths: "list[str]",
+    config_paths: list[str],
     image_name: str | None = None,
     cluster: list[str] | None = None,
     helios_checkpoint_path: str | None = None,
@@ -35,6 +34,7 @@ def launch_finetune(
     profiler: str | None = None,
     local: bool = False,
     do_eval: bool = False,
+    override_rslp_prefix: str | None = DEFAULT_RSLP_BUCKET,
 ) -> None:
     """Launch Helios fine-tuning experiments.
 
@@ -57,6 +57,7 @@ def launch_finetune(
         profiler: Profiler to use for training. Can be 'simple' or 'advanced' or None.
         local: Whether to run the command locally instead of spawning a Beaker job.
         do_eval: Whether to just run evals.
+        override_rslp_prefix: Whether to override the RSLP_PREFIX environment variable with this value.
     """
     # Go into each config file (including the base ones) and make replacements as
     # needed.
@@ -133,9 +134,6 @@ def launch_finetune(
             # If running locally, assume we are in a gpu session
             # NOTE: assuming that all the args are passed through to the config file and do NOT get
             # passed through the final call to rslp.rslearn_main (except for profiler)
-            if "RSLP_PREFIX" not in os.environ:
-                os.environ["RSLP_PREFIX"] = DEFAULT_RSLP_PREFIX
-                logger.info(f"Using {DEFAULT_RSLP_PREFIX} as default RSLP_PREFIX")
             args = [
                 "python",
                 "-m",
@@ -159,14 +157,11 @@ def launch_finetune(
                 args.append(profiler)
             args.append("--autoresume=true")
 
-            print("=" * 80)
-            print("DEBUG: Command being spawned:")
-            print(" ".join(args))
-            print("=" * 80)
-
-            if local:
-                env = os.environ.copy()
-                env["RSLP_LOCAL"] = "1"
+            s = "\n" + "=" * 80
+            s += "\nNOTE: Command being spawned:\n"
+            s += " ".join(args)
+            s += "\n" + "=" * 80 + "\n"
+            logger.info(s)
 
             # Monkeypatch paths that are hardcoded in the config files
             for path in paths:
@@ -176,8 +171,7 @@ def launch_finetune(
                 with open(path, "w") as f:
                     f.write(string)
 
-            # input("Press Enter to continue...")
-            subprocess.check_call(args, env=env)  # nosec
+            subprocess.check_call(args)  # nosec
 
         else:
             if do_eval:
@@ -186,9 +180,9 @@ def launch_finetune(
                 raise ValueError("image_name must be specified if not local")
             if cluster is None:
                 raise ValueError("cluster must be specified if not local")
-            if "RSLP_PREFIX" not in os.environ:
-                os.environ["RSLP_PREFIX"] = DEFAULT_RSLP_BUCKET
-                logger.info(f"Using {DEFAULT_RSLP_BUCKET} as default RSLP_PREFIX")
+            if override_rslp_prefix is not None:
+                os.environ["RSLP_PREFIX"] = override_rslp_prefix
+                logger.info(f"Using {override_rslp_prefix} as RSLP_PREFIX")
 
             extra_args = []
             if profiler:
