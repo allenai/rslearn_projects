@@ -1,0 +1,3 @@
+interrogate>=1.7
+pytest>=8.2
+ruff>=0.7
