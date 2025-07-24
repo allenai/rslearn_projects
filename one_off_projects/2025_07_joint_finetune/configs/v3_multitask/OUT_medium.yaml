@@ -1378,6 +1378,7 @@ data:
             load_all_patches: true
             patch_size: 128
             tags:
+              has_objects: true
               split: train
             transforms:
             - class_path: rslp.transforms.mask.Mask
@@ -1410,7 +1411,7 @@ data:
             tags:
               split: val
     num_workers: 16
-    per_dataset_patch_limit: 200
+    per_dataset_patch_limit: 30000
     refill_batches: true
     sample_mode: random_cycle
 model:
@@ -1465,11 +1466,6 @@ model:
             selector:
             - encoder
         lazy_decode: true
-        loss_weights:
-          cropland_classification: 1.0
-          segment: 1.0
-          vessel_classification: 1.0
-          vessel_detection: 1.0
     scheduler:
       class_path: rslearn.train.scheduler.CosineAnnealingScheduler
       init_args:
@@ -1570,6 +1566,13 @@ trainer:
       monitor: val_loss
       save_last: true
       save_top_k: 1
+  - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+    init_args:
+      module_selector:
+      - model
+      - encoder
+      - 0
+      unfreeze_at_epoch: 5
   - class_path: rslearn.train.callbacks.gradients.MiniPCGrad
     init_args:
       only_monitor: false

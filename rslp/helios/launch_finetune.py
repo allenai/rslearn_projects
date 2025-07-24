@@ -10,7 +10,6 @@ import yaml
 
 from rslp.log_utils import get_logger
 
-DEFAULT_RSLP_BUCKET = "gs://rslearn-eai"
 DEFAULT_RSLP_PROJECT = "helios_finetuning"
 CONFIG_BASE_DIR = Path("data/helios")
 EVAL_BASE_DIR = "helios/eval_sweeps"
@@ -34,7 +33,6 @@ def launch_finetune(
     profiler: str | None = None,
     local: bool = False,
     do_eval: bool = False,
-    override_rslp_prefix: str | None = DEFAULT_RSLP_BUCKET,
 ) -> None:
     """Launch Helios fine-tuning experiments.
 
@@ -57,7 +55,6 @@ def launch_finetune(
         profiler: Profiler to use for training. Can be 'simple' or 'advanced' or None.
         local: Whether to run the command locally instead of spawning a Beaker job.
         do_eval: Whether to just run evals.
-        override_rslp_prefix: Whether to override the RSLP_PREFIX environment variable with this value.
     """
     # Go into each config file (including the base ones) and make replacements as
     # needed.
@@ -180,9 +177,6 @@ def launch_finetune(
                 raise ValueError("image_name must be specified if not local")
             if cluster is None:
                 raise ValueError("cluster must be specified if not local")
-            if override_rslp_prefix is not None:
-                os.environ["RSLP_PREFIX"] = override_rslp_prefix
-                logger.info(f"Using {override_rslp_prefix} as RSLP_PREFIX")
 
             extra_args = []
             if profiler:

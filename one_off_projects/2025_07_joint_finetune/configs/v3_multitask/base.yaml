@@ -30,6 +30,7 @@ data:
 
 trainer:
   max_epochs: 100
+  accumulate_grad_batches: 8
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -43,7 +44,7 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
+        unfreeze_at_epoch: 5
 
 rslp_project: placeholder
 rslp_experiment: placeholder

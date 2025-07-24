@@ -10,7 +10,7 @@ import tempfile
 import fsspec
 import jsonargparse
 import wandb
-from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch import LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.utilities import rank_zero_only
@@ -20,6 +20,7 @@ from rslearn.train.lightning_module import RslearnLightningModule
 from upath import UPath
 
 import rslp.utils.fs  # noqa: F401 (imported but unused)
+import wandb
 from rslp import launcher_lib
 from rslp.log_utils import get_logger
 
@@ -419,7 +420,7 @@ def custom_model_handler() -> None:
     """
     CustomLightningCLI(
         model_class=RslearnLightningModule,
-        datamodule_class=RslearnDataModule,
+        datamodule_class=LightningDataModule,
         args=sys.argv[2:],
         subclass_mode_model=True,
         subclass_mode_data=True,

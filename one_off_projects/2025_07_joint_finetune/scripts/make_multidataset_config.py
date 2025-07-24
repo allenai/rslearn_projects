@@ -123,9 +123,10 @@ if __name__ == "__main__":
                 to_tmp[cfg] = apply_template(f.read(), substitutions)
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_dataset_cfgs = {
-            cfg: os.path.join(tmpdir, f"{os.path.basename(cfg)}") for cfg in to_tmp
-        }
+        tmp_dataset_cfgs = {}
+        for i, cfg in enumerate(to_tmp):
+            cfg_id = os.path.basename(cfg)
+            tmp_dataset_cfgs[cfg] = os.path.join(tmpdir, f"{i}_{cfg_id}.yaml")
         tmp_task_buffers = [open(fp, "w+") for fp in tmp_dataset_cfgs.values()]
         try:
             for cfg in to_tmp:

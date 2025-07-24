@@ -91,6 +91,7 @@ data:
       groups: ["labels_utm"]
       tags:
         split: "train"
+        has_objects: true
       transforms:
         - class_path: rslp.transforms.mask.Mask
         - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -117,6 +118,7 @@ data:
         split: "val"
 trainer:
   max_epochs: 200
+  accumulate_grad_batches: 8
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -127,9 +129,9 @@ trainer:
         save_last: true
         monitor: val_vessel_detection/mAP
         mode: max
-    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+    - class_path: rslearn.train.callbacks.gradients.MiniPCGrad
       init_args:
-        module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
+        selector: "model.encoder.0"
+        only_monitor: true
 rslp_project: placeholder
 rslp_experiment: placeholder
