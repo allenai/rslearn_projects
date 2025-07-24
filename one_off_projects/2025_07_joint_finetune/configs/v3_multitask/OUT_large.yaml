@@ -1,11 +1,20 @@
 data:
   class_path: rslearn.train.data_module.MultiDatasetDataModule
   init_args:
+    batch_sizes:
+      crop_type_classification: 32
+      cropland_classification: 16
+      detect_satlas_marine_infra: 8
+      detect_satlas_wind_turbine: 8
+      segment: 2
+      segment_satlas_solar_farm: 8
+      vessel_classification: 16
+      vessel_detection: 8
     data_modules:
       crop_type_classification:
         class_path: rslearn.train.data_module.RslearnDataModule
         init_args:
-          batch_size: 4
+          batch_size: 32
           default_config:
             transforms:
             - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -455,7 +464,7 @@ data:
       cropland_classification:
         class_path: rslearn.train.data_module.RslearnDataModule
         init_args:
-          batch_size: 4
+          batch_size: 16
           default_config:
             transforms:
             - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -896,7 +905,7 @@ data:
       detect_satlas_marine_infra:
         class_path: rslearn.train.data_module.RslearnDataModule
         init_args:
-          batch_size: 4
+          batch_size: 8
           default_config:
             transforms:
             - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -1355,7 +1364,7 @@ data:
       detect_satlas_wind_turbine:
         class_path: rslearn.train.data_module.RslearnDataModule
         init_args:
-          batch_size: 4
+          batch_size: 8
           default_config:
             transforms:
             - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -1921,7 +1930,7 @@ data:
       segment:
         class_path: rslearn.train.data_module.RslearnDataModule
         init_args:
-          batch_size: 4
+          batch_size: 2
           default_config:
             transforms:
             - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -2656,7 +2665,7 @@ data:
       segment_satlas_solar_farm:
         class_path: rslearn.train.data_module.RslearnDataModule
         init_args:
-          batch_size: 4
+          batch_size: 8
           default_config:
             transforms:
             - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -3084,7 +3093,7 @@ data:
       vessel_classification:
         class_path: rslearn.train.data_module.RslearnDataModule
         init_args:
-          batch_size: 4
+          batch_size: 16
           default_config:
             transforms:
             - class_path: rslp.helios.norm.HeliosNormalize
@@ -3168,7 +3177,7 @@ data:
       vessel_detection:
         class_path: rslearn.train.data_module.RslearnDataModule
         init_args:
-          batch_size: 4
+          batch_size: 8
           default_config:
             transforms:
             - class_path: rslp.transforms.mask.Mask
@@ -3622,7 +3631,7 @@ model:
 rslp_experiment: placeholder
 rslp_project: placeholder
 trainer:
-  accumulate_grad_batches: 16
+  accumulate_grad_batches: 8
   callbacks:
   - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     init_args:
@@ -3640,8 +3649,4 @@ trainer:
       - encoder
       - 0
       unfreeze_at_epoch: 5
-  - class_path: rslearn.train.callbacks.gradients.MiniPCGrad
-    init_args:
-      only_monitor: false
-      selector: model.encoder.0.
   max_epochs: 100

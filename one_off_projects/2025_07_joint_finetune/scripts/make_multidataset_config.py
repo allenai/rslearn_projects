@@ -176,6 +176,7 @@ if __name__ == "__main__":
             base_cfg["data"]["init_args"]["data_modules"] = data_modules
             base_cfg["model"]["init_args"]["model"]["init_args"]["decoders"] = decoders
             base_cfg["model"]["init_args"]["task"] = deepcopy(task)
+            base_cfg["data"]["init_args"]["batch_sizes"] = batch_sizes
             base_cfg = deep_merge(base_cfg, global_overrides)
 
             with open(maker_cfg["output_path"], "w") as f:  # type: ignore
