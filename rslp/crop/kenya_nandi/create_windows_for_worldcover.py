@@ -21,26 +21,57 @@ from rslp.utils.windows import calculate_bounds
 WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
 
-# We want to get the whole year of 2020
-START_TIME = datetime(2020, 6, 15, tzinfo=timezone.utc)
-END_TIME = datetime(2020, 7, 15, tzinfo=timezone.utc)
+# Center month between "2022-09-30" and "2023-09-30"
+START_TIME = datetime(2023, 3, 1, tzinfo=timezone.utc)
+END_TIME = datetime(2023, 3, 31, tzinfo=timezone.utc)
+
+# https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v200
+WORLDCOVER_CLASSES = {
+    10: "Tree cover",
+    20: "Shrubland",
+    30: "Grassland",
+    40: "Cropland",
+    50: "Built-up",
+    60: "Bare/sparse vegetation",
+    70: "Snow and ice",
+    80: "Water",
+    90: "Herbaceous wetland",
+    95: "Mangroves",
+    100: "Moss and lichen",
+}
+
+
+def process_csv(csv_path: UPath) -> pd.DataFrame:
+    """Create windows for crop type mapping.
+
+    Args:
+        csv_path: path to the csv file
+    """
+    df = pd.read_csv(csv_path)
+    print(df.groupby("value").size())
+
+    # Only keep Water/Built-up.
+    df = df[df["value"].isin([80, 50])]
+    df["category"] = df["value"].apply(lambda x: WORLDCOVER_CLASSES[int(x)])
+
+    return df
 
 
 def create_window(
-    csv_row: pd.Series, ds_path: UPath, window_size: int, group_name: str
+    csv_row: pd.Series, ds_path: UPath, group_name: str, window_size: int
 ) -> None:
     """Create windows for crop type mapping.
 
     Args:
         csv_row: a row of the dataframe
         ds_path: path to the dataset
+        group_name: name of the group
         window_size: window size
-        group_name: group name
     """
     # Get sample metadata
-    sample_id = int(csv_row["fid"])
+    unique_id = csv_row.name
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
-    label = str(csv_row["ref_cls"])
+    category = csv_row["category"]
 
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
@@ -49,9 +80,8 @@ def create_window(
     dst_geometry = src_geometry.to_projection(dst_projection)
     bounds = calculate_bounds(dst_geometry, window_size)
 
-    # Check if train or val.
-    group = group_name
-    window_name = f"{sample_id}_{latitude}_{longitude}"
+    group = f"{group_name}_window_{window_size}"
+    window_name = f"{unique_id}_{latitude}_{longitude}"
 
     is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
 
@@ -69,9 +99,7 @@ def create_window(
         time_range=(START_TIME, END_TIME),
         options={
             "split": split,
-            "sample_id": sample_id,
-            "label": label,
-            "weight": 1,
+            "category": category,
         },
     )
     window.save()
@@ -80,7 +108,7 @@ def create_window(
     feature = Feature(
         window.get_geometry(),
         {
-            "category": label,
+            "category": category,
         },
     )
     layer_dir = window.get_layer_dir(LABEL_LAYER)
@@ -91,43 +119,18 @@ def create_window(
 def create_windows_from_csv(
     csv_path: UPath,
     ds_path: UPath,
-    window_size: int,
-    is_reference: bool,
     group_name: str,
+    window_size: int,
 ) -> None:
     """Create windows from csv.
 
     Args:
         csv_path: path to the csv file
         ds_path: path to the dataset
+        group_name: name of the group
         window_size: window size
-        is_reference: whether this is reference points
-        group_name: group name
     """
-    df = pd.read_csv(csv_path)
-    df.rename(columns={"x": "longitude", "y": "latitude"}, inplace=True)
-    # Extract steps for reference points
-    if is_reference:
-        df.index.name = "fid"
-        df.reset_index(inplace=True)
-        # There's no Water in the reference points, Water and Other are combined.
-        df["ref_cls"] = df["ref_col"]
-        df_sampled = df
-    else:
-        df_sampled = df.sample(100000, random_state=42)
-        cls_lookup = {
-            1: "Mangrove",
-            2: "Water",
-            3: "Other",
-        }
-        df_sampled["ref_cls"] = df_sampled["ref_cls"].apply(
-            lambda x: cls_lookup[int(x)]
-        )
-    #     ref_cls
-    # 1    45850
-    # 2    24177
-    # 3    29973
-
+    df_sampled = process_csv(csv_path)
     csv_rows = []
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
@@ -136,8 +139,8 @@ def create_windows_from_csv(
         dict(
             csv_row=row,
             ds_path=ds_path,
-            window_size=window_size,
             group_name=group_name,
+            window_size=window_size,
         )
         for row in csv_rows
     ]
@@ -151,11 +154,6 @@ def create_windows_from_csv(
 if __name__ == "__main__":
     multiprocessing.set_start_method("forkserver")
     parser = argparse.ArgumentParser(description="Create windows from csv")
-    parser.add_argument(
-        "--is_reference",
-        action="store_true",
-        help="Whether this is reference points",
-    )
     parser.add_argument(
         "--csv_path",
         type=str,
@@ -171,8 +169,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--group_name",
         type=str,
-        required=True,
-        help="Group name",
+        required=False,
+        help="Window group name",
+        default="worldcover",
     )
     parser.add_argument(
         "--window_size",
@@ -185,7 +184,6 @@ if __name__ == "__main__":
     create_windows_from_csv(
         UPath(args.csv_path),
         UPath(args.ds_path),
-        window_size=args.window_size,
-        is_reference=args.is_reference,
-        group_name=args.group_name,
+        args.group_name,
+        args.window_size,
     )

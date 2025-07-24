@@ -12,8 +12,6 @@ import tqdm
 from beaker import (
     Beaker,
     BeakerConstraints,
-    BeakerDataMount,
-    BeakerDataSource,
     BeakerExperimentSpec,
     BeakerJobPriority,
     BeakerTaskResources,
@@ -22,7 +20,12 @@ from beaker.utils import pb2_to_dict
 
 from rslp.log_utils import get_logger
 from rslp.main import run_workflow
-from rslp.utils.beaker import DEFAULT_BUDGET, DEFAULT_WORKSPACE, get_base_env_vars
+from rslp.utils.beaker import (
+    DEFAULT_BUDGET,
+    DEFAULT_WORKSPACE,
+    create_gcp_credentials_mount,
+    get_base_env_vars,
+)
 
 logger = get_logger(__name__)
 
@@ -160,16 +163,7 @@ def launch_workers(
                     cluster=cluster,
                 ),
                 preemptible=True,
-                datasets=[
-                    BeakerDataMount(
-                        source=BeakerDataSource(secret="RSLEARN_GCP_CREDENTIALS"),  # nosec
-                        mount_path="/etc/credentials/gcp_credentials.json",  # nosec
-                    ),
-                    BeakerDataMount(
-                        source=BeakerDataSource(host_path="/data"),
-                        mount_path="/data",
-                    ),
-                ],
+                datasets=[create_gcp_credentials_mount()],
                 env_vars=env_vars,
                 resources=BeakerTaskResources(
                     gpu_count=gpus, shared_memory=shared_memory
