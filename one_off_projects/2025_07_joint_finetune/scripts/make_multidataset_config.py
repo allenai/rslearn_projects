@@ -9,6 +9,7 @@ import json
 import os
 import tempfile
 from copy import deepcopy
+from collections import defaultdict
 from ntpath import basename
 from typing import Any
 
@@ -81,6 +82,72 @@ def merge_configs(cfg_list: list[str], maker_cfg: dict[str, Any]) -> str:
     return yaml.dump(merged_dict)
 
 
+def merge_decoder_heads(
+    base_cfg: dict[str, Any], 
+    all_dataset_info: dict[str, Any], 
+    merge_task_labels: bool = False
+) -> None:
+    """Merge decoder heads for a multi-task model.
+
+    Repopulates the decoders key in base_cfg.model.init_args.model.init_args, as well as
+    supplying relevant information to base_cfg.model.init_args.task.init_args.
+
+    Args:
+        base_cfg: Base configuration dictionary.
+        all_dataset_info: Dictionary containing information about the datasets, including
+            the number of classes and the final decoder index for each task.
+        merge_task_labels: Whether to merge task labels. If so, we change the final decoder's
+            number of classes to be the sum of all the classes in the merged tasks.
+    """
+    decoder_id_to_yaml = {}
+    decoder_id_to_task = defaultdict(list)
+    decoders = base_cfg["model"]["init_args"]["model"]["init_args"]["decoders"]
+    for task_name, decoder_list in decoders.items():
+        # Assume all decoders with the same last layer are to be
+        # merged and have identical architectures
+        decoder_id = decoder_list[-1]["class_path"].split(".")[-1]
+        decoder_id_to_yaml[decoder_id] = decoder_list
+        decoder_id_to_task[decoder_id].append(task_name)
+    
+    print("merged decoders:")
+    for k, v in decoder_id_to_task.items():
+        print(f" - {k}: {v}")
+    print()
+
+    if merge_task_labels:
+        # Assume all decoders have the layer that determines the number of
+        # outputs at index 0 (RegressionHead, ClassificationHead, etc are the 
+        # final layers but don't modify the number of channels)
+        output_layer_idx = 0
+        print(f"merging outputs at layer {output_layer_idx}")
+        unmerged_num_classes = []
+        for decoder_id, decoder_list in decoder_id_to_yaml.items():
+            num_classes = 0
+            num_outputs_keys = []
+            for task_name in decoder_id_to_task[decoder_id]:
+                num_task_classes = all_dataset_info[task_name]["num_outputs"] 
+                unmerged_num_classes.append({task_name: num_task_classes})
+                num_classes += num_task_classes
+                num_outputs_keys.append(
+                    all_dataset_info[task_name]["num_outputs_key"]
+                )
+                print(f".... {task_name}: {num_task_classes=}")
+
+            assert len(set(num_outputs_keys)) == 1, \
+                "cannot have different num_outputs_keys in the same merged head"
+            num_outputs_key = num_outputs_keys[0]
+            decoder_list[output_layer_idx]["init_args"][num_outputs_key] = num_classes
+            print(f"- decoder {decoder_id} has {num_classes} outputs now")
+
+        task_init_args = base_cfg["model"]["init_args"]["task"]["init_args"]
+        task_init_args["merge_task_labels"] = merge_task_labels
+        task_init_args["unmerged_num_classes"] = unmerged_num_classes
+
+    model_init_args = base_cfg["model"]["init_args"]["model"]["init_args"]
+    model_init_args["decoders"] = decoder_id_to_yaml
+    model_init_args["decoder_to_target"] = dict(decoder_id_to_task)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -136,6 +203,8 @@ if __name__ == "__main__":
 
             with open(tmp_dataset_cfgs[base_cfg_path]) as f:
                 base_cfg = yaml.safe_load(f)
+            with open(base_cfg.pop("all_dataset_info_path")) as f:
+                all_dataset_info = yaml.safe_load(f)
 
             data_modules = {}
             decoders = {}
@@ -178,6 +247,12 @@ if __name__ == "__main__":
             base_cfg["model"]["init_args"]["task"] = deepcopy(task)
             base_cfg["data"]["init_args"]["batch_sizes"] = batch_sizes
             base_cfg = deep_merge(base_cfg, global_overrides)
+
+            merge_options = maker_cfg.get("merge_options", {})
+            merge_heads = merge_options.get("merge_heads", False)
+            merge_task_labels = merge_options.get("merge_task_labels", False)
+            if merge_heads:
+                merge_decoder_heads(base_cfg, all_dataset_info, merge_task_labels)
 
             with open(maker_cfg["output_path"], "w") as f:  # type: ignore
                 yaml.dump(base_cfg, f)

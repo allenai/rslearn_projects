@@ -15,7 +15,22 @@ global_overrides:
   data:
     init_args:
       per_dataset_patch_limit: 30000
-  
+  model:
+    init_args:
+      model:
+        init_args:
+          task_embedding:
+            class_path: rslearn.models.task_embedding.TaskMHAEmbedding
+            init_args:
+              encoder_embedding_size: 768
+              num_heads: 12
+              height: 16
+              width: 16
+
+merge_options:
+  merge_heads: true
+  merge_task_labels: true
+
 substitutions:
   patch_size: 8
   encoder_embedding_size: 768

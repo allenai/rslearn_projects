@@ -1,0 +1,27 @@
+detect_satlas_wind_turbine:
+  num_outputs: 3
+  num_outputs_key: num_classes
+detect_satlas_marine_infra:
+  num_outputs: 3
+  num_outputs_key: num_classes
+segment_satlas_solar_farm:
+  num_outputs: 2
+  num_outputs_key: out_channels
+vessel_classification:
+  num_outputs: 2
+  num_outputs_key: out_channels
+vessel_detection:
+  num_outputs: 2
+  num_outputs_key: num_classes
+cropland_classification:
+  num_outputs: 2
+  num_outputs_key: out_channels
+segment:
+  num_outputs: 20
+  num_outputs_key: out_channels
+crop_type_classification:
+  num_outputs: 8
+  num_outputs_key: out_channels
+lfmc_estimation:
+  num_outputs: 1
+  num_outputs_key: out_channels

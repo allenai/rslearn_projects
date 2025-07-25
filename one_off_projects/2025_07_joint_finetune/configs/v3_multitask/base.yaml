@@ -48,3 +48,5 @@ trainer:
 
 rslp_project: placeholder
 rslp_experiment: placeholder
+
+all_dataset_info_path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v3_multitask/all_dataset_info.yaml

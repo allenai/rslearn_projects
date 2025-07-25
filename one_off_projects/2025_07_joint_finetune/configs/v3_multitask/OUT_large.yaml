@@ -1470,8 +1470,14 @@ model:
     model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
+        decoder_to_target:
+          FasterRCNN:
+          - detect_satlas_marine_infra
+          - detect_satlas_wind_turbine
+          SegmentationHead:
+          - segment_satlas_solar_farm
         decoders:
-          detect_satlas_marine_infra:
+          FasterRCNN:
           - class_path: rslearn.models.faster_rcnn.FasterRCNN
             init_args:
               anchor_sizes:
@@ -1479,17 +1485,8 @@ model:
               downsample_factors:
               - 8
               num_channels: 768
-              num_classes: 3
-          detect_satlas_wind_turbine:
-          - class_path: rslearn.models.faster_rcnn.FasterRCNN
-            init_args:
-              anchor_sizes:
-              - - 32
-              downsample_factors:
-              - 8
-              num_channels: 768
-              num_classes: 3
-          segment_satlas_solar_farm:
+              num_classes: 6
+          SegmentationHead:
           - class_path: rslearn.models.unet.UNetDecoder
             init_args:
               conv_layers_per_resolution: 2
@@ -1512,13 +1509,12 @@ model:
             selector:
             - encoder
         lazy_decode: true
-        merge_heads: true
         task_embedding:
           class_path: rslearn.models.task_embedding.TaskMHAEmbedding
           init_args:
             encoder_embedding_size: 768
-            num_heads: 12
             height: 16
+            num_heads: 12
             width: 16
     scheduler:
       class_path: rslearn.train.scheduler.CosineAnnealingScheduler
@@ -1535,6 +1531,7 @@ model:
             targets: targets
           segment_satlas_solar_farm:
             targets: targets
+        merge_task_labels: true
         tasks:
           detect_satlas_marine_infra:
             class_path: rslp.satlas.train.MarineInfraTask
@@ -1638,6 +1635,10 @@ model:
                 - 1
               - - 0
                 - 255
+        unmerged_num_classes:
+        - segment_satlas_solar_farm: 2
+        - detect_satlas_marine_infra: 3
+        - detect_satlas_wind_turbine: 3
 rslp_experiment: placeholder
 rslp_project: placeholder
 trainer:
