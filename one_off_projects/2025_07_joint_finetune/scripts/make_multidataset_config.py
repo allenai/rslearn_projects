@@ -85,7 +85,7 @@ def merge_configs(cfg_list: list[str], maker_cfg: dict[str, Any]) -> str:
 def merge_decoder_heads(
     base_cfg: dict[str, Any], 
     all_dataset_info: dict[str, Any], 
-    merge_task_labels: bool = False
+    merge_task_labels: bool = False,
 ) -> None:
     """Merge decoder heads for a multi-task model.
 
@@ -120,17 +120,20 @@ def merge_decoder_heads(
         # final layers but don't modify the number of channels)
         output_layer_idx = 0
         print(f"merging outputs at layer {output_layer_idx}")
-        unmerged_num_classes = []
+        task_label_offsets = {}
         for decoder_id, decoder_list in decoder_id_to_yaml.items():
             num_classes = 0
             num_outputs_keys = []
             for task_name in decoder_id_to_task[decoder_id]:
                 num_task_classes = all_dataset_info[task_name]["num_outputs"] 
-                unmerged_num_classes.append({task_name: num_task_classes})
-                num_classes += num_task_classes
                 num_outputs_keys.append(
                     all_dataset_info[task_name]["num_outputs_key"]
                 )
+                task_label_offsets[task_name] = {
+                    "offset": num_classes,
+                    "outputs_key": all_dataset_info[task_name]["outputs_key"],
+                }
+                num_classes += num_task_classes
                 print(f".... {task_name}: {num_task_classes=}")
 
             assert len(set(num_outputs_keys)) == 1, \
@@ -140,8 +143,11 @@ def merge_decoder_heads(
             print(f"- decoder {decoder_id} has {num_classes} outputs now")
 
         task_init_args = base_cfg["model"]["init_args"]["task"]["init_args"]
-        task_init_args["merge_task_labels"] = merge_task_labels
-        task_init_args["unmerged_num_classes"] = unmerged_num_classes
+        task_init_args["task_label_offsets"] = task_label_offsets
+
+        for task_name, task_cfg in base_cfg["data"]["init_args"]["data_modules"].items():
+            local_task_init_args = task_cfg["init_args"]["task"]["init_args"]
+            local_task_init_args["task_label_offsets"] = task_label_offsets
 
     model_init_args = base_cfg["model"]["init_args"]["model"]["init_args"]
     model_init_args["decoders"] = decoder_id_to_yaml

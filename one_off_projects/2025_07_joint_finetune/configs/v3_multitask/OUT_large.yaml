@@ -322,6 +322,16 @@ data:
               input_mapping:
                 detect_satlas_marine_infra:
                   targets: targets
+              task_label_offsets: &id001
+                detect_satlas_marine_infra:
+                  offset: 0
+                  outputs_key: labels
+                detect_satlas_wind_turbine:
+                  offset: 3
+                  outputs_key: labels
+                segment_satlas_solar_farm:
+                  offset: 0
+                  outputs_key: classes
               tasks:
                 detect_satlas_marine_infra:
                   class_path: rslp.satlas.train.MarineInfraTask
@@ -897,6 +907,7 @@ data:
               input_mapping:
                 detect_satlas_wind_turbine:
                   targets: targets
+              task_label_offsets: *id001
               tasks:
                 detect_satlas_wind_turbine:
                   class_path: rslearn.train.tasks.detection.DetectionTask
@@ -1345,6 +1356,7 @@ data:
               input_mapping:
                 segment_satlas_solar_farm:
                   targets: targets
+              task_label_offsets: *id001
               tasks:
                 segment_satlas_solar_farm:
                   class_path: rslearn.train.tasks.segmentation.SegmentationTask
@@ -1531,7 +1543,7 @@ model:
             targets: targets
           segment_satlas_solar_farm:
             targets: targets
-        merge_task_labels: true
+        task_label_offsets: *id001
         tasks:
           detect_satlas_marine_infra:
             class_path: rslp.satlas.train.MarineInfraTask
@@ -1635,10 +1647,6 @@ model:
                 - 1
               - - 0
                 - 255
-        unmerged_num_classes:
-        - segment_satlas_solar_farm: 2
-        - detect_satlas_marine_infra: 3
-        - detect_satlas_wind_turbine: 3
 rslp_experiment: placeholder
 rslp_project: placeholder
 trainer:
