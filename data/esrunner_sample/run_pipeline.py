@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from rslp.espredict_runner import EsPredictRunner
+from esrun.runner.local.predict_runner import EsPredictRunner
 
 CONFIG_PATH = Path(__file__).parent
 MODEL_CONFIG_PATH = CONFIG_PATH / 'model.yaml'
@@ -29,13 +29,6 @@ def main():
         runner.postprocess(partition_id)
 
     runner.combine(partitions)
-
-
-# runner = EsFineTuneRunner(.....)
-# runner.create_windows()
-# runner.build_dataset()
-# runner.train()
-# runner.evaluate()
 
 
 if __name__ == "__main__":

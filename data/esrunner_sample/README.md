@@ -6,7 +6,10 @@ ESRunner provides the [EsPredictRunner](https://github.com/allenai/earth-system-
 
 ## Setting up your environment
 
-- Install `esrunner` (earth-system-run) in your development environment (Or clone the repository and add to your `PYTHONPATH`. If you go this route, ensure you install the packages listed in `earth-system-run/requirements.txt`)
+- Install `esrunner` (earth-system-run) in your development environment. 
+  ```
+  pip install earth-system-run @ git+https://github.com/allenai/earth-system-run.git
+  ```
 - Following the project structure below, create a directory in the `rslearn-projects/data/` directory. This directory will contain all the necessary files for your prediction or fine-tuning pipeline.
 
 ## Project Structure
@@ -20,12 +23,12 @@ ESRunner provides the [EsPredictRunner](https://github.com/allenai/earth-system-
 - `run_pipeline.py`: This script is used to run the prediction pipeline. It will read the configuration files and execute the necessary steps to perform predictions or fine-tuning. You can customize this script to suit your specific needs, such as adding additional logging or error handling.
 
 ## Partitioning Strategies
-This file defines how the esrunner will partition inference request into compute tasks (large) and prediction windows (small).  Each large partition is equivalent to an rslearn window group and contains multiple small partitions.  The small partitions are the individual rslearn prediction windows.
+This file defines how the esrunner will break the inference request into multiple request geometries for compute parallelization (equivalent to rslearn window groups) and prediction window geometries.
 
 Partitioning strategies can be mixed and matched for flexible development.
 
-  - small
-  - large
+  - partition_request_geometry
+  - prepare_window_geometries
 
 Available partitioners:
 - `FixedWindowPartitioner` - Given a fixed window size, this partitioner will create partitions of that size for each lat/lon or polygon centroid in the prediction request.
@@ -34,11 +37,11 @@ Available partitioners:
 
 Example `partition_strategies.yaml`. This will leave the original input as a single partition, but will create individual windows of size 128x128 pixels for each feature.
 ```yaml
-strategy_large:
+partition_request_geometry:
   class_path: esrun.tools.partitioners.noop_partitioner.NoopPartitioner
   init_args:
 
-strategy_small:
+prepare_window_geometries:
   class_path: esrun.tools.partitioners.fixed_window_partitioner.FixedWindowPartitioner
   init_args:
     window_size: 128 # intended to be a pixel value
@@ -46,9 +49,9 @@ strategy_small:
 
 ## Post-Processing Strategies
 There are 3 different stages to postprocessing:
-  - window (small) - This is the stage where outputs from the model are converted into a digestible artifact for the next stage.
-  - partition (medium) - This is the stage where the predictions for each small partition are combined into a single per-partition artifact.
-  - dataset (large) - This is the final stage of postprocessing where the predictions are combined into a artifact.
+  - `postprocess_window()` - This is the stage where individual model outputs are converted into a digestible artifact for the next stage.
+  - `postprocess_partition()` - This is the stage where the outputs from the window postprocessors are combined into a single per-partition artifact.
+  - `postprocess_dataset()` - This is the final stage of postprocessing where the partition level outputs are combined into a artifact.
 
 ## Samples
 
@@ -149,7 +152,6 @@ You may supply your own post-processing strategies by creating a new class that 
 ### Testing Partitioner & Post-Processing Implementations
 See the [earth-system-run](https://github.com/allenai/earth-system-run) repository for tests covering existing [partitioner](https://github.com/allenai/earth-system-run/tree/v1-develop/tests/unit/tools/partitioners) and [post-processor](https://github.com/allenai/earth-system-run/tree/v1-develop/tests/unit/tools/postprocessors) implementations. 
 
-
 ## Longer Term Vision / Model Development Workflow
 1. ML folk will create the requisite configs in a directory like this one.
 2. Any additional or alternate requirements will be specified in a requirements.txt file in the same directory.
@@ -157,15 +159,3 @@ See the [earth-system-run](https://github.com/allenai/earth-system-run) reposito
 4. When the PR is merged, the docker build from above will be performed again, but the final image will be published to esrun as a new "model" (model version?) using the configurations in this directory.  (TODO: Should we consider "versioning" models in esrun?)
 5. Once the "model" has been published to esrun, fine-tuning can be performed using esrun. (Longer term I think we can use a standard versioned helios image for this, but for now we can use the bespoke images created in the previous step.)
 6. (Presumably) Once the fine-tuning is complete, esrun will publish the final model (with weights) to esrun as a (new?) model (version?).  Esrun can then be used to run predictions with this final model. 
-
-## Future Thoughts
-Ideally the run_pipeline.py script could be replaced with a cli tool that automatically saves progress and state and allows you to re-run specific steps instead of the whole pipeline. eg:
-
-```bash
-esrunner --local \
-         --dataset-config /path/to/dataset.json \
-         ... \
-         --run inference \
-         --partition-id my-partition-id
-```
-But this is a longer term goal and not currently implemented.
