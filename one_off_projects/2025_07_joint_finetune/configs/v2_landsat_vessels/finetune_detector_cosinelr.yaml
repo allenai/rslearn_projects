@@ -91,7 +91,6 @@ data:
       groups: ["labels_utm"]
       tags:
         split: "train"
-        has_objects: true
       transforms:
         - class_path: rslp.transforms.mask.Mask
         - class_path: rslearn.train.transforms.concatenate.Concatenate

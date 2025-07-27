@@ -63,6 +63,8 @@ def create_temp_config(base_config_paths, limit_train_batches, temp_dir, substit
 
 def run_experiment(config_paths, experiment_name, limit_train_batches, workspace_name, args):
     """Run a single experiment."""
+    env = os.environ.copy()
+    env["RSLP_PREFIX"] = "/weka/dfive-default/rslearn-eai"
     cmd = [
         "python", "-m", "rslp.main", "helios", "launch_finetune",
         "--helios_checkpoint_path", args.helios_checkpoint_path,
@@ -84,7 +86,7 @@ def run_experiment(config_paths, experiment_name, limit_train_batches, workspace
     # Check if we should actually run the command
     if args.run_commands:
         print("Executing command...")
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True, env=env)
     else:
         print("Command would be executed (use --run_commands to actually run)")
     print()
@@ -129,10 +131,10 @@ def main():
                 configs_dir / "v2_pastis" / "basecfg_helios_mm.yaml"
             ]
         },
-        {
-            "name": "worldcereal_cropland",
-            "config_path": configs_dir / "v2_worldcereal_cropland" / "finetune_s1_s2_cosinelr.yaml",
-        }
+        #{
+        #    "name": "worldcereal_cropland",
+        #    "config_path": configs_dir / "v2_worldcereal_cropland" / "finetune_s1_s2_cosinelr.yaml",
+        #}
     ]
     
     # Dataset percentages to test

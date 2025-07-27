@@ -86,6 +86,7 @@ def merge_decoder_heads(
     base_cfg: dict[str, Any], 
     all_dataset_info: dict[str, Any], 
     merge_task_labels: bool = False,
+    same_label_groups: list[str] = None,
 ) -> None:
     """Merge decoder heads for a multi-task model.
 
@@ -98,6 +99,8 @@ def merge_decoder_heads(
             the number of classes and the final decoder index for each task.
         merge_task_labels: Whether to merge task labels. If so, we change the final decoder's
             number of classes to be the sum of all the classes in the merged tasks.
+        same_label_groups: List of lists of tasks that have the same labels, so if we
+            merge them, we can use the same label offsets for all of them.
     """
     decoder_id_to_yaml = {}
     decoder_id_to_task = defaultdict(list)
@@ -108,12 +111,20 @@ def merge_decoder_heads(
         decoder_id = decoder_list[-1]["class_path"].split(".")[-1]
         decoder_id_to_yaml[decoder_id] = decoder_list
         decoder_id_to_task[decoder_id].append(task_name)
-    
+ 
     print("merged decoders:")
     for k, v in decoder_id_to_task.items():
         print(f" - {k}: {v}")
     print()
 
+    if same_label_groups is None:
+        same_label_groups = [[task] for tasks in decoder_id_to_task.values() for task in tasks]
+        assert all(len(set(group)) == len(group) for group in same_label_groups)
+    for tasks in decoder_id_to_task.values():
+        for task in tasks:
+            if all(task not in group for group in same_label_groups):
+                same_label_groups.append([task])
+ 
     if merge_task_labels:
         # Assume all decoders have the layer that determines the number of
         # outputs at index 0 (RegressionHead, ClassificationHead, etc are the 
@@ -124,7 +135,19 @@ def merge_decoder_heads(
         for decoder_id, decoder_list in decoder_id_to_yaml.items():
             num_classes = 0
             num_outputs_keys = []
-            for task_name in decoder_id_to_task[decoder_id]:
+
+            # Change the order of decoders to group them by same_label_groups
+            tasks = decoder_id_to_task[decoder_id]
+            all_tasks = [task for group in same_label_groups for task in group]
+            tasks = [task for task in all_tasks if task in tasks]
+
+            # Only change number of classes when changing label groups
+            change_class_counts = [
+                task == group[-1]
+                for group in same_label_groups
+                for task in group if task in tasks
+            ]
+            for i, task_name in enumerate(tasks):
                 num_task_classes = all_dataset_info[task_name]["num_outputs"] 
                 num_outputs_keys.append(
                     all_dataset_info[task_name]["num_outputs_key"]
@@ -132,9 +155,14 @@ def merge_decoder_heads(
                 task_label_offsets[task_name] = {
                     "offset": num_classes,
                     "outputs_key": all_dataset_info[task_name]["outputs_key"],
+                    "num_outputs": num_task_classes,
                 }
-                num_classes += num_task_classes
-                print(f".... {task_name}: {num_task_classes=}")
+                s = f".... {task_name}: {num_task_classes=}"
+                if change_class_counts[i]:
+                    num_classes += num_task_classes
+                else:
+                    s += " (existing label group)"
+                print(s)
 
             assert len(set(num_outputs_keys)) == 1, \
                 "cannot have different num_outputs_keys in the same merged head"
@@ -255,13 +283,19 @@ if __name__ == "__main__":
             base_cfg = deep_merge(base_cfg, global_overrides)
 
             merge_options = maker_cfg.get("merge_options", {})
-            merge_heads = merge_options.get("merge_heads", False)
-            merge_task_labels = merge_options.get("merge_task_labels", False)
-            if merge_heads:
-                merge_decoder_heads(base_cfg, all_dataset_info, merge_task_labels)
+            if merge_options.get("merge_heads", False):
+                merge_decoder_heads(
+                    base_cfg, all_dataset_info, 
+                    merge_task_labels=merge_options.get("merge_task_labels", False),
+                    same_label_groups=merge_options.get("same_label_groups", None)
+                )
 
             with open(maker_cfg["output_path"], "w") as f:  # type: ignore
                 yaml.dump(base_cfg, f)
+
+            print()
+            print("=" * 80)
+            print(f"wrote out to {maker_cfg['output_path']}")
 
         finally:
             for f in tmp_task_buffers:

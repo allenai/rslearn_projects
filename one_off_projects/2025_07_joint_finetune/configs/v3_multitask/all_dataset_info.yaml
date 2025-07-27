@@ -1,3 +1,11 @@
+detect_sentinel1_vessels:
+  num_outputs: 2
+  num_outputs_key: num_classes
+  outputs_key: labels
+detect_sentinel2_vessels:
+  num_outputs: 2
+  num_outputs_key: num_classes
+  outputs_key: labels
 detect_satlas_wind_turbine:
   num_outputs: 3
   num_outputs_key: num_classes
@@ -13,7 +21,7 @@ segment_satlas_solar_farm:
 vessel_classification:
   num_outputs: 2
   num_outputs_key: out_channels
-  outputs_key: labels
+  outputs_key: class
 vessel_detection:
   num_outputs: 2
   num_outputs_key: num_classes
@@ -21,7 +29,7 @@ vessel_detection:
 cropland_classification:
   num_outputs: 2
   num_outputs_key: out_channels
-  outputs_key: labels
+  outputs_key: class
 segment:
   num_outputs: 20
   num_outputs_key: out_channels
@@ -29,8 +37,4 @@ segment:
 crop_type_classification:
   num_outputs: 8
   num_outputs_key: out_channels
-  outputs_key: labels
-lfmc_estimation:
-  num_outputs: 1
-  num_outputs_key: out_channels
-  outputs_key: labels
+  outputs_key: class
