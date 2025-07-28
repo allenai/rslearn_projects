@@ -121,24 +121,13 @@ def main():
     # Define experiments
     experiments = [
         {
-            "name": "landsat_vessel_detect",
-            "config_path": configs_dir / "v2_landsat_vessels" / "finetune_detector_cosinelr.yaml",
-        },
-        {
-            "name": "pastis",
-            "config_path": [
-                configs_dir / "v2_pastis" / "basecfg_cosinelr.yaml", 
-                configs_dir / "v2_pastis" / "basecfg_helios_mm.yaml"
-            ]
-        },
-        #{
-        #    "name": "worldcereal_cropland",
-        #    "config_path": configs_dir / "v2_worldcereal_cropland" / "finetune_s1_s2_cosinelr.yaml",
-        #}
+            "name": "worldcereal_cropland",
+            "config_path": configs_dir / "v2_worldcereal_cropland" / "finetune_s1_s2_cosinelr.yaml",
+        }
     ]
     
     # Dataset percentages to test
-    limit_train_batches_values = [1.0, 0.5, 0.1, 0.01]
+    limit_train_batches_values = [0.6, 0.7, 0.8, 0.9]#[1.0, 0.5, 0.1, 0.01]
     
     # Create substitutions dictionary
     substitutions = {
