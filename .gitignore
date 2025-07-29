@@ -2,3 +2,14 @@
 wandb/
 rslp/__pycache__/
 **__pycache__
+project_data
+rslp/crop_type_mapping/csv/
+rslp/crop_type_mapping/geoparquets/
+rslp/mangrove/csv/
+log*.txt
+
+# for local finetuning runs
+/config.yaml
+lightning_logs/
+/tmp*/
+docker_build

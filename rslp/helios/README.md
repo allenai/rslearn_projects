@@ -13,8 +13,8 @@ the list of model configuration files that will be used as templates for the
 fine-tuning experiments). `--configs` is similarly optional.
 
 If you need to create a new image, first create a copy of `rslearn_projects` repository
-with subfolders `rslearn` (containing https://github.com/allenai/rslearn) and
-`helios` (containing https://github.com/allenai/helios). Then run:
+with subfolders `docker_build/rslearn` (containing https://github.com/allenai/rslearn) and
+`docker_build/helios` (containing https://github.com/allenai/helios). Then run:
 
     docker build -t rslphelios -f helios.Dockerfile .
     beaker image create --name rslphelios rslphelios

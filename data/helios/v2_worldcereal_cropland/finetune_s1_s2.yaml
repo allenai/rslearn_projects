@@ -19,11 +19,13 @@ model:
                 out_channels: 2
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
-    plateau: true
-    plateau_factor: 0.2
-    plateau_patience: 2
-    plateau_min_lr: 0
-    plateau_cooldown: 10
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
@@ -236,7 +238,7 @@ data:
               sentinel1: ["vv", "vh"]
         - class_path: rslearn.train.transforms.pad.Pad
           init_args:
-            size: 2
+            size: 8
             mode: "center"
             image_selectors: ["sentinel2_l2a", "sentinel1"]
     train_config:
