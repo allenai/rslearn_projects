@@ -9,6 +9,7 @@ dataset_cfgs:
 global_overrides:
   trainer:
     accumulate_grad_batches: 3
+    limit_val_batches: 512
   model:
     init_args:
       model:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Minimal script to submit helios finetune jobs.
+Submit finetuning jobs on top of single task models.
 """
 
 import subprocess
@@ -10,7 +10,7 @@ import yaml
 
 
 def submit_job(ckpt_path: str, task_dir: str, task_name: str, cfgs: list[str], model_name: str) -> bool:
-    """Submit a single helios finetune job."""    
+    """Submit a single helios finetune job."""
     exp_id = model_name + "__" + task_name
     cmd = [
         "python", "-m", "rslp.main", "helios", "launch_finetune",
@@ -70,15 +70,18 @@ def submit_job(ckpt_path: str, task_dir: str, task_name: str, cfgs: list[str], m
 def main():
     """Submit jobs."""
     CKPT_PATHS = {
-        "classify_all_fixmetrics": (
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_fixmetrics__cropland_classification",
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_fixmetrics__crop_type_classification",
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_fixmetrics__vessel_classification",
+        "classify_all_v2": (
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__cropland_classification",
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__crop_type_classification",
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__vessel_classification",
         ),
-        "segment_all_fixmetrics": (
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/segment_all_fixmetrics__segment",
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/segment_all_fixmetrics__segment_satlas_solar_farm",
-        )
+        "segment_all_v2": (
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/segment_all_v2__segment",
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/segment_all_v2__segment_satlas_solar_farm",
+        ),
+        "detect_all_v2": (
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/detect_all_v2__vessel_detection",
+        ),
     }
  
     TASK_CFG_PAIRS = [
