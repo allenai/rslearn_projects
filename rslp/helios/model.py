@@ -40,7 +40,6 @@ class Helios(torch.nn.Module):
         selector: list[str | int] = [],
         forward_kwargs: dict[str, Any] = {},
         random_initialization: bool = False,
-        window_size: int | None = None,
         embedding_size: int | None = None,
         patch_size: int | None = None,
         autocast_dtype: str | None = "bfloat16",
@@ -57,8 +56,6 @@ class Helios(torch.nn.Module):
             random_initialization: whether to skip loading the checkpoint so the
                 weights are randomly initialized. In this case, the checkpoint is only
                 used to define the model architecture.
-            window_size: optional window size to use for patchifying, which specifies the
-                size of the patches to extract from the input images.
             embedding_size: optional embedding size to report via
                 get_backbone_channels.
             patch_size: optional patch size to report via get_backbone_channels.
@@ -106,7 +103,6 @@ class Helios(torch.nn.Module):
         kwargs = {}
         present_modalities = []
         device = None
-
         # Handle the case where some modalities are multitemporal and some are not.
         # We assume all multitemporal modalities have the same number of timesteps.
         max_timesteps = 1
@@ -121,7 +117,6 @@ class Helios(torch.nn.Module):
             num_timesteps = cur.shape[1] // num_bands
             max_timesteps = max(max_timesteps, num_timesteps)
             cur = rearrange(cur, "b (t c) h w -> b h w t c", t=num_timesteps)
-
             kwargs[modality] = cur
             # Create mask array which is BHWTS (without channels but with band sets).
             num_band_sets = len(Modality.get(modality).band_sets)
@@ -136,7 +131,7 @@ class Helios(torch.nn.Module):
         # Note that only months (0 to 11) are used in Helios position encoding.
         # For now, we assign same timestamps to all inputs, but later we should handle varying timestamps per input.
         timestamps = torch.zeros(
-            (len(cur), max_timesteps, 3), dtype=torch.int32, device=device
+            (len(inputs), max_timesteps, 3), dtype=torch.int32, device=device
         )
         timestamps[:, :, 0] = 1  # day
         timestamps[:, :, 1] = torch.arange(max_timesteps, device=device)[
