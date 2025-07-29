@@ -7,7 +7,9 @@ RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
 COPY ./rslearn /opt/rslearn
 COPY ./helios /opt/helios
 COPY requirements.txt /opt/rslearn_projects/requirements.txt
-RUN pip install --no-cache-dir --upgrade /opt/rslearn[extra] /opt/helios -r /opt/rslearn_projects/requirements.txt
+RUN pip install --no-cache-dir --upgrade /opt/rslearn[extra]
+RUN pip install --no-cache-dir --upgrade /opt/helios
+RUN pip install --no-cache-dir -r /opt/rslearn_projects/requirements.txt
 
 # Copy rslearn_projects and install it too.
 COPY . /opt/rslearn_projects/
