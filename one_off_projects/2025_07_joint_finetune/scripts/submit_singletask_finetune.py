@@ -6,8 +6,10 @@ Submit finetuning jobs on top of single task models.
 import subprocess
 import os
 import tempfile
+import json
 import yaml
 
+DEBUG = False
 
 def submit_job(ckpt_path: str, task_dir: str, task_name: str, cfgs: list[str], model_name: str) -> bool:
     """Submit a single helios finetune job."""
@@ -21,11 +23,16 @@ def submit_job(ckpt_path: str, task_dir: str, task_name: str, cfgs: list[str], m
         "--cluster+=ai2/titan-cirrascale",
         "--cluster+=ai2/saturn-cirrascale", 
         "--cluster+=ai2/ceres-cirrascale",
-        "--rslp_project", "helios_finetune_cosine_lr",
+        "--rslp_project", "helios-debug" if DEBUG else "2025_07_29_helios_finetune",
         "--experiment_id", exp_id,
     ]
     for cfg in cfgs:
         cmd.append(f"--config_paths+=/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/{task_dir}/{cfg}")
+    cmd.append("--config_paths+=/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml")
+
+    if DEBUG:
+        cmd.append("--local")
+        cmd.append("true")
 
     with tempfile.NamedTemporaryFile(mode="w") as f:
         restore_config = {
@@ -54,6 +61,9 @@ def submit_job(ckpt_path: str, task_dir: str, task_name: str, cfgs: list[str], m
         f.flush()
         cmd.append(f"--config_paths+={f.name}")
 
+        print()
+        print("RESTORE_CONFIG")
+        print(json.dumps(restore_config, indent=4))
         print(" ".join(cmd))
 
         env = os.environ.copy()
@@ -71,19 +81,19 @@ def main():
     """Submit jobs."""
     CKPT_PATHS = {
         "classify_all_v2": (
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__cropland_classification",
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__crop_type_classification",
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__vessel_classification",
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__unmerged__cropland_classification",
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__unmerged__crop_type_classification",
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__unmerged__vessel_classification",
         ),
         "segment_all_v2": (
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/segment_all_v2__segment",
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/segment_all_v2__segment_satlas_solar_farm",
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/segment_all_v2__unmerged__segment",
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/segment_all_v2__unmerged__segment_satlas_solar_farm",
         ),
         "detect_all_v2": (
-            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/detect_all_v2__vessel_detection",
+            "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/detect_all_v2__unmerged__vessel_detection",
         ),
     }
- 
+
     TASK_CFG_PAIRS = [
         ("v2_landsat_vessels", "vessel_classification", "finetune_classifier_cosinelr.yaml"),
         ("v2_pastis", "segment", "basecfg_cosinelr.yaml", "basecfg_helios_mm.yaml"),
@@ -100,12 +110,12 @@ def main():
     for name, ckpt_paths in CKPT_PATHS.items():
         for task_dir, task_name, *cfgs in TASK_CFG_PAIRS:
             for ckpt_path in ckpt_paths:
-                if f"{name}__{task_name}" in ckpt_path:
+                if f"{name}__unmerged__{task_name}" in ckpt_path:
                     success += int(submit_job(ckpt_path, task_dir, task_name, cfgs, name))
                     break
             else:
                 success += int(submit_job(ckpt_paths[0], task_dir, task_name, cfgs, name))
-    
+ 
     print(f"\nCompleted: {success}/{total_jobs} jobs successful")
 
 

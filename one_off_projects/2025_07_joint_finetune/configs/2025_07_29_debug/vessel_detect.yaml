@@ -23,7 +23,7 @@ model:
     scheduler:
       class_path: rslearn.train.scheduler.CosineAnnealingScheduler
       init_args:
-        T_max: 100
+        T_max: 30
         eta_min: 0
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
@@ -128,5 +128,9 @@ trainer:
         save_last: true
         monitor: val_vessel_detection/mAP
         mode: max
+    - class_path: rslearn.train.callbacks.gradients.MiniPCGrad
+      init_args:
+        selector: "model.encoder.0"
+        only_monitor: true
 rslp_project: placeholder
 rslp_experiment: placeholder

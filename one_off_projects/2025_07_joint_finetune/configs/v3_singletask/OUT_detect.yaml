@@ -1548,7 +1548,7 @@ model:
     scheduler:
       class_path: rslearn.train.scheduler.CosineAnnealingScheduler
       init_args:
-        T_max: 150
+        T_max: 100
         eta_min: 0
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask

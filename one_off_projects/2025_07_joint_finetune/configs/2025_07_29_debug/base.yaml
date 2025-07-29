@@ -17,7 +17,7 @@ model:
     scheduler:
       class_path: rslearn.train.scheduler.CosineAnnealingScheduler
       init_args:
-        T_max: 100
+        T_max: 30
         eta_min: 0
 
 data:
