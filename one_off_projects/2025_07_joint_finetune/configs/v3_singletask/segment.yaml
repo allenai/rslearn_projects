@@ -19,8 +19,6 @@ global_overrides:
             init_args:
               encoder_embedding_size: 768
               num_heads: 12
-              height: 16
-              width: 16
 
 merge_options:
   merge_heads: true

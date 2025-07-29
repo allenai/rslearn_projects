@@ -5,8 +5,29 @@ import os
 import re
 import argparse
 import yaml
+import json
 import torch
 from typing import Any, Dict, List
+
+_tmp_task_order = {
+    # Forgot to order the decoder tasks in the original runs, using this for now
+    "classify": [
+        "vessel_classification",
+        "crop_type_classification",
+        "cropland_classification",
+    ],
+    "segment": [
+        "segment",
+        "segment_satlas_solar_farm"
+    ],
+    "detect": [
+        "vessel_detection",
+        "detect_satlas_marine_infra",
+        "detect_satlas_wind_turbine",
+        "detect_sentinel1_vessels",
+        "detect_sentinel2_vessels"
+    ]
+}
 
 
 def recursive_find_key(d: Dict[str, Any], target: str) -> Any:
@@ -28,19 +49,51 @@ def recursive_find_key(d: Dict[str, Any], target: str) -> Any:
     return None
 
 
-def slice_tensor(tensor: torch.Tensor, keep_idx: List[int]) -> torch.Tensor:
-    """Index the first dim of tensor by keep_idx and clone
+def slice_sd(
+    sd: dict[str, torch.Tensor],
+    key: str,
+    keep_idx: List[int],
+    delete: bool = False,
+) -> dict[str, torch.Tensor]:
+    """Index the first dim of tensor by key and then key by keep_idx.
 
     Args:
-        tensor (torch.Tensor): The tensor to index.
+        sd (dict[str, torch.Tensor]): The state dict to index.
+        key (str): The key to index.
         keep_idx (List[int]): The indices to keep.
+        delete (bool): Whether to delete the original keys.
     Returns:
-        torch.Tensor: The indexed tensor.
+        dict[str, torch.Tensor]: The indexed state dict.
     """
-    return tensor[keep_idx].clone()
+    x = sd[key]
+    if delete:
+        del sd[key]
+    return x[keep_idx]
 
 
-def trim_state_dict(sd: Dict[str, torch.Tensor], task: str, i: int, n: int, N: int, task_type: str) -> None:
+def rename_keys(sd: dict[str, torch.Tensor], special: str, task: str) -> None:
+    """Rename keys in sd from special to task.
+
+    Args:
+        sd (dict[str, torch.Tensor]): The state dict to rename.
+        special (str): The special string to replace.
+        task (str): The task name.
+    """
+    for k in list(sd.keys()):
+        if special in k:
+            sd[k.replace(special, task)] = sd[k]
+            del sd[k]
+
+
+def trim_state_dict(
+    sd: Dict[str, torch.Tensor],
+    task: str,
+    i: int,
+    n: int,
+    N: int,
+    task_type: str,
+    task_offsets: Dict[str, Any],
+) -> None:
     """
     Mutates sd in-place, slicing out i:i+n from the relevant head of the given task.
 
@@ -51,10 +104,21 @@ def trim_state_dict(sd: Dict[str, torch.Tensor], task: str, i: int, n: int, N: i
         n (int): Number of outputs to keep.
         N (int): Original total number of outputs.
         task_type (str): The task type (detect/classify/segment).
+        task_offsets (Dict[str, Any]): The task offsets.
     """
     print(f"\n-> Trimming task '{task}': keep indices [{i}:{i+n}] out of {N}")
 
+    # Slice the task embedding first
+    wkey = "model.task_embedding.embed.weight"
+    task_shape = sd[wkey].shape
+    ordered_tasks = sorted(task_offsets.keys())
+    print(f"WARNING: true order is {ordered_tasks}, using {_tmp_task_order[task_type]}")
+    sd[wkey] = slice_sd(sd, wkey, [_tmp_task_order[task_type].index(task)], delete=False)
+    print(f"  - task_embedding: original {task_shape}, new shape={sd[wkey].shape}")
+
+    # Then slice the rest of the state dict
     if task_type == "detect":
+        special = "FasterRCNN"
         cls_w = next(k for k in sd if k.endswith("box_predictor.cls_score.weight"))
         cls_b = cls_w.replace(".weight", ".bias")
         reg_w = next(k for k in sd if k.endswith("box_predictor.bbox_pred.weight"))
@@ -63,34 +127,42 @@ def trim_state_dict(sd: Dict[str, torch.Tensor], task: str, i: int, n: int, N: i
         assert sd[cls_w].shape[0] == N, f"Expected {N} cls_score rows, got {sd[cls_w].shape[0]}"
         assert sd[reg_w].shape[0] == 4 * N, f"Expected {4*N} bbox rows, got {sd[reg_w].shape[0]}"
 
-        keep = [0] + list(range(i, i + n))  # preserve background index 0
+        keep = list(range(i, i + n))
         keep_reg: List[int] = []
         for k in keep:
             keep_reg += list(range(4*k, 4*k + 4))
 
         print(f"  - cls_score: original {sd[cls_w].shape}, new rows={len(keep)}")
-        sd[cls_w] = slice_tensor(sd[cls_w], keep)
-        sd[cls_b] = slice_tensor(sd[cls_b], keep)
+        sd[cls_w] = slice_sd(sd, cls_w, keep)
+        sd[cls_b] = slice_sd(sd, cls_b, keep)
 
         print(f"  - bbox_pred: original {sd[reg_w].shape}, new rows={len(keep_reg)}")
-        sd[reg_w] = slice_tensor(sd[reg_w], keep_reg)
-        sd[reg_b] = slice_tensor(sd[reg_b], keep_reg)
+        sd[reg_w] = slice_sd(sd, reg_w, keep_reg)
+        sd[reg_b] = slice_sd(sd, reg_b, keep_reg)
+
+        rename_keys(sd, special, task)
+        print(f"  - in all keys, replaced {special} with {task}")
 
     elif task_type == "classify":
-        wkey = next(k for k in sd if k.endswith("ClassificationHead.0.output_layer.weight"))
+        special = "ClassificationHead"
+        wkey = next(k for k in sd if k.endswith(f"{special}.0.output_layer.weight"))
         bkey = wkey.replace(".weight", ".bias")
         assert sd[wkey].shape[0] == N, f"Expected {N} rows, got {sd[wkey].shape[0]}"
 
         keep = list(range(i, i + n))
         print(f"  - output_layer: original {sd[wkey].shape}, new rows={len(keep)}")
-        sd[wkey] = slice_tensor(sd[wkey], keep)
-        sd[bkey] = slice_tensor(sd[bkey], keep)
+        sd[wkey] = slice_sd(sd, wkey, keep)
+        sd[bkey] = slice_sd(sd, bkey, keep)
+
+        rename_keys(sd, special, task)
+        print(f"  - in all keys, replaced {special} with {task}")
 
     elif task_type == "segment":
+        special = "SegmentationHead"
         pattern = re.compile(r".*SegmentationHead.*layers\.\d+\.\d+\.weight$")
         w_keys = [k for k in sd if pattern.match(k)]
         if not w_keys:
-            raise KeyError(f"No SegmentationHead weight keys found for task '{task}'")
+            raise KeyError(f"No {special} weight keys found for task '{task}'")
         w_keys = sorted(w_keys, key=lambda x: int(x.split(".")[-2]))
         wkey = w_keys[-1]
         bkey = wkey.replace(".weight", ".bias")
@@ -98,8 +170,11 @@ def trim_state_dict(sd: Dict[str, torch.Tensor], task: str, i: int, n: int, N: i
 
         keep = list(range(i, i + n))
         print(f"  - {wkey}: original {sd[wkey].shape}, new rows={len(keep)}")
-        sd[wkey] = slice_tensor(sd[wkey], keep)
-        sd[bkey] = slice_tensor(sd[bkey], keep)
+        sd[wkey] = slice_sd(sd, wkey, keep)
+        sd[bkey] = slice_sd(sd, bkey, keep)
+
+        rename_keys(sd, special, task)
+        print(f"  - in all keys, replaced {special} with {task}")
 
     else:
         raise ValueError(f"Unknown task type: {task_type}")
@@ -154,6 +229,13 @@ def main() -> None:
     )
     src_path = os.path.join(args.ckpt_dir, args.ckpt_path)
 
+    pretrained_cfg_src_path = (
+        "/weka/dfive-default/helios/checkpoints/favyen"
+        "/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000/config.json"
+    )
+    with open(pretrained_cfg_src_path, "r") as f:
+        pretrained_cfg = json.load(f)
+
     for task, info in task_offsets.items():
         num_outputs = info["num_outputs"]
         offset = info["offset"]
@@ -166,7 +248,11 @@ def main() -> None:
         sd = ckpt.get("state_dict", ckpt)
 
         # 2) trim only this task
-        trim_state_dict(sd, task, offset, num_outputs, N=total_N, task_type=task_types[task])
+        trim_state_dict(
+            sd, task, offset, num_outputs, N=total_N,
+            task_type=task_types[task],
+            task_offsets=task_offsets,
+        )
 
         # 3) save per-task checkpoint and config.yaml
         out_dir = args.ckpt_out_dir.format(task=task)
@@ -185,6 +271,10 @@ def main() -> None:
         dst_cfg_path = os.path.join(out_dir, "config.yaml")
         with open(dst_cfg_path, "w") as f:
             yaml.dump(cfg, f)
+     
+        pretrained_dst_cfg_path = os.path.join(out_dir, "../config.json")
+        with open(pretrained_dst_cfg_path, "w") as f:
+            json.dump(pretrained_cfg, f)
 
     print("\nAll tasks have been processed and saved.")
 
