@@ -1767,7 +1767,7 @@ trainer:
       - model
       - encoder
       - 0
-      unfreeze_at_epoch: 10
-      unfreeze_lr_factor: 5
+      unfreeze_at_epoch: 20
+      unfreeze_lr_factor: 10
   limit_val_batches: 1024
-  max_epochs: 100
+  max_epochs: 200

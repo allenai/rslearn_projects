@@ -13,7 +13,7 @@ DEBUG = False
 
 def submit_job(ckpt_path: str, task_dir: str, task_name: str, cfgs: list[str], model_name: str) -> bool:
     """Submit a single helios finetune job."""
-    exp_id = model_name + "__" + task_name
+    exp_id = model_name + "__" + task_name + "__0.00005lr__freeze2lowlr5"
     cmd = [
         "python", "-m", "rslp.main", "helios", "launch_finetune",
         "--helios_checkpoint_path", ckpt_path,
@@ -28,7 +28,8 @@ def submit_job(ckpt_path: str, task_dir: str, task_name: str, cfgs: list[str], m
     ]
     for cfg in cfgs:
         cmd.append(f"--config_paths+=/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/{task_dir}/{cfg}")
-    cmd.append("--config_paths+=/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml")
+    # cmd.append("--config_paths+=/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml")
+    cmd.append("--config_paths+=/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v3_multitask/freeze_then_lowlr.yaml")
 
     if DEBUG:
         cmd.append("--local")

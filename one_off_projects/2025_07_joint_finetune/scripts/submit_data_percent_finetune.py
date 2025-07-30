@@ -5,6 +5,7 @@ import os
 import tempfile
 import yaml
 import subprocess
+import json
 from pathlib import Path
 
 
@@ -28,8 +29,16 @@ def save_yaml_config(config, config_path):
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
 
-def create_temp_config(base_config_paths, limit_train_batches, temp_dir, substitutions=None):
+def create_temp_config(
+    base_config_paths,
+    limit_train_batches,
+    temp_dir,
+    substitutions=None,
+    model_data=None
+):
     """Create a temporary config with limit_train_batches set and adjusted epochs."""
+    if model_data is None:
+        model_data = {}
     if isinstance(base_config_paths, list):
         base_config_path = base_config_paths[0]
     else:
@@ -48,7 +57,24 @@ def create_temp_config(base_config_paths, limit_train_batches, temp_dir, substit
         adjusted_epochs = int(original_epochs / limit_train_batches)
         config['trainer']['max_epochs'] = adjusted_epochs
         print(f"  Adjusted epochs: {original_epochs} -> {adjusted_epochs} (factor: {1/limit_train_batches:.2f})")
-    
+
+    # Add restore config
+    if model_data.get("sft") is not None:
+        config['model']['init_args']['restore_config'] = {
+            "restore_path": os.path.join(model_data["sft"], "checkpoints", "last.ckpt"),
+            "selector": ["state_dict"],
+            "remap_prefixes": [["model.", ""]]
+        }
+        config['model']['init_args']['model']['init_args']['task_embedding'] = {
+            "class_path": "rslearn.models.task_embedding.TaskMHAEmbedding",
+            "init_args": {
+                "encoder_embedding_size": 768,
+                "num_heads": 12,
+            }
+        }
+        print(f"  Restoring from: {model_data['sft']}/checkpoints/last.ckpt")
+        print(f"  Task embedding: {json.dumps(config['model']['init_args']['model']['init_args']['task_embedding'], indent=4)}")
+
     # Create temporary config file
     base_name = Path(base_config_path).stem
     temp_config_path = os.path.join(temp_dir, f"{base_name}_limit_{limit_train_batches}.yaml")
@@ -61,30 +87,41 @@ def create_temp_config(base_config_paths, limit_train_batches, temp_dir, substit
     return temp_config_paths
 
 
-def run_experiment(config_paths, experiment_name, limit_train_batches, workspace_name, args):
+def run_experiment(
+    config_paths,
+    experiment_name,
+    limit_train_batches,
+    model_data,
+    model_name,
+    workspace_name,
+    run_commands,
+    patch_size,
+    encoder_embedding_size,
+    image_name,
+):
     """Run a single experiment."""
     env = os.environ.copy()
     env["RSLP_PREFIX"] = "/weka/dfive-default/rslearn-eai"
     cmd = [
         "python", "-m", "rslp.main", "helios", "launch_finetune",
-        "--helios_checkpoint_path", args.helios_checkpoint_path,
-        "--patch_size", str(args.patch_size),
-        "--encoder_embedding_size", str(args.encoder_embedding_size),
-        "--image_name", args.image_name,
+        "--helios_checkpoint_path", model_data["helios"],
+        "--patch_size", str(patch_size),
+        "--encoder_embedding_size", str(encoder_embedding_size),
+        "--image_name", image_name,
         "--cluster+=ai2/titan-cirrascale",
         "--cluster+=ai2/ceres-cirrascale", 
         "--cluster+=ai2/saturn-cirrascale",
         "--rslp_project", workspace_name,
-        "--experiment_id", f"{experiment_name}_train_{limit_train_batches}"
+        "--experiment_id", f"{model_name}__{experiment_name}__{limit_train_batches}"
     ]
     for config_path in config_paths:
         cmd.append(f"--config_paths+={config_path}")
     
-    print(f"Running experiment: {experiment_name} with limit_train_batches={limit_train_batches}")
+    print(f"Running experiment: {experiment_name} with limit_train_batches={limit_train_batches} @ {model_name}")
     print(f"Command: {' '.join(cmd)}")
     
     # Check if we should actually run the command
-    if args.run_commands:
+    if run_commands:
         print("Executing command...")
         subprocess.run(cmd, check=True, env=env)
     else:
@@ -98,13 +135,10 @@ def main():
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run experiments with different dataset percentages")
-    parser.add_argument("--workspace_name", type=str, default="2025_07_23_finetune_dataset_percents", 
+    parser.add_argument("--workspace_name", type=str, default="2025_07_30_stage1_fewshot", 
                        help="Name of the workspace/project")
     parser.add_argument("--run_commands", action="store_true", 
                        help="Actually run the commands (default is to just print them)")
-    parser.add_argument("--helios_checkpoint_path", type=str, 
-                       default="/weka/dfive-default/ryanp/rslearn_projects/project_data/projects/helios_finetune_cosine_lr/soup/checkpoints/",
-                       help="Path to helios checkpoint")
     parser.add_argument("--patch_size", type=int, default=8,
                        help="Patch size for the model")
     parser.add_argument("--encoder_embedding_size", type=int, default=768,
@@ -117,21 +151,43 @@ def main():
     base_dir = Path(__file__).parent.parent
     configs_dir = base_dir / "configs"
     os.chdir("/weka/dfive-default/ryanp/rslearn_projects/")
+
+    # Define checkpoint paths
+    ckpt_paths = {
+        "base": {
+            "helios": "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
+            "sft": None,
+        },
+        "classify_v2": {
+            "helios": "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
+            "sft": "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__unmerged__vessel_classification"
+        },
+        "detect_v2": {
+            "helios": "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
+            "sft": "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/detect_all_v2__unmerged__vessel_detection"
+        },
+        "segment_v2": {
+            "helios": "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
+            "sft": "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/segment_all_v2__unmerged__segment"
+        },
+    }
     
     # Define experiments
     experiments = [
         {
-            "name": "worldcereal_cropland",
-            "config_path": configs_dir / "v2_worldcereal_cropland" / "finetune_s1_s2_cosinelr.yaml",
-        }
+            "name": "vessel_detection",
+            "config_paths": [
+                configs_dir / "v2_landsat_vessels" / "finetune_detector_cosinelr.yaml",
+                "/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml"
+            ],
+        },
     ]
     
     # Dataset percentages to test
-    limit_train_batches_values = [0.6, 0.7, 0.8, 0.9]#[1.0, 0.5, 0.1, 0.01]
+    limit_train_batches_values = [0.01, 0.1, 0.5, 1.0]
     
     # Create substitutions dictionary
     substitutions = {
-        "CHECKPOINT_PATH": args.helios_checkpoint_path,
         "PATCH_SIZE": args.patch_size,
         "ENCODER_EMBEDDING_SIZE": args.encoder_embedding_size,
         "256/PATCH_SIZE": 256 // args.patch_size,
@@ -145,39 +201,49 @@ def main():
         print(f"Run mode: {'EXECUTE' if args.run_commands else 'DRY RUN'}")
         print(f"Substitutions: {substitutions}")
         print()
-        
-        for experiment in experiments:
-            print(f"\n{'='*60}")
-            print(f"Processing experiment: {experiment['name']}")
-            print(f"{'='*60}")
-            
-            # Create temporary config with limit_train_batches
-            for limit_val in limit_train_batches_values:
-                temp_config_paths = create_temp_config(
-                    experiment['config_path'], 
-                    limit_val, 
-                    temp_dir,
-                    substitutions
-                )
+
+        for model_name, model_data in ckpt_paths.items():
+
+            for experiment in experiments:
+                print(f"\n{'='*60}")
+                print(f"Processing experiment: {experiment['name']} @ {model_name}")
+                print(f"{'='*60}")
                 
-                # Run the experiment
-                run_experiment(
-                    temp_config_paths,
-                    experiment['name'],
-                    limit_val,
-                    args.workspace_name,
-                    args
-                )
-                
-                # Clean up temp config
-                os.remove(temp_config_paths[0])
+                # Create temporary config with limit_train_batches
+                for limit_val in limit_train_batches_values:
+                    substitutions["CHECKPOINT_PATH"] = model_data["helios"]
+                    temp_config_paths = create_temp_config(
+                        experiment['config_paths'], 
+                        limit_val,
+                        temp_dir,
+                        substitutions,
+                        model_data
+                    )
+ 
+                    # Run the experiment
+                    run_experiment(
+                        temp_config_paths,
+                        experiment['name'],
+                        limit_val,
+                        model_data,
+                        model_name,
+                        args.workspace_name,
+                        args.run_commands,
+                        args.patch_size,
+                        args.encoder_embedding_size,
+                        args.image_name,
+                    )
+
+                    # Clean up temp config
+                    os.remove(temp_config_paths[0])
         
         print(f"\n{'='*60}")
         print("EXPERIMENT SUMMARY")
         print(f"{'='*60}")
         print(f"Workspace: {args.workspace_name}")
-        print(f"Total experiments: {len(experiments) * len(limit_train_batches_values)}")
+        print(f"Total experiments: {len(experiments) * len(limit_train_batches_values) * len(ckpt_paths)}")
         print(f"Dataset percentages: {limit_train_batches_values}")
+        print(f"Models: {list(ckpt_paths.keys())}")
         print(f"Experiments:")
         for exp in experiments:
             print(f"  - {exp['name']}")

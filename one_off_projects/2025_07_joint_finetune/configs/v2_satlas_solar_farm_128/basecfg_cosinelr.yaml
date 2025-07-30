@@ -63,6 +63,7 @@ data:
         split: val
 trainer:
   max_epochs: 500
+  limit_val_batches: 256
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:

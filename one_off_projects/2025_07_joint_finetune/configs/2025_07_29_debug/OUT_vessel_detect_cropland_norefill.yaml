@@ -594,7 +594,7 @@ data:
             tags:
               split: val
     num_workers: 16
-    refill_batches: true
+    refill_batches: false
     sample_mode: random_cycle
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
