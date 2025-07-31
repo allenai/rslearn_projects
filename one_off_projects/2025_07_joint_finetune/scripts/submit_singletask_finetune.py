@@ -96,10 +96,10 @@ def main():
     }
 
     TASK_CFG_PAIRS = [
-        ("v2_landsat_vessels", "vessel_classification", "finetune_classifier_cosinelr.yaml"),
-        ("v2_pastis", "segment", "basecfg_cosinelr.yaml", "basecfg_helios_mm.yaml"),
-        ("v2_nandi_crop_type", "crop_type_classification", "finetune_s1_s2_cosinelr.yaml"),
-        ("v2_worldcereal_cropland", "cropland_classification", "finetune_s1_s2_cosinelr.yaml"),
+        # ("v2_landsat_vessels", "vessel_classification", "finetune_classifier_cosinelr.yaml"),
+        # ("v2_pastis", "segment", "basecfg_cosinelr.yaml", "basecfg_helios_mm.yaml"),
+        # ("v2_nandi_crop_type", "crop_type_classification", "finetune_s1_s2_cosinelr.yaml"),
+        # ("v2_worldcereal_cropland", "cropland_classification", "finetune_s1_s2_cosinelr.yaml"),
         ("v2_landsat_vessels", "vessel_detection", "finetune_detector_cosinelr.yaml"),
     ]
 

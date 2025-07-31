@@ -8,9 +8,10 @@ import os
 
 RUN = True
 DEBUG = False
-PROJECT_NAME = "helios-debug" if DEBUG else "2025_07_29_helios_joint_finetune_debug" #"helios_finetune_cosine_lr"  #"2025_07_29_helios_finetune"
+#PROJECT_NAME = "helios-debug" if DEBUG else "2025_07_29_helios_finetune" #"2025_07_29_helios_joint_finetune_debug"
+PROJECT_NAME = "2025_07_30_joint_finetune_sweep"
 CKPT_PATH = "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000"
-IMAGE_NAME = "henryh/rslp_multidataset_dev" if "joint_finetune_debug" not in PROJECT_NAME else "henryh/rslp_multidataset_dev_0.05w"
+IMAGE_NAME = "henryh/rslp_multidataset_dev_0.05w" if "joint_finetune_debug" in PROJECT_NAME else "henryh/rslp_multidataset_dev"
 
 
 def submit_job(task_dir: str, task_name: str, cfgs: list[str]) -> bool:
@@ -21,7 +22,7 @@ def submit_job(task_dir: str, task_name: str, cfgs: list[str]) -> bool:
         "--helios_checkpoint_path", CKPT_PATH,
         "--patch_size", "8",
         "--encoder_embedding_size", "768",
-        "--image_name", "henryh/rslp_multidataset_dev",
+        "--image_name", IMAGE_NAME,
         "--cluster+=ai2/titan-cirrascale",
         "--cluster+=ai2/saturn-cirrascale", 
         "--cluster+=ai2/ceres-cirrascale",
@@ -51,11 +52,11 @@ def main():
     """Submit jobs."""
     TASK_CFG_PAIRS = [
         ("v2_pastis", "pastis", "basecfg_cosinelr.yaml", "basecfg_helios_mm.yaml"),
-        # ("v2_lfmc", "lfmc", "finetune_s1_s2_srtm_cosinelr.yaml"),
         ("v2_nandi_crop_type", "nandi_crop_type", "finetune_s1_s2_cosinelr.yaml"),
         ("v2_worldcereal_cropland", "worldcereal_cropland", "finetune_s1_s2_cosinelr.yaml"),
         ("v2_landsat_vessels", "landsat_vessel_classify", "finetune_classifier_cosinelr.yaml"),
         ("v2_landsat_vessels", "landsat_vessel_detect", "finetune_detector_cosinelr.yaml"),
+        # ("v2_lfmc", "lfmc", "finetune_s1_s2_srtm_cosinelr.yaml"),
         # ("v2_satlas_marine_infra_128", "marine_infra", "basecfg_cosinelr.yaml", "basecfg_helios_mm.yaml"),
         # ("v2_satlas_wind_turbine_128", "wind_turbine", "basecfg_cosinelr.yaml", "basecfg_helios_mm.yaml"),
         # ("v2_sentinel1_vessels_128", "vessel_sentinel1", "basecfg_cosinelr.yaml", "basecfg_helios.yaml"),
