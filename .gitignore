@@ -1,4 +1,7 @@
 .env
+.envrc
 wandb/
 rslp/__pycache__/
 **__pycache__
+
+repos/

@@ -1,12 +1,13 @@
-fsspec
-jsonargparse
-prometheus-client>=0.21.1
-python-dotenv>=1.0
-pytorch
-pytorch-lightning
-pyyaml
-rasterio
+fsspec>=2025.2.0
+jsonargparse # Can't pin this because terratorch (via rslearn) has a weird pin.
+helios
+prometheus-client>=0.21.1,<1
+python-dotenv>=1.0,<2
+torch>=2.7,<3
+lightning[pytorch-extra]>=2.5.0.post0,<3
+PyYAML>=6,<7
+rasterio>=1.4,<2
 rslearn
-s3fs
-upath
-wandb
+s3fs>=2025.2.0
+universal_pathlib>=0.2.6,<1
+wandb>=0.17
