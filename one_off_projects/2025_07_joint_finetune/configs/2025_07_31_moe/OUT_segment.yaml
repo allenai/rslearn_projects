@@ -1226,6 +1226,7 @@ model:
                 n_layers: 1
                 num_experts: 4
                 num_slots: 4
+                task_moe: true
             task_embedding:
               class_path: rslearn.models.task_embedding.TaskChannelEmbedding
               init_args:

@@ -17,13 +17,6 @@ substitutions:
   encoder_embedding_size: 768
   helios_checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
 
-local_overrides:
-  data:
-    init_args:
-      train_config:
-        tags:
-          has_objects: true
-
 global_overrides:
   model:
     init_args:
@@ -45,7 +38,7 @@ global_overrides:
                   n_heads: 12
                   num_experts: 4
                   num_slots: 4
-                  load_balance_loss_weight: 1e-4
+                  task_moe: true
   trainer:
     limit_val_batches: 1024
     accumulate_grad_batches: 5

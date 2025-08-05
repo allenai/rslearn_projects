@@ -385,7 +385,6 @@ data:
                 num_samples: 65536
                 replacement: true
             tags:
-              has_objects: true
               split: train
             transforms:
             - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -946,7 +945,6 @@ data:
                 num_samples: 65536
                 replacement: true
             tags:
-              has_objects: true
               split: train
             transforms:
             - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -1140,8 +1138,6 @@ data:
               init_args:
                 num_samples: 32768
                 replacement: true
-            tags:
-              has_objects: true
             transforms:
             - class_path: rslp.transforms.mask.Mask
             - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -1298,8 +1294,6 @@ data:
               init_args:
                 num_samples: 131072
                 replacement: true
-            tags:
-              has_objects: true
             transforms:
             - class_path: rslp.transforms.mask.Mask
             - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -1454,7 +1448,6 @@ data:
             load_all_patches: true
             patch_size: 128
             tags:
-              has_objects: true
               split: train
             transforms:
             - class_path: rslp.transforms.mask.Mask
@@ -1554,6 +1547,7 @@ model:
                 n_layers: 1
                 num_experts: 4
                 num_slots: 4
+                task_moe: true
             task_embedding:
               class_path: rslearn.models.task_embedding.TaskChannelEmbedding
               init_args:

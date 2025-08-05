@@ -1032,7 +1032,6 @@ model:
             - class_path: rslearn.models.trunk.MoETransformer
               init_args:
                 dim: 768
-                load_balance_loss_weight: 100
                 n_heads: 12
                 n_layers: 1
                 num_experts: 4
