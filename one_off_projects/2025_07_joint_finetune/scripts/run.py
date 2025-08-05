@@ -1,0 +1,57 @@
+import argparse
+import os
+import subprocess
+
+cmd = [
+    "python", "-m", "rslp.main", "helios", "launch_finetune",
+    "--helios_checkpoint_path", "$CKPT_PATH",
+    "--patch_size", "8",
+    "--encoder_embedding_size", "768",
+    "--image_name", "$IMAGE",
+    "--cluster+=ai2/titan-cirrascale",
+    "--cluster+=ai2/saturn-cirrascale", 
+    "--cluster+=ai2/ceres-cirrascale",
+    "--rslp_project", "$PROJECT_NAME",
+    "--experiment_id", "$EXP_ID",
+]
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--cfg", type=str, default="detect")
+parser.add_argument("--ckpt_path", type=str, default="/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000")
+parser.add_argument("--exp_id", type=str, default="debug")
+parser.add_argument("--project_name", type=str, default="helios-debug")
+parser.add_argument("--gpu", type=int, default=0)
+parser.add_argument("--image", type=str, default="dev")
+args = parser.parse_args()
+
+args.image = f"henryh/rslp_multidataset_{args.image}"
+if args.project_name == "s":
+    args.project_name = "helios_finetune_cosine_lr"
+
+if args.gpu == 0:
+    RLSP_PREFIX = "/weka/dfive-default/ryanp/rslearn_projects/project_data"
+    cmd.extend(["--local", "true"])
+else:
+    RLSP_PREFIX = "/weka/dfive-default/rslearn-eai"
+    cmd.extend(["--gpus", str(args.gpu)])
+    if args.project_name == "helios-debug":
+        args.project_name = "helios_finetune_cosine_lr"
+
+if args.cfg == "detect":
+    args.cfg = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_07_31_moe/OUT_detect.yaml"
+
+print(args)
+cmd.append("--config_paths+=" + args.cfg)
+
+env = os.environ.copy()
+env["RSLP_PREFIX"] = RLSP_PREFIX
+
+run_cmd = " ".join(cmd)
+run_cmd = run_cmd.replace("$CKPT_PATH", args.ckpt_path)
+run_cmd = run_cmd.replace("$PROJECT_NAME", args.project_name)
+run_cmd = run_cmd.replace("$EXP_ID", args.exp_id)
+run_cmd = run_cmd.replace("$IMAGE", args.image)
+
+print(f"Running: {run_cmd}")
+os.chdir("/weka/dfive-default/ryanp/rslearn_projects/")
+subprocess.run(run_cmd, shell=True, env=env)

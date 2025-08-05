@@ -15,12 +15,10 @@ from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
-from rslearn.train.data_module import RslearnDataModule
 from rslearn.train.lightning_module import RslearnLightningModule
 from upath import UPath
 
 import rslp.utils.fs  # noqa: F401 (imported but unused)
-import wandb
 from rslp import launcher_lib
 from rslp.log_utils import get_logger
 

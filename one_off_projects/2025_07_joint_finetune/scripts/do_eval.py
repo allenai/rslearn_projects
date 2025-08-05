@@ -1,3 +1,4 @@
+import sys
 import os
 import tempfile
 import yaml
@@ -15,8 +16,41 @@ def load_yaml_config(config_path, substitutions=None):
 
     return yaml.safe_load(config_str)
 
-ckpt_path = "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/detect_all_v2__unmerged__vessel_detection"
-ckpt_cfg_path = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_landsat_vessels/finetune_detector_cosinelr.yaml"
+base_model = "detect_all_v2"
+task = sys.argv[1]
+
+task2cfgs = {
+    "v2_satlas_wind_turbine_128": [
+        f"/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_wind_turbine_128/basecfg_cosinelr.yaml",
+        f"/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_wind_turbine_128/basecfg_helios_mm.yaml",
+    ],
+    "v2_satlas_marine_infra_128": [
+        f"/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_marine_infra_128/basecfg_cosinelr.yaml",
+        f"/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_marine_infra_128/basecfg_helios_mm.yaml",
+    ],
+    "v2_sentinel2_vessels_128": [
+        f"/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel2_vessels_128/basecfg_cosinelr.yaml",
+        f"/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel2_vessels_128/basecfg_helios.yaml",
+    ],
+    "v2_sentinel1_vessels_128": [
+        f"/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel1_vessels_128/basecfg_cosinelr.yaml",
+        f"/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel1_vessels_128/basecfg_helios.yaml",
+    ],
+    "vessel_detection": [
+        f"/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_landsat_vessels/finetune_detector_cosinelr.yaml",
+    ],
+}
+
+task2ckpt = {
+    "v2_satlas_wind_turbine_128": "detect_satlas_wind_turbine",
+    "v2_satlas_marine_infra_128": "detect_satlas_marine_infra",
+    "v2_sentinel2_vessels_128": "detect_sentinel2_vessels",
+    "v2_sentinel1_vessels_128": "detect_sentinel1_vessels",
+    "vessel_detection": "vessel_detection",
+}
+
+ckpt_path = f"/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/{base_model}__unmerged__{task2ckpt[task]}"
+ckpt_cfg_paths = task2cfgs[task]
 substitutions = {
     "PATCH_SIZE": 8,
     "ENCODER_EMBEDDING_SIZE": 768,
@@ -39,24 +73,27 @@ cmd = [
 ]
 
 with tempfile.NamedTemporaryFile(mode="w") as f:
-    cfg = load_yaml_config(ckpt_cfg_path, substitutions=substitutions)
-
-    cfg["model"]["init_args"]["model"]["init_args"]["restore_config"] = {
-        "restore_path": os.path.join(ckpt_path, "checkpoints", "last.ckpt"),
-        "selector": ["state_dict"],
-        "remap_prefixes": [["model.", ""]]
-    }
-    cfg["model"]["init_args"]["model"]["init_args"]["task_embedding"] = {
-        "class_path": "rslearn.models.task_embedding.TaskMHAEmbedding",
-        "init_args": {
-            "encoder_embedding_size": 768,
-            "num_heads": 12,
-        }
-    }
-
-    yaml.dump(cfg, f)
-    f.flush()
-    cmd.append(f"--config_paths+={f.name}")
+    for i, ckpt_cfg_path in enumerate(ckpt_cfg_paths):
+        if i == 0:
+            cfg = load_yaml_config(ckpt_cfg_path, substitutions=substitutions)
+            cfg["trainer"]["limit_val_batches"] = 204
+            cfg["model"]["init_args"]["model"]["init_args"]["restore_config"] = {
+                "restore_path": os.path.join(ckpt_path, "checkpoints", "last.ckpt"),
+                "selector": ["state_dict"],
+                "remap_prefixes": [["model.", ""]]
+            }
+            cfg["model"]["init_args"]["model"]["init_args"]["task_embedding"] = {
+                "class_path": "rslearn.models.task_embedding.TaskMHAEmbedding",
+                "init_args": {
+                    "encoder_embedding_size": 768,
+                    "num_heads": 12,
+                }
+            }
+            yaml.dump(cfg, f)
+            f.flush()
+            cmd.append(f"--config_paths+={f.name}")
+        else:
+            cmd.append(f"--config_paths+={ckpt_cfg_path}")
 
     print(" ".join(cmd))
     print()

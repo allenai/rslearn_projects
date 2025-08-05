@@ -170,16 +170,10 @@ def merge_decoder_heads(
             decoder_list[output_layer_idx]["init_args"][num_outputs_key] = num_classes
             print(f"- decoder {decoder_id} has {num_classes} outputs now")
 
-        task_init_args = base_cfg["model"]["init_args"]["task"]["init_args"]
-        task_init_args["task_label_offsets"] = task_label_offsets
-
-        for task_name, task_cfg in base_cfg["data"]["init_args"]["data_modules"].items():
-            local_task_init_args = task_cfg["init_args"]["task"]["init_args"]
-            local_task_init_args["task_label_offsets"] = task_label_offsets
-
     model_init_args = base_cfg["model"]["init_args"]["model"]["init_args"]
     model_init_args["decoders"] = decoder_id_to_yaml
     model_init_args["decoder_to_target"] = dict(decoder_id_to_task)
+    model_init_args["task_label_offsets"] = task_label_offsets
 
 
 if __name__ == "__main__":
