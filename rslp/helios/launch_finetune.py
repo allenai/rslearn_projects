@@ -95,35 +95,12 @@ def launch_finetune(
                     "{ENCODER_EMBEDDING_SIZE}", str(encoder_embedding_size)
                 )
 
-            # String to yaml to add test metrics file key
-            config = yaml.safe_load(config_str)
-            if do_eval and "model" in config and "init_args" in config["model"]:
-                if helios_checkpoint_path is not None:
-                    model_name = "_".join(
-                        helios_checkpoint_path.split(os.path.sep)[-2:]
-                    )  # "modelname_stepX"
-                else:
-                    model_path = config["model"]["init_args"]["model"]["init_args"][
-                        "checkpoint_path"
-                    ]
-                    model_path_parts = model_path.split(os.path.sep)
-                    model_name = (
-                        model_path_parts[-3]
-                        + "_"
-                        + model_path_parts[-1].replace(".ckpt", "")
-                    )
-                eval_task = "__".join(config_paths[0].split(os.path.sep)[-2:]).strip(
-                    ".yaml"
-                )
-                path = os.path.join(full_eval_dir, f"{model_name}__{eval_task}.json")
-                config["model"]["init_args"]["metrics_file"] = path
-                logger.info(f"Saving test metrics to {path}")
-
             # Save the config file to the temporary directory
             tmp_config_fname = os.path.join(
                 tmp_dir, f"{experiment_id}_{config_idx}.yaml"
             )
             with open(tmp_config_fname, "w") as f:
+                config = yaml.safe_load(config_str)
                 yaml.dump(config, f, default_flow_style=False)
             tmp_config_fnames.append(tmp_config_fname)
 
