@@ -2,6 +2,7 @@ import sys
 import os
 import tempfile
 import yaml
+import torch
 
 def load_yaml_config(config_path, substitutions=None):
     """Load a YAML config file with optional string substitutions."""
@@ -77,16 +78,16 @@ with tempfile.NamedTemporaryFile(mode="w") as f:
         if i == 0:
             cfg = load_yaml_config(ckpt_cfg_path, substitutions=substitutions)
             cfg["trainer"]["limit_val_batches"] = 204
-            cfg["model"]["init_args"]["model"]["init_args"]["restore_config"] = {
-                "restore_path": os.path.join(ckpt_path, "checkpoints", "last.ckpt"),
-                "selector": ["state_dict"],
-                "remap_prefixes": [["model.", ""]]
-            }
-            cfg["model"]["init_args"]["model"]["init_args"]["task_embedding"] = {
-                "class_path": "rslearn.models.task_embedding.TaskMHAEmbedding",
+            cfg["model"]["init_args"]["model"]["init_args"]["trunk"] = {
+                "class_path": "rslearn.models.trunk.DecoderTrunk",
                 "init_args": {
-                    "encoder_embedding_size": 768,
-                    "num_heads": 12,
+                    "task_embedding": {
+                        "class_path": "rslearn.models.task_embedding.TaskMHAEmbedding",
+                        "init_args": {
+                            "encoder_embedding_size": 768,
+                            "num_heads": 12,
+                        }
+                    },
                 }
             }
             yaml.dump(cfg, f)
@@ -95,8 +96,24 @@ with tempfile.NamedTemporaryFile(mode="w") as f:
         else:
             cmd.append(f"--config_paths+={ckpt_cfg_path}")
 
-    print(" ".join(cmd))
-    print()
+    # Patch trunk weights for older version
+    with tempfile.NamedTemporaryFile(mode="w") as f:
+        ckpt_path = os.path.join(ckpt_path, 'checkpoints', 'last.ckpt')
+        sd = torch.load(ckpt_path)
+        if any(k.startswith("model.task_embedding") for k in sd["state_dict"]):
+            for k, v in list(sd["state_dict"].items()):
+                if k.startswith("model.task_embedding"):
+                    sd["state_dict"][k.replace("model.task_embedding", "model.trunk.task_embedding")] = v
+                    del sd["state_dict"][k]
+            torch.save(sd, f.name)
+            f.flush()
+            cmd.append(f"--ckpt_path={f.name}")
+            print(f"patched weights for older version, saved to {f.name}")
+        else:
+            cmd.append(f"--ckpt_path={ckpt_path}")
 
-    os.chdir("/weka/dfive-default/ryanp/rslearn_projects/")
-    os.system(" ".join(cmd))
+        print(" ".join(cmd))
+        print()
+
+        os.chdir("/weka/dfive-default/ryanp/rslearn_projects/")
+        os.system(" ".join(cmd))

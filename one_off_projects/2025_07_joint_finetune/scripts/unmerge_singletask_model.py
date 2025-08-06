@@ -9,6 +9,7 @@ import json
 import torch
 from typing import Any, Dict, List
 
+USE_TMP_TASK_ORDER = False
 _tmp_task_order = {
     # Forgot to order the decoder tasks in the original runs, using this for now
     "classify": [
@@ -112,8 +113,12 @@ def trim_state_dict(
     wkey = "model.task_embedding.embed.weight"
     task_shape = sd[wkey].shape
     ordered_tasks = sorted(task_offsets.keys())
-    print(f"WARNING: true order is {ordered_tasks}, using {_tmp_task_order[task_type]}")
-    sd[wkey] = slice_sd(sd, wkey, [_tmp_task_order[task_type].index(task)], delete=False)
+    if USE_TMP_TASK_ORDER:
+        print(f"WARNING: true order is {ordered_tasks}, using {_tmp_task_order[task_type]}")
+        ordered_tasks = _tmp_task_order[task_type]
+    else:
+        print(f"Using task order {ordered_tasks}")
+    sd[wkey] = slice_sd(sd, wkey, [ordered_tasks.index(task)], delete=False)
     print(f"  - task_embedding: original {task_shape}, new shape={sd[wkey].shape}")
 
     # Then slice the rest of the state dict

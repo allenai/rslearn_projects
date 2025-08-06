@@ -38,7 +38,7 @@ global_overrides:
                   n_heads: 12
                   num_experts: 4
                   num_slots: 4
-                  task_moe: true
+                  load_balance_loss_weight: 0.1
   trainer:
     limit_val_batches: 1024
     accumulate_grad_batches: 5

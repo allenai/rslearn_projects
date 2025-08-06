@@ -39,9 +39,18 @@ else:
 
 if args.cfg == "detect":
     args.cfg = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_07_31_moe/OUT_detect.yaml"
+    cmd.append("--config_paths+=" + args.cfg)
+elif args.cfg == "pastis":
+    cfgs = [
+        '/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_pastis/basecfg_cosinelr.yaml',
+        '/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_pastis/basecfg_helios_mm.yaml'
+    ]
+    for cfg in cfgs:
+        cmd.append("--config_paths+=" + cfg)
+else:
+    cmd.append("--config_paths+=" + args.cfg)
 
 print(args)
-cmd.append("--config_paths+=" + args.cfg)
 
 env = os.environ.copy()
 env["RSLP_PREFIX"] = RLSP_PREFIX

@@ -33,6 +33,7 @@ def launch_finetune(
     profiler: str | None = None,
     local: bool = False,
     do_eval: bool = False,
+    ckpt_path: str | None = None,
 ) -> None:
     """Launch Helios fine-tuning experiments.
 
@@ -55,6 +56,7 @@ def launch_finetune(
         profiler: Profiler to use for training. Can be 'simple' or 'advanced' or None.
         local: Whether to run the command locally instead of spawning a Beaker job.
         do_eval: Whether to just run evals.
+        ckpt_path: Optionally specify checkpoint path to load from if do_eval.
     """
     # Go into each config file (including the base ones) and make replacements as
     # needed.
@@ -130,6 +132,9 @@ def launch_finetune(
                 args.append("--profiler")
                 args.append(profiler)
             args.append("--autoresume=true")
+
+            if do_eval and ckpt_path:
+                args.extend(["--ckpt_path", ckpt_path])
 
             s = "\n" + "=" * 80
             s += "\nNOTE: Command being spawned:\n"
