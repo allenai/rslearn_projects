@@ -126,6 +126,11 @@ def create_windows_from_csv(
     # 1    45850
     # 2    24177
     # 3    29973
+    df_sampled.to_csv(
+        "/weka/dfive-default/yawenz/datasets/mangrove/csv/gmw_v4_points_sampled.csv",
+        index=False,
+    )
+    exit(0)
 
     csv_rows = []
     for _, row in df_sampled.iterrows():

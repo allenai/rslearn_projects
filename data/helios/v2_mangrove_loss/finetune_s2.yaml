@@ -20,8 +20,8 @@ model:
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
     plateau: true
-    plateau_factor: 0.2
-    plateau_patience: 2
+    plateau_factor: 0.5
+    plateau_patience: 4
     plateau_min_lr: 0
     plateau_cooldown: 10
 data:
@@ -84,7 +84,7 @@ data:
         input_mapping:
           mangrove_loss_detection:
             label: "targets"
-    batch_size: 32
+    batch_size: 128
     num_workers: 32
     default_config:
       transforms:
@@ -112,6 +112,7 @@ data:
       groups: ["sample_188K_temporal_split"]
       tags:
         split: "train"
+      num_samples: 5000
     val_config:
       groups: ["sample_188K_temporal_split"]
       tags:
