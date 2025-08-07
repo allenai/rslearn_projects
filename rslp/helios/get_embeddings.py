@@ -74,6 +74,12 @@ if __name__ == "__main__":
         help="Filename to use to save the embeddings",
         required=True,
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        help="Either center or pool, default center",
+        default="center",
+    )
     args = parser.parse_args()
 
     print("Initializing dataset")
@@ -181,10 +187,14 @@ if __name__ == "__main__":
             features = helios(gpu_inputs)[0]
 
             for cur_feat, metadata in zip(features, metadatas):
-                # pooled = cur_feat.numpy().mean(axis=(1, 2))
-                selected = cur_feat.cpu().numpy()[
-                    :, cur_feat.shape[1] // 2, cur_feat.shape[2] // 2
-                ]
+                if args.mode == "center":
+                    selected = cur_feat.cpu().numpy()[
+                        :, cur_feat.shape[1] // 2, cur_feat.shape[2] // 2
+                    ]
+                elif args.mode == "pool":
+                    selected = cur_feat.cpu().numpy().mean(axis=(1, 2))
+                else:
+                    raise ValueError(f"invalid mode {args.mode}")
                 out_fname = (
                     dataset.path
                     / "windows"
