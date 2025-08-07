@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 from PIL import Image
+from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils.geometry import PixelBounds, Projection
@@ -29,7 +30,9 @@ from rslp.utils.rslearn import (
 DATASET_CONFIG_FNAME = "data/satlas/{application}/config.json"
 MODEL_CONFIG_FNAME = "data/satlas/{application}/config.yaml"
 SENTINEL2_LAYER = "sentinel2"
+TILE_SIZE = 32768
 PATCH_SIZE = 2048
+RESOLUTION = 10
 
 # Layers not to use when seeing which patches are valid.
 VALIDITY_EXCLUDE_LAYERS = ["mask", "output", "label"]
@@ -101,6 +104,19 @@ def get_output_fname(
             UPath(out_path) / f"{str(projection.crs)}_{bounds[0]}_{bounds[1]}.geojson"
         )
     return out_fname
+
+
+def projection_and_bounds_from_fname(fname: str) -> tuple[Projection, PixelBounds]:
+    """Extract the projection and bounds from an output filename."""
+    parts = fname.split(".")[0].split("_")
+    projection = Projection(CRS.from_string(parts[0]), RESOLUTION, -RESOLUTION)
+    bounds = (
+        int(parts[1]),
+        int(parts[2]),
+        int(parts[1]) + TILE_SIZE,
+        int(parts[2]) + TILE_SIZE,
+    )
+    return (projection, bounds)
 
 
 def merge_and_upload_points(
