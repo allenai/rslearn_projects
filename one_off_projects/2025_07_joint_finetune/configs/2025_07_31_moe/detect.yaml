@@ -34,11 +34,11 @@ global_overrides:
               - class_path: rslearn.models.trunk.MoETransformer
                 init_args:
                   dim: 768
-                  n_layers: 1
+                  n_layers: 2
                   n_heads: 12
-                  num_experts: 4
-                  num_slots: 4
-                  load_balance_loss_weight: 0.1
+                  num_experts: 8
+                  num_slots: 1
+                  expert_mult: 2
   trainer:
     limit_val_batches: 1024
     accumulate_grad_batches: 5

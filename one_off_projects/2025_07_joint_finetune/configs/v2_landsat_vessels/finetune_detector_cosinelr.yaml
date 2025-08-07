@@ -104,13 +104,11 @@ data:
               landsat: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
     val_config:
       patch_size: 128
-      load_all_patches: true
       groups: ["labels_utm"]
       tags:
         split: "val"
     test_config:
       patch_size: 128
-      load_all_patches: true
       groups: ["labels_utm"]
       tags:
         split: "val"

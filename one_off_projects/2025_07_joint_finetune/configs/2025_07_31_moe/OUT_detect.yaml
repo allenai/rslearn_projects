@@ -373,7 +373,6 @@ data:
                       - 255
                     skip_unknown_categories: true
           test_config:
-            load_all_patches: true
             patch_size: 128
             tags:
               split: val
@@ -463,7 +462,6 @@ data:
                 selections:
                   sentinel2_l2a: []
           val_config:
-            load_all_patches: true
             patch_size: 128
             tags:
               split: val
@@ -933,7 +931,6 @@ data:
                     - - 0
                       - 255
           test_config:
-            load_all_patches: true
             patch_size: 128
             tags:
               split: val
@@ -1029,7 +1026,6 @@ data:
                 selections:
                   sentinel2_l2a: []
           val_config:
-            load_all_patches: true
             patch_size: 128
             tags:
               split: val
@@ -1126,7 +1122,6 @@ data:
             groups:
             - val_ascending
             - val_descending
-            load_all_patches: true
             patch_size: 128
           train_config:
             groups:
@@ -1163,7 +1158,6 @@ data:
             groups:
             - val_ascending
             - val_descending
-            load_all_patches: true
             patch_size: 128
       detect_sentinel2_vessels:
         class_path: rslearn.train.data_module.RslearnDataModule
@@ -1274,7 +1268,6 @@ data:
             - sargassum_val
             - split1
             - split7
-            load_all_patches: true
             patch_size: 128
           train_config:
             groups:
@@ -1330,7 +1323,6 @@ data:
             - sargassum_val
             - split1
             - split7
-            load_all_patches: true
             patch_size: 128
       vessel_detection:
         class_path: rslearn.train.data_module.RslearnDataModule
@@ -1438,14 +1430,12 @@ data:
           test_config:
             groups:
             - labels_utm
-            load_all_patches: true
             patch_size: 128
             tags:
               split: val
           train_config:
             groups:
             - labels_utm
-            load_all_patches: true
             patch_size: 128
             tags:
               split: train
@@ -1475,7 +1465,6 @@ data:
           val_config:
             groups:
             - labels_utm
-            load_all_patches: true
             patch_size: 128
             tags:
               split: val
@@ -1543,11 +1532,11 @@ model:
             - class_path: rslearn.models.trunk.MoETransformer
               init_args:
                 dim: 768
-                load_balance_loss_weight: 0.1
+                expert_mult: 2
                 n_heads: 12
-                n_layers: 1
-                num_experts: 4
-                num_slots: 4
+                n_layers: 2
+                num_experts: 8
+                num_slots: 1
             task_embedding:
               class_path: rslearn.models.task_embedding.TaskChannelEmbedding
               init_args:

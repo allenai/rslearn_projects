@@ -56,11 +56,9 @@ data:
           num_samples: 131072
     val_config:
       patch_size: 128
-      load_all_patches: true
       groups: ["sargassum_val", "split1", "split7"]
     test_config:
       patch_size: 128
-      load_all_patches: true
       groups: ["sargassum_val", "split1", "split7"]
 trainer:
   max_epochs: 500

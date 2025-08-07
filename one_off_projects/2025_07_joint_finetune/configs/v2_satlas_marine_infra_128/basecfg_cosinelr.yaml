@@ -61,12 +61,10 @@ data:
           num_samples: 65536
     val_config:
       patch_size: 128
-      load_all_patches: true
       tags:
         split: val
     test_config:
       patch_size: 128
-      load_all_patches: true
       tags:
         split: val
 trainer:

@@ -1079,7 +1079,6 @@ data:
                     - - 0
                       - 255
           test_config:
-            load_all_patches: true
             patch_size: 128
             tags:
               split: val
@@ -1164,7 +1163,6 @@ data:
                 - target/segment_satlas_solar_farm/classes
                 - target/segment_satlas_solar_farm/valid
           val_config:
-            load_all_patches: true
             patch_size: 128
             tags:
               split: val
@@ -1222,11 +1220,11 @@ model:
             - class_path: rslearn.models.trunk.MoETransformer
               init_args:
                 dim: 768
-                load_balance_loss_weight: 0.1
+                expert_mult: 2
                 n_heads: 12
-                n_layers: 1
-                num_experts: 4
-                num_slots: 4
+                n_layers: 2
+                num_experts: 8
+                num_slots: 1
             task_embedding:
               class_path: rslearn.models.task_embedding.TaskChannelEmbedding
               init_args:

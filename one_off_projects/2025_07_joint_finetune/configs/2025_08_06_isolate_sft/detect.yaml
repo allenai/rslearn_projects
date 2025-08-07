@@ -1,10 +1,6 @@
 base_cfg: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_07_31_moe/base.yaml
-output_path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_07_31_moe/OUT_all.yaml
 
 dataset_cfgs:
-  - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_landsat_vessels/finetune_classifier_cosinelr.yaml
-  - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_nandi_crop_type/finetune_s1_s2_cosinelr.yaml
-  - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_worldcereal_cropland/finetune_s1_s2_cosinelr.yaml
   - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_landsat_vessels/finetune_detector_cosinelr.yaml
   - - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_marine_infra_128/basecfg_cosinelr.yaml
     - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_marine_infra_128/basecfg_helios_mm.yaml
@@ -14,10 +10,6 @@ dataset_cfgs:
     - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel1_vessels_128/basecfg_helios.yaml
   - - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel2_vessels_128/basecfg_cosinelr.yaml
     - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel2_vessels_128/basecfg_helios.yaml
-  - - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_pastis/basecfg_cosinelr.yaml
-    - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_pastis/basecfg_helios_mm.yaml
-  - - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_solar_farm_128/basecfg_cosinelr.yaml
-    - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_solar_farm_128/basecfg_helios_mm.yaml
  
 substitutions:
   patch_size: 8
@@ -37,14 +29,18 @@ global_overrides:
                 init_args:
                   encoder_embedding_size: 768
                   add_spatial_embed: true
-              use_moe: true
-              dim: 768
-              n_layers: 1
-              n_heads: 12
-              num_experts: 10
-              num_slots: 1
-  trainer:
-    limit_val_batches: 4096
+              layers:
+              - class_path: rslearn.models.trunk.MoETransformer
+                init_args:
+                  dim: 768
+                  n_layers: 1
+                  n_heads: 12
+                  num_experts: 4
+                  num_slots: 4
+
+local_overrides:
+  val_config:
+    load_all_patches: false
 
 merge_options:
   merge_heads: true

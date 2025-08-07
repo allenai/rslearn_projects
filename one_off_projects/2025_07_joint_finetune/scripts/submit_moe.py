@@ -8,7 +8,7 @@ cmd = [
     "--helios_checkpoint_path", ckpt_path,
     "--patch_size", "8",
     "--encoder_embedding_size", "768",
-    "--image_name", "henryh/rslp_multidataset_dev",
+    "--image_name", "henryh/rslp_multidataset_dev_moe",
     "--cluster+=ai2/titan-cirrascale",
     "--cluster+=ai2/saturn-cirrascale", 
     "--cluster+=ai2/ceres-cirrascale",

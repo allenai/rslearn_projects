@@ -34,6 +34,7 @@ def launch_finetune(
     local: bool = False,
     do_eval: bool = False,
     ckpt_path: str | None = None,
+    allow_missing_weights: bool = False,
 ) -> None:
     """Launch Helios fine-tuning experiments.
 
@@ -57,6 +58,7 @@ def launch_finetune(
         local: Whether to run the command locally instead of spawning a Beaker job.
         do_eval: Whether to just run evals.
         ckpt_path: Optionally specify checkpoint path to load from if do_eval.
+        allow_missing_weights: Whether to allow missing weights in checkpoint specified in --ckpt_path.
     """
     # Go into each config file (including the base ones) and make replacements as
     # needed.
@@ -128,12 +130,15 @@ def launch_finetune(
                 ["--rslp_experiment", experiment_id, "--rslp_project", rslp_project]
             )
 
+            if allow_missing_weights:
+                args.append("--allow_missing_weights")
+
             if profiler:
                 args.append("--profiler")
                 args.append(profiler)
             args.append("--autoresume=true")
 
-            if do_eval and ckpt_path:
+            if ckpt_path:
                 args.extend(["--ckpt_path", ckpt_path])
 
             s = "\n" + "=" * 80
@@ -163,6 +168,8 @@ def launch_finetune(
             extra_args = []
             if profiler:
                 extra_args.extend(["--profiler", profiler])
+            if allow_missing_weights:
+                extra_args.append("--allow_missing_weights")
 
             args = [
                 "python",

@@ -1,5 +1,7 @@
-#!/usr/bin/env python
-"""Prepare a model trained across various instances of a task for a single dataset."""
+"""Prepare a model trained across various instances of a task for a single dataset.
+
+Usage: python3 unmerge_singletask_model.py classify__moe_v2
+"""
 
 import os
 import re
@@ -9,9 +11,12 @@ import json
 import torch
 from typing import Any, Dict, List
 
+OLD_WEIGHT_FORMAT = False
 USE_TMP_TASK_ORDER = False
 _tmp_task_order = {
     # Forgot to order the decoder tasks in the original runs, using this for now
+    # NOTE: new decoder order (MoE+) is sorted, plus I think the original ones 
+    # got pre-empted with the new image, so learned a sorted task order?
     "classify": [
         "vessel_classification",
         "crop_type_classification",
@@ -110,7 +115,10 @@ def trim_state_dict(
     print(f"\n-> Trimming task '{task}': keep indices [{i}:{i+n}] out of {N}")
 
     # Slice the task embedding first
-    wkey = "model.task_embedding.embed.weight"
+    if OLD_WEIGHT_FORMAT:
+        wkey = "model.task_embedding.embed.weight"
+    else:
+        wkey = "model.trunk.task_embedding.embed.weight"
     task_shape = sd[wkey].shape
     ordered_tasks = sorted(task_offsets.keys())
     if USE_TMP_TASK_ORDER:
@@ -190,24 +198,31 @@ def main() -> None:
         description="Trim a multi-task checkpoint to smaller output head per task"
     )
     parser.add_argument(
-        "ckpt_dir",
+        "model",
         help="Directory containing config.yaml and checkpoints"
     )
     parser.add_argument(
-        "--ckpt_path", default="last.ckpt",
+        "--ckpt_path",
+        default="last.ckpt",
         help="Name of the checkpoint file inside ckpt_dir (default: last.ckpt)"
     )
     parser.add_argument(
-        "--ckpt_out_dir", required=True,
+        "--out_dir",
+        default="{model}__unmerged__{task}/checkpoints",
         help=(
-            "Template for output directories, e.g. '/out/dir/{task}/checkpoints', "
-            "where {task} will be replaced by each task name"
+            "Template for output directories, e.g. '/out/dir/{model}__unmerged__{task}/checkpoints', " \
+            "where {model} and {task} will be replaced by the model and task names"
         )
+    )
+    parser.add_argument(
+        "--project_dir",
+        default="/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr",
+        help="rslp project name"
     )
     args = parser.parse_args()
 
     key = "task_label_offsets"
-    cfg_path = os.path.join(args.ckpt_dir, "config.yaml")
+    cfg_path = os.path.join(args.project_dir, args.model, "checkpoints","config.yaml")
     with open(cfg_path, "r") as f:
         cfg = yaml.safe_load(f)
     task_offsets = recursive_find_key(cfg, key)
@@ -232,7 +247,7 @@ def main() -> None:
         task_offsets[tasks[max_offset_index]]["offset"] 
         + task_offsets[tasks[max_offset_index]]["num_outputs"]
     )
-    src_path = os.path.join(args.ckpt_dir, args.ckpt_path)
+    src_path = os.path.join(args.project_dir, args.model, "checkpoints", args.ckpt_path)
 
     pretrained_cfg_src_path = (
         "/weka/dfive-default/helios/checkpoints/favyen"
@@ -260,7 +275,10 @@ def main() -> None:
         )
 
         # 3) save per-task checkpoint and config.yaml
-        out_dir = args.ckpt_out_dir.format(task=task)
+        out_dir = os.path.join(
+            args.project_dir,
+            args.out_dir.format(model=args.model, task=task)
+        )
         os.makedirs(out_dir, exist_ok=True)
         dst_path = os.path.join(out_dir, args.ckpt_path)
 

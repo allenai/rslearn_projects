@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir geobench==0.0.1
 RUN pip install --no-cache-dir --upgrade /opt/helios
 RUN pip install --no-cache-dir --upgrade /opt/rslearn[extra] -r /opt/rslearn_projects/requirements.txt
 RUN pip install --no-cache-dir --upgrade /opt/rslearn[extra] /opt/helios -r /opt/rslearn_projects/requirements.txt
+RUN pip install --upgrade beaker-py
 
 # Copy rslearn_projects and install it too.
 COPY . /opt/rslearn_projects/

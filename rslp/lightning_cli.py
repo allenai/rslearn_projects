@@ -205,6 +205,11 @@ class CustomLightningCLI(RslearnLightningCLI):
             help="Profiler to use for training. Can be 'simple' or 'advanced'",
             default=None,
         )
+        parser.add_argument(
+            "--allow_missing_weights",
+            action="store_true",
+            help="Allow missing weights in checkpoint specified in --ckpt_path",
+        )
 
     def _get_checkpoint_path(
         self, checkpoint_dir: UPath, load_best: bool = False, autoresume: bool = False

@@ -59,13 +59,11 @@ data:
           replacement: true
           num_samples: 32768
     val_config:
-      load_all_patches: true
       patch_size: 128
       groups:
         - val_ascending
         - val_descending
     test_config:
-      load_all_patches: true
       patch_size: 128
       groups:
         - val_ascending
