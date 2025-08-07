@@ -31,8 +31,7 @@ jobs:
           repository: allenai/helios
           ref: josh/split-evals
           path: repos/helios
-          token: ${{ secrets.GIT_TOKEN }}
-
+          token: ${{ secrets.GIT_USERNAME }}
 
       - name: Checkout rslearn
         uses: actions/checkout@v4
