@@ -34,7 +34,7 @@ data:
       sentinel2_l2a:
         data_type: "raster"
         layers: ["sentinel2"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
       # Include gse here so it's a required layer, even though we don't actually need it.
       # This way we match the windows that gse.yaml model will train/validate on.
