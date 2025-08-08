@@ -5,6 +5,7 @@ Supports old weight format (ie model.task_embedding without DecoderTrunks).
 """
 
 import os
+import sys
 import tempfile
 import yaml
 import json
@@ -45,7 +46,7 @@ def replace_key(d, key, value):
 
 
 if __name__ == "__main__":
-    base_model = "detect__moe_v2"
+    base_model = sys.argv[1]
     ckpt_path = f"/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/{base_model}"
     ckpt_cfg_path = os.path.join(ckpt_path, "checkpoints", "config.yaml")
 

@@ -58,7 +58,7 @@ from typing import Any
 
 
 def submit_job(
-    ckpt_path: str,
+    ckpt_path: str | None,
     entry: dict[str, Any],
     model_name: str,
     dataset_percent: float,
@@ -67,7 +67,7 @@ def submit_job(
     """Submit job.
     
     Args:
-        ckpt_path: Path to checkpoint
+        ckpt_path: Path to checkpoint (none = use base)
         entry: Task configuration
         model_name: Model name
         dataset_percent: Percentage of dataset to use
@@ -94,7 +94,7 @@ def submit_job(
 
     cmd = [
         "python", "-m", "rslp.main", "helios", "launch_finetune",
-        "--helios_checkpoint_path", ckpt_path,
+        "--helios_checkpoint_path", args.helios,
         "--patch_size", "8",
         "--encoder_embedding_size", "768",
         "--image_name", "henryh/rslp_multidataset_dev_moe",
@@ -133,58 +133,63 @@ def submit_job(
         cmd.append("true")
 
     with tempfile.NamedTemporaryFile(mode="w") as f:
-        # Support yaml conversion of old format with trunk
-        with open(os.path.join(ckpt_path, "checkpoints", "config.yaml")) as cf:
-            old_cfg = yaml.safe_load(cf)["model"]["init_args"]["model"]["init_args"]["trunk"]
-            trunk_layer_init_args = old_cfg.pop("init_args")
-            trunk_layer_init_args["disable_moe"] = not trunk_layer_init_args.pop("use_moe")
-            old_cfg["init_args"] = {
-                "task_embedding": trunk_layer_init_args.pop("task_embedding"),
-                "layers": [
-                    {
-                        "class_path": "rslearn.models.trunk.MoETransformer",
-                        "init_args": trunk_layer_init_args
-                    }
-                ]
-            }
-            override_cfg = {
-                "model": {
-                    "init_args": {
-                        "model": {
-                            "class_path": "rslearn.models.multitask.MultiTaskModel",
-                            "init_args": {
-                                "trunk": old_cfg
+        if ckpt_path is not None:
+            # Support yaml conversion of old format with trunk
+            with open(os.path.join(ckpt_path, "checkpoints", "config.yaml")) as cf:
+                old_cfg = yaml.safe_load(cf)["model"]["init_args"]["model"]["init_args"]["trunk"]
+                trunk_layer_init_args = old_cfg.pop("init_args")
+                trunk_layer_init_args["disable_moe"] = not trunk_layer_init_args.pop("use_moe")
+                old_cfg["init_args"] = {
+                    "task_embedding": trunk_layer_init_args.pop("task_embedding"),
+                    "layers": [
+                        {
+                            "class_path": "rslearn.models.trunk.MoETransformer",
+                            "init_args": trunk_layer_init_args
+                        }
+                    ]
+                }
+                override_cfg = {
+                    "model": {
+                        "init_args": {
+                            "model": {
+                                "class_path": "rslearn.models.multitask.MultiTaskModel",
+                                "init_args": {
+                                    "trunk": old_cfg
+                                }
                             }
                         }
                     }
                 }
+
+            # Might have to change keys in state_dict slightly
+            # Don't support really old format without trunk
+            ckpt = torch.load(os.path.join(ckpt_path, "checkpoints", "last.ckpt"))
+            sd = ckpt["state_dict"]
+            for k, v in list(sd.items()):
+                if encoder_only:
+                    if "model.encoder" not in k:
+                        del sd[k]
+                else:
+                    new_k = k.replace("model.trunk.transformer", "model.trunk.layers.0")
+                    sd[new_k] = v
+                    if new_k != k:
+                        del sd[k]
+
+            # Use a persistent "temporary" checkpoint dir so that when we upload to beaker,
+            # we can still access the checkpoint as it isn't loaded immediately
+            ckpt_f = os.path.join(args.tmp_ckpt_dir, os.path.basename(ckpt_path))
+            override_cfg["model"]["init_args"]["restore_config"] = {
+                "restore_path": ckpt_f,
+                "selector": ["state_dict"],
+                "remap_prefixes": [["model.", ""]]
             }
-
-        # Might have to change keys in state_dict slightly
-        # Don't support really old format without trunk
-        ckpt = torch.load(os.path.join(ckpt_path, "checkpoints", "last.ckpt"))
-        sd = ckpt["state_dict"]
-        for k, v in list(sd.items()):
-            if encoder_only:
-                if "model.encoder" not in k:
-                    del sd[k]
-            else:
-                new_k = k.replace("model.trunk.transformer", "model.trunk.layers.0")
-                sd[new_k] = v
-                if new_k != k:
-                    del sd[k]
-
-        # Use a persistent "temporary" checkpoint dir so that when we upload to beaker,
-        # we can still access the checkpoint as it isn't loaded immediately
-        ckpt_f = os.path.join(args.tmp_ckpt_dir, os.path.basename(ckpt_path))
-        override_cfg["model"]["init_args"]["restore_config"] = {
-            "restore_path": ckpt_f,
-            "selector": ["state_dict"],
-            "remap_prefixes": [["model.", ""]]
-        }
-        os.makedirs(args.tmp_ckpt_dir, exist_ok=True)
-        torch.save(ckpt, ckpt_f)
-        print(f"saved temporary checkpoint to {ckpt_f}")
+            os.makedirs(args.tmp_ckpt_dir, exist_ok=True)
+            torch.save(ckpt, ckpt_f)
+            print(f"saved temporary checkpoint to {ckpt_f}")
+        
+        else:
+            print("Not loading checkpoint, using base model")
+            override_cfg = {}
 
         # Add dataset percent if it's requested
         if dataset_percent != 1.0:
@@ -198,7 +203,7 @@ def submit_job(
             )
 
         # Finish override config and start the job
-        print(f"=" * 30 + "OVERRIDE_CONFIG" + "=" * 30)
+        print(f"=" * 30 + " OVERRIDE_CONFIG " + "=" * 30)
         print(json.dumps(override_cfg, indent=2))
         print("=" * 70)
         print()
@@ -208,6 +213,7 @@ def submit_job(
         if encoder_only:
             cmd.append("--allow_missing_weights")
             cmd.append("true")
+            assert dataset_percent == 1.0, "cannot do encoder_only and dataset ablation"
         else:
             cmd.append(f"--config_paths+={f.name}")
 
@@ -239,15 +245,18 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt_project_dir", default="helios_finetune_cosine_lr", help="Project directory")
     parser.add_argument("--project", default="2025_08_07_helios_moe_finetune", help="Wandb project")
     parser.add_argument("--tmp_ckpt_dir", default="/weka/dfive-default/ryanp/cache/helios_ckpts", help="Temporary checkpoint directory")
+    parser.add_argument("--helios", default="/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000")
     args = parser.parse_args()
 
     models = [
         "detect__moe_v2",
         "classify__moe_v2",
         "segment__moe_v2",
+        "base"
     ]
 
     ckpt_paths = {model: [] for model in models}
+    ckpt_paths["base"] = None
     base_path = os.path.join("/weka/dfive-default/rslearn-eai/projects", args.ckpt_project_dir)
     for model_dir in os.listdir(base_path):
         for model in models:
@@ -306,12 +315,16 @@ if __name__ == "__main__":
     for dataset_percent in args.dataset_percents:
         for model_name, ckpt_paths in models.items():
             for entry in tasks:
-                for ckpt_path in ckpt_paths:
-                    if f"{model_name}__unmerged__{entry['task_name']}" in ckpt_path:
-                        success += int(submit_job(ckpt_path, entry, model_name, dataset_percent, args))
-                        break
+                if ckpt_paths is None:
+                    # we are using base model
+                    success += int(submit_job(None, entry, model_name, dataset_percent, args))
                 else:
-                    success += int(submit_job(ckpt_paths[0], entry, model_name, dataset_percent, args))
+                    for ckpt_path in ckpt_paths:
+                        if f"{model_name}__unmerged__{entry['task_name']}" in ckpt_path:
+                            success += int(submit_job(ckpt_path, entry, model_name, dataset_percent, args))
+                            break
+                    else:
+                        success += int(submit_job(ckpt_paths[0], entry, model_name, dataset_percent, args))
                 if args.debug:
                     exit()
 
