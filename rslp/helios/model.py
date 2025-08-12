@@ -6,13 +6,14 @@ from contextlib import nullcontext
 from typing import Any, Dict
 
 import torch
+from torch.distributed.checkpoint import DefaultLoadPlanner
 from einops import rearrange
 from helios.data.constants import Modality
 from helios.nn.flexihelios import TokensAndMasks
 from helios.train.masking import MaskedHeliosSample, MaskValue
 from olmo_core.config import Config
-from olmo_core.distributed.checkpoint import load_model_and_optim_state
 
+from rslp.helios.checkpoint import load_model_and_optim_state
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -97,7 +98,8 @@ class Helios(torch.nn.Module):
         checkpoint_path: str,
         selector: list[str | int] = [],
         random_initialization: bool = False,
-        model_overrides: dict[str, Any] = {}
+        model_overrides: dict[str, Any] = {},
+        planner: DefaultLoadPlanner | None = None,
     ) -> None:
         """Load the model from a checkpoint.
 
@@ -110,6 +112,7 @@ class Helios(torch.nn.Module):
                 weights are randomly initialized. In this case, the checkpoint is only
                 used to define the model architecture.
             model_overrides: overrides for the model building.
+            planner: the planner to use for loading the checkpoint.
         """
         # Load the model config and initialize it.
         # We avoid loading the train module here because it depends on running within
@@ -126,7 +129,7 @@ class Helios(torch.nn.Module):
         if not random_initialization:
             train_module_dir = os.path.join(checkpoint_path, "model_and_optim")
             if os.path.exists(train_module_dir):
-                load_model_and_optim_state(train_module_dir, model)
+                load_model_and_optim_state(train_module_dir, model, planner=planner)
                 logger.info(f"loaded helios encoder from {train_module_dir}")
             else:
                 logger.info(f"could not find helios encoder at {train_module_dir}")
@@ -299,6 +302,7 @@ class TaskConditionedHelios(Helios):
             selector,
             random_initialization,
             model_overrides,
+            planner=DefaultLoadPlanner(allow_partial_load=True),
         )
 
     def load_task_embeds(self, task_embed_opts: dict[str, Any]) -> None:
