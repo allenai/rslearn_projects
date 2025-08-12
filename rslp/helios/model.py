@@ -3,7 +3,7 @@
 import json
 import os
 from contextlib import nullcontext
-from typing import Any
+from typing import Any, Dict
 
 import torch
 from einops import rearrange
@@ -30,6 +30,24 @@ AUTOCAST_DTYPE_MAP = {
     "float16": torch.float16,
     "float32": torch.float32,
 }
+
+
+def deep_merge(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep merge two dictionaries in place, override a keys with b keys.
+    
+    Args:
+        a: first dictionary
+        b: second dictionary
+    Returns:
+        merged dictionary
+    """
+    out = dict(a)
+    for k, v in (b or {}).items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
 
 
 class Helios(torch.nn.Module):
@@ -72,11 +90,34 @@ class Helios(torch.nn.Module):
         else:
             self.autocast_dtype = None
 
+        self.load_model(checkpoint_path, selector, random_initialization)
+
+    def load_model(
+        self,
+        checkpoint_path: str,
+        selector: list[str | int] = [],
+        random_initialization: bool = False,
+        model_overrides: dict[str, Any] = {}
+    ) -> None:
+        """Load the model from a checkpoint.
+
+        Args:
+            checkpoint_path: the checkpoint directory to load. It should contain
+                config.json file as well as model_and_optim folder.
+            selector: an optional sequence of attribute names or list indices to select
+                the sub-module that should be applied on the input images.
+            random_initialization: whether to skip loading the checkpoint so the
+                weights are randomly initialized. In this case, the checkpoint is only
+                used to define the model architecture.
+            model_overrides: overrides for the model building.
+        """
         # Load the model config and initialize it.
         # We avoid loading the train module here because it depends on running within
         # olmo_core.
         with open(f"{checkpoint_path}/config.json") as f:
             config_dict = json.load(f)
+            if model_overrides is not None:
+                config_dict["model"] = deep_merge(config_dict["model"], model_overrides)
             model_config = Config.from_dict(config_dict["model"])
 
         model = model_config.build()
@@ -190,3 +231,186 @@ class Helios(torch.nn.Module):
             tuples.
         """
         return [(self.patch_size, self.embedding_size)]
+
+
+class TaskConditionedHelios(Helios):
+    """A wrapper to support task-conditioned Helios models."""
+
+    def __init__(
+        self,
+        checkpoint_path: str,
+        selector: list[str | int] = [],
+        forward_kwargs: dict[str, Any] = {},
+        random_initialization: bool = False,
+        embedding_size: int | None = None,
+        patch_size: int | None = None,
+        autocast_dtype: str | None = "bfloat16",
+        task_embed_opts: dict[str, Any] | None = None,
+        model_overrides: dict[str, Any] | None = None,
+    ):
+        """
+        Args:
+            checkpoint_path: the checkpoint directory to load. It should contain
+                config.json file as well as model_and_optim folder.
+            selector: optional attribute names or list indices to select a submodule.
+            forward_kwargs: extra args for forward() besides MaskedHeliosSample.
+            random_initialization: if True, skip loading checkpoint weights.
+            embedding_size: optional embedding size reported via get_backbone_channels.
+            patch_size: optional patch size reported via get_backbone_channels.
+            autocast_dtype: dtype to use for autocasting (string), or None to disable.
+            task_embed_opts: configuration for task embeddings
+                - type: "learned" (embedding table) | "precomputed" (from file)
+                - path: str (required for "precomputed"; optional as init for "learned")
+                - dim: int, dimension of task embeddings (overridden by precomputed embeds)
+                - tasks: list[str], sorted list of tasks (overridden by precomputed embeds)
+            model_overrides: overrides for the model module. Use this to set task conditioning
+                options like encoder_config.use_task_lora, etc.
+                task_dim will automatically be passed through.
+        """
+        # Need to manually initialize the superclass to avoid re-initializing the model
+        torch.nn.Module.__init__(self)
+
+        self.forward_kwargs = forward_kwargs
+        self.embedding_size = embedding_size
+        self.patch_size = patch_size
+
+        if autocast_dtype is not None:
+            self.autocast_dtype = AUTOCAST_DTYPE_MAP[autocast_dtype]
+        else:
+            self.autocast_dtype = None
+
+        # Load the task embeddings (we need the task dimension to initialize helios) 
+        self.load_task_embeds(task_embed_opts)
+
+        # Load the model from the checkpoint
+        if "encoder_config" not in model_overrides:
+            logger.warning("No model overrides provided, behavior is the same as Helios")
+            model_overrides["encoder_config"] = {}
+        if "task_dim" not in model_overrides.get("encoder_config", {}):
+            model_overrides["encoder_config"]["task_dim"] = self.task_embed_dim
+        elif model_overrides["encoder_config"]["task_dim"] != self.task_embed_dim:
+            actual = model_overrides['encoder_config']['task_dim']
+            raise ValueError(
+                f"task_dim in model_overrides must match task_embed_dim, "
+                f"got {actual} != {self.task_embed_dim}"
+            )
+        self.load_model(
+            checkpoint_path,
+            selector,
+            random_initialization,
+            model_overrides,
+        )
+
+    def load_task_embeds(self, task_embed_opts: dict[str, Any]) -> None:
+        """Load the task embeddings.
+        
+        Args:
+            task_embed_opts: configuration for task embeddings
+                - type: "learned" (embedding table) | "precomputed" (from file)
+                - path: str (required for "precomputed"; optional as init for "learned")
+                - dim: int, dimension of task embeddings (overridden by precomputed embeds)
+                - tasks: list[str], sorted list of tasks (overridden by precomputed embeds)
+        """
+        self.task_embed_type: str = str(task_embed_opts["type"])
+        self.task_embed_path: str | None = task_embed_opts.get("path", None)
+        if self.task_embed_type not in ("learned", "precomputed"):
+            raise ValueError("task_embed_opts['type'] must be 'learned' or 'precomputed'")
+
+        self.pretrained_task_embeds: torch.Tensor | None = None
+        if self.task_embed_type == "precomputed":
+            if self.task_embed_path is None:
+                raise ValueError("task_embed_opts['path'] must be provided for precomputed embeddings")
+            self.load_pretrained_embeds()
+
+        elif self.task_embed_type == "learned" and self.task_embed_path is not None:
+            # Use provided embeddings just to initialize
+            self.load_pretrained_embeds()
+            logger.info("Using pretrained task embeds to initialize the embedding table")        
+
+        # Some attributes are set by precomputed embeds if they're specified
+        if not hasattr(self, "task_embed_dim"):
+            self.task_embed_dim: int = int(task_embed_opts["dim"])
+        if not hasattr(self, "tasks"):
+            self.tasks: list[str] = list(task_embed_opts["tasks"])
+
+        # Build the embedding table
+        self.task_embed_table = torch.nn.Embedding(
+            num_embeddings=len(self.tasks),
+            embedding_dim=self.task_embed_dim,
+        )
+
+        # If we have pretrained vectors (either for precomputed or init), copy them in
+        if self.pretrained_task_embeds is not None:
+            with torch.no_grad():
+                self.task_embed_table.weight.copy_(
+                    self.pretrained_task_embeds.to(self.task_embed_table.weight.device)
+                )
+
+        # If precomputed, freeze the table to avoid accidental training
+        if self.task_embed_type == "precomputed":
+            for p in self.task_embed_table.parameters():
+                p.requires_grad = False
+    
+    def load_pretrained_embeds(self, drop=("code_hash",)) -> None:
+        """
+        Load task embeddings from a file expected to contain a dict.
+
+        Dict format is { task_name (str): 1D torch.Tensor }.
+        Resulting pretrained embeds are [num_tasks, dim].
+
+        Args:
+            drop: list of keys to drop from the dict.
+        """
+        obj = torch.load(self.task_embed_path, map_location="cpu")
+        obj = {k: v for k, v in obj.items() if k not in drop}
+
+        self.tasks = list(obj.keys())
+        logger.info(f"Loaded task embeddings: {self.tasks}")
+
+        dim = obj[self.tasks[0]].shape[0]
+        logger.info(f"Using task embed dim {dim}")
+
+        rows = []
+        for t in self.tasks:
+            v = obj[t].detach().flatten().to(torch.float32)
+            if v.dim() != 1 or v.numel() != dim:
+                raise ValueError(
+                    f"Embedding for task '{t}' must be 1D of length {dim}, "
+                    f"got shape {tuple(v.shape)}"
+                )
+            rows.append(v)
+
+        self.pretrained_task_embeds = torch.stack(rows, dim=0)
+        self.task_embed_dim = dim
+
+    def compute_task_embeds(self, task_id: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            task_id: Integer tensor of shape (B,) with ids in [0, num_tasks).
+        Returns:
+            Tensor of shape (B, dim) with the task embeddings.
+        """
+        idx = task_id.long().to(self.task_embed_table.weight.device)
+        return self.task_embed_table(idx)
+
+    def forward(self, inputs: list[dict[str, Any]]) -> list[torch.Tensor]:
+        """
+        Compute feature maps from the Helios backbone with task conditioning.
+
+        Inputs:
+            inputs: list of input dicts. It should include keys corresponding to the
+                    modalities that should be passed to the Helios model.
+        """
+        # Assume dataset_source is consistent across the batch
+        dataset_source = inputs[0]["dataset_source"]
+        ids = torch.tensor([self.tasks.index(dataset_source)] * len(inputs))
+        task_embeds = self.compute_task_embeds(ids)
+
+        # Feed in task embed and restore previous value if it exists
+        key = "task_emb"
+        self.forward_kwargs[key], prev = (
+            task_embeds, self.forward_kwargs.get(key)
+        )
+        out = super().forward(inputs)
+        self.forward_kwargs[key] = prev
+        return out

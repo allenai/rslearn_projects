@@ -47,6 +47,12 @@ elif args.cfg == "pastis":
     ]
     for cfg in cfgs:
         cmd.append("--config_paths+=" + cfg)
+elif args.cfg == "lora":
+    args.cfg = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_12_embeds/OUT_classify.yaml"
+    args.exp_id = "debug_task_lora_classify"
+    cmd.append("--config_paths+=" + args.cfg)
+    cmd.append("--allow_missing_weights")
+    cmd.append("true")
 else:
     cmd.append("--config_paths+=" + args.cfg)
 
