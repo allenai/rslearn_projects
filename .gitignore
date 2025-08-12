@@ -13,3 +13,6 @@ log*.txt
 lightning_logs/
 /tmp*/
 docker_build
+
+# misc from one off projects
+one_off_projects/2025_07_joint_finetune/data

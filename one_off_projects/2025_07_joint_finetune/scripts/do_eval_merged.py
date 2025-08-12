@@ -4,6 +4,7 @@ Run all evals for a label-merged model.
 Supports old weight format (ie model.task_embedding without DecoderTrunks).
 """
 
+import argparse
 import os
 import sys
 import tempfile
@@ -46,8 +47,17 @@ def replace_key(d, key, value):
 
 
 if __name__ == "__main__":
-    base_model = sys.argv[1]
-    ckpt_path = f"/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/{base_model}"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", required=True, help="model name (dir)")
+    parser.add_argument("--ckpt", default="last.ckpt", help="ckpt file in {model}/checkpoints/")
+    parser.add_argument("--project", default="helios_finetune_cosine_lr", help="project dir for model")
+    args = parser.parse_args()
+
+    base_model = args.model
+    ckpt_file = args.ckpt
+    project = args.project
+
+    ckpt_path = f"/weka/dfive-default/rslearn-eai/projects/{project}/{base_model}"
     ckpt_cfg_path = os.path.join(ckpt_path, "checkpoints", "config.yaml")
 
     helios_ckpt_path = (
@@ -79,60 +89,69 @@ if __name__ == "__main__":
         cfg = load_yaml_config(ckpt_cfg_path, substitutions=substitutions)
 
         # Get the task label offsets and link tasks
+        old_cfg_style = True
         for callback in cfg["trainer"]["callbacks"]:
             config_str = callback["init_args"].get("config_str")
             if config_str is not None:
                 full_cfg = json.loads(config_str)
-                task_label_offsets = full_cfg["model"]["init_args"]["task"]["init_args"]["task_label_offsets"]
                 cfg["model"]["init_args"]["task"] = full_cfg["model"]["init_args"]["task"].copy()
+                try:
+                    task_label_offsets = full_cfg["model"]["init_args"]["task"]["init_args"]["task_label_offsets"]
+                except KeyError:
+                    # we are already a new config style
+                    old_cfg_style = False
                 break
-        else:
-            raise ValueError("could not find task label offsets")
  
         # Ensure that load_all_patches is false everywhere
         replace_key(cfg, "load_all_patches", False)
 
         # Change the old configs to match the new style
-        del cfg["model"]["init_args"]["task"]["init_args"]["task_label_offsets"]
-        for k, v in cfg["data"]["init_args"]["data_modules"].items():
-            if "task_label_offsets" in v["init_args"]["task"]["init_args"]:
-                del v["init_args"]["task"]["init_args"]["task_label_offsets"]
-        cfg["model"]["init_args"]["model"]["class_path"] = "rslearn.models.multitask.MultiTaskMergedModel"
-        cfg["model"]["init_args"]["model"]["init_args"]["task_label_offsets"] = task_label_offsets
+        if old_cfg_style:
+            del cfg["model"]["init_args"]["task"]["init_args"]["task_label_offsets"]
+            for k, v in cfg["data"]["init_args"]["data_modules"].items():
+                if "task_label_offsets" in v["init_args"]["task"]["init_args"]:
+                    del v["init_args"]["task"]["init_args"]["task_label_offsets"]
+            cfg["model"]["init_args"]["model"]["class_path"] = "rslearn.models.multitask.MultiTaskMergedModel"
+            cfg["model"]["init_args"]["model"]["init_args"]["task_label_offsets"] = task_label_offsets
 
-        mm_init = cfg["model"]["init_args"]["model"]["init_args"]
-        if "task_embedding" in mm_init:
-            del mm_init["task_embedding"]
+            mm_init = cfg["model"]["init_args"]["model"]["init_args"]
+            if "task_embedding" in mm_init:
+                del mm_init["task_embedding"]
 
-        if "task_embedding" in mm_init:
-            mm_init["trunk"] = {
-                "class_path": "rslearn.models.trunk.DecoderTrunk",
-                "init_args": {
-                    "task_embedding": mm_init.pop("task_embedding")
+            if "task_embedding" in mm_init:
+                mm_init["trunk"] = {
+                    "class_path": "rslearn.models.trunk.DecoderTrunk",
+                    "init_args": {
+                        "task_embedding": mm_init.pop("task_embedding")
+                    }
                 }
-            }
-        elif "task_embedding" in mm_init.get("trunk", {}).get("init_args", {}):
-            trunk_args = mm_init.pop("trunk")["init_args"]
-            trunk_args["disable_moe"] = (
-                not trunk_args.pop("use_moe") 
-                if "use_moe" in trunk_args else False
-            )
-            mm_init["trunk"] = {
-                "class_path": "rslearn.models.trunk.DecoderTrunk",
-                "init_args": {
-                    "task_embedding": trunk_args.pop("task_embedding"),
-                    "layers": [
-                        {
-                            "class_path": "rslearn.models.trunk.MoETransformer",
-                            "init_args": trunk_args
-                        }
-                    ]
+            elif "task_embedding" in mm_init.get("trunk", {}).get("init_args", {}):
+                trunk_args = mm_init.pop("trunk")["init_args"]
+                trunk_args["disable_moe"] = (
+                    not trunk_args.pop("use_moe") 
+                    if "use_moe" in trunk_args else False
+                )
+                mm_init["trunk"] = {
+                    "class_path": "rslearn.models.trunk.DecoderTrunk",
+                    "init_args": {
+                        "task_embedding": trunk_args.pop("task_embedding"),
+                        "layers": [
+                            {
+                                "class_path": "rslearn.models.trunk.MoETransformer",
+                                "init_args": trunk_args
+                            }
+                        ]
+                    }
                 }
-            }
 
         # Set limit on validation batches
         cfg["trainer"] = {"callbacks": []}
         cfg["trainer"]["limit_val_batches"] = None
+
+        print("=" * 30 + " MODEL CONFIG " + "=" * 30)
+        print(json.dumps(cfg["model"], indent=2))
+        print("=" * 80)
+        print()
 
         yaml.dump(cfg, f)
         f.flush()
@@ -140,7 +159,7 @@ if __name__ == "__main__":
 
         # Patch trunk weights for older version
         with tempfile.NamedTemporaryFile(mode="w") as f:
-            ckpt_path = os.path.join(ckpt_path, 'checkpoints', 'last.ckpt')
+            ckpt_path = os.path.join(ckpt_path, 'checkpoints', ckpt_file)
             sd = torch.load(ckpt_path)
             if any(k.startswith("model.task_embedding") for k in sd["state_dict"]):
                 for k, v in list(sd["state_dict"].items()):
