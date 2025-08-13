@@ -1,19 +1,22 @@
+"""Sample pipeline for running inference using EsPredictRunner."""
+
 import logging
 from pathlib import Path
 
 from esrun.runner.local.predict_runner import EsPredictRunner
 
 CONFIG_PATH = Path(__file__).parent
-PREDICTION_REQUEST_PATH = CONFIG_PATH / 'prediction_requests/test-request1.geojson'
+PREDICTION_REQUEST_PATH = CONFIG_PATH / "prediction_requests/test-request1.geojson"
 
 logging.basicConfig(level=logging.INFO)
 
 
-def main():
+def main() -> None:
+    """Main function to run the inference pipeline."""
     runner = EsPredictRunner(
         project_path=CONFIG_PATH,
-        scratch_path=CONFIG_PATH / 'scratch',
-        prediction_request_geometry_path=PREDICTION_REQUEST_PATH
+        scratch_path=CONFIG_PATH / "scratch",
+        prediction_request_geometry_path=PREDICTION_REQUEST_PATH,
     )
     partitions = runner.partition()
     for partition_id in partitions:

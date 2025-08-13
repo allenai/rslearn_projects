@@ -1,14 +1,7 @@
 {
-  "type": "FeatureCollection",
   "features": [
     {
-      "type": "Feature",
-      "properties": {
-        "es_start_time": "2024-09-15T00:00:00+00:00",
-        "es_end_time": "2024-09-15T00:00:00+00:00"
-      },
       "geometry": {
-        "type": "Polygon",
         "coordinates": [
           [
             [
@@ -96,17 +89,17 @@
               -5.0142500000000005
             ]
           ]
-        ]
-      }
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "es_end_time": "2024-09-15T00:00:00+00:00",
+        "es_start_time": "2024-09-15T00:00:00+00:00"
+      },
+      "type": "Feature"
     },
     {
-      "type": "Feature",
-      "properties": {
-        "es_start_time": "2024-10-17T00:00:00+00:00",
-        "es_end_time": "2024-10-17T00:00:00+00:00"
-      },
       "geometry": {
-        "type": "Polygon",
         "coordinates": [
           [
             [
@@ -202,8 +195,15 @@
               -8.725150000000001
             ]
           ]
-        ]
-      }
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "es_end_time": "2024-10-17T00:00:00+00:00",
+        "es_start_time": "2024-10-17T00:00:00+00:00"
+      },
+      "type": "Feature"
     }
-  ]
+  ],
+  "type": "FeatureCollection"
 }
