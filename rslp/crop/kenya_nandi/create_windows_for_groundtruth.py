@@ -3,7 +3,7 @@
 import argparse
 import hashlib
 import multiprocessing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import shapely
@@ -22,8 +22,8 @@ WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
 
 # Center month between "2022-09-30" and "2023-09-30"
-START_TIME = datetime(2023, 3, 1, tzinfo=timezone.utc)
-END_TIME = datetime(2023, 3, 31, tzinfo=timezone.utc)
+START_TIME = datetime(2023, 3, 1, tzinfo=UTC)
+END_TIME = datetime(2023, 3, 31, tzinfo=UTC)
 
 
 def process_csv(

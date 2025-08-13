@@ -3,7 +3,7 @@
 import json
 import pathlib
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from upath import UPath
 
@@ -39,7 +39,7 @@ def test_predict_pipeline(
             gcs_tiff_filenames=[tiff_filename],
             conf_prefix=alert_tiffs_prefix,
             date_prefix=alert_date_tiffs_prefix,
-            prediction_utc_time=datetime(2024, 10, 23, tzinfo=timezone.utc),
+            prediction_utc_time=datetime(2024, 10, 23, tzinfo=UTC),
             max_number_of_events=1,
             min_confidence=1,
             min_area=16.0,

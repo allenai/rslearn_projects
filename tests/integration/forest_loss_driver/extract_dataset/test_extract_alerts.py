@@ -2,7 +2,7 @@
 
 import pathlib
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import shapely
 import shapely.wkt
@@ -85,7 +85,7 @@ def test_extract_alerts(
         min_area=16.0,
         conf_prefix=alert_tiffs_prefix,
         date_prefix=alert_date_tiffs_prefix,
-        prediction_utc_time=datetime(2024, 10, 23, tzinfo=timezone.utc),
+        prediction_utc_time=datetime(2024, 10, 23, tzinfo=UTC),
         country_data_path=country_data_path,
     )
     extract_alerts(ds_root, extract_alerts_args)

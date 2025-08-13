@@ -2,7 +2,7 @@
 
 import json
 import pathlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import numpy as np
 import pytest
@@ -101,7 +101,7 @@ def test_create_forest_loss_mask_events_found() -> None:
         date_data,
         min_confidence,
         days_to_look_back,
-        datetime(2024, 11, 23, tzinfo=timezone.utc),
+        datetime(2024, 11, 23, tzinfo=UTC),
     )
     assert np.all(mask == expected_mask)
 
@@ -120,6 +120,6 @@ def test_create_forest_loss_mask_events_not_found() -> None:
         date_data_2,
         min_confidence,
         days_to_look_back,
-        datetime(2024, 11, 23, tzinfo=timezone.utc),
+        datetime(2024, 11, 23, tzinfo=UTC),
     )
     assert np.all(mask_2 == np.zeros_like(mask_2))

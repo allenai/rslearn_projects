@@ -3,7 +3,7 @@
 import argparse
 import hashlib
 import multiprocessing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import shapely
@@ -22,8 +22,8 @@ WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
 
 # We want to get the whole year of 2020
-START_TIME = datetime(2020, 6, 15, tzinfo=timezone.utc)
-END_TIME = datetime(2020, 7, 15, tzinfo=timezone.utc)
+START_TIME = datetime(2020, 6, 15, tzinfo=UTC)
+END_TIME = datetime(2020, 7, 15, tzinfo=UTC)
 
 
 def create_window(

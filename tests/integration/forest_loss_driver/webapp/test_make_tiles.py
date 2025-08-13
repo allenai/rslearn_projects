@@ -3,7 +3,7 @@
 import json
 import math
 import pathlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import mapbox_vector_tile
 import shapely
@@ -58,7 +58,7 @@ def test_make_tiles(tmp_path: pathlib.Path) -> None:
         json.dump(
             {
                 "wkt": wgs84_geom.shp.wkt,
-                "date": datetime(2024, 1, 1, tzinfo=timezone.utc).isoformat(),
+                "date": datetime(2024, 1, 1, tzinfo=UTC).isoformat(),
             },
             f,
         )

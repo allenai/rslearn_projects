@@ -3,7 +3,7 @@
 import argparse
 import hashlib
 import multiprocessing
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 import shapely
@@ -35,7 +35,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     latitude, longitude = csv_row["latitude"], csv_row["longitude"]
 
     valid_time = datetime.strptime(csv_row["valid_time"], "%Y-%m-%d").replace(
-        tzinfo=timezone.utc
+        tzinfo=UTC
     )
     start_time, end_time = (
         valid_time - timedelta(days=15),

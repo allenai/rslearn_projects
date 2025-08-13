@@ -3,7 +3,7 @@
 import json
 import random
 from collections.abc import Generator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import shapely
 import tqdm
@@ -288,7 +288,7 @@ def write_jobs_for_year_months(
     """
     jobs = []
     for year, month in year_months:
-        ts = datetime(year, month, 1, tzinfo=timezone.utc)
+        ts = datetime(year, month, 1, tzinfo=UTC)
         time_range = (
             ts - timedelta(days=days_before),
             ts + timedelta(days=days_after),

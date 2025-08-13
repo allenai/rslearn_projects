@@ -6,7 +6,7 @@ import io
 import json
 import multiprocessing
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import numpy as np
@@ -34,7 +34,7 @@ from rslp.config import BaseDataPipelineConfig
 
 from .config import CATEGORIES, COLORS
 
-DEFAULT_TS = datetime(2024, 8, 1, tzinfo=timezone.utc)
+DEFAULT_TS = datetime(2024, 8, 1, tzinfo=UTC)
 
 
 class DataPipelineConfig(BaseDataPipelineConfig):
@@ -289,7 +289,7 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
         int(parts[2]),
         int(parts[3]),
         int(parts[4]),
-        tzinfo=timezone.utc,
+        tzinfo=UTC,
     )
 
     # First create window for the entire GeoTIFF.

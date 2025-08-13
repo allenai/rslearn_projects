@@ -1,7 +1,7 @@
 """Test Satlas data_sources.py."""
 
 import pathlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import shapely
 from rslearn.config import (
@@ -48,8 +48,8 @@ class TestGetItems:
             seattle_point[1] + 0.001,
         )
         time_range = (
-            datetime(2024, 4, 1, tzinfo=timezone.utc),
-            datetime(2024, 7, 1, tzinfo=timezone.utc),
+            datetime(2024, 4, 1, tzinfo=UTC),
+            datetime(2024, 7, 1, tzinfo=UTC),
         )
         geometry = STGeometry(WGS84_PROJECTION, shp, time_range)
 

@@ -2,7 +2,7 @@
 
 import json
 import pathlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import shapely
 from rslearn.const import WGS84_PROJECTION
@@ -38,8 +38,8 @@ def test_predict_pipeline_point(tmp_path: pathlib.Path) -> None:
 
     # The wind farm existed since 2019 so this time range will work.
     time_range = (
-        datetime(2024, 1, 1, tzinfo=timezone.utc),
-        datetime(2024, 8, 1, tzinfo=timezone.utc),
+        datetime(2024, 1, 1, tzinfo=UTC),
+        datetime(2024, 8, 1, tzinfo=UTC),
     )
 
     # Output path will contain outputs, while scratch path is used as a working

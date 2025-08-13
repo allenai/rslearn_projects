@@ -2,7 +2,7 @@
 
 import argparse
 import multiprocessing
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 import shapely
@@ -39,9 +39,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     )
     scr5_obs_year = scr5_obs_date.split("/")[0]
 
-    sampling_date = datetime.strptime(scr5_obs_date, "%Y/%m/%d").replace(
-        tzinfo=timezone.utc
-    )
+    sampling_date = datetime.strptime(scr5_obs_date, "%Y/%m/%d").replace(tzinfo=UTC)
     start_time, end_time = (
         sampling_date - timedelta(days=15),
         sampling_date + timedelta(days=15),

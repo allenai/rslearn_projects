@@ -10,7 +10,7 @@ authors = [
     {name = "Mike Jacobi", email = "mikej@allenai.org"},
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 dynamic = ["dependencies", "optional-dependencies"]
 
@@ -27,6 +27,7 @@ optional-dependencies = {ai2 = { file = ["ai2_requirements.txt"] }}
 
 [tool.ruff]
 fix = true
+target-version = 'py311'
 
 [tool.ruff.lint]
 extend-select = ["D", "I", "UP"]
