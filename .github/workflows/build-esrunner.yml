@@ -8,7 +8,7 @@ on:
     types: [opened, synchronize, reopened]
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}_esrunner
+  IMAGE_NAME: ${{ github.repository }}/esrunner
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
