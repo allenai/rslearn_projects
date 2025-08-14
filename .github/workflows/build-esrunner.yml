@@ -31,7 +31,7 @@ jobs:
           repository: allenai/helios
           ref: 86ecc99f962da00debe4bf7fb853784ab5392c42
           path: repos/helios
-          token: ${{ secrets.GIT_TOKEN }}
+          token: ${{ secrets.DOCKER_BUILD_PAT_JOSH }}
 
       - name: Checkout rslearn
         uses: actions/checkout@v4
@@ -39,7 +39,7 @@ jobs:
           repository: allenai/rslearn
           ref: master
           path: repos/rslearn
-          token: ${{ secrets.GIT_TOKEN }}
+#          token: ${{ secrets.GIT_TOKEN }}
 
       - name: Checkout earth-system-run
         uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
           repository: allenai/earth-system-run
           ref: v1-develop
           path: repos/earth-system-run
-          token: ${{ secrets.GIT_TOKEN }}
+          token: ${{ secrets.DOCKER_BUILD_PAT_JOSH }}
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
