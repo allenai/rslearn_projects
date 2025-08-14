@@ -31,7 +31,7 @@ jobs:
           repository: allenai/helios
           ref: 86ecc99f962da00debe4bf7fb853784ab5392c42
           path: repos/helios
-          token: ${{ secrets.GIT_USERNAME }}
+          token: ${{ secrets.GIT_TOKEN }}
 
       - name: Checkout rslearn
         uses: actions/checkout@v4
