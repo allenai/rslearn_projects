@@ -16,7 +16,7 @@ model:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
                 in_channels: [[{PATCH_SIZE}, {ENCODER_EMBEDDING_SIZE}]]
-                out_channels: 12
+                out_channels: 3
                 conv_layers_per_resolution: 1
                 num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -37,14 +37,24 @@ data:
           segment:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 12
+              num_classes: 3
               remap_values: [[0, 1], [0, 255]]
+              # class_id_mapping: {1: 1, 2: 2, 3: 2, 4: 2, 5: 2, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 2}
+              # Classes: 0 - invalid, 1 - maize, 2 - bean, 3 - other
+              # class_id_mapping: {1: 3, 2: 2, 3: 3, 4: 3, 5: 1, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 3}
+              # Maize model
+              # Classes: 0 - invalid, 1 - maize, 2 - other
+              class_id_mapping: {1: 2, 2: 2, 3: 2, 4: 2, 5: 1, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 2}
+              # Beans model
+              # Classes: 0 - invalid, 1 - bean, 2 - other
+              # class_id_mapping: {1: 2, 2: 1, 3: 2, 4: 2, 5: 2, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 2}
               zero_is_invalid: true
               metric_kwargs:
                 average: "micro"
               enable_miou_metric: true
               miou_metric_kwargs:
                 ignore_missing_classes: true
+                class_idx: 1
               enable_f1_metric: true
         input_mapping:
           segment:
