@@ -1,6 +1,7 @@
 """Helios model wrapper for fine-tuning in rslearn."""
 
 import json
+import os
 from contextlib import nullcontext
 from typing import Any
 
@@ -82,8 +83,14 @@ class Helios(torch.nn.Module):
 
         # Load the checkpoint.
         if not random_initialization:
-            train_module_dir = f"{checkpoint_path}/model_and_optim"
-            load_model_and_optim_state(train_module_dir, model)
+            train_module_dir = os.path.join(checkpoint_path, "model_and_optim")
+            if os.path.exists(train_module_dir):
+                load_model_and_optim_state(train_module_dir, model)
+                logger.info(f"loaded helios encoder from {train_module_dir}")
+            else:
+                logger.info(f"could not find helios encoder at {train_module_dir}")
+        else:
+            logger.info("skipping loading helios encoder")
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:

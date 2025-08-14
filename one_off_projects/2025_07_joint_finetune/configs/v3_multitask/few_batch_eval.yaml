@@ -1,0 +1,2 @@
+trainer:
+  limit_val_batches: 204  # match the 1024/5 coming out of joint detect
