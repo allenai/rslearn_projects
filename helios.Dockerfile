@@ -4,12 +4,19 @@ RUN apt update
 RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
 
 # Install rslearn and helios (need to be in local directory).
-COPY ./rslearn /opt/rslearn
-COPY ./helios /opt/helios
+COPY ./docker_build/rslearn /opt/rslearn
+COPY ./docker_build/helios /opt/helios
 COPY requirements.txt /opt/rslearn_projects/requirements.txt
+COPY ai2_requirements.txt /opt/rslearn_projects/ai2_requirements.txt
+
+# We also install terratorch so that we can use the same Docker image for TerraMind
+# experiments.
+RUN pip install --no-cache-dir git+https://github.com/IBM/terratorch.git
+RUN pip install --no-cache-dir geobench==0.0.1
+
 RUN pip install --no-cache-dir --upgrade /opt/rslearn[extra]
 RUN pip install --no-cache-dir --upgrade /opt/helios
-RUN pip install --no-cache-dir -r /opt/rslearn_projects/requirements.txt
+RUN pip install --no-cache-dir -r /opt/rslearn_projects/requirements.txt -r /opt/rslearn_projects/ai2_requirements.txt
 
 # Copy rslearn_projects and install it too.
 COPY . /opt/rslearn_projects/
