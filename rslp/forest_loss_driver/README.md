@@ -169,5 +169,17 @@ Then we have a script to select windows:
 python -m rslp.forest_loss_driver.scripts.select_for_phase2
 ```
 
+After doing this I was worried that the selected annotations for phase 2 might be too
+close to the initial set of annotations, since the `select_for_phase2.py` will create
+grid index to avoid picking annotations within 500 m of each other but only within the
+new set, not comparing against the previous set. But I wrote a quick script to check
+the selections against the previous set and it looks like only 4 are within 500 m of a
+phase 1 annotation (14 within 1 km, 75 within 5 km).
+
+Also I realized I actually intended to ensure the new annotations are at least 500
+pixels (5 km) from each other, not 500 m, but I checked this too and 197 of the 682
+total have another annotation within 5 km. I think that is okay, most of them are
+fairly isolated, and 50 pixels away is still something.
+
 Once these examples are annotated we should train the model again, but focus more on
 accuracy instead of using it to prioritize what else to annotate.
