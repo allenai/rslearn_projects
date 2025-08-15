@@ -19,7 +19,6 @@ model:
                 anchor_sizes: [[32]]
 data:
   init_args:
-    batch_size: 32
     inputs:
       s21:
         data_type: "raster"
