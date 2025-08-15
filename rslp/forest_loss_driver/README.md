@@ -88,14 +88,19 @@ python -m rslp.main forest_loss_driver extract_alerts --ds_path /weka/dfive-defa
 ```
 
 Switch the rslearn dataset configuration file with the one in
-`data/forest_loss_driver/config_rgb_geotiff.json`. This obtains an 8-bit RGB GeoTIFF
-for the Sentinel-2 data, along with Planet Labs imagery. Then run the standard prepare,
-ingest, and materialize steps.
+`data/forest_loss_driver/config_studio_annotation.json`. This obtains an 8-bit RGB
+GeoTIFF for the Sentinel-2 data, along with Planet Labs imagery. Then run the standard
+prepare, ingest, and materialize steps.
 
 Use the script `rslp/forest_loss_driver/scripts/populate_label_layer.py` to populate a
 placeholder label layer that contains the forest loss polygons. This isn't generated
 automatically by the alert extraction pipeline since that is primarily designed to
 create a dataset for inference.
+
+We also had a script `rslp/forest_loss_driver/scripts/select_windows_in_amazon.py`
+since ACA requested to focus on Amazon and not other areas of the countries (they
+provided a bounding polygon to apply). The script moves the windows outside that
+polygon to other groups in the rslearn dataset.
 
 Now import into ES Studio:
 
@@ -103,3 +108,66 @@ Now import into ES Studio:
 python tools/rslearn_import.py --dataset-path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --layers best_pre_0 best_pre_1 best_pre_2 best_post_0 best_post_1 best_post_2 label planet_monthly --api-url https://earth-system-studio.allen.ai --project-name 'Forest Loss Driver Brazil 7' --always-upload-rasters --workers 64 --groups 20250428_brazil_phase1
 python tools/rslearn_import.py --dataset-path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --layers best_pre_0 best_pre_1 best_pre_2 best_post_0 best_post_1 best_post_2 label planet_monthly --api-url https://earth-system-studio.allen.ai --project-name 'Forest Loss Driver Colombia 7' --always-upload-rasters --workers 64 --groups 20250428_colombia_phase1
 ```
+
+The script `rslp/forest_loss_driver/scripts/add_area_to_studio_tasks.py` can then be
+run (after configuring basemaps and annotation tags) to have the area of the polygon
+show up as a metadata value.
+
+## Select Additional Examples to Label
+
+For the Peru+Brazil+Colombia project (2025), we first picked 500 examples to label from
+the "Adding Examples" workflow above. We use that to prioritize what else to label by
+training a model on Peru examples + Brazil/Colombia, and then look at the output
+classes and probabilities.
+
+First we sync the labels from Studio. ACA proposed an updated label hierarchy for this
+project, but here we are mapping it back to our old hierarchy for compatibility with
+the Peru labels.
+
+```
+python -m rslp.forest_loss_driver.scripts.sync_labels_from_studio --project_id f56e41c6-83ab-4a7f-9b14-443391f9b2ba --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/
+python -m rslp.forest_loss_driver.scripts.sync_labels_from_studio --project_id a493cba0-466f-4604-8359-c437b78f7009 --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/
+```
+
+Create a combined dataset with the Peru labels. We use the multimodal config but really we just use Sentinel-2 images here.
+
+```
+mkdir /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/
+cp data/forest_loss_driver/config_multimodal.json /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/config.json
+rsync -av /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/windows/{20250428_brazil_phase1,20250428_colombia_phase1} /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/windows/
+rsync -av /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/20250605/windows/* /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/windows/
+# Re-materialize since the source dataset may have had different config.
+rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/ --workers 64 --disabled-layers pre_landsat,post_landsat,pre_sentinel1,post_sentinel1 --retry-max-attempts 5 --retry-backoff-seconds 5
+rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/ --workers 64 --disabled-layers pre_landsat,post_landsat,pre_sentinel1,post_sentinel1 --ignore-errors --retry-max-attempts 5 --retry-backoff-seconds 5
+```
+
+Next we can train a model on the data.
+
+```
+python -m rslp.rslearn_main model fit --config data/forest_loss_driver/model_for_phase2/config_helios_frozen.yaml
+```
+
+This model performs well but all of these configs have been updated for training on
+this data.
+
+- `data/forest_loss_driver/model_for_phase2/config_satlaspretrain.yaml`
+- `data/forest_loss_driver/model_for_phase2/config_helios.yaml`
+- `data/forest_loss_driver/model_for_phase2/config_helios_frozen.yaml`
+
+Apply the model to the remaining collected windows:
+
+```
+python -m rslp.rslearn_main model predict --config data/forest_loss_driver/config_helios_frozen.yaml --data.init_args.path=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --data.init_args.predict_config.groups=["20250428_colombia","20250428_brazil"] --load_best=true
+```
+
+Then we have a script to select windows:
+
+- Select 50 each from Brazil/Colombia predicted as road/logging/mining/river/landslide (500 total)
+- Select 150 each from Brazil/Colombia predicted not as the above classes with max(probabilities) < 0.6 (300 total)
+
+```
+python -m rslp.forest_loss_driver.scripts.select_for_phase2
+```
+
+Once these examples are annotated we should train the model again, but focus more on
+accuracy instead of using it to prioritize what else to annotate.

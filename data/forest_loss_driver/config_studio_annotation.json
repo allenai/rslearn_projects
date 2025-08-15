@@ -1,0 +1,654 @@
+{
+  "layers": {
+    "best_post_0": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "best_post_1": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "best_post_2": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "best_pre_0": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "best_pre_1": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "best_pre_2": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "label": {
+      "class_names": [
+        "agriculture",
+        "agriculture-generic",
+        "agriculture-mennonite",
+        "agriculture-rice",
+        "agriculture-small",
+        "airstrip",
+        "burned",
+        "coca",
+        "flood",
+        "human",
+        "hurricane",
+        "landslide",
+        "logging",
+        "mining",
+        "natural",
+        "none",
+        "river",
+        "road",
+        "unknown",
+        "unlabeled"
+      ],
+      "class_property_name": "new_label",
+      "type": "vector"
+    },
+    "mask": {
+      "band_sets": [
+        {
+          "bands": [
+            "mask"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "mask_vector": {
+      "type": "vector"
+    },
+    "output": {
+      "type": "vector"
+    },
+    "planet_monthly": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "zoom_offset": 2
+        }
+      ],
+      "data_source": {
+        "duration": "180d",
+        "ingest": false,
+        "name": "rslearn.data_sources.xyz_tiles.XyzTiles",
+        "query_config": {
+          "max_matches": 8,
+          "space_mode": "CONTAINS"
+        },
+        "time_offset": "-90d",
+        "time_ranges": [
+          [
+            "2020-09-01T00:00:00+00:00",
+            "2020-10-01T00:00:00+00:00"
+          ],
+          [
+            "2020-10-01T00:00:00+00:00",
+            "2020-11-01T00:00:00+00:00"
+          ],
+          [
+            "2020-11-01T00:00:00+00:00",
+            "2020-12-01T00:00:00+00:00"
+          ],
+          [
+            "2020-12-01T00:00:00+00:00",
+            "2020-12-31T23:59:59+00:00"
+          ],
+          [
+            "2021-01-01T00:00:00+00:00",
+            "2021-02-01T00:00:00+00:00"
+          ],
+          [
+            "2021-02-01T00:00:00+00:00",
+            "2021-03-01T00:00:00+00:00"
+          ],
+          [
+            "2021-03-01T00:00:00+00:00",
+            "2021-04-01T00:00:00+00:00"
+          ],
+          [
+            "2021-04-01T00:00:00+00:00",
+            "2021-05-01T00:00:00+00:00"
+          ],
+          [
+            "2021-05-01T00:00:00+00:00",
+            "2021-06-01T00:00:00+00:00"
+          ],
+          [
+            "2021-06-01T00:00:00+00:00",
+            "2021-07-01T00:00:00+00:00"
+          ],
+          [
+            "2021-07-01T00:00:00+00:00",
+            "2021-08-01T00:00:00+00:00"
+          ],
+          [
+            "2021-08-01T00:00:00+00:00",
+            "2021-09-01T00:00:00+00:00"
+          ],
+          [
+            "2021-09-01T00:00:00+00:00",
+            "2021-10-01T00:00:00+00:00"
+          ],
+          [
+            "2021-10-01T00:00:00+00:00",
+            "2021-11-01T00:00:00+00:00"
+          ],
+          [
+            "2021-11-01T00:00:00+00:00",
+            "2021-12-01T00:00:00+00:00"
+          ],
+          [
+            "2021-12-01T00:00:00+00:00",
+            "2021-12-31T23:59:59+00:00"
+          ],
+          [
+            "2022-01-01T00:00:00+00:00",
+            "2022-02-01T00:00:00+00:00"
+          ],
+          [
+            "2022-02-01T00:00:00+00:00",
+            "2022-03-01T00:00:00+00:00"
+          ],
+          [
+            "2022-03-01T00:00:00+00:00",
+            "2022-04-01T00:00:00+00:00"
+          ],
+          [
+            "2022-04-01T00:00:00+00:00",
+            "2022-05-01T00:00:00+00:00"
+          ],
+          [
+            "2022-05-01T00:00:00+00:00",
+            "2022-06-01T00:00:00+00:00"
+          ],
+          [
+            "2022-06-01T00:00:00+00:00",
+            "2022-07-01T00:00:00+00:00"
+          ],
+          [
+            "2022-07-01T00:00:00+00:00",
+            "2022-08-01T00:00:00+00:00"
+          ],
+          [
+            "2022-08-01T00:00:00+00:00",
+            "2022-09-01T00:00:00+00:00"
+          ],
+          [
+            "2022-09-01T00:00:00+00:00",
+            "2022-10-01T00:00:00+00:00"
+          ],
+          [
+            "2022-10-01T00:00:00+00:00",
+            "2022-11-01T00:00:00+00:00"
+          ],
+          [
+            "2022-11-01T00:00:00+00:00",
+            "2022-12-01T00:00:00+00:00"
+          ],
+          [
+            "2022-12-01T00:00:00+00:00",
+            "2022-12-31T23:59:59+00:00"
+          ],
+          [
+            "2023-01-01T00:00:00+00:00",
+            "2023-02-01T00:00:00+00:00"
+          ],
+          [
+            "2023-02-01T00:00:00+00:00",
+            "2023-03-01T00:00:00+00:00"
+          ],
+          [
+            "2023-03-01T00:00:00+00:00",
+            "2023-04-01T00:00:00+00:00"
+          ],
+          [
+            "2023-04-01T00:00:00+00:00",
+            "2023-05-01T00:00:00+00:00"
+          ],
+          [
+            "2023-05-01T00:00:00+00:00",
+            "2023-06-01T00:00:00+00:00"
+          ],
+          [
+            "2023-06-01T00:00:00+00:00",
+            "2023-07-01T00:00:00+00:00"
+          ],
+          [
+            "2023-07-01T00:00:00+00:00",
+            "2023-08-01T00:00:00+00:00"
+          ],
+          [
+            "2023-08-01T00:00:00+00:00",
+            "2023-09-01T00:00:00+00:00"
+          ],
+          [
+            "2023-09-01T00:00:00+00:00",
+            "2023-10-01T00:00:00+00:00"
+          ],
+          [
+            "2023-10-01T00:00:00+00:00",
+            "2023-11-01T00:00:00+00:00"
+          ],
+          [
+            "2023-11-01T00:00:00+00:00",
+            "2023-12-01T00:00:00+00:00"
+          ],
+          [
+            "2023-12-01T00:00:00+00:00",
+            "2023-12-31T23:59:59+00:00"
+          ],
+          [
+            "2024-01-01T00:00:00+00:00",
+            "2024-02-01T00:00:00+00:00"
+          ],
+          [
+            "2024-02-01T00:00:00+00:00",
+            "2024-03-01T00:00:00+00:00"
+          ],
+          [
+            "2024-03-01T00:00:00+00:00",
+            "2024-04-01T00:00:00+00:00"
+          ],
+          [
+            "2024-04-01T00:00:00+00:00",
+            "2024-05-01T00:00:00+00:00"
+          ],
+          [
+            "2024-05-01T00:00:00+00:00",
+            "2024-06-01T00:00:00+00:00"
+          ],
+          [
+            "2024-06-01T00:00:00+00:00",
+            "2024-07-01T00:00:00+00:00"
+          ],
+          [
+            "2024-07-01T00:00:00+00:00",
+            "2024-08-01T00:00:00+00:00"
+          ],
+          [
+            "2024-08-01T00:00:00+00:00",
+            "2024-09-01T00:00:00+00:00"
+          ],
+          [
+            "2024-09-01T00:00:00+00:00",
+            "2024-10-01T00:00:00+00:00"
+          ],
+          [
+            "2024-10-01T00:00:00+00:00",
+            "2024-11-01T00:00:00+00:00"
+          ],
+          [
+            "2024-11-01T00:00:00+00:00",
+            "2024-12-01T00:00:00+00:00"
+          ],
+          [
+            "2024-12-01T00:00:00+00:00",
+            "2024-12-31T23:59:59+00:00"
+          ],
+          [
+            "2025-01-01T00:00:00+00:00",
+            "2025-02-01T00:00:00+00:00"
+          ],
+          [
+            "2025-02-01T00:00:00+00:00",
+            "2025-03-01T00:00:00+00:00"
+          ],
+          [
+            "2025-03-01T00:00:00+00:00",
+            "2025-04-01T00:00:00+00:00"
+          ],
+          [
+            "2025-04-01T00:00:00+00:00",
+            "2025-05-01T00:00:00+00:00"
+          ]
+        ],
+        "url_templates": [
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2020_09_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2020_10_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2020_11_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2020_12_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_01_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_02_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_03_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_04_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_05_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_06_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_07_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_08_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_09_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_10_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_11_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2021_12_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_01_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_02_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_03_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_04_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_05_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_06_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_07_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_08_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_09_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_10_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_11_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2022_12_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_01_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_02_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_03_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_04_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_05_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_06_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_07_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_08_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_09_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_10_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_11_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2023_12_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_01_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_02_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_03_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_04_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_05_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_06_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_07_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_08_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_09_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_10_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_11_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2024_12_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2025_01_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2025_02_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2025_03_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272",
+          "https://tiles.planet.com/basemaps/v1/planet-tiles/global_monthly_2025_04_mosaic/gmap/{z}/{x}/{y}.png?api_key=PLAKaa692f6be6dc4f498acfa8f9eab72272"
+        ],
+        "zoom": 16
+      },
+      "type": "raster"
+    },
+    "post": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "180d",
+        "harmonize": true,
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 6,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "7d"
+      },
+      "type": "raster"
+    },
+    "pre_0": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "30d",
+        "harmonize": true,
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-300d"
+      },
+      "type": "raster"
+    },
+    "pre_1": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "30d",
+        "harmonize": true,
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-330d"
+      },
+      "type": "raster"
+    },
+    "pre_2": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "30d",
+        "harmonize": true,
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-360d"
+      },
+      "type": "raster"
+    },
+    "pre_3": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "30d",
+        "harmonize": true,
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-390d"
+      },
+      "type": "raster"
+    },
+    "pre_4": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "30d",
+        "harmonize": true,
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-410d"
+      },
+      "type": "raster"
+    },
+    "pre_5": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "30d",
+        "harmonize": true,
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-440d"
+      },
+      "type": "raster"
+    },
+    "pre_6": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "30d",
+        "harmonize": true,
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-470d"
+      },
+      "type": "raster"
+    }
+  }
+}
