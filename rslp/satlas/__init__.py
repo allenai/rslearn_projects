@@ -11,6 +11,7 @@ from .postprocess import merge_points, smooth_points
 from .postprocess_raster import (
     extract_polygons,
     smooth_rasters,
+    write_extract_polygons_jobs,
     write_smooth_rasters_jobs,
 )
 from .predict_pipeline import predict_multi, predict_pipeline
@@ -28,4 +29,5 @@ workflows = {
     "smooth_rasters": smooth_rasters,
     "write_smooth_rasters_jobs": write_smooth_rasters_jobs,
     "extract_polygons": extract_polygons,
+    "write_extract_polygons_jobs": write_extract_polygons_jobs,
 }

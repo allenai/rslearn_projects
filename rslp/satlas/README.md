@@ -143,6 +143,7 @@ Inference:
 Post-processing:
 
     python -m rslp.main satlas write_smooth_rasters_jobs --application SOLAR_FARM --label 2025-04 --predict_path gs://rslearn-eai/projects/satlas/solar_farm/version-20250108/ --smoothed_path gs://rslearn-eai/projects/satlas/solar_farm/version-20250108-smoothed/ --queue_name favyen/satlas-prediction-queue
+    python -m rslp.main satlas write_extract_polygons_jobs --label 2025-04 --smoothed_path gs://rslearn-eai/projects/satlas/solar_farm/version-20250108-smoothed/ --vectorized_path gs://rslearn-eai/projects/satlas/solar_farm/version-20250108-polygons/ --queue_name favyen/satlas-prediction-queue
 
 Publishing:
 

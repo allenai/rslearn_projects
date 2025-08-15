@@ -446,3 +446,52 @@ def extract_polygons(
     logger.info("Writing %d output features to %s", len(features), out_fname)
     vector_format = GeojsonVectorFormat(coordinate_mode=GeojsonCoordinateMode.WGS84)
     vector_format.encode_to_file(out_fname, features)
+
+
+def write_extract_polygons_jobs(
+    label: str,
+    smoothed_path: str,
+    vectorized_path: str,
+    queue_name: str,
+) -> None:
+    """Write jobs to run extract_polygons.
+
+    Args:
+        label: see extract_polygons.
+        smoothed_path: see extract_polygons.
+        vectorized_path: see extract_polygons.
+        queue_name: the Beaker queue to write the jobs to.
+    """
+    smoothed_upath = UPath(smoothed_path)
+    vectorized_upath = UPath(vectorized_path)
+
+    # Get completed filename set from vectorized dir.
+    completed_fnames = set()
+    for fname in (vectorized_upath / label).iterdir():
+        completed_fnames.add(fname.name.split(".")[0])
+
+    # Now create one job for each filename in the prediction dir.
+    jobs: list[list[str]] = []
+    for fname in (smoothed_upath / label).iterdir():
+        if not fname.name.endswith(".tif"):
+            continue
+        if fname.name.split(".")[0] in completed_fnames:
+            continue
+
+        projection, bounds = projection_and_bounds_from_fname(fname.name)
+        jobs.append(
+            [
+                "--label",
+                label,
+                "--smoothed_path",
+                smoothed_path,
+                "--vectorized_path",
+                vectorized_path,
+                "--projection",
+                json.dumps(projection.serialize()),
+                "--bounds",
+                json.dumps(bounds),
+            ]
+        )
+
+    rslp.common.worker.write_jobs(queue_name, "satlas", "extract_polygons", jobs)
