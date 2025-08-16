@@ -72,7 +72,7 @@ def process_csv(
         df_sampled.loc[df_sampled["Category"] == "Nativetrees/forest", "Category"] = (
             "Trees"
         )
-        df_sampled = df_sampled[~df_sampled["Category"].isin(["Vegetables", "Legumes"])]
+        # df_sampled = df_sampled[~df_sampled["Category"].isin(["Vegetables", "Legumes"])]
 
     print(df_sampled.shape)
     print(df_sampled.groupby("Category").size())
