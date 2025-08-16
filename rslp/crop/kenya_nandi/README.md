@@ -79,4 +79,24 @@ Prediction (note that the minimum window size is 4 if we set `zoom_offset` for S
 python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 4 --encoder_embedding_size 768 --image_name favyen/rslphelios7 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_crop_type_classification_helios_base_S2_ts_ws4_ps4 --mode predict
 ```
 
-TODO(yawenz): (1) make predictions faster, (2) produce geotiff directly for each window
+2025-08-15
+
+Add back `Vegetables` and `Legumes` classes so that more classes are being covered. In total, 19K points.
+
+| Category   |   Count |
+|:-----------|--------:|
+| Sugarcane  |    3870 |
+| Maize      |    3126 |
+| Tea        |    2906 |
+| Grassland  |    2724 |
+| Forest     |    2586 |
+| Coffee     |    2533 |
+| Legumes    |     977 |
+| Vegetables |     325 |
+
+A helpful function is to convert polygons to points, but still carry the original polygon id. 
+
+Use beaker launcher to materialize the dataset: 
+```
+python -m rslp.main common launch_data_materialization_jobs --image favyen/rslp_image --ds_path DATASET_PATH --group DATASET_GROUP --clusters+=ai2/neptune-cirrascale --num_jobs 10
+```
