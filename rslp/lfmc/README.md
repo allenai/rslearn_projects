@@ -6,14 +6,21 @@ The original LFMC work is based on Galileo model (more details can be found in P
 
 This file is the processed LFMC ground-truth data, which includes metadata like `latitude`, `longitude`, `sampling_date`, `site_name`, `lfmc_value`, `state_region`, `country`, `landcover` and `elevation`. We further cut off the LFMC value by 302 which is the 99.9% value.
 
-### 1. Create Windows
+### 1. Prepare Labels
+
+Run the following command to prepare labels:
+```
+python -m rslp.lfmc.prepare_labels --csv_path /tmp/lfmc-labels.csv
+```
+
+### 2. Create Windows
 
 Run the following commands to create windows:
 ```
-python rslp/lfmc/create_windows.py --csv_path /weka/dfive-default/yawenz/datasets/LFMC/lfmc-labels.csv --ds_path /weka/dfive-default/rslearn-eai/datasets/lfmc/20250626 --window_size 32
+python -m rslp.lfmc.create_windows --csv_path /tmp/lfmc-labels.csv --ds_path /weka/dfive-default/rslearn-eai/datasets/lfmc/20250626 --window_size 32
 ```
 
-### 2. Prepare/Ingest/Materialize Windows
+### 3. Prepare/Ingest/Materialize Windows
 
 Run the command to prepare/ingest/materialize groundtruth windows (the ingestion is mainly for SRTM):
 ```
@@ -26,7 +33,7 @@ python rslp/scripts/launch_beaker_data_materialization.py --project lfmc --ds_pa
 
 Note that to run these commands, we will need to set the environmental variables of `NASA_EARTHDATA_USERNAME` and `NASA_EARTHDATA_PASSWORD` ([Link](https://urs.earthdata.nasa.gov/)) for accessing SRTM data.
 
-### 3. Finetune Helios
+### 4. Finetune Helios
 
 Experiment 1: Single modality (Sentinel2) + time-series (12 months), window_size = 32, patch_size = 8
 ```
