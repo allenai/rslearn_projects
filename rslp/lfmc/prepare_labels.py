@@ -38,7 +38,7 @@ def download_excel(output_path: Path) -> None:
     Args:
         output_path: path to write the Excel file
     """
-    response = requests.get(INPUT_EXCEL_URL, stream=True)
+    response = requests.get(INPUT_EXCEL_URL, stream=True, timeout=60)
     response.raise_for_status()
 
     total_size = int(response.headers.get("content-length", 0))
