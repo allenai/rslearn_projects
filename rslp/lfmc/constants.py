@@ -54,7 +54,7 @@ CONUS_STATES = [
     "Wyoming",
 ]
 
-MAX_LFMC_VALUE = 302  # 99.9th percentile of the LFMC values
+CUTOFF_VALUE = 302  # 99.9th percentile of the LFMC values
 
 
 class Column(StrEnum):
