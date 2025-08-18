@@ -16,11 +16,11 @@ from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
+from rslp.lfmc.constants import CUTOFF_VALUE
 from rslp.utils.windows import calculate_bounds
 
 WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
-CUTOFF_VALUE = 302
 
 
 def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
@@ -31,7 +31,6 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         ds_path: path to the dataset
         window_size: window size
     """
-    # Cut off the LFMC value by 302 which is the 99.9% value
     lfmc_value = csv_row["lfmc_value"]
     if lfmc_value > CUTOFF_VALUE:
         lfmc_value = CUTOFF_VALUE
