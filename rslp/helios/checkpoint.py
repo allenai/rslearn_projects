@@ -1,5 +1,4 @@
-"""
-Load model and optimizer state in-place from a checkpoint saved via `save_model_and_optim_state()`.
+"""Load model and optimizer state in-place from a checkpoint saved via `save_model_and_optim_state()`.
 
 Copied from https://olmo-core.readthedocs.io/en/stable/_modules/olmo_core/distributed/checkpoint.html#load_model_and_optim_state,
 except that we allow for missing weights.
@@ -7,39 +6,38 @@ except that we allow for missing weights.
 Goal is eventually to get something like this merged into olmo_core and not have to maintain this.
 """
 
-from typing import Dict, Optional
-
 import torch
 import torch.distributed as dist
 import torch.distributed.checkpoint as dist_cp
 import torch.distributed.checkpoint.state_dict as dist_cp_sd
 import torch.nn as nn
 from olmo_core.aliases import PathOrStr
-from olmo_core.io import normalize_path
-from olmo_core.utils import gc_cuda
 from olmo_core.distributed.checkpoint import (
     RemoteFileSystemReader,
     _prepare_state_dict,
     swap_param_keys,
 )
+from olmo_core.io import normalize_path
+from olmo_core.utils import gc_cuda
+
 
 @torch.no_grad()
 def load_model_and_optim_state(
     dir: PathOrStr,
     model: nn.Module,
-    optim: Optional[torch.optim.Optimizer] = None,
+    optim: torch.optim.Optimizer | None = None,
     *,
-    process_group: Optional[dist.ProcessGroup] = None,
-    key_mapping: Optional[Dict[str, str]] = None,
+    process_group: dist.ProcessGroup | None = None,
+    key_mapping: dict[str, str] | None = None,
     pre_download: bool = False,
-    work_dir: Optional[PathOrStr] = None,
+    work_dir: PathOrStr | None = None,
     strict: bool = True,
     flatten_optimizer_state: bool = False,
-    thread_count: Optional[int] = None,
-    planner: Optional[dist_cp.DefaultLoadPlanner] = None,
-):
-    """
-    Load model and optimizer state in-place from a checkpoint saved via :func:`save_model_and_optim_state()`.
+    thread_count: int | None = None,
+    planner: dist_cp.DefaultLoadPlanner | None = None,
+) -> None:
+    """Load model and optimizer state in-place from a checkpoint saved via :func:`save_model_and_optim_state()`.
+
     This method is agnostic to the distributed topology in that it can load checkpoints saved with a different
     distributed topology (e.g. FSDP/FSDP2, DDP).
 
@@ -83,7 +81,10 @@ def load_model_and_optim_state(
     """
     dir = normalize_path(dir)
     state_dict = _prepare_state_dict(
-        model, optim, process_group=process_group, flatten_optimizer_state=flatten_optimizer_state
+        model,
+        optim,
+        process_group=process_group,
+        flatten_optimizer_state=flatten_optimizer_state,
     )
     reader = RemoteFileSystemReader(
         dir, thread_count=thread_count, pre_download=pre_download, work_dir=work_dir

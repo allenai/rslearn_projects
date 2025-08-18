@@ -1,9 +1,10 @@
 """Testing task-conditioned Helios model."""
 
 from pathlib import Path
+from typing import Any
 
-import torch
 import pytest
+import torch
 
 from rslp.helios.model import Helios, TaskConditionedHelios
 
@@ -11,7 +12,8 @@ from rslp.helios.model import Helios, TaskConditionedHelios
 @pytest.fixture
 def patch_load_model(monkeypatch: pytest.MonkeyPatch) -> None:
     """Prevent real file I/O: make Helios.load_model a no-op."""
-    def fake_load_model(self, *args, **kwargs):
+
+    def fake_load_model(self: Any, *args: Any, **kwargs: Any) -> None:
         # set a harmless placeholder; Helios.forward will be monkeypatched in tests that call it
         self.model = None
         return None
@@ -19,10 +21,12 @@ def patch_load_model(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(Helios, "load_model", fake_load_model, raising=True)
 
 
-def _dict_embeds(tasks, dim, base=0.0):
+def _dict_embeds(tasks: list, dim: int, base: float = 0.0) -> dict:
     """Build dict: task -> 1D tensor[dim]."""
-    return {t: (torch.arange(dim, dtype=torch.float32) + float(i) + base)
-            for i, t in enumerate(tasks)}
+    return {
+        t: (torch.arange(dim, dtype=torch.float32) + float(i) + base)
+        for i, t in enumerate(tasks)
+    }
 
 
 def test_learned_init(tmp_path: Path, patch_load_model: None) -> None:
@@ -35,7 +39,12 @@ def test_learned_init(tmp_path: Path, patch_load_model: None) -> None:
 
     model = TaskConditionedHelios(
         checkpoint_path="unused",  # load_model is patched to no-op
-        task_embed_opts={"dim": dim, "type": "learned", "tasks": tasks, "path": str(ckpt)},
+        task_embed_opts={
+            "dim": dim,
+            "type": "learned",
+            "tasks": tasks,
+            "path": str(ckpt),
+        },
     )
 
     # Expect weights stacked in the file’s (and thus self.tasks) order
@@ -54,15 +63,19 @@ def test_learned_init(tmp_path: Path, patch_load_model: None) -> None:
 def test_precomputed(tmp_path: Path, patch_load_model: None) -> None:
     """Precomputed task embeddings freezing and indexing using dict format."""
     dim = 3
-    d = {"a": torch.tensor([1.0, 2.0, 3.0]),
-         "b": torch.tensor([4.0, 5.0, 6.0])}
+    d = {"a": torch.tensor([1.0, 2.0, 3.0]), "b": torch.tensor([4.0, 5.0, 6.0])}
     ckpt = tmp_path / "embeds.pt"
     torch.save(d, ckpt)
 
     # tasks/dim from file; values in task_embed_opts are ignored for these fields
     model = TaskConditionedHelios(
         checkpoint_path="unused",
-        task_embed_opts={"dim": dim, "type": "precomputed", "tasks": ["x","y"], "path": str(ckpt)},
+        task_embed_opts={
+            "dim": dim,
+            "type": "precomputed",
+            "tasks": ["x", "y"],
+            "path": str(ckpt),
+        },
     )
 
     # Frozen params
@@ -82,10 +95,13 @@ def test_precomputed(tmp_path: Path, patch_load_model: None) -> None:
     assert torch.all(out2 == 0)
 
 
-def test_forward_restore(patch_load_model: None, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_forward_restore(
+    patch_load_model: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Forward sets and restores task embedding in forward_kwargs."""
+
     # Patch Helios.forward to assert the task_emb is present
-    def fake_forward(self, inputs):
+    def fake_forward(self: Any, inputs: list[torch.tensor]) -> list[torch.tensor]:
         assert "task_emb" in self.forward_kwargs
         return [torch.tensor(float(len(inputs)))]
 
@@ -106,10 +122,13 @@ def test_forward_restore(patch_load_model: None, monkeypatch: pytest.MonkeyPatch
     assert model.forward_kwargs.get("task_emb") == "SENTINEL"
 
 
-def test_forward_matches(patch_load_model: None, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_forward_matches(
+    patch_load_model: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """If task embeddings are zeroed, TCH should match Helios output (same super())."""
+
     # Single stub for both: return batch-size tensor, ignore task_emb contents
-    def simple_forward(self, inputs):
+    def simple_forward(self: Any, inputs: list[torch.tensor]) -> list[torch.tensor]:
         return [torch.tensor(float(len(inputs)))]
 
     monkeypatch.setattr(Helios, "forward", simple_forward, raising=True)
@@ -148,5 +167,10 @@ def test_invalid_opts(tmp_path: Path, patch_load_model: None) -> None:
     with pytest.raises(ValueError):
         TaskConditionedHelios(
             checkpoint_path="unused",
-            task_embed_opts={"dim": dim, "type": "learned", "tasks": tasks, "path": str(ckpt)},
+            task_embed_opts={
+                "dim": dim,
+                "type": "learned",
+                "tasks": tasks,
+                "path": str(ckpt),
+            },
         )

@@ -1,6 +1,7 @@
 import argparse
 import os
 import subprocess
+from datetime import datetime
 
 cmd = [
     "python", "-m", "rslp.main", "helios", "launch_finetune",
@@ -48,13 +49,20 @@ elif args.cfg == "pastis":
     for cfg in cfgs:
         cmd.append("--config_paths+=" + cfg)
 elif args.cfg == "lora":
-    args.cfg = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_12_embeds/OUT_classify.yaml"
+    args.cfg = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_12_embeds/OUT_classify_plain.yaml"
     args.exp_id = "debug_task_lora_classify"
     cmd.append("--config_paths+=" + args.cfg)
-    cmd.append("--allow_missing_weights")
-    cmd.append("true")
+elif args.cfg == "moe":
+    args.cfg = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_15_helios_moe/OUT_classify.yaml"
+    args.exp_id = "debug_task_moe_base"
+    cmd.append("--config_paths+=" + args.cfg)
 else:
     cmd.append("--config_paths+=" + args.cfg)
+
+
+if args.exp_id == "debug":
+    now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    args.exp_id = f"debug_{now}"
 
 print(args)
 

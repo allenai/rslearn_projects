@@ -2,16 +2,17 @@
 
 import json
 import os
+import re
 from contextlib import nullcontext
-from typing import Any, Dict
+from typing import Any
 
 import torch
-from torch.distributed.checkpoint import DefaultLoadPlanner
 from einops import rearrange
 from helios.data.constants import Modality
 from helios.nn.flexihelios import TokensAndMasks
 from helios.train.masking import MaskedHeliosSample, MaskValue
 from olmo_core.config import Config
+from torch.distributed.checkpoint import DefaultLoadPlanner
 
 from rslp.helios.checkpoint import load_model_and_optim_state
 from rslp.log_utils import get_logger
@@ -33,9 +34,9 @@ AUTOCAST_DTYPE_MAP = {
 }
 
 
-def deep_merge(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
+def deep_merge(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     """Deep merge two dictionaries in place, override a keys with b keys.
-    
+
     Args:
         a: first dictionary
         b: second dictionary
@@ -237,7 +238,7 @@ class Helios(torch.nn.Module):
 
 
 class TaskConditionedHelios(Helios):
-    """A wrapper to support task-conditioned Helios models."""
+    """A wrapper to support task-conditioned Helios models via embeddings for each task."""
 
     def __init__(
         self,
@@ -250,8 +251,9 @@ class TaskConditionedHelios(Helios):
         autocast_dtype: str | None = "bfloat16",
         task_embed_opts: dict[str, Any] | None = None,
         model_overrides: dict[str, Any] | None = None,
-    ):
-        """
+    ) -> None:
+        """Initialize task-conditioned helios model, loading task embeddings.
+
         Args:
             checkpoint_path: the checkpoint directory to load. It should contain
                 config.json file as well as model_and_optim folder.
@@ -282,21 +284,31 @@ class TaskConditionedHelios(Helios):
         else:
             self.autocast_dtype = None
 
-        # Load the task embeddings (we need the task dimension to initialize helios) 
-        self.load_task_embeds(task_embed_opts)
+        # Load the task embeddings (we need the task dimension to initialize helios)
+        self.load_task_embeds(task_embed_opts or {})
+
+        if model_overrides is None:
+            model_overrides = {}
+
+        if "encoder_config" not in model_overrides:
+            logger.warning(
+                "No model overrides provided, behavior is the same as Helios"
+            )
+            model_overrides["encoder_config"] = {}
+
+        # Add task_dim to all task-conditioned kwargs, checking that it matches with
+        # any preconfigured task_dim values
+        for k, v in model_overrides["encoder_config"].items():
+            if re.match(r"task.*kwargs", k):
+                if "task_dim" not in v:
+                    v["task_dim"] = self.task_embed_dim
+                elif v["task_dim"] != self.task_embed_dim:
+                    raise ValueError(
+                        f"task_dim in model_overrides must match task_embed_dim, "
+                        f"got {v['task_dim']} != {self.task_embed_dim}"
+                    )
 
         # Load the model from the checkpoint
-        if "encoder_config" not in model_overrides:
-            logger.warning("No model overrides provided, behavior is the same as Helios")
-            model_overrides["encoder_config"] = {}
-        if "task_dim" not in model_overrides.get("encoder_config", {}):
-            model_overrides["encoder_config"]["task_dim"] = self.task_embed_dim
-        elif model_overrides["encoder_config"]["task_dim"] != self.task_embed_dim:
-            actual = model_overrides['encoder_config']['task_dim']
-            raise ValueError(
-                f"task_dim in model_overrides must match task_embed_dim, "
-                f"got {actual} != {self.task_embed_dim}"
-            )
         self.load_model(
             checkpoint_path,
             selector,
@@ -307,7 +319,7 @@ class TaskConditionedHelios(Helios):
 
     def load_task_embeds(self, task_embed_opts: dict[str, Any]) -> None:
         """Load the task embeddings.
-        
+
         Args:
             task_embed_opts: configuration for task embeddings
                 - type: "learned" (embedding table) | "precomputed" (from file)
@@ -318,18 +330,24 @@ class TaskConditionedHelios(Helios):
         self.task_embed_type: str = str(task_embed_opts["type"])
         self.task_embed_path: str | None = task_embed_opts.get("path", None)
         if self.task_embed_type not in ("learned", "precomputed"):
-            raise ValueError("task_embed_opts['type'] must be 'learned' or 'precomputed'")
+            raise ValueError(
+                "task_embed_opts['type'] must be 'learned' or 'precomputed'"
+            )
 
         self.pretrained_task_embeds: torch.Tensor | None = None
         if self.task_embed_type == "precomputed":
             if self.task_embed_path is None:
-                raise ValueError("task_embed_opts['path'] must be provided for precomputed embeddings")
+                raise ValueError(
+                    "task_embed_opts['path'] must be provided for precomputed embeddings"
+                )
             self.load_pretrained_embeds()
 
         elif self.task_embed_type == "learned" and self.task_embed_path is not None:
             # Use provided embeddings just to initialize
             self.load_pretrained_embeds()
-            logger.info("Using pretrained task embeds to initialize the embedding table")        
+            logger.info(
+                "Using pretrained task embeds to initialize the embedding table"
+            )
 
         # Some attributes are set by precomputed embeds if they're specified
         if not hasattr(self, "task_embed_dim"):
@@ -354,10 +372,9 @@ class TaskConditionedHelios(Helios):
         if self.task_embed_type == "precomputed":
             for p in self.task_embed_table.parameters():
                 p.requires_grad = False
-    
-    def load_pretrained_embeds(self, drop=("code_hash",)) -> None:
-        """
-        Load task embeddings from a file expected to contain a dict.
+
+    def load_pretrained_embeds(self, drop: tuple[str] = ("code_hash",)) -> None:
+        """Load task embeddings from a file expected to contain a dict.
 
         Dict format is { task_name (str): 1D torch.Tensor }.
         Resulting pretrained embeds are [num_tasks, dim].
@@ -388,9 +405,11 @@ class TaskConditionedHelios(Helios):
         self.task_embed_dim = dim
 
     def compute_task_embeds(self, task_id: torch.Tensor) -> torch.Tensor:
-        """
+        """Compute or retrieve task embeddings given the task identifiers.
+
         Args:
             task_id: Integer tensor of shape (B,) with ids in [0, num_tasks).
+
         Returns:
             Tensor of shape (B, dim) with the task embeddings.
         """
@@ -398,8 +417,7 @@ class TaskConditionedHelios(Helios):
         return self.task_embed_table(idx)
 
     def forward(self, inputs: list[dict[str, Any]]) -> list[torch.Tensor]:
-        """
-        Compute feature maps from the Helios backbone with task conditioning.
+        """Compute feature maps from the Helios backbone with task conditioning.
 
         Inputs:
             inputs: list of input dicts. It should include keys corresponding to the
@@ -410,11 +428,9 @@ class TaskConditionedHelios(Helios):
         ids = torch.tensor([self.tasks.index(dataset_source)] * len(inputs))
         task_embeds = self.compute_task_embeds(ids)
 
-        # Feed in task embed and restore previous value if it exists
+        # Feed in task embedding and restore previous value if it exists
         key = "task_emb"
-        self.forward_kwargs[key], prev = (
-            task_embeds, self.forward_kwargs.get(key)
-        )
+        self.forward_kwargs[key], prev = (task_embeds, self.forward_kwargs.get(key))
         out = super().forward(inputs)
         self.forward_kwargs[key] = prev
         return out

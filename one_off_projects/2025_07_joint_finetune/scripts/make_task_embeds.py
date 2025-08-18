@@ -7,7 +7,7 @@ If you add the qwen embedding templating plus the anchor subtraction, the mean
 similarity between embeddings is 0.36, but similar tasks are still high.
 
 If you don't truncate, then you need to use a projection layer in the helios encoder
-to get the dimensions down to 768. With MLR, qwen's embeddings are pretty even so.
+to get the dimensions down to 768. With MLR, qwen's embeddings are pretty good even so.
 
 Current commands
 ================
@@ -17,15 +17,18 @@ import os
 import hashlib
 import argparse
 import json
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Set, Optional
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import yaml
 from transformers import AutoTokenizer, AutoModel
 from rslp.helios.model import deep_merge
 
+RESET = "\x1b[0m"
 KEEP_INPUT_FAMILIES = ("sentinel1", "sentinel2", "landsat", "srtm")
 DROP_INPUTS = {"mask", "image", "targets", "label"}
 DEFAULT_INSTRUCT_PROMPT = """
@@ -190,6 +193,26 @@ def extract_decoder_primary_key(cfg: Dict[str, Any]) -> Optional[str]:
     except Exception:
         return None
 
+# ---------------- Color helpers ----------------
+
+def cell_color(v: float, vmin: float, vmax: float) -> str:
+    # Normalize in [0,1]; handle degenerate range
+    if vmax <= vmin:
+        t = 0.0
+    else:
+        t = (v - vmin) / (vmax - vmin)
+    # Lighter green for lower sim, darker for higher: invert brightness
+    g = int(round(255 * (1.0 - t)))          # background green channel
+    r = b = 0
+    # Choose text color for contrast
+    # light bg (g >= 128) => black text; dark bg => white text
+    fg = (0, 0, 0) if g >= 128 else (255, 255, 255)
+    bg = (r, g, b)
+    return f"\x1b[38;2;{fg[0]};{fg[1]};{fg[2]}m\x1b[48;2;{bg[0]};{bg[1]};{bg[2]}m"
+
+def clip(s: str, w: int) -> str:
+    return s if len(s) <= w else s[: max(1, w - 1)] + "…"
+
 
 # ---------------- Embedding helpers ----------------
 
@@ -265,12 +288,12 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--out-path",
-        default="/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/2025_08_12_task_embeds.pt",
+        default="/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds_{info}.pt",
         help="Path to save torch dict {task_key: tensor[D]}."
     )
     p.add_argument(
         "--dump-texts",
-        default="/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/2025_08_12_task_texts.jsonl",
+        default="/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_texts_{info}.jsonl",
         help="Optional JSONL for {task_dir, task_key, text}."
     )
     p.add_argument("--tasks", nargs="*", help="Task dir names (none = auto: subdirs starting with v2_*)")
@@ -289,16 +312,31 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    if not args.tasks:
-        args.tasks = [name for name in os.listdir(args.base_dir) if name.startswith("v2_")]
+    tasks = args.tasks
+    if not tasks:
+        tasks = [name for name in os.listdir(args.base_dir) if name.startswith("v2_")]
+        # special case - treat vessel classification + detection separately
+        landsat_index = tasks.index("v2_landsat_vessels")
+        tasks.insert(landsat_index, "v2_landsat_vessels")
+    else:
+        landsat_index = tasks.index("v2_landsat_vessels")
 
     summaries: List[str] = []
     keys: List[str] = []
     merged_cfgs: List[Dict[str, Any]] = []
 
-    for task_dir in args.tasks:
+    for i, task_dir in enumerate(tasks):
         merged: Dict[str, Any] = {}
-        for p in gather_task_files(args.base_dir, task_dir):
+        is_landsat_vessels = (task_dir == "v2_landsat_vessels")
+
+        if is_landsat_vessels:
+            task = "detector" if i == landsat_index else "classifier"
+            path = "finetune_{}_cosinelr.yaml".format(task)
+            gathered = [os.path.join(args.base_dir, task_dir, path)]
+        else:
+            gathered = gather_task_files(args.base_dir, task_dir)
+
+        for p in gathered:
             merged = deep_merge(merged, load_yaml(p))
         merged_cfgs.append(merged)
 
@@ -310,12 +348,29 @@ def main() -> None:
             key = task_dir
         keys.append(key)
 
+    # Sort by key alphabetically
+    keys_index = list(range(len(keys)))
+    keys_index = list(sorted(keys_index, key=lambda i: keys[i]))
+
+    tasks = [tasks[i] for i in keys_index]
+    keys = [keys[i] for i in keys_index]
+    summaries = [summaries[i] for i in keys_index]
+    merged_cfgs = [merged_cfgs[i] for i in keys_index]
+
+    # Get info string
+    info = f"__{args.model.split('/')[-1]}__{args.truncate}d"
+    if args.anchor:
+        info += "__anchor"
+    if args.instruct:
+        info += "__instruct"
+
     print("=== Configuration ===")
+    print(f"Info: {info}")
     print(f"Model: {args.model}")
     print(f"Base dir: {args.base_dir}")
-    print("Task dirs:")
-    for task_dir in args.tasks:
-        print(f" - {task_dir}")
+    print("Sorted task dir -> key:")
+    for task_dir, key in zip(tasks, keys):
+        print(f" - {task_dir:<30} -> {key}")
     print()
 
     # Load model once
@@ -351,12 +406,12 @@ def main() -> None:
 
     # Add hash of current code for future checking
     result["code_hash"] = hashlib.sha256(open(__file__, "rb").read()).hexdigest()
-    torch.save(result, args.out_path)
+    torch.save(result, args.out_path.format(info=info))
 
     # Optional: dump texts
     if args.dump_texts:
-        with open(args.dump_texts, "w") as f:
-            for task_dir, key, text in zip(args.tasks, keys, summaries):
+        with open(args.dump_texts.format(info=info), "w") as f:
+            for task_dir, key, text in zip(tasks, keys, summaries):
                 f.write(json.dumps({"task_dir": task_dir, "task_key": key, "text": text}) + "\n")
             f.write(json.dumps({"code_hash": result["code_hash"]}) + "\n")
             if args.anchor:
@@ -364,28 +419,47 @@ def main() -> None:
             if args.instruct:
                 f.write(json.dumps({"prompt": args.prompt}) + "\n")
 
-    # Pretty print keys
-    result.pop("code_hash")
-    sorted_keys = sorted(result.keys())
-    print("\n=== Saved task keys ===")
-    for k in sorted_keys:
-        print(" -", k)
-
     # Cosine similarity matrix
-    mat = torch.stack([result[k] for k in sorted_keys], dim=0)  # [N, D]
+    result.pop("code_hash")
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    print(f"=== Cosine similarity matrix ===")
+
+    mat = torch.stack([result[k] for k in keys], dim=0)  # [N, D]
     sim = F.cosine_similarity(mat.unsqueeze(1), mat.unsqueeze(0), dim=-1)  # [N, N]
 
-    print("\n=== Cosine similarity matrix ===")
-    header = ["{:>15}".format(k[:13]) for k in sorted_keys]
-    print("{:>15} {}".format("", " ".join(header)))
-    for i, k in enumerate(sorted_keys):
-        row_vals = " ".join(f"{v:>13.3f}" for v in sim[i])
-        print("{:>15} {}".format(k[:13], row_vals))
-    print("\nMean similarity:", round(sim.mean().item(), 3))
+    A = sim.detach().cpu().numpy()
+    N = len(keys)
+    prec = 3
 
-    print(f"\nSaved dict with {len(result)} entries to {args.out_path}")
+    # Label and column widths
+    clip = lambda s, w: s if len(s) <= w else s[: w - 1] + "…"
+    idx_digits = max(2, len(str(max(0, N - 1))))
+    num_w = max(prec + 2, idx_digits)  # width for numbers & headers (e.g., "0.123")
+    label_w = max(16, min(36, max(len(k) for k in keys) + 1 + 2 + idx_digits))  # "name (idx)"
+
+    vmin, vmax = float(np.nanmin(A)), float(np.nanmax(A))
+
+    # Header: indices only
+    header = " ".join(f"{i:>{num_w}d}" for i in range(N))
+    print(f"{'':>{label_w}} {header}")
+
+    # Rows: "name (index)" at left; colored cells
+    for i, name in enumerate(keys):
+        row_label = f"{name} ({i})"
+        row_label = clip(row_label, label_w)
+        cells = []
+        for j in range(N):
+            v = float(A[i, j])
+            fmt = f"{v:>{num_w}.{prec}f}"
+            cells.append(cell_color(v, vmin, vmax) + fmt + RESET)
+        print(f"{row_label:>{label_w}} " + " ".join(cells))
+
+    # Summary
+    print(f"\nRange: [{vmin:.{prec}f}, {vmax:.{prec}f}]  Mean similarity: {A.mean():.{prec}f}")
+
+    print(f"\nSaved dict with {len(result)} entries to {args.out_path.format(info=info)}")
     if args.dump_texts:
-        print(f"Wrote plaintext rows to {args.dump_texts}")
+        print(f"Wrote plaintext rows to {args.dump_texts.format(info=info)}")
 
 
 if __name__ == "__main__":

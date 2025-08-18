@@ -985,7 +985,7 @@ data:
     refill_batches: true
     sample_mode: random_cycle
 model:
-  class_path: rslp.helios.lightning_module.MoELightningModule
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     lr: 0.0001
     model:
@@ -1011,11 +1011,26 @@ model:
               patch_size: 8
             model_overrides:
               encoder_config:
-                use_task_lora: true
+                task_lora_kwargs:
+                  gen_hidden: 64
+                  task_lora_indices:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 10
+                  - 11
+                  use_task_lora: true
             selector:
             - encoder
             task_embed_opts:
-              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/2025_08_12_task_embeds.pt
+              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct.pt
               type: precomputed
         lazy_decode: true
         task_label_offsets:
@@ -1031,23 +1046,6 @@ model:
             num_outputs: 2
             offset: 0
             outputs_key: class
-        trunk:
-          class_path: rslearn.models.trunk.DecoderTrunk
-          init_args:
-            layers:
-            - class_path: rslearn.models.trunk.MoETransformer
-              init_args:
-                dim: 768
-                expert_mult: 2
-                n_heads: 12
-                n_layers: 2
-                num_experts: 8
-                num_slots: 1
-            task_embedding:
-              class_path: rslearn.models.task_embedding.TaskChannelEmbedding
-              init_args:
-                add_spatial_embed: true
-                encoder_embedding_size: 768
     scheduler:
       class_path: rslearn.train.scheduler.CosineAnnealingScheduler
       init_args:
@@ -1116,12 +1114,18 @@ trainer:
       monitor: val_loss
       save_last: true
       save_top_k: 1
-  - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+  - class_path: rslearn.train.callbacks.freeze_unfreeze.MultiStageFineTuning
     init_args:
-      module_selector:
-      - model
-      - encoder
-      - 0
-      unfreeze_at_epoch: 20
-      unfreeze_lr_factor: 10
+      stages:
+      - at_epoch: 0
+        freeze_selectors:
+        - encoder
+        unfreeze_selectors:
+        - head
+      - at_epoch: 20
+        freeze_selectors:
+        - encoder
+        unfreeze_selectors:
+        - head
+        - lora
   max_epochs: 200
