@@ -15,6 +15,8 @@ WORKDIR /opt/tippecanoe
 RUN make -j
 RUN make install
 
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
 # Install rslearn.
 # We use git clone and then git checkout instead of git clone -b so that the user could
 # specify a commit name or branch instead of only accepting a branch.
@@ -22,24 +24,11 @@ ARG RSLEARN_BRANCH=master
 RUN git clone https://github.com/allenai/rslearn.git /opt/rslearn
 WORKDIR /opt/rslearn
 RUN git checkout $RSLEARN_BRANCH
-RUN pip install --no-cache-dir /opt/rslearn[extra]
+RUN uv pip install --system /opt/rslearn[extra]
 
-# maybe some steps to make this huge iamge smaller
-
-# Install rslearn_projects dependencies.
-# We do this in a separate step so it doesn't need to be rerun when other parts of the
-# context are modified.
-COPY requirements.txt /opt/rslearn_projects/requirements.txt
-COPY ai2_requirements.txt /opt/rslearn_projects/ai2_requirements.txt
-RUN pip install --no-cache-dir --upgrade -r /opt/rslearn_projects/requirements.txt -r /opt/rslearn_projects/ai2_requirements.txt
-
-# Copy rslearn_projects.
-# For now we don't install it and instead just use PYTHONPATH.
-ENV PYTHONPATH="${PYTHONPATH}:."
-
+# Install rslearn_projects.
 COPY . /opt/rslearn_projects/
-# install rslp package
-RUN pip install --no-cache-dir /opt/rslearn_projects
+RUN uv pip install --system /opt/rslearn_projects
 
 # Build Satlas smooth_point_labels_viterbi.go program.
 WORKDIR /opt/rslearn_projects/rslp/satlas/scripts
