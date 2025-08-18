@@ -1,5 +1,5 @@
-base_cfg: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_12_embeds/base.yaml
-output_path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_12_embeds/OUT_detect.yaml
+base_cfg: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_18_task/base.yaml
+output_path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_18_task/OUT_detect.yaml
 
 dataset_cfgs:
   - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_landsat_vessels/finetune_detector_cosinelr.yaml
