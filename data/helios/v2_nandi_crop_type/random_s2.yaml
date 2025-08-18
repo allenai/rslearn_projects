@@ -20,88 +20,26 @@ model:
                 out_channels: 8
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
-    plateau: true
-    plateau_factor: 0.2
-    plateau_patience: 2
-    plateau_min_lr: 0
-    plateau_cooldown: 10
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
     path: /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625
     inputs:
-      sentinel2_0:
+      sentinel2_l2a:
         data_type: "raster"
         layers: ["sentinel2"]
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
         dtype: FLOAT32
-      sentinel2_1:
-        data_type: "raster"
-        layers: ["sentinel2.1"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
-      sentinel2_2:
-        data_type: "raster"
-        layers: ["sentinel2.2"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
-      sentinel2_3:
-        data_type: "raster"
-        layers: ["sentinel2.3"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
-      sentinel2_4:
-        data_type: "raster"
-        layers: ["sentinel2.4"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
-      sentinel2_5:
-        data_type: "raster"
-        layers: ["sentinel2.5"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
-      sentinel2_6:
-        data_type: "raster"
-        layers: ["sentinel2.6"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
-      sentinel2_7:
-        data_type: "raster"
-        layers: ["sentinel2.7"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
-      sentinel2_8:
-        data_type: "raster"
-        layers: ["sentinel2.8"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
-      sentinel2_9:
-        data_type: "raster"
-        layers: ["sentinel2.9"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
-      sentinel2_10:
-        data_type: "raster"
-        layers: ["sentinel2.10"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
-      sentinel2_11:
-        data_type: "raster"
-        layers: ["sentinel2.11"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
       label:
         data_type: "vector"
         layers: ["label"]
@@ -125,22 +63,6 @@ data:
     num_workers: 32
     default_config:
       transforms:
-        - class_path: rslearn.train.transforms.concatenate.Concatenate
-          init_args:
-            selections:
-              sentinel2_0: []
-              sentinel2_1: []
-              sentinel2_2: []
-              sentinel2_3: []
-              sentinel2_4: []
-              sentinel2_5: []
-              sentinel2_6: []
-              sentinel2_7: []
-              sentinel2_8: []
-              sentinel2_9: []
-              sentinel2_10: []
-              sentinel2_11: []
-            output_selector: sentinel2_l2a
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             config_fname: "/opt/helios/data/norm_configs/computed.json"

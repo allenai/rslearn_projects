@@ -1,7 +1,7 @@
 """Mask transform."""
 
 import torch
-from rslearn.train.transforms.transform import Transform
+from rslearn.train.transforms.transform import Transform, read_selector
 
 
 class Mask(Transform):
@@ -44,7 +44,7 @@ class Mask(Transform):
         Returns:
             normalized (input_dicts, target_dicts) tuple
         """
-        mask = self.read_selector(input_dict, target_dict, self.mask_selector)
+        mask = read_selector(input_dict, target_dict, self.mask_selector)
         self.apply_fn(
             self.apply_image, input_dict, target_dict, self.selectors, mask=mask
         )

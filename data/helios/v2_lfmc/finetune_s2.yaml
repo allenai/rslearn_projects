@@ -19,11 +19,13 @@ model:
                 out_channels: 1
             - class_path: rslearn.train.tasks.regression.RegressionHead
     lr: 0.0001
-    plateau: true
-    plateau_factor: 0.2
-    plateau_patience: 2
-    plateau_min_lr: 0
-    plateau_cooldown: 10
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:

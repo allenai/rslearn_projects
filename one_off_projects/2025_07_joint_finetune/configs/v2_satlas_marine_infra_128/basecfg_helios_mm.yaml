@@ -1,0 +1,218 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslp.helios.model.Helios
+            init_args:
+              checkpoint_path: "{CHECKPOINT_PATH}"
+              selector: ["encoder"]
+              forward_kwargs:
+                patch_size: {PATCH_SIZE}
+        decoders:
+          detect_satlas_marine_infra:
+            - class_path: rslearn.models.faster_rcnn.FasterRCNN
+              init_args:
+                downsample_factors: [{PATCH_SIZE}]
+                num_channels: {ENCODER_EMBEDDING_SIZE}
+                num_classes: 3
+                anchor_sizes: [[32]]
+data:
+  init_args:
+    inputs:
+      s21:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+      s22:
+        data_type: "raster"
+        layers: ["sentinel2.1"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+      s23:
+        data_type: "raster"
+        layers: ["sentinel2.2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+      s24:
+        data_type: "raster"
+        layers: ["sentinel2.3"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+      landsat1:
+        data_type: "raster"
+        layers: ["landsat"]
+        bands: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
+        passthrough: true
+        dtype: FLOAT32
+      landsat2:
+        data_type: "raster"
+        layers: ["landsat.1"]
+        bands: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
+        passthrough: true
+        dtype: FLOAT32
+      landsat3:
+        data_type: "raster"
+        layers: ["landsat.2"]
+        bands: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
+        passthrough: true
+        dtype: FLOAT32
+      landsat4:
+        data_type: "raster"
+        layers: ["landsat.3"]
+        bands: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
+        passthrough: true
+        dtype: FLOAT32
+      s1a1:
+        data_type: "raster"
+        layers: ["sentinel1_ascending"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      s1a2:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.1"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      s1a3:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.2"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      s1a4:
+        data_type: "raster"
+        layers: ["sentinel1_ascending.3"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      # TODO: currently these descending images are not used.
+      s1d1:
+        data_type: "raster"
+        layers: ["sentinel1_descending"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      s1d2:
+        data_type: "raster"
+        layers: ["sentinel1_descending.1"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      s1d3:
+        data_type: "raster"
+        layers: ["sentinel1_descending.2"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      s1d4:
+        data_type: "raster"
+        layers: ["sentinel1_descending.3"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+      mask:
+        data_type: "raster"
+        layers: ["mask"]
+        bands: ["mask"]
+        passthrough: true
+        dtype: FLOAT32
+        is_target: true
+      targets:
+        data_type: "vector"
+        layers: ["label"]
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              s21: []
+              s22: []
+              s23: []
+              s24: []
+            output_selector: sentinel2_l2a
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              landsat1: []
+              landsat2: []
+              landsat3: []
+              landsat4: []
+            output_selector: landsat
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              s1a1: []
+              s1a2: []
+              s1a3: []
+              s1a4: []
+            output_selector: sentinel1
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+              landsat: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
+              sentinel1: ["vv", "vh"]
+        - class_path: rslp.transforms.mask.Mask
+          init_args:
+            selectors: ["sentinel2_l2a", "landsat", "sentinel1"]
+        # This is for Faster R-CNN head to know the image size.
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2_l2a: []
+            output_selector: image
+    train_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              s21: []
+              s22: []
+              s23: []
+              s24: []
+            output_selector: sentinel2_l2a
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              landsat1: []
+              landsat2: []
+              landsat3: []
+              landsat4: []
+            output_selector: landsat
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              s1a1: []
+              s1a2: []
+              s1a3: []
+              s1a4: []
+            output_selector: sentinel1
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+              landsat: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
+              sentinel1: ["vv", "vh"]
+        - class_path: rslp.transforms.mask.Mask
+          init_args:
+            selectors: ["sentinel2_l2a", "landsat", "sentinel1"]
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel2_l2a", "landsat", "sentinel1"]
+            box_selectors: ["target/detect_satlas_marine_infra"]
+        # This is for Faster R-CNN head to know the image size.
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2_l2a: []
+            output_selector: image
