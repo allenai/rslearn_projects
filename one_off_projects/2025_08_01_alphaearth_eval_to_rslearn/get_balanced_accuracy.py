@@ -28,7 +28,7 @@ def load_gse_embedding(window: Window) -> torch.Tensor | None:
     for fname in window.path.glob("layers/gse*/*/geotiff.tif"):
         with rasterio.open(fname.path) as raster:
             array = raster.read()
-        if array.max() == 0:
+        if array[:, array.shape[1]//2, array.shape[2]//2].max() == 0:
             continue
         return torch.tensor(array[:, array.shape[1]//2, array.shape[2]//2]) / 8192 - 1
     return None
