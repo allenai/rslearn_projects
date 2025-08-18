@@ -23,6 +23,7 @@ CODE_EXCLUDES = [
     "lightning_logs",
     "test_data",
     "wandb",
+    "project_data",
 ]
 
 logger = get_logger(__name__)
@@ -75,7 +76,8 @@ def make_archive(
                 rel_path = os.path.relpath(full_path, start=root_dir)
                 if should_exclude(rel_path):
                     continue
-                zipf.write(full_path, arcname=rel_path)
+                if os.path.exists(full_path):
+                    zipf.write(full_path, arcname=rel_path)
 
 
 def upload_code(project_id: str, experiment_id: str) -> None:
