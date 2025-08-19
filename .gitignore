@@ -1,4 +1,6 @@
 .env
+.envrc
+.direnv
 wandb/
 rslp/__pycache__/
 **__pycache__
@@ -16,3 +18,5 @@ docker_build
 
 # misc from one off projects
 one_off_projects/2025_07_joint_finetune/data
+
+repos/

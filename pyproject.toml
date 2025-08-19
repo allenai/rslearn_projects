@@ -10,7 +10,7 @@ authors = [
     {name = "Mike Jacobi", email = "mikej@allenai.org"},
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.12"
 
 dynamic = ["dependencies", "optional-dependencies"]
 
@@ -21,9 +21,12 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["rslp*"]
 
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
-optional-dependencies = {ai2 = { file = ["ai2_requirements.txt"] }}
+[tool.setuptools.dynamic.dependencies]
+file = ["requirements.txt"]
+
+[tool.setuptools.dynamic.optional-dependencies]
+ai2 = { file = ["ai2_requirements.txt"] }
+all = { file = ["requirements.txt", "requirements-extra.txt"] }
 
 [tool.ruff]
 fix = true

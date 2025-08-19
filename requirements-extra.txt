@@ -1,0 +1,8 @@
+fastapi>=0.115
+google-cloud-bigtable>=2.18
+mapbox_vector_tile>=2.0
+# google-cloud-pubsub>=2.18
+pydantic>=2.8
+scikit-image>=0.23
+typing-extensions>=4.11
+uvicorn
