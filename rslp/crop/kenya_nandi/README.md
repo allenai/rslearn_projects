@@ -100,3 +100,10 @@ Use beaker launcher to materialize the dataset:
 ```
 python -m rslp.main common launch_data_materialization_jobs --image favyen/rslp_image --ds_path DATASET_PATH --group DATASET_GROUP --clusters+=ai2/neptune-cirrascale --num_jobs 10
 ```
+
+Create `label_raster` for both ground-truth and worldcover windows.
+
+Launch Helios finetune:
+```
+python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/titan-cirrascale --rslp_project 2025_08_15_nandi_crop_type --experiment_id nandi_crop_type_segment_helios_base_S2_ts_ws4_ps2_bs8
+```
