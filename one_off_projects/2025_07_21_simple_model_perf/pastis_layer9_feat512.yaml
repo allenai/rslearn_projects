@@ -1,0 +1,146 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+            init_args:
+              encoder:
+                class_path: rslearn.models.module_wrapper.EncoderModuleWrapper
+                init_args:
+                  module:
+                    class_path: rslearn.models.conv.Conv
+                    init_args:
+                      in_channels: 9
+                      out_channels: 512
+                      kernel_size: 3
+              image_channels: 9
+              backbone_channels: [[1, 512]]
+        decoders:
+          segment:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 512
+                out_channels: 512
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 512
+                out_channels: 512
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 512
+                out_channels: 512
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 512
+                out_channels: 512
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 512
+                out_channels: 512
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 512
+                out_channels: 512
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 512
+                out_channels: 512
+                kernel_size: 3
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 512
+                out_channels: 20
+                kernel_size: 3
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.models.pick_features.PickFeatures
+              init_args:
+                indexes: [0]
+                collapse: true
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+    lr: 0.0001
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
+    plateau_min_lr: 0
+    plateau_cooldown: 20
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/pastis/rslearn_dataset/
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        passthrough: true
+        load_all_item_groups: true
+        load_all_layers: true
+      targets:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["class"]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          segment:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 20
+              remap_values: [[0, 1], [0, 255]]
+              zero_is_invalid: true
+              metric_kwargs:
+                average: "micro"
+              enable_miou_metric: true
+        input_mapping:
+          segment:
+            targets: "targets"
+    batch_size: 8
+    num_workers: 16
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 5000
+            valid_range: [0, 1]
+    train_config:
+      groups: ["fold1", "fold2", "fold3"]
+      transforms:
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 5000
+            valid_range: [0, 1]
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
+    val_config:
+      groups: ["fold4"]
+    test_config:
+      groups: ["fold5"]
+trainer:
+  max_epochs: 500
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_segment/accuracy
+        mode: max
+rslp_project: 2025_07_21_simple_model_perf
+rslp_experiment: 20250722_pastis_layer9_feat512
