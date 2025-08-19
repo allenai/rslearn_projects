@@ -52,8 +52,6 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         sampling_date + timedelta(days=15),
     )
 
-    landcover, elevation = csv_row["landcover"], csv_row["elevation"]
-
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
     dst_crs = get_utm_ups_crs(longitude, latitude)
@@ -86,8 +84,6 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
             "country": country,
             "latitude": latitude,
             "longitude": longitude,
-            "landcover": landcover,
-            "elevation": elevation,
         },
     )
     window.save()
