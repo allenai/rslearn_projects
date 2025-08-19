@@ -157,6 +157,12 @@ data:
       groups: ["post_random_split"]
       tags:
         split: "val"
+    predict_config:
+      groups: ["nandi_county_2018"]
+      load_all_patches: true
+      skip_targets: true
+      overlap_ratio: 0.75
+      patch_size: 4
 trainer:
   max_epochs: 300
   callbacks:

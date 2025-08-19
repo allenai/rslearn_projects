@@ -19,6 +19,8 @@ CLASS_NAMES = [
     "Maize",
     "Sugarcane",
     "Tea",
+    "Vegetables",
+    "Legumes",
     "Water",
     "Built-up",
 ]
