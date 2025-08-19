@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import torch
 from rslearn.train.tasks.multi_task import MultiTask
@@ -10,10 +12,8 @@ class TestModel(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(
-        self, inputs: torch.Tensor, targets: torch.Tensor
-    ) -> tuple[torch.Tensor, dict]:
-        return inputs, {"loss": 0}
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> dict[str, Any]:
+        return {"outputs": inputs, "loss_dict": {"loss": 0}}
 
 
 def test_cm_module_step() -> None:
