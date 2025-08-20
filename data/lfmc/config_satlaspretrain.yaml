@@ -100,15 +100,12 @@ data:
             bands: [3, 4, 5, 6, 7, 8]
             num_bands: 9
         - class_path: rslearn.train.transforms.flip.Flip
-      groups: ["global_lfmc"]
       tags:
         split: "train"
     val_config:
-      groups: ["global_lfmc"]
       tags:
         split: "val"
     test_config:
-      groups: ["global_lfmc"]
       tags:
         split: "val"
     predict_config:
