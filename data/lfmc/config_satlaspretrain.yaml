@@ -10,7 +10,7 @@ model:
               encoder:
                 class_path: rslearn.models.swin.Swin
                 init_args:
-                  pretrained: true
+                  pretrained: false
                   input_channels: 9
                   output_layers: [7]
               image_channels: 9
