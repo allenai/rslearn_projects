@@ -1,5 +1,20 @@
 {
   "layers": {
+    "es_output": {
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
     "label": {
       "type": "vector"
     },
@@ -23,21 +38,6 @@
         {
           "bands": [
             "mask"
-          ],
-          "dtype": "uint8",
-          "format": {
-            "format": "png",
-            "name": "single_image"
-          }
-        }
-      ],
-      "type": "raster"
-    },
-    "output": {
-      "band_sets": [
-        {
-          "bands": [
-            "output"
           ],
           "dtype": "uint8",
           "format": {
@@ -82,15 +82,15 @@
         }
       ],
       "data_source": {
-        "cache_dir": "cache/planetary_computer",
         "harmonize": true,
-        "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "index_cache_dir": "cache/sentinel2",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
           "max_matches": 4,
           "space_mode": "PER_PERIOD_MOSAIC"
         },
-        "sort_by": "eo:cloud_cover"
+        "sort_by": "cloud_cover",
+        "use_rtree_index": false
       },
       "type": "raster"
     }
