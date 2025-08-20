@@ -60,7 +60,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     bounds = calculate_bounds(dst_geometry, window_size)
 
     # Check if train or val.
-    group = "global_lfmc"
+    group = "globe_lfmc"
     window_name = f"{sample_id}_{latitude}_{longitude}"
 
     is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]

@@ -27,7 +27,6 @@ Run the following commands to create windows (note that this script requires pan
 be additionally installed):
 ```
 export DATASET_PATH=/path/to/dataset
-export DATASET_GROUP=global_lfmc
 mkdir -p $DATASET_PATH
 cp data/lfmc/config.json $DATASET_PATH/config.json
 python -m rslp.lfmc.create_windows --csv_path /tmp/lfmc-labels.csv --ds_path $DATASET_PATH --window_size 32
@@ -37,9 +36,9 @@ python -m rslp.lfmc.create_windows --csv_path /tmp/lfmc-labels.csv --ds_path $DA
 
 Run the command to prepare/ingest/materialize groundtruth windows (the ingestion is mainly for SRTM):
 ```
-rslearn dataset prepare --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --retry-max-attempts 8 --retry-backoff-seconds 60
-rslearn dataset ingest --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-rslearn dataset materialize --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset prepare --root $DATASET_PATH --workers 64 --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset ingest --root $DATASET_PATH --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset materialize --root $DATASET_PATH --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 ```
 
 Note that to run these commands, we will need to set the environmental variables of `NASA_EARTHDATA_USERNAME` and `NASA_EARTHDATA_PASSWORD` ([Link](https://urs.earthdata.nasa.gov/)) for accessing SRTM data.
