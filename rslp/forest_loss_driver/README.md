@@ -184,7 +184,7 @@ accuracy instead of using it to prioritize what else to annotate.
 
 Download and extract the dataset from here:
 
-- TODO
+- https://storage.googleapis.com/ai2-rslearn-projects-data/datasets/forest_loss_driver/dataset_v1/combined.tar
 
 Now train the model:
 
