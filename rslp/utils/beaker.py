@@ -38,7 +38,7 @@ def get_base_env_vars(use_weka_prefix: bool = False) -> list[BeakerEnvVar]:
     env_vars = [
         BeakerEnvVar(
             name="WANDB_API_KEY",  # nosec
-            secret="RSLEARN_WANDB_API_KEY",  # nosec
+            secret="ryanp_WANDB_API_KEY",  # nosec
         ),
         BeakerEnvVar(
             name="GOOGLE_APPLICATION_CREDENTIALS",  # nosec

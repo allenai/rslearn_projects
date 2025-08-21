@@ -7,6 +7,7 @@ rslp/crop_type_mapping/csv/
 rslp/crop_type_mapping/geoparquets/
 rslp/mangrove/csv/
 log*.txt
+*.egg-info
 
 # for local finetuning runs
 /config.yaml
