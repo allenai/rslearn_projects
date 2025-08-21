@@ -52,8 +52,6 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         sampling_date + timedelta(days=15),
     )
 
-    landcover, elevation = csv_row["landcover"], csv_row["elevation"]
-
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
     dst_crs = get_utm_ups_crs(longitude, latitude)
@@ -62,7 +60,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     bounds = calculate_bounds(dst_geometry, window_size)
 
     # Check if train or val.
-    group = "global_lfmc"
+    group = "globe_lfmc"
     window_name = f"{sample_id}_{latitude}_{longitude}"
 
     is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
@@ -86,8 +84,6 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
             "country": country,
             "latitude": latitude,
             "longitude": longitude,
-            "landcover": landcover,
-            "elevation": elevation,
         },
     )
     window.save()
