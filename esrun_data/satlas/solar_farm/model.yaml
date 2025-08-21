@@ -95,7 +95,7 @@ data:
           class:
             targets: "targets"
     batch_size: 8
-    num_workers: 16
+    num_workers: 32
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.normalize.Normalize
