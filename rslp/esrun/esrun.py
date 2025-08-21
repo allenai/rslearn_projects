@@ -1,5 +1,6 @@
 """Run EsPredictRunner inference pipeline."""
 
+from enum import StrEnum
 from pathlib import Path
 
 from esrun.runner.local.predict_runner import EsPredictRunner
@@ -39,3 +40,44 @@ def esrun(
 
     logger.info("Combining across partitions")
     runner.combine(partitions)
+
+
+class EsrunStage(StrEnum):
+    """The stage of esrun pipeline to run."""
+
+    BUILD_DATASET = "build_dataset"
+    RUN_INFERENCE = "run_inference"
+    POSTPROCESS = "postprocess"
+
+
+def one_stage(
+    config_path: Path,
+    scratch_path: Path,
+    data_type: InferenceResultsDataType,
+    partition_id: str,
+    stage: EsrunStage,
+) -> None:
+    """Run EsPredictRunner inference pipeline.
+
+    Args:
+        config_path: see esrun.
+        scratch_path: see esrun.
+        data_type: see esrun.
+        partition_id: the partition to run the stage for.
+        stage: which stage to run.
+    """
+    runner = EsPredictRunner(
+        project_path=config_path,
+        scratch_path=scratch_path,
+        inference_results_data_type=data_type,
+    )
+    partitions = runner.partition()
+    if partition_id not in partitions:
+        raise ValueError(f"partition {partition_id} does not exist")
+
+    if stage == EsrunStage.BUILD_DATASET:
+        runner.build_dataset(partition_id)
+    if stage == EsrunStage.RUN_INFERENCE:
+        runner.run_inference(partition_id)
+    if stage == EsrunStage.POSTPROCESS:
+        runner.postprocess(partition_id)
