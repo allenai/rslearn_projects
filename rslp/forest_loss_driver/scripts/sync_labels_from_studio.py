@@ -103,6 +103,11 @@ if __name__ == "__main__":
         required=True,
         help="rslearn dataset path",
     )
+    parser.add_argument(
+        "--remap_labels",
+        action="store_true",
+        help="Whether to remap labels to the Peru label hierarchy",
+    )
     args = parser.parse_args()
     ds_path = UPath(args.ds_path)
 
@@ -118,8 +123,11 @@ if __name__ == "__main__":
         window_name = task["attributes"]["window"]
 
         label = get_label_from_feat(feat)
-        if label not in LABEL_MAP:
-            continue
+
+        if args.remap_labels:
+            if label not in LABEL_MAP:
+                continue
+            label = LABEL_MAP[label]
 
         geojson_fname = (
             ds_path
@@ -142,7 +150,7 @@ if __name__ == "__main__":
             raise ValueError(
                 f"expected geojson file at {geojson_fname} to contain exactly one feature"
             )
-        label_fc["features"][0]["properties"]["new_label"] = LABEL_MAP[label]
-        print(f"setting label at {geojson_fname} to {LABEL_MAP[label]}")
+        label_fc["features"][0]["properties"]["new_label"] = label
+        print(f"setting label at {geojson_fname} to {label}")
         with geojson_fname.open("w") as f:
             json.dump(label_fc, f)

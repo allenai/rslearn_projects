@@ -9,19 +9,6 @@ from rslearn.train.lightning_module import RslearnLightningModule
 from rslearn.train.tasks.classification import ClassificationTask
 from rslearn.utils import Feature
 
-CATEGORIES = [
-    "agriculture",
-    "mining",
-    "airstrip",
-    "road",
-    "logging",
-    "burned",
-    "landslide",
-    "hurricane",
-    "river",
-    "none",
-]
-
 CATEGORY_MAPPING = {
     "agriculture-generic": "agriculture",
     "agriculture-small": "agriculture",
@@ -48,8 +35,7 @@ class ForestLossTask(ClassificationTask):
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Processes the data into targets.
 
-        This is modified to do category remapping, and also mark category invalid if it
-        is not in CATEGORIES.
+        This is modified to do category remapping.
 
         Args:
             raw_inputs: raster or vector data to process
@@ -74,9 +60,9 @@ class ForestLossTask(ClassificationTask):
             class_name = feat.properties[self.property_name]
             if class_name in CATEGORY_MAPPING:
                 class_name = CATEGORY_MAPPING[class_name]
-            if class_name not in CATEGORIES:
+            if class_name not in self.classes:
                 continue
-            class_id = CATEGORIES.index(class_name)
+            class_id = self.classes.index(class_name)
 
             return {}, {
                 "class": torch.tensor(class_id, dtype=torch.int64),
@@ -84,7 +70,9 @@ class ForestLossTask(ClassificationTask):
             }
 
         if not self.allow_invalid:
-            raise Exception("no feature found providing class label")
+            raise Exception(
+                f"no feature found providing class label for window {metadata['window_name']}"
+            )
 
         return {}, {
             "class": torch.tensor(0, dtype=torch.int64),
@@ -126,7 +114,7 @@ class ForestLossLightningModule(RslearnLightningModule):
                 "val_cm": wandb.plot.confusion_matrix(
                     probs=np.stack(self.probs),
                     y_true=np.stack(self.y_true),
-                    class_names=CATEGORIES,
+                    class_names=self.task.tasks["class"].classes,
                 )
             }
         )
@@ -162,7 +150,7 @@ class ForestLossLightningModule(RslearnLightningModule):
                 "test_cm": wandb.plot.confusion_matrix(
                     probs=np.stack(self.probs),
                     y_true=np.stack(self.y_true),
-                    class_names=CATEGORIES,
+                    class_names=self.task.tasks["class"].classes,
                 )
             }
         )

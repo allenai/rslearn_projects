@@ -1,18 +1,12 @@
 # Forest Loss Driver
 
-## Overview
-The Forest Loss Driver project aims to develop an automated global deforestation detection system to combat illegal deforestation activities. By leveraging satellite imagery and machine learning, this system:
-
-- Detects and monitors forest loss events in near real-time
-- Identifies the drivers/causes of deforestation (e.g. agriculture, mining, logging)
-- Provides evidence through before/after satellite imagery
-- Enables rapid response to illegal activities
-- Supports conservation area managers in resource allocation
-- Improves accountability and enforcement of forest protection laws
-
-This technology is critical for preserving forests worldwide, protecting biodiversity, and mitigating climate change impacts. The system focuses particularly on monitoring protected areas and Indigenous territories where illegal deforestation remains a significant threat despite legal protections.
-
-## Overview
+This project aims to develop a model to classify the driver (e.g. mining,
+agriculture, road, storm, landslide, etc.) of detected forest loss. Currently the focus
+is in the Amazon basis, specifically in Peru, Brazil, and Colombia. Currently we use
+GLAD forest loss alerts as the forest loss detection system. We find connected
+components of GLAD alert pixels, threshold the area, and then apply the model on each
+polygon. The model inputs 3-5 images before the detected forest loss and 3-5 images
+after the detected forest loss, and classifies the driver.
 
 This project consists of several components:
 
@@ -125,8 +119,8 @@ project, but here we are mapping it back to our old hierarchy for compatibility 
 the Peru labels.
 
 ```
-python -m rslp.forest_loss_driver.scripts.sync_labels_from_studio --project_id f56e41c6-83ab-4a7f-9b14-443391f9b2ba --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/
-python -m rslp.forest_loss_driver.scripts.sync_labels_from_studio --project_id a493cba0-466f-4604-8359-c437b78f7009 --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/
+python -m rslp.forest_loss_driver.scripts.sync_labels_from_studio --project_id f56e41c6-83ab-4a7f-9b14-443391f9b2ba --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --remap_labels
+python -m rslp.forest_loss_driver.scripts.sync_labels_from_studio --project_id a493cba0-466f-4604-8359-c437b78f7009 --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --remap_labels
 ```
 
 Create a combined dataset with the Peru labels. We use the multimodal config but really we just use Sentinel-2 images here.
@@ -139,6 +133,8 @@ rsync -av /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1
 # Re-materialize since the source dataset may have had different config.
 rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/ --workers 64 --disabled-layers pre_landsat,post_landsat,pre_sentinel1,post_sentinel1 --retry-max-attempts 5 --retry-backoff-seconds 5
 rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/ --workers 64 --disabled-layers pre_landsat,post_landsat,pre_sentinel1,post_sentinel1 --ignore-errors --retry-max-attempts 5 --retry-backoff-seconds 5
+# Assign split.
+python -m rslp.forest_loss_driver.scripts.assign_split /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/
 ```
 
 Next we can train a model on the data.
@@ -183,3 +179,23 @@ fairly isolated, and 50 pixels away is still something.
 
 Once these examples are annotated we should train the model again, but focus more on
 accuracy instead of using it to prioritize what else to annotate.
+
+## Train Model for Brazil and Colombia
+
+Download and extract the dataset from here:
+
+- TODO
+
+Now train the model:
+
+```
+python -m rslp.rslearn_main model fit --config data/forest_loss_driver/brazil_colombia_model/config_satlaspretrain.yaml
+```
+
+It should show loss, accuracy, confusion matrix, etc. on W&B.
+
+Get outputs from the model:
+
+```
+python -m rslp.rslearn_main model predict --config data/forest_loss_driver/brazil_colombia_model/config_satlaspretrain.yaml --data.init_args.predict_config.groups='["20250428_brazil_phase1","20250428_colombia_phase1"]'
+```

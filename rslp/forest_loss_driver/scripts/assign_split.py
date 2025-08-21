@@ -9,6 +9,17 @@ from rslearn.dataset import Dataset, Window
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
+IGNORED_CATEGORIES = [
+    # From original Peru label hierarchy.
+    "unknown",
+    "unlabeled",
+    "human",
+    "natural",
+    # From revised label hierarchy.
+    "Anthropic - Unknown",
+    "Natural - Unknown",
+]
+
 
 def assign_split(window: Window) -> None:
     """Assign split of the window to train or val."""
@@ -17,10 +28,13 @@ def assign_split(window: Window) -> None:
         layer_dir, window.projection, window.bounds
     )
     category = features[0].properties["new_label"]
-    if category in ["unknown", "unlabeled", "human", "natural"]:
-        return
 
-    if window.group in ["20250428_brazil_phase1", "20250428_colombia_phase1"]:
+    if category in IGNORED_CATEGORIES:
+        split = "ignored"
+
+    # Currently we only validate on Brazil/Colombia labels.
+    # Model config can decide whether to train on Peru or not.
+    elif window.group in ["20250428_brazil_phase1", "20250428_colombia_phase1"]:
         is_val = hashlib.sha256(window.name.encode()).hexdigest()[0] in [
             "0",
             "1",
@@ -31,6 +45,7 @@ def assign_split(window: Window) -> None:
             split = "val"
         else:
             split = "train"
+
     elif window.group in [
         "peru3",
         "peru3_flagged_in_peru",
@@ -40,8 +55,9 @@ def assign_split(window: Window) -> None:
         "brazil_interesting",
     ]:
         split = "train"
+
     else:
-        return
+        split = "ignored"
 
     window.options["split"] = split
     window.save()
