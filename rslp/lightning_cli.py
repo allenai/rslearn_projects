@@ -10,12 +10,11 @@ import tempfile
 import fsspec
 import jsonargparse
 import wandb
-from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch import LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
-from rslearn.train.data_module import RslearnDataModule
 from rslearn.train.lightning_module import RslearnLightningModule
 from upath import UPath
 
@@ -200,6 +199,17 @@ class CustomLightningCLI(RslearnLightningCLI):
             help="Disable W&B logging for fit",
             default=False,
         )
+        parser.add_argument(
+            "--profiler",
+            type=str,
+            help="Profiler to use for training. Can be 'simple' or 'advanced'",
+            default=None,
+        )
+        parser.add_argument(
+            "--allow_missing_weights",
+            action="store_true",
+            help="Allow missing weights in checkpoint specified in --ckpt_path",
+        )
 
     def _get_checkpoint_path(
         self, checkpoint_dir: UPath, load_best: bool = False, autoresume: bool = False
@@ -331,6 +341,14 @@ class CustomLightningCLI(RslearnLightningCLI):
                 }
             )
 
+            # Configure profiler if specified
+            if c.profiler:
+                max_steps = 100
+                c.trainer.profiler = c.profiler
+                c.trainer.max_steps = max_steps
+                logger.info(f"Using profiler: {c.profiler}")
+                logger.info(f"Setting max_steps to {max_steps}")
+
         if subcommand == "fit" and not c.no_log:
             # Set the checkpoint directory to canonical GCS location.
             checkpoint_callback = None
@@ -405,7 +423,7 @@ def custom_model_handler() -> None:
     """
     CustomLightningCLI(
         model_class=RslearnLightningModule,
-        datamodule_class=RslearnDataModule,
+        datamodule_class=LightningDataModule,
         args=sys.argv[2:],
         subclass_mode_model=True,
         subclass_mode_data=True,
