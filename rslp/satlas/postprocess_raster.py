@@ -342,8 +342,9 @@ def write_smooth_rasters_jobs(
 
     # Get completed filename set from smoothed dir.
     completed_fnames = set()
-    for fname in (smoothed_upath / label).iterdir():
-        completed_fnames.add(fname.name)
+    if (smoothed_upath / label).exists():
+        for fname in (smoothed_upath / label).iterdir():
+            completed_fnames.add(fname.name)
 
     # Now create one job for each filename in the prediction dir.
     jobs: list[list[str]] = []
@@ -467,8 +468,9 @@ def write_extract_polygons_jobs(
 
     # Get completed filename set from vectorized dir.
     completed_fnames = set()
-    for fname in (vectorized_upath / label).iterdir():
-        completed_fnames.add(fname.name.split(".")[0])
+    if (vectorized_upath / label).exists():
+        for fname in (vectorized_upath / label).iterdir():
+            completed_fnames.add(fname.name.split(".")[0])
 
     # Now create one job for each filename in the prediction dir.
     jobs: list[list[str]] = []
