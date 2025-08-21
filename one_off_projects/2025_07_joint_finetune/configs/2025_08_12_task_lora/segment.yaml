@@ -1,5 +1,5 @@
-base_cfg: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_15_helios_moe/base.yaml
-output_path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_15_helios_moe/OUT_segment.yaml
+base_cfg: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_12_task_lora/base.yaml
+output_path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_12_task_lora/OUT_segment.yaml
 
 dataset_cfgs:
   - - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_pastis/basecfg_cosinelr.yaml
@@ -10,6 +10,8 @@ dataset_cfgs:
 global_overrides:
   model:
     class_path: rslearn.train.lightning_module.RslearnLightningModule
+    init_args:
+      lr: 0.0002
   trainer:
     accumulate_grad_batches: 2
 

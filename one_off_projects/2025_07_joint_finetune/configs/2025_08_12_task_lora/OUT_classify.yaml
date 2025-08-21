@@ -1049,7 +1049,7 @@ model:
     scheduler:
       class_path: rslearn.train.scheduler.CosineAnnealingScheduler
       init_args:
-        T_max: 100
+        T_max: 50
         eta_min: 0
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
@@ -1128,4 +1128,4 @@ trainer:
         unfreeze_selectors:
         - head
         - lora
-  max_epochs: 200
+  max_epochs: 500

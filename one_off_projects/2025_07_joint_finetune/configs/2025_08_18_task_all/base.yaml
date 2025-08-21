@@ -13,14 +13,18 @@ model:
                 patch_size: {PATCH_SIZE}
               model_overrides:
                 encoder_config:
+                  task_lora_kwargs:
+                    use_task_lora: true
+                    task_lora_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+                    gen_hidden: 64
                   task_moe_kwargs:
                     use_task_moe: true
-                    task_moe_indices: [6, 7, 8, 9, 10, 11]
+                    task_moe_indices: [11]
                     add_noise: true
                     noise_mult: 0.2
                     num_experts: 4
-                    num_slots: 1
-                    expert_mult: 0.5
+                    num_slots: 4
+                    expert_mult: 4
               task_embed_opts:
                 type: "precomputed"
                 path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct.pt
@@ -30,7 +34,7 @@ model:
     scheduler:
       class_path: rslearn.train.scheduler.CosineAnnealingScheduler
       init_args:
-        T_max: 100
+        T_max: 50
         eta_min: 0
 
 data:
@@ -58,13 +62,13 @@ trainer:
         stages:
           - at_epoch: 0
             freeze_selectors: ["encoder"]
-            unfreeze_selectors: ["head"]
+            unfreeze_selectors: ["head", "moe"]
           - at_epoch: 20
             freeze_selectors: ["encoder"]
-            unfreeze_selectors: ["head", "moe"]
+            unfreeze_selectors: ["head", "moe", "lora"]
           - at_epoch: 40
             freeze_selectors: []
-            unfreeze_selectors: ["head", "moe", "encoder"]
+            unfreeze_selectors: ["head", "moe", "lora", "encoder"]
 
 rslp_project: placeholder
 rslp_experiment: placeholder

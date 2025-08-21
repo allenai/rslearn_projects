@@ -9,9 +9,6 @@ cmd = [
     "--patch_size", "8",
     "--encoder_embedding_size", "768",
     "--image_name", "$IMAGE",
-    "--cluster+=ai2/titan-cirrascale",
-    "--cluster+=ai2/saturn-cirrascale", 
-    "--cluster+=ai2/ceres-cirrascale",
     "--rslp_project", "$PROJECT_NAME",
     "--experiment_id", "$EXP_ID",
 ]
@@ -23,11 +20,15 @@ parser.add_argument("--exp_id", type=str, default="debug")
 parser.add_argument("--project_name", type=str, default="helios-debug")
 parser.add_argument("--gpu", type=int, default=0)
 parser.add_argument("--image", type=str, default="dev")
+parser.add_argument("--clusters", type=str, nargs="*", default=["saturn", "ceres", "titan"])
 args = parser.parse_args()
 
 args.image = f"henryh/rslp_multidataset_{args.image}"
 if args.project_name == "s":
     args.project_name = "helios_finetune_cosine_lr"
+
+for cluster in args.clusters:
+    cmd.append(f"--cluster+=ai2/{cluster}-cirrascale")
 
 if args.gpu == 0:
     RLSP_PREFIX = "/weka/dfive-default/ryanp/rslearn_projects/project_data"

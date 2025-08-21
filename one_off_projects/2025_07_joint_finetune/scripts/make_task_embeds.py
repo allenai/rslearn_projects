@@ -1,4 +1,4 @@
-"""Build compact task embeddings from rslearn configs.
+"""Build compact task embeddings from rslearn configs or a monolithic datasets YAML.
 
 Mean similarity with anchor subtraction is 0.48 (including self-self similarities), 
 which is much better than the 0.73 without anchor subtraction.
@@ -7,11 +7,12 @@ If you add the qwen embedding templating plus the anchor subtraction, the mean
 similarity between embeddings is 0.36, but similar tasks are still high.
 
 If you don't truncate, then you need to use a projection layer in the helios encoder
-to get the dimensions down to 768. With MLR, qwen's embeddings are pretty good even so.
+to get the dimensions down to 768. Since qwen supports MLR, just truncating is fine.
 
 Current commands
 ================
-python make_task_embeds.py --anchor --instruct --truncate 768
+V1: python make_task_embeds.py --anchor --instruct --truncate 256 --add_benchmarks
+V2: python make_task_embeds.py --anchor --instruct --truncate 256 --from_yaml /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/tasks.yaml
 """
 import os
 import hashlib
@@ -32,20 +33,21 @@ RESET = "\x1b[0m"
 KEEP_INPUT_FAMILIES = ("sentinel1", "sentinel2", "landsat", "srtm")
 DROP_INPUTS = {"mask", "image", "targets", "label"}
 DEFAULT_INSTRUCT_PROMPT = """
-You are creating a similarity embedding for remote-sensing tasks.
-Focus on the *content*, not formatting. Down-weight boilerplate and shared structure.
+You are building a compact similarity embedding for Earth-observation tasks that will
+be used to condition a satellite foundation model (Helios) during downstream finetuning.
+Focus on semantic content over formatting.
 
-Emphasize:
-- Task TYPE (classification/detection/segmentation/regression and any special variants)
-- Target schema (property_name, classes/labels, numeric target meaning)
-- Sensing MODALITIES actually used (sentinel1, sentinel2, landsat)
-- Domain/topic keywords (e.g., vessels, cropland, wind turbines, solar farms)
-- Geographic or dataset hints (if present)
+Prioritize (high weight):
+- Task TYPE and variant (classification / detection / segmentation / regression; multi-label vs single-label).
+- Target schema (property_name, full class list; or numeric target definition/units).
+- SENSOR MODALITIES actually used (sentinel1, sentinel2, landsat, srtm) and whether time series/temporal mosaics are used.
+- DOMAIN keywords (vessels, cropland, wind turbines, solar farms, floods, LCZ, debris, etc.).
+- GEOGRAPHY and TIMEFRAME if present (AOIs, countries, biome, years).
 
-De-emphasize:
-- Generic YAML keys, ordering, punctuation
-- Training/runtime settings (batch size, paths, workers, dtypes, masks)
-- Repeated time slices or band indices (e.g., sentinel2_0..11) 
+Down-weight (low weight):
+- Boilerplate YAML structure and keys, execution/runtime flags, file paths, worker counts.
+- Repetition of monthly slices/band indices (e.g., sentinel2_0..11); band visualization details (RGB).
+- Generic phrasing or punctuation.
 """
 
 
@@ -141,7 +143,7 @@ def extract_task_core(cfg: Dict[str, Any]) -> Dict[str, Any]:
 
     return keep
 
-def build_task_summary(task_name: str, cfg: Dict[str, Any]) -> str:
+def build_task_summary(task_name: str, cfg: Dict[str, Any], skip_extract: bool = False) -> str:
     """
     Compact representation:
       task=<dir>
@@ -149,7 +151,10 @@ def build_task_summary(task_name: str, cfg: Dict[str, Any]) -> str:
       For multitask: one block per subtask with short type & classes.
       For single task: type/classes inline.
     """
-    core = extract_task_core(cfg)
+    if not skip_extract:
+        core = extract_task_core(cfg)
+    else:
+        core = cfg
     lines: List[str] = [f"task={task_name}"]
 
     fams = core.get("inputs_families") or []
@@ -193,22 +198,30 @@ def extract_decoder_primary_key(cfg: Dict[str, Any]) -> Optional[str]:
     except Exception:
         return None
 
+
 # ---------------- Color helpers ----------------
 
-def cell_color(v: float, vmin: float, vmax: float) -> str:
-    # Normalize in [0,1]; handle degenerate range
-    if vmax <= vmin:
-        t = 0.0
-    else:
-        t = (v - vmin) / (vmax - vmin)
-    # Lighter green for lower sim, darker for higher: invert brightness
-    g = int(round(255 * (1.0 - t)))          # background green channel
-    r = b = 0
-    # Choose text color for contrast
-    # light bg (g >= 128) => black text; dark bg => white text
-    fg = (0, 0, 0) if g >= 128 else (255, 255, 255)
-    bg = (r, g, b)
-    return f"\x1b[38;2;{fg[0]};{fg[1]};{fg[2]}m\x1b[48;2;{bg[0]};{bg[1]};{bg[2]}m"
+def cell_color(v: float, vmin: float=-1, vmax: float=1) -> str:
+    # normalize v to [0,1]
+    t = 0.0 if vmax <= vmin else (v - vmin) / (vmax - vmin)
+    t = max(0, min(1, t))
+
+    # interpolate RGB: 0=red(255,0,0), 0.5=yellow(255,255,0), 1=green(0,255,0)
+    if t < 0.5:  # red → yellow
+        r, g, b = 255, int(510*t), 0
+    else:        # yellow → green
+        r, g, b = int(510*(1-t)), 255, 0
+
+    # quantize to xterm-256 cube
+    steps = [0,95,135,175,215,255]
+    q = lambda x: min(range(6), key=lambda i: abs(steps[i]-x))
+    idx = 16 + 36*q(r) + 6*q(g) + q(b)
+
+    # text color for contrast
+    lum = 0.2126*r + 0.7152*g + 0.0722*b
+    fg = 30 if lum > 140 else 97
+
+    return f"\x1b[{fg};48;5;{idx}m"
 
 def clip(s: str, w: int) -> str:
     return s if len(s) <= w else s[: max(1, w - 1)] + "…"
@@ -296,7 +309,7 @@ def parse_args() -> argparse.Namespace:
         default="/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_texts_{info}.jsonl",
         help="Optional JSONL for {task_dir, task_key, text}."
     )
-    p.add_argument("--tasks", nargs="*", help="Task dir names (none = auto: subdirs starting with v2_*)")
+    p.add_argument("--tasks", nargs="*", help="Task dir names (none = auto: subdirs starting with v2_*).")
     p.add_argument("--model", default="Qwen/Qwen3-Embedding-8B", help="HF embedding model to use.")
     p.add_argument("--device", default=None, help="Device override, e.g. 'cuda' or 'cpu'.")
     p.add_argument("--anchor", action="store_true", help="Enable anchor subtraction.")
@@ -307,46 +320,64 @@ def parse_args() -> argparse.Namespace:
         help="Prompt to add to the task description if instruct is enabled."
     )
     p.add_argument("--truncate", type=int, default=None, help="Truncate task embeddings to this dimension.")
+    p.add_argument("--add_benchmarks", action="store_true", help="Add pretrain evals to tasks.")
+    p.add_argument("--from_yaml", type=str, default=None,
+                   help="If set, load tasks directly from a single YAML of datasets (bypass rslearn parsing).")
+    p.add_argument("--combine_descriptions", action="store_true",
+                   help="If set with --from-yaml, append each dataset's description to the summary text.")
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    tasks = args.tasks
-    if not tasks:
-        tasks = [name for name in os.listdir(args.base_dir) if name.startswith("v2_")]
-        # special case - treat vessel classification + detection separately
-        landsat_index = tasks.index("v2_landsat_vessels")
-        tasks.insert(landsat_index, "v2_landsat_vessels")
-    else:
-        landsat_index = tasks.index("v2_landsat_vessels")
-
-    summaries: List[str] = []
     keys: List[str] = []
-    merged_cfgs: List[Dict[str, Any]] = []
+    summaries: List[str] = []
+    anchor_text = None
 
-    for i, task_dir in enumerate(tasks):
-        merged: Dict[str, Any] = {}
-        is_landsat_vessels = (task_dir == "v2_landsat_vessels")
+    if args.from_yaml:
+        # Load from monolithic datasets YAML (preferred)
+        data = load_yaml(args.from_yaml)
+        tasks: List[str] = []
+        for ds_name, ds in data.items():
+            summary = yaml.dump(ds)
+            if ds_name == "anchor_dataset":
+                anchor_text = summary
+            else:
+                tasks.append(ds_name)
+                keys.append(ds_name)
+                summaries.append(summary)
 
-        if is_landsat_vessels:
-            task = "detector" if i == landsat_index else "classifier"
-            path = "finetune_{}_cosinelr.yaml".format(task)
-            gathered = [os.path.join(args.base_dir, task_dir, path)]
+    else:
+        # Load from rslearn configs
+        tasks = args.tasks
+        if not tasks:
+            tasks = [name for name in os.listdir(args.base_dir) if name.startswith("v2_")]
+            # special case - treat vessel classification + detection separately
+            landsat_index = tasks.index("v2_landsat_vessels")
+            tasks.insert(landsat_index, "v2_landsat_vessels")
         else:
-            gathered = gather_task_files(args.base_dir, task_dir)
+            landsat_index = tasks.index("v2_landsat_vessels")
 
-        for p in gathered:
-            merged = deep_merge(merged, load_yaml(p))
-        merged_cfgs.append(merged)
+        for i, task_dir in enumerate(tasks):
+            merged: Dict[str, Any] = {}
+            is_landsat_vessels = (task_dir == "v2_landsat_vessels")
 
-        summaries.append(build_task_summary(task_dir, merged))
+            if is_landsat_vessels:
+                task = "detector" if i == landsat_index else "classifier"
+                path = "finetune_{}_cosinelr.yaml".format(task)
+                gathered = [os.path.join(args.base_dir, task_dir, path)]
+            else:
+                gathered = gather_task_files(args.base_dir, task_dir)
 
-        key = extract_decoder_primary_key(merged)
-        if not key:
-            print(f"WARNING: Could not find decoders key for {task_dir}; using directory name.")
-            key = task_dir
-        keys.append(key)
+            for p in gathered:
+                merged = deep_merge(merged, load_yaml(p))
+            summaries.append(build_task_summary(task_dir, merged))
+
+            key = extract_decoder_primary_key(merged)
+            if not key:
+                print(f"WARNING: Could not find decoders key for {task_dir}; using directory name.")
+                key = task_dir
+            keys.append(key)
 
     # Sort by key alphabetically
     keys_index = list(range(len(keys)))
@@ -355,7 +386,23 @@ def main() -> None:
     tasks = [tasks[i] for i in keys_index]
     keys = [keys[i] for i in keys_index]
     summaries = [summaries[i] for i in keys_index]
-    merged_cfgs = [merged_cfgs[i] for i in keys_index]
+
+    # Add pretrain eval benchmarks - don't use this with from_yaml
+    # Add after the other tasks so that we can add new tasks without disrupting order of existing ones
+    # In general, we should always add new tasks to the end of the list
+    if args.add_benchmarks:
+        assert not args.from_yaml, "Benchmarks are not supported when loading from YAML"
+        benchmarks = load_yaml(os.path.join(args.base_dir, "../data/benchmark_info.yaml"))
+        benchmarks = {
+            k: benchmarks[k] for k in 
+            sorted(benchmarks, key=lambda k: list(benchmarks[k]["tasks"].keys())[0])
+        }
+        for task_name, task_info in benchmarks.items():
+            assert len(task_info["tasks"]) == 1, "Benchmark info should have only one task"
+            summaries.append(build_task_summary(task_name, task_info, skip_extract=True))
+            keys.append(list(task_info["tasks"].keys())[0])
+            tasks.append(task_name)
+    assert len(keys) == len(set(keys)), "Keys must be unique"
 
     # Get info string
     info = f"__{args.model.split('/')[-1]}__{args.truncate}d"
@@ -363,14 +410,22 @@ def main() -> None:
         info += "__anchor"
     if args.instruct:
         info += "__instruct"
+    if args.from_yaml:
+        info += f"__from_yaml"
 
     print("=== Configuration ===")
     print(f"Info: {info}")
     print(f"Model: {args.model}")
-    print(f"Base dir: {args.base_dir}")
-    print("Sorted task dir -> key:")
-    for task_dir, key in zip(tasks, keys):
-        print(f" - {task_dir:<30} -> {key}")
+    if args.from_yaml:
+        print(f"Datasets YAML: {args.from_yaml}")
+        print("Sorted subtask key list:")
+        for key in keys:
+            print(f" - {key}")
+    else:
+        print(f"Base dir: {args.base_dir}")
+        print("Sorted task dir -> key:")
+        for task_dir, key in zip(tasks, keys):
+            print(f" - {task_dir:<30} -> {key}")
     print()
 
     # Load model once
@@ -378,17 +433,19 @@ def main() -> None:
     if args.instruct:
         print(f"\n[Instruct] Using prompt: {args.prompt}")
 
-    # Build anchor embedding from placeholder summary (same summarizer path)
-    anchor_emb = None
+    # Build anchor embedding from placeholder summary
     if args.anchor:
-        anchor_text = build_anchor_summary()
+        if not args.from_yaml:
+            anchor_text = build_anchor_summary()
+        
         fmt_anchor_text = anchor_text
         if args.instruct:
-            fmt_anchor_text = get_detailed_instruct(anchor_text, args.prompt)
+            fmt_anchor_text = get_detailed_instruct(fmt_anchor_text, args.prompt)
+
+        print("\n[Anchor] Using placeholder summary for anchor subtraction:\n" + anchor_text + "\n")
         anchor_emb = embed_texts_with(
             tokenizer, model, device, [fmt_anchor_text], args.truncate
         )[0]  # [D]
-        print("\n[Anchor] Using placeholder summary for anchor subtraction:\n" + anchor_text + "\n")
 
     # Embed summaries
     if args.instruct:
@@ -412,15 +469,15 @@ def main() -> None:
     if args.dump_texts:
         with open(args.dump_texts.format(info=info), "w") as f:
             for task_dir, key, text in zip(tasks, keys, summaries):
+                print(key, task_dir)
+                print(text)
+                print()
+                print()
                 f.write(json.dumps({"task_dir": task_dir, "task_key": key, "text": text}) + "\n")
-            f.write(json.dumps({"code_hash": result["code_hash"]}) + "\n")
-            if args.anchor:
-                f.write(json.dumps({"anchor_text": anchor_text}) + "\n")
             if args.instruct:
                 f.write(json.dumps({"prompt": args.prompt}) + "\n")
 
     # Cosine similarity matrix
-    result.pop("code_hash")
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     print(f"=== Cosine similarity matrix ===")
 
@@ -434,25 +491,46 @@ def main() -> None:
     # Label and column widths
     clip = lambda s, w: s if len(s) <= w else s[: w - 1] + "…"
     idx_digits = max(2, len(str(max(0, N - 1))))
-    num_w = max(prec + 2, idx_digits)  # width for numbers & headers (e.g., "0.123")
-    label_w = max(16, min(36, max(len(k) for k in keys) + 1 + 2 + idx_digits))  # "name (idx)"
+    num_w = max(prec + 2, idx_digits)
+    label_w = max(16, min(36, max(len(k) for k in keys) + 1 + 2 + idx_digits))
 
     vmin, vmax = float(np.nanmin(A)), float(np.nanmax(A))
 
+    row_means = A.mean(axis=1)
+    col_means = A.mean(axis=0)
+    overall_mean = A.mean()
+
     # Header: indices only
     header = " ".join(f"{i:>{num_w}d}" for i in range(N))
+    header += f" {'mean':>{num_w}}"
     print(f"{'':>{label_w}} {header}")
 
-    # Rows: "name (index)" at left; colored cells
+    # Rows
     for i, name in enumerate(keys):
         row_label = f"{name} ({i})"
         row_label = clip(row_label, label_w)
         cells = []
         for j in range(N):
             v = float(A[i, j])
-            fmt = f"{v:>{num_w}.{prec}f}"
+            prec_l = prec if v > 0 else prec - 1
+            fmt = f"{v:>{num_w}.{prec_l}f}"
             cells.append(cell_color(v, vmin, vmax) + fmt + RESET)
+        # row mean
+        v = float(row_means[i])
+        fmt = f"{v:>{num_w}.{prec}f}"
+        cells.append(cell_color(v, vmin, vmax) + fmt + RESET)
         print(f"{row_label:>{label_w}} " + " ".join(cells))
+
+    # final row: column means + overall mean
+    row_label = clip("mean", label_w)
+    cells = []
+    for j in range(N):
+        v = float(col_means[j])
+        fmt = f"{v:>{num_w}.{prec}f}"
+        cells.append(cell_color(v, vmin, vmax) + fmt + RESET)
+    fmt = f"{overall_mean:>{num_w}.{prec}f}"
+    cells.append(cell_color(overall_mean, vmin, vmax) + fmt + RESET)
+    print(f"{row_label:>{label_w}} " + " ".join(cells))
 
     # Summary
     print(f"\nRange: [{vmin:.{prec}f}, {vmax:.{prec}f}]  Mean similarity: {A.mean():.{prec}f}")

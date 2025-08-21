@@ -14,7 +14,7 @@ if not os.path.exists(os.path.join(base_dir, d)):
 
 done = []
 for f in os.listdir(os.path.join(base_dir, d)):
-    if not f.startswith("OUT_") and not f.endswith("base.yaml"):
+    if not f.startswith("OUT_") and not f.endswith("base.yaml") and f.endswith(".yaml"):
         print(os.path.join(base_dir, d, f))
         os.system(f"python3 make_multidataset_config.py --cfg {os.path.join(base_dir, d, f)}")
         done.append(os.path.join(base_dir, d, f))

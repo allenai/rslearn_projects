@@ -1172,7 +1172,7 @@ data:
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
-    lr: 0.0001
+    lr: 0.0002
     model:
       class_path: rslearn.models.multitask.MultiTaskMergedModel
       init_args:
@@ -1203,22 +1203,17 @@ model:
               patch_size: 8
             model_overrides:
               encoder_config:
-                task_lora_kwargs:
-                  gen_hidden: 64
-                  task_lora_indices:
-                  - 0
-                  - 1
-                  - 2
-                  - 3
-                  - 4
-                  - 5
-                  - 6
-                  - 7
-                  - 8
+                task_moe_kwargs:
+                  add_noise: true
+                  expert_mult: 1
+                  noise_mult: 0.2
+                  num_experts: 4
+                  num_slots: 4
+                  task_moe_indices:
                   - 9
                   - 10
                   - 11
-                  use_task_lora: true
+                  use_task_moe: true
             selector:
             - encoder
             task_embed_opts:
@@ -1237,7 +1232,7 @@ model:
     scheduler:
       class_path: rslearn.train.scheduler.CosineAnnealingScheduler
       init_args:
-        T_max: 100
+        T_max: 50
         eta_min: 0
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
@@ -1311,5 +1306,11 @@ trainer:
         - encoder
         unfreeze_selectors:
         - head
-        - lora
-  max_epochs: 200
+        - moe
+      - at_epoch: 40
+        freeze_selectors: []
+        unfreeze_selectors:
+        - head
+        - moe
+        - encoder
+  max_epochs: 500
