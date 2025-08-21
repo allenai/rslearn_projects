@@ -159,7 +159,7 @@ if __name__ == "__main__":
     )
 
     print("Initializing Helios model")
-    device = torch.device("cpu")
+    device = torch.device("cuda")
     helios = Helios(
         checkpoint_path=args.checkpoint_path,
         selector=["encoder"],
