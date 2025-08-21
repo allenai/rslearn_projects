@@ -173,6 +173,7 @@ if __name__ == "__main__":
     test_labels = []
     for window, embedding in zip(windows, embeddings):
         if embedding is None:
+            print("Missing embedding - skipping")
             continue
 
         class_name = window.options["label"]
