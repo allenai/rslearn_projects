@@ -6,11 +6,7 @@
           "bands": [
             "output"
           ],
-          "dtype": "uint8",
-          "format": {
-            "format": "png",
-            "name": "single_image"
-          }
+          "dtype": "uint8"
         }
       ],
       "type": "raster"
