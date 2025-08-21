@@ -86,7 +86,7 @@ if __name__ == "__main__":
     dataset = Dataset(UPath(args.ds_path))
     transforms = [
         HeliosNormalize(
-            config_fname="/opt/helios/data/norm_configs/computed.json",
+            config_fname="/weka/dfive-default/gabrielt/helios/data/norm_configs/computed.json",
             band_names=dict(
                 sentinel2_l2a=[
                     "B02",
