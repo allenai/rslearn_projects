@@ -238,7 +238,11 @@ if __name__ == "__main__":
 
     print("Initializing dataset")
     dataset = Dataset(UPath(args.ds_path))
-    model_dataset = initialize_dataset_for_helios(dataset)
+    model_dataset = initialize_dataset_for_helios(
+        dataset,
+        input_size=args.input_size,
+        workers=args.workers,
+    )
 
     print("Initializing Helios model")
     device = torch.device("cuda")
