@@ -1,11 +1,9 @@
 """Segmentation confusion matrix."""
 
-import os
 from typing import Any
 
 import numpy as np
 import wandb
-from PIL import Image
 from rslearn.train.lightning_module import RslearnLightningModule
 
 from .config import CATEGORIES
@@ -19,45 +17,20 @@ class CMLightningModule(RslearnLightningModule):
         self.probs: list = []
         self.y_true: list = []
 
-    def test_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
-        """Compute test performance and also record for confusion matrix.
+    def on_test_forward(
+        self,
+        inputs: list[dict[str, Any]],
+        targets: list[dict[str, Any]],
+        model_outputs: dict[str, Any],
+    ) -> None:
+        """Hook to run after the forward pass of the model during testing.
 
         Args:
-            batch: the batch contents.
-            batch_idx: the batch index.
-            dataloader_idx: the index of the dataloader creating this batch.
+            inputs: The input batch.
+            targets: The target batch.
+            model_outputs: The output of the model, with keys "outputs" and "loss_dict", and possibly other keys.
         """
-        # Code below is copied from RslearnLightningModule.test_step.
-        inputs, targets, metadatas = batch
-        batch_size = len(inputs)
-        outputs, loss_dict = self(inputs, targets)
-        test_loss = sum(loss_dict.values())
-        self.log_dict(
-            {"test_" + k: v for k, v in loss_dict.items()},
-            batch_size=batch_size,
-            on_step=False,
-            on_epoch=True,
-        )
-        self.log(
-            "test_loss", test_loss, batch_size=batch_size, on_step=False, on_epoch=True
-        )
-        self.test_metrics.update(outputs, targets)
-        self.log_dict(self.test_metrics, batch_size=batch_size, on_epoch=True)
-
-        if self.visualize_dir:
-            for idx, (inp, target, output, metadata) in enumerate(
-                zip(inputs, targets, outputs, metadatas)
-            ):
-                images = self.task.visualize(inp, target, output)
-                for image_suffix, image in images.items():
-                    out_fname = os.path.join(
-                        self.visualize_dir,
-                        f'{metadata["window_name"]}_{metadata["bounds"][0]}_{metadata["bounds"][1]}_{image_suffix}.png',
-                    )
-                    Image.fromarray(image).save(out_fname)
-
-        # Now we hook in part to compute confusion matrix.
-        for output, target in zip(outputs, targets):
+        for output, target in zip(model_outputs["outputs"], targets):
             # cur_probs is CxN array of valid probabilities, N=H*W.
             cur_probs = output["segment"][:, target["segment"]["valid"] > 0]
             # cur_labels is N array of labels.
