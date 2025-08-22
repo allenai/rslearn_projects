@@ -41,7 +41,7 @@ def load_location_embedding(window: Window) -> torch.Tensor:
     return torch.tensor([lon, lat])
 
 
-def load_pixel_embedding(window: Window) -> torch.Tensor:
+def load_pixel_embedding(window: Window) -> torch.Tensor | None:
     """Get Sentinel-2 pixel values embedding.
 
     We load center 4x4, averaging on all bands but concatenating over time.
