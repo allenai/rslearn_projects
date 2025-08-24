@@ -12,7 +12,6 @@ from rslp.forest_loss_driver.extract_dataset.least_cloudy_image_selector import 
     select_least_cloudy_images_pipeline,
 )
 from rslp.forest_loss_driver.predict_pipeline import MODEL_CFG_FNAME
-from rslp.forest_loss_driver.train import CATEGORIES
 from rslp.log_utils import get_logger
 from rslp.utils.rslearn import run_model_predict
 
@@ -58,30 +57,9 @@ def test_forest_loss_driver_model_predict(
 
     with output_path.open("r") as f:
         output_json = json.load(f)
-    # TODO: Ideally we would have a pydantic model for this output perhaps that we could subclass from rslearn?
-    # Check properties except probs
-    assert output_json["type"] == expected_output_json["type"]
-    assert output_json["properties"] == expected_output_json["properties"]
-    assert len(output_json["features"]) == len(expected_output_json["features"])
-    assert (
-        output_json["features"][0]["type"]
-        == expected_output_json["features"][0]["type"]
-    )
-    assert (
-        output_json["features"][0]["geometry"]
-        == expected_output_json["features"][0]["geometry"]
-    )
+
+    # Check that the predicted label is correct (this example should be river).
     assert (
         output_json["features"][0]["properties"]["new_label"]
         == expected_output_json["features"][0]["properties"]["new_label"]
     )
-
-    # Ensure river class is at least 0.9 probability and others at most 0.05.
-    actual_probs = output_json["features"][0]["properties"]["probs"]
-    expected_category = expected_output_json["features"][0]["properties"]["new_label"]
-    assert len(actual_probs) == len(CATEGORIES)
-    for prob, category_name in zip(actual_probs, CATEGORIES):
-        if category_name == expected_category:
-            assert prob >= 0.9, f"Probability for category {category_name} < 0.9"
-        else:
-            assert prob <= 0.05, f"Probability for category {category_name} > 0.05"

@@ -24,7 +24,9 @@ def process_window(window_dir: UPath) -> None:
     fc["features"][0]["properties"]["old_label"] = "unknown"
     fc["features"][0]["properties"]["new_label"] = "unknown"
     dst_fname = window_dir / "layers" / "label" / "data.geojson"
-    dst_fname.parent.mkdir(parents=True, exist_ok=True)
+    if dst_fname.exists():
+        return
+    dst_fname.parent.mkdir(parents=True)
     with dst_fname.open("w") as f:
         json.dump(fc, f)
     (dst_fname.parent / "completed").touch()
