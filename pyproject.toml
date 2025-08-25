@@ -6,7 +6,7 @@ authors = [
     { name = "OlmoEarth Team" },
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 
 dynamic = ["dependencies", "optional-dependencies"]
 
