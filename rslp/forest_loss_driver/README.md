@@ -153,7 +153,7 @@ this data.
 Apply the model to the remaining collected windows:
 
 ```
-python -m rslp.rslearn_main model predict --config data/forest_loss_driver/config_helios_frozen.yaml --data.init_args.path=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --data.init_args.predict_config.groups=["20250428_colombia","20250428_brazil"] --load_best=true
+python -m rslp.rslearn_main model predict --config data/forest_loss_driver/model_for_phase2/config_helios_frozen.yaml --data.init_args.path=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --data.init_args.predict_config.groups=["20250428_colombia","20250428_brazil"] --load_best=true
 ```
 
 Then we have a script to select windows:
