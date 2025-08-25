@@ -343,8 +343,9 @@ def main() -> None:
             if ds_name == "anchor_dataset":
                 anchor_text = summary
             else:
+                assert len(ds["tasks"]) == 1, f"Got {len(ds['tasks'])} tasks for {ds_name}"
                 tasks.append(ds_name)
-                keys.append(ds_name)
+                keys.append(list(ds["tasks"].keys())[0])
                 summaries.append(summary)
 
     else:
@@ -418,14 +419,11 @@ def main() -> None:
     print(f"Model: {args.model}")
     if args.from_yaml:
         print(f"Datasets YAML: {args.from_yaml}")
-        print("Sorted subtask key list:")
-        for key in keys:
-            print(f" - {key}")
     else:
         print(f"Base dir: {args.base_dir}")
-        print("Sorted task dir -> key:")
-        for task_dir, key in zip(tasks, keys):
-            print(f" - {task_dir:<30} -> {key}")
+    print("Sorted task dir -> key:")
+    for task_dir, key in zip(tasks, keys):
+        print(f" - {task_dir:<30} -> {key}")
     print()
 
     # Load model once

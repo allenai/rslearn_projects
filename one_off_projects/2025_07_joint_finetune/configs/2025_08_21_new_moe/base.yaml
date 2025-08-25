@@ -24,7 +24,7 @@ model:
                     compute_slots_from_task: true
               task_embed_opts:
                 type: "precomputed"
-                path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct.pt
+                path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct__from_yaml.pt
         decoders:  # Filled in by make_multidataset_config.py
         lazy_decode: true
     lr: 0.0002

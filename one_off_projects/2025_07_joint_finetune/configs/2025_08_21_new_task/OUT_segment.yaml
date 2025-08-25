@@ -1203,6 +1203,22 @@ model:
               patch_size: 8
             model_overrides:
               encoder_config:
+                task_lora_kwargs:
+                  gen_hidden: 128
+                  task_lora_indices:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 10
+                  - 11
+                  use_task_lora: true
                 task_moe_kwargs:
                   add_noise: true
                   compute_slots_from_task: true
@@ -1304,9 +1320,9 @@ trainer:
         - head
         - moe
       - at_epoch: 20
-        freeze_selectors: []
+        freeze_selectors:
+        - encoder
         unfreeze_selectors:
         - head
-        - moe
-        - encoder
-  max_epochs: 500
+        - lora
+  max_epochs: 200

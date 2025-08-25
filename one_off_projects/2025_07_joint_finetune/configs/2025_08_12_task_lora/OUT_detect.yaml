@@ -1474,7 +1474,7 @@ data:
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
-    lr: 0.0001
+    lr: 0.0002
     model:
       class_path: rslearn.models.multitask.MultiTaskMergedModel
       init_args:
@@ -1504,7 +1504,7 @@ model:
             model_overrides:
               encoder_config:
                 task_lora_kwargs:
-                  gen_hidden: 64
+                  gen_hidden: 128
                   task_lora_indices:
                   - 0
                   - 1
@@ -1522,7 +1522,7 @@ model:
             selector:
             - encoder
             task_embed_opts:
-              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct.pt
+              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct__from_yaml.pt
               type: precomputed
         lazy_decode: true
         task_label_offsets:

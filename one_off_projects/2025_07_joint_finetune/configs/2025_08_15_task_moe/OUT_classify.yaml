@@ -1013,7 +1013,8 @@ model:
               encoder_config:
                 task_moe_kwargs:
                   add_noise: true
-                  expert_mult: 1
+                  compute_slots_from_task: true
+                  expert_mult: 4
                   noise_mult: 0.2
                   num_experts: 4
                   num_slots: 4
@@ -1117,13 +1118,8 @@ trainer:
         - encoder
         unfreeze_selectors:
         - head
-      - at_epoch: 20
-        freeze_selectors:
-        - encoder
-        unfreeze_selectors:
-        - head
         - moe
-      - at_epoch: 40
+      - at_epoch: 20
         freeze_selectors: []
         unfreeze_selectors:
         - head

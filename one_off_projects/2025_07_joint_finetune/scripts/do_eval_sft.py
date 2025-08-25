@@ -25,12 +25,19 @@ print()
 parser = argparse.ArgumentParser()
 parser.add_argument("ckpt_path", type=str, help="Path to the checkpoint")
 parser.add_argument("task", type=str, help="Task to evaluate")
+parser.add_argument("old_or_new", type=str, help="old or new helios checkpoint")
 args = parser.parse_args()
 
 ckpt_cfg_paths = all_cfgs[args.task]
+if args.old_or_new.lower() == "old":
+    helios_path = "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000"
+else:
+    helios_path = "/weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000"
+print("using helios path", helios_path)
+print()
 cmd = [
     "python", "-m", "rslp.main", "helios", "launch_finetune",
-    "--helios_checkpoint_path", "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
+    "--helios_checkpoint_path", helios_path,
     "--patch_size", "8",
     "--encoder_embedding_size", "768",
     "--image_name", "henryh/rslp_multidataset_dev",

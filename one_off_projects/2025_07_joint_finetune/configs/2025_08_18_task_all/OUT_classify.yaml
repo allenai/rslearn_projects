@@ -987,7 +987,7 @@ data:
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
-    lr: 0.0001
+    lr: 0.0002
     model:
       class_path: rslearn.models.multitask.MultiTaskMergedModel
       init_args:
@@ -1012,7 +1012,7 @@ model:
             model_overrides:
               encoder_config:
                 task_lora_kwargs:
-                  gen_hidden: 64
+                  gen_hidden: 128
                   task_lora_indices:
                   - 0
                   - 1
@@ -1029,17 +1029,20 @@ model:
                   use_task_lora: true
                 task_moe_kwargs:
                   add_noise: true
+                  compute_slots_from_task: true
                   expert_mult: 4
                   noise_mult: 0.2
                   num_experts: 4
                   num_slots: 4
                   task_moe_indices:
+                  - 9
+                  - 10
                   - 11
                   use_task_moe: true
             selector:
             - encoder
             task_embed_opts:
-              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct.pt
+              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct__from_yaml.pt
               type: precomputed
         lazy_decode: true
         task_label_offsets:
@@ -1137,13 +1140,5 @@ trainer:
         - encoder
         unfreeze_selectors:
         - head
-        - moe
         - lora
-      - at_epoch: 40
-        freeze_selectors: []
-        unfreeze_selectors:
-        - head
-        - moe
-        - lora
-        - encoder
   max_epochs: 200

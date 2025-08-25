@@ -1218,7 +1218,7 @@ model:
             selector:
             - encoder
             task_embed_opts:
-              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct.pt
+              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct__from_yaml.pt
               type: precomputed
         lazy_decode: true
         task_label_offsets:

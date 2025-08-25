@@ -1006,7 +1006,7 @@ model:
         encoder:
         - class_path: rslp.helios.model.TaskConditionedHelios
           init_args:
-            checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
+            checkpoint_path: /weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
             forward_kwargs:
               patch_size: 8
             model_overrides:

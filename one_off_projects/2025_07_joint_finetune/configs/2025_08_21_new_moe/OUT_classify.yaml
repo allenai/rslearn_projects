@@ -1006,27 +1006,23 @@ model:
         encoder:
         - class_path: rslp.helios.model.TaskConditionedHelios
           init_args:
-            checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
+            checkpoint_path: /weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
             forward_kwargs:
               patch_size: 8
             model_overrides:
               encoder_config:
-                task_lora_kwargs:
-                  gen_hidden: 128
-                  task_lora_indices:
-                  - 0
-                  - 1
-                  - 2
-                  - 3
-                  - 4
-                  - 5
-                  - 6
-                  - 7
-                  - 8
+                task_moe_kwargs:
+                  add_noise: true
+                  compute_slots_from_task: true
+                  expert_mult: 4
+                  noise_mult: 0.2
+                  num_experts: 4
+                  num_slots: 4
+                  task_moe_indices:
                   - 9
                   - 10
                   - 11
-                  use_task_lora: true
+                  use_task_moe: true
             selector:
             - encoder
             task_embed_opts:
@@ -1122,10 +1118,11 @@ trainer:
         - encoder
         unfreeze_selectors:
         - head
+        - moe
       - at_epoch: 20
-        freeze_selectors:
-        - encoder
+        freeze_selectors: []
         unfreeze_selectors:
         - head
-        - lora
+        - moe
+        - encoder
   max_epochs: 500

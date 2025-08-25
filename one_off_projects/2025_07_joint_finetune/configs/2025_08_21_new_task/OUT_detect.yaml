@@ -1498,11 +1498,27 @@ model:
         encoder:
         - class_path: rslp.helios.model.TaskConditionedHelios
           init_args:
-            checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
+            checkpoint_path: /weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
             forward_kwargs:
               patch_size: 8
             model_overrides:
               encoder_config:
+                task_lora_kwargs:
+                  gen_hidden: 128
+                  task_lora_indices:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 10
+                  - 11
+                  use_task_lora: true
                 task_moe_kwargs:
                   add_noise: true
                   compute_slots_from_task: true
@@ -1518,7 +1534,7 @@ model:
             selector:
             - encoder
             task_embed_opts:
-              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct.pt
+              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct__from_yaml.pt
               type: precomputed
         lazy_decode: true
         task_label_offsets:
@@ -1767,9 +1783,9 @@ trainer:
         - head
         - moe
       - at_epoch: 20
-        freeze_selectors: []
+        freeze_selectors:
+        - encoder
         unfreeze_selectors:
         - head
-        - moe
-        - encoder
-  max_epochs: 500
+        - lora
+  max_epochs: 200

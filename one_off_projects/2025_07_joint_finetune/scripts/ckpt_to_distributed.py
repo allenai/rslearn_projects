@@ -106,6 +106,7 @@ if __name__ == "__main__":
         print("=====================\n")
 
     # save the actual distributed checkpoint
+    os.makedirs(os.path.join(args.save_dir, args.run), exist_ok=True)
     extractor = ckpt_to_distributed(
         base_class=base_class,
         **model_config,
