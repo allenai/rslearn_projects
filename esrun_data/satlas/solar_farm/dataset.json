@@ -1,16 +1,5 @@
 {
   "layers": {
-    "es_output": {
-      "band_sets": [
-        {
-          "bands": [
-            "output"
-          ],
-          "dtype": "uint8"
-        }
-      ],
-      "type": "raster"
-    },
     "label": {
       "type": "vector"
     },
@@ -40,6 +29,17 @@
             "format": "png",
             "name": "single_image"
           }
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8"
         }
       ],
       "type": "raster"
