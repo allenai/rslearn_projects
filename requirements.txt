@@ -1,12 +1,6 @@
-fsspec
-jsonargparse
-lightning[pytorch-extra]>=2.5.0.post0
 prometheus-client>=0.21.1
 python-dotenv>=1.0
 PyYAML>=6
-rasterio>=1.4
 rslearn @ git+https://github.com/allenai/rslearn.git@master
 s3fs>=2025.2.0
-torch>=2.7
-universal_pathlib>=0.2.6
-wandb>=0.17
+wandb>=0.21
