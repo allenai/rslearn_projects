@@ -1,0 +1,60 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+            init_args:
+              encoder:
+                class_path: rslearn.models.terremind.Terramind
+                init_args:
+                  model_size: BASE
+                  image_size: 128
+              image_channels: 12
+              image_key: "S2L2A"
+        decoders:
+          segment:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[16, 768]]
+                out_channels: 20
+                conv_layers_per_resolution: 2
+                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+data:
+  init_args:
+    inputs:
+      S2L2A:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"]
+        passthrough: true
+        dtype: FLOAT32
+      targets:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["class"]
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              # PASTIS is missing B01 and B09.
+              # We use B02 to fill in B01 and B8A to fill in B09.
+              S2L2A: [0, 0, 1, 2, 3, 4, 5, 6, 7, 7, 8, 9]
+            output_selector: S2L2A
+        - class_path: rslearn.models.terremind.TerramindNormalize
+    train_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              # PASTIS is missing B01 and B09.
+              # We use B02 to fill in B01 and B8A to fill in B09.
+              S2L2A: [0, 0, 1, 2, 3, 4, 5, 6, 7, 7, 8, 9]
+            output_selector: S2L2A
+        - class_path: rslearn.models.terremind.TerramindNormalize
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["S2L2A", "target/segment/classes", "target/segment/valid"]

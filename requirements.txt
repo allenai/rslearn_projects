@@ -2,7 +2,9 @@ fastapi>=0.115
 google-cloud-bigtable>=2.18
 google-cloud-pubsub>=2.18
 interrogate>=1.7
+lightning[pytorch-extra]==2.5.1.post0
 mapbox_vector_tile>=2.0
+openpyxl>=3.1.5
 prometheus-client>=0.21.1
 pydantic>=2.8
 pytest>=8.2
