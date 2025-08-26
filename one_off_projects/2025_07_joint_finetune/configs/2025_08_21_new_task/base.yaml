@@ -58,6 +58,10 @@ trainer:
         save_last: true
         monitor: val_loss
         mode: min
+    - class_path: rslearn.train.callbacks.gradients.MiniPCGrad
+      init_args:
+        selectors: ["moe", "lora", "head"]
+        only_monitor: false
     - class_path: rslearn.train.callbacks.freeze_unfreeze.MultiStageFineTuning
       init_args:
         stages:

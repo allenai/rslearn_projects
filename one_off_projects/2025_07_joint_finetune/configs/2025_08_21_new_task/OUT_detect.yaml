@@ -1773,6 +1773,13 @@ trainer:
       monitor: val_loss
       save_last: true
       save_top_k: 1
+  - class_path: rslearn.train.callbacks.gradients.MiniPCGrad
+    init_args:
+      only_monitor: false
+      selectors:
+      - moe
+      - lora
+      - head
   - class_path: rslearn.train.callbacks.freeze_unfreeze.MultiStageFineTuning
     init_args:
       stages:
