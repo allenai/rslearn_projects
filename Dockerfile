@@ -28,7 +28,7 @@ RUN uv pip install --system /opt/rslearn[extra]
 
 # Install rslearn_projects.
 COPY . /opt/rslearn_projects/
-RUN uv pip install --system /opt/rslearn_projects[ai2]
+RUN uv pip install --system /opt/rslearn_projects[dev,extra]
 
 # Build Satlas smooth_point_labels_viterbi.go program.
 WORKDIR /opt/rslearn_projects/rslp/satlas/scripts
