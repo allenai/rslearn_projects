@@ -1,7 +1,11 @@
 .env
+.envrc
+.direnv
 wandb/
 rslp/__pycache__/
 **__pycache__
+
+repos/
 project_data
 rslp/crop_type_mapping/csv/
 rslp/crop_type_mapping/geoparquets/

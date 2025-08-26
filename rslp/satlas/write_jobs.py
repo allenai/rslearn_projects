@@ -16,12 +16,15 @@ from upath import UPath
 import rslp.common.worker
 from rslp.log_utils import get_logger
 
-from .predict_pipeline import Application, PredictTaskArgs, get_output_fname
+from .predict_pipeline import (
+    RESOLUTION,
+    TILE_SIZE,
+    Application,
+    PredictTaskArgs,
+    get_output_fname,
+)
 
 logger = get_logger(__name__)
-
-TILE_SIZE = 32768
-RESOLUTION = 10
 
 # Days to add before a provided date.
 DEFAULT_DAYS_BEFORE = 120
@@ -308,4 +311,7 @@ def write_jobs_for_year_months(
         jobs.extend(cur_jobs)
 
     logger.info("got a total of %d jobs across year-months", len(jobs))
+    # Shuffle the jobs so that we immediately start getting outputs from random parts
+    # of the world. This helps to debug sometimes.
+    random.shuffle(jobs)
     rslp.common.worker.write_jobs(queue_name, "satlas", "predict_multi", jobs)

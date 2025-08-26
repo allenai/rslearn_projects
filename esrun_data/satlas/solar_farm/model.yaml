@@ -15,7 +15,7 @@ model:
                   output_layers: [1, 3, 5, 7]
               image_channels: 9
         decoders:
-          segment:
+          class:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
                 in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
@@ -78,7 +78,7 @@ data:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
         tasks:
-          segment:
+          class:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
               num_classes: 2
@@ -92,7 +92,7 @@ data:
               # select it only if it is higher than 0.7.
               prob_scales: [1.0, 0.429]
         input_mapping:
-          segment:
+          class:
             targets: "targets"
     batch_size: 8
     num_workers: 32
@@ -149,7 +149,7 @@ data:
         - class_path: rslp.transforms.mask.Mask
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
-            image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["image", "target/class/classes", "target/class/valid"]
       tags:
         split: train
     val_config:
@@ -194,20 +194,15 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: rslearn.train.prediction_writer.RslearnWriter
-      init_args:
-        path: gs://rslearn-eai/datasets/solar_farm/dataset_v1/20250108/
-        output_layer: output
-        selector: ["segment"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         save_top_k: 1
         save_last: true
-        monitor: val_segment/accuracy
+        monitor: val_class/accuracy
         mode: max
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 2
-rslp_project: satlas_solar_farm
-rslp_experiment: data_20250108_satlaspretrain_patch256_00
+#rslp_project: satlas_solar_farm
+#rslp_experiment: data_20250108_satlaspretrain_patch256_00

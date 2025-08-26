@@ -39,11 +39,7 @@
           "bands": [
             "output"
           ],
-          "dtype": "uint8",
-          "format": {
-            "format": "png",
-            "name": "single_image"
-          }
+          "dtype": "uint8"
         }
       ],
       "type": "raster"
@@ -84,12 +80,10 @@
       "data_source": {
         "harmonize": true,
         "index_cache_dir": "cache/sentinel2",
-        "max_cloud_cover": 50,
-        "max_time_delta": "0d",
-        "modality": "L1C",
-        "name": "rslp.satlas.data_sources.MonthlySentinel2",
+        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "query_config": {
-          "max_matches": 4
+          "max_matches": 4,
+          "space_mode": "PER_PERIOD_MOSAIC"
         },
         "sort_by": "cloud_cover",
         "use_rtree_index": false

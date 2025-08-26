@@ -1,0 +1,21 @@
+[project]
+name = "esrunner"
+version = "0.0.1"
+description = "ESRunner Docker environment"
+requires-python = ">=3.11"
+
+dynamic = ["dependencies"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic.dependencies]
+file = ["requirements-without-rslearn.txt"]
+
+# Local path dependencies for packages in repos/
+[project.optional-dependencies]
+local = [
+    "helios @ file:///opt/helios",
+    "earth-system-run[runner] @ file:///opt/esrun",
+]
