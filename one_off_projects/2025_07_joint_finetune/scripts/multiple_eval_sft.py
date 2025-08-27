@@ -1,15 +1,34 @@
 import os
+import sys
 
-old_ckpt_home_dir = "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/"
-new_ckpt_home_dir = "/weka/dfive-default/rslearn-eai/projects/2025_07_29_helios_finetune/"
+version = sys.argv[1]
+ckpt_dir = "/weka/dfive-default/rslearn-eai/projects/2025_08_27_helios_cmp/"
 ckpt = "checkpoints/last.ckpt"
-jobs = {
-    "v2_sentinel1_vessels_128": os.path.join(old_ckpt_home_dir, "vessel_sentinel1", ckpt),
-    "v2_sentinel2_vessels_128": os.path.join(old_ckpt_home_dir, "vessel_sentinel2", ckpt),
-    "v2_satlas_marine_infra_128": os.path.join(old_ckpt_home_dir, "marine_infra", ckpt),
-    "v2_satlas_wind_turbine_128" : os.path.join(old_ckpt_home_dir, "wind_turbine", ckpt),
-    "vessel_detection": os.path.join(new_ckpt_home_dir, "landsat_vessel_detect", ckpt)
+task_to_directory = {
+    "v2_nandi_crop_type": "nandi_crop_type",
+    "v2_worldcereal_cropland": "worldcereal_cropland",
+    "v2_satlas_marine_infra_128": "marine_infra",
+    "v2_satlas_wind_turbine_128": "wind_turbine",
+    "v2_sentinel1_vessels_128": "vessel_sentinel1",
+    "v2_sentinel2_vessels_128": "vessel_sentinel2",
+    "v2_pastis": "pastis",
+    "v2_satlas_solar_farm_128": "solar_farm",
+    "vessel_classification": "landsat_vessel_classify",
+    "vessel_detection": "landsat_vessel_detect"
 }
+tasks = {v: k for k, v in task_to_directory.items()}
 
-for task, ckpt_path in jobs.items():
-    os.system(f"python do_eval_sft.py {ckpt_path} {task}")
+for d in os.listdir(ckpt_dir):
+    if d.endswith("_v1") and version == "v1":
+        old_or_new = "old"
+    elif d.endswith("_v2") and version == "v2":
+        old_or_new = "new"
+    else:
+        continue
+
+    ckpt_path = os.path.join(ckpt_dir, d, ckpt)
+    task = tasks[d.replace("_" + version, "")]
+    cmd = f"python do_eval_sft.py {ckpt_path} {task} {old_or_new}"
+    print(cmd)
+    os.system(cmd)
+    print()

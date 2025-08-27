@@ -33,6 +33,7 @@ def launch_finetune(
     profiler: str | None = None,
     local: bool = False,
     do_eval: bool = False,
+    save_eval_path: str | None = None,
     ckpt_path: str | None = None,
     allow_missing_weights: bool = False,
 ) -> None:
@@ -57,6 +58,7 @@ def launch_finetune(
         profiler: Profiler to use for training. Can be 'simple' or 'advanced' or None.
         local: Whether to run the command locally instead of spawning a Beaker job.
         do_eval: Whether to just run evals.
+        save_eval_path: Optionally specify path to save evals to if do_eval.
         ckpt_path: Optionally specify checkpoint path to load from if do_eval.
         allow_missing_weights: Whether to allow missing weights in checkpoint specified in --ckpt_path.
     """
@@ -132,6 +134,10 @@ def launch_finetune(
 
             if allow_missing_weights:
                 args.append("--allow_missing_weights")
+
+            if save_eval_path:
+                args.append("--save_eval_path")
+                args.append(save_eval_path)
 
             if profiler:
                 args.append("--profiler")

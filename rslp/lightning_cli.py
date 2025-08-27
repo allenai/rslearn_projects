@@ -349,6 +349,10 @@ class CustomLightningCLI(RslearnLightningCLI):
                 logger.info(f"Using profiler: {c.profiler}")
                 logger.info(f"Setting max_steps to {max_steps}")
 
+            if c.save_eval_path:
+                c.model.init_args.metrics_file = c.save_eval_path
+                logger.info(f"Saving evals to {c.save_eval_path}")
+
         if subcommand == "fit" and not c.no_log:
             # Set the checkpoint directory to canonical GCS location.
             checkpoint_callback = None
