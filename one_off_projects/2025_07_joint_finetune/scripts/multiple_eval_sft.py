@@ -32,3 +32,4 @@ for d in os.listdir(ckpt_dir):
     print(cmd)
     os.system(cmd)
     print()
+    break

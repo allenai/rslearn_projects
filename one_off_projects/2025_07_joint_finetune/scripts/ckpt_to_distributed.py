@@ -120,7 +120,7 @@ if __name__ == "__main__":
     with open(base_model_path, "r") as f:
         base_model_config = json.load(f)
 
-    overrides = dict(model=model_config["model_overrides"])
+    overrides = dict(model=model_config.get("model_overrides", {}))
     base_model_config = deep_merge(base_model_config, overrides)
     with open(os.path.join(args.save_dir, args.run, "config.json"), "w") as f:
         json.dump(base_model_config, f)

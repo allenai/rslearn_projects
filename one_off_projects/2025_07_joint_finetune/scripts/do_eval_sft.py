@@ -36,6 +36,7 @@ else:
 print("using helios path", helios_path)
 print()
 cmd = [
+    "RSLP_PREFIX=/weka/dfive-default/rslearn-eai",
     "python", "-m", "rslp.main", "helios", "launch_finetune",
     "--helios_checkpoint_path", helios_path,
     "--patch_size", "8",

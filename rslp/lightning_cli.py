@@ -210,6 +210,12 @@ class CustomLightningCLI(RslearnLightningCLI):
             action="store_true",
             help="Allow missing weights in checkpoint specified in --ckpt_path",
         )
+        parser.add_argument(
+            "--save_eval_path",
+            type=str,
+            help="Path to save evals to if do_eval",
+            default=None,
+        )
 
     def _get_checkpoint_path(
         self, checkpoint_dir: UPath, load_best: bool = False, autoresume: bool = False
