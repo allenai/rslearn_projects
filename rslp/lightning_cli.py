@@ -4,15 +4,18 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 
 import fsspec
 import jsonargparse
 import wandb
-from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch import LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
+from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
+from rslearn.train.lightning_module import RslearnLightningModule
 from upath import UPath
 
 import rslp.utils.fs  # noqa: F401 (imported but unused)
@@ -20,7 +23,6 @@ from rslp import launcher_lib
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
-
 
 CHECKPOINT_DIR = (
     "{rslp_prefix}/projects/{project_id}/{experiment_id}/{run_id}checkpoints/"
@@ -111,6 +113,36 @@ class SaveWandbRunIdCallback(Callback):
             wandb.config.update(json.loads(self.config_str))
 
 
+class SaveConfigToProjectDirCallback(SaveConfigCallback):
+    """Callback to save the configuration to checkpoint directory."""
+
+    def save_config(
+        self, trainer: Trainer, pl_module: LightningModule, stage: str
+    ) -> None:
+        """Save the configuration."""
+        # Lightning handles ensuring that this function is only called on rank 0, so we
+        # don't need to worry about it ourselves.
+        # This is done in the setup function of SaveConfigCallback.
+        run_id = os.environ.get("RSLP_RUN_ID", None)
+        run_id_path = f"{run_id}/" if run_id else ""
+        checkpoint_dir = UPath(
+            CHECKPOINT_DIR.format(
+                rslp_prefix=os.environ["RSLP_PREFIX"],
+                project_id=self.config.rslp_project,
+                experiment_id=self.config.rslp_experiment,
+                run_id=run_id_path,
+            )
+        )
+        config_fname = checkpoint_dir / "config.yaml"
+        if config_fname.exists():
+            return
+
+        config = self.parser.dump(self.config, skip_none=False)
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        with config_fname.open("w") as f:
+            f.write(config)
+
+
 class CustomLightningCLI(RslearnLightningCLI):
     """Extended LightningCLI to manage cloud checkpointing and wandb run naming.
 
@@ -166,6 +198,17 @@ class CustomLightningCLI(RslearnLightningCLI):
             type=bool,
             help="Disable W&B logging for fit",
             default=False,
+        )
+        parser.add_argument(
+            "--profiler",
+            type=str,
+            help="Profiler to use for training. Can be 'simple' or 'advanced'",
+            default=None,
+        )
+        parser.add_argument(
+            "--allow_missing_weights",
+            action="store_true",
+            help="Allow missing weights in checkpoint specified in --ckpt_path",
         )
 
     def _get_checkpoint_path(
@@ -298,6 +341,14 @@ class CustomLightningCLI(RslearnLightningCLI):
                 }
             )
 
+            # Configure profiler if specified
+            if c.profiler:
+                max_steps = 100
+                c.trainer.profiler = c.profiler
+                c.trainer.max_steps = max_steps
+                logger.info(f"Using profiler: {c.profiler}")
+                logger.info(f"Setting max_steps to {max_steps}")
+
         if subcommand == "fit" and not c.no_log:
             # Set the checkpoint directory to canonical GCS location.
             checkpoint_callback = None
@@ -330,6 +381,7 @@ class CustomLightningCLI(RslearnLightningCLI):
                 c.trainer.callbacks.append(checkpoint_callback)
             checkpoint_callback.init_args.dirpath = str(checkpoint_dir)
 
+            # Save W&B run ID callback.
             if not upload_wandb_callback:
                 config_str = json.dumps(
                     c.as_dict(), default=lambda _: "<not serializable>"
@@ -362,3 +414,19 @@ class CustomLightningCLI(RslearnLightningCLI):
             if wandb_id and subcommand == "fit":
                 logger.info(f"resuming wandb run {wandb_id}")
                 c.trainer.logger.init_args.id = wandb_id
+
+
+def custom_model_handler() -> None:
+    """Overrides model_handler in rslearn.main to use CustomLightningCLI.
+
+    It also sets the save_config_callback.
+    """
+    CustomLightningCLI(
+        model_class=RslearnLightningModule,
+        datamodule_class=LightningDataModule,
+        args=sys.argv[2:],
+        subclass_mode_model=True,
+        subclass_mode_data=True,
+        save_config_callback=SaveConfigToProjectDirCallback,
+        save_config_kwargs={"overwrite": True, "save_to_log_dir": False},
+    )

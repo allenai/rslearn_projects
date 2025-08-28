@@ -1,0 +1,14 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.swin.Swin
+            init_args:
+              pretrained: true
+              input_channels: 2
+              output_layers: [1, 3, 5, 7]
+          - class_path: rslearn.models.fpn.Fpn
+            init_args:
+              in_channels: [128, 256, 512, 1024]
+              out_channels: 128

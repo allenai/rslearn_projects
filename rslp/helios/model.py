@@ -1,6 +1,8 @@
 """Helios model wrapper for fine-tuning in rslearn."""
 
 import json
+import os
+from contextlib import nullcontext
 from typing import Any
 
 import torch
@@ -20,7 +22,14 @@ MODALITY_NAMES = [
     "sentinel1",
     "worldcover",
     "openstreetmap_raster",
+    "landsat",
 ]
+
+AUTOCAST_DTYPE_MAP = {
+    "bfloat16": torch.bfloat16,
+    "float16": torch.float16,
+    "float32": torch.float32,
+}
 
 
 class Helios(torch.nn.Module):
@@ -34,6 +43,7 @@ class Helios(torch.nn.Module):
         random_initialization: bool = False,
         embedding_size: int | None = None,
         patch_size: int | None = None,
+        autocast_dtype: str | None = "bfloat16",
     ):
         """Create a new Helios model.
 
@@ -50,11 +60,17 @@ class Helios(torch.nn.Module):
             embedding_size: optional embedding size to report via
                 get_backbone_channels.
             patch_size: optional patch size to report via get_backbone_channels.
+            autocast_dtype: which dtype to use for autocasting, or set None to disable.
         """
         super().__init__()
         self.forward_kwargs = forward_kwargs
         self.embedding_size = embedding_size
         self.patch_size = patch_size
+
+        if autocast_dtype is not None:
+            self.autocast_dtype = AUTOCAST_DTYPE_MAP[autocast_dtype]
+        else:
+            self.autocast_dtype = None
 
         # Load the model config and initialize it.
         # We avoid loading the train module here because it depends on running within
@@ -67,8 +83,14 @@ class Helios(torch.nn.Module):
 
         # Load the checkpoint.
         if not random_initialization:
-            train_module_dir = f"{checkpoint_path}/model_and_optim"
-            load_model_and_optim_state(train_module_dir, model)
+            train_module_dir = os.path.join(checkpoint_path, "model_and_optim")
+            if os.path.exists(train_module_dir):
+                load_model_and_optim_state(train_module_dir, model)
+                logger.info(f"loaded helios encoder from {train_module_dir}")
+            else:
+                logger.info(f"could not find helios encoder at {train_module_dir}")
+        else:
+            logger.info("skipping loading helios encoder")
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:
@@ -127,9 +149,20 @@ class Helios(torch.nn.Module):
 
         sample = MaskedHeliosSample(**kwargs)
 
-        # Currently we assume the provided model always returns a TokensAndMasks
-        # object.
-        tokens_and_masks: TokensAndMasks = self.model(sample, **self.forward_kwargs)[0]
+        # Decide context based on self.autocast_dtype.
+        if self.autocast_dtype is None:
+            context = nullcontext()
+        else:
+            assert device is not None
+            context = torch.amp.autocast(
+                device_type=device.type, dtype=self.autocast_dtype
+            )
+
+        with context:
+            # Currently we assume the provided model always returns a TokensAndMasks object.
+            tokens_and_masks: TokensAndMasks = self.model(
+                sample, always_pass_none_mask_to_transformer=True, **self.forward_kwargs
+            )["tokens_and_masks"]
 
         # Apply temporal/modality pooling so we just have one feature per patch.
         features = []
