@@ -1,0 +1,257 @@
+{
+  "layers": {
+    "label": {
+      "class_names": [
+        "agriculture",
+        "agriculture-generic",
+        "agriculture-mennonite",
+        "agriculture-rice",
+        "agriculture-small",
+        "airstrip",
+        "burned",
+        "coca",
+        "flood",
+        "human",
+        "hurricane",
+        "landslide",
+        "logging",
+        "mining",
+        "natural",
+        "none",
+        "river",
+        "road",
+        "unknown",
+        "unlabeled"
+      ],
+      "class_property_name": "new_label",
+      "type": "vector"
+    },
+    "mask": {
+      "band_sets": [
+        {
+          "bands": [
+            "mask"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "mask_vector": {
+      "type": "vector"
+    },
+    "output": {
+      "type": "vector"
+    },
+    "post_landsat": {
+      "alias": "landsat",
+      "band_sets": [
+        {
+          "bands": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B8",
+            "B9",
+            "B10",
+            "B11"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "duration": "180d",
+        "ingest": false,
+        "metadata_cache_dir": "cache/landsat",
+        "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
+        "query_config": {
+          "max_matches": 6
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "7d"
+      },
+      "type": "raster"
+    },
+    "post_sentinel1": {
+      "alias": "sentinel1",
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "180d",
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel1",
+        "query": {
+          "sar:instrument_mode": {
+            "eq": "IW"
+          },
+          "sar:polarizations": {
+            "eq": [
+              "VV",
+              "VH"
+            ]
+          }
+        },
+        "query_config": {
+          "max_matches": 3
+        },
+        "time_offset": "7d"
+      },
+      "type": "raster"
+    },
+    "post_sentinel2": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "180d",
+        "harmonize": true,
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 6,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "7d"
+      },
+      "type": "raster"
+    },
+    "pre_landsat": {
+      "alias": "landsat",
+      "band_sets": [
+        {
+          "bands": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B8",
+            "B9",
+            "B10",
+            "B11"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "duration": "180d",
+        "ingest": false,
+        "metadata_cache_dir": "cache/landsat",
+        "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
+        "query_config": {
+          "max_matches": 6
+        },
+        "sort_by": "cloud_cover",
+        "time_offset": "-300d"
+      },
+      "type": "raster"
+    },
+    "pre_sentinel1": {
+      "alias": "sentinel1",
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "180d",
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel1",
+        "query": {
+          "sar:instrument_mode": {
+            "eq": "IW"
+          },
+          "sar:polarizations": {
+            "eq": [
+              "VV",
+              "VH"
+            ]
+          }
+        },
+        "query_config": {
+          "max_matches": 3
+        },
+        "time_offset": "-300d"
+      },
+      "type": "raster"
+    },
+    "pre_sentinel2": {
+      "alias": "sentinel2",
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "180d",
+        "harmonize": true,
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 6,
+          "space_mode": "CONTAINS"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-300d"
+      },
+      "type": "raster"
+    }
+  }
+}

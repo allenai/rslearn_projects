@@ -21,3 +21,8 @@ Dataset Configurations
 - config.json: current inference config that uses RGB PNGs.
 - config_ms.json: corresponds to dataset 20250429, it gets L2A images with all bands
   stored as GeoTIFF.
+- config_studio_annotation.json: this is original config used for Brazil+Colombia
+  dataset. It creates RGB GeoTIFFs that are good for uploading to and visualizing in
+  Studio. It also gets Planet Labs RGB images.
+- config_multimodal.json: this gets inputs that match what Helios can do, Sentinel-2 +
+  Sentinel-1 + Landsat.
