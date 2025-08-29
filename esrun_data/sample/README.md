@@ -10,23 +10,19 @@ ESRunner provides the [EsPredictRunner](https://github.com/allenai/earth-system-
   ```
   pip install earth-system-run @ git+https://github.com/allenai/earth-system-run.git
   ```
-- Following the project structure below, create a directory in the `rslearn-projects/data/` directory. This directory will contain all the necessary files for your prediction or fine-tuning pipeline.
+- Following the project structure below, create a directory in the `rslearn-projects/esrun_data/` directory. This directory will contain all the necessary files for your prediction or fine-tuning pipeline.
 
 ## Project Structure
-- `checkpoint.ckpt`: (Optional)
+- `checkpoint.ckpt`:  This is the model checkpoint file. It is required for running inference. If you are only building datasets, this file is not required.  Note: You probably don't want to check this file into git repository.
 - `dataset.json`: This is the rslearn dataset definition file.
+- `esrun.yaml`: This file defines the behavior of the esrunner including partitioning, postprocessing, etc..
 - `model.yaml`: This is the rslearn (pytorch) model definition file.
-- `partition_strategies.yaml`:
-- `postprocessing_strategies.yaml`: This file defines how the esrunner will post-process the predictions.
-- `requirements.txt`: This file contains the additional Python packages required for the pipeline. It should include any dependencies that are not part of the base environment.
 - `prediction/test-request1.geojson`: This directory contains the prediction requests in GeoJSON format. Each file represents a set of prediction requests for a specific region or time period.  Many different prediction requests can be defined within a single file as separate features in the feature collection. The esrunner will partition these requests into smaller tasks based on the partition strategies defined in `partition_strategies.yaml`.
-- `run_pipeline.py`: This script is used to run the prediction pipeline. It will read the configuration files and execute the necessary steps to perform predictions or fine-tuning. You can customize this script to suit your specific needs, such as adding additional logging or error handling.
 
 ## Partitioning Strategies
-This file defines how the esrunner will break the inference request into multiple request geometries for compute parallelization (equivalent to rslearn window groups) and prediction window geometries.
+These stanzas defines how esrunner will break the inference request into multiple request geometries for compute parallelization (equivalent to rslearn window groups) and prediction window geometries.
 
 Partitioning strategies can be mixed and matched for flexible development.
-
   - partition_request_geometry
   - prepare_window_geometries
 
@@ -35,7 +31,7 @@ Available partitioners:
 - `GridPartitioner` - Given a grid size, this partitioner will create partitions based on the grid cells that intersect with the prediction request.
 - NoopPartitioner - Does not partition the prediction request. This is useful for testing or when you want to run the entire prediction request as a single task.
 
-Example `partition_strategies.yaml`. This will leave the original input as a single partition, but will create individual windows of size 128x128 pixels for each feature.
+Example `esrun.yaml`. This will leave the original input as a single partition, but will create individual windows of size 128x128 pixels for each feature.
 ```yaml
 partition_request_geometry:
   class_path: esrun.tools.partitioners.noop_partitioner.NoopPartitioner
@@ -57,16 +53,22 @@ There are 3 different stages to postprocessing:
 
 ### Run a pipeline end-to-end
 
+The simplest way to run a pipeline is to use the `esrun-local-predict` CLI command.  This command will run the entire pipeline end-to-end including partitioning, dataset building, inference, post-processing, and combining the final outputs.
+```
+$ esrun-local-predict
+```
+
+If you want more flexibility, you can use the `EsPredictRunner` class directly.  The following example shows how to run the entire pipeline end-to-end using the `EsPredictRunner` class.  Note: This example may become out of date very quickly due to ongoing changes in the EsPredictRunner class.  Refer to the esrun repo for the most up-to-date information.
+
 ```python file=run_pipeline.py
-from rslp.espredict_runner import EsPredictRunner
+from pathlib import Path
+from esrun.runner.local.predict_runner import EsPredictRunner
+
+config_path = Path(__file__).parent
 
 runner = EsPredictRunner(
-    'model.yaml',
-    'dataset.json',
-    'partition_strategies.yaml',
-    'postprocessing_strategies.yaml',
-    'prediction/test-request1.geojson',
-    scratch_path='scratch/'
+    project_path=config_path,
+    scratch_path=config_path / "scratch",
 )
 partitions = runner.partition()
 for partition_id in partitions:
@@ -79,15 +81,14 @@ runner.combine(partitions)
 
 ### Run dataset building for the entire prediction request.
 ```python file=run_dataset_building.py
-from rslp.espredict_runner import EsPredictRunner
+from pathlib import Path
+from esrun.runner.local.predict_runner import EsPredictRunner
+
+config_path = Path(__file__).parent
 
 runner = EsPredictRunner(
-    'model.yaml',
-    'dataset.json',
-    'partition_strategies.yaml',
-    'postprocessing_strategies.yaml',
-    'prediction/test-request1.geojson',
-    scratch_path='scratch/'
+    project_path=config_path,
+    scratch_path=config_path / "scratch",
 )
 
 for partition_id in runner.partition():
@@ -97,15 +98,14 @@ for partition_id in runner.partition():
 ### Run inference for a single partition.
 (Assumes you have an existing materialized dataset for the partition.)
 ```python file=run_inference_single_partition.py
-from rslp.espredict_runner import EsPredictRunner
+from pathlib import Path
+from esrun.runner.local.predict_runner import EsPredictRunner
+
+config_path = Path(__file__).parent
 
 runner = EsPredictRunner(
-    'model.yaml',
-    'dataset.json',
-    'partition_strategies.yaml',
-    'postprocessing_strategies.yaml',
-    'prediction/test-request1.geojson',
-    scratch_path='scratch/'
+    project_path=config_path,
+    scratch_path=config_path / "scratch",
 )
 partition_id = 'my-existing-partition-id'  # Replace with the actual partition ID you want to run
 runner.run_inference(partition_id)
@@ -114,28 +114,27 @@ runner.run_inference(partition_id)
 ### Run inference for a single window.
 Since we don't expose window-level inference via the runner API, you can configure your partitioners to produce limited sets of partitions and windows.
 
-```yaml file=partition_strategies.yaml
-strategy_large:
-  class_path: esrun.tools.partitioners.noop_partitioner.NoopPartitioner
+```yaml file=esrun.yaml
+partition_request_geometry:
+  class_path: esrun.runner.tools.partitioners.noop_partitioner.NoopPartitioner
   init_args:
 
-strategy_small:
-  class_path: esrun.tools.partitioners.fixed_window_partitioner.FixedWindowPartitioner
+prepare_window_geometries:
+  class_path: esrun.runner.tools.partitioners.fixed_window_partitioner.FixedWindowPartitioner
   init_args:
     window_size: 128 # intended to be a pixel value
     limit: 1  # This will limit window generation to a single window per large partition, effectively allowing you to run inference on a single window.
 ```
 
 ```python file=run_inference_single_window.py
-from rslp.espredict_runner import EsPredictRunner
+from pathlib import Path
+from esrun.runner.local.predict_runner import EsPredictRunner
+
+config_path = Path(__file__).parent
 
 runner = EsPredictRunner(
-    'model.yaml',
-    'dataset.json',
-    'partition_strategies.yaml',
-    'postprocessing_strategies.yaml',
-    'prediction/test-request1.geojson',
-    scratch_path='scratch/'
+    project_path=config_path,
+    scratch_path=config_path / "scratch",
 )
 partition_id = 'my-existing-partition-id'  # Replace with the actual partition ID you want to run
 partitions = runner.partition()
@@ -144,13 +143,13 @@ for partition_id in partitions:
 ```
 
 ## Writing Your Own Partitioners
-You may supply your own partitioners by creating a new class that implements the ` PartitionInterface` class in the `esrun.tools.partitioners.partition_interface` module.  You can then specify your custom partitioner in the `partition_strategies.yaml` file.  This class must exist on your PYTHONPATH and be importable by the esrunner.  As such we recommend you place your custom partitioner in the `rslp/common/partitioners` directory of this repository to ensure it gets installed into the final Dockerimage artifact.
+You may supply your own partitioners by creating a new class that implements the ` PartitionInterface` class in the `esrun.runner.tools.partitioners.partition_interface` module.  You can then specify your custom partitioner in the `partition_strategies.yaml` file.  This class must exist on your PYTHONPATH and be importable by the esrunner.  As such we recommend you place your custom partitioner in the `rslp/common/partitioners` directory of this repository to ensure it gets installed into the final Dockerimage artifact.
 
 ## Writing your own post-processing strategies
-You may supply your own post-processing strategies by creating a new class that implements the `PostprocessInterface` class in the `esrun.tools.postprocessors.postprocess_inferface` module.  You can then specify your custom post-processing strategy in the `postprocessing_strategies.yaml` file.  This class must exist on your `PYTHONPATH` and be importable by the esrunner.  As such we recommend you place your custom post-processing strategy in the `rslp/common/postprocessing` directory of this repository to ensure it gets installed into the final Docker image artifact.
+You may supply your own post-processing strategies by creating a new class that implements the `PostprocessInterface` class in the `esrun.runner.tools.postprocessors.postprocess_inferface` module.  You can then specify your custom post-processing strategy in the `postprocessing_strategies.yaml` file.  This class must exist on your `PYTHONPATH` and be importable by the esrunner.  As such we recommend you place your custom post-processing strategy in the `rslp/common/postprocessing` directory of this repository to ensure it gets installed into the final Docker image artifact.
 
 ### Testing Partitioner & Post-Processing Implementations
-See the [earth-system-run](https://github.com/allenai/earth-system-run) repository for tests covering existing [partitioner](https://github.com/allenai/earth-system-run/tree/v1-develop/tests/unit/tools/partitioners) and [post-processor](https://github.com/allenai/earth-system-run/tree/v1-develop/tests/unit/tools/postprocessors) implementations.
+See the [earth-system-run](https://github.com/allenai/earth-system-run) repository for tests covering existing [partitioner](https://github.com/allenai/earth-system-run/tree/v1-develop/tests/unit/runner/tools/partitioners) and [post-processor](https://github.com/allenai/earth-system-run/tree/v1-develop/tests/unit/runner/tools/postprocessors) implementations.
 
 ## Longer Term Vision / Model Development Workflow
 1. ML folk will create the requisite configs in a directory like this one.
