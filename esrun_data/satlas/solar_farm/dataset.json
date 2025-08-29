@@ -78,15 +78,15 @@
         }
       ],
       "data_source": {
+        "cache_dir": "cache/planetary_computer",
         "harmonize": true,
-        "index_cache_dir": "cache/sentinel2",
-        "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "ingest": false,
+        "max_cloud_cover": 50,
+        "name": "rslp.satlas.data_sources.MonthlyAzureSentinel2",
         "query_config": {
-          "max_matches": 4,
-          "space_mode": "PER_PERIOD_MOSAIC"
+          "max_matches": 4
         },
-        "sort_by": "cloud_cover",
-        "use_rtree_index": false
+        "sort_by": "eo:cloud_cover"
       },
       "type": "raster"
     }
