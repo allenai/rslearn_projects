@@ -104,10 +104,12 @@ if __name__ == "__main__":
                     old_cfg_style = False
                 break
  
-        # If full, set load_all_patches
+        # If full, set load_all_patches and use the map-style all patches dataset
         if full:
-            cfg["data"]["init_args"]["val_config"]["load_all_patches"] = True
-            cfg["data"]["init_args"]["test_config"]["load_all_patches"] = True
+            for data_module in cfg["data"]["init_args"]["data_modules"].values():
+                data_module["init_args"]["use_in_memory_all_patches_dataset"] = True
+                data_module["init_args"]["val_config"]["init_args"]["load_all_patches"] = True
+                data_module["init_args"]["test_config"]["init_args"]["load_all_patches"] = True
         else:
             # Ensure that load_all_patches is false everywhere
             replace_key(cfg, "load_all_patches", False)
@@ -144,7 +146,7 @@ if __name__ == "__main__":
                         "task_embedding": trunk_args.pop("task_embedding"),
                         "layers": [
                             {
-                                "class_path": "rslearn.models.trunk.MoETransformer",
+                                "class_path": "rslp.helios.moe.MoETransformer",
                                 "init_args": trunk_args
                             }
                         ]

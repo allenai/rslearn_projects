@@ -1301,15 +1301,24 @@ trainer:
   - class_path: rslearn.train.callbacks.freeze_unfreeze.MultiStageFineTuning
     init_args:
       stages:
-      - at_epoch: 0
-        freeze_selectors:
-        - encoder
-        unfreeze_selectors:
-        - head
+      - class_path: rslearn.train.callbacks.freeze_unfreeze.FTStage
+        init_args:
+          at_epoch: 0
+          freeze_selectors:
+          - encoder
+          unfreeze_selectors:
+          - head
+      - class_path: rslearn.train.callbacks.freeze_unfreeze.FTStage
+        init_args:
+          at_epoch: 20
+          freeze_selectors:
+          - encoder
+          unfreeze_selectors:
+          - head
+          - lora
+  - class_path: rslearn.train.callbacks.adapters.ActivateLayers
+    init_args:
+      selectors:
       - at_epoch: 20
-        freeze_selectors:
-        - encoder
-        unfreeze_selectors:
-        - head
-        - lora
+        name: lora
   max_epochs: 500

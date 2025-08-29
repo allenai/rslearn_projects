@@ -1217,7 +1217,7 @@ model:
           class_path: rslearn.models.trunk.DecoderTrunk
           init_args:
             layers:
-            - class_path: rslearn.models.trunk.MoETransformer
+            - class_path: rslp.helios.moe.MoETransformer
               init_args:
                 dim: 768
                 expert_mult: 2

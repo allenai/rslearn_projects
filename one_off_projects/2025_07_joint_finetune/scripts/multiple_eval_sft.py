@@ -2,6 +2,8 @@ import os
 import sys
 
 version = sys.argv[1]
+full = True
+
 ckpt_dir = "/weka/dfive-default/rslearn-eai/projects/2025_08_27_helios_cmp/"
 ckpt = "checkpoints/last.ckpt"
 task_to_directory = {
@@ -29,6 +31,8 @@ for d in os.listdir(ckpt_dir):
     ckpt_path = os.path.join(ckpt_dir, d, ckpt)
     task = tasks[d.replace("_" + version, "")]
     cmd = f"python do_eval_sft.py {ckpt_path} {task} {old_or_new}"
+    if full:
+        cmd += " --full"
     print(cmd)
     os.system(cmd)
     print()

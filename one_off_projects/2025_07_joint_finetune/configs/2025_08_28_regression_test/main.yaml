@@ -1472,7 +1472,7 @@ data:
     refill_batches: true
     sample_mode: random_cycle
 model:
-  class_path: rslp.helios.lightning_module.MoELightningModule
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     lr: 0.0001
     model:
@@ -1536,11 +1536,14 @@ model:
                 n_layers: 1
                 num_experts: 4
                 num_slots: 4
+                mlp_dim: 512
+                dropout: 0.1
             task_embedding:
               class_path: rslearn.models.task_embedding.TaskChannelEmbedding
               init_args:
-                add_spatial_embed: true
+                add_spatial_embed: false
                 encoder_embedding_size: 768
+                default_idx: 0
     scheduler:
       class_path: rslearn.train.scheduler.CosineAnnealingScheduler
       init_args:
@@ -1764,4 +1767,5 @@ trainer:
       - 0
       unfreeze_at_epoch: 20
       unfreeze_lr_factor: 10
+  limit_val_batches: 1024
   max_epochs: 200

@@ -57,12 +57,16 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.MultiStageFineTuning
       init_args:
         stages:
-          - at_epoch: 0
-            freeze_selectors: ["encoder"]
-            unfreeze_selectors: ["head", "moe"]
-          - at_epoch: 20
-            freeze_selectors: []
-            unfreeze_selectors: ["head", "moe", "encoder"]
+          - class_path: rslearn.train.callbacks.freeze_unfreeze.FTStage
+            init_args:
+              at_epoch: 0
+              freeze_selectors: ["encoder"]
+              unfreeze_selectors: ["head", "moe"]
+          - class_path: rslearn.train.callbacks.freeze_unfreeze.FTStage
+            init_args:
+              at_epoch: 20
+              freeze_selectors: []
+              unfreeze_selectors: ["head", "moe", "encoder"]
 
 rslp_project: placeholder
 rslp_experiment: placeholder

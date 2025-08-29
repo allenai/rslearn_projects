@@ -1,6 +1,8 @@
 import os
 import json
 import argparse
+import tempfile
+import yaml
 
 base_dir = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs"
 all_cfgs = {}
@@ -26,6 +28,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("ckpt_path", type=str, help="Path to the checkpoint")
 parser.add_argument("task", type=str, help="Task to evaluate")
 parser.add_argument("old_or_new", type=str, help="old or new helios checkpoint")
+parser.add_argument("--full", action="store_true", help="Run eval on all patches")
 args = parser.parse_args()
 
 ckpt_cfg_paths = all_cfgs[args.task]
@@ -52,16 +55,44 @@ cmd = [
     "--allow_missing_weights", "true"
 ]
 
+substitutions = {
+    "PATCH_SIZE": 8,
+    "ENCODER_EMBEDDING_SIZE": 768,
+    "256/PATCH_SIZE": 256 // 8,
+    "128/PATCH_SIZE": 128 // 8,
+}
+
+def load_yaml_config(config_path, substitutions=None):
+    with open(config_path, 'r') as f:
+        config_str = f.read()
+    if substitutions:
+        for key, value in substitutions.items():
+            if value is not None:
+                config_str = config_str.replace(f"{{{key}}}", str(value))
+    return yaml.safe_load(config_str)
+
 cmd.append(f"--ckpt_path={args.ckpt_path}")
 for ckpt_cfg_path in ckpt_cfg_paths:
-    cmd.append(f"--config_paths+={ckpt_cfg_path}")
+    with tempfile.NamedTemporaryFile(mode="w") as f:
+        cmd.append(f"--config_paths+={f.name}")
+        cfg = load_yaml_config(ckpt_cfg_path, substitutions)
 
-print(f"Evaluating {args.task} with checkpoint {args.ckpt_path}")
-print()
-print("=" * 80)
-print(" ".join(cmd))
-print("=" * 80)
-print()
+        if args.full:
+            cfg["data"]["init_args"]["use_in_memory_all_patches_dataset"] = True
+            for split in ["val", "test"]:
+                cfg["data"]["init_args"][f"{split}_config"]["load_all_patches"] = True
+                cfg["data"]["init_args"][f"{split}_config"]["patch_size"] = substitutions["PATCH_SIZE"]
 
-os.chdir("/weka/dfive-default/ryanp/rslearn_projects/")
-os.system(" ".join(cmd))
+        print("patched config to have in_memory_all_patches_dataset=True")
+        yaml.dump(cfg, f)
+        f.flush()
+
+        print(f"Evaluating {args.task} with checkpoint {args.ckpt_path}")
+        print()
+        print("=" * 80)
+        print(" ".join(cmd))
+        print("=" * 80)
+        print()
+
+        os.chdir("/weka/dfive-default/ryanp/rslearn_projects/")
+        os.system(" ".join(cmd))

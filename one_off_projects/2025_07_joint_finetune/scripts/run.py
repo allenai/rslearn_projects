@@ -39,7 +39,10 @@ else:
     if args.project_name == "helios-debug":
         args.project_name = "helios_finetune_cosine_lr"
 
-if args.cfg == "detect":
+if args.cfg == "vessel":
+    args.cfg = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_landsat_vessels/finetune_detector_cosinelr.yaml"
+    cmd.append("--config_paths+=" + args.cfg)
+elif args.cfg == "detect":
     args.cfg = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_07_31_moe/OUT_detect.yaml"
     cmd.append("--config_paths+=" + args.cfg)
 elif args.cfg == "pastis":
