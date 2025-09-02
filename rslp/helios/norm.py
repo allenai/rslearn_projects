@@ -1,8 +1,8 @@
 """Normalization transforms."""
 
-import json
 from typing import Any
 
+from helios.data.normalize import load_computed_config
 from helios.data.utils import convert_to_db
 from rslearn.train.transforms.transform import Transform
 
@@ -12,14 +12,23 @@ class HeliosNormalize(Transform):
 
     def __init__(
         self,
-        config_fname: str,
         band_names: dict[str, list[str]],
         std_multiplier: float | None = 2,
+        config_fname: str | None = None,
     ) -> None:
-        """Initialize a new HeliosNormalize."""
+        """Initialize a new HeliosNormalize.
+
+        Args:
+            band_names: map from modality name to the list of bands in that modality in
+                the order they are being loaded. Note that this order must match the
+                expected order for the Helios model.
+            std_multiplier: the std multiplier matching the one used for the model
+                training in Helios.
+            config_fname: override the normalization configuration filename. By default
+                we use "norm_configs/computed.json" in helios.resources.
+        """
         super().__init__()
-        with open(config_fname) as f:
-            self.norm_config = json.load(f)
+        self.norm_config = load_computed_config()
         self.band_names = band_names
         self.std_multiplier = std_multiplier
 
