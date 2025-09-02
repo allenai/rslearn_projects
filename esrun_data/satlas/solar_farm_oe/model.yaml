@@ -17,11 +17,11 @@ trainer:
       - 0
       unfreeze_at_epoch: 20
       unfreeze_lr_factor: 10.0
-  - class_path: rslearn.train.prediction_writer.RslearnWriter
-    init_args:
-      path: placeholder
-      output_layer: output
-      selector: ["class"]
+#  - class_path: rslearn.train.prediction_writer.RslearnWriter
+#    init_args:
+#      path: placeholder
+#      output_layer: output
+#      selector: ["class"]
   max_epochs: 500
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule

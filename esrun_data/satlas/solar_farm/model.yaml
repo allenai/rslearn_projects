@@ -204,10 +204,10 @@ trainer:
       init_args:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 2
-    - class_path: rslearn.train.prediction_writer.RslearnWriter
-      init_args:
-        path: placeholder
-        output_layer: output
-        selector: ["class"]
+#    - class_path: rslearn.train.prediction_writer.RslearnWriter
+#      init_args:
+#        path: placeholder
+#        output_layer: output
+#        selector: ["class"]
 #rslp_project: satlas_solar_farm
 #rslp_experiment: data_20250108_satlaspretrain_patch256_00
