@@ -1,10 +1,15 @@
 """Normalization transforms."""
 
+import json
 from typing import Any
 
 from helios.data.normalize import load_computed_config
 from helios.data.utils import convert_to_db
 from rslearn.train.transforms.transform import Transform
+
+from rslp.log_utils import get_logger
+
+logger = get_logger(__file__)
 
 
 class HeliosNormalize(Transform):
@@ -24,13 +29,21 @@ class HeliosNormalize(Transform):
                 expected order for the Helios model.
             std_multiplier: the std multiplier matching the one used for the model
                 training in Helios.
-            config_fname: override the normalization configuration filename. By default
-                we use "norm_configs/computed.json" in helios.resources.
+            config_fname: load the normalization configuration from this file, instead
+                of getting it from Helios.
         """
         super().__init__()
-        self.norm_config = load_computed_config()
         self.band_names = band_names
         self.std_multiplier = std_multiplier
+
+        if config_fname is None:
+            self.norm_config = load_computed_config()
+        else:
+            logger.warning(
+                f"Loading normalization config from {config_fname}. This argument is deprecated and will be removed in a future version."
+            )
+            with open(config_fname) as f:
+                self.norm_config = json.load(f)
 
     def forward(
         self, input_dict: dict[str, Any], target_dict: dict[str, Any]
