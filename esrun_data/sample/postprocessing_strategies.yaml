@@ -1,0 +1,8 @@
+strategy_large:
+  class_path: esrun.tools.postprocessors.noop_raster.NoopRaster
+
+strategy_medium:
+  class_path: esrun.tools.postprocessors.noop_raster.NoopRaster
+
+strategy_small:
+  class_path: esrun.tools.postprocessors.noop_raster.NoopRaster
