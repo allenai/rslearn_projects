@@ -1,0 +1,14 @@
+name: Sentinel1-Vessel-Detection
+
+on:
+  workflow_dispatch: # Manual trigger
+  push:
+    tags:
+      - "sentinel1_vessels_v*" # Trigger only when a version tag (e.g., sentinel1_vessels_v0.0.1) is pushed
+
+jobs:
+  build-and-push:
+    uses: ./.github/workflows/publish_project_docker_image.yaml
+    with:
+      rslp_project: "sentinel1_vessels"
+      image_name: "sentinel1-vessel-detection"

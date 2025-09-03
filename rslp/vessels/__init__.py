@@ -14,8 +14,9 @@ from upath import UPath
 class VesselDetectionSource(str, Enum):
     """The sensor that the vessel detection came from."""
 
-    SENTINEL2 = "sentinel2"
     LANDSAT = "landsat"
+    SENTINEL2 = "sentinel2"
+    SENTINEL1 = "sentinel1"
 
 
 class VesselAttributes(TypedDict):
@@ -40,6 +41,7 @@ class VesselDetectionDict(TypedDict):
         ts: datetime fo the window (if known).
         scene_id: the scene ID that the vessel was detected in (if known).
         crop_fname: filename where crop image for this vessel is stored.
+        crop_fnames: map from band name to crop filename.
         longitude: the longitude position of the vessel detection.
         latitude: the latitude position of the vessel detection.
         attributes: the predicted vessel attributes, if attribute prediction model is
@@ -54,6 +56,7 @@ class VesselDetectionDict(TypedDict):
     ts: str | None
     scene_id: str | None
     crop_fname: str | None
+    crop_fnames: dict[str, str] | None
     longitude: float
     latitude: float
     attributes: VesselAttributes | None
@@ -72,6 +75,7 @@ class VesselDetection:
         ts: datetime | None = None,
         scene_id: str | None = None,
         crop_fname: UPath | None = None,
+        crop_fnames: dict[str, UPath] | None = None,
         metadata: dict[str, Any] | None = None,
         attributes: VesselAttributes | None = None,
     ) -> None:
@@ -86,6 +90,8 @@ class VesselDetection:
             ts: datetime fo the window (if known).
             scene_id: the scene ID that the vessel was detected in (if known).
             crop_fname: filename where crop image for this vessel is stored.
+            crop_fnames: map from band/visualization name to the filename where the
+                crop for this detection is stored.
             metadata: additional metadata that caller wants to store with this detection.
             attributes: the predicted vessel attributes, if any.
         """
@@ -97,6 +103,7 @@ class VesselDetection:
         self.ts = ts
         self.scene_id = scene_id
         self.crop_fname = crop_fname
+        self.crop_fnames = crop_fnames
         self.attributes = attributes
 
         if metadata is None:
@@ -114,6 +121,12 @@ class VesselDetection:
         dst_geom = src_geom.to_projection(WGS84_PROJECTION)
         return (dst_geom.shp.x, dst_geom.shp.y)
 
+    def get_crop_fnames(self) -> dict[str, str] | None:
+        """Get the crop filenames for this detection."""
+        if not self.crop_fnames:
+            return None
+        return {vis_name: str(fname) for vis_name, fname in self.crop_fnames.items()}
+
     def to_dict(self) -> VesselDetectionDict:
         """Serialize this detection to a JSON-encodable dictionary."""
         lon, lat = self.get_lon_lat()
@@ -126,6 +139,7 @@ class VesselDetection:
             ts=self.ts.isoformat() if self.ts else None,
             scene_id=self.scene_id,
             crop_fname=str(self.crop_fname) if self.crop_fname else None,
+            crop_fnames=self.get_crop_fnames(),
             longitude=lon,
             latitude=lat,
             attributes=self.attributes,
