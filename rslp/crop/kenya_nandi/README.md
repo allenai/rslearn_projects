@@ -107,3 +107,8 @@ Launch Helios finetune:
 ```
 python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/titan-cirrascale --rslp_project 2025_08_15_nandi_crop_type --experiment_id nandi_crop_type_segment_helios_base_S2_ts_ws4_ps2_bs8
 ```
+
+Predictions:
+```
+python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/saturn-cirrascale --mode predict --gpus 8 --experiment_id nandi_crop_type_segment_helios_base_S2_ts_ws4_ps2_bs8_new_checkpoint_lower_lr --rslp_project 2025_08_15_nandi_crop_type
+```
