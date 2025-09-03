@@ -1,31 +1,67 @@
 """Run EsPredictRunner inference pipeline."""
 
+import hashlib
+import shutil
+import tempfile
 from enum import StrEnum
 from pathlib import Path
 
+import fsspec
 from esrun.runner.local.predict_runner import EsPredictRunner
-from esrun.shared.models.task_results import InferenceResultsDataType
+from upath import UPath
 
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 
 
-def esrun(
-    config_path: Path, scratch_path: Path, data_type: InferenceResultsDataType
-) -> None:
+def get_local_checkpoint(checkpoint_path: UPath) -> Path:
+    """Get a local path to the specified checkpoint file, caching it locally if needed.
+
+    Args:
+        checkpoint_path: a UPath to the checkpoint file.
+
+    Returns:
+        a local UPath, which is the same as checkpoint_path if it is already local, or
+            points to a cached version in the system temporary directory.
+    """
+    # Cache the checkpoint if it isn't already local.
+    if isinstance(checkpoint_path.fs, fsspec.implementations.local.LocalFileSystem):
+        logger.info("using local checkpoint at %s", checkpoint_path)
+        return Path(checkpoint_path)
+
+    cache_id = hashlib.sha256(str(checkpoint_path).encode()).hexdigest()
+    local_upath = (
+        UPath(tempfile.gettempdir())
+        / "rslearn_cache"
+        / "esrun_checkpoints"
+        / f"{cache_id}.ckpt"
+    )
+
+    if not local_upath.exists():
+        logger.info("caching checkpoint from %s to %s", checkpoint_path, local_upath)
+        local_upath.parent.mkdir(parents=True, exist_ok=True)
+        with checkpoint_path.open("rb") as src, local_upath.open("wb") as dst:
+            shutil.copyfileobj(src, dst)
+
+    logger.info("using cached checkpoint at %s", local_upath)
+    return Path(local_upath)
+
+
+def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
     """Run EsPredictRunner inference pipeline.
 
     Args:
         config_path: directory containing the model.yaml, partition_strategies.yaml,
             and postprocessing_strategies.yaml configuration files.
         scratch_path: directory to use for scratch space.
-        data_type: the output data type of the model.
+        checkpoint_path: path to the model checkpoint.
     """
     runner = EsPredictRunner(
-        project_path=config_path,
+        # ESRun does not work with relative path, so make sure to convert to absolute here.
+        project_path=config_path.absolute(),
         scratch_path=scratch_path,
-        inference_results_data_type=data_type,
+        checkpoint_path=get_local_checkpoint(UPath(checkpoint_path)),
     )
     partitions = runner.partition()
     logger.info(f"Got {len(partitions)} partitions")
@@ -43,41 +79,67 @@ def esrun(
 
 
 class EsrunStage(StrEnum):
-    """The stage of esrun pipeline to run."""
+    """The stage of esrun pipeline to run.
+
+    We always run the partition stage so that is not an option here.
+    """
 
     BUILD_DATASET = "build_dataset"
     RUN_INFERENCE = "run_inference"
     POSTPROCESS = "postprocess"
+    COMBINE = "combine"
 
 
 def one_stage(
     config_path: Path,
     scratch_path: Path,
-    data_type: InferenceResultsDataType,
-    partition_id: str,
+    checkpoint_path: str,
     stage: EsrunStage,
+    partition_id: str | None = None,
 ) -> None:
     """Run EsPredictRunner inference pipeline.
 
     Args:
         config_path: see esrun.
         scratch_path: see esrun.
-        data_type: see esrun.
-        partition_id: the partition to run the stage for.
+        checkpoint_path: see esrun.
         stage: which stage to run.
+        partition_id: the partition to run the stage for. If not set, we run the stage
+            for all partitions, except COMBINE, which happens across partitions.
     """
+    if stage == EsrunStage.COMBINE and partition_id is not None:
+        raise ValueError("partition_id cannot be set for COMBINE stage")
+
     runner = EsPredictRunner(
+        # ESRun does not work with relative path, so make sure to convert to absolute here.
         project_path=config_path,
         scratch_path=scratch_path,
-        inference_results_data_type=data_type,
+        checkpoint_path=get_local_checkpoint(UPath(checkpoint_path)),
     )
     partitions = runner.partition()
-    if partition_id not in partitions:
-        raise ValueError(f"partition {partition_id} does not exist")
 
-    if stage == EsrunStage.BUILD_DATASET:
-        runner.build_dataset(partition_id)
-    if stage == EsrunStage.RUN_INFERENCE:
-        runner.run_inference(partition_id)
-    if stage == EsrunStage.POSTPROCESS:
-        runner.postprocess(partition_id)
+    if stage in [
+        EsrunStage.BUILD_DATASET,
+        EsrunStage.RUN_INFERENCE,
+        EsrunStage.POSTPROCESS,
+    ]:
+        fn = None
+        if stage == EsrunStage.BUILD_DATASET:
+            fn = runner.build_dataset
+        elif stage == EsrunStage.RUN_INFERENCE:
+            fn = runner.run_inference
+        elif stage == EsrunStage.POSTPROCESS:
+            fn = runner.postprocess
+        else:
+            assert False
+
+        if partition_id is not None:
+            if partition_id not in partitions:
+                raise ValueError(f"partition {partition_id} does not exist")
+            fn(partition_id)
+        else:
+            for partition_id in partitions:
+                fn(partition_id)
+
+    elif stage == EsrunStage.COMBINE:
+        runner.combine(partitions)
