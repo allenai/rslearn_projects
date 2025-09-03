@@ -26,7 +26,8 @@ def get_local_checkpoint(checkpoint_path: UPath) -> Path:
             points to a cached version in the system temporary directory.
     """
     # Cache the checkpoint if it isn't already local.
-    if isinstance(checkpoint_path, fsspec.implementations.local.LocalFileSystem):
+    if isinstance(checkpoint_path.fs, fsspec.implementations.local.LocalFileSystem):
+        logger.info("using local checkpoint at %s", checkpoint_path)
         return Path(checkpoint_path)
 
     cache_id = hashlib.sha256(str(checkpoint_path).encode()).hexdigest()
