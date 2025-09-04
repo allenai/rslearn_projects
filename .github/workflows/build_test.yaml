@@ -56,15 +56,26 @@ jobs:
           sudo rm -rf /usr/local/share/boost
 
       # Add deploy key and clone Helios repository.
-      - name: Start ssh-agent and add key
+      - name: Start ssh-agent and add helios deploy key
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_HELIOS_CLONE }}
       - name: Clone helios and update requirements-extra.txt.
         run: |
           mkdir docker_build
-          git clone -b favyen/20250903-fix-beaker-req git@github.com:allenai/helios.git docker_build/helios
+          git clone git@github.com:allenai/helios.git docker_build/helios
           echo "helios @ /opt/rslearn_projects/docker_build/helios/" >> requirements-extra.txt
+
+      # Same thing for esrun repository.
+      - name: Start ssh-agent and add esrun deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_ESRUN_CLONE }}
+      - name: Clone esrun and update requirements-extra.txt.
+        run: |
+          mkdir docker_build
+          git clone git@github.com:allenai/earth-system-run.git docker_build/earth-system-run
+          echo "helios @ /opt/rslearn_projects/docker_build/earth-system-run/" >> requirements-extra.txt
 
       - name: Build and push Docker image
         id: build-push
