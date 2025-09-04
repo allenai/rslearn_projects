@@ -1,1 +1,1 @@
-helios
+helios @ git+https://github.com/allenai/helios.git@main
