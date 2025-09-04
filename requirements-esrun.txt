@@ -1,1 +1,1 @@
-esrun @ git+https://github.com/allenai/earth-system-run.git@v1-develop
+earth-system-run @ git+https://github.com/allenai/earth-system-run.git@v1-develop

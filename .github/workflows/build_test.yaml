@@ -74,7 +74,7 @@ jobs:
       - name: Clone esrun and update requirements-extra.txt.
         run: |
           git clone git@github.com:allenai/earth-system-run.git docker_build/earth-system-run
-          echo "esrun @ /opt/rslearn_projects/docker_build/earth-system-run/" >> requirements-extra.txt
+          echo "earth-system-run @ /opt/rslearn_projects/docker_build/earth-system-run/" >> requirements-extra.txt
 
       - name: Build and push Docker image
         id: build-push
