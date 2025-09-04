@@ -76,7 +76,7 @@ class Helios(torch.nn.Module):
         # Load the model config and initialize it.
         # We avoid loading the train module here because it depends on running within
         # olmo_core.
-        with open(_checkpoint_path / "config.json") as f:
+        with (_checkpoint_path / "config.json").open() as f:
             config_dict = json.load(f)
             model_config = Config.from_dict(config_dict["model"])
 
