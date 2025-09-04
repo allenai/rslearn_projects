@@ -300,7 +300,7 @@ trainer:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
         path: placeholder
-        output_layer: prediction_v2
+        output_layer: prediction_v0.1
         selector: ["crop_type_classification"]
 rslp_project: 2025_08_15_nandi_crop_type
 rslp_experiment: nandi_crop_type_segment_helios_base_S2_ts_ws4_ps1_bs8
