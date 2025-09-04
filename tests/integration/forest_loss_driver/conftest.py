@@ -4,11 +4,13 @@ Note: All data is downloaded to the test_data directory in the root of the repo 
 start of the testing session
 """
 
+import shutil
 from collections.abc import Generator
 from pathlib import Path
 from unittest import mock
 
 import pytest
+from rslearn.utils.fsspec import open_atomic
 from upath import UPath
 
 from rslp.log_utils import get_logger
@@ -93,19 +95,27 @@ def download_test_data() -> Generator[None, None, None]:
     gcs_upath = UPath(gcs_path)
     for folder in folders_to_download:
         folder_path = test_data_path / folder
-        if not folder_path.exists() or not any(folder_path.iterdir()):
-            logger.info(f"Downloading {folder} from GCS...")
-            folder_gcs_path = gcs_upath / folder
+        completed_fname = folder_path / "completed"
 
-            for src_path in folder_gcs_path.rglob("*"):
-                if src_path.is_file():
-                    rel_path = Path(*src_path.relative_to(gcs_upath).parts[4:])
-                    dst_path = test_data_path / rel_path
-                    logger.debug(f"Downloading {src_path} to {dst_path}")
-                    dst_path.parent.mkdir(parents=True, exist_ok=True)
-                    with src_path.open("rb") as src, dst_path.open("wb") as dst:
-                        dst.write(src.read())
+        if completed_fname.exists():
+            continue
 
-            logger.info(f"Finished downloading {folder}")
+        logger.info(f"Downloading {folder} from GCS...")
+        folder_gcs_path = gcs_upath / folder
+
+        for src_path in folder_gcs_path.rglob("*"):
+            if not src_path.is_file():
+                continue
+
+            rel_path = Path(*src_path.relative_to(gcs_upath).parts[4:])
+            dst_path = test_data_path / rel_path
+            logger.debug(f"Downloading {src_path} to {dst_path}")
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
+            with src_path.open("rb") as src:
+                with open_atomic(UPath(dst_path), "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+
+        logger.info(f"Finished downloading {folder}")
+        completed_fname.touch()
 
     yield
