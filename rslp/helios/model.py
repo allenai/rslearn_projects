@@ -124,6 +124,7 @@ class Helios(torch.nn.Module):
             num_timesteps = cur.shape[1] // num_bands
             max_timesteps = max(max_timesteps, num_timesteps)
             cur = rearrange(cur, "b (t c) h w -> b h w t c", t=num_timesteps)
+            print(f"cur shape for {modality}: {cur.shape}")
             kwargs[modality] = cur
             # Create mask array which is BHWTS (without channels but with band sets).
             num_band_sets = len(Modality.get(modality).band_sets)
@@ -144,6 +145,7 @@ class Helios(torch.nn.Module):
         timestamps[:, :, 1] = torch.arange(max_timesteps, device=device)[
             None, :
         ]  # month
+        # this is hardcoded to 2024 because the timestamps are all from 2024
         timestamps[:, :, 2] = 2024  # year
         kwargs["timestamps"] = timestamps
 
@@ -157,14 +159,17 @@ class Helios(torch.nn.Module):
             context = torch.amp.autocast(
                 device_type=device.type, dtype=self.autocast_dtype
             )
-
+        # predict puts this in the no grad context already but not neccessarily in inference mode
+        # so we need to set the inference mode here
+        # with torch.inference_mode():
         with context:
             # Currently we assume the provided model always returns a TokensAndMasks object.
             tokens_and_masks: TokensAndMasks = self.model(
                 sample, always_pass_none_mask_to_transformer=True, **self.forward_kwargs
-            )[0]
+            )["tokens_and_masks"]
 
         # Apply temporal/modality pooling so we just have one feature per patch.
+        # need to add attnetive pooling ehre
         features = []
         for modality in present_modalities:
             modality_features = getattr(tokens_and_masks, modality)

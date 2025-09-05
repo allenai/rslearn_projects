@@ -238,8 +238,8 @@ data:
         input_mapping:
           crop_type_classification:
             label: "targets"
-    batch_size: 8
-    num_workers: 64
+    batch_size: 1024 # what is the unit the dataloader is stacking?
+    num_workers: 32 # previously 64
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.pad.Pad
@@ -249,7 +249,7 @@ data:
             image_selectors: ["sentinel2_l2a", "target/crop_type_classification/classes", "target/crop_type_classification/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            config_fname: "/weka/dfive-default/henryh/helios/helios/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
@@ -264,7 +264,7 @@ data:
             image_selectors: ["sentinel2_l2a", "target/crop_type_classification/classes", "target/crop_type_classification/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            config_fname: "/weka/dfive-default/henryh/helios/helios/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     val_config:
@@ -275,14 +275,28 @@ data:
       groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
       tags:
         split: "val"
+      # Predict config is most important
     predict_config:
-      groups: ["nandi_county_2018"]
+      transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 4
+            mode: "center"
+            image_selectors: ["sentinel2_l2a"]
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/weka/dfive-default/henryh/helios/helios/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+      groups: ["nandi_county"]
       load_all_patches: true
       skip_targets: true
       overlap_ratio: 0.75
       patch_size: 4
 trainer:
   max_epochs: 100
+  limit_predict_batches: 16 # useful for debugging
+  profiler: "simple" #"advanced" # arg doesnt work for local in rslp
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -300,7 +314,7 @@ trainer:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
         path: placeholder
-        output_layer: prediction_v0.1
+        output_layer: prediction_v0_1
         selector: ["crop_type_classification"]
 rslp_project: 2025_08_15_nandi_crop_type
 rslp_experiment: nandi_crop_type_segment_helios_base_S2_ts_ws4_ps1_bs8

@@ -23,6 +23,7 @@ class HeliosNormalize(Transform):
         self.band_names = band_names
         self.std_multiplier = std_multiplier
 
+    # TODO: WE SHOULD NOT RE_IMPLENT NORMALIZATION CODE HERE. JUST USE THE HELIOS NORMALIZER.
     def forward(
         self, input_dict: dict[str, Any], target_dict: dict[str, Any]
     ) -> tuple[dict[str, Any], dict[str, Any]]:

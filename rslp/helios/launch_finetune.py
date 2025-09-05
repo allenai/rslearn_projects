@@ -112,12 +112,15 @@ def launch_finetune(
             # If running locally, assume we are in a gpu session
             # NOTE: assuming that all the args are passed through to the config file and do NOT get
             # passed through the final call to rslp.rslearn_main (except for profiler)
+            # Keeping the same behavior as before.
+            if mode == "fit" and do_eval:
+                mode = "validate"
             args = [
                 "python",
                 "-m",
                 "rslp.rslearn_main",
                 "model",
-                "fit" if not do_eval else "validate",
+                mode,
             ]
             paths = []
             for i, _ in enumerate(config_paths):
