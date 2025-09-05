@@ -15,6 +15,8 @@ from rslp.log_utils import get_logger
 logger = get_logger(__name__)
 
 
+# THis is actually a directory not a file what is this supposed to do?
+# what is the easiest way just to run a specific step for debugging
 def get_local_checkpoint(checkpoint_path: UPath) -> Path:
     """Get a local path to the specified checkpoint file, caching it locally if needed.
 
@@ -57,9 +59,11 @@ def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
         scratch_path: directory to use for scratch space.
         checkpoint_path: path to the model checkpoint.
     """
+    # turn on the rslp logger
     runner = EsPredictRunner(
         # ESRun does not work with relative path, so make sure to convert to absolute here.
         project_path=config_path.absolute(),
+        # what should be contained in the project path?
         scratch_path=scratch_path,
         checkpoint_path=get_local_checkpoint(UPath(checkpoint_path)),
     )

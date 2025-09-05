@@ -88,10 +88,13 @@ class Helios(torch.nn.Module):
             if train_module_dir.exists():
                 load_model_and_optim_state(str(train_module_dir), model)
                 logger.info(f"loaded helios encoder from {train_module_dir}")
+                print(f"loaded helios encoder from {train_module_dir}")
             else:
                 logger.info(f"could not find helios encoder at {train_module_dir}")
+                print(f"could not find helios encoder at {train_module_dir}")
         else:
             logger.info("skipping loading helios encoder")
+            print("skipping loading helios encoder")
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:
