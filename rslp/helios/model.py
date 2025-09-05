@@ -86,7 +86,7 @@ class Helios(torch.nn.Module):
         if not random_initialization:
             train_module_dir = _checkpoint_path / "model_and_optim"
             if train_module_dir.exists():
-                load_model_and_optim_state(train_module_dir.path, model)
+                load_model_and_optim_state(str(train_module_dir), model)
                 logger.info(f"loaded helios encoder from {train_module_dir}")
             else:
                 logger.info(f"could not find helios encoder at {train_module_dir}")
