@@ -2,7 +2,7 @@ partition_strategies:
   partition_request_geometry:
     class_path: esrun.runner.tools.partitioners.grid_partitioner.GridPartitioner
     init_args:
-      grid_size: 0.15
+      grid_size: 0.005
       output_projection:
         class_path: rslearn.utils.geometry.Projection
         init_args:
@@ -14,7 +14,7 @@ partition_strategies:
   prepare_window_geometries:
     class_path: esrun.runner.tools.partitioners.grid_partitioner.GridPartitioner
     init_args:
-      grid_size: 2048
+      grid_size: 128
       output_projection:
         class_path: rslearn.utils.geometry.Projection
         init_args:
@@ -25,10 +25,10 @@ partition_strategies:
 
 postprocessing_strategies:
   process_dataset:
-    class_path: esrun.runner.tools.postprocessors.noop_raster.NoopRaster
+    class_path: esrun.runner.tools.postprocessors.combine_geotiff.CombineGeotiff
 
   process_partition:
-    class_path: esrun.runner.tools.postprocessors.noop_raster.NoopRaster
+    class_path: esrun.runner.tools.postprocessors.combine_geotiff.CombineGeotiff
 
   process_window:
     class_path: esrun.runner.tools.postprocessors.noop_raster.NoopRaster
