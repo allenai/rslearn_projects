@@ -15,10 +15,15 @@
       "type": "raster"
     },
     "output": {
-      "format": {
-        "name": "geojson"
-      },
-      "type": "vector"
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
     },
     "prediction_v0": {
       "band_sets": [
