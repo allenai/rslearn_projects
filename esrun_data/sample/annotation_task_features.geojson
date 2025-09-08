@@ -1,13 +1,10 @@
 {
   "bbox": null,
-  "type": "FeatureCollection",
   "features": [
     {
       "bbox": null,
-      "type": "Feature",
       "geometry": {
         "bbox": null,
-        "type": "Polygon",
         "coordinates": [
           [
             [
@@ -31,14 +28,17 @@
               33.74270278
             ]
           ]
-        ]
+        ],
+        "type": "Polygon"
       },
+      "id": null,
       "properties": {
         "es_annotations_task_id": "164679b9-04ed-5b35-b438-9677104067fc",
-        "es_start_time": "2024-02-24 05:57:00+00:00",
-        "es_end_time": "2024-02-24 05:57:04+00:00"
+        "es_end_time": "2024-02-24 05:57:04+00:00",
+        "es_start_time": "2024-02-24 05:57:00+00:00"
       },
-      "id": null
+      "type": "Feature"
     }
-  ]
+  ],
+  "type": "FeatureCollection"
 }
