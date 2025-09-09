@@ -81,14 +81,17 @@ data is to upload your raw data via Studio's Command Center "Add Dataset" featur
 format via the "Export Annotations" tab. This will create the required data files in gcs, that you can then download to your working location.
 
 ### Writing Your Own Samplers
+
 You may supply your own data samplers by creating a new class that implements the `SamplerInterface` class in the `esrun.runner.tools.samplers.sampler_interface` module. You can then specify your custom sampler in the `esrun.yaml` file. This
 class must be importable via your PYTHONPATH. Include it as code in this repository or as a new implementation in earth-system-run.git.
 
 ### Writing Your Own LabeledWindowPreparers
+
 You may supply new implementations for converting raw Studio Tasks + Annotations into LabeledWindows. To do so, implement
 either `esrun.runner.tools.labeled_window_preparers.labeled_window_preparer.RasterLabelsWindowPreparer` (for rasterized targets) or `esrun.runner.tools.labeled_window_preparers.labeled_window_preparer.VectorLabelsWindowPreparer` (for vector targets). As with Samplers, these must be importable from your PYTHONPATH and can be referenced by class path in `esrun.yaml`. Include as code in this repository or contribute directly to earth-system-run.git.
 
 ### Writing Your Own DataPartitioners
+
 You may supply your own data partitioners to determine test/eval/train split assignment for a LabeledWindow. To do so, implement `esrun.runner.tools.data_splitter.data_splitter_interface.DataSplitterInterface`.
 
 ## Inference
