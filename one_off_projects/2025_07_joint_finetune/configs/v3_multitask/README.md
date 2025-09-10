@@ -1,6 +1,8 @@
 ## Finetuning on concatenated datasets
 
-**Only one task per dataset is supported at the moment.**
+**NOTE: these docs are outdated, please see `2025_07_joint_finetune/README.md` instead**.
+
+Only one task per dataset is supported at the moment.
 
 There are two stages to running a multi-dataset job: constructing a run configuration, and actually running the job.
 
