@@ -13,6 +13,7 @@ from helios.nn.flexihelios import TokensAndMasks
 from helios.train.masking import MaskedHeliosSample, MaskValue
 from olmo_core.config import Config
 from torch.distributed.checkpoint import DefaultLoadPlanner
+from upath import UPath
 
 from rslp.helios.checkpoint import load_model_and_optim_state
 from rslp.log_utils import get_logger
@@ -92,11 +93,11 @@ class Helios(torch.nn.Module):
         else:
             self.autocast_dtype = None
 
-        self.load_model(checkpoint_path, selector, random_initialization)
+        self.load_model(UPath(checkpoint_path), selector, random_initialization)
 
     def load_model(
         self,
-        checkpoint_path: str,
+        checkpoint_path: UPath,
         selector: list[str | int] = [],
         random_initialization: bool = False,
         model_overrides: dict[str, Any] = {},
@@ -118,7 +119,7 @@ class Helios(torch.nn.Module):
         # Load the model config and initialize it.
         # We avoid loading the train module here because it depends on running within
         # olmo_core.
-        with open(f"{checkpoint_path}/config.json") as f:
+        with (checkpoint_path / "config.json").open() as f:
             config_dict = json.load(f)
             if model_overrides is not None:
                 config_dict["model"] = deep_merge(config_dict["model"], model_overrides)
@@ -128,9 +129,9 @@ class Helios(torch.nn.Module):
 
         # Load the checkpoint.
         if not random_initialization:
-            train_module_dir = os.path.join(checkpoint_path, "model_and_optim")
+            train_module_dir = checkpoint_path / "model_and_optim"
             if os.path.exists(train_module_dir):
-                load_model_and_optim_state(train_module_dir, model, planner=planner)
+                load_model_and_optim_state(str(train_module_dir), model, planner=planner)
                 logger.info(f"loaded helios encoder from {train_module_dir}")
             else:
                 logger.info(f"could not find helios encoder at {train_module_dir}")
