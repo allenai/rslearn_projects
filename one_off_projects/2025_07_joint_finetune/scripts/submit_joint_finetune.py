@@ -6,10 +6,9 @@ import itertools
 
 
 image_name = "henryh/rslp_multidataset_dev"#_0.05w"
-project_name =  "2025_07_30_joint_finetune_sweep"#"2025_07_29_helios_joint_finetune_debug"
-# project_name = "2025_07_29_helios_joint_finetune_debug"
+project_name = "2025_09_04_loo_evals" #"2025_08_29_finetune_scaling_laws"
 template = {
-    "base_cfg": "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_07_29_debug/base.yaml",
+    "base_cfg": "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_09_02_scaling/base.yaml",
     "substitutions": {
         "patch_size": 8,
         "encoder_embedding_size": 768,
@@ -24,10 +23,26 @@ dataset_cfgs = {
     "pastis": [
         "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_pastis/basecfg_cosinelr.yaml",
         "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_pastis/basecfg_helios_mm.yaml",
+    ],
+    "sentinel1": [
+        "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel1_vessels_128/basecfg_cosinelr.yaml",
+        "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel1_vessels_128/basecfg_helios.yaml"
+    ],
+    "sentinel2": [
+        "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel2_vessels_128/basecfg_cosinelr.yaml",
+        "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel2_vessels_128/basecfg_helios.yaml"
     ]
 }
 combos = [
     # adding new tokens - what happens?
+    ["cropland", "croptype"],
+    ["cropland", "croptype", "pastis"],
+    ["cropland", "croptype", "pastis", "vessel_detect"],
+    ["cropland", "croptype", "pastis", "vessel_detect", "sentinel1"],
+    ["sentinel1", "vessel_detect"],
+    ["sentinel1", "vessel_detect", "sentinel2"],
+    ["sentinel1", "vessel_detect", "sentinel2", "pastis"],
+    ["sentinel1", "vessel_detect", "sentinel2", "pastis", "cropland"],
     # ["vessel_detect", "cropland"],
     # ["vessel_detect", "cropland", "croptype"],
     # ["vessel_detect", "cropland", "croptype", "vessel_classify"],
@@ -39,19 +54,71 @@ combos = [
     # ["vessel_detect", "pastis", "vessel_classify", "croptype"],
 ]
 
+def extra_cfg(length):
+    return {"global_overrides": {
+            "model": {
+                "class_path": "rslearn.train.lightning_module.RslearnLightningModule",
+                "init_args": {
+                    "model": {
+                        "init_args": {
+                            "trunk": {
+                                "class_path": "rslearn.models.trunk.DecoderTrunk",
+                                "init_args": {
+                                    "task_embedding": {
+                                        "class_path": "rslearn.models.task_embedding.TaskChannelEmbedding",
+                                        "init_args": {
+                                            "encoder_embedding_size": 768,
+                                            "add_spatial_embed": True,
+                                        },
+                                    },
+                                    "layers": [
+                                        {
+                                            "class_path": "rslp.helios.moe.MoETransformer",
+                                            "init_args": {
+                                                "dim": 768,
+                                                "n_layers": 1,
+                                                "n_heads": 12,
+                                                "num_experts": 4,
+                                                "num_slots": 4,
+                                            },
+                                        }
+                                    ],
+                                },
+                            }
+                        }
+                    }
+                },
+            },
+            "trainer": {
+                "accumulate_grad_batches": length,
+            },
+        },
+        "merge_options": {
+            "merge_heads": True,
+            "merge_task_labels": True,
+            "same_label_groups": [
+                ["detect_sentinel1_vessels", "detect_sentinel2_vessels", "vessel_detection"]
+            ],
+        },
+    }
+
+
+"""
 all_tasks = ["vessel_detect", "cropland", "croptype", "vessel_classify", "pastis"]
 all_combos = list(itertools.combinations(all_tasks, 2))
 for combo in list(all_combos):
     if list(combo) in combos:
         all_combos.remove(combo)
 combos += all_combos
+"""
 
 for combo in combos:
     with tempfile.NamedTemporaryFile(mode="w") as maker:
         with tempfile.NamedTemporaryFile(mode="w") as cfg:
             template["dataset_cfgs"] = [dataset_cfgs[cfg] for cfg in combo]
             template["output_path"] = cfg.name
-            exp_id = "_".join(combo) + "_norefill" # + "_0.05w_norefill"
+            template.update(extra_cfg(len(combo)))
+            exp_id = "_".join(combo)
 
             yaml.dump(template, maker)
             maker.flush()

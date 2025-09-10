@@ -1,0 +1,4054 @@
+data:
+  class_path: rslearn.train.data_module.MultiDatasetDataModule
+  init_args:
+    batch_sizes:
+      crop_type_classification: 32
+      cropland_classification: 16
+      detect_satlas_marine_infra: 8
+      detect_satlas_wind_turbine: 8
+      detect_sentinel1_vessels: 8
+      detect_sentinel2_vessels: 8
+      segment: 2
+      segment_satlas_solar_farm: 8
+      vessel_classification: 16
+      vessel_detection: 8
+    data_modules:
+      crop_type_classification:
+        class_path: rslearn.train.data_module.RslearnDataModule
+        init_args:
+          batch_size: 32
+          default_config:
+            transforms:
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  sentinel2_0: []
+                  sentinel2_1: []
+                  sentinel2_10: []
+                  sentinel2_11: []
+                  sentinel2_2: []
+                  sentinel2_3: []
+                  sentinel2_4: []
+                  sentinel2_5: []
+                  sentinel2_6: []
+                  sentinel2_7: []
+                  sentinel2_8: []
+                  sentinel2_9: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  sentinel1_0: []
+                  sentinel1_1: []
+                  sentinel1_10: []
+                  sentinel1_11: []
+                  sentinel1_2: []
+                  sentinel1_3: []
+                  sentinel1_4: []
+                  sentinel1_5: []
+                  sentinel1_6: []
+                  sentinel1_7: []
+                  sentinel1_8: []
+                  sentinel1_9: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  sentinel1:
+                  - vv
+                  - vh
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslearn.train.transforms.pad.Pad
+              init_args:
+                image_selectors:
+                - sentinel2_l2a
+                - sentinel1
+                mode: center
+                size: 8
+          inputs:
+            label:
+              data_type: vector
+              is_target: true
+              layers:
+              - label
+            sentinel1_0:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending
+              passthrough: true
+            sentinel1_1:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.1
+              passthrough: true
+            sentinel1_10:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.10
+              passthrough: true
+            sentinel1_11:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.11
+              passthrough: true
+            sentinel1_2:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.2
+              passthrough: true
+            sentinel1_3:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.3
+              passthrough: true
+            sentinel1_4:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.4
+              passthrough: true
+            sentinel1_5:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.5
+              passthrough: true
+            sentinel1_6:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.6
+              passthrough: true
+            sentinel1_7:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.7
+              passthrough: true
+            sentinel1_8:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.8
+              passthrough: true
+            sentinel1_9:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.9
+              passthrough: true
+            sentinel2_0:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2
+              passthrough: true
+            sentinel2_1:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.1
+              passthrough: true
+            sentinel2_10:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.10
+              passthrough: true
+            sentinel2_11:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.11
+              passthrough: true
+            sentinel2_2:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.2
+              passthrough: true
+            sentinel2_3:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.3
+              passthrough: true
+            sentinel2_4:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.4
+              passthrough: true
+            sentinel2_5:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.5
+              passthrough: true
+            sentinel2_6:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.6
+              passthrough: true
+            sentinel2_7:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.7
+              passthrough: true
+            sentinel2_8:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.8
+              passthrough: true
+            sentinel2_9:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.9
+              passthrough: true
+          num_workers: 32
+          path: /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625
+          task:
+            class_path: rslearn.train.tasks.multi_task.MultiTask
+            init_args:
+              input_mapping:
+                crop_type_classification:
+                  label: targets
+              tasks:
+                crop_type_classification:
+                  class_path: rslearn.train.tasks.classification.ClassificationTask
+                  init_args:
+                    classes:
+                    - Coffee
+                    - Trees
+                    - Grassland
+                    - Maize
+                    - Sugarcane
+                    - Tea
+                    - Water
+                    - Built-up
+                    enable_f1_metric: true
+                    metric_kwargs:
+                      average: micro
+                    property_name: category
+          test_config:
+            groups:
+            - groundtruth_polygon_split_window_32
+            - worldcover_window_32
+            tags:
+              split: val
+          train_config:
+            groups:
+            - groundtruth_polygon_split_window_32
+            - worldcover_window_32
+            tags:
+              split: train
+          val_config:
+            groups:
+            - groundtruth_polygon_split_window_32
+            - worldcover_window_32
+            tags:
+              split: val
+      cropland_classification:
+        class_path: rslearn.train.data_module.RslearnDataModule
+        init_args:
+          batch_size: 16
+          default_config:
+            transforms:
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  sentinel2_0: []
+                  sentinel2_1: []
+                  sentinel2_10: []
+                  sentinel2_11: []
+                  sentinel2_2: []
+                  sentinel2_3: []
+                  sentinel2_4: []
+                  sentinel2_5: []
+                  sentinel2_6: []
+                  sentinel2_7: []
+                  sentinel2_8: []
+                  sentinel2_9: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  sentinel1_0: []
+                  sentinel1_1: []
+                  sentinel1_10: []
+                  sentinel1_11: []
+                  sentinel1_2: []
+                  sentinel1_3: []
+                  sentinel1_4: []
+                  sentinel1_5: []
+                  sentinel1_6: []
+                  sentinel1_7: []
+                  sentinel1_8: []
+                  sentinel1_9: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  sentinel1:
+                  - vv
+                  - vh
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslearn.train.transforms.pad.Pad
+              init_args:
+                image_selectors:
+                - sentinel2_l2a
+                - sentinel1
+                mode: center
+                size: 8
+          inputs:
+            label:
+              data_type: vector
+              is_target: true
+              layers:
+              - label
+            sentinel1_0:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1
+              passthrough: true
+            sentinel1_1:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.1
+              passthrough: true
+            sentinel1_10:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.10
+              passthrough: true
+            sentinel1_11:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.11
+              passthrough: true
+            sentinel1_2:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.2
+              passthrough: true
+            sentinel1_3:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.3
+              passthrough: true
+            sentinel1_4:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.4
+              passthrough: true
+            sentinel1_5:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.5
+              passthrough: true
+            sentinel1_6:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.6
+              passthrough: true
+            sentinel1_7:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.7
+              passthrough: true
+            sentinel1_8:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.8
+              passthrough: true
+            sentinel1_9:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1.9
+              passthrough: true
+            sentinel2_0:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2
+              passthrough: true
+            sentinel2_1:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.1
+              passthrough: true
+            sentinel2_10:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.10
+              passthrough: true
+            sentinel2_11:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.11
+              passthrough: true
+            sentinel2_2:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.2
+              passthrough: true
+            sentinel2_3:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.3
+              passthrough: true
+            sentinel2_4:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.4
+              passthrough: true
+            sentinel2_5:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.5
+              passthrough: true
+            sentinel2_6:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.6
+              passthrough: true
+            sentinel2_7:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.7
+              passthrough: true
+            sentinel2_8:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.8
+              passthrough: true
+            sentinel2_9:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.9
+              passthrough: true
+          num_workers: 32
+          path: /weka/dfive-default/rslearn-eai/datasets/crop/worldcereal_cropland/20250626
+          task:
+            class_path: rslearn.train.tasks.multi_task.MultiTask
+            init_args:
+              input_mapping:
+                cropland_classification:
+                  label: targets
+              tasks:
+                cropland_classification:
+                  class_path: rslearn.train.tasks.classification.ClassificationTask
+                  init_args:
+                    classes:
+                    - Cropland
+                    - Non-Cropland
+                    enable_f1_metric: true
+                    metric_kwargs:
+                      average: micro
+                    property_name: category
+          test_config:
+            groups:
+            - h3_sample100_66K
+            tags:
+              split: val
+          train_config:
+            groups:
+            - h3_sample100_66K
+            tags:
+              split: train
+          val_config:
+            groups:
+            - h3_sample100_66K
+            tags:
+              split: val
+      detect_satlas_marine_infra:
+        class_path: rslearn.train.data_module.RslearnDataModule
+        init_args:
+          batch_size: 8
+          default_config:
+            transforms:
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  s21: []
+                  s22: []
+                  s23: []
+                  s24: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: landsat
+                selections:
+                  landsat1: []
+                  landsat2: []
+                  landsat3: []
+                  landsat4: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  s1a1: []
+                  s1a2: []
+                  s1a3: []
+                  s1a4: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  landsat:
+                  - B8
+                  - B1
+                  - B2
+                  - B3
+                  - B4
+                  - B5
+                  - B6
+                  - B7
+                  - B9
+                  - B10
+                  - B11
+                  sentinel1:
+                  - vv
+                  - vh
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslp.transforms.mask.Mask
+              init_args:
+                selectors:
+                - sentinel2_l2a
+                - landsat
+                - sentinel1
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: image
+                selections:
+                  sentinel2_l2a: []
+          inputs:
+            landsat1:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat
+              passthrough: true
+            landsat2:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.1
+              passthrough: true
+            landsat3:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.2
+              passthrough: true
+            landsat4:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.3
+              passthrough: true
+            mask:
+              bands:
+              - mask
+              data_type: raster
+              dtype: FLOAT32
+              is_target: true
+              layers:
+              - mask
+              passthrough: true
+            s1a1:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending
+              passthrough: true
+            s1a2:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.1
+              passthrough: true
+            s1a3:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.2
+              passthrough: true
+            s1a4:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.3
+              passthrough: true
+            s1d1:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending
+              passthrough: true
+            s1d2:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.1
+              passthrough: true
+            s1d3:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.2
+              passthrough: true
+            s1d4:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.3
+              passthrough: true
+            s21:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2
+              passthrough: true
+            s22:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.1
+              passthrough: true
+            s23:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.2
+              passthrough: true
+            s24:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.3
+              passthrough: true
+            targets:
+              data_type: vector
+              is_target: true
+              layers:
+              - label
+          num_workers: 16
+          path: /weka/dfive-default/rslearn-eai/datasets/marine_infra/dataset_v1/20250605/
+          task:
+            class_path: rslearn.train.tasks.multi_task.MultiTask
+            init_args:
+              input_mapping:
+                detect_satlas_marine_infra:
+                  targets: targets
+              tasks:
+                detect_satlas_marine_infra:
+                  class_path: rslp.satlas.train.MarineInfraTask
+                  init_args:
+                    box_size: 15
+                    classes:
+                    - unknown
+                    - platform
+                    - turbine
+                    enable_f1_metric: true
+                    enable_map_metric: true
+                    exclude_by_center: true
+                    f1_metric_kwargs:
+                      cmp_mode: distance
+                      cmp_threshold: 15
+                      flatten_classes: true
+                    f1_metric_thresholds:
+                    - - 0.05
+                      - 0.1
+                      - 0.2
+                      - 0.3
+                      - 0.4
+                      - 0.5
+                      - 0.6
+                      - 0.7
+                      - 0.8
+                      - 0.9
+                      - 0.95
+                    - - 0.1
+                    - - 0.2
+                    - - 0.3
+                    - - 0.4
+                    - - 0.5
+                    - - 0.6
+                    - - 0.7
+                    - - 0.8
+                    - - 0.9
+                    image_bands:
+                    - 2
+                    - 1
+                    - 0
+                    property_name: category
+                    remap_values:
+                    - - 0
+                      - 0.25
+                    - - 0
+                      - 255
+                    skip_unknown_categories: true
+          test_config:
+            patch_size: 128
+            tags:
+              split: val
+          train_config:
+            patch_size: 128
+            sampler:
+              class_path: rslearn.train.dataset.RandomSamplerFactory
+              init_args:
+                num_samples: 65536
+                replacement: true
+            tags:
+              split: train
+            transforms:
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  s21: []
+                  s22: []
+                  s23: []
+                  s24: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: landsat
+                selections:
+                  landsat1: []
+                  landsat2: []
+                  landsat3: []
+                  landsat4: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  s1a1: []
+                  s1a2: []
+                  s1a3: []
+                  s1a4: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  landsat:
+                  - B8
+                  - B1
+                  - B2
+                  - B3
+                  - B4
+                  - B5
+                  - B6
+                  - B7
+                  - B9
+                  - B10
+                  - B11
+                  sentinel1:
+                  - vv
+                  - vh
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslp.transforms.mask.Mask
+              init_args:
+                selectors:
+                - sentinel2_l2a
+                - landsat
+                - sentinel1
+            - class_path: rslearn.train.transforms.flip.Flip
+              init_args:
+                box_selectors:
+                - target/detect_satlas_marine_infra
+                image_selectors:
+                - sentinel2_l2a
+                - landsat
+                - sentinel1
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: image
+                selections:
+                  sentinel2_l2a: []
+          val_config:
+            patch_size: 128
+            tags:
+              split: val
+      detect_satlas_wind_turbine:
+        class_path: rslearn.train.data_module.RslearnDataModule
+        init_args:
+          batch_size: 8
+          default_config:
+            transforms:
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  s21: []
+                  s22: []
+                  s23: []
+                  s24: []
+                  s25: []
+                  s26: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: landsat
+                selections:
+                  landsat1: []
+                  landsat2: []
+                  landsat3: []
+                  landsat4: []
+                  landsat5: []
+                  landsat6: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  s1a1: []
+                  s1a2: []
+                  s1a3: []
+                  s1a4: []
+                  s1a5: []
+                  s1a6: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  landsat:
+                  - B8
+                  - B1
+                  - B2
+                  - B3
+                  - B4
+                  - B5
+                  - B6
+                  - B7
+                  - B9
+                  - B10
+                  - B11
+                  sentinel1:
+                  - vv
+                  - vh
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslp.transforms.mask.Mask
+              init_args:
+                selectors:
+                - sentinel2_l2a
+                - landsat
+                - sentinel1
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: image
+                selections:
+                  sentinel2_l2a: []
+          inputs:
+            landsat1:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat
+              passthrough: true
+            landsat2:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.1
+              passthrough: true
+            landsat3:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.2
+              passthrough: true
+            landsat4:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.3
+              passthrough: true
+            landsat5:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.4
+              passthrough: true
+            landsat6:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.5
+              passthrough: true
+            mask:
+              bands:
+              - mask
+              data_type: raster
+              dtype: FLOAT32
+              is_target: true
+              layers:
+              - mask
+              passthrough: true
+            s1a1:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending
+              passthrough: true
+            s1a2:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.1
+              passthrough: true
+            s1a3:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.2
+              passthrough: true
+            s1a4:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.3
+              passthrough: true
+            s1a5:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.4
+              passthrough: true
+            s1a6:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.5
+              passthrough: true
+            s1d1:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending
+              passthrough: true
+            s1d2:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.1
+              passthrough: true
+            s1d3:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.2
+              passthrough: true
+            s1d4:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.3
+              passthrough: true
+            s1d5:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.4
+              passthrough: true
+            s1d6:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.5
+              passthrough: true
+            s21:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2
+              passthrough: true
+            s22:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.1
+              passthrough: true
+            s23:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.2
+              passthrough: true
+            s24:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.3
+              passthrough: true
+            s25:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.4
+              passthrough: true
+            s26:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.5
+              passthrough: true
+            targets:
+              data_type: vector
+              is_target: true
+              layers:
+              - label
+          num_workers: 16
+          path: /weka/dfive-default/rslearn-eai/datasets/wind_turbine/dataset_v1/20250605/
+          task:
+            class_path: rslearn.train.tasks.multi_task.MultiTask
+            init_args:
+              input_mapping:
+                detect_satlas_wind_turbine:
+                  targets: targets
+              tasks:
+                detect_satlas_wind_turbine:
+                  class_path: rslearn.train.tasks.detection.DetectionTask
+                  init_args:
+                    box_size: 15
+                    classes:
+                    - unknown
+                    - turbine
+                    enable_f1_metric: true
+                    enable_map_metric: true
+                    exclude_by_center: true
+                    f1_metric_kwargs:
+                      cmp_mode: distance
+                      cmp_threshold: 15
+                      flatten_classes: true
+                    f1_metric_thresholds:
+                    - - 0.05
+                      - 0.1
+                      - 0.2
+                      - 0.3
+                      - 0.4
+                      - 0.5
+                      - 0.6
+                      - 0.7
+                      - 0.8
+                      - 0.9
+                      - 0.95
+                    property_name: category
+                    remap_values:
+                    - - 0
+                      - 1
+                    - - 0
+                      - 255
+          test_config:
+            patch_size: 128
+            tags:
+              split: val
+          train_config:
+            patch_size: 128
+            sampler:
+              class_path: rslearn.train.dataset.RandomSamplerFactory
+              init_args:
+                num_samples: 65536
+                replacement: true
+            tags:
+              split: train
+            transforms:
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  s21: []
+                  s22: []
+                  s23: []
+                  s24: []
+                  s25: []
+                  s26: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: landsat
+                selections:
+                  landsat1: []
+                  landsat2: []
+                  landsat3: []
+                  landsat4: []
+                  landsat5: []
+                  landsat6: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  s1a1: []
+                  s1a2: []
+                  s1a3: []
+                  s1a4: []
+                  s1a5: []
+                  s1a6: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  landsat:
+                  - B8
+                  - B1
+                  - B2
+                  - B3
+                  - B4
+                  - B5
+                  - B6
+                  - B7
+                  - B9
+                  - B10
+                  - B11
+                  sentinel1:
+                  - vv
+                  - vh
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslp.transforms.mask.Mask
+              init_args:
+                selectors:
+                - sentinel2_l2a
+                - landsat
+                - sentinel1
+            - class_path: rslearn.train.transforms.flip.Flip
+              init_args:
+                box_selectors:
+                - target/detect_satlas_wind_turbine
+                image_selectors:
+                - sentinel2_l2a
+                - landsat
+                - sentinel1
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: image
+                selections:
+                  sentinel2_l2a: []
+          val_config:
+            patch_size: 128
+            tags:
+              split: val
+      detect_sentinel1_vessels:
+        class_path: rslearn.train.data_module.RslearnDataModule
+        init_args:
+          batch_size: 8
+          default_config:
+            transforms:
+            - class_path: rslp.transforms.mask.Mask
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  image: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  sentinel1:
+                  - vv
+                  - vh
+                config_fname: /opt/helios/data/norm_configs/computed.json
+          inputs:
+            image:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1
+              passthrough: true
+            mask:
+              bands:
+              - mask
+              data_type: raster
+              dtype: INT32
+              is_target: true
+              layers:
+              - mask
+              passthrough: true
+            targets:
+              data_type: vector
+              is_target: true
+              layers:
+              - label
+          num_workers: 16
+          path: /weka/dfive-default/rslearn-eai/datasets/sentinel1_vessels/dataset_v1/20250602/
+          task:
+            class_path: rslearn.train.tasks.multi_task.MultiTask
+            init_args:
+              input_mapping:
+                detect_sentinel1_vessels:
+                  targets: targets
+              tasks:
+                detect_sentinel1_vessels:
+                  class_path: rslearn.train.tasks.detection.DetectionTask
+                  init_args:
+                    box_size: 15
+                    classes:
+                    - unknown
+                    - vessel
+                    enable_f1_metric: true
+                    enable_map_metric: true
+                    exclude_by_center: true
+                    f1_metric_kwargs:
+                      cmp_mode: distance
+                      cmp_threshold: 15
+                      flatten_classes: true
+                    f1_metric_thresholds:
+                    - - 0.05
+                      - 0.1
+                      - 0.2
+                      - 0.3
+                      - 0.4
+                      - 0.5
+                      - 0.6
+                      - 0.7
+                      - 0.8
+                      - 0.9
+                      - 0.95
+                    image_bands:
+                    - 1
+                    - 1
+                    - 1
+                    property_name: category
+                    remap_values:
+                    - - 0
+                      - 1
+                    - - 0
+                      - 255
+                    score_threshold: 0.5
+          test_config:
+            groups:
+            - val_ascending
+            - val_descending
+            patch_size: 128
+          train_config:
+            groups:
+            - train_ascending
+            - train_descending
+            patch_size: 128
+            sampler:
+              class_path: rslearn.train.dataset.RandomSamplerFactory
+              init_args:
+                num_samples: 32768
+                replacement: true
+            transforms:
+            - class_path: rslp.transforms.mask.Mask
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  image: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  sentinel1:
+                  - vv
+                  - vh
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslearn.train.transforms.flip.Flip
+              init_args:
+                box_selectors:
+                - target/detect_sentinel1_vessels
+                image_selectors:
+                - image
+                - sentinel1
+          val_config:
+            groups:
+            - val_ascending
+            - val_descending
+            patch_size: 128
+      detect_sentinel2_vessels:
+        class_path: rslearn.train.data_module.RslearnDataModule
+        init_args:
+          batch_size: 8
+          default_config:
+            transforms:
+            - class_path: rslp.transforms.mask.Mask
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  image: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+          inputs:
+            image:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2
+              passthrough: true
+            mask:
+              bands:
+              - mask
+              data_type: raster
+              dtype: INT32
+              is_target: true
+              layers:
+              - mask
+              passthrough: true
+            targets:
+              data_type: vector
+              is_target: true
+              layers:
+              - label
+          num_workers: 16
+          path: /weka/dfive-default/rslearn-eai/datasets/sentinel2_vessels/dataset_v1/20250213/
+          task:
+            class_path: rslearn.train.tasks.multi_task.MultiTask
+            init_args:
+              input_mapping:
+                detect_sentinel2_vessels:
+                  targets: targets
+              tasks:
+                detect_sentinel2_vessels:
+                  class_path: rslearn.train.tasks.detection.DetectionTask
+                  init_args:
+                    box_size: 15
+                    classes:
+                    - unknown
+                    - vessel
+                    enable_f1_metric: true
+                    enable_map_metric: true
+                    exclude_by_center: true
+                    f1_metric_kwargs:
+                      cmp_mode: distance
+                      cmp_threshold: 15
+                      flatten_classes: true
+                    f1_metric_thresholds:
+                    - - 0.05
+                      - 0.1
+                      - 0.2
+                      - 0.3
+                      - 0.4
+                      - 0.5
+                      - 0.6
+                      - 0.7
+                      - 0.8
+                      - 0.9
+                      - 0.95
+                    property_name: category
+                    remap_values:
+                    - - 0
+                      - 1
+                    - - 0
+                      - 255
+          test_config:
+            groups:
+            - sargassum_val
+            - split1
+            - split7
+            patch_size: 128
+          train_config:
+            groups:
+            - sargassum_train
+            - split2
+            - split3
+            - split4
+            - split5
+            - split6
+            - train
+            - train-bg
+            - train2
+            - train3
+            patch_size: 128
+            sampler:
+              class_path: rslearn.train.dataset.RandomSamplerFactory
+              init_args:
+                num_samples: 131072
+                replacement: true
+            transforms:
+            - class_path: rslp.transforms.mask.Mask
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  image: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslearn.train.transforms.flip.Flip
+              init_args:
+                box_selectors:
+                - target/detect_sentinel2_vessels
+                image_selectors:
+                - image
+                - sentinel2_l2a
+          val_config:
+            groups:
+            - sargassum_val
+            - split1
+            - split7
+            patch_size: 128
+      segment:
+        class_path: rslearn.train.data_module.RslearnDataModule
+        init_args:
+          batch_size: 2
+          default_config:
+            transforms:
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  sentinel2_0:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_1:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_10:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_11:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_2:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_3:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_4:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_5:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_6:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_7:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_8:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_9:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  s1d_0: []
+                  s1d_1: []
+                  s1d_10: []
+                  s1d_11: []
+                  s1d_2: []
+                  s1d_3: []
+                  s1d_4: []
+                  s1d_5: []
+                  s1d_6: []
+                  s1d_7: []
+                  s1d_8: []
+                  s1d_9: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  sentinel1:
+                  - vv
+                  - vh
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+          inputs:
+            s1d_0:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d
+              passthrough: true
+            s1d_1:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.1
+              passthrough: true
+            s1d_10:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.10
+              passthrough: true
+            s1d_11:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.11
+              passthrough: true
+            s1d_2:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.2
+              passthrough: true
+            s1d_3:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.3
+              passthrough: true
+            s1d_4:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.4
+              passthrough: true
+            s1d_5:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.5
+              passthrough: true
+            s1d_6:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.6
+              passthrough: true
+            s1d_7:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.7
+              passthrough: true
+            s1d_8:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.8
+              passthrough: true
+            s1d_9:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              layers:
+              - s1d.9
+              passthrough: true
+            sentinel2_0:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2
+              passthrough: true
+            sentinel2_1:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.1
+              passthrough: true
+            sentinel2_10:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.10
+              passthrough: true
+            sentinel2_11:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.11
+              passthrough: true
+            sentinel2_2:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.2
+              passthrough: true
+            sentinel2_3:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.3
+              passthrough: true
+            sentinel2_4:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.4
+              passthrough: true
+            sentinel2_5:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.5
+              passthrough: true
+            sentinel2_6:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.6
+              passthrough: true
+            sentinel2_7:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.7
+              passthrough: true
+            sentinel2_8:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.8
+              passthrough: true
+            sentinel2_9:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              data_type: raster
+              layers:
+              - sentinel2.9
+              passthrough: true
+            targets:
+              bands:
+              - class
+              data_type: raster
+              is_target: true
+              layers:
+              - label
+          num_workers: 16
+          path: /weka/dfive-default/rslearn-eai/datasets/pastis/rslearn_dataset/
+          task:
+            class_path: rslearn.train.tasks.multi_task.MultiTask
+            init_args:
+              input_mapping:
+                segment:
+                  targets: targets
+              tasks:
+                segment:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationTask
+                  init_args:
+                    enable_miou_metric: true
+                    metric_kwargs:
+                      average: micro
+                    num_classes: 20
+                    remap_values:
+                    - - 0
+                      - 1
+                    - - 0
+                      - 255
+                    zero_is_invalid: true
+          test_config:
+            groups:
+            - fold5
+          train_config:
+            groups:
+            - fold1
+            - fold2
+            - fold3
+            transforms:
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  sentinel2_0:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_1:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_10:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_11:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_2:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_3:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_4:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_5:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_6:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_7:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_8:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+                  sentinel2_9:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 0
+                  - 7
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  s1d_0: []
+                  s1d_1: []
+                  s1d_10: []
+                  s1d_11: []
+                  s1d_2: []
+                  s1d_3: []
+                  s1d_4: []
+                  s1d_5: []
+                  s1d_6: []
+                  s1d_7: []
+                  s1d_8: []
+                  s1d_9: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  sentinel1:
+                  - vv
+                  - vh
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslearn.train.transforms.flip.Flip
+              init_args:
+                image_selectors:
+                - sentinel2_l2a
+                - sentinel1
+                - target/segment/classes
+                - target/segment/valid
+          val_config:
+            groups:
+            - fold4
+      segment_satlas_solar_farm:
+        class_path: rslearn.train.data_module.RslearnDataModule
+        init_args:
+          batch_size: 8
+          default_config:
+            transforms:
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  s21: []
+                  s22: []
+                  s23: []
+                  s24: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: landsat
+                selections:
+                  landsat1: []
+                  landsat2: []
+                  landsat3: []
+                  landsat4: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  s1a1: []
+                  s1a2: []
+                  s1a3: []
+                  s1a4: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  landsat:
+                  - B8
+                  - B1
+                  - B2
+                  - B3
+                  - B4
+                  - B5
+                  - B6
+                  - B7
+                  - B9
+                  - B10
+                  - B11
+                  sentinel1:
+                  - vv
+                  - vh
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslp.transforms.mask.Mask
+              init_args:
+                selectors:
+                - sentinel2_l2a
+                - landsat
+                - sentinel1
+          inputs:
+            landsat1:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat
+              passthrough: true
+            landsat2:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.1
+              passthrough: true
+            landsat3:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.2
+              passthrough: true
+            landsat4:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat.3
+              passthrough: true
+            mask:
+              bands:
+              - mask
+              data_type: raster
+              dtype: FLOAT32
+              is_target: true
+              layers:
+              - mask
+              passthrough: true
+            s1a1:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending
+              passthrough: true
+            s1a2:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.1
+              passthrough: true
+            s1a3:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.2
+              passthrough: true
+            s1a4:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_ascending.3
+              passthrough: true
+            s1d1:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending
+              passthrough: true
+            s1d2:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.1
+              passthrough: true
+            s1d3:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.2
+              passthrough: true
+            s1d4:
+              bands:
+              - vv
+              - vh
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel1_descending.3
+              passthrough: true
+            s21:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2
+              passthrough: true
+            s22:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.1
+              passthrough: true
+            s23:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.2
+              passthrough: true
+            s24:
+              bands:
+              - B02
+              - B03
+              - B04
+              - B08
+              - B05
+              - B06
+              - B07
+              - B8A
+              - B11
+              - B12
+              - B01
+              - B09
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - sentinel2.3
+              passthrough: true
+            targets:
+              bands:
+              - label
+              data_type: raster
+              dtype: INT32
+              is_target: true
+              layers:
+              - label_raster
+          num_workers: 16
+          path: /weka/dfive-default/rslearn-eai/datasets/solar_farm/dataset_v1/20250605/
+          task:
+            class_path: rslearn.train.tasks.multi_task.MultiTask
+            init_args:
+              input_mapping:
+                segment_satlas_solar_farm:
+                  targets: targets
+              tasks:
+                segment_satlas_solar_farm:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationTask
+                  init_args:
+                    enable_f1_metric: true
+                    f1_metric_thresholds:
+                    - - 0.05
+                      - 0.1
+                      - 0.2
+                      - 0.3
+                      - 0.4
+                      - 0.5
+                      - 0.6
+                      - 0.7
+                      - 0.8
+                      - 0.9
+                    metric_kwargs:
+                      average: micro
+                    num_classes: 2
+                    remap_values:
+                    - - 0
+                      - 1
+                    - - 0
+                      - 255
+          test_config:
+            patch_size: 128
+            tags:
+              split: val
+          train_config:
+            patch_size: 128
+            sampler:
+              class_path: rslearn.train.dataset.RandomSamplerFactory
+              init_args:
+                num_samples: 16384
+                replacement: true
+            tags:
+              split: train
+            transforms:
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel2_l2a
+                selections:
+                  s21: []
+                  s22: []
+                  s23: []
+                  s24: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: landsat
+                selections:
+                  landsat1: []
+                  landsat2: []
+                  landsat3: []
+                  landsat4: []
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: sentinel1
+                selections:
+                  s1a1: []
+                  s1a2: []
+                  s1a3: []
+                  s1a4: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  landsat:
+                  - B8
+                  - B1
+                  - B2
+                  - B3
+                  - B4
+                  - B5
+                  - B6
+                  - B7
+                  - B9
+                  - B10
+                  - B11
+                  sentinel1:
+                  - vv
+                  - vh
+                  sentinel2_l2a:
+                  - B02
+                  - B03
+                  - B04
+                  - B08
+                  - B05
+                  - B06
+                  - B07
+                  - B8A
+                  - B11
+                  - B12
+                  - B01
+                  - B09
+                config_fname: /opt/helios/data/norm_configs/computed.json
+            - class_path: rslp.transforms.mask.Mask
+              init_args:
+                selectors:
+                - sentinel2_l2a
+                - landsat
+                - sentinel1
+            - class_path: rslearn.train.transforms.flip.Flip
+              init_args:
+                image_selectors:
+                - sentinel2_l2a
+                - landsat
+                - sentinel1
+                - target/segment_satlas_solar_farm/classes
+                - target/segment_satlas_solar_farm/valid
+          val_config:
+            patch_size: 128
+            tags:
+              split: val
+      vessel_classification:
+        class_path: rslearn.train.data_module.RslearnDataModule
+        init_args:
+          batch_size: 16
+          default_config:
+            transforms:
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  landsat:
+                  - B8
+                  - B1
+                  - B2
+                  - B3
+                  - B4
+                  - B5
+                  - B6
+                  - B7
+                  - B9
+                  - B10
+                  - B11
+                config_fname: /opt/helios/data/norm_configs/computed.json
+          inputs:
+            label:
+              data_type: vector
+              is_target: true
+              layers:
+              - label
+            landsat:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat
+              passthrough: true
+          num_workers: 32
+          path: /weka/dfive-default/rslearn-eai/datasets/landsat_vessel_detection/classifier/dataset_20250624
+          task:
+            class_path: rslearn.train.tasks.multi_task.MultiTask
+            init_args:
+              input_mapping:
+                vessel_classification:
+                  label: targets
+              tasks:
+                vessel_classification:
+                  class_path: rslearn.train.tasks.classification.ClassificationTask
+                  init_args:
+                    allow_invalid: true
+                    classes:
+                    - correct
+                    - incorrect
+                    enable_f1_metric: true
+                    metric_kwargs:
+                      average: micro
+                    property_name: label
+                    skip_unknown_categories: true
+          test_config:
+            groups:
+            - phase2a_completed
+            tags:
+              split: val
+          train_config:
+            groups:
+            - selected_copy
+            - phase2a_completed
+            - phase3a_selected
+            tags:
+              split: train
+          val_config:
+            groups:
+            - phase2a_completed
+            tags:
+              split: val
+      vessel_detection:
+        class_path: rslearn.train.data_module.RslearnDataModule
+        init_args:
+          batch_size: 8
+          default_config:
+            transforms:
+            - class_path: rslp.transforms.mask.Mask
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: landsat
+                selections:
+                  image: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  landsat:
+                  - B8
+                  - B1
+                  - B2
+                  - B3
+                  - B4
+                  - B5
+                  - B6
+                  - B7
+                  - B9
+                  - B10
+                  - B11
+                config_fname: /opt/helios/data/norm_configs/computed.json
+          inputs:
+            image:
+              bands:
+              - B8
+              - B1
+              - B2
+              - B3
+              - B4
+              - B5
+              - B6
+              - B7
+              - B9
+              - B10
+              - B11
+              data_type: raster
+              dtype: FLOAT32
+              layers:
+              - landsat
+              passthrough: true
+            mask:
+              bands:
+              - mask
+              data_type: raster
+              dtype: INT32
+              is_target: true
+              layers:
+              - mask
+              passthrough: true
+            targets:
+              data_type: vector
+              is_target: true
+              layers:
+              - label
+          num_workers: 16
+          path: /weka/dfive-default/rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20250624
+          task:
+            class_path: rslearn.train.tasks.multi_task.MultiTask
+            init_args:
+              input_mapping:
+                vessel_detection:
+                  targets: targets
+              tasks:
+                vessel_detection:
+                  class_path: rslearn.train.tasks.detection.DetectionTask
+                  init_args:
+                    box_size: 15
+                    classes:
+                    - unknown
+                    - vessel
+                    enable_f1_metric: true
+                    enable_map_metric: true
+                    exclude_by_center: true
+                    f1_metric_kwargs:
+                      cmp_mode: distance
+                      cmp_threshold: 15
+                      flatten_classes: true
+                    f1_metric_thresholds:
+                    - - 0.05
+                      - 0.1
+                      - 0.2
+                      - 0.3
+                      - 0.4
+                      - 0.5
+                      - 0.6
+                      - 0.7
+                      - 0.8
+                      - 0.9
+                      - 0.95
+                    property_name: category
+                    remap_values:
+                    - - 0
+                      - 1
+                    - - 0
+                      - 255
+                    score_threshold: 0.7
+          test_config:
+            groups:
+            - labels_utm
+            patch_size: 128
+            tags:
+              split: val
+          train_config:
+            groups:
+            - labels_utm
+            patch_size: 128
+            tags:
+              split: train
+            transforms:
+            - class_path: rslp.transforms.mask.Mask
+            - class_path: rslearn.train.transforms.concatenate.Concatenate
+              init_args:
+                output_selector: landsat
+                selections:
+                  image: []
+            - class_path: rslp.helios.norm.HeliosNormalize
+              init_args:
+                band_names:
+                  landsat:
+                  - B8
+                  - B1
+                  - B2
+                  - B3
+                  - B4
+                  - B5
+                  - B6
+                  - B7
+                  - B9
+                  - B10
+                  - B11
+                config_fname: /opt/helios/data/norm_configs/computed.json
+          val_config:
+            groups:
+            - labels_utm
+            patch_size: 128
+            tags:
+              split: val
+    num_workers: 16
+    refill_batches: true
+    sample_mode: random_cycle
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    lr: 0.0002
+    model:
+      class_path: rslearn.models.multitask.MultiTaskMergedModel
+      init_args:
+        decoder_to_target:
+          ClassificationHead:
+          - vessel_classification
+          - crop_type_classification
+          - cropland_classification
+          FasterRCNN:
+          - vessel_detection
+          - detect_satlas_marine_infra
+          - detect_satlas_wind_turbine
+          - detect_sentinel1_vessels
+          - detect_sentinel2_vessels
+          SegmentationHead:
+          - segment
+          - segment_satlas_solar_farm
+        decoders:
+          ClassificationHead:
+          - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            init_args:
+              in_channels: 768
+              out_channels: 12
+          - class_path: rslearn.train.tasks.classification.ClassificationHead
+          FasterRCNN:
+          - class_path: rslearn.models.faster_rcnn.FasterRCNN
+            init_args:
+              anchor_sizes:
+              - - 32
+              downsample_factors:
+              - 8
+              num_channels: 768
+              num_classes: 8
+          SegmentationHead:
+          - class_path: rslearn.models.unet.UNetDecoder
+            init_args:
+              conv_layers_per_resolution: 2
+              in_channels:
+              - - 8
+                - 768
+              num_channels:
+                1: 128
+                2: 256
+                4: 512
+                8: 512
+              out_channels: 22
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+        encoder:
+        - class_path: rslp.helios.model.TaskConditionedHelios
+          init_args:
+            checkpoint_path: /weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
+            forward_kwargs:
+              patch_size: 8
+            model_overrides:
+              encoder_config:
+                task_lora_kwargs:
+                  gen_hidden: 128
+                  task_lora_indices:
+                  - 0
+                  - 1
+                  - 2
+                  - 3
+                  - 4
+                  - 5
+                  - 6
+                  - 7
+                  - 8
+                  - 9
+                  - 10
+                  - 11
+                  use_task_lora: true
+            selector:
+            - encoder
+            task_embed_opts:
+              path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct__from_yaml.pt
+              type: precomputed
+        lazy_decode: true
+        task_label_offsets:
+          crop_type_classification:
+            num_outputs: 8
+            offset: 2
+            outputs_key: class
+          cropland_classification:
+            num_outputs: 2
+            offset: 10
+            outputs_key: class
+          detect_satlas_marine_infra:
+            num_outputs: 3
+            offset: 2
+            outputs_key: labels
+          detect_satlas_wind_turbine:
+            num_outputs: 3
+            offset: 5
+            outputs_key: labels
+          detect_sentinel1_vessels:
+            num_outputs: 2
+            offset: 0
+            outputs_key: labels
+          detect_sentinel2_vessels:
+            num_outputs: 2
+            offset: 0
+            outputs_key: labels
+          segment:
+            num_outputs: 20
+            offset: 0
+            outputs_key: classes
+          segment_satlas_solar_farm:
+            num_outputs: 2
+            offset: 20
+            outputs_key: classes
+          vessel_classification:
+            num_outputs: 2
+            offset: 0
+            outputs_key: class
+          vessel_detection:
+            num_outputs: 2
+            offset: 0
+            outputs_key: labels
+    scheduler:
+      class_path: rslearn.train.scheduler.CosineAnnealingScheduler
+      init_args:
+        T_max: 50
+        eta_min: 0
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        input_mapping:
+          crop_type_classification:
+            label: targets
+          cropland_classification:
+            label: targets
+          detect_satlas_marine_infra:
+            targets: targets
+          detect_satlas_wind_turbine:
+            targets: targets
+          detect_sentinel1_vessels:
+            targets: targets
+          detect_sentinel2_vessels:
+            targets: targets
+          segment:
+            targets: targets
+          segment_satlas_solar_farm:
+            targets: targets
+          vessel_classification:
+            label: targets
+          vessel_detection:
+            targets: targets
+        tasks:
+          crop_type_classification:
+            class_path: rslearn.train.tasks.classification.ClassificationTask
+            init_args:
+              classes:
+              - Coffee
+              - Trees
+              - Grassland
+              - Maize
+              - Sugarcane
+              - Tea
+              - Water
+              - Built-up
+              enable_f1_metric: true
+              metric_kwargs:
+                average: micro
+              property_name: category
+          cropland_classification:
+            class_path: rslearn.train.tasks.classification.ClassificationTask
+            init_args:
+              classes:
+              - Cropland
+              - Non-Cropland
+              enable_f1_metric: true
+              metric_kwargs:
+                average: micro
+              property_name: category
+          detect_satlas_marine_infra:
+            class_path: rslp.satlas.train.MarineInfraTask
+            init_args:
+              box_size: 15
+              classes:
+              - unknown
+              - platform
+              - turbine
+              enable_f1_metric: true
+              enable_map_metric: true
+              exclude_by_center: true
+              f1_metric_kwargs:
+                cmp_mode: distance
+                cmp_threshold: 15
+                flatten_classes: true
+              f1_metric_thresholds:
+              - - 0.05
+                - 0.1
+                - 0.2
+                - 0.3
+                - 0.4
+                - 0.5
+                - 0.6
+                - 0.7
+                - 0.8
+                - 0.9
+                - 0.95
+              - - 0.1
+              - - 0.2
+              - - 0.3
+              - - 0.4
+              - - 0.5
+              - - 0.6
+              - - 0.7
+              - - 0.8
+              - - 0.9
+              image_bands:
+              - 2
+              - 1
+              - 0
+              property_name: category
+              remap_values:
+              - - 0
+                - 0.25
+              - - 0
+                - 255
+              skip_unknown_categories: true
+          detect_satlas_wind_turbine:
+            class_path: rslearn.train.tasks.detection.DetectionTask
+            init_args:
+              box_size: 15
+              classes:
+              - unknown
+              - turbine
+              enable_f1_metric: true
+              enable_map_metric: true
+              exclude_by_center: true
+              f1_metric_kwargs:
+                cmp_mode: distance
+                cmp_threshold: 15
+                flatten_classes: true
+              f1_metric_thresholds:
+              - - 0.05
+                - 0.1
+                - 0.2
+                - 0.3
+                - 0.4
+                - 0.5
+                - 0.6
+                - 0.7
+                - 0.8
+                - 0.9
+                - 0.95
+              property_name: category
+              remap_values:
+              - - 0
+                - 1
+              - - 0
+                - 255
+          detect_sentinel1_vessels:
+            class_path: rslearn.train.tasks.detection.DetectionTask
+            init_args:
+              box_size: 15
+              classes:
+              - unknown
+              - vessel
+              enable_f1_metric: true
+              enable_map_metric: true
+              exclude_by_center: true
+              f1_metric_kwargs:
+                cmp_mode: distance
+                cmp_threshold: 15
+                flatten_classes: true
+              f1_metric_thresholds:
+              - - 0.05
+                - 0.1
+                - 0.2
+                - 0.3
+                - 0.4
+                - 0.5
+                - 0.6
+                - 0.7
+                - 0.8
+                - 0.9
+                - 0.95
+              image_bands:
+              - 1
+              - 1
+              - 1
+              property_name: category
+              remap_values:
+              - - 0
+                - 1
+              - - 0
+                - 255
+              score_threshold: 0.5
+          detect_sentinel2_vessels:
+            class_path: rslearn.train.tasks.detection.DetectionTask
+            init_args:
+              box_size: 15
+              classes:
+              - unknown
+              - vessel
+              enable_f1_metric: true
+              enable_map_metric: true
+              exclude_by_center: true
+              f1_metric_kwargs:
+                cmp_mode: distance
+                cmp_threshold: 15
+                flatten_classes: true
+              f1_metric_thresholds:
+              - - 0.05
+                - 0.1
+                - 0.2
+                - 0.3
+                - 0.4
+                - 0.5
+                - 0.6
+                - 0.7
+                - 0.8
+                - 0.9
+                - 0.95
+              property_name: category
+              remap_values:
+              - - 0
+                - 1
+              - - 0
+                - 255
+          segment:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              enable_miou_metric: true
+              metric_kwargs:
+                average: micro
+              num_classes: 20
+              remap_values:
+              - - 0
+                - 1
+              - - 0
+                - 255
+              zero_is_invalid: true
+          segment_satlas_solar_farm:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              enable_f1_metric: true
+              f1_metric_thresholds:
+              - - 0.05
+                - 0.1
+                - 0.2
+                - 0.3
+                - 0.4
+                - 0.5
+                - 0.6
+                - 0.7
+                - 0.8
+                - 0.9
+              metric_kwargs:
+                average: micro
+              num_classes: 2
+              remap_values:
+              - - 0
+                - 1
+              - - 0
+                - 255
+          vessel_classification:
+            class_path: rslearn.train.tasks.classification.ClassificationTask
+            init_args:
+              allow_invalid: true
+              classes:
+              - correct
+              - incorrect
+              enable_f1_metric: true
+              metric_kwargs:
+                average: micro
+              property_name: label
+              skip_unknown_categories: true
+          vessel_detection:
+            class_path: rslearn.train.tasks.detection.DetectionTask
+            init_args:
+              box_size: 15
+              classes:
+              - unknown
+              - vessel
+              enable_f1_metric: true
+              enable_map_metric: true
+              exclude_by_center: true
+              f1_metric_kwargs:
+                cmp_mode: distance
+                cmp_threshold: 15
+                flatten_classes: true
+              f1_metric_thresholds:
+              - - 0.05
+                - 0.1
+                - 0.2
+                - 0.3
+                - 0.4
+                - 0.5
+                - 0.6
+                - 0.7
+                - 0.8
+                - 0.9
+                - 0.95
+              property_name: category
+              remap_values:
+              - - 0
+                - 1
+              - - 0
+                - 255
+              score_threshold: 0.7
+rslp_experiment: placeholder
+rslp_project: placeholder
+trainer:
+  accumulate_grad_batches: 9
+  callbacks:
+  - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    init_args:
+      logging_interval: epoch
+  - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    init_args:
+      mode: min
+      monitor: val_loss
+      save_last: true
+      save_top_k: 1
+  - class_path: rslearn.train.callbacks.freeze_unfreeze.MultiStageFineTuning
+    init_args:
+      stages:
+      - class_path: rslearn.train.callbacks.freeze_unfreeze.FTStage
+        init_args:
+          at_epoch: 0
+          freeze_selectors:
+          - encoder
+          unfreeze_selectors:
+          - head
+      - class_path: rslearn.train.callbacks.freeze_unfreeze.FTStage
+        init_args:
+          at_epoch: 20
+          freeze_selectors:
+          - encoder
+          unfreeze_selectors:
+          - head
+          - lora
+  max_epochs: 500

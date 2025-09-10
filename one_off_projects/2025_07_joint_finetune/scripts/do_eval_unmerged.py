@@ -14,13 +14,16 @@ import yaml
 import torch
 import json
 
-def load_yaml_config(config_path, substitutions=None):
+def load_yaml_config(config_path, substitutions=None, raw_substitutions=None):
     with open(config_path, 'r') as f:
         config_str = f.read()
     if substitutions:
-        for key, value in substitutions.items():
+        for key, value in (substitutions or {}).items():
             if value is not None:
                 config_str = config_str.replace(f"{{{key}}}", str(value))
+        for key, value in (raw_substitutions or {}).items():
+            if value is not None:
+                config_str = config_str.replace(key, str(value))
     return yaml.safe_load(config_str)
 
 
@@ -73,6 +76,9 @@ if __name__ == "__main__":
         "256/PATCH_SIZE": 256 // 8,
         "128/PATCH_SIZE": 128 // 8,
     }
+    raw_substitutions = {
+        "rslearn.models.trunk.MoETransformer": "rslp.helios.moe.MoETransformer",
+    }
     cmd = [
         "python", "-m", "rslp.main", "helios", "launch_finetune",
         "--helios_checkpoint_path", "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
@@ -96,7 +102,7 @@ if __name__ == "__main__":
             "task_embedding": trunk_layer_init_args.pop("task_embedding"),
             "layers": [
                 {
-                    "class_path": "rslearn.models.trunk.MoETransformer",
+                    "class_path": "rslp.helios.moe.MoETransformer",
                     "init_args": trunk_layer_init_args
                 }
             ]
@@ -108,7 +114,11 @@ if __name__ == "__main__":
         with tempfile.NamedTemporaryFile(mode="w") as cfg_file:
             for i, ckpt_cfg_path in enumerate(ckpt_cfg_paths):
                 if i == 0:
-                    cfg = load_yaml_config(ckpt_cfg_path, substitutions=substitutions)
+                    cfg = load_yaml_config(
+                        ckpt_cfg_path,
+                        substitutions=substitutions,
+                        raw_substitutions=raw_substitutions
+                    )
                     cfg["trainer"]["limit_val_batches"] = max_batches
                     cfg["model"]["init_args"]["model"]["init_args"]["trunk"] = trunk_cfg
                     cfg["model"]["init_args"]["restore_config"] = {

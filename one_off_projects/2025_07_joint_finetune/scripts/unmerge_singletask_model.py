@@ -216,13 +216,17 @@ def main() -> None:
     )
     parser.add_argument(
         "--project_dir",
-        default="/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr",
+        default="2025_09_04_loo",
         help="rslp project name"
     )
     args = parser.parse_args()
 
+    base_project_dir = "/weka/dfive-default/rslearn-eai/projects/"
+
     key = "task_label_offsets"
-    cfg_path = os.path.join(args.project_dir, args.model, "checkpoints","config.yaml")
+    cfg_path = os.path.join(
+        base_project_dir, args.project_dir, args.model, "checkpoints","config.yaml"
+    )
     with open(cfg_path, "r") as f:
         cfg = yaml.safe_load(f)
     task_offsets = recursive_find_key(cfg, key)
@@ -247,7 +251,9 @@ def main() -> None:
         task_offsets[tasks[max_offset_index]]["offset"] 
         + task_offsets[tasks[max_offset_index]]["num_outputs"]
     )
-    src_path = os.path.join(args.project_dir, args.model, "checkpoints", args.ckpt_path)
+    src_path = os.path.join(
+        base_project_dir, args.project_dir, args.model, "checkpoints", args.ckpt_path
+    )
 
     pretrained_cfg_src_path = (
         "/weka/dfive-default/helios/checkpoints/favyen"
@@ -276,6 +282,7 @@ def main() -> None:
 
         # 3) save per-task checkpoint and config.yaml
         out_dir = os.path.join(
+            base_project_dir,
             args.project_dir,
             args.out_dir.format(model=args.model, task=task)
         )

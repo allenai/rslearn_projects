@@ -1,0 +1,88 @@
+base_cfg: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_09_04_loo/base.yaml
+output_path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_09_04_loo/OUT_no_s1.yaml
+
+dataset_cfgs:
+  - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_landsat_vessels/finetune_detector_cosinelr.yaml
+  - - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_marine_infra_128/basecfg_cosinelr.yaml
+    - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_marine_infra_128/basecfg_helios_mm.yaml
+  - - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_wind_turbine_128/basecfg_cosinelr.yaml
+    - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_wind_turbine_128/basecfg_helios_mm.yaml
+  - - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel2_vessels_128/basecfg_cosinelr.yaml
+    - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel2_vessels_128/basecfg_helios.yaml
+ 
+substitutions:
+  patch_size: 8
+  encoder_embedding_size: 768
+  helios_checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
+
+global_overrides:
+  model:
+    class_path: rslearn.train.lightning_module.RslearnLightningModule
+    init_args:
+      model:
+        init_args:
+          trunk:
+            class_path: rslearn.models.trunk.DecoderTrunk
+            init_args:
+              task_embedding:
+                class_path: rslearn.models.task_embedding.TaskChannelEmbedding
+                init_args:
+                  encoder_embedding_size: 768
+                  add_spatial_embed: true
+              layers:
+                - class_path: rslp.helios.moe.MoETransformer
+                  init_args:
+                    dim: 768
+                    n_layers: 1
+                    n_heads: 12
+                    num_experts: 4
+                    num_slots: 4
+          encoder:
+            - class_path: rslp.helios.model.TaskConditionedHelios
+              init_args:
+                checkpoint_path: "{CHECKPOINT_PATH}"
+                selector: ["encoder"]
+                forward_kwargs:
+                  patch_size: 8
+                model_overrides:
+                  encoder_config:
+                    task_lora_kwargs:
+                      use_task_lora: true
+                      task_lora_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+                      gen_hidden: 64
+                task_embed_opts:
+                  type: "precomputed"
+                  path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/data/task_embeds___Qwen3-Embedding-8B__256d__anchor__instruct__from_yaml.pt
+  trainer:
+    accumulate_grad_batches: 5
+    callbacks+:
+      - class_path: rslearn.train.callbacks.freeze_unfreeze.MultiStageFineTuning
+        init_args:
+          stages:
+            - class_path: rslearn.train.callbacks.freeze_unfreeze.FTStage
+              init_args:
+                at_epoch: 0
+                freeze_selectors: ["encoder"]
+                unfreeze_selectors: ["head", "moe"]
+            - class_path: rslearn.train.callbacks.freeze_unfreeze.FTStage
+              init_args:
+                at_epoch: 20
+                freeze_selectors: ["encoder"]
+                unfreeze_selectors: ["head", "lora", "moe"]
+            - class_path: rslearn.train.callbacks.freeze_unfreeze.FTStage
+              init_args:
+                at_epoch: 30
+                freeze_selectors: []
+                unfreeze_selectors: ["encoder", "head", "lora", "moe"]
+                unfreeze_lr_factor: 10
+      - class_path: rslearn.train.callbacks.adapters.ActivateLayers
+        init_args:
+          selectors:
+            - name: "lora"
+              at_epoch: 20
+
+merge_options:
+  merge_heads: true
+  merge_task_labels: true
+  same_label_groups:
+    - [detect_sentinel2_vessels, vessel_detection]

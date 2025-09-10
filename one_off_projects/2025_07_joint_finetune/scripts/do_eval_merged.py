@@ -13,13 +13,16 @@ import json
 import torch
 
 
-def load_yaml_config(config_path, substitutions=None):
+def load_yaml_config(config_path, substitutions=None, raw_substitutions=None):
     with open(config_path, 'r') as f:
         config_str = f.read()
     if substitutions:
-        for key, value in substitutions.items():
+        for key, value in (substitutions or {}).items():
             if value is not None:
                 config_str = config_str.replace(f"{{{key}}}", str(value))
+        for key, value in (raw_substitutions or {}).items():
+            if value is not None:
+                config_str = config_str.replace(key, str(value))
     return yaml.safe_load(config_str)
 
 
@@ -51,11 +54,13 @@ if __name__ == "__main__":
     parser.add_argument("--model", required=True, help="model name (dir)")
     parser.add_argument("--ckpt", default="last.ckpt", help="ckpt file in {model}/checkpoints/")
     parser.add_argument("--project", default="helios_finetune_cosine_lr", help="project dir for model")
+    parser.add_argument("--full", action="store_true", help="set load_all_patches to true")
     args = parser.parse_args()
 
     base_model = args.model
     ckpt_file = args.ckpt
     project = args.project
+    full = args.full
 
     ckpt_path = f"/weka/dfive-default/rslearn-eai/projects/{project}/{base_model}"
     ckpt_cfg_path = os.path.join(ckpt_path, "checkpoints", "config.yaml")
@@ -84,9 +89,16 @@ if __name__ == "__main__":
         "256/PATCH_SIZE": 256 // 8,
         "128/PATCH_SIZE": 128 // 8,
     }
+    raw_substitutions = {
+        "rslearn.models.trunk.MoETransformer": "rslp.helios.moe.MoETransformer",
+    }
 
     with tempfile.NamedTemporaryFile(mode="w") as f:
-        cfg = load_yaml_config(ckpt_cfg_path, substitutions=substitutions)
+        cfg = load_yaml_config(
+            ckpt_cfg_path,
+            substitutions=substitutions,
+            raw_substitutions=raw_substitutions
+        )
 
         # Get the task label offsets and link tasks
         old_cfg_style = True
@@ -102,8 +114,15 @@ if __name__ == "__main__":
                     old_cfg_style = False
                 break
  
-        # Ensure that load_all_patches is false everywhere
-        replace_key(cfg, "load_all_patches", False)
+        # If full, set load_all_patches and use the map-style all patches dataset
+        if full:
+            for data_module in cfg["data"]["init_args"]["data_modules"].values():
+                data_module["init_args"]["use_in_memory_all_patches_dataset"] = True
+                data_module["init_args"]["val_config"]["init_args"]["load_all_patches"] = True
+                data_module["init_args"]["test_config"]["init_args"]["load_all_patches"] = True
+        else:
+            # Ensure that load_all_patches is false everywhere
+            replace_key(cfg, "load_all_patches", False)
 
         # Change the old configs to match the new style
         if old_cfg_style:
@@ -137,7 +156,7 @@ if __name__ == "__main__":
                         "task_embedding": trunk_args.pop("task_embedding"),
                         "layers": [
                             {
-                                "class_path": "rslearn.models.trunk.MoETransformer",
+                                "class_path": "rslp.helios.moe.MoETransformer",
                                 "init_args": trunk_args
                             }
                         ]

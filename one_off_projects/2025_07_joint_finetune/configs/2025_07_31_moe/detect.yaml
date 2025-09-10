@@ -31,16 +31,14 @@ global_overrides:
                   encoder_embedding_size: 768
                   add_spatial_embed: true
               layers:
-              - class_path: rslearn.models.trunk.MoETransformer
+              - class_path: rslp.helios.moe.MoETransformer
                 init_args:
                   dim: 768
-                  n_layers: 2
+                  n_layers: 1
                   n_heads: 12
-                  num_experts: 8
-                  num_slots: 1
-                  expert_mult: 2
+                  num_experts: 4
+                  num_slots: 4
   trainer:
-    limit_val_batches: 1024
     accumulate_grad_batches: 5
 
 merge_options:
