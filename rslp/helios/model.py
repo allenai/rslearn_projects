@@ -1,7 +1,6 @@
 """Helios model wrapper for fine-tuning in rslearn."""
 
 import json
-import os
 import re
 from contextlib import nullcontext
 from typing import Any
@@ -130,7 +129,7 @@ class Helios(torch.nn.Module):
         # Load the checkpoint.
         if not random_initialization:
             train_module_dir = checkpoint_path / "model_and_optim"
-            if os.path.exists(train_module_dir):
+            if train_module_dir.exists():
                 load_model_and_optim_state(
                     str(train_module_dir), model, planner=planner
                 )
