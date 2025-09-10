@@ -15,15 +15,16 @@ def find_dir(base_dir, postfix_dir):
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dirs", type=str, required=True, nargs="+")
-parser.add_argument("--tasks", type=str, nargs="*", default=["classify", "segment", "detect", "all"])
+parser.add_argument("--tasks", type=str, nargs="*")
 parser.add_argument("--base_dir", type=str, default="/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs")
 parser.add_argument("--project", type=str, default="2025_08_12_task_embeds")
 parser.add_argument("--clusters", type=str, nargs="*", default=["saturn", "ceres", "titan"])
 parser.add_argument("--ckpt_path", type=str, default=ckpt_paths["v1"])
 parser.add_argument("--dry", action="store_true")
+parser.add_argument("--gpu", type=int, default=4)
 args = parser.parse_args()
 
-template = "python3 run.py --cfg {cfg} --exp_id {exp} --gpu 4 --image dev --project {project} --clusters {clusters} --ckpt_path {ckpt_path}"
+template = "python3 run.py --cfg {cfg} --exp_id {exp} --gpu {gpu} --image dev --project {project} --clusters {clusters} --ckpt_path {ckpt_path}"
 if args.ckpt_path in ckpt_paths:
     args.ckpt_path = ckpt_paths[args.ckpt_path]
 
@@ -33,7 +34,8 @@ for postfix_dir in args.dirs:
         base_exp_id = f.read().strip()
     for f in os.listdir(os.path.join(args.base_dir, d)):
         go = False
-        for task in args.tasks:
+        tasks = args.tasks or os.listdir(os.path.join(args.base_dir, d))
+        for task in tasks:
             if task in f:
                 go = True
                 break
@@ -47,6 +49,7 @@ for postfix_dir in args.dirs:
                 project=args.project,
                 clusters=" ".join(args.clusters),
                 ckpt_path=args.ckpt_path,
+                gpu=args.gpu
             )
             print(cmd)
             if not args.dry:

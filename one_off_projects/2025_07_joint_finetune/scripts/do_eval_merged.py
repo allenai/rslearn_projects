@@ -13,13 +13,16 @@ import json
 import torch
 
 
-def load_yaml_config(config_path, substitutions=None):
+def load_yaml_config(config_path, substitutions=None, raw_substitutions=None):
     with open(config_path, 'r') as f:
         config_str = f.read()
     if substitutions:
-        for key, value in substitutions.items():
+        for key, value in (substitutions or {}).items():
             if value is not None:
                 config_str = config_str.replace(f"{{{key}}}", str(value))
+        for key, value in (raw_substitutions or {}).items():
+            if value is not None:
+                config_str = config_str.replace(key, str(value))
     return yaml.safe_load(config_str)
 
 
@@ -86,9 +89,16 @@ if __name__ == "__main__":
         "256/PATCH_SIZE": 256 // 8,
         "128/PATCH_SIZE": 128 // 8,
     }
+    raw_substitutions = {
+        "rslearn.models.trunk.MoETransformer": "rslp.helios.moe.MoETransformer",
+    }
 
     with tempfile.NamedTemporaryFile(mode="w") as f:
-        cfg = load_yaml_config(ckpt_cfg_path, substitutions=substitutions)
+        cfg = load_yaml_config(
+            ckpt_cfg_path,
+            substitutions=substitutions,
+            raw_substitutions=raw_substitutions
+        )
 
         # Get the task label offsets and link tasks
         old_cfg_style = True

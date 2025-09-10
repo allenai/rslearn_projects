@@ -52,6 +52,21 @@ elif args.cfg == "pastis":
     ]
     for cfg in cfgs:
         cmd.append("--config_paths+=" + cfg)
+elif args.cfg == "turbine":
+    cfgs = [
+        '/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_wind_turbine_128/basecfg_cosinelr.yaml',
+        '/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_wind_turbine_128/basecfg_helios_mm.yaml',
+        '/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml'
+    ]
+    for cfg in cfgs:
+        cmd.append("--config_paths+=" + cfg)
+elif args.cfg == "solar":
+    cfgs = [
+        '/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_solar_farm_128/basecfg_cosinelr.yaml',
+        '/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_satlas_solar_farm_128/basecfg_helios_mm.yaml'
+    ]
+    for cfg in cfgs:
+        cmd.append("--config_paths+=" + cfg)
 elif args.cfg == "lora":
     args.cfg = "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_08_12_embeds/OUT_classify_plain.yaml"
     args.exp_id = "debug_task_lora_classify"

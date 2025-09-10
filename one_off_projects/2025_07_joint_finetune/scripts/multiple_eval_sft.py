@@ -39,11 +39,15 @@ for d in os.listdir(ckpt_dir):
         task = tasks[d.replace("_" + args.version, "")]
     except KeyError:
         continue
-    cmd = f"python do_eval_sft.py {ckpt_path} {task} {old_or_new}"
+    cmd = f"python do_eval_sft.py {ckpt_path} {old_or_new} --task {task}"
     if args.full:
         cmd += " --full"
     if args.save_dir:
-        cmd += f" --save_eval_path {os.path.join(args.save_dir, d + '.json')}"
+        save_path = os.path.join(args.save_dir, d + '.json')
+        cmd += f" --save_eval_path {save_path}"
+        if os.path.exists(save_path):
+            print("skipping existing eval for", d)
+            continue
     print(cmd)
     os.system(cmd)
     print()

@@ -382,7 +382,7 @@ class TaskConditionedHelios(Helios):
         Args:
             drop: list of keys to drop from the dict.
         """
-        obj = torch.load(self.task_embed_path, map_location="cpu")
+        obj = torch.load(self.task_embed_path, map_location="cpu")  # nosec
         obj = {k: v for k, v in obj.items() if k not in drop}
 
         self.tasks = list(obj.keys())

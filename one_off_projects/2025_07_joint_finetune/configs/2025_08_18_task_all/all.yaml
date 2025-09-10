@@ -30,7 +30,7 @@ global_overrides:
   model:
     class_path: rslearn.train.lightning_module.RslearnLightningModule
   trainer:
-    accumulate_grad_batches: 9
+    accumulate_grad_batches: 10
 
 merge_options:
   merge_heads: true
