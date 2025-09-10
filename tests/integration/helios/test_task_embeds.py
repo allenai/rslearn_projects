@@ -1,4 +1,8 @@
-"""Testing task-conditioned Helios model."""
+"""Testing task-conditioned Helios model.
+
+These tests are skipped in the CI to avoid pulling helios in as a dependency,
+but should pass locally.
+"""
 
 from pathlib import Path
 from typing import Any
@@ -6,7 +10,8 @@ from typing import Any
 import pytest
 import torch
 
-from rslp.helios.model import Helios, TaskConditionedHelios
+pytest.importorskip("helios")
+from rslp.helios.model import Helios, TaskConditionedHelios  # noqa: E402
 
 
 @pytest.fixture
