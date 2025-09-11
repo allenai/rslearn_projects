@@ -8,8 +8,7 @@ model:
           - class_path: rslearn.models.galileo.GalileoModel
             init_args:
               size: NANO
-            forward_kwargs:
-                patch_size: 4
+              patch_size: 4
         decoders:
           segment:
             - class_path: rslearn.models.unet.UNetDecoder
