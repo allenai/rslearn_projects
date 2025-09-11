@@ -7,15 +7,15 @@ model:
         encoder:
           - class_path: rslearn.models.galileo.GalileoModel
             init_args:
-              size: TINY
+              size: BASE
         decoders:
           segment:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
-                in_channels: [[8, 192]]
+                in_channels: [[8, 768]]
                 out_channels: 20
                 conv_layers_per_resolution: 2
-                num_channels: {8: 192, 4: 192, 2: 192, 1: 128}
+                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     scheduler:
