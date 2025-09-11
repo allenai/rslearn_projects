@@ -112,7 +112,7 @@ data:
               sentinel2_9: []
               sentinel2_10: []
               sentinel2_11: []
-            output_selector: sentinel2
+            output_selector: s2
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
@@ -147,10 +147,10 @@ data:
               sentinel2_9: []
               sentinel2_10: []
               sentinel2_11: []
-            output_selector: sentinel2
+            output_selector: s2
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
-            image_selectors: ["sentinel2", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["s2", "target/segment/classes", "target/segment/valid"]
     batch_size: 8
     num_workers: 16
     val_config:
