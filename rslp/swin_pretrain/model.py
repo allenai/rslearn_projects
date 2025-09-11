@@ -11,9 +11,14 @@ from rslearn.models.unet import UNetDecoder
 class Model(torch.nn.Module):
     """Model for pre-training."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        target_resolution_factor: int | None = 1,
+        unet_out_channels: int | None = 128,
+    ) -> None:
         """Initialize the model."""
         super().__init__()
+        self.target_resolution_factor = target_resolution_factor
         self.backbone = SimpleTimeSeries(
             encoder=Swin(
                 arch="swin_v2_b",
@@ -23,11 +28,13 @@ class Model(torch.nn.Module):
             ),
             image_channels=12,
         )
-        self.unet = UNetDecoder(
-            in_channels=[[4, 128], [8, 256], [16, 512], [32, 1024]],
-            out_channels=128,
-            conv_layers_per_resolution=2,
-        )
+        if self.target_resolution_factor is not None:
+            self.unet = UNetDecoder(
+                in_channels=[[4, 128], [8, 256], [16, 512], [32, 1024]],
+                out_channels=unet_out_channels,
+                conv_layers_per_resolution=2,
+                target_resolution_factor=target_resolution_factor,
+            )
 
     def forward(
         self,
@@ -40,5 +47,8 @@ class Model(torch.nn.Module):
                 process.
         """
         features = self.backbone(inputs)
+        if self.target_resolution_factor is None:
+            return features
+
         hr_features = self.unet(features, None)
         return [hr_features]

@@ -78,15 +78,27 @@ TILE_SIZE = 256
 class CollateFunction:
     """Collate function for Helios dataset."""
 
-    def __init__(self, randomize: bool = True):
+    def __init__(
+        self,
+        randomize: bool = True,
+        min_size: int = 256,
+        max_size: int = 256,
+        patch_size: int = 32,
+    ):
         """Create a new CollateFunction.
 
         Args:
             randomize: whether to randomize the selection of options like number of
                 timesteps or height/width for cropping. Should be true for training and
                 false for validation.
+            min_size: minimum size to crop the input.
+            max_size: maximum size to crop the input.
+            patch_size: ensure the cropped input is a multiple of this amount.
         """
         self.randomize = randomize
+        self.min_size = min_size
+        self.max_size = max_size
+        self.patch_size = patch_size
 
     def __call__(
         self, batch: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]]
@@ -122,14 +134,23 @@ class CollateFunction:
                         minimum_available_timesteps, cur_timesteps
                     )
 
-        # Randomly pick a subset of timesteps.
+        # Randomly pick a subset of timesteps, along with spatial crop size.
         assert minimum_available_timesteps is not None
         if self.randomize:
             num_timesteps = random.randint(1, minimum_available_timesteps)
+            crop_size = random.randint(self.min_size, self.max_size)
+            crop_size = (crop_size // self.patch_size) * self.patch_size
+            crop_h_start = random.randint(0, TILE_SIZE - crop_size)
+            crop_w_start = random.randint(0, TILE_SIZE - crop_size)
         else:
             rng = np.random.default_rng(hash(metadatas[0]["window_name"]) % 65536)
             num_timesteps = rng.integers(minimum_available_timesteps) + 1
+            crop_size = rng.integers(self.max_size - self.min_size) + 1
+            crop_size = (crop_size // self.patch_size) * self.patch_size
+            crop_h_start = 0
+            crop_w_start = 0
 
+        # Temporal subset.
         for input_dict in inputs:
             for modality, info in multitemporal_modalities:
                 if modality not in input_dict:
@@ -158,6 +179,34 @@ class CollateFunction:
 
             # TODO
             input_dict["image"] = input_dict["10_sentinel2_l2a_monthly"]
+
+        # Spatial crop.
+        for input_dict in inputs:
+            for modality in list(input_dict.keys()):
+                if not isinstance(modality, torch.Tensor):
+                    continue
+                print("process input modality", modality)
+                input_dict[modality] = input_dict[modality][
+                    :,
+                    crop_h_start : crop_h_start + crop_size,
+                    crop_w_start : crop_w_start + crop_size,
+                ]
+        for target_dict in targets:
+            for task_name in list(target_dict.keys()):
+                for sub_name in list(target_dict[task_name].keys()):
+                    image = target_dict[task_name][sub_name]
+                    if len(image.shape) == 2:
+                        image = image[
+                            crop_h_start : crop_h_start + crop_size,
+                            crop_w_start : crop_w_start + crop_size,
+                        ]
+                    else:
+                        image = image[
+                            :,
+                            crop_h_start : crop_h_start + crop_size,
+                            crop_w_start : crop_w_start + crop_size,
+                        ]
+                    target_dict[task_name][sub_name] = image
 
         return (inputs, targets, metadatas)
 
@@ -355,6 +404,9 @@ class HeliosDataModule(L.LightningDataModule):
         num_val_examples: int,
         batch_size: int,
         num_workers: int,
+        min_size: int = 256,
+        max_size: int = 256,
+        patch_size: int = 32,
     ) -> None:
         """Initialize a new DataModule."""
         super().__init__()
@@ -365,6 +417,9 @@ class HeliosDataModule(L.LightningDataModule):
         self.num_val_examples = num_val_examples
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.min_size = min_size
+        self.max_size = max_size
+        self.patch_size = patch_size
 
     def setup(self, stage: str) -> None:
         """Set up datasets and samplers.
@@ -405,7 +460,12 @@ class HeliosDataModule(L.LightningDataModule):
             dataset=self.train_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            collate_fn=CollateFunction(randomize=True),
+            collate_fn=CollateFunction(
+                randomize=True,
+                min_size=self.min_size,
+                max_size=self.max_size,
+                patch_size=self.patch_size,
+            ),
             persistent_workers=True,
         )
         if (
@@ -438,7 +498,12 @@ class HeliosDataModule(L.LightningDataModule):
             dataset=self.val_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            collate_fn=CollateFunction(randomize=False),
+            collate_fn=CollateFunction(
+                randomize=False,
+                min_size=self.min_size,
+                max_size=self.max_size,
+                patch_size=self.patch_size,
+            ),
             persistent_workers=True,
         )
         if (
