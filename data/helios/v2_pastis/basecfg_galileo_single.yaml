@@ -5,7 +5,7 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.galileo.Galileo
+          - class_path: rslearn.models.galileo.GalileoModel
             init_args:
               size: TINY
         decoders:
