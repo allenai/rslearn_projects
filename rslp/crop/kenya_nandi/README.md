@@ -14,20 +14,39 @@ The original categories didn’t include water or built-up areas. To support Lan
 
 Run the command to create windows for the groundtruth points:
 ```
-python rslp/crop/kenya_nandi/create_windows_for_groundtruth.py --csv_path=/weka/dfive-default/yawenz/datasets/CGIAR/NandiGroundTruthPoints.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625 --window_size=32
+python rslp/crop/kenya_nandi/create_windows_for_groundtruth.py --csv_path=/weka/dfive-default/yawenz/datasets/CGIAR/NandiGroundTruthPoints.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250815 --window_size=32
 ```
 
 By default, we sample at most 10 pixels per polygon, to avoid the case where one polygon creates many homogeneous points with the same category. Also, following the CGIAR/IFPRI workflow (more details can be found [here](https://www.ifpri.org/blog/from-space-to-soil-advancing-crop-mapping-and-ecosystem-insights-for-smallholder-agriculture-in-kenya/)), we can optionally apply postprocessing on the original categories, by merging the "Exoticetrees/forests" and "Nativetrees/forest" into "Trees", and dropping the categories with less labels, mainly "Legumes" and "Vegatables". By default, we split train/val by polygons, and perform category postprocessing.
 
-<img src="figures/categories.png" alt="Categories" width="40%">
+Category stats
+
+- **Coffee**: 977  
+- **Exotic trees / forest**: 695 _(trees)_  
+- **Grassland**: 1020  
+- **Legumes**: 440 _(drop)_  
+- **Maize**: 1336  
+- **Native trees / forest**: 231 _(trees)_  
+- **Sugarcane**: 964  
+- **Tea**: 979  
+- **Vegetables**: 282 _(drop)_
+
+Aggregated
+
+- **Coffee**: 977  
+- **Grassland**: 1020  
+- **Maize**: 1336  
+- **Sugarcane**: 964  
+- **Tea**: 979  
+- **Trees**: 926  
 
 
 Run the command to create windows for the worldcover points (we sampled 1K points for Water and Built-up separately):
 ```
-python rslp/crop/kenya_nandi/create_windows_for_worldcover.py --csv_path=/weka/dfive-default/yawenz/datasets/CGIAR/NandiWorldCoverPoints_sampled.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625 --window_size=32
+python rslp/crop/kenya_nandi/create_windows_for_worldcover.py --csv_path=/weka/dfive-default/yawenz/datasets/CGIAR/NandiWorldCoverPoints_sampled.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250815 --window_size=32
 ```
 
-- rslearn dataset: `/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625`
+- rslearn dataset: `/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250815`
 - GroundTruth group: `groundtruth_random_split_window_32`
 - WorldCover group: `worldcover_window_32`
 
@@ -37,18 +56,18 @@ TODO(yawenz): add grid split, ensure that nearby polygons are not in the same sp
 
 Run the command to prepare and materialize groundtruth windows:
 ```
-export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625
+export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250815
 export DATASET_GROUP=groundtruth_polygon_split_window_32
-rslearn dataset prepare --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-rslearn dataset materialize --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset prepare --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset materialize --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 ```
 
 Run the command to prepare and materialize worldcover windows:
 ```
-export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625
+export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250815
 export DATASET_GROUP=worldcover_window_32
-rslearn dataset prepare --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
-rslearn dataset materialize --root DATASET_PATH --group DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset prepare --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
+rslearn dataset materialize --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60
 ```
 
 ### Step 3. Finetune Helios
@@ -81,7 +100,7 @@ python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-
 
 2025-08-15
 
-Add back `Vegetables` and `Legumes` classes so that more classes are being covered. In total, 19K points.
+Add back `Vegetables` and `Legumes` classes so that more classes are being covered. In total, 19K points, use all available points within a polygon.
 
 | Category   |   Count |
 |:-----------|--------:|
@@ -89,7 +108,7 @@ Add back `Vegetables` and `Legumes` classes so that more classes are being cover
 | Maize      |    3126 |
 | Tea        |    2906 |
 | Grassland  |    2724 |
-| Forest     |    2586 |
+| Trees      |    2586 |
 | Coffee     |    2533 |
 | Legumes    |     977 |
 | Vegetables |     325 |
@@ -112,3 +131,24 @@ Predictions:
 ```
 python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/saturn-cirrascale --mode predict --gpus 4 --experiment_id nandi_crop_type_segment_helios_base_S2_ts_ws4_ps2_bs8_new_checkpoint_lower_lr --rslp_project 2025_08_15_nandi_crop_type
 ```
+
+2025-09-10
+
+Add additional annotations for Trees
+```
+python rslp/crop/kenya_nandi/create_windows_for_additional_annotations.py --csv_path=/weka/dfive-default/yawenz/datasets/CGIAR/20250910_10m_pixels.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250815 --group_name 20250912_annotations --window_size=32
+```
+
+Launch Helios finetune:
+```
+python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_08_15_nandi_crop_type --experiment_id nandi_crop_type_segment_helios_base_S2_ts_ws4_ps2_bs8_add_annotations
+```
+
+2025-09-12
+
+Using 20K Tree points instead of 2K, hopefull the misclassification can be further mitigated
+Also, try to use Sentinel1 images, see if that helps with misclassification
+
+
+
+
