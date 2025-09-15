@@ -5,6 +5,7 @@ from contextlib import nullcontext
 from typing import Any
 
 import torch
+import time
 from einops import rearrange
 from helios.data.constants import Modality
 from helios.nn.flexihelios import TokensAndMasks
@@ -88,13 +89,10 @@ class Helios(torch.nn.Module):
             if train_module_dir.exists():
                 load_model_and_optim_state(str(train_module_dir), model)
                 logger.info(f"loaded helios encoder from {train_module_dir}")
-                print(f"loaded helios encoder from {train_module_dir}")
             else:
                 logger.info(f"could not find helios encoder at {train_module_dir}")
-                print(f"could not find helios encoder at {train_module_dir}")
         else:
             logger.info("skipping loading helios encoder")
-            print("skipping loading helios encoder")
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:
@@ -111,6 +109,7 @@ class Helios(torch.nn.Module):
             inputs: input dicts. It should include keys corresponding to the modalities
                 that should be passed to the Helios model.
         """
+        start_time = time.perf_counter()
         kwargs = {}
         present_modalities = []
         device = None
@@ -152,7 +151,8 @@ class Helios(torch.nn.Module):
         kwargs["timestamps"] = timestamps
 
         sample = MaskedHeliosSample(**kwargs)
-
+        sample_time = time.perf_counter()
+        logger.info(f"Sample creation time: {sample_time - start_time}")
         # Decide context based on self.autocast_dtype.
         if self.autocast_dtype is None:
             context = nullcontext()
@@ -167,7 +167,7 @@ class Helios(torch.nn.Module):
             tokens_and_masks: TokensAndMasks = self.model(
                 sample, always_pass_none_mask_to_transformer=True, **self.forward_kwargs
             )["tokens_and_masks"]
-
+        pool_start_time = time.perf_counter()
         # Apply temporal/modality pooling so we just have one feature per patch.
         features = []
         for modality in present_modalities:
@@ -179,6 +179,8 @@ class Helios(torch.nn.Module):
             features.append(pooled)
         # Pool over the modalities, so we get one BCHW feature map.
         pooled = torch.stack(features, dim=0).mean(dim=0)
+        pool_end_time = time.perf_counter()
+        logger.info(f"Pooling time: {pool_end_time - pool_start_time}")
         return [pooled]
 
     def get_backbone_channels(self) -> list:
