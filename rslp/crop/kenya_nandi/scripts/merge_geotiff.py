@@ -19,7 +19,7 @@ subdirs = [d for d in base_dir.iterdir() if d.is_dir()]
 # Construct paths to geotiff.tif under the known structure
 tif_files = []
 for subdir in subdirs:
-    tif_path = subdir / "layers/prediction_v4/output/geotiff.tif"
+    tif_path = subdir / "layers/prediction_v4_1/output/geotiff.tif"
     if tif_path.exists():
         tif_files.append(tif_path)
     else:
@@ -46,7 +46,7 @@ out_meta.update(
 )
 
 # Output path
-output_path = output_dir / "sentinel1_2018.tif"
+output_path = output_dir / "mosaic_output_2018_v4_1.tif"
 
 # Write mosaic
 with rasterio.open(output_path, "w", **out_meta) as dest:
