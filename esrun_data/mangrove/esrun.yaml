@@ -2,7 +2,7 @@ partition_strategies:
   partition_request_geometry:
     class_path: esrun.runner.tools.partitioners.grid_partitioner.GridPartitioner
     init_args:
-      grid_size: 0.15 # Lat lon degrees
+      grid_size: 0.01 # Lat lon degrees, a random guess not sure what is really reasonable
       output_projection:
         class_path: rslearn.utils.geometry.Projection
         init_args:

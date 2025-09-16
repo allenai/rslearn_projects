@@ -25,6 +25,7 @@ LABEL_LAYER = "label"
 START_TIME = datetime(2020, 6, 15, tzinfo=timezone.utc)
 END_TIME = datetime(2020, 7, 15, tzinfo=timezone.utc)
 
+# For every latlon we get a window of size 32 around the data
 
 def create_window(
     csv_row: pd.Series, ds_path: UPath, window_size: int, group_name: str

@@ -7,15 +7,16 @@ model:
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
-              checkpoint_path: "{CHECKPOINT_PATH}"
+              checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 # Will need to be copied to gcp for actual inference
+              random_initialization: true
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: {PATCH_SIZE}
+                patch_size: 2
         decoders:
           mangrove_classification:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: {ENCODER_EMBEDDING_SIZE}
+                in_channels: 768
                 out_channels: 3
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
@@ -122,8 +123,8 @@ data:
         input_mapping:
           mangrove_classification:
             label: "targets"
-    batch_size: 32
-    num_workers: 8
+    batch_size: 4
+    num_workers: 2
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
