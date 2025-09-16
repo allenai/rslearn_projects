@@ -33,8 +33,16 @@ python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --co
 Prediction:
 ```
 export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/crop/awf_2023
-rslearn dataset add_windows --root $DATASET_PATH --group kenya --utm --resolution 10 --grid_size 1024 --src_crs EPSG:4326 --box=36.00332859484055,-3.381916450124391,38.04279680794431,-1.6611523120446128 --start 2023-06-15T00:00:00+00:00 --end 2023-07-15T00:00:00+00:00 --name kenya
+rslearn dataset add_windows --root $DATASET_PATH --group amboseli --utm --resolution 10 --grid_size 128 --src_crs EPSG:4326 --box=36.897854805569345,-3.1877100113094623,37.93955567770978,-2.2610410490685697 --start 2023-06-15T00:00:00+00:00 --end 2023-07-15T00:00:00+00:00 --name amboseli
 ```
+
+7452 windows in total for inference
+
+<!-- Original CRS: EPSG:4210
+Min Lon: 36.897854805569345
+Min Lat: -3.1877100113094623
+Max Lon: 37.93955567770978
+Max Lat: -2.2610410490685697 -->
 
 ```
 python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_awf_lulc/finetune_s2_20250822.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_08_22_awf_lulc_classification --experiment_id awf_lulc_classification_helios_base_S2_ts_ws4_ps2_bs8 --mode predict --gpus 4

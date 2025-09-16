@@ -7,7 +7,7 @@ model:
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
-              checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
+              checkpoint_path: /weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step300000
               selector: ["encoder"]
               forward_kwargs:
                 patch_size: 2
@@ -220,13 +220,13 @@ data:
         input_mapping:
           lulc_classification:
             label: "targets"
-    batch_size: 8
-    num_workers: 64
+    batch_size: 64
+    num_workers: 32
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.pad.Pad
           init_args:
-            size: 4
+            size: 8
             mode: "center"
             image_selectors: ["sentinel2_l2a", "target/lulc_classification/classes", "target/lulc_classification/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
@@ -258,11 +258,11 @@ data:
             config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-      groups: ["kenya"]
+      groups: ["amboseli"]
       load_all_patches: true
       skip_targets: true
-      overlap_ratio: 0.75
-      patch_size: 4
+      overlap_ratio: 0.875
+      patch_size: 8
 trainer:
   max_epochs: 100
   callbacks:
@@ -282,7 +282,7 @@ trainer:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
         path: placeholder
-        output_layer: prediction_v0
+        output_layer: prediction_v1
         selector: ["lulc_classification"]
 rslp_project: 2025_08_22_awf_lulc_classification
-rslp_experiment: awf_lulc_classification_helios_base_S2_ts_ws4_ps2_bs8
+rslp_experiment: awf_lulc_classification_helios_base_S2_ts_ws8_ps2_bs8_new_checkpoint_lower_lr
