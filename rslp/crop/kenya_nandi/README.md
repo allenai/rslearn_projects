@@ -159,6 +159,17 @@ python one_off_projects/2025_08_01_alphaearth_eval_to_rslearn/get_balanced_accur
 python one_off_projects/2025_08_01_alphaearth_eval_to_rslearn/get_balanced_accuracy.py --ds_path /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625 --repeats 1 --samples 500 --k 3 --embed_fname helios_embeddings_latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1_step300000_ws4_ps1.npy
 ```
 
+2025-09-16
+
+Copy weights, and re-write keys
+```
+gsutil cp gs://rslearn-eai/projects/2025_08_15_nandi_crop_type/nandi_crop_type_segment_helios_base_S2_ts_ws4_ps1_bs8_add_annotations_2/checkpoints/last.ckpt /weka/dfive-default/yawenz/test/2025_09_16_nandi_checkpoints
+python /weka/dfive-default/yawenz/test/20250905_rewrite_checkpoint.py
+```
+
+
+
+
 
 
 
