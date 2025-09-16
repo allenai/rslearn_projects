@@ -1,0 +1,87 @@
+{
+    "layers": {
+      "label": {
+        "type": "vector"
+      },
+      "sentinel1": {
+        "band_sets": [
+          {
+            "bands": [
+              "vv",
+              "vh"
+            ],
+            "dtype": "float32"
+          }
+        ],
+        "data_source": {
+          "time_offset": "-180d",
+          "duration": "366d",
+          "cache_dir": "cache/planetary_computer",
+          "ingest": false,
+          "name": "rslp.satlas.data_sources.MonthlySentinel1",
+          "query": {
+            "sar:instrument_mode": {
+              "eq": "IW"
+            },
+            "sar:polarizations": {
+              "eq": [
+                "VV",
+                "VH"
+              ]
+            }
+          },
+          "query_config": {
+            "max_matches": 12
+          }
+        },
+        "type": "raster"
+      },
+      "sentinel2": {
+        "band_sets": [
+          {
+            "bands": [
+              "B02",
+              "B03",
+              "B04",
+              "B08"
+            ],
+            "dtype": "uint16"
+          },
+          {
+            "bands": [
+              "B05",
+              "B06",
+              "B07",
+              "B8A",
+              "B11",
+              "B12"
+            ],
+            "dtype": "uint16",
+            "zoom_offset": -1
+          },
+          {
+            "bands": [
+              "B01",
+              "B09"
+            ],
+            "dtype": "uint16",
+            "zoom_offset": -2
+          }
+        ],
+        "data_source": {
+          "time_offset": "-180d",
+          "duration": "366d",
+          "cache_dir": "cache/planetary_computer",
+          "harmonize": true,
+          "ingest": false,
+          "max_cloud_cover": 50,
+          "name": "rslp.satlas.data_sources.MonthlyAzureSentinel2",
+          "query_config": {
+            "max_matches": 12
+          },
+          "sort_by": "eo:cloud_cover"
+        },
+        "type": "raster"
+      }
+    }
+  }
