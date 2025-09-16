@@ -220,7 +220,7 @@ data:
         input_mapping:
           lulc_classification:
             label: "targets"
-    batch_size: 70
+    batch_size: 128
     num_workers: 32
     default_config:
       transforms:
