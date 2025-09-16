@@ -14,7 +14,7 @@ partition_strategies:
   prepare_window_geometries:
     class_path: esrun.runner.tools.partitioners.grid_partitioner.GridPartitioner
     init_args:
-      grid_size: 128
+      grid_size: 64
       output_projection:
         class_path: rslearn.utils.geometry.Projection
         init_args:
