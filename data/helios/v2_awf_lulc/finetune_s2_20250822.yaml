@@ -220,7 +220,7 @@ data:
         input_mapping:
           lulc_classification:
             label: "targets"
-    batch_size: 64
+    batch_size: 70
     num_workers: 32
     default_config:
       transforms:
@@ -250,7 +250,7 @@ data:
       transforms:
         - class_path: rslearn.train.transforms.pad.Pad
           init_args:
-            size: 4
+            size: 8
             mode: "center"
             image_selectors: ["sentinel2_l2a"]
         - class_path: rslp.helios.norm.HeliosNormalize
@@ -284,5 +284,9 @@ trainer:
         path: placeholder
         output_layer: prediction_v1
         selector: ["lulc_classification"]
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            padding: 4
 rslp_project: 2025_08_22_awf_lulc_classification
 rslp_experiment: awf_lulc_classification_helios_base_S2_ts_ws8_ps2_bs8_new_checkpoint_lower_lr
