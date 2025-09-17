@@ -7,9 +7,9 @@ from rasterio.merge import merge
 
 # Base directory containing subfolders
 base_dir = Path(
-    "/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616/windows/nandi_county_2018"
+    "/weka/dfive-default/rslearn-eai/datasets/crop/awf_2023/windows/amboseli"
 )
-output_dir = Path("/weka/dfive-default/rslearn-eai/artifacts/nandi_crop_type")
+output_dir = Path("/weka/dfive-default/rslearn-eai/artifacts/awf_lulc")
 
 # Find all immediate subdirectories under base_dir
 subdirs = [d for d in base_dir.iterdir() if d.is_dir()]
