@@ -82,6 +82,17 @@
           "sort_by": "eo:cloud_cover"
         },
         "type": "raster"
+      },
+      "output": {
+        "band_sets": [
+          {
+            "bands": [
+              "output"
+            ],
+            "dtype": "uint8"
+          }
+        ],
+        "type": "raster"
       }
     }
   }

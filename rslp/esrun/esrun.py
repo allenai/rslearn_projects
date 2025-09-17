@@ -10,6 +10,7 @@ from pathlib import Path
 import fsspec
 from esrun.runner.local.fine_tune_runner import EsFineTuneRunner
 from esrun.runner.local.predict_runner import EsPredictRunner
+from esrun.shared.models.task_results import InferenceResultsDataType
 from esrun.shared.tools.logger import configure_logging
 from upath import UPath
 
@@ -62,7 +63,7 @@ def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
     runner.prepare_labeled_windows()
 
 
-def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
+def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str, num_workers_partition: int | None = None, num_workers_inference: int | None = None, num_workers_postprocess: int | None = None, num_workers_combine: int | None = None) -> None:
     """Run EsPredictRunner inference pipeline.
 
     Args:
@@ -79,6 +80,10 @@ def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
         project_path=config_path.absolute(),
         scratch_path=scratch_path,
         checkpoint_path=get_local_checkpoint(UPath(checkpoint_path)),
+        num_workers_partition=num_workers_partition,
+        num_workers_inference=num_workers_inference,
+        num_workers_postprocess=num_workers_postprocess,
+        num_workers_combine=num_workers_combine,
     )
     logger.info("Partitioning...")
     partitions = runner.partition()
@@ -114,6 +119,8 @@ def one_stage(
     checkpoint_path: str,
     stage: EsrunStage,
     partition_id: str | None = None,
+    num_workers: int | None = None,
+    inference_results_data_type: InferenceResultsDataType = InferenceResultsDataType.RASTER,
 ) -> None:
     """Run EsPredictRunner inference pipeline.
 
@@ -129,13 +136,18 @@ def one_stage(
         raise ValueError("partition_id cannot be set for COMBINE stage")
 
     # Configure esrun logging before creating the runner
-    configure_logging(log_level=logging.INFO)
+    configure_logging(log_level=logging.WARNING)
 
     runner = EsPredictRunner(
         # ESRun does not work with relative path, so make sure to convert to absolute here.
         project_path=config_path,
         scratch_path=scratch_path,
         checkpoint_path=get_local_checkpoint(UPath(checkpoint_path)),
+        # only running one stage so we just override the workers for that stage
+        num_workers_partition=num_workers,
+        num_workers_inference=num_workers,
+        num_workers_postprocess=num_workers,
+        num_workers_combine=num_workers,
     )
     partitions = runner.partition()
 
@@ -150,6 +162,7 @@ def one_stage(
         elif stage == EsrunStage.RUN_INFERENCE:
             fn = runner.run_inference
         elif stage == EsrunStage.POSTPROCESS:
+            runner.inference_results_data_type = inference_results_data_type
             fn = runner.postprocess
         else:
             assert False
