@@ -41,7 +41,7 @@ data:
         load_all_layers: true
       sentinel1:
         data_type: "raster"
-        layers: ["sentinel1_ascending"]
+        layers: ["sentinel1_descending"]
         bands: ["vv", "vh"]
         passthrough: true
         dtype: FLOAT32
