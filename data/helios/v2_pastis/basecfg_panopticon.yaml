@@ -1,0 +1,61 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+            init_args:
+              encoder:
+                  class_path: rslearn.models.panopticon.Panopticon
+                  init_args:
+                    band_order:
+                      sentinel2: ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"] # Must match the loaded band order
+              image_channels: 10
+              image_key: "sentinel2"
+        decoders:
+          segment:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[8, 768]] # Panopticon resizes to 256x256 and always has 16 by 16 so as image size is 128 this is the downscale factor
+                out_channels: 20
+                conv_layers_per_resolution: 2
+                num_channels: {4: 512, 2: 256, 1: 128}
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+data:
+  init_args:
+    inputs:
+      sentinel2:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        # PASTIS is missing B01 and B09.
+        # We don't need to fill in because panopticon is flexible enough to handle this.
+        bands: ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A",  "B11", "B12"]
+        passthrough: true
+      targets:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["class"]
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              # PASTIS is missing B01 and B09.
+              # We just leave them out?
+              sentinel2: []
+            output_selector: sentinel2
+    train_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              # PASTIS is missing B01 and B09.
+              # We use B02 to fill in B01 and B8A to fill in B09.
+              sentinel2: []
+            output_selector: sentinel2
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel2", "target/segment/classes", "target/segment/valid"]
+rslp_project: panopticon_finetune_test
+rslp_experiment: panopticon_finetune_test1
