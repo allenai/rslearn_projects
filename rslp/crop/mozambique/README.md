@@ -22,8 +22,3 @@ python -m rslp.main common launch_data_materialization_jobs --image favyen/rslp_
 
 python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_mozambique_lulc/finetune_s1_s2.yaml --cluster+=ai2/neptune --rslp_project 2025_09_18_mozambique_lulc --experiment_id mozambique_lulc_helios_base_S1_S2_ts_ws4_ps1_gaza
 ```
-
-
-
-
-

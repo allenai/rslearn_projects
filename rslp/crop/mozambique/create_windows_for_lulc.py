@@ -2,9 +2,9 @@
 
 import argparse
 import multiprocessing
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Tuple
 
 import geopandas as gpd
 import shapely
@@ -67,7 +67,7 @@ def process_gpkg(gpkg_path: UPath) -> gpd.GeoDataFrame:
     return gdf
 
 
-def iter_points(gdf: gpd.GeoDataFrame) -> Iterable[Tuple[int, float, float, int]]:
+def iter_points(gdf: gpd.GeoDataFrame) -> Iterable[tuple[int, float, float, int]]:
     """Yield (fid, latitude, longitude, category) per feature using centroid for polygons."""
     for fid, row in gdf.iterrows():
         geom = row.geometry
@@ -83,7 +83,7 @@ def iter_points(gdf: gpd.GeoDataFrame) -> Iterable[Tuple[int, float, float, int]
 
 
 def create_window(
-    rec: Tuple[int, float, float, int],
+    rec: tuple[int, float, float, int],
     ds_path: UPath,
     group_name: str,
     split: str,
@@ -115,7 +115,7 @@ def create_window(
         bounds=bounds,
         time_range=(start_time, end_time),
         options={
-            "split": split,         # 'train' or 'test' as provided
+            "split": split,  # 'train' or 'test' as provided
             "category_id": category_id,
             "category": category_label,
             "fid": fid,
@@ -181,6 +181,7 @@ def create_windows_from_gpkg(
             pass
         p.close()
 
+
 if __name__ == "__main__":
     multiprocessing.set_start_method("forkserver", force=True)
 
@@ -237,7 +238,7 @@ if __name__ == "__main__":
             gpkg_path=UPath(path),
             ds_path=ds_path,
             group_name=province,  # group == province
-            split=split,          # honor provided split
+            split=split,  # honor provided split
             window_size=args.window_size,
             max_workers=args.max_workers,
             start_time=start_time,
