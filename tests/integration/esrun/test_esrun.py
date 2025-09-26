@@ -28,12 +28,13 @@ def test_esrun_solar_farm(tmp_path: Path) -> None:
     src_dir = Path("esrun_data/satlas/solar_farm_oe/")
     config_dir = tmp_path / "config"
     config_dir.mkdir(parents=True)
-    for fname in ["dataset.json", "model.yaml"]:
-        with (
-            (src_dir / fname).open("rb") as src,
-            (config_dir / fname).open("wb") as dst,
-        ):
-            shutil.copyfileobj(src, dst)
+
+    # Copy dataset.json without modifications.
+    with (
+        (src_dir / "dataset.json").open("rb") as src,
+        (config_dir / "dataset.json").open("wb") as dst,
+    ):
+        shutil.copyfileobj(src, dst)
 
     # This request geometry should be at least 10% solar farm (and at most 50%).
     # It is centered at a solar farm and we extend beyond the solar farm.
@@ -81,6 +82,14 @@ def test_esrun_solar_farm(tmp_path: Path) -> None:
     }
     with (config_dir / "esrun.yaml").open("w") as f:
         yaml.safe_dump(esrun_config, f)
+
+    # We customize the model.yaml to use smaller batch size.
+    # Because in CI we have small system memory.
+    with (src_dir / "model.yaml").open() as f:
+        model_config = yaml.safe_load(f)
+    model_config["data"]["init_args"]["batch_size"] = 1
+    with (config_dir / "model.yaml").open("w") as f:
+        yaml.safe_dump(model_config, f)
 
     scratch_dir = tmp_path / "scratch"
     esrun(
