@@ -1,9 +1,0 @@
-strategy_large:
-  class_path: esrun.tools.partitioners.fixed_window_partitioner.FixedWindowPartitioner
-  init_args:
-    window_size: 128 # intended to be a pixel value
-
-strategy_small:
-  class_path: esrun.tools.partitioners.fixed_window_partitioner.FixedWindowPartitioner
-  init_args:
-    window_size: 128 # intended to be a pixel value
