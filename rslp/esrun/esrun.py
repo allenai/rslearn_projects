@@ -7,6 +7,7 @@ from enum import StrEnum
 from pathlib import Path
 
 import fsspec
+from esrun.runner.local.fine_tune_runner import EsFineTuneRunner
 from esrun.runner.local.predict_runner import EsPredictRunner
 from upath import UPath
 
@@ -46,6 +47,17 @@ def get_local_checkpoint(checkpoint_path: UPath) -> Path:
 
     logger.info("using cached checkpoint at %s", local_upath)
     return Path(local_upath)
+
+
+def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
+    """Run EsFineTuneRunner's prepare_windows pipeline."""
+    logger.info("Loading EsFineTuneRunner")
+    runner = EsFineTuneRunner(
+        project_path=project_path,
+        scratch_path=scratch_path,
+    )
+    logger.info("Running prepare_labeled_windows")
+    runner.prepare_labeled_windows()
 
 
 def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
