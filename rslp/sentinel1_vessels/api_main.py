@@ -1,4 +1,4 @@
-"""API for Sentinel-2 Vessel Detection."""
+"""API for Sentinel-1 Vessel Detection."""
 
 from __future__ import annotations
 
@@ -36,22 +36,22 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Lifespan event handler for the Sentinel-2 Vessel Detection Service.
+    """Lifespan event handler for the Sentinel-1 Vessel Detection Service.
 
     Sets up the multiprocessing start method and preloads necessary modules.
 
     Args:
         app: FastAPI app instance.
     """
-    logger.info("Initializing Sentinel-2 Vessel Detection Service")
+    logger.info("Initializing Sentinel-1 Vessel Detection Service")
     init_mp()
     yield
-    logger.info("Sentinel-2 Vessel Detection Service shutdown.")
+    logger.info("Sentinel-1 Vessel Detection Service shutdown.")
 
 
 app = FastAPI(
-    title="Sentinel-2 Vessel Detection API",
-    description="API for detecting vessels in Sentinel-2 images.",
+    title="Sentinel-1 Vessel Detection API",
+    description="API for detecting vessels in Sentinel-1 images.",
     version="0.0.1",
     lifespan=lifespan,
     docs_url="/docs",  # URL for Swagger UI
