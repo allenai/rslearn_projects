@@ -4,6 +4,8 @@ model:
       init_args:
         encoder:
           - class_path: rslearn.models.presto.Presto
+            init_args:
+              pixel_batch_size: 1024
         decoders:
           segment:
             - class_path: rslearn.models.unet.UNetDecoder
