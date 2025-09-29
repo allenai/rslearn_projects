@@ -84,7 +84,13 @@ data:
               num_classes: 2
               metric_kwargs:
                 average: "micro"
+              enable_f1_metric: true
+              f1_metric_thresholds: [[0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], [0.1], [0.2], [0.3], [0.4], [0.5], [0.6], [0.7], [0.8], [0.9]]
               remap_values: [[0, 1], [0, 255]]
+              # The score threshold 0.7 for foreground class seems to be best.
+              # So we multiply foreground probability by 0.3/0.7 so the argmax will
+              # select it only if it is higher than 0.7.
+              prob_scales: [1.0, 0.429]
         input_mapping:
           segment:
             targets: "targets"
@@ -192,7 +198,7 @@ trainer:
       init_args:
         path: gs://rslearn-eai/datasets/solar_farm/dataset_v1/20250108/
         output_layer: output
-        selector: ["detect"]
+        selector: ["segment"]
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         save_top_k: 1

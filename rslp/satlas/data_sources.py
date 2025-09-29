@@ -1,5 +1,6 @@
 """Customized data sources for Satlas models."""
 
+import json
 from datetime import timedelta
 from typing import Any
 
@@ -241,11 +242,12 @@ class MonthlyAzureSentinel2(DataSource):
         # This only makes sense for mosaic space mode.
         assert query_config.space_mode == SpaceMode.MOSAIC
 
+        client, _ = self.sentinel2._load_client()
         groups = []
         for geometry in geometries:
             # This part is the same as in base Sentinel2 class.
             wgs84_geometry = geometry.to_projection(WGS84_PROJECTION)
-            result = self.sentinel2.client.search(
+            result = client.search(
                 collections=[self.sentinel2.COLLECTION_NAME],
                 intersects=shapely.to_geojson(wgs84_geometry.shp),
                 datetime=wgs84_geometry.time_range,
@@ -262,6 +264,15 @@ class MonthlyAzureSentinel2(DataSource):
             candidate_items = [
                 self.sentinel2._stac_item_to_item(stac_item) for stac_item in stac_items
             ]
+
+            # Since we made the STAC request, might as well save these to the cache.
+            if self.sentinel2.cache_dir is not None:
+                for item in candidate_items:
+                    cache_fname = self.sentinel2.cache_dir / f"{item.name}.json"
+                    if cache_fname.exists():
+                        continue
+                    with cache_fname.open("w") as f:
+                        json.dump(item.serialize(), f)
 
             # Now we use _find_monthly_matches.
             cur_groups = _find_monthly_matches(
@@ -353,11 +364,12 @@ class MonthlySentinel1(DataSource):
         # This only makes sense for mosaic space mode.
         assert query_config.space_mode == SpaceMode.MOSAIC
 
+        client, _ = self.sentinel1._load_client()
         groups = []
         for geometry in geometries:
             # This part is the same as in base Sentinel1 class.
             wgs84_geometry = geometry.to_projection(WGS84_PROJECTION)
-            result = self.sentinel1.client.search(
+            result = client.search(
                 collections=[self.sentinel1.COLLECTION_NAME],
                 intersects=shapely.to_geojson(wgs84_geometry.shp),
                 datetime=wgs84_geometry.time_range,
@@ -374,6 +386,15 @@ class MonthlySentinel1(DataSource):
             candidate_items = [
                 self.sentinel1._stac_item_to_item(stac_item) for stac_item in stac_items
             ]
+
+            # Since we made the STAC request, might as well save these to the cache.
+            if self.sentinel1.cache_dir is not None:
+                for item in candidate_items:
+                    cache_fname = self.sentinel1.cache_dir / f"{item.name}.json"
+                    if cache_fname.exists():
+                        continue
+                    with cache_fname.open("w") as f:
+                        json.dump(item.serialize(), f)
 
             # Now we use _find_monthly_matches.
             cur_groups = _find_monthly_matches(
