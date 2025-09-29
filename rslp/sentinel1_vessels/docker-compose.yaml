@@ -8,12 +8,12 @@ services:
       dockerfile: Dockerfile
     image: base-image:latest   # Tag it as "base-image"
 
-  # Define the sentinel2-vessels service
-  sentinel2-vessels:
+  # Define the sentinel1-vessels service
+  sentinel1-vessels:
     build:
       context: .
       dockerfile: Dockerfile
-    image: sentinel2_vessels:latest
+    image: sentinel1_vessels:latest
     depends_on:
       - base-image
     ports:
