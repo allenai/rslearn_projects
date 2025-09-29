@@ -12,6 +12,7 @@ model:
                 out_channels: 20
                 conv_layers_per_resolution: 2
                 num_channels: {8: 1024, 4: 512, 2: 256, 1: 128}
+                original_size_to_interpolate: [128, 128]
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
 data:
   init_args:
