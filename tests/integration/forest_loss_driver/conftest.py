@@ -107,7 +107,7 @@ def download_test_data() -> Generator[None, None, None]:
             if not src_path.is_file():
                 continue
 
-            rel_path = Path(*src_path.relative_to(gcs_upath).parts[4:])
+            rel_path = str(src_path.relative_to(gcs_upath))
             dst_path = test_data_path / rel_path
             logger.debug(f"Downloading {src_path} to {dst_path}")
             dst_path.parent.mkdir(parents=True, exist_ok=True)
