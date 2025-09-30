@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
+import pytest
 import rasterio
 import shapely
 import yaml
@@ -17,7 +18,7 @@ from upath import UPath
 from rslp.esrun.esrun import esrun
 
 
-def test_esrun_solar_farm(tmp_path: Path) -> None:
+def test_esrun_solar_farm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test ESRun pipeline by applying solar farm on small request geometry."""
     # For now this is fixed but we should figure out how to have standardized path for
     # each application later, similar to RSLP_PREFIX.
@@ -90,6 +91,9 @@ def test_esrun_solar_farm(tmp_path: Path) -> None:
     model_config["data"]["init_args"]["batch_size"] = 1
     with (config_dir / "model.yaml").open("w") as f:
         yaml.safe_dump(model_config, f)
+
+    # Disable W&B for this test.
+    monkeypatch.setenv("WANDB_MODE", "disabled")
 
     scratch_dir = tmp_path / "scratch"
     esrun(
