@@ -89,7 +89,6 @@ def test_esrun_solar_farm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     with (src_dir / "model.yaml").open() as f:
         model_config = yaml.safe_load(f)
     model_config["data"]["init_args"]["batch_size"] = 1
-    model_config["data"]["init_args"]["predict_config"]["patch_size"] = 64
     with (config_dir / "model.yaml").open("w") as f:
         yaml.safe_dump(model_config, f)
 
