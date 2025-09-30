@@ -17,7 +17,7 @@ model:
               forward_kwargs:
                 patch_size: 1
         decoders:
-          class:
+          crop_type_classification:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
                 in_channels: 768
