@@ -1,0 +1,55 @@
+inference_results_config:
+  data_type: RASTER
+  classification_fields:
+    - property_name: crop_type_classification
+      band_index: 1
+      allowed_values:
+        - value: 0
+          label: Water
+          color: [136, 33, 233]
+        - value: 1
+          label: Bare Ground
+          color: [124, 67, 18]
+        - value: 2
+          label: Rangeland
+          color: [51, 160, 44]
+        - value: 3
+          label: Flooded Vegetation
+          color: [169, 214, 146]
+        - value: 4
+          label: Trees
+          color: [240, 159, 28]
+        - value: 5
+          label: Cropland
+          color: [251, 154, 153]
+        - value: 6
+          label: Buildings
+          color: [31, 234, 146]
+
+partition_strategies:
+  partition_request_geometry:
+    class_path: esrun.runner.tools.partitioners.grid_partitioner.GridPartitioner
+    init_args:
+      grid_size: 0.25
+
+  prepare_window_geometries:
+    class_path: esrun.runner.tools.partitioners.grid_partitioner.GridPartitioner
+    init_args:
+      grid_size: 64
+      output_projection:
+        class_path: rslearn.utils.geometry.Projection
+        init_args:
+          crs: EPSG:3857
+          x_resolution: 10
+          y_resolution: -10
+      use_utm: true
+
+postprocessing_strategies:
+  process_dataset:
+    class_path: esrun.runner.tools.postprocessors.combine_geotiff.CombineGeotiff
+
+  process_partition:
+    class_path: esrun.runner.tools.postprocessors.combine_geotiff.CombineGeotiff
+
+  process_window:
+    class_path: esrun.runner.tools.postprocessors.noop_raster.NoopRaster
