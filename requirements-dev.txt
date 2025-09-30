@@ -1,5 +1,6 @@
 interrogate>=1.7
 pre-commit
 pytest>=8.2
+pytest-forked
 pytest-xdist
 ruff>=0.7
