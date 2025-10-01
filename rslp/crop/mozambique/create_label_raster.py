@@ -1,4 +1,20 @@
-"""Create label_raster from label."""
+"""Create label_raster from label.
+
+If you run this, you will need to update the config.json for the dataset
+to include the following entry:
+
+"label_raster": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "int32"
+        }
+      ],
+      "type": "raster"
+    },
+"""
 
 import argparse
 import multiprocessing
