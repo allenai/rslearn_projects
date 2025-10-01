@@ -211,29 +211,19 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
+      groups: ["gaza"]
       tags:
         split: "train"
-      transforms:
-        - class_path: rslearn.train.transforms.pad.Pad
-          init_args:
-            size: 4
-            mode: "center"
-            image_selectors: ["sentinel2_l2a", "target/crop_type_classification/classes", "target/crop_type_classification/valid"]
-        - class_path: rslp.helios.norm.HeliosNormalize
-          init_args:
-            band_names:
-              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     val_config:
-      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
+      groups: ["gaza"]
       tags:
-        split: "val"
+        split: "test"
     test_config:
-      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
+      groups: ["gaza"]
       tags:
-        split: "val"
+        split: "test"
     predict_config:
-      groups: ["nandi_county"]
+      groups: ["gaza"]
       load_all_patches: true
       skip_targets: true
       overlap_ratio: 0.75
