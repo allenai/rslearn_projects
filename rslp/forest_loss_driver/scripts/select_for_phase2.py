@@ -82,7 +82,7 @@ if __name__ == "__main__":
         category = properties["new_label"]
         if category in RARE_CATEGORIES:
             by_class_options[(window.group, category)].append(window)
-        elif max(properties["probs"]) < 0.6:
+        elif max(properties["probs"]) < PROB_THRESHOLD:
             by_prob_options[window.group].append(window)
 
     for (group, category), candidates in by_class_options.items():
