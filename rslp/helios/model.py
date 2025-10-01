@@ -164,8 +164,15 @@ class Helios(torch.nn.Module):
             tokens_and_masks: TokensAndMasks
             if isinstance(self.model, Encoder):
                 # Encoder has a fast_pass argument to indicate mask is not needed.
+                # tokens_and_masks = self.model(
+                #     sample, fast_pass=True, **self.forward_kwargs
+                # )["tokens_and_masks"]
+
+                # temporary until the beaker image is updated
                 tokens_and_masks = self.model(
-                    sample, fast_pass=True, **self.forward_kwargs
+                    sample,
+                    always_pass_none_mask_to_transformer=True,
+                    **self.forward_kwargs,
                 )["tokens_and_masks"]
             else:
                 # Other models like STEncoder do not have this option supported.
