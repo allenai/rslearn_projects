@@ -41,7 +41,7 @@ data:
         passthrough: true
         dtype: FLOAT32
         load_all_item_groups: true
-        load_all_layers: true\
+        load_all_layers: true
       sentinel1:
         data_type: "raster"
         layers: ["sentinel1_descending"]
