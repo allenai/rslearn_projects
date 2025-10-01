@@ -1,0 +1,144 @@
+model:
+  class_path: rslp.forest_loss_driver.train.ForestLossLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+            init_args:
+              encoder:
+                class_path: rslp.helios.model.Helios
+                init_args:
+                  checkpoint_path: "/weka/dfive-default/helios/checkpoints/favyen/favyen_decode_gse_worldcover_osm_srtm_titan/step370000"
+                  selector: ["encoder"]
+                  forward_kwargs:
+                    patch_size: 4
+              # The dataset yields an image time series of 8 images (96 channels).
+              # We split it up into the pre images (first 48 channels) and post images
+              # (second 48 channels).
+              # We end up with two feature groups, which we concatenate (by putting
+              # them in separate sub-lists under the groups setting).
+              image_channels: 48
+              groups: [[0], [1]]
+              image_key: sentinel2_l2a
+        decoders:
+          class:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: 1536
+                out_channels: 16
+                num_conv_layers: 1
+                num_fc_layers: 2
+            - class_path: rslearn.train.tasks.classification.ClassificationHead
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.1
+        patience: 10
+        min_lr: 0
+        cooldown: 0
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.0001
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["pre_sentinel2", "pre_sentinel2.1", "pre_sentinel2.2", "pre_sentinel2.3", "post_sentinel2", "post_sentinel2.1", "post_sentinel2.2", "post_sentinel2.3"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        load_all_layers: true
+      label:
+        data_type: "vector"
+        layers: ["label"]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          class:
+            class_path: rslp.forest_loss_driver.train.ForestLossTask
+            init_args:
+              property_name: "new_label"
+              classes:
+                - "Agriculture-Large"
+                - "Agriculture-Medium"
+                - "Agriculture-Small"
+                - "Burned areas (Fire)"
+                - "Dry areas (seasonal)"
+                - "False positives (not forest loss, an alert error)"
+                - "Flooded (rivers)"
+                - "General deforestation (Clearing)"
+                - "Landslides"
+                - "Logging roads"
+                - "Mining"
+                - "Pasture (praderas, ganadería)"
+                - "Roads"
+                - "Selective Logging"
+                - "Urbanization & settlements"
+                - "Windthrows/blowdowns (Hurricane winds)"
+              metric_kwargs:
+                average: "micro"
+              prob_property: "probs"
+        input_mapping:
+          class:
+            label: "targets"
+    batch_size: 16
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            mode: "center"
+            size: 64
+            image_selectors: ["sentinel2_l2a"]
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel2_l2a"]
+      groups: ["20250428_brazil_phase1", "20250428_colombia_phase1"]
+    train_config:
+      tags:
+        split: train
+    val_config:
+      tags:
+        split: val
+    test_config:
+      tags:
+        split: val
+    predict_config:
+      groups: ["default"]
+      skip_targets: true
+trainer:
+  max_epochs: 60
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0, "encoder", "model"]
+        unfreeze_at_epoch: 30
+        unfreeze_lr_factor: 10
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_class/accuracy
+        mode: max
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/
+        output_layer: output
+        selector: ["class"]
+rslp_project: amazon_conservation
+rslp_experiment: data_20250821_helios_00
