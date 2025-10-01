@@ -48,9 +48,11 @@ data:
         load_all_item_groups: true
         load_all_layers: true
       label:
-        data_type: "vector"
-        layers: ["label"]
+        data_type: "raster"
+        layers: ["label_raster"]
+        bands: ["label"]
         is_target: true
+        dtype: INT32
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
