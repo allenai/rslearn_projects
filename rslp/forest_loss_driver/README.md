@@ -158,8 +158,11 @@ python -m rslp.rslearn_main model predict --config data/forest_loss_driver/model
 
 Then we have a script to select windows:
 
-- Select 50 each from Brazil/Colombia predicted as road/logging/mining/river/landslide (500 total)
-- Select 150 each from Brazil/Colombia predicted not as the above classes with max(probabilities) < 0.6 (300 total)
+- Select 50 each from Brazil/Colombia predicted as road/logging/mining/river/landslide (500 total). These classes
+  appeared less frequently in the initial set of 500 examples.
+- Select 150 each from Brazil/Colombia predicted not as the above classes with max(probabilities) < 0.6 (300 total).
+  This way we are not fully biasing towards what the model more confidently thought was the more rare classes, so we
+  may see examples that fall into a rare class but the model expressed low overall confidence.
 
 ```
 python -m rslp.forest_loss_driver.scripts.select_for_phase2
