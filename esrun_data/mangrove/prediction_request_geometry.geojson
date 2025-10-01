@@ -19,7 +19,7 @@
           "tile_name": "N27E055",
           "gmw_tile_name": "GMW_N27E055",
           "es_start_time": "2018-01-01T00:00:00Z",
-          "es_end_time": "2024-12-31T23:59:59Z"
+          "es_end_time": "2019-12-31T23:59:59Z"
         },
         "geometry": {
           "type": "Polygon",
