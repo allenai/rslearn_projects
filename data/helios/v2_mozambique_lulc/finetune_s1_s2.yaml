@@ -236,14 +236,14 @@ trainer:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
-    - class_path: rslearn.train.prediction_writer.RslearnWriter
-      init_args:
-        path: /weka/dfive-default/rslearn-eai/datasets/crop/mozambique_lulc
-        output_layer: prediction_v0
-        selector: ["crop_type_classification"]
-        merger:
-          class_path: rslearn.train.prediction_writer.RasterMerger
-          init_args:
-            padding: 2
+    # - class_path: rslearn.train.prediction_writer.RslearnWriter
+    #   init_args:
+    #     path: /weka/dfive-default/rslearn-eai/datasets/crop/mozambique_lulc
+    #     output_layer: prediction_v0
+    #     selector: ["crop_type_classification"]
+    #     merger:
+    #       class_path: rslearn.train.prediction_writer.RasterMerger
+    #       init_args:
+    #         padding: 2
 rslp_project: 2025_09_18_mozambique_lulc
 rslp_experiment: mozambique_lulc_helios_base_S1_S2_ts_ws4_ps1_gaza
