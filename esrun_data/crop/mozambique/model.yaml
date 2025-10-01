@@ -18,11 +18,11 @@ model:
                 patch_size: 1
         decoders:
           crop_type_classification:
-            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            - class_path: rslp.crop.kenya_nandi.train.SegmentationPoolingDecoder
               init_args:
                 in_channels: 768
                 out_channels: 7
-            - class_path: rslearn.train.tasks.classification.ClassificationHead
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     plateau: true
     plateau_factor: 0.2
@@ -41,6 +41,14 @@ data:
         passthrough: true
         dtype: FLOAT32
         load_all_item_groups: true
+        load_all_layers: true\
+      sentinel1:
+        data_type: "raster"
+        layers: ["sentinel1_descending"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
         load_all_layers: true
       label:
         data_type: "raster"
@@ -52,196 +60,142 @@ data:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
         tasks:
-          class:
+          crop_type_classification:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 11
-              zero_is_invalid: true
+              num_classes: 7
+              zero_is_invalid: false
               metric_kwargs:
                 average: "micro"
               other_metrics:
-                coffee_precision:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassPrecision
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 1
-                coffee_recall:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassRecall
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 1
-                trees_precision:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassPrecision
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 2
-                trees_recall:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassRecall
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 2
-                grassland_precision:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassPrecision
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 3
-                grassland_recall:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassRecall
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 3
-                maize_precision:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassPrecision
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 4
-                maize_recall:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassRecall
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 4
-                sugarcane_precision:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassPrecision
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 5
-                sugarcane_recall:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassRecall
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 5
-                tea_precision:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassPrecision
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 6
-                tea_recall:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassRecall
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 6
-                vegetables_precision:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassPrecision
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 7
-                vegetables_recall:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassRecall
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 7
-                legumes_precision:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassPrecision
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 8
-                legumes_recall:
-                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
-                  init_args:
-                    metric:
-                      class_path: torchmetrics.classification.MulticlassRecall
-                      init_args:
-                        num_classes: 11
-                        average: null
-                    class_idx: 8
                 water_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 11
+                        num_classes: 7
                         average: null
-                    class_idx: 9
+                    class_idx: 0
                 water_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 11
+                        num_classes: 7
                         average: null
-                    class_idx: 9
-                builtup_precision:
+                    class_idx: 0
+                bareground_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 11
+                        num_classes: 7
                         average: null
-                    class_idx: 10
-                builtup_recall:
+                    class_idx: 1
+                bareground_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 11
+                        num_classes: 7
                         average: null
-                    class_idx: 10
+                    class_idx: 1
+                rangeland_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 2
+                rangeland_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 2
+                floodedvegetation_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 3
+                floodedvegetation_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 3
+                trees_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 4
+                trees_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 4
+                cropland_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 5
+                cropland_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 5
+                buildings_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 6
+                buildings_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 6
         input_mapping:
-          class:
+          crop_type_classification:
             label: "targets"
     batch_size: 32
     num_workers: ${NUM_WORKERS}
