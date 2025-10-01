@@ -208,7 +208,7 @@ data:
           init_args:
             size: 4
             mode: "center"
-            image_selectors: ["sentinel2_l2a", "sentinel1", "label_raster"]
+            image_selectors: ["sentinel2_l2a", "sentinel1", "label"]
     train_config:
       groups: ["gaza"]
       tags:
