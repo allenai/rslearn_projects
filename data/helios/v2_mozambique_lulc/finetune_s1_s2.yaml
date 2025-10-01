@@ -56,7 +56,7 @@ data:
       init_args:
         tasks:
           crop_type_classification:
-            class_path: rslearn.train.tasks.classification.SegmentationTask
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
               num_classes: 7
               zero_is_invalid: false
