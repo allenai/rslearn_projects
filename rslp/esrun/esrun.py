@@ -85,9 +85,10 @@ def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
     partitions = runner.partition()
     logger.info(f"Got {len(partitions)} partitions")
 
+    logger.info("Building dataset across partitions")
+    runner.build_dataset(partitions)
+
     for partition_id in partitions:
-        logger.info(f"Building dataset for partition {partition_id}")
-        runner.build_dataset(partition_id)
         logger.info(f"Running inference for partition {partition_id}")
         runner.run_inference(partition_id)
         logger.info(f"Postprocessing for partition {partition_id}")
@@ -126,7 +127,8 @@ def one_stage(
         checkpoint_path: see esrun.
         stage: which stage to run.
         partition_id: the partition to run the stage for. If not set, we run the stage
-            for all partitions, except COMBINE, which happens across partitions.
+            for all partitions, except BUILD_DATASET and COMBINE, which happens across
+            partitions.
     """
     if stage == EsrunStage.COMBINE and partition_id is not None:
         raise ValueError("partition_id cannot be set for COMBINE stage")
@@ -142,15 +144,15 @@ def one_stage(
     )
     partitions = runner.partition()
 
+    if stage == EsrunStage.BUILD_DATASET:
+        runner.build_dataset(partitions)
+
     if stage in [
-        EsrunStage.BUILD_DATASET,
         EsrunStage.RUN_INFERENCE,
         EsrunStage.POSTPROCESS,
     ]:
         fn = None
-        if stage == EsrunStage.BUILD_DATASET:
-            fn = runner.build_dataset
-        elif stage == EsrunStage.RUN_INFERENCE:
+        if stage == EsrunStage.RUN_INFERENCE:
             fn = runner.run_inference
         elif stage == EsrunStage.POSTPROCESS:
             runner.inference_results_data_type = inference_results_data_type
