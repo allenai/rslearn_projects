@@ -56,13 +56,139 @@ data:
       init_args:
         tasks:
           crop_type_classification:
-            class_path: rslearn.train.tasks.classification.ClassificationTask
+            class_path: rslearn.train.tasks.classification.SegmentationTask
             init_args:
-              property_name: "category"
-              classes: ["Water", "Bare Ground", "Rangeland", "Flooded Vegetation", "Trees", "Cropland", "Buildings"]
-              enable_f1_metric: true
+              num_classes: 7
+              zero_is_invalid: false
               metric_kwargs:
                 average: "micro"
+              other_metrics:
+                water_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 0
+                water_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 0
+                bareground_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 1
+                bareground_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 1
+                rangeland_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 2
+                rangeland_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 2
+                floodedvegetation_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 3
+                floodedvegetation_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 3
+                trees_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 4
+                trees_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 4
+                cropland_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 5
+                cropland_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 5
+                buildings_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 6
+                buildings_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 6
         input_mapping:
           crop_type_classification:
             label: "targets"
@@ -110,5 +236,14 @@ trainer:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: /weka/dfive-default/rslearn-eai/datasets/crop/mozambique_lulc
+        output_layer: prediction_v0
+        selector: ["crop_type_classification"]
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            padding: 2
 rslp_project: 2025_09_18_mozambique_lulc
 rslp_experiment: mozambique_lulc_helios_base_S1_S2_ts_ws4_ps1_gaza
