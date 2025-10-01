@@ -15,10 +15,10 @@ model:
           segment:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
-                in_channels: [[8, 1024]]
+                in_channels: [[16, 1024]]
                 out_channels: 20
                 conv_layers_per_resolution: 2
-                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+                num_channels: {16: 512, 8: 512, 4: 512, 2: 256, 1: 128}
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
 data:
   init_args:
@@ -46,4 +46,4 @@ data:
             satellite: true
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
-            image_selectors: ["s2", "landsat", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["s2", "target/segment/classes", "target/segment/valid"]
