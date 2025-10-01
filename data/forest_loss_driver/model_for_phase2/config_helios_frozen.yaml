@@ -14,6 +14,11 @@ model:
                   selector: ["encoder"]
                   forward_kwargs:
                     patch_size: 4
+              # The dataset yields an image time series of 8 images (96 channels).
+              # We split it up into the pre images (first 48 channels) and post images
+              # (second 48 channels).
+              # We end up with two feature groups, which we concatenate (by putting
+              # them in separate sub-lists under the groups setting).
               image_channels: 48
               groups: [[0], [1]]
               image_key: sentinel2_l2a

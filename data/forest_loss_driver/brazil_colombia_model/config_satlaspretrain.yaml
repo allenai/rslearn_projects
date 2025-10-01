@@ -13,6 +13,10 @@ model:
                   pretrained: true
                   input_channels: 9
                   output_layers: [1, 3, 5, 7]
+              # We process each image independently through the Satlas model.
+              # The groups setting results in the features being pooled among the pre
+              # and post images, and then the pre features are concatenated with the
+              # post features.
               image_channels: 9
               groups: [[0, 1, 2, 3], [4, 5, 6, 7]]
         decoders:
