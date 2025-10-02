@@ -14,7 +14,7 @@ model:
               # this EXTRA_FILES_PATH needs to be manually copied into the
               # GCS bucket. It is the helios checkpoint which was finetuned
               # to obtain the checkpoint being referenced in ES Run.
-              checkpoint_path: ${EXTRA_FILES_PATH}helios/step300000
+              checkpoint_path: ${EXTRA_FILES_PATH}/helios/step300000
               random_initialization: true
               selector: ["encoder"]
               forward_kwargs:
