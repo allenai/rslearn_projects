@@ -61,7 +61,7 @@ data:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
               num_classes: 7
-              zero_is_invalid: false
+              zero_is_invalid: true
               metric_kwargs:
                 average: "micro"
               other_metrics:
@@ -73,7 +73,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 0
+                    class_idx: 1
                 water_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -82,7 +82,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 0
+                    class_idx: 1
                 bareground_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -91,7 +91,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 1
+                    class_idx: 2
                 bareground_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -100,7 +100,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 1
+                    class_idx: 2
                 rangeland_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -109,7 +109,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 2
+                    class_idx: 3
                 rangeland_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -118,7 +118,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 2
+                    class_idx: 3
                 floodedvegetation_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -127,7 +127,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 3
+                    class_idx: 4
                 floodedvegetation_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -136,7 +136,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 3
+                    class_idx: 4
                 trees_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -145,7 +145,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 4
+                    class_idx: 5
                 trees_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -154,7 +154,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 4
+                    class_idx: 5
                 cropland_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -163,7 +163,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 5
+                    class_idx: 6
                 cropland_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -172,7 +172,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 5
+                    class_idx: 6
                 buildings_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -181,7 +181,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 6
+                    class_idx: 7
                 buildings_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -190,7 +190,7 @@ data:
                       init_args:
                         num_classes: 7
                         average: null
-                    class_idx: 6
+                    class_idx: 7
         input_mapping:
           crop_type_classification:
             label: "targets"
