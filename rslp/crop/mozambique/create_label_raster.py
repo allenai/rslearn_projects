@@ -28,7 +28,7 @@ from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 CLASS_NAMES = [
-    "Water",
+    "invalid" "Water",
     "Bare Ground",
     "Rangeland",
     "Flooded Vegetation",
