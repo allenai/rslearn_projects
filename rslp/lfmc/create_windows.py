@@ -8,14 +8,14 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 import shapely
 import tqdm
-from upath import UPath
-
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 from rslearn.utils.feature import Feature
 from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.vector_format import GeojsonVectorFormat
+from upath import UPath
+
 from rslp.lfmc.constants import CUTOFF_VALUE
 from rslp.utils.windows import calculate_bounds
 

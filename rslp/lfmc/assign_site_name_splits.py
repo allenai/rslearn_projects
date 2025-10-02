@@ -5,9 +5,8 @@ import multiprocessing
 import sys
 
 import tqdm
-from upath import UPath
-
 from rslearn.dataset import Dataset, Window
+from upath import UPath
 
 
 def assign_split(window: Window) -> None:
