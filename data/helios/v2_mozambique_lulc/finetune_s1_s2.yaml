@@ -60,7 +60,7 @@ data:
           crop_type_classification:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 7
+              num_classes: 8
               zero_is_invalid: true
               metric_kwargs:
                 average: "micro"
@@ -71,7 +71,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 1
                 water_recall:
@@ -80,7 +80,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 1
                 bareground_precision:
@@ -89,7 +89,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 2
                 bareground_recall:
@@ -98,7 +98,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 2
                 rangeland_precision:
@@ -107,7 +107,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 3
                 rangeland_recall:
@@ -116,7 +116,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 3
                 floodedvegetation_precision:
@@ -125,7 +125,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 4
                 floodedvegetation_recall:
@@ -134,7 +134,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 4
                 trees_precision:
@@ -143,7 +143,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 5
                 trees_recall:
@@ -152,7 +152,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 5
                 cropland_precision:
@@ -161,7 +161,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 6
                 cropland_recall:
@@ -170,7 +170,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 6
                 buildings_precision:
@@ -179,7 +179,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 7
                 buildings_recall:
@@ -188,7 +188,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 7
+                        num_classes: 8
                         average: null
                     class_idx: 7
         input_mapping:
