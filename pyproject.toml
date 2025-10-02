@@ -3,11 +3,7 @@ name = "rslearn_projects"
 version = "0.0.1"
 description = "rslearn projects at Ai2"
 authors = [
-    {name = "Favyen Bastani", email = "favyenb@allenai.org"},
-    {name = "Patrick Beukema", email = "patrickb@allenai.org"},
-    {name = "Henry Herzog", email = "henryh@allenai.org"},
-    {name = "Yawen Zhang", email = "yawenz@allenai.org"},
-    {name = "Mike Jacobi", email = "mikej@allenai.org"},
+    { name = "OlmoEarth Team" },
 ]
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,9 +17,14 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["rslp*"]
 
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements.txt"]}
-optional-dependencies = {ai2 = { file = ["ai2_requirements.txt"] }}
+[tool.setuptools.dynamic.dependencies]
+file = ["requirements.txt"]
+
+[tool.setuptools.dynamic.optional-dependencies]
+dev = { file = ["requirements-dev.txt"] }
+extra = { file = ["requirements-extra.txt"] }
+helios = { file = ["requirements-helios.txt"] }
+esrun = { file = ["requirements-esrun.txt"] }
 
 [tool.ruff]
 fix = true
