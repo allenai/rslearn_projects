@@ -16,7 +16,7 @@ model:
             - class_path: rslp.crop.kenya_nandi.train.SegmentationPoolingDecoder
               init_args:
                 in_channels: 768
-                out_channels: 7
+                out_channels: 8
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     scheduler:
