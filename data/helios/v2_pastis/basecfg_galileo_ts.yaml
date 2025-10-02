@@ -11,7 +11,7 @@ model:
           segment:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
-                in_channels: [[8, 192]]
+                in_channels: [[4, 192]]
                 out_channels: 20
                 conv_layers_per_resolution: 2
                 num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
