@@ -1,0 +1,203 @@
+{
+  "layers": {
+    "gse": {
+      "band_sets": [
+        {
+          "bands": [
+            "A00",
+            "A01",
+            "A02",
+            "A03",
+            "A04",
+            "A05",
+            "A06",
+            "A07",
+            "A08",
+            "A09",
+            "A10",
+            "A11",
+            "A12",
+            "A13",
+            "A14",
+            "A15",
+            "A16",
+            "A17",
+            "A18",
+            "A19",
+            "A20",
+            "A21",
+            "A22",
+            "A23",
+            "A24",
+            "A25",
+            "A26",
+            "A27",
+            "A28",
+            "A29",
+            "A30",
+            "A31",
+            "A32",
+            "A33",
+            "A34",
+            "A35",
+            "A36",
+            "A37",
+            "A38",
+            "A39",
+            "A40",
+            "A41",
+            "A42",
+            "A43",
+            "A44",
+            "A45",
+            "A46",
+            "A47",
+            "A48",
+            "A49",
+            "A50",
+            "A51",
+            "A52",
+            "A53",
+            "A54",
+            "A55",
+            "A56",
+            "A57",
+            "A58",
+            "A59",
+            "A60",
+            "A61",
+            "A62",
+            "A63"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "gcs_bucket_name": "rslearn-gee-ingest-bucket",
+        "index_cache_dir": "cache/gse",
+        "ingest": false,
+        "name": "rslearn.data_sources.google_earth_engine.GoogleSatelliteEmbeddings",
+        "query_config": {
+          "max_matches": 8
+        },
+        "service_account_credentials": "/etc/credentials/gee_credentials.json",
+        "service_account_name": "helios-dataset-creation"
+      },
+      "resampling_method": "nearest",
+      "type": "raster"
+    },
+    "labels": {
+      "band_sets": [
+        {
+          "bands": [
+            "fueltype",
+            "herbaceousvalue",
+            "woodyvalue"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "band_sets": [
+        {
+          "bands": [
+            "fueltype",
+            "herbaceousvalue",
+            "woodyvalue"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel1_ascending": {
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "168d",
+        "ingest": false,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel1",
+        "query": {
+          "sar:instrument_mode": {
+            "eq": "IW"
+          },
+          "sar:polarizations": {
+            "eq": [
+              "VV",
+              "VH"
+            ]
+          },
+          "sat:orbit_state": {
+            "eq": "ascending"
+          }
+        },
+        "query_config": {
+          "max_matches": 12,
+          "period_duration": "14d",
+          "space_mode": "PER_PERIOD_MOSAIC"
+        },
+        "time_offset": "-168d"
+      },
+      "type": "raster"
+    },
+    "sentinel2_l2a": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02",
+            "B03",
+            "B04",
+            "B08"
+          ],
+          "dtype": "uint16"
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B01",
+            "B09"
+          ],
+          "dtype": "uint16",
+          "zoom_offset": -2
+        }
+      ],
+      "data_source": {
+        "cache_dir": "cache/planetary_computer",
+        "duration": "168d",
+        "harmonize": true,
+        "ingest": false,
+        "max_cloud_cover": 50,
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "query_config": {
+          "max_matches": 12,
+          "period_duration": "14d",
+          "space_mode": "PER_PERIOD_MOSAIC"
+        },
+        "sort_by": "eo:cloud_cover",
+        "time_offset": "-168d"
+      },
+      "type": "raster"
+    }
+  }
+}

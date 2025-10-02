@@ -1,0 +1,191 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslp.helios.model.Helios
+            init_args:
+              checkpoint_path: ${EXTRA_FILES_PATH}/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
+              selector: ["encoder"]
+              forward_kwargs:
+                patch_size: 1
+        decoders:
+          fueltype:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: 768
+                out_channels: 4
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          herbaceousvalue:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: 768
+                out_channels: 1
+            - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
+          woodyvalue:
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+              init_args:
+                in_channels: 768
+                out_channels: 1
+            - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
+    lr: 0.00002
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
+    plateau_min_lr: 0
+    plateau_cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    inputs:
+      sentinel1_ascending:
+        data_type: "raster"
+        layers: ["sentinel1_ascending"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      fueltype_data:
+        data_type: "raster"
+        layers: ["target"]
+        bands: ["fueltype"]
+        dtype: INT32
+        is_target: true
+      herbaceousvalue_data:
+        data_type: "raster"
+        layers: ["target"]
+        bands: ["herbaceousvalue"]
+        dtype: FLOAT32
+        is_target: true
+      woodyvalue_data:
+        data_type: "raster"
+        layers: ["target"]
+        bands: ["woodyvalue"]
+        dtype: FLOAT32
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          woodyvalue:
+            class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionTask
+            init_args:
+              nodata_value: 0
+          herbaceousvalue:
+            class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionTask
+            init_args:
+              nodata_value: 0
+          fueltype:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 4
+              nodata_value: 0
+        input_mapping:
+          woodyvalue:
+            woodyvalue_data: "targets"
+          herbaceousvalue:
+            herbaceousvalue_data: "targets"
+          fueltype:
+            fueltype_data: "targets"
+    batch_size: 32
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 1
+            mode: "center"
+            image_selectors: ["sentinel1_ascending", "sentinel2_l2a"]
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+              sentinel1_ascending: ["vv", "vh"]
+    train_config:
+      groups: ["spatial_split"]
+      tags:
+        split: "train"
+    val_config:
+      groups: ["spatial_split"]
+      tags:
+        split: "val"
+    test_config:
+      groups: ["spatial_split"]
+      tags:
+        split: "val"
+    predict_config:
+      transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 4
+            mode: "center"
+            image_selectors: ["sentinel1_ascending", "sentinel2_l2a"]
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+              sentinel1_ascending: ["vv", "vh"]
+trainer:
+  max_epochs: 100
+  default_root_dir: ${TRAINER_DATA_PATH}
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      project: ${WANDB_PROJECT}
+      name: ${WANDB_NAME}
+      entity: ${WANDB_ENTITY}
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_loss
+        mode: min
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 20
+        unfreeze_lr_factor: 10
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: placeholder
+        output_layer: ${PREDICTION_OUTPUT_LAYER}
+        selector: ["fueltype"]
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            padding: 2
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: placeholder
+        output_layer: ${PREDICTION_OUTPUT_LAYER}
+        selector: ["herbaceousvalue"]
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            padding: 2
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: placeholder
+        output_layer: ${PREDICTION_OUTPUT_LAYER}
+        selector: ["woodyvalue"]
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            padding: 2
