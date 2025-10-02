@@ -9,14 +9,12 @@ model:
         encoder:
         - class_path: rslp.helios.model.Helios
           init_args:
-            checkpoint_path: /weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step300000
+            checkpoint_path: ${EXTRA_FILES_PATH}/step300000
             selector:
             - encoder
             forward_kwargs:
               patch_size: 2
-            random_initialization: false
-            embedding_size: null
-            patch_size: null
+            random_initialization: true
             autocast_dtype: bfloat16
         decoders:
           mangrove_classification:
