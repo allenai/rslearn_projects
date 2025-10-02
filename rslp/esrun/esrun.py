@@ -134,7 +134,7 @@ def one_stage(
         raise ValueError("partition_id cannot be set for COMBINE stage")
 
     # Configure esrun logging before creating the runner
-    configure_logging(log_level=logging.WARNING)
+    configure_logging(log_level=logging.INFO)
 
     runner = EsPredictRunner(
         # ESRun does not work with relative path, so make sure to convert to absolute here.

@@ -455,8 +455,8 @@ trainer:
   reload_dataloaders_every_n_epochs: 0
   default_root_dir: null
   model_registry: null
-rslp_project: ${WANDB_PROJECT}
-rslp_experiment: ${WANDB_NAME}
+# rslp_project: ${WANDB_PROJECT}
+# rslp_experiment: ${WANDB_NAME}
 # ${EXTRA_FILES_PATH}: Path to the extra pretrained model/data preprocessing config files
 # ${TRAINER_DATA_PATH}: Path to the rslearn trainer data directory. For intermediate checkpoints, trainer state, etc.
 # ${WANDB_ENTITY}: wandb entity for the trainer to log metrics to
