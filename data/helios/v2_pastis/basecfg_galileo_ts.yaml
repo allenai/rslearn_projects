@@ -101,7 +101,7 @@ data:
               sentinel2_9: []
               sentinel2_10: []
               sentinel2_11: []
-            output_selector: sentinel2
+            output_selector: s2
     train_config:
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -119,7 +119,7 @@ data:
               sentinel2_9: []
               sentinel2_10: []
               sentinel2_11: []
-            output_selector: sentinel2
+            output_selector: s2
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
-            image_selectors: ["sentinel2", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["s2", "target/segment/classes", "target/segment/valid"]
