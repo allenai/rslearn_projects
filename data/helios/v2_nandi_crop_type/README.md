@@ -1,7 +1,7 @@
 20250729
 --------
 
-The updated `config.yaml` is trained to perform segmentation.
+The updated `finetune_s2_20250815.yaml` and `finetune_s1_s2_20250815.yaml` is trained to perform segmentation.
 
 The dataset consists of 32x32 windows centered at sparse point crop type labels.
 
@@ -18,6 +18,3 @@ We tried to train the model to input random 16x16 or 4x4 patches containing the 
 pixel (with the other pixels marked invalid), hoping that it would have the same
 performance but be able to segment more than one pixel on each forward pass. However,
 this approach provided lower performance (81% instead of 85% accuracy).
-
-
-See configs: `finetune_s2_20250815.yaml` and `finetune_s1_s2_20250815.yaml`
