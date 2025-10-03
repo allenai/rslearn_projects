@@ -40,8 +40,10 @@ def process_csv(csv_path: UPath) -> pd.DataFrame:
 
     return df
 
+
 # feature_id,task_name,tag_name,lon,lat,utm_easting,utm_northing,utm_epsg,utm_zone
 # 94a1099a-78f5-4701-9963-1a8948943bd7,Nandi County round 2,Trees,35.01508785066754,0.1054712094358493,724275.0,11665.0,EPSG:32636,36
+
 
 def create_window(
     csv_row: pd.Series, ds_path: UPath, group_name: str, window_size: int

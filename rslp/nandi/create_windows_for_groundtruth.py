@@ -54,7 +54,7 @@ def process_csv(
     print(df["unique_id"].nunique())  # 812 in total
 
     # If num_pixels is 0, keep all pixels
-    if num_pixels > 0: 
+    if num_pixels > 0:
         df_sampled = (
             df.groupby("unique_id")
             .apply(
