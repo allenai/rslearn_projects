@@ -53,16 +53,17 @@ def process_csv(
     print(df.groupby("Category").size())
     print(df["unique_id"].nunique())  # 812 in total
 
-    # Sample per polygon
-    df_sampled = (
-        df.groupby("unique_id")
-        .apply(
-            lambda x: x.sample(num_pixels, random_state=42)
-            if len(x) > num_pixels
-            else x
+    # If num_pixels is 0, keep all pixels
+    if num_pixels > 0:
+        df_sampled = (
+            df.groupby("unique_id")
+            .apply(
+                lambda x: x.sample(num_pixels, random_state=42)
+                if len(x) > num_pixels
+                else x
+            )
+            .reset_index(drop=True)
         )
-        .reset_index(drop=True)
-    )
 
     if postprocess_categories:
         # Post-process on category.
@@ -72,7 +73,9 @@ def process_csv(
         df_sampled.loc[df_sampled["Category"] == "Nativetrees/forest", "Category"] = (
             "Trees"
         )
-        df_sampled = df_sampled[~df_sampled["Category"].isin(["Vegetables", "Legumes"])]
+        # In IFPRI's previous experiments, they dropped minor classes like `Vegetables`
+        # Better to include them to cover more categories at inference
+        # df_sampled = df_sampled[~df_sampled["Category"].isin(["Vegetables", "Legumes"])]
 
     print(df_sampled.shape)
     print(df_sampled.groupby("Category").size())
@@ -247,7 +250,7 @@ if __name__ == "__main__":
         type=int,
         required=False,
         help="Number of pixels to sample from each polygon",
-        default=10,
+        default=0,
     )
     parser.add_argument(
         "--split_by_polygon",
