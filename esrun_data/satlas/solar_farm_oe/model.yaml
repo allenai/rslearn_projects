@@ -1,35 +1,7 @@
-trainer:
-  callbacks:
-  - class_path: lightning.pytorch.callbacks.LearningRateMonitor
-    init_args:
-      logging_interval: epoch
-  - class_path: lightning.pytorch.callbacks.ModelCheckpoint
-    init_args:
-      monitor: val_class/accuracy
-      save_last: true
-      save_top_k: 1
-      mode: max
-  - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
-    init_args:
-      module_selector:
-      - model
-      - encoder
-      - 0
-      unfreeze_at_epoch: 20
-      unfreeze_lr_factor: 10.0
-  - class_path: rslearn.train.prediction_writer.RslearnWriter
-    init_args:
-      path: placeholder
-      output_layer: ${PREDICTION_OUTPUT_LAYER}
-      selector: ["class"]
-  max_epochs: 500
-  default_root_dir: ${TRAINER_DATA_PATH}
-  logger:
-    class_path: lightning.pytorch.loggers.WandbLogger
-    init_args:
-      project: ${WANDB_PROJECT}
-      name: ${WANDB_NAME}
-      entity: ${WANDB_ENTITY}
+# FIXME ${TRAINER_DATA_PATH}
+# FIXME ${WANDB_PROJECT}: wandb project for the trainer to log metrics to
+# FIXME ${WANDB_NAME}: wandb name for the trainer to log metrics to
+# FIXME ${WANDB_ENTITY}: wandb entity for the trainer to log metrics to
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -39,7 +11,9 @@ model:
         encoder:
         - class_path: rslp.helios.model.Helios
           init_args:
-            checkpoint_path: ${EXTRA_FILES_PATH}/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
+            checkpoint_path: gs://earth-system-run-dev/models/02ce432e-98e7-46d7-8a67-a1d9b346e746/stage_0/helios/step300000
+#            checkpoint_path: ${EXTRA_FILES_PATH}/helios/step300000
+            random_initialization: true
             selector:
             - encoder
             forward_kwargs:
@@ -227,9 +201,9 @@ data:
         input_mapping:
           class:
             targets: targets
-    path: ${DATASET_PATH}
+    path: /weka/dfive-default/rslearn-eai/datasets/solar_farm/dataset_v1/20250605/
     batch_size: 8
-    num_workers: ${NUM_WORKERS}
+    num_workers: 16
     default_config:
       transforms:
       - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -343,5 +317,28 @@ data:
             - B12
             - B01
             - B09
-# rslp_project: 2025_06_06_helios_finetuning
-# rslp_experiment: v2_satlas_solar_farm_128_ts_helios_per_mod_patchdisc_contrastive_fix
+trainer:
+  callbacks:
+  - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    init_args:
+      logging_interval: epoch
+  - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    init_args:
+      monitor: val_class/accuracy
+      save_last: true
+      save_top_k: 1
+      mode: max
+  - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+    init_args:
+      module_selector:
+      - model
+      - encoder
+      - 0
+      unfreeze_at_epoch: 20
+      unfreeze_lr_factor: 10.0
+  - class_path: rslearn.train.prediction_writer.RslearnWriter
+    init_args:
+      path: ${DATASET_PATH}
+      output_layer: ${PREDICTION_OUTPUT_LAYER}
+      selector: ["class"]
+  max_epochs: 500

@@ -1,3 +1,6 @@
+inference_results_config:
+  data_type: raster
+
 partition_strategies:
   partition_request_geometry:
     class_path: esrun.runner.tools.partitioners.grid_partitioner.GridPartitioner
@@ -32,6 +35,3 @@ postprocessing_strategies:
 
   process_window:
     class_path: esrun.runner.tools.postprocessors.noop_raster.NoopRaster
-
-inference_results_config:
-  data_type: RASTER
