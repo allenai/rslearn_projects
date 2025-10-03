@@ -10,7 +10,6 @@ project_data
 rslp/crop_type_mapping/csv/
 rslp/crop_type_mapping/geoparquets/
 rslp/mangrove/csv/
-esrun_data/crop/nandi/*.ckpt
 log*.txt
 
 # for local finetuning runs
@@ -21,6 +20,4 @@ docker_build
 
 # misc from one off projects
 one_off_projects/2025_07_joint_finetune/data
-
-repos/
 
