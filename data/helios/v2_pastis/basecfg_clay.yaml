@@ -42,7 +42,6 @@ data:
             selections:
               sentinel-2-l2a: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             output_selector: sentinel-2-l2a
-        - class_path: rslearn.models.clay.clay.ClayNormalize
     train_config:
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
@@ -50,7 +49,6 @@ data:
             selections:
               sentinel-2-l2a: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             output_selector: sentinel-2-l2a
-        - class_path: rslearn.models.clay.clay.ClayNormalize
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["sentinel-2-l2a", "target/segment/classes", "target/segment/valid"]
