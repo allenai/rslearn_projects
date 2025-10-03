@@ -1,0 +1,39 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              32.92,
+              -25.14
+            ],
+            [
+              32.92,
+              -24.28
+            ],
+            [
+              34.06,
+              -24.28
+            ],
+            [
+              34.06,
+              -25.14
+            ],
+            [
+              32.92,
+              -25.14
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "es_end_time": "2023-03-31T00:00:00+00:00",
+        "es_start_time": "2023-03-01T00:00:00+00:00"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

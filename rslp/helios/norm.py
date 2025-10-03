@@ -1,15 +1,22 @@
 """Normalization transforms."""
 
 import json
+from importlib.resources import files
 from typing import Any
 
-from helios.data.normalize import load_computed_config
+# from helios.data.normalize import load_computed_config
 from helios.data.utils import convert_to_db
 from rslearn.train.transforms.transform import Transform
 
 from rslp.log_utils import get_logger
 
 logger = get_logger(__file__)
+
+
+def load_computed_config() -> dict[str, dict]:
+    """Tmp."""
+    with (files("helios.data.norm_configs") / "computed.json").open() as f:
+        return json.load(f)
 
 
 class HeliosNormalize(Transform):
