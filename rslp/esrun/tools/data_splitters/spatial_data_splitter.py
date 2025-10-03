@@ -1,4 +1,4 @@
-"""Spatial data splitter for LFMC dataset."""
+"""Splitter for assigning splits based on spatial grid cell location."""
 
 import hashlib
 from typing import cast
