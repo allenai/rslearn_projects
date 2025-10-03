@@ -38,31 +38,31 @@ LFMC_VALUE_HERBACEOUS_COLUMN = "herbaceousvalue"
 LFMC_VALUE_WOODY_COLUMN = "woodyvalue"
 FUEL_TYPE_COLUMN = "fueltype"
 
-HERBACEOUS_FUNCTIONAL_TYPES = ['forb', 'grass']
-WOODY_FUNCTIONAL_TYPES = ['large shrub', 'shrub', 'small tree', 'subshrub', 'tree']
+HERBACEOUS_FUNCTIONAL_TYPES = ["forb", "grass"]
+WOODY_FUNCTIONAL_TYPES = ["large shrub", "shrub", "small tree", "subshrub", "tree"]
 
 INPUT_EXCEL_URL = "https://springernature.figshare.com/ndownloader/files/45049786"
 
 
 def parse_bounding_box(bbox_str: str) -> tuple[float, float, float, float]:
     """Parse bounding box string into coordinates.
-    
+
     Args:
         bbox_str: Bounding box in format "min_lon,min_lat,max_lon,max_lat"
-        
+
     Returns:
         Tuple of (min_lon, min_lat, max_lon, max_lat)
-        
+
     Raises:
         ValueError: If the bounding box format is invalid
     """
     try:
-        coords = [float(x.strip()) for x in bbox_str.split(',')]
+        coords = [float(x.strip()) for x in bbox_str.split(",")]
         if len(coords) != 4:
             raise ValueError("Bounding box must have exactly 4 coordinates")
-        
+
         min_lon, min_lat, max_lon, max_lat = coords
-        
+
         # Validate coordinate ranges
         if not (-180 <= min_lon <= 180) or not (-180 <= max_lon <= 180):
             raise ValueError("Longitude must be between -180 and 180")
@@ -72,7 +72,7 @@ def parse_bounding_box(bbox_str: str) -> tuple[float, float, float, float]:
             raise ValueError("min_lon must be less than max_lon")
         if min_lat >= max_lat:
             raise ValueError("min_lat must be less than max_lat")
-            
+
         return min_lon, min_lat, max_lon, max_lat
     except ValueError as e:
         if "could not convert string to float" in str(e):
@@ -131,7 +131,9 @@ def create_csv(
 
     # Calculate 99.9% percentile and clip LFMC values
     percentile_99_9 = round(df[Column.LFMC_VALUE].quantile(0.999))
-    print(f"99.9% percentile of LFMC values: {percentile_99_9:.2f} (rounded to: {percentile_99_9})")
+    print(
+        f"99.9% percentile of LFMC values: {percentile_99_9:.2f} (rounded to: {percentile_99_9})"
+    )
     df[Column.LFMC_VALUE] = df[Column.LFMC_VALUE].clip(lower=0, upper=percentile_99_9)
     print(f"Clipped LFMC values to range [0, {percentile_99_9}]")
 
@@ -149,12 +151,14 @@ def create_csv(
     if bounding_box is not None:
         min_lon, min_lat, max_lon, max_lat = bounding_box
         df = df[
-            (df[Column.LONGITUDE] >= min_lon) &
-            (df[Column.LONGITUDE] <= max_lon) &
-            (df[Column.LATITUDE] >= min_lat) &
-            (df[Column.LATITUDE] <= max_lat)
+            (df[Column.LONGITUDE] >= min_lon)
+            & (df[Column.LONGITUDE] <= max_lon)
+            & (df[Column.LATITUDE] >= min_lat)
+            & (df[Column.LATITUDE] <= max_lat)
         ]
-        print(f"After filtering by bounding box [{min_lon}, {min_lat}, {max_lon}, {max_lat}]: {len(df)} samples")
+        print(
+            f"After filtering by bounding box [{min_lon}, {min_lat}, {max_lon}, {max_lat}]: {len(df)} samples"
+        )
 
     # Filter out rows with NaN LFMC values
     initial_count = len(df)
@@ -166,51 +170,73 @@ def create_csv(
 
     # Show unique species functional types before grouping
     unique_functional_types = df[Column.SPECIES_FUNCTIONAL_TYPE].unique()
-    print(f"Unique species functional types ({len(unique_functional_types)}): {list(unique_functional_types)}")
+    print(
+        f"Unique species functional types ({len(unique_functional_types)}): {list(unique_functional_types)}"
+    )
 
     # Add herbaceous and woody boolean columns (case insensitive)
-    df['herbaceous'] = df[Column.SPECIES_FUNCTIONAL_TYPE].str.lower().isin(['forb', 'grass'])
-    df['woody'] = df[Column.SPECIES_FUNCTIONAL_TYPE].str.lower().isin(['shrub', 'tree'])
+    df["herbaceous"] = (
+        df[Column.SPECIES_FUNCTIONAL_TYPE].str.lower().isin(["forb", "grass"])
+    )
+    df["woody"] = df[Column.SPECIES_FUNCTIONAL_TYPE].str.lower().isin(["shrub", "tree"])
 
     # Group by location and date, then calculate separate averages for herbaceous and woody
     def calculate_lfmc_averages(grouped_df: pd.DataFrame) -> pd.Series:
-        herbaceous_samples = grouped_df[grouped_df['herbaceous']]
-        woody_samples = grouped_df[grouped_df['woody']]
-        
+        herbaceous_samples = grouped_df[grouped_df["herbaceous"]]
+        woody_samples = grouped_df[grouped_df["woody"]]
+
         result = {
-            LFMC_VALUE_HERBACEOUS_COLUMN: herbaceous_samples[Column.LFMC_VALUE].mean() if len(herbaceous_samples) > 0 else pd.NA,
-            LFMC_VALUE_WOODY_COLUMN: woody_samples[Column.LFMC_VALUE].mean() if len(woody_samples) > 0 else pd.NA,
+            LFMC_VALUE_HERBACEOUS_COLUMN: herbaceous_samples[Column.LFMC_VALUE].mean()
+            if len(herbaceous_samples) > 0
+            else pd.NA,
+            LFMC_VALUE_WOODY_COLUMN: woody_samples[Column.LFMC_VALUE].mean()
+            if len(woody_samples) > 0
+            else pd.NA,
             Column.SITE_NAME: grouped_df[Column.SITE_NAME].iloc[0],
             Column.STATE_REGION: grouped_df[Column.STATE_REGION].iloc[0],
             Column.COUNTRY: grouped_df[Column.COUNTRY].iloc[0],
         }
-        
+
         # Determine class based on what types of samples are present
         has_herbaceous = len(herbaceous_samples) > 0
         has_woody = len(woody_samples) > 0
-        
+
         if has_herbaceous and has_woody:
-            result[FUEL_TYPE_COLUMN] = 'herbaceous_woody'
+            result[FUEL_TYPE_COLUMN] = "herbaceous_woody"
         elif has_herbaceous:
-            result[FUEL_TYPE_COLUMN] = 'herbaceous'
+            result[FUEL_TYPE_COLUMN] = "herbaceous"
         elif has_woody:
-            result[FUEL_TYPE_COLUMN] = 'woody'
+            result[FUEL_TYPE_COLUMN] = "woody"
         else:
-            result[FUEL_TYPE_COLUMN] = 'other'
-            
+            result[FUEL_TYPE_COLUMN] = "other"
+
         return pd.Series(result)
 
-    grouped_df = df.groupby([
-        Column.LATITUDE,
-        Column.LONGITUDE,
-        Column.SAMPLING_DATE,
-    ]).apply(calculate_lfmc_averages, include_groups=False).reset_index()
-    
+    grouped_df = (
+        df.groupby(
+            [
+                Column.LATITUDE,
+                Column.LONGITUDE,
+                Column.SAMPLING_DATE,
+            ]
+        )
+        .apply(calculate_lfmc_averages, include_groups=False)
+        .reset_index()
+    )
+
     # Create unique task names by combining site name with count suffix
     site_counts = grouped_df.groupby(Column.SITE_NAME).cumcount() + 1
-    grouped_df[TASK_NAME_COLUMN] = grouped_df[Column.SITE_NAME].astype(str) + "_" + site_counts.astype(str).str.zfill(5)
-    grouped_df[START_TIME_COLUMN] = pd.to_datetime(grouped_df[Column.SAMPLING_DATE], errors='raise')
-    grouped_df[END_TIME_COLUMN] = pd.to_datetime(grouped_df[Column.SAMPLING_DATE], errors='raise')
+    grouped_df[TASK_NAME_COLUMN] = (
+        grouped_df[Column.SITE_NAME].astype(str)
+        + "_"
+        + site_counts.astype(str).str.zfill(5)
+    )
+    grouped_df[START_TIME_COLUMN] = pd.to_datetime(
+        grouped_df[Column.SAMPLING_DATE], errors="raise"
+    )
+    grouped_df[END_TIME_COLUMN] = pd.to_datetime(
+        grouped_df[Column.SAMPLING_DATE], errors="raise"
+    )
 
     print(f"Number of tasks: {grouped_df[TASK_NAME_COLUMN].nunique()}")
     print(f"Number of samples: {len(grouped_df)}")
@@ -229,14 +255,18 @@ def create_csv(
     print("\nLFMC statistics:")
     herbaceous_valid = grouped_df[LFMC_VALUE_HERBACEOUS_COLUMN].notna().sum()
     woody_valid = grouped_df[LFMC_VALUE_WOODY_COLUMN].notna().sum()
-    print(f"  Locations with herbaceous LFMC: {herbaceous_valid} ({(herbaceous_valid / total_samples) * 100:.1f}%)")
-    print(f"  Locations with woody LFMC: {woody_valid} ({(woody_valid / total_samples) * 100:.1f}%)")
-    
+    print(
+        f"  Locations with herbaceous LFMC: {herbaceous_valid} ({(herbaceous_valid / total_samples) * 100:.1f}%)"
+    )
+    print(
+        f"  Locations with woody LFMC: {woody_valid} ({(woody_valid / total_samples) * 100:.1f}%)"
+    )
+
     if herbaceous_valid > 0:
         herbaceous_mean = grouped_df[LFMC_VALUE_HERBACEOUS_COLUMN].mean()
         herbaceous_std = grouped_df[LFMC_VALUE_HERBACEOUS_COLUMN].std()
         print(f"  Herbaceous LFMC mean: {herbaceous_mean:.2f} ± {herbaceous_std:.2f}")
-    
+
     if woody_valid > 0:
         woody_mean = grouped_df[LFMC_VALUE_WOODY_COLUMN].mean()
         woody_std = grouped_df[LFMC_VALUE_WOODY_COLUMN].std()
@@ -291,7 +321,14 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         excel_path = Path(temp_dir) / "lfmc.xlsx"
         download_excel(excel_path)
-        create_csv(excel_path, csv_path, args.start_date, country_filter, state_region_filter, bounding_box)
+        create_csv(
+            excel_path,
+            csv_path,
+            args.start_date,
+            country_filter,
+            state_region_filter,
+            bounding_box,
+        )
 
 
 if __name__ == "__main__":
