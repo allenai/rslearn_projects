@@ -15,27 +15,27 @@ model:
                   output_layers: [1, 3, 5, 7]
               image_channels: 9
         decoders:
-          woody:
-            - class_path: rslearn.models.unet.UNetDecoder
-              init_args:
-                in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
-                out_channels: 1
-                conv_layers_per_resolution: 2
-            - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
-          herbaceous:
-            - class_path: rslearn.models.unet.UNetDecoder
-              init_args:
-                in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
-                out_channels: 1
-                conv_layers_per_resolution: 2
-            - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
-          fuel_type:
+          fueltype:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
                 in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
                 out_channels: 2
                 conv_layers_per_resolution: 2
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          herbaceousvalue:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
+                out_channels: 1
+                conv_layers_per_resolution: 2
+            - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
+          woodyvalue:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
+                out_channels: 1
+                conv_layers_per_resolution: 2
+            - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
     lr: 0.00002
     plateau: true
     plateau_factor: 0.2
@@ -46,12 +46,21 @@ data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
     inputs:
-      image:
+      sentinel1:
         data_type: "raster"
-        layers: ["sentinel2", "sentinel2.1", "sentinel2.2", "sentinel2.3", "sentinel2.4", "sentinel2.5", "sentinel2.6", "sentinel2.7", "sentinel2.8", "sentinel2.9", "sentinel2.10", "sentinel2.11"]
-        bands: ["B04", "B03", "B02", "B05", "B06", "B07", "B08", "B11", "B12"]
+        layers: ["sentinel1_ascending"]
+        bands: ["vv", "vh"]
         passthrough: true
         dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
         load_all_layers: true
       fueltype_data:
         data_type: "raster"
@@ -95,102 +104,48 @@ data:
             herbaceousvalue_data: "targets"
           fueltype:
             fueltype_data: "targets"
-    batch_size: 8
+    batch_size: 32
     num_workers: 32
     default_config:
       transforms:
-        - class_path: rslearn.train.transforms.normalize.Normalize
+        - class_path: rslearn.train.transforms.pad.Pad
           init_args:
-            mean: 0
-            std: 3000
-            valid_range: [0, 1]
-            bands: [0, 1, 2]
-            selectors: ["image1", "image2", "image3", "image4"]
-        - class_path: rslearn.train.transforms.normalize.Normalize
+            size: 1
+            mode: "center"
+            image_selectors: ["sentinel1_ascending", "sentinel2_l2a"]
+        - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            mean: 0
-            std: 8160
-            valid_range: [0, 1]
-            bands: [3, 4, 5, 6, 7, 8]
-            selectors: ["image1", "image2", "image3", "image4"]
-        - class_path: rslearn.train.transforms.concatenate.Concatenate
-          init_args:
-            selections:
-              image1: []
-              image2: []
-              image3: []
-              image4: []
-            output_selector: image
-        - class_path: rslp.transforms.mask.Mask
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+              sentinel1: ["vv", "vh"]
     train_config:
-      patch_size: 32
-      transforms:
-        - class_path: rslearn.train.transforms.normalize.Normalize
-          init_args:
-            mean: 0
-            std: 3000
-            valid_range: [0, 1]
-            bands: [0, 1, 2]
-            selectors: ["image1", "image2", "image3", "image4"]
-        - class_path: rslearn.train.transforms.normalize.Normalize
-          init_args:
-            mean: 0
-            std: 8160
-            valid_range: [0, 1]
-            bands: [3, 4, 5, 6, 7, 8]
-            selectors: ["image1", "image2", "image3", "image4"]
-        - class_path: rslearn.train.transforms.concatenate.Concatenate
-          init_args:
-            selections:
-              image1: []
-              image2: []
-              image3: []
-              image4: []
-            output_selector: image
-        - class_path: rslp.transforms.mask.Mask
-        - class_path: rslearn.train.transforms.flip.Flip
-          init_args:
-            image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
+      groups: ["post_spatial_split"]
       tags:
-        split: train
+        split: "train"
     val_config:
-      patch_size: 32
+      groups: ["post_spatial_split"]
       tags:
-        split: val
+        split: "val"
     test_config:
-      patch_size: 32
+      groups: ["post_spatial_split"]
       tags:
-        split: val
+        split: "val"
     predict_config:
-      groups: ["predict"]
-      load_all_patches: true
-      skip_targets: true
-      patch_size: 512
       transforms:
-        - class_path: rslearn.train.transforms.normalize.Normalize
+        - class_path: rslearn.train.transforms.pad.Pad
           init_args:
-            mean: 0
-            std: 3000
-            valid_range: [0, 1]
-            bands: [0, 1, 2]
-            selectors: ["image1", "image2", "image3", "image4"]
-        - class_path: rslearn.train.transforms.normalize.Normalize
+            size: 4
+            mode: "center"
+            image_selectors: ["sentinel1_ascending", "sentinel2_l2a"]
+        - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            mean: 0
-            std: 8160
-            valid_range: [0, 1]
-            bands: [3, 4, 5, 6, 7, 8]
-            selectors: ["image1", "image2", "image3", "image4"]
-        - class_path: rslearn.train.transforms.concatenate.Concatenate
-          init_args:
-            selections:
-              image1: []
-              image2: []
-              image3: []
-              image4: []
-            output_selector: image
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+              sentinel1: ["vv", "vh"]
 trainer:
-  max_epochs: 500
+  max_epochs: 100
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -199,11 +154,21 @@ trainer:
       init_args:
         save_top_k: 1
         save_last: true
-        monitor: val_segment/accuracy
-        mode: max
+        monitor: val_loss
+        mode: min
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
-        module_selector: ["model", "encoder", 0, "encoder", "model"]
-        unfreeze_at_epoch: 2
-rslp_project: helios_finetuning
-rslp_experiment: placeholder
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 20
+        unfreeze_lr_factor: 10
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250616/
+        output_layer: prediction_v4
+        selector: ["crop_type_classification"]
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            padding: 2
+rslp_project: 2025_10_02_lfmc
+rslp_experiment: 2025_10_02_lfmc
