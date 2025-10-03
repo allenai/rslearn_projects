@@ -1,0 +1,2 @@
+# Ignore large GeoJSON data files
+*.geojson
