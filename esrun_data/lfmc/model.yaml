@@ -5,36 +5,30 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+          - class_path: rslp.helios.model.Helios
             init_args:
-              encoder:
-                class_path: rslearn.models.swin.Swin
-                init_args:
-                  pretrained: true
-                  input_channels: 9
-                  output_layers: [1, 3, 5, 7]
-              image_channels: 9
+              checkpoint_path: /weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step300000
+              selector: ["encoder"]
+              forward_kwargs:
+                patch_size: 1
         decoders:
           fueltype:
-            - class_path: rslearn.models.unet.UNetDecoder
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
-                out_channels: 2
-                conv_layers_per_resolution: 2
+                in_channels: 768
+                out_channels: 4
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
           herbaceousvalue:
-            - class_path: rslearn.models.unet.UNetDecoder
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
+                in_channels: 768
                 out_channels: 1
-                conv_layers_per_resolution: 2
             - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
           woodyvalue:
-            - class_path: rslearn.models.unet.UNetDecoder
+            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: [[4, 128], [8, 256], [16, 512], [32, 1024]]
+                in_channels: 768
                 out_channels: 1
-                conv_layers_per_resolution: 2
             - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
     lr: 0.00002
     plateau: true
@@ -170,5 +164,3 @@ trainer:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
             padding: 2
-rslp_project: 2025_10_02_lfmc
-rslp_experiment: 2025_10_02_lfmc
