@@ -57,60 +57,45 @@ rslearn dataset add_windows --root $DATASET_PATH --group nandi_county --utm --re
 
 **Run prediction:**
 ```bash
-python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s1_s2_20250815.yaml --cluster+=ai2/saturn-cirrascale --mode predict --gpus 4 --experiment_id nandi_crop_type_segment_helios_base_S2_S1_ts_ws4_ps1_bs8_add_annotations_2 --rslp_project 2025_08_15_nandi_crop_type
+python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/saturn-cirrascale --mode predict --gpus 4 --experiment_id nandi_crop_type_segment_helios_base_S2_S1_ts_ws4_ps1_bs8_add_annotations_2 --rslp_project 2025_08_15_nandi_crop_type
 ```
 
 ---
 
 ## Changelog
 
+### 2025-07-29
+
+As noted in `data/helios/v2_nandi_crop_type/README.md`, for inference we switched to a segmentation task, converting vector labels into raster labels (only the center pixel is valid).
+```bash
+python rslp/nandi/create_label_raster.py --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250815
+```
+
 ### 2025-08-15
 
-As noted in `data/helios/v2_nandi_crop_type/README.md`, for inference purpose, we changed to segmentation task, where the vector labels need to be converted to raster labels (only the center point is valid).
-```bash
-python raslp
-
-- Added back **Vegetables** and **Legumes**.  
-- Use all points within polygons (19K total).  
-- Category stats:
-
-| Category   | Count |
-|------------|------:|
-| Sugarcane  |  3870 |
-| Maize      |  3126 |
-| Tea        |  2906 |
-| Grassland  |  2724 |
-| Trees      |  2586 |
-| Coffee     |  2533 |
-| Legumes    |   977 |
-| Vegetables |   325 |
-
-- New finetune run:  
-```bash
-python -m rslp.main helios launch_finetune   --image_name favyen/rslphelios10   --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml   --cluster+=ai2/titan-cirrascale   --rslp_project 2025_08_15_nandi_crop_type   --experiment_id nandi_crop_type_segment_helios_base_S2_ts_ws4_ps2_bs8
-```
+Performance on key crops like Coffee was still low. To improve this, we used all pixels per polygon (instead of just 10), which added ~1K more Coffee samples and improved Coffee precision. The sampled dataset is `20250625` (8K windows) and the full dataset is `20250815` (21K windows). We also kept minor classes (Vegetables and Legumes) for complete category coverage at inference.
 
 ---
 
 ### 2025-09-10
-- Added **extra annotations** (Trees).  
-- Script:
+
+To address misclassification of Trees → Coffee, we added extra Tree polygons via Studio (mainly from South Nandi Forests: https://earth-system-studio-dev.allen.ai/tasks/73daa5e4-08b4-4500-aac0-b9e43a9dea8a/5589b78d-cbeb-4be1-a264-7ed69a89d003#9.6/0.2315/35.0802) and converted them to 10 m points. We sampled 2K more Tree points, created windows, and used them for another finetuning round. The config `finetune_s2_20250815.yaml` already includes this group.
+
+Create windows for extra annotations
 ```bash
-python rslp/crop/kenya_nandi/create_windows_for_additional_annotations.py   --csv_path=/weka/dfive-default/yawenz/datasets/CGIAR/20250910_10m_pixels.csv   --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250815   --group_name 20250912_annotations   --window_size=32
+python rslp/nandi/create_windows_for_additional_annotations.py --csv_path=/weka/dfive-default/yawenz/datasets/CGIAR/20250910_10m_pixels.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250815 --group_name 20250912_annotations --window_size=32
 ```
+
+Although S1 + S2 gives slightly higher accuracy than S2 only, the S1 images introduce noticeable artifacts during inference. Therefore, we use the S2-only model for final predictions. The final predictions need to be further merged into a single geotiff via `rslp/nandi/scripts/merge_geotiff.py` and cleaned up via `rslp/nandi/scripts/cleanup_geotiff.py`.
 
 ---
 
 ### 2025-09-12
-- Use **20K Tree points** instead of 2K.  
-- Try adding Sentinel-1.  
-- Compare with **AEF embeddings** on Nandi task.
+
+Added AEF embeddings into `20250625` dataset.
 
 ---
 
 ### 2025-09-16
-- Copied weights & re-wrote checkpoint keys:
-```bash
-gsutil cp gs://rslearn-eai/projects/2025_08_15_nandi_crop_type/.../last.ckpt /weka/dfive-default/yawenz/test/2025_09_16_nandi_checkpoints
-python /weka/dfive-default/yawenz/test/20250905_rewrite_checkpoint.py
-```
+
+Worked on ES-run inference, see `esrun_data/nandi`.

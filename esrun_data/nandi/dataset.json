@@ -1,5 +1,16 @@
 {
   "layers": {
+    "es_output": {
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
     "label": {
       "type": "vector"
     },
@@ -40,17 +51,6 @@
       "type": "raster"
     },
     "prediction_v1": {
-      "band_sets": [
-        {
-          "bands": [
-            "output"
-          ],
-          "dtype": "uint8"
-        }
-      ],
-      "type": "raster"
-    },
-    "es_output": {
       "band_sets": [
         {
           "bands": [

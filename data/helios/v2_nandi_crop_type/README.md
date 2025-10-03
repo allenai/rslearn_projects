@@ -1,3 +1,4 @@
+
 20250729
 --------
 
@@ -18,3 +19,10 @@ We tried to train the model to input random 16x16 or 4x4 patches containing the 
 pixel (with the other pixels marked invalid), hoping that it would have the same
 performance but be able to segment more than one pixel on each forward pass. However,
 this approach provided lower performance (81% instead of 85% accuracy).
+
+
+20251002
+--------
+
+The config `finetune_s2_20251001.yaml` was created for Helios finetuning using only the original ground-truth 10 m pixels (6 categories, ~6K samples). A new split tag `Helios_split` was added.
+This dataset is also used for KNN classification within Helios.
