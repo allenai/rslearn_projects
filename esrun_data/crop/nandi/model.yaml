@@ -11,7 +11,7 @@ model:
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
-              checkpoint_path: ${EXTRA_FILES_PATH}helios/step300000  # Fix this!!!
+              checkpoint_path: ${EXTRA_FILES_PATH}/helios/step300000
               random_initialization: true
               selector: ["encoder"]
               forward_kwargs:
@@ -314,7 +314,7 @@ trainer:
       init_args:
         path: ${DATASET_PATH}
         output_layer: ${PREDICTION_OUTPUT_LAYER}
-        selector: ["class"]  # I think Yawen re-keyed the checkpoint file. We can switch this back to the actual name next time we get a new version of the model.
+        selector: ["class"]
         merger:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
