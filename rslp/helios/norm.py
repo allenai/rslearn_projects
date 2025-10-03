@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-# from helios.data.normalize import load_computed_config
+from helios.data.normalize import load_computed_config
 from helios.data.utils import convert_to_db
 from rslearn.train.transforms.transform import Transform
 
@@ -37,7 +37,6 @@ class HeliosNormalize(Transform):
         self.std_multiplier = std_multiplier
 
         if config_fname is None:
-            from helios.data.normalize import load_computed_config
             self.norm_config = load_computed_config()
         else:
             logger.warning(

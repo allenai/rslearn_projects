@@ -174,23 +174,22 @@ if __name__ == "__main__":
         if embedding is None:
             continue
 
-        class_name = window.options["category"]
+        class_name = window.options["label"]
         if class_name not in class_names:
             class_names.append(class_name)
         label = class_names.index(class_name)
 
-        if window.options["split"] == "train":
+        if window.group == "train":
             train_embedding_list.append(embedding)
             train_labels.append(label)
 
-            # # Get partition, or for classification tasks we use the label instead.
-            # if window.options["partition"] is not None:
-            #     train_partitions.append(window.options["partition"])
-            # else:
-            #     train_partitions.append(label)
-            train_partitions.append(label)
+            # Get partition, or for classification tasks we use the label instead.
+            if window.options["partition"] is not None:
+                train_partitions.append(window.options["partition"])
+            else:
+                train_partitions.append(label)
 
-        elif window.options["split"] == "val":
+        elif window.group == "test":
             test_embedding_list.append(embedding)
             test_labels.append(label)
 
