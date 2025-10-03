@@ -1,6 +1,7 @@
 """Run EsPredictRunner inference pipeline."""
 
 import hashlib
+import logging
 import shutil
 import tempfile
 from enum import StrEnum
@@ -9,6 +10,8 @@ from pathlib import Path
 import fsspec
 from esrun.runner.local.fine_tune_runner import EsFineTuneRunner
 from esrun.runner.local.predict_runner import EsPredictRunner
+from esrun.shared.models.task_results import InferenceResultsDataType
+from esrun.shared.tools.logger import configure_logging
 from upath import UPath
 
 from rslp.log_utils import get_logger
@@ -69,12 +72,16 @@ def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
         scratch_path: directory to use for scratch space.
         checkpoint_path: path to the model checkpoint.
     """
+    # Configure esrun logging before creating the runner
+    configure_logging(log_level=logging.INFO)
+
     runner = EsPredictRunner(
         # ESRun does not work with relative path, so make sure to convert to absolute here.
         project_path=config_path.absolute(),
         scratch_path=scratch_path,
         checkpoint_path=get_local_checkpoint(UPath(checkpoint_path)),
     )
+    logger.info("Partitioning...")
     partitions = runner.partition()
     logger.info(f"Got {len(partitions)} partitions")
 
@@ -86,6 +93,7 @@ def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
         runner.run_inference(partition_id)
         logger.info(f"Postprocessing for partition {partition_id}")
         runner.postprocess(partition_id)
+        break
 
     logger.info("Combining across partitions")
     runner.combine(partitions)
@@ -109,6 +117,7 @@ def one_stage(
     checkpoint_path: str,
     stage: EsrunStage,
     partition_id: str | None = None,
+    inference_results_data_type: InferenceResultsDataType = InferenceResultsDataType.RASTER,
 ) -> None:
     """Run EsPredictRunner inference pipeline.
 
@@ -123,6 +132,9 @@ def one_stage(
     """
     if stage == EsrunStage.COMBINE and partition_id is not None:
         raise ValueError("partition_id cannot be set for COMBINE stage")
+
+    # Configure esrun logging before creating the runner
+    configure_logging(log_level=logging.INFO)
 
     runner = EsPredictRunner(
         # ESRun does not work with relative path, so make sure to convert to absolute here.
@@ -143,6 +155,7 @@ def one_stage(
         if stage == EsrunStage.RUN_INFERENCE:
             fn = runner.run_inference
         elif stage == EsrunStage.POSTPROCESS:
+            runner.inference_results_data_type = inference_results_data_type
             fn = runner.postprocess
         else:
             assert False
