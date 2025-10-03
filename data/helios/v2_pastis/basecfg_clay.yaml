@@ -1,0 +1,56 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+            init_args:
+              encoder:
+                class_path: rslearn.models.clay.Clay
+                init_args:
+                  model_size: large
+                  modality: sentinel-2-l2a
+              image_channels: 10
+              image_key: "sentinel-2-l2a"
+        decoders:
+          segment:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[8, 1024]]
+                out_channels: 20
+                conv_layers_per_resolution: 2
+                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+data:
+  init_args:
+    inputs:
+      sentinel-2-l2a:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"]
+        passthrough: true
+        dtype: FLOAT32
+      targets:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["class"]
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel-2-l2a: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+            output_selector: sentinel-2-l2a
+        - class_path: rslearn.models.clay.ClayNormalize
+    train_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel-2-l2a: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+            output_selector: sentinel-2-l2a
+        - class_path: rslearn.models.clay.ClayNormalize
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel-2-l2a", "target/segment/classes", "target/segment/valid"]
