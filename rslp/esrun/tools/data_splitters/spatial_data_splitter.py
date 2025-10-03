@@ -76,8 +76,8 @@ class SpatialDataSplitter(DataSplitterInterface):
             int(utm_centroid.y // self.grid_size),
         )
 
-        # Create deterministic hash from tile coordinates
-        tile_str = f"{utm_tile[0]}_{utm_tile[1]}"
+        # Create deterministic hash from UTM CRS and tile coordinates
+        tile_str = f"{utm_crs.to_epsg()}_{utm_tile[0]}_{utm_tile[1]}"
         sha_hash = hashlib.sha256(tile_str.encode()).hexdigest()
 
         # Convert full hash to integer and normalize to [0, 1)
