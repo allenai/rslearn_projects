@@ -1,4 +1,4 @@
-"""Point to raster window preparer for LFMC dataset."""
+"""Window preparer for creating windows with raster labels from point annotations."""
 
 from collections import defaultdict
 from datetime import datetime
