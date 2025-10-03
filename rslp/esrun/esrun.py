@@ -24,7 +24,7 @@ def _configure_logging() -> None:
     global _logging_configured
     if _logging_configured:
         return
-    
+
     # Configure root logger
     root_logger = logging.getLogger()
     if not root_logger.handlers:
@@ -33,7 +33,7 @@ def _configure_logging() -> None:
         console_formatter = logging.Formatter(LOG_FORMAT)
         console_handler.setFormatter(console_formatter)
         root_logger.addHandler(console_handler)
-    
+
     root_logger.setLevel(logging.INFO)
     _logging_configured = True
 
