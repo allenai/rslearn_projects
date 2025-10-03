@@ -1,7 +1,9 @@
 """Run EsPredictRunner inference pipeline."""
 
 import hashlib
+import logging
 import shutil
+import sys
 import tempfile
 from enum import StrEnum
 from pathlib import Path
@@ -11,7 +13,33 @@ from esrun.runner.local.fine_tune_runner import EsFineTuneRunner
 from esrun.runner.local.predict_runner import EsPredictRunner
 from upath import UPath
 
-from rslp.log_utils import get_logger
+from rslp.log_utils import LOG_FORMAT, get_logger
+
+# Configure all loggers to output at INFO level
+_logging_configured = False
+
+
+def _configure_logging() -> None:
+    """Configure all loggers to output at INFO level."""
+    global _logging_configured
+    if _logging_configured:
+        return
+
+    # Configure root logger
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        console_formatter = logging.Formatter(LOG_FORMAT)
+        console_handler.setFormatter(console_formatter)
+        root_logger.addHandler(console_handler)
+
+    root_logger.setLevel(logging.INFO)
+    _logging_configured = True
+
+
+# Configure logging when module is imported
+_configure_logging()
 
 logger = get_logger(__name__)
 
