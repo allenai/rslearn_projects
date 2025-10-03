@@ -1,0 +1,62 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslp.swin_pretrain.model.Model
+        decoders:
+          segment:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 128
+                out_channels: 20
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.models.pick_features.PickFeatures
+              init_args:
+                indexes: [0]
+                collapse: true
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+data:
+  init_args:
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12"]
+        passthrough: true
+      targets:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["class"]
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              # PASTIS is missing B01 and B09.
+              # We use B02 to fill in B01 and B8A to fill in B09.
+              image: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 7]
+            output_selector: image
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 10000
+    train_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              # PASTIS is missing B01 and B09.
+              # We use B02 to fill in B01 and B8A to fill in B09.
+              image: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 7]
+            output_selector: image
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: 0
+            std: 10000
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["image", "target/segment/classes", "target/segment/valid"]
