@@ -86,7 +86,7 @@ Create windows for extra annotations
 python rslp/nandi/create_windows_for_additional_annotations.py --csv_path=/weka/dfive-default/yawenz/datasets/CGIAR/20250910_10m_pixels.csv --ds_path=/weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250815 --group_name 20250912_annotations --window_size=32
 ```
 
-Although S1 + S2 gives slightly higher accuracy than S2 only, the S1 images introduce noticeable artifacts during inference. Therefore, we use the S2-only model for final predictions. The final predictions need to be further merged into a single geotiff via `rslp/nandi/scripts/merge_geotiff.py` and cleaned up via `rslp/nandi/scripts/cleanup_geotiff.py`.
+Although S1 + S2 gives slightly higher accuracy than S2 only, the S1 images introduce noticeable artifacts during inference. Therefore, we use the S2-only model for final predictions. The final predictions need to be further merged into a single geotiff via `rslp/nandi/scripts/merge_geotiff.py` and cleaned up via `rslp/nandi/scripts/cleanup_geotiff.py`. The cleanup tool can be used to smooth edges and remove small islands in the final maps.
 
 ---
 
