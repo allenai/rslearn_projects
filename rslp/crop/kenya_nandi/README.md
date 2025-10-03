@@ -120,7 +120,7 @@ Use beaker launcher to materialize the dataset:
 python -m rslp.main common launch_data_materialization_jobs --image favyen/rslp_image --ds_path DATASET_PATH --group DATASET_GROUP --clusters+=ai2/neptune-cirrascale --num_jobs 10
 ```
 
-Create `label_raster` for both ground-truth and worldcover windows.
+Create `label_raster` for both ground-truth and worldcover windows!!! Bug here!
 
 Launch Helios finetune:
 ```
@@ -141,13 +141,29 @@ python rslp/crop/kenya_nandi/create_windows_for_additional_annotations.py --csv_
 
 Launch Helios finetune:
 ```
-python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_08_15_nandi_crop_type --experiment_id nandi_crop_type_segment_helios_base_S2_ts_ws4_ps2_bs8_add_annotations
+python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_08_15_nandi_crop_type --experiment_id nandi_crop_type_segment_helios_base_S2_ts_ws4_ps2_bs8_add_annotations_2
 ```
 
 2025-09-12
 
 Using 20K Tree points instead of 2K, hopefull the misclassification can be further mitigated
 Also, try to use Sentinel1 images, see if that helps with misclassification
+
+Compare with AEF embeddings on the Nandi task:
+
+```
+python -m rslp.helios.get_embeddings --ds_path /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625 --patch_size 1 --checkpoint_path /weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step300000 --input_size 4 --embed_fname helios_embeddings_latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1_step300000_ws4_ps1.npy
+
+python one_off_projects/2025_08_01_alphaearth_eval_to_rslearn/get_balanced_accuracy.py --ds_path /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625 --repeats 1 --samples 500 --k 3 --embed_fname gse
+
+python one_off_projects/2025_08_01_alphaearth_eval_to_rslearn/get_balanced_accuracy.py --ds_path /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625 --repeats 1 --samples 500 --k 3 --embed_fname helios_embeddings_latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1_step300000_ws4_ps1.npy
+```
+
+
+
+
+
+
 
 
 
