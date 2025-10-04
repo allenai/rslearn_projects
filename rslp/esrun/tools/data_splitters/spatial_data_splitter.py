@@ -27,6 +27,91 @@ class ProjectionZone(StrEnum):
     UPS_SOUTH = "ups_south"
 
 
+def _get_utm_zone_key(lon: float, lat: float) -> tuple[int, ProjectionZone]:
+    """Get UTM zone key for caching purposes.
+
+    Returns:
+        (utm_zone_number, projection_zone) where utm_zone_number is 1-60 for UTM,
+        0 for UPS, and projection_zone indicates the type and hemisphere
+    """
+    # Check for UPS zones first
+    if lat > UPS_NORTH_THRESHOLD:
+        return (0, ProjectionZone.UPS_NORTH)
+    if lat < UPS_SOUTH_THRESHOLD:
+        return (0, ProjectionZone.UPS_SOUTH)
+
+    # Calculate UTM zone (1-60)
+    utm_zone = int((lon + 180) / 6) + 1
+    if utm_zone > 60:
+        utm_zone = 60
+    elif utm_zone < 1:
+        utm_zone = 1
+
+    # Determine UTM hemisphere
+    projection_zone = ProjectionZone.UTM_NORTH if lat >= 0 else ProjectionZone.UTM_SOUTH
+
+    return (utm_zone, projection_zone)
+
+
+@cache
+def _get_utm_ups_crs_cached(lon: float, lat: float) -> CRS:
+    """Internal cached function that calls get_utm_ups_crs directly."""
+    return get_utm_ups_crs(lon, lat)
+
+
+def get_cached_utm_ups_crs(lon: float, lat: float) -> CRS:
+    """Get the UTM/UPS CRS for a given longitude and latitude with smart caching.
+
+    This function provides efficient caching while ensuring exact compatibility
+    with get_utm_ups_crs. It uses a two-level approach:
+    1. For coordinates that are clearly in the interior of UTM/UPS zones, use zone-based caching
+    2. For coordinates near boundaries or in edge cases, call get_utm_ups_crs directly
+
+    Args:
+        lon: Longitude in degrees
+        lat: Latitude in degrees
+
+    Returns:
+        The appropriate UTM or UPS CRS for the given coordinates
+    """
+    # For UPS zones, caching can be safely used since the boundaries are clear
+    if lat > UPS_NORTH_THRESHOLD:
+        return _get_utm_ups_crs_cached(0.0, 85.0)
+    if lat < UPS_SOUTH_THRESHOLD:
+        return _get_utm_ups_crs_cached(0.0, -85.0)
+
+    utm_zone, projection_zone = _get_utm_zone_key(lon, lat)
+
+    # Check if the point is near a zone boundary (within 0.5 degrees of a 6-degree boundary)
+    zone_boundary_lon = -180 + utm_zone * 6  # Eastern boundary of current zone
+    near_boundary = (
+        abs(lon - zone_boundary_lon) < 0.5 or abs(lon - (zone_boundary_lon - 6)) < 0.5
+    )
+
+    # Check if the point is near UPS thresholds (within 1 degree)
+    near_ups_threshold = (
+        abs(lat - UPS_NORTH_THRESHOLD) < 1.0 or abs(lat - UPS_SOUTH_THRESHOLD) < 1.0
+    )
+
+    # For coordinates near boundaries or thresholds, call get_utm_ups_crs directly
+    # to ensure exact compatibility
+    if near_boundary or near_ups_threshold:
+        return _get_utm_ups_crs_cached(lon, lat)
+
+    # For coordinates clearly in the interior of a zone, use zone-based caching
+    # Use a representative coordinate from the same zone for caching
+    if projection_zone == ProjectionZone.UTM_NORTH:
+        representative_lat = 45.0
+    else:  # UTM_SOUTH
+        representative_lat = -45.0
+
+    # Calculate representative longitude in the middle of the zone
+    representative_lon = -180 + (utm_zone - 1) * 6 + 3
+
+    # Get the CRS using the representative coordinate (this will be cached)
+    return _get_utm_ups_crs_cached(representative_lon, representative_lat)
+
+
 class SpatialDataSplitter(DataSplitterInterface):
     """Data splitter that assigns splits based on spatial grid cell location.
 
@@ -81,7 +166,7 @@ class SpatialDataSplitter(DataSplitterInterface):
         )
 
         # Convert to UTM coordinates (using cached lookup for performance)
-        utm_crs = self._get_utm_ups_crs(geometry.centroid.x, geometry.centroid.y)
+        utm_crs = get_cached_utm_ups_crs(geometry.centroid.x, geometry.centroid.y)
         utm_projection = Projection(utm_crs, self.grid_size, self.grid_size)
         utm_geometry = labeled_window.st_geometry.to_projection(utm_projection)
         utm_centroid = cast(BaseGeometry, utm_geometry.shp).centroid
@@ -107,56 +192,3 @@ class SpatialDataSplitter(DataSplitterInterface):
             return DataSplitType.VAL
         else:
             return DataSplitType.TEST
-
-    def _get_utm_zone_key(self, lon: float, lat: float) -> tuple[int, ProjectionZone]:
-        """Get UTM zone key for caching purposes.
-
-        Returns:
-            (utm_zone_number, projection_zone) where utm_zone_number is 1-60 for UTM,
-            0 for UPS, and projection_zone indicates the type and hemisphere
-        """
-        # Check for UPS zones first
-        if lat > UPS_NORTH_THRESHOLD:
-            return (0, ProjectionZone.UPS_NORTH)
-        if lat < UPS_SOUTH_THRESHOLD:
-            return (0, ProjectionZone.UPS_SOUTH)
-
-        # Calculate UTM zone (1-60)
-        utm_zone = int((lon + 180) / 6) + 1
-        if utm_zone > 60:
-            utm_zone = 60
-        elif utm_zone < 1:
-            utm_zone = 1
-
-        # Determine UTM hemisphere
-        projection_zone = (
-            ProjectionZone.UTM_NORTH if lat >= 0 else ProjectionZone.UTM_SOUTH
-        )
-
-        return (utm_zone, projection_zone)
-
-    @cache
-    def _get_utm_ups_crs_by_zone(
-        self, utm_zone: int, projection_zone: ProjectionZone
-    ) -> CRS:
-        """Get the UTM/UPS CRS for a given UTM zone and projection zone.
-
-        This caches by actual UTM zone rather than coordinates, so all points
-        in the same zone share the same cache entry.
-        """
-        # Handle UPS zones
-        if projection_zone == ProjectionZone.UPS_NORTH:
-            sample_lon, sample_lat = 0.0, 85.0
-        elif projection_zone == ProjectionZone.UPS_SOUTH:
-            sample_lon, sample_lat = 0.0, -85.0
-        else:
-            # For UTM zones, use a representative point in the middle of the zone
-            sample_lon = -180 + (utm_zone - 1) * 6 + 3  # Middle of 6-degree zone
-            sample_lat = 45.0 if projection_zone == ProjectionZone.UTM_NORTH else -45.0
-
-        return get_utm_ups_crs(sample_lon, sample_lat)
-
-    def _get_utm_ups_crs(self, lon: float, lat: float) -> CRS:
-        """Get the UTM/UPS CRS for a given longitude and latitude with caching."""
-        utm_zone, projection_zone = self._get_utm_zone_key(lon, lat)
-        return self._get_utm_ups_crs_by_zone(utm_zone, projection_zone)

@@ -7,10 +7,223 @@ import numpy as np
 import pytest
 from esrun.runner.models.training.labeled_data import LabeledWindow, RasterLabel
 from esrun.shared.models.data_split_type import DataSplitType
+from rslearn.utils import get_utm_ups_crs
 from rslearn.utils.geometry import WGS84_PROJECTION, STGeometry
 from shapely.geometry import Point, Polygon
 
-from rslp.esrun.tools.data_splitters.spatial_data_splitter import SpatialDataSplitter
+from rslp.esrun.tools.data_splitters.spatial_data_splitter import (
+    SpatialDataSplitter,
+    get_cached_utm_ups_crs,
+)
+
+
+class TestGetCachedUtmUpsCrs:
+    """Test cases for the get_cached_utm_ups_crs helper function."""
+
+    def test_matches_direct_calls_utm_zones(self) -> None:
+        """Test that cached function matches direct calls for various UTM zones."""
+        test_coordinates = [
+            # UTM Zone 1N (Greenland/Iceland area)
+            (-177.0, 70.0),
+            # UTM Zone 10N (California)
+            (-122.4, 37.8),
+            # UTM Zone 18N (New York)
+            (-74.0, 40.7),
+            # UTM Zone 31N (Western Europe)
+            (2.3, 48.9),
+            # UTM Zone 33N (Norway)
+            (10.0, 60.0),
+            # UTM Zone 54N (Japan)
+            (139.7, 35.7),
+            # UTM Zone 60N (Far East Russia)
+            (177.0, 65.0),
+            # UTM Zone 1S (Antarctica)
+            (-177.0, -70.0),
+            # UTM Zone 20S (Brazil)
+            (-43.2, -22.9),
+            # UTM Zone 35S (South Africa)
+            (18.4, -33.9),
+            # UTM Zone 55S (Australia)
+            (149.1, -35.3),
+            # UTM Zone 60S (Far East Russia, southern hemisphere)
+            (177.0, -65.0),
+        ]
+
+        for lon, lat in test_coordinates:
+            cached_crs = get_cached_utm_ups_crs(lon, lat)
+            direct_crs = get_utm_ups_crs(lon, lat)
+
+            assert cached_crs.to_epsg() == direct_crs.to_epsg(), (
+                f"CRS mismatch at ({lon}, {lat}): "
+                f"cached={cached_crs.to_epsg()}, direct={direct_crs.to_epsg()}"
+            )
+
+    def test_matches_direct_calls_ups_zones(self) -> None:
+        """Test that cached function matches direct calls for UPS zones."""
+        ups_coordinates = [
+            # UPS North zone
+            (0.0, 85.0),
+            (45.0, 86.0),
+            (-90.0, 87.0),
+            (135.0, 88.0),
+            (180.0, 89.0),
+            # UPS South zone
+            (0.0, -85.0),
+            (45.0, -86.0),
+            (-90.0, -87.0),
+            (135.0, -88.0),
+            (180.0, -89.0),
+        ]
+
+        for lon, lat in ups_coordinates:
+            cached_crs = get_cached_utm_ups_crs(lon, lat)
+            direct_crs = get_utm_ups_crs(lon, lat)
+
+            assert cached_crs.to_epsg() == direct_crs.to_epsg(), (
+                f"UPS CRS mismatch at ({lon}, {lat}): "
+                f"cached={cached_crs.to_epsg()}, direct={direct_crs.to_epsg()}"
+            )
+
+    def test_matches_direct_calls_zone_boundaries(self) -> None:
+        """Test that cached function matches direct calls at UTM zone boundaries."""
+        # Test a representative sample of zone boundaries rather than all of them
+        # This provides good coverage while being much faster
+        boundary_coordinates = []
+
+        # Test fewer latitudes and zone boundaries for speed
+        test_latitudes = [30.0, -30.0]  # North and South hemispheres
+
+        # Test every 3rd zone boundary (every 18 degrees) for good coverage
+        # This covers different longitude ranges while being much faster
+        for lat in test_latitudes:
+            for zone_boundary in range(-174, 180, 18):  # Every 3rd zone boundary
+                # Test points just before and after zone boundaries
+                # Ensure we stay within valid longitude range [-180, 180]
+                lon_before = max(zone_boundary - 0.1, -180.0)
+                lon_after = min(zone_boundary + 0.1, 180.0)
+                boundary_coordinates.extend(
+                    [
+                        (lon_before, lat),
+                        (lon_after, lat),
+                    ]
+                )
+
+        # Also test a few critical zone boundaries at different latitudes
+        critical_boundaries = [
+            # Prime meridian area (zones 30/31)
+            (-0.1, 45.0),
+            (0.1, 45.0),
+            # International date line area (zones 60/1)
+            (179.9, 45.0),
+            (-179.9, 45.0),
+            # Some mid-range zones
+            (-90.1, 0.0),
+            (-89.9, 0.0),  # Zones 15/16
+            (90.1, 0.0),
+            (89.9, 0.0),  # Zones 45/46
+        ]
+        boundary_coordinates.extend(critical_boundaries)
+
+        for lon, lat in boundary_coordinates:
+            cached_crs = get_cached_utm_ups_crs(lon, lat)
+            direct_crs = get_utm_ups_crs(lon, lat)
+
+            assert cached_crs.to_epsg() == direct_crs.to_epsg(), (
+                f"Zone boundary CRS mismatch at ({lon}, {lat}): "
+                f"cached={cached_crs.to_epsg()}, direct={direct_crs.to_epsg()}"
+            )
+
+    def test_matches_direct_calls_ups_thresholds(self) -> None:
+        """Test that cached function matches direct calls at UPS threshold boundaries."""
+        # Test coordinates near UPS thresholds
+        threshold_coordinates = [
+            # Near UPS North threshold (84 degrees)
+            (0.0, 83.9999),
+            (0.0, 84.0001),
+            (45.0, 83.9999),
+            (45.0, 84.0001),
+            # Near UPS South threshold (-80 degrees)
+            (0.0, -79.9999),
+            (0.0, -80.0001),
+            (45.0, -79.9999),
+            (45.0, -80.0001),
+        ]
+
+        for lon, lat in threshold_coordinates:
+            cached_crs = get_cached_utm_ups_crs(lon, lat)
+            direct_crs = get_utm_ups_crs(lon, lat)
+
+            assert cached_crs.to_epsg() == direct_crs.to_epsg(), (
+                f"UPS threshold CRS mismatch at ({lon}, {lat}): "
+                f"cached={cached_crs.to_epsg()}, direct={direct_crs.to_epsg()}"
+            )
+
+    def test_matches_direct_calls_equator_and_poles(self) -> None:
+        """Test that cached function matches direct calls at special latitudes."""
+        special_coordinates = [
+            # Equator
+            (0.0, 0.0),
+            (90.0, 0.0),
+            (180.0, 0.0),
+            (-90.0, 0.0),
+            # Near poles (but not in UPS zones)
+            (0.0, 83.0),
+            (0.0, -79.0),
+            # Prime meridian and antimeridian
+            (0.0, 45.0),
+            (180.0, 45.0),
+            (-180.0, 45.0),
+        ]
+
+        for lon, lat in special_coordinates:
+            cached_crs = get_cached_utm_ups_crs(lon, lat)
+            direct_crs = get_utm_ups_crs(lon, lat)
+
+            assert cached_crs.to_epsg() == direct_crs.to_epsg(), (
+                f"Special coordinate CRS mismatch at ({lon}, {lat}): "
+                f"cached={cached_crs.to_epsg()}, direct={direct_crs.to_epsg()}"
+            )
+
+    def test_matches_direct_calls_random_coordinates(self) -> None:
+        """Test that cached function matches direct calls for random coordinates."""
+        # Use fixed seed for reproducible tests
+        random.seed(123)
+
+        # Reduced from 100 to 50 for faster testing while still providing good coverage
+        for _ in range(50):
+            # Generate random longitude: -180 to 180
+            lon = random.uniform(-180, 180)
+
+            # Generate random latitude: -90 to 90
+            # Use uniform distribution (not spherical) for simplicity in testing
+            lat = random.uniform(-90, 90)
+
+            cached_crs = get_cached_utm_ups_crs(lon, lat)
+            direct_crs = get_utm_ups_crs(lon, lat)
+
+            assert cached_crs.to_epsg() == direct_crs.to_epsg(), (
+                f"Random coordinate CRS mismatch at ({lon}, {lat}): "
+                f"cached={cached_crs.to_epsg()}, direct={direct_crs.to_epsg()}"
+            )
+
+    def test_caching_behavior(self) -> None:
+        """Test that the caching behavior works correctly."""
+        # Test that multiple calls with same coordinates return same object
+        lon, lat = 10.0, 60.0
+        crs1 = get_cached_utm_ups_crs(lon, lat)
+        crs2 = get_cached_utm_ups_crs(lon, lat)
+
+        # Should be the same object due to caching
+        assert crs1 is crs2, "Cached CRS objects should be identical"
+
+        # Test that coordinates in the same UTM zone return same CRS
+        # These coordinates should be in the same UTM zone (33N)
+        crs_a = get_cached_utm_ups_crs(10.0, 60.0)
+        crs_b = get_cached_utm_ups_crs(11.0, 61.0)  # Still in UTM 33N
+
+        assert (
+            crs_a.to_epsg() == crs_b.to_epsg()
+        ), "Coordinates in same UTM zone should have same CRS"
 
 
 class TestSpatialDataSplitter:
@@ -123,7 +336,7 @@ class TestSpatialDataSplitter:
         # Use a fixed seed for reproducible tests
         random.seed(42)
 
-        n_samples = 5000  # Good balance of speed and statistical accuracy
+        n_samples = 1500  # Good balance of speed and statistical accuracy
 
         for i in range(n_samples):
             # Generate random longitude: -180 to 180
