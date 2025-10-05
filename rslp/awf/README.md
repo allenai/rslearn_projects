@@ -1,6 +1,6 @@
 # African Wildlife Foundation LULC
 
-There're in total 1469 points of 9 LULC classes in 2023.
+The 2023 dataset has 1469 labeled points across 9 classes, labeled using Planet images by AWF.
 
 | Class                          | Count |
 |--------------------------------|-------|
@@ -14,7 +14,8 @@ There're in total 1469 points of 9 LULC classes in 2023.
 | Urban / Dense Development      | 90    |
 | Woodland Forest (>40% canopy)  | 168   |
 
-For initial experiment, we will use all the samples to finetune OlmoEarth for LULC classification.
+
+For initial experiment, we use all the samples to finetune OlmoEarth for LULC classification.
 
 Create datasets:
 ```
@@ -27,23 +28,15 @@ rslearn dataset materialize --root $DATASET_PATH --group $DATASET_GROUP --worker
 
 Launch finetune:
 ```
-python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_awf_lulc/finetune_s2_20250822.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_08_22_awf_lulc_classification --experiment_id awf_lulc_classification_helios_base_S2_ts_ws4_ps2_bs8
+python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_awf_lulc/finetune_s2_20250822.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_08_22_awf_lulc_classification --experiment_id awf_lulc_classification_helios_base_S2_ts_ws8_ps2_bs8_new_checkpoint_lower_lr
 ```
 
-Prediction:
+Prediction for Amboseli:
 ```
 export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/crop/awf_2023
 rslearn dataset add_windows --root $DATASET_PATH --group amboseli --utm --resolution 10 --grid_size 128 --src_crs EPSG:4326 --box=36.897854805569345,-3.1877100113094623,37.93955567770978,-2.2610410490685697 --start 2023-06-15T00:00:00+00:00 --end 2023-07-15T00:00:00+00:00 --name amboseli
 ```
 
-7452 windows in total for inference
-
-<!-- Original CRS: EPSG:4210
-Min Lon: 36.897854805569345
-Min Lat: -3.1877100113094623
-Max Lon: 37.93955567770978
-Max Lat: -2.2610410490685697 -->
-
 ```
-python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_awf_lulc/finetune_s2_20250822.yaml --cluster+=ai2/ceres-cirrascale --rslp_project 2025_08_22_awf_lulc_classification --experiment_id awf_lulc_classification_helios_base_S2_ts_ws4_ps2_bs8 --mode predict --gpus 4
+python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_awf_lulc/finetune_s2_20250822.yaml --cluster+=ai2/titan --mode predict --gpus 4 --experiment_id awf_lulc_classification_helios_base_S2_ts_ws8_ps2_bs8_new_checkpoint_lower_lr --rslp_project 2025_08_22_awf_lulc_classification
 ```
