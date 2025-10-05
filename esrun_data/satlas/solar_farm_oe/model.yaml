@@ -201,9 +201,9 @@ data:
         input_mapping:
           class:
             targets: targets
-    path: /weka/dfive-default/rslearn-eai/datasets/solar_farm/dataset_v1/20250605/
+    path: ${DATASET_PATH}
     batch_size: 8
-    num_workers: 16
+    num_workers: ${NUM_WORKERS}
     default_config:
       transforms:
       - class_path: rslearn.train.transforms.concatenate.Concatenate
