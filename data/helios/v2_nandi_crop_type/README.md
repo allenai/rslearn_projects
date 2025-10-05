@@ -25,4 +25,4 @@ this approach provided lower performance (81% instead of 85% accuracy).
 --------
 
 The config `finetune_s2_20251001.yaml` was created for Helios finetuning using only the original ground-truth 10 m pixels (6 categories, ~6K samples). A new split tag `helios_split` was added.
-This dataset is also used for KNN classification within Helios. The window size and patch size in the cinfg were updated to be consistent with the KNN classification.
+This dataset is also used for KNN classification in Helios. The window size and patch size were adjusted to be consistent with KNN.
