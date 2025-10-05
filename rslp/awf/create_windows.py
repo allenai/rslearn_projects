@@ -3,7 +3,7 @@
 import argparse
 import hashlib
 import multiprocessing
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pandas as pd
 import shapely

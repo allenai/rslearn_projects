@@ -1,6 +1,6 @@
 # African Wildlife Foundation LULC
 
-There're in total 1469 points of 9 LULC classes in 2023. 
+There're in total 1469 points of 9 LULC classes in 2023.
 
 | Class                          | Count |
 |--------------------------------|-------|
@@ -14,7 +14,7 @@ There're in total 1469 points of 9 LULC classes in 2023.
 | Urban / Dense Development      | 90    |
 | Woodland Forest (>40% canopy)  | 168   |
 
-For initial experiment, we will use all the samples to finetune OlmoEarth for LULC classification. 
+For initial experiment, we will use all the samples to finetune OlmoEarth for LULC classification.
 
 Create datasets:
 ```
