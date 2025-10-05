@@ -44,7 +44,7 @@ def initialize_dataset_for_helios(
     """
     transforms = [
         HeliosNormalize(
-            config_fname="/weka/dfive-default/yawenz/helios/helios/data/norm_configs/computed.json",
+            config_fname="/opt/helios/data/norm_configs/computed.json",
             band_names=dict(
                 sentinel2_l2a=[
                     "B02",
