@@ -7,4 +7,4 @@
 --------
 
 `finetune_s2_20251005.yaml` was created for Helios finetuning. A new split tag `helios_split` was added.
-This dataset is also used for KNN classification within Helios.
+This dataset is also used for KNN classification in Helios. The window and patch sizes were adjusted for consistency with KNN.
