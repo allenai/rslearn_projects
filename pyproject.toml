@@ -46,6 +46,4 @@ testpaths = [
 ]
 addopts = [
     "--import-mode=importlib",
-    # Ignore esrun tests by default because their dependencies are not installed in CI
-    "--ignore=tests/unit/esrun",
 ]
