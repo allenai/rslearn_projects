@@ -343,7 +343,7 @@ data:
         skip_targets: null
     predict_config:
       patch_size: 2 #I think this is actually the window size for inference processing
-      overlap_ratio: 0.5
+      overlap_ratio: null
       load_all_patches: true
       skip_targets: true
       transforms:
@@ -391,10 +391,7 @@ trainer:
       path: ${DATASET_PATH}
       output_layer: ${PREDICTION_OUTPUT_LAYER}
       selector: ["mangrove_classification"]
-      merger:
-        class_path: rslearn.train.prediction_writer.RasterMerger
-        init_args:
-          padding: 2
+      merger: null
   - class_path: lightning.pytorch.callbacks.ModelCheckpoint
     init_args:
       dirpath: gs://rslearn-eai/projects/2025_09_15_mangrove_classification/mangrove_classification_segment_helios_base_S2_ts_ws2_ps2/checkpoints
