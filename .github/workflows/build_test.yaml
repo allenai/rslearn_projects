@@ -71,7 +71,7 @@ jobs:
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_ESRUN_CLONE }}
-      - name: Clone esrun and update requirements-extra.txt.
+      - name: Clone olmoearth_run and update requirements-extra.txt.
         run: |
           git clone git@github.com:allenai/olmoearth_run.git docker_build/olmoearth_run
           echo "olmoearth_run @ /opt/rslearn_projects/docker_build/olmoearth_run/" >> requirements-extra.txt
