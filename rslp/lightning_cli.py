@@ -10,13 +10,13 @@ import tempfile
 import fsspec
 import jsonargparse
 import wandb
-from lightning.pytorch import LightningModule, Trainer
+from lightning.pytorch import LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
-from rslearn.train.data_module import RslearnDataModule
 from rslearn.train.lightning_module import RslearnLightningModule
+from rslearn.utils.fsspec import open_atomic
 from upath import UPath
 
 import rslp.utils.fs  # noqa: F401 (imported but unused)
@@ -67,9 +67,8 @@ def get_cached_checkpoint(checkpoint_fname: UPath) -> str:
     logger.info("caching checkpoint %s to %s", str(checkpoint_fname), local_fname)
     os.makedirs(os.path.dirname(local_fname), exist_ok=True)
     with checkpoint_fname.open("rb") as src:
-        with open(local_fname + ".tmp", "wb") as dst:
+        with open_atomic(UPath(local_fname), "wb") as dst:
             shutil.copyfileobj(src, dst)
-    os.rename(local_fname + ".tmp", local_fname)
 
     return local_fname
 
@@ -199,6 +198,17 @@ class CustomLightningCLI(RslearnLightningCLI):
             type=bool,
             help="Disable W&B logging for fit",
             default=False,
+        )
+        parser.add_argument(
+            "--profiler",
+            type=str,
+            help="Profiler to use for training. Can be 'simple' or 'advanced'",
+            default=None,
+        )
+        parser.add_argument(
+            "--allow_missing_weights",
+            action="store_true",
+            help="Allow missing weights in checkpoint specified in --ckpt_path",
         )
 
     def _get_checkpoint_path(
@@ -331,6 +341,14 @@ class CustomLightningCLI(RslearnLightningCLI):
                 }
             )
 
+            # Configure profiler if specified
+            if c.profiler:
+                max_steps = 100
+                c.trainer.profiler = c.profiler
+                c.trainer.max_steps = max_steps
+                logger.info(f"Using profiler: {c.profiler}")
+                logger.info(f"Setting max_steps to {max_steps}")
+
         if subcommand == "fit" and not c.no_log:
             # Set the checkpoint directory to canonical GCS location.
             checkpoint_callback = None
@@ -405,7 +423,7 @@ def custom_model_handler() -> None:
     """
     CustomLightningCLI(
         model_class=RslearnLightningModule,
-        datamodule_class=RslearnDataModule,
+        datamodule_class=LightningDataModule,
         args=sys.argv[2:],
         subclass_mode_model=True,
         subclass_mode_data=True,

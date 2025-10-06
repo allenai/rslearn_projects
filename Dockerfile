@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.5.0-cuda11.8-cudnn9-runtime@sha256:d15e9803095e462e351f097fb1f5e7cdaa4f5e855d7ff6d6f36ec4c2aa2938ea
+FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime@sha256:7db0e1bf4b1ac274ea09cf6358ab516f8a5c7d3d0e02311bed445f7e236a5d80
 
 RUN apt update
 RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
@@ -15,6 +15,8 @@ WORKDIR /opt/tippecanoe
 RUN make -j
 RUN make install
 
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
 # Install rslearn.
 # We use git clone and then git checkout instead of git clone -b so that the user could
 # specify a commit name or branch instead of only accepting a branch.
@@ -22,24 +24,11 @@ ARG RSLEARN_BRANCH=master
 RUN git clone https://github.com/allenai/rslearn.git /opt/rslearn
 WORKDIR /opt/rslearn
 RUN git checkout $RSLEARN_BRANCH
-RUN pip install --no-cache-dir /opt/rslearn[extra]
+RUN uv pip install --system /opt/rslearn[extra]
 
-# maybe some steps to make this huge iamge smaller
-
-# Install rslearn_projects dependencies.
-# We do this in a separate step so it doesn't need to be rerun when other parts of the
-# context are modified.
-COPY requirements.txt /opt/rslearn_projects/requirements.txt
-COPY ai2_requirements.txt /opt/rslearn_projects/ai2_requirements.txt
-RUN pip install --no-cache-dir --upgrade -r /opt/rslearn_projects/requirements.txt -r /opt/rslearn_projects/ai2_requirements.txt
-
-# Copy rslearn_projects.
-# For now we don't install it and instead just use PYTHONPATH.
-ENV PYTHONPATH="${PYTHONPATH}:."
-
+# Install rslearn_projects.
 COPY . /opt/rslearn_projects/
-# install rslp package
-RUN pip install --no-cache-dir /opt/rslearn_projects
+RUN uv pip install --system /opt/rslearn_projects[dev,extra]
 
 # Build Satlas smooth_point_labels_viterbi.go program.
 WORKDIR /opt/rslearn_projects/rslp/satlas/scripts

@@ -7,10 +7,11 @@ from typing import Any
 import torch
 from einops import rearrange
 from helios.data.constants import Modality
-from helios.nn.flexihelios import TokensAndMasks
+from helios.nn.flexihelios import Encoder, TokensAndMasks
 from helios.train.masking import MaskedHeliosSample, MaskValue
 from olmo_core.config import Config
 from olmo_core.distributed.checkpoint import load_model_and_optim_state
+from upath import UPath
 
 from rslp.log_utils import get_logger
 
@@ -62,6 +63,7 @@ class Helios(torch.nn.Module):
             autocast_dtype: which dtype to use for autocasting, or set None to disable.
         """
         super().__init__()
+        _checkpoint_path = UPath(checkpoint_path)
         self.forward_kwargs = forward_kwargs
         self.embedding_size = embedding_size
         self.patch_size = patch_size
@@ -74,7 +76,7 @@ class Helios(torch.nn.Module):
         # Load the model config and initialize it.
         # We avoid loading the train module here because it depends on running within
         # olmo_core.
-        with open(f"{checkpoint_path}/config.json") as f:
+        with (_checkpoint_path / "config.json").open() as f:
             config_dict = json.load(f)
             model_config = Config.from_dict(config_dict["model"])
 
@@ -82,8 +84,14 @@ class Helios(torch.nn.Module):
 
         # Load the checkpoint.
         if not random_initialization:
-            train_module_dir = f"{checkpoint_path}/model_and_optim"
-            load_model_and_optim_state(train_module_dir, model)
+            train_module_dir = _checkpoint_path / "model_and_optim"
+            if train_module_dir.exists():
+                load_model_and_optim_state(str(train_module_dir), model)
+                logger.info(f"loaded helios encoder from {train_module_dir}")
+            else:
+                logger.info(f"could not find helios encoder at {train_module_dir}")
+        else:
+            logger.info("skipping loading helios encoder")
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:
@@ -153,9 +161,17 @@ class Helios(torch.nn.Module):
 
         with context:
             # Currently we assume the provided model always returns a TokensAndMasks object.
-            tokens_and_masks: TokensAndMasks = self.model(
-                sample, always_pass_none_mask_to_transformer=True, **self.forward_kwargs
-            )[0]
+            tokens_and_masks: TokensAndMasks
+            if isinstance(self.model, Encoder):
+                # Encoder has a fast_pass argument to indicate mask is not needed.
+                tokens_and_masks = self.model(
+                    sample, fast_pass=True, **self.forward_kwargs
+                )["tokens_and_masks"]
+            else:
+                # Other models like STEncoder do not have this option supported.
+                tokens_and_masks = self.model(sample, **self.forward_kwargs)[
+                    "tokens_and_masks"
+                ]
 
         # Apply temporal/modality pooling so we just have one feature per patch.
         features = []

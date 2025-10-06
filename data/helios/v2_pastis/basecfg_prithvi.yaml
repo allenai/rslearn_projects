@@ -1,0 +1,50 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.prithvi.PrithviV2
+        decoders:
+          segment:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[16, 1024], [16, 1024], [16, 1024], [16, 1024], [16, 1024], [16, 1024], [16, 1024], [16, 1024], [16, 1024], [16, 1024], [16, 1024]]
+                out_channels: 20
+                conv_layers_per_resolution: 2
+                num_channels: {8: 1024, 4: 512, 2: 256, 1: 128}
+                original_size_to_interpolate: [128, 128]
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+data:
+  init_args:
+    inputs:
+      sentinel2:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        # PASTIS is missing B01 and B09.
+        # Prithvi only ingests 2, 3, 4, 5, 6, 7
+        bands: ["B02", "B03", "B04", "B05", "B06", "B07"]
+        passthrough: true
+      targets:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["class"]
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2: []
+            output_selector: sentinel2
+    train_config:
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2: []
+            output_selector: sentinel2
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel2", "target/segment/classes", "target/segment/valid"]
+rslp_project: prithvi_finetune_test
+rslp_experiment: prithvi_finetune_test1

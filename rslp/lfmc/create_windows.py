@@ -16,11 +16,11 @@ from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
+from rslp.lfmc.constants import CUTOFF_VALUE
 from rslp.utils.windows import calculate_bounds
 
 WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
-CUTOFF_VALUE = 302
 
 
 def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
@@ -31,7 +31,6 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         ds_path: path to the dataset
         window_size: window size
     """
-    # Cut off the LFMC value by 302 which is the 99.9% value
     lfmc_value = csv_row["lfmc_value"]
     if lfmc_value > CUTOFF_VALUE:
         lfmc_value = CUTOFF_VALUE
@@ -53,8 +52,6 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         sampling_date + timedelta(days=15),
     )
 
-    landcover, elevation = csv_row["landcover"], csv_row["elevation"]
-
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
     dst_crs = get_utm_ups_crs(longitude, latitude)
@@ -63,7 +60,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     bounds = calculate_bounds(dst_geometry, window_size)
 
     # Check if train or val.
-    group = "global_lfmc"
+    group = "globe_lfmc"
     window_name = f"{sample_id}_{latitude}_{longitude}"
 
     is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
@@ -72,6 +69,13 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         split = "val"
     else:
         split = "train"
+
+    is_site_name_val = hashlib.sha256(site_name.encode()).hexdigest()[0] in ["0", "1"]
+
+    if is_site_name_val:
+        site_name_split = "val"
+    else:
+        site_name_split = "train"
 
     window = Window(
         path=Window.get_window_root(ds_path, group, window_name),
@@ -82,13 +86,12 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         time_range=(start_time, end_time),
         options={
             "split": split,
+            "site_name_split": site_name_split,
             "site_name": site_name,
             "state_region": state_region,
             "country": country,
             "latitude": latitude,
             "longitude": longitude,
-            "landcover": landcover,
-            "elevation": elevation,
         },
     )
     window.save()
