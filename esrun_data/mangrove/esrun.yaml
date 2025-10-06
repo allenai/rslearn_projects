@@ -36,11 +36,3 @@ postprocessing_strategies:
 
 inference_results_config:
   data_type: RASTER
-
-
-inference_writer:
-  selector: ["mangrove_classification"]
-  merger:
-    class_path: rslearn.train.prediction_writer.RasterMerger
-    init_args:
-      padding: 2
