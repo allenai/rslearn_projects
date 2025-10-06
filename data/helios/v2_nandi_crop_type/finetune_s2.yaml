@@ -11,7 +11,6 @@ model:
               selector: ["encoder"]
               forward_kwargs:
                 patch_size: {PATCH_SIZE}
-              random_initialization: true
         decoders:
           crop_type_classification:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder

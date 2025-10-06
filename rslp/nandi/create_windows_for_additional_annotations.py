@@ -1,9 +1,9 @@
-"""Create windows for LFMC estimation."""
+"""Create windows for crop type mapping."""
 
 import argparse
 import hashlib
 import multiprocessing
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pandas as pd
 import shapely
@@ -16,41 +16,50 @@ from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
-from rslp.lfmc.constants import CUTOFF_VALUE
 from rslp.utils.windows import calculate_bounds
 
 WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
 
+# Center month between "2022-09-30" and "2023-09-30"
+START_TIME = datetime(2023, 3, 1, tzinfo=timezone.utc)
+END_TIME = datetime(2023, 3, 31, tzinfo=timezone.utc)
 
-def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
+
+def process_csv(csv_path: UPath) -> pd.DataFrame:
+    """Create windows for crop type mapping.
+
+    Args:
+        csv_path: path to the csv file
+    """
+    df = pd.read_csv(csv_path)
+    print(df.groupby("tag_name").size())
+
+    # Random sample 20K points from the csv file, 72K points in total
+    df = df.sample(n=20000, random_state=42)
+
+    return df
+
+
+# feature_id,task_name,tag_name,lon,lat,utm_easting,utm_northing,utm_epsg,utm_zone
+# 94a1099a-78f5-4701-9963-1a8948943bd7,Nandi County round 2,Trees,35.01508785066754,0.1054712094358493,724275.0,11665.0,EPSG:32636,36
+
+
+def create_window(
+    csv_row: pd.Series, ds_path: UPath, group_name: str, window_size: int
+) -> None:
     """Create windows for crop type mapping.
 
     Args:
         csv_row: a row of the dataframe
         ds_path: path to the dataset
+        group_name: name of the group
         window_size: window size
     """
-    lfmc_value = csv_row["lfmc_value"]
-    if lfmc_value > CUTOFF_VALUE:
-        lfmc_value = CUTOFF_VALUE
-
     # Get sample metadata
-    sample_id = csv_row.name
-    site_name, state_region, country = (
-        csv_row["site_name"],
-        csv_row["state_region"],
-        csv_row["country"],
-    )
-    latitude, longitude = csv_row["latitude"], csv_row["longitude"]
-
-    sampling_date = datetime.strptime(csv_row["sampling_date"], "%Y-%m-%d").replace(
-        tzinfo=timezone.utc
-    )
-    start_time, end_time = (
-        sampling_date - timedelta(days=15),
-        sampling_date + timedelta(days=15),
-    )
+    unique_id = csv_row.name
+    latitude, longitude = csv_row["lat"], csv_row["lon"]
+    category = csv_row["tag_name"]
 
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
@@ -59,9 +68,8 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     dst_geometry = src_geometry.to_projection(dst_projection)
     bounds = calculate_bounds(dst_geometry, window_size)
 
-    # Check if train or val.
-    group = "globe_lfmc"
-    window_name = f"{sample_id}_{latitude}_{longitude}"
+    group = f"{group_name}_window_{window_size}"
+    window_name = f"{unique_id}_{latitude}_{longitude}"
 
     is_val = hashlib.sha256(str(window_name).encode()).hexdigest()[0] in ["0", "1"]
 
@@ -70,28 +78,16 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     else:
         split = "train"
 
-    is_site_name_val = hashlib.sha256(site_name.encode()).hexdigest()[0] in ["0", "1"]
-
-    if is_site_name_val:
-        site_name_split = "val"
-    else:
-        site_name_split = "train"
-
     window = Window(
         path=Window.get_window_root(ds_path, group, window_name),
         group=group,
         name=window_name,
         projection=dst_projection,
         bounds=bounds,
-        time_range=(start_time, end_time),
+        time_range=(START_TIME, END_TIME),
         options={
             "split": split,
-            "site_name_split": site_name_split,
-            "site_name": site_name,
-            "state_region": state_region,
-            "country": country,
-            "latitude": latitude,
-            "longitude": longitude,
+            "category": category,
         },
     )
     window.save()
@@ -100,7 +96,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     feature = Feature(
         window.get_geometry(),
         {
-            "lfmc_value": lfmc_value,
+            "category": category,
         },
     )
     layer_dir = window.get_layer_dir(LABEL_LAYER)
@@ -111,6 +107,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
 def create_windows_from_csv(
     csv_path: UPath,
     ds_path: UPath,
+    group_name: str,
     window_size: int,
 ) -> None:
     """Create windows from csv.
@@ -118,9 +115,10 @@ def create_windows_from_csv(
     Args:
         csv_path: path to the csv file
         ds_path: path to the dataset
+        group_name: name of the group
         window_size: window size
     """
-    df_sampled = pd.read_csv(csv_path)
+    df_sampled = process_csv(csv_path)
     csv_rows = []
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
@@ -129,6 +127,7 @@ def create_windows_from_csv(
         dict(
             csv_row=row,
             ds_path=ds_path,
+            group_name=group_name,
             window_size=window_size,
         )
         for row in csv_rows
@@ -156,6 +155,12 @@ if __name__ == "__main__":
         help="Path to the dataset",
     )
     parser.add_argument(
+        "--group_name",
+        type=str,
+        required=True,
+        help="Window group name",
+    )
+    parser.add_argument(
         "--window_size",
         type=int,
         required=False,
@@ -166,5 +171,6 @@ if __name__ == "__main__":
     create_windows_from_csv(
         UPath(args.csv_path),
         UPath(args.ds_path),
-        window_size=args.window_size,
+        args.group_name,
+        args.window_size,
     )
