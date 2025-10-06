@@ -12,13 +12,13 @@ model:
               encoder:
                 class_path: rslp.helios.model.Helios
                 init_args:
-                  checkpoint_path: "/weka/dfive-default/helios/checkpoints/favyen/favyencheck_base_wattn_latentmim_contrastive_random_0/step180000"
+                  checkpoint_path: "/weka/dfive-default/helios/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000"
                   selector: ["encoder"]
                   forward_kwargs:
                     patch_size: 4
                   patch_size: 4
                   embedding_size: 768
-              image_channels: 36
+              image_channels: 48
               image_key: "sentinel2_l2a"
               groups: [[0], [1]]
         decoders:
@@ -39,38 +39,14 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gs://rslearn-eai/datasets/forest_loss_driver/dataset_v1/20250429/
+    path: gs://rslearn-eai/datasets/forest_loss_driver/dataset_v1/20250605/
     inputs:
-      pre_0:
+      sentinel2_l2a:
         data_type: "raster"
-        layers: ["best_pre_0"]
+        layers: ["pre_sentinel2", "pre_sentinel2.1", "pre_sentinel2.2", "pre_sentinel2.3", "post_sentinel2", "post_sentinel2.1", "post_sentinel2.2", "post_sentinel2.3"]
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
-      pre_1:
-        data_type: "raster"
-        layers: ["best_pre_1"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-      pre_2:
-        data_type: "raster"
-        layers: ["best_pre_2"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-      post_0:
-        data_type: "raster"
-        layers: ["best_post_0"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-      post_1:
-        data_type: "raster"
-        layers: ["best_post_1"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
-      post_2:
-        data_type: "raster"
-        layers: ["best_post_2"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true
+        load_all_layers: true
       label:
         data_type: "vector"
         layers: ["label"]
@@ -95,16 +71,6 @@ data:
     num_workers: 64
     default_config:
       transforms:
-        - class_path: rslearn.train.transforms.concatenate.Concatenate
-          init_args:
-            selections:
-              pre_0: []
-              pre_1: []
-              pre_2: []
-              post_0: []
-              post_1: []
-              post_2: []
-            output_selector: sentinel2_l2a
         - class_path: rslearn.train.transforms.pad.Pad
           init_args:
             mode: "center"
@@ -113,7 +79,6 @@ data:
               - sentinel2_l2a
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         - class_path: rslearn.train.transforms.flip.Flip
@@ -124,12 +89,8 @@ data:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
             selections:
-              pre_0: [2, 1, 0]
+              sentinel2_l2a: [2, 1, 0]
             output_selector: image
-        - class_path: rslearn.train.transforms.normalize.Normalize
-          init_args:
-            mean: 0
-            std: 10
       groups: ["peru_interesting", "peru3", "peru3_flagged_in_peru", "nadia2", "nadia3", "brazil_interesting"]
     train_config:
       tags:
@@ -165,4 +126,4 @@ trainer:
         output_layer: output
         selector: ["class"]
 rslp_project: 2025_06_12_forest_loss_helios
-rslp_experiment: 20250612_forest_loss_driver_helios_wattn_finetune_00
+rslp_experiment: 20250612_forest_loss_driver_helios_finetune_20250930

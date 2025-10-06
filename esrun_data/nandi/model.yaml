@@ -7,16 +7,17 @@ model:
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
-              checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
+              checkpoint_path: ${EXTRA_FILES_PATH}/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
+              random_initialization: true
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 2
+                patch_size: 1
         decoders:
-          crop_type_classification:
-            - class_path: rslp.crop.kenya_nandi.train.SegmentationPoolingDecoder
+          class:
+            - class_path: rslp.nandi.train.SegmentationPoolingDecoder
               init_args:
                 in_channels: 768
-                out_channels: 9
+                out_channels: 11
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     plateau: true
@@ -27,7 +28,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250625/
+    path: ${DATASET_PATH}
     inputs:
       sentinel2_l2a:
         data_type: "raster"
@@ -47,10 +48,10 @@ data:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
         tasks:
-          crop_type_classification:
+          class:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 9
+              num_classes: 11
               zero_is_invalid: true
               metric_kwargs:
                 average: "micro"
@@ -61,7 +62,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 1
                 coffee_recall:
@@ -70,7 +71,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 1
                 trees_precision:
@@ -79,7 +80,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 2
                 trees_recall:
@@ -88,7 +89,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 2
                 grassland_precision:
@@ -97,7 +98,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 3
                 grassland_recall:
@@ -106,7 +107,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 3
                 maize_precision:
@@ -115,7 +116,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 4
                 maize_recall:
@@ -124,7 +125,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 4
                 sugarcane_precision:
@@ -133,7 +134,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 5
                 sugarcane_recall:
@@ -142,7 +143,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 5
                 tea_precision:
@@ -151,7 +152,7 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 6
                 tea_recall:
@@ -160,50 +161,86 @@ data:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
                     class_idx: 6
+                vegetables_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 11
+                        average: null
+                    class_idx: 7
+                vegetables_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 11
+                        average: null
+                    class_idx: 7
+                legumes_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 11
+                        average: null
+                    class_idx: 8
+                legumes_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 11
+                        average: null
+                    class_idx: 8
                 water_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
-                    class_idx: 7
+                    class_idx: 9
                 water_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
-                    class_idx: 7
+                    class_idx: 9
                 builtup_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
                     metric:
                       class_path: torchmetrics.classification.MulticlassPrecision
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
-                    class_idx: 8
+                    class_idx: 10
                 builtup_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
                     metric:
                       class_path: torchmetrics.classification.MulticlassRecall
                       init_args:
-                        num_classes: 9
+                        num_classes: 11
                         average: null
-                    class_idx: 8
+                    class_idx: 10
         input_mapping:
-          crop_type_classification:
+          class:
             label: "targets"
-    batch_size: 8
-    num_workers: 64
+    batch_size: 32
+    num_workers: ${NUM_WORKERS}
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.pad.Pad
@@ -213,7 +250,6 @@ data:
             image_selectors: ["sentinel2_l2a", "target/crop_type_classification/classes", "target/crop_type_classification/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
@@ -228,7 +264,6 @@ data:
             image_selectors: ["sentinel2_l2a", "target/crop_type_classification/classes", "target/crop_type_classification/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     val_config:
@@ -240,13 +275,30 @@ data:
       tags:
         split: "val"
     predict_config:
-      groups: ["nandi_county_2018"]
+      groups: ["nandi_county"]
       load_all_patches: true
       skip_targets: true
       overlap_ratio: 0.75
       patch_size: 4
+      transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 4
+            mode: "center"
+            image_selectors: ["sentinel2_l2a"]
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
 trainer:
   max_epochs: 100
+  default_root_dir: ${TRAINER_DATA_PATH}
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      project: ${WANDB_PROJECT}
+      name: ${WANDB_NAME}
+      entity: ${WANDB_ENTITY}
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -264,7 +316,9 @@ trainer:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
         path: placeholder
-        output_layer: prediction_v1
-        selector: ["crop_type_classification"]
-rslp_project: 2025_07_22_nandi_crop_type
-rslp_experiment: crop_type_segment_helios_base_S2_ts_ws4_ps2_bs8_early_unfreeze_noflip_segpool_bigloss
+        output_layer: ${PREDICTION_OUTPUT_LAYER}
+        selector: ["class"]
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            padding: 2

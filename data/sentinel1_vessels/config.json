@@ -1,0 +1,65 @@
+{
+  "layers": {
+    "label": {
+      "type": "vector"
+    },
+    "mask": {
+      "band_sets": [
+        {
+          "bands": [
+            "mask"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "format": "png",
+            "name": "single_image"
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "type": "vector"
+    },
+    "sentinel1": {
+      "alias": "sentinel1",
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "name": "rslearn.data_sources.aws_sentinel1.Sentinel1"
+      },
+      "resampling_method": "cubic",
+      "type": "raster"
+    },
+    "sentinel1_historical": {
+      "alias": "sentinel1",
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "duration": "60d",
+        "name": "rslearn.data_sources.aws_sentinel1.Sentinel1",
+        "orbit_direction": "ASCENDING",
+        "query_config": {
+          "max_matches": 2
+        },
+        "time_offset": "-90d"
+      },
+      "resampling_method": "cubic",
+      "type": "raster"
+    }
+  }
+}
