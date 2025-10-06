@@ -7,7 +7,7 @@ from typing import Any
 import torch
 from einops import rearrange
 from helios.data.constants import Modality
-from helios.nn.flexihelios import TokensAndMasks
+from helios.nn.flexihelios import Encoder, TokensAndMasks
 from helios.train.masking import MaskedHeliosSample, MaskValue
 from olmo_core.config import Config
 from olmo_core.distributed.checkpoint import load_model_and_optim_state
@@ -161,9 +161,17 @@ class Helios(torch.nn.Module):
 
         with context:
             # Currently we assume the provided model always returns a TokensAndMasks object.
-            tokens_and_masks: TokensAndMasks = self.model(
-                sample, always_pass_none_mask_to_transformer=True, **self.forward_kwargs
-            )["tokens_and_masks"]
+            tokens_and_masks: TokensAndMasks
+            if isinstance(self.model, Encoder):
+                # Encoder has a fast_pass argument to indicate mask is not needed.
+                tokens_and_masks = self.model(
+                    sample, fast_pass=True, **self.forward_kwargs
+                )["tokens_and_masks"]
+            else:
+                # Other models like STEncoder do not have this option supported.
+                tokens_and_masks = self.model(sample, **self.forward_kwargs)[
+                    "tokens_and_masks"
+                ]
 
         # Apply temporal/modality pooling so we just have one feature per patch.
         features = []
