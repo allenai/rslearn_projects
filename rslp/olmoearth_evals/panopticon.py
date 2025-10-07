@@ -13,6 +13,7 @@ from rslearn.train.tasks.segmentation import SegmentationHead
 from rslearn.train.transforms import Sequential
 from rslearn.train.transforms.concatenate import Concatenate
 from rslearn.train.transforms.select_bands import SelectBands
+from rslearn.train.transforms.transform import Identity
 
 from rslp.nandi.train import SegmentationPoolingDecoder
 
@@ -203,6 +204,6 @@ def get_transform(
         )
 
     if len(modules) == 0:
-        return torch.nn.Identity()
+        return Identity()
     else:
         return Sequential(*modules)
