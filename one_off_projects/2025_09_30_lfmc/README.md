@@ -17,3 +17,8 @@ Here are the steps to materialize this data, which takes a few days (see
 python -m rslp.rslearn_main dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/eurosat/rslearn_dataset/ --workers 64
 python -m rslp.main common launch_data_materialization_jobs --image favyen/rslp_image --ds_path /weka/dfive-default/rslearn-eai/datasets/lfmc/20250626 --hosts+=jupiter-cs-aus-134.reviz.ai2.in --command '["rslearn", "dataset", "materialize", "--root", "/weka/dfive-default/rslearn-eai/datasets/lfmc/20250626", "--workers", "32", "--load-workers", "128", "--ignore-errors"]'
 ```
+
+SRTM (currently part of the LFMC layer) requires a NASA EARTHDATA login. You can bypass this by disabling the SRTM layer:
+```
+python -m rslp.main common launch_data_materialization_jobs --image favyen/rslp_image --ds_path /weka/dfive-default/rslearn-eai/datasets/lfmc/20250626 --hosts+=jupiter-cs-aus-134.reviz.ai2.in --command '["rslearn", "dataset", "materialize", "--root", "/weka/dfive-default/rslearn-eai/datasets/lfmc/20250626", "--workers", "32", "--load-workers", "128", "--ignore-errors", "--disabled-layers", "srtm"]'
+```
