@@ -296,7 +296,11 @@ class CustomLightningCLI(RslearnLightningCLI):
         else:
             last_checkpoint_path = checkpoint_dir / "last.ckpt"
             if last_checkpoint_path.exists():
-                raise ValueError("autoresume is off but checkpoint already exists")
+                last_checkpoint_path = str(last_checkpoint_path.resolve())
+                raise ValueError(
+                    "autoresume is off but checkpoint already exists at "
+                    + last_checkpoint_path
+                )
             else:
                 return None
 
