@@ -70,7 +70,7 @@ jobs:
       - name: Start ssh-agent and add olmoearth_run deploy key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_ESRUN_CLONE }}
+          ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_OLMOEARTH_RUN_CLONE }}
       - name: Clone olmoearth_run and update requirements-extra.txt.
         run: |
           git clone git@github.com:allenai/olmoearth_run.git docker_build/olmoearth_run
