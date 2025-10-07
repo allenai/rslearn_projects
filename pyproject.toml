@@ -24,7 +24,7 @@ file = ["requirements.txt"]
 dev = { file = ["requirements-dev.txt"] }
 extra = { file = ["requirements-extra.txt"] }
 helios = { file = ["requirements-helios.txt"] }
-esrun = { file = ["requirements-esrun.txt"] }
+olmoearth_run = { file = ["requirements-olmoearth_run.txt"] }
 
 [tool.ruff]
 fix = true
