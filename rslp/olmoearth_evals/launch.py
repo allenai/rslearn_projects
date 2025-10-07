@@ -1,6 +1,5 @@
 """Launch OlmoEarth fine-tuning evals."""
 
-import argparse
 import subprocess  # nosec
 
 TASK_CONFIGS = {
@@ -23,34 +22,25 @@ TASK_CONFIGS = {
 }
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Launch OlmoEarth fine-tuning evaluations"
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        nargs="*",
-        required=True,
-        help="Models to evaluate",
-    )
-    parser.add_argument(
-        "--task",
-        type=str,
-        nargs="*",
-        required=True,
-        help="Tasks to evaluate",
-    )
-    parser.add_argument(
-        "--prefix",
-        type=str,
-        required=True,
-        help="Experiment prefix",
-    )
-    args = parser.parse_args()
+def launch(
+    models: list[str],
+    tasks: list[str],
+    prefix: str,
+    image_name: str,
+    priority: str = "high",
+) -> None:
+    """Launch OlmoEarth fine-tuning evaluation.
 
-    for model in args.model:
-        for task in args.task:
+    Args:
+        models: the models to run. For example, ["olmoearth", "satlaspretrain"]. See
+            data/helios_v3/models/ for available configs.
+        tasks: the tasks to run. See data/helios_v3/tasks/ for available configs.
+        prefix: prefix for this experiment.
+        image_name: the Beaker image name to use.
+        priority: the Beaker priority to use.
+    """
+    for model in models:
+        for task in tasks:
             basic_args = [
                 "python",
                 "-m",
@@ -60,14 +50,14 @@ if __name__ == "__main__":
                 "--project_id",
                 "2025_10_03_downstream_finetuning",
                 "--experiment_id",
-                f"{args.prefix}_{task}_{model}",
+                f"{prefix}_{task}_{model}",
                 "--cluster+=ai2/jupiter",
                 "--cluster+=ai2/ceres",
                 '--weka_mounts+={"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}',
                 "--image_name",
-                "favyen/rslphelios15",
+                image_name,
                 "--priority",
-                "urgent",
+                priority,
                 "--extra_env_vars",
                 '{"EVAL_ADAPTER_MODEL_ID": "' + model + '"}',
             ]
