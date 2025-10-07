@@ -1,0 +1,1 @@
+"""Adapter for evaluation tasks."""

@@ -42,6 +42,7 @@ def beaker_train(
     extra_args: list[str] = [],
     priority: str = "high",
     retries: int = 0,
+    extra_env_vars: dict[str, str] = {},
 ) -> None:
     """Launch training for the specified config on Beaker.
 
@@ -67,6 +68,7 @@ def beaker_train(
         extra_args: extra arguments to pass in the Beaker job.
         priority: the priority to assign to the Beaker job.
         retries: how many times to retry the Beaker job.
+        extra_env_vars: additional environment variables to set in the Beaker job.
     """
     # Normalize the config_path / config_paths option to always get a config_paths list
     # (so if config_path is set, make a one-element list from it).
@@ -140,6 +142,14 @@ def beaker_train(
                     BeakerEnvVar(
                         name="WANDB_USERNAME",
                         value=username,
+                    )
+                )
+
+            for env_name, env_value in extra_env_vars.items():
+                env_vars.append(
+                    BeakerEnvVar(
+                        name=env_name,
+                        value=env_value,
                     )
                 )
 
