@@ -35,6 +35,7 @@ def launch(
     tasks: list[str],
     prefix: str,
     image_name: str,
+    project: str,
     priority: str = "high",
 ) -> None:
     """Launch OlmoEarth fine-tuning evaluation.
@@ -45,6 +46,7 @@ def launch(
         tasks: the tasks to run. See data/olmoearth_evals/tasks/ for available configs.
         prefix: prefix for this experiment.
         image_name: the Beaker image name to use.
+        project: W&B project name.
         priority: the Beaker priority to use.
     """
     for model in models:
@@ -56,11 +58,12 @@ def launch(
                 "common",
                 "beaker_train",
                 "--project_id",
-                "2025_10_03_downstream_finetuning",
+                project,
                 "--experiment_id",
                 f"{prefix}_{task}_{model}",
                 "--cluster+=ai2/jupiter",
                 "--cluster+=ai2/ceres",
+                "--cluster+=ai2/titan",
                 '--weka_mounts+={"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}',
                 "--image_name",
                 image_name,
