@@ -7,8 +7,8 @@ from enum import StrEnum
 from pathlib import Path
 
 import fsspec
-from esrun.runner.local.fine_tune_runner import EsFineTuneRunner
-from esrun.runner.local.predict_runner import EsPredictRunner
+from olmoearth_run.runner.local.fine_tune_runner import OlmoEarthRunFineTuneRunner
+from olmoearth_run.runner.local.predict_runner import OlmoEarthRunPredictRunner
 from upath import UPath
 
 from rslp.log_utils import get_logger
@@ -35,7 +35,7 @@ def get_local_checkpoint(checkpoint_path: UPath) -> Path:
     local_upath = (
         UPath(tempfile.gettempdir())
         / "rslearn_cache"
-        / "esrun_checkpoints"
+        / "olmoearth_run_checkpoints"
         / f"{cache_id}.ckpt"
     )
 
@@ -50,9 +50,9 @@ def get_local_checkpoint(checkpoint_path: UPath) -> Path:
 
 
 def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
-    """Run EsFineTuneRunner's prepare_windows pipeline."""
-    logger.info("Loading EsFineTuneRunner")
-    runner = EsFineTuneRunner(
+    """Run OlmoEarthRunFineTuneRunner's prepare_windows pipeline."""
+    logger.info("Loading OlmoEarthRunFineTuneRunner")
+    runner = OlmoEarthRunFineTuneRunner(
         project_path=project_path,
         scratch_path=scratch_path,
     )
@@ -60,7 +60,7 @@ def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
     runner.prepare_labeled_windows()
 
 
-def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
+def olmoearth_run(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
     """Run EsPredictRunner inference pipeline.
 
     Args:
@@ -69,7 +69,7 @@ def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
         scratch_path: directory to use for scratch space.
         checkpoint_path: path to the model checkpoint.
     """
-    runner = EsPredictRunner(
+    runner = OlmoEarthRunPredictRunner(
         # ESRun does not work with relative path, so make sure to convert to absolute here.
         project_path=config_path.absolute(),
         scratch_path=scratch_path,
@@ -91,7 +91,7 @@ def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
     runner.combine(partitions)
 
 
-class EsrunStage(StrEnum):
+class OlmoEarthRunStage(StrEnum):
     """The stage of esrun pipeline to run.
 
     We always run the partition stage so that is not an option here.
@@ -107,7 +107,7 @@ def one_stage(
     config_path: Path,
     scratch_path: Path,
     checkpoint_path: str,
-    stage: EsrunStage,
+    stage: OlmoEarthRunStage,
     partition_id: str | None = None,
 ) -> None:
     """Run EsPredictRunner inference pipeline.
@@ -121,10 +121,10 @@ def one_stage(
             for all partitions, except BUILD_DATASET and COMBINE, which happens across
             partitions.
     """
-    if stage == EsrunStage.COMBINE and partition_id is not None:
+    if stage == OlmoEarthRunStage.COMBINE and partition_id is not None:
         raise ValueError("partition_id cannot be set for COMBINE stage")
 
-    runner = EsPredictRunner(
+    runner = OlmoEarthRunPredictRunner(
         # ESRun does not work with relative path, so make sure to convert to absolute here.
         project_path=config_path,
         scratch_path=scratch_path,
@@ -132,17 +132,17 @@ def one_stage(
     )
     partitions = runner.partition()
 
-    if stage == EsrunStage.BUILD_DATASET:
+    if stage == OlmoEarthRunStage.BUILD_DATASET:
         runner.build_dataset(partitions)
 
     if stage in [
-        EsrunStage.RUN_INFERENCE,
-        EsrunStage.POSTPROCESS,
+        OlmoEarthRunStage.RUN_INFERENCE,
+        OlmoEarthRunStage.POSTPROCESS,
     ]:
         fn = None
-        if stage == EsrunStage.RUN_INFERENCE:
+        if stage == OlmoEarthRunStage.RUN_INFERENCE:
             fn = runner.run_inference
-        elif stage == EsrunStage.POSTPROCESS:
+        elif stage == OlmoEarthRunStage.POSTPROCESS:
             fn = runner.postprocess
         else:
             assert False
@@ -155,5 +155,5 @@ def one_stage(
             for partition_id in partitions:
                 fn(partition_id)
 
-    elif stage == EsrunStage.COMBINE:
+    elif stage == OlmoEarthRunStage.COMBINE:
         runner.combine(partitions)
