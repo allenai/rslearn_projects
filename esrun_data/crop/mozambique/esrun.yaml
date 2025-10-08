@@ -30,7 +30,7 @@ partition_strategies:
   partition_request_geometry:
     class_path: esrun.runner.tools.partitioners.grid_partitioner.GridPartitioner
     init_args:
-      grid_size: 0.25
+      grid_size: 0.1
 
   prepare_window_geometries:
     class_path: esrun.runner.tools.partitioners.grid_partitioner.GridPartitioner
