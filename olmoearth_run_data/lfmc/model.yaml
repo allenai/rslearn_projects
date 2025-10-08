@@ -110,7 +110,6 @@ data:
             image_selectors: ["sentinel1_ascending", "sentinel2_l2a"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
               sentinel1_ascending: ["vv", "vh"]
@@ -135,7 +134,6 @@ data:
             image_selectors: ["sentinel1_ascending", "sentinel2_l2a"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
               sentinel1_ascending: ["vv", "vh"]
