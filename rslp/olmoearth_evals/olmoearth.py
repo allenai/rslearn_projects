@@ -4,6 +4,7 @@ import torch
 from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.pooling_decoder import PoolingDecoder
+from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.unet import UNetDecoder
 from rslearn.train.tasks.classification import ClassificationHead
 from rslearn.train.tasks.regression import RegressionHead
@@ -86,6 +87,35 @@ def get_model(
         )
     else:
         raise NotImplementedError
+
+    if task_name == "forest_loss_driver":
+        return MultiTaskModel(
+            encoder=[
+                SimpleTimeSeries(
+                    encoder=Helios(
+                        checkpoint_path="/weka/dfive-default/helios/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000",
+                        selector=["encoder"],
+                        forward_kwargs=dict(patch_size=4),
+                        patch_size=4,
+                        embedding_size=768,
+                    ),
+                    image_channels=12 * 4,
+                    image_key="sentinel2_l2a",
+                    groups=[[0], [1]],
+                ),
+            ],
+            decoders=dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=768 * 2,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            ),
+        )
 
     return MultiTaskModel(
         encoder=[

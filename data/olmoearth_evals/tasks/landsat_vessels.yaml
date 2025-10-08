@@ -5,9 +5,9 @@ model:
       class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterModel
       init_args:
         input_size: 128
-        input_modalities: ["sentinel2"]
+        input_modalities: ["landsat"]
         task_type: "detect"
-        task_name: "sentinel2_vessels"
+        task_name: "landsat_vessels"
         task_channels: 2
         task_timesteps: 1
     lr: 0.0001
@@ -17,16 +17,16 @@ model:
         factor: 0.2
         patience: 2
         min_lr: 0
-        cooldown: 20
+        cooldown: 10
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/sentinel2_vessels/dataset_v1/20250213/
+    path: /weka/dfive-default/rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20250624/
     inputs:
-      sentinel2:
+      landsat:
         data_type: "raster"
-        layers: ["sentinel2"]
-        bands: ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B11", "B12"]
+        layers: ["landsat"]
+        bands: ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11"]
         passthrough: true
         dtype: FLOAT32
       mask:
@@ -52,7 +52,8 @@ data:
               box_size: 15
               remap_values: [[0, 1], [0, 255]]
               exclude_by_center: true
-              enable_map_metric: false
+              score_threshold: 0.7
+              enable_map_metric: true
               enable_f1_metric: true
               f1_metric_thresholds: [[0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]]
               f1_metric_kwargs:
@@ -68,39 +69,39 @@ data:
       transforms:
         - class_path: rslp.transforms.mask.Mask
           init_args:
-            selectors: ["sentinel2"]
+            selectors: ["landsat"]
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
             selections:
-              sentinel2: []
+              landsat: []
             output_selector: image
         - class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterNormalize
           init_args:
             input_size: 128
-            input_modalities: ["sentinel2"]
+            input_modalities: ["landsat"]
             task_type: "detect"
-            task_name: "sentinel2_vessels"
+            task_name: "landsat_vessels"
             task_channels: 2
             task_timesteps: 1
     train_config:
       patch_size: 128
       tags:
-        olmoearth_evals_split: train
+        olmoearth_evals_split: "train"
       sampler:
         class_path: rslearn.train.dataset.RandomSamplerFactory
         init_args:
           replacement: true
-          num_samples: 131072
+          num_samples: 32768
     val_config:
       patch_size: 128
       load_all_patches: true
       tags:
-        olmoearth_evals_split: val
+        olmoearth_evals_split: "val"
     test_config:
       patch_size: 128
       load_all_patches: true
       tags:
-        olmoearth_evals_split: test
+        olmoearth_evals_split: "test"
 trainer:
   max_epochs: 100
   callbacks:
@@ -111,7 +112,7 @@ trainer:
       init_args:
         save_top_k: 1
         save_last: true
-        monitor: val_eval_task/F1
+        monitor: val_eval_task/mAP
         mode: max
 rslp_project: placeholder
 rslp_experiment: placeholder

@@ -3,6 +3,8 @@
 import subprocess  # nosec
 
 TASK_CONFIGS = {
+    "forest_loss_driver": ["forest_loss_driver"],
+    "landsat_vessels": ["landsat_vessels"],
     "lfmc_uni": ["lfmc_base"],
     "lfmc_ts": ["lfmc_base", "lfmc_ts"],
     "lfmc_mm": ["lfmc_base", "lfmc_mm"],
@@ -71,7 +73,23 @@ def launch(
                 f"--config_paths+=data/olmoearth_evals/tasks/{cfg_fname}.yaml"
                 for cfg_fname in TASK_CONFIGS[task]
             ]
-            model_config_args = [
-                f"--config_paths+=data/olmoearth_evals/models/{model}.yaml"
-            ]
+
+            if task == "forest_loss_driver":
+                # Need to use different config for it to work properly because the
+                # model architecture is different.
+                if model == "satlaspretrain":
+                    # For SatlasPretrain the config has not just freezing but also
+                    # restoring model.
+                    model_config_fname = "forest_loss_driver_satlaspretrain.yaml"
+                else:
+                    # Otherwise we can always freeze the same portion I think.
+                    model_config_fname = "forest_loss_driver.yaml"
+                model_config_args = [
+                    f"--config_paths+=data/olmoearth_evals/models/{model_config_fname}"
+                ]
+            else:
+                model_config_args = [
+                    f"--config_paths+=data/olmoearth_evals/models/{model}.yaml"
+                ]
+
             subprocess.check_call(basic_args + task_config_args + model_config_args)  # nosec

@@ -5,6 +5,7 @@ from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.galileo import GalileoModel, GalileoSize
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.pooling_decoder import PoolingDecoder
+from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.unet import UNetDecoder
 from rslearn.train.tasks.classification import ClassificationHead
 from rslearn.train.tasks.regression import RegressionHead
@@ -85,6 +86,32 @@ def get_model(
         )
     else:
         raise NotImplementedError
+
+    if task_name == "forest_loss_driver":
+        return MultiTaskModel(
+            encoder=[
+                SimpleTimeSeries(
+                    encoder=GalileoModel(
+                        size=GalileoSize.BASE,
+                        patch_size=4,
+                    ),
+                    image_channels=10 * 4,
+                    image_key="s2",
+                    groups=[[0], [1]],
+                ),
+            ],
+            decoders=dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=768 * 2,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            ),
+        )
 
     return MultiTaskModel(
         encoder=[

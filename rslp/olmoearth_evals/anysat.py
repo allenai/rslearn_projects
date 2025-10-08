@@ -7,6 +7,7 @@ from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.pick_features import PickFeatures
 from rslearn.models.pooling_decoder import PoolingDecoder
+from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.train.tasks.classification import ClassificationHead
 from rslearn.train.tasks.regression import RegressionHead
 from rslearn.train.tasks.segmentation import SegmentationHead
@@ -108,6 +109,35 @@ def get_model(
             raise ValueError(f"unsupported modality {modality}")
 
     dates = list(range(0, 30 * task_timesteps, 30))
+
+    if task_name == "forest_loss_driver":
+        return MultiTaskModel(
+            encoder=[
+                SimpleTimeSeries(
+                    encoder=AnySat(
+                        modalities=modalities,
+                        patch_size_meters=40,
+                        output=output_mode,
+                        dates={modality: dates for modality in modalities},
+                        output_modality=modalities[0],
+                    ),
+                    image_channels=10 * 4,
+                    image_key="s2",
+                    groups=[[0], [1]],
+                ),
+            ],
+            decoders=dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=768 * 2,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            ),
+        )
 
     return MultiTaskModel(
         encoder=[

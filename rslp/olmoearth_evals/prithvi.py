@@ -7,6 +7,7 @@ from rslearn.models.pick_features import PickFeatures
 from rslearn.models.pooling_decoder import PoolingDecoder
 from rslearn.models.prithvi import PrithviNormalize, PrithviV2
 from rslearn.models.resize_features import ResizeFeatures
+from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.unet import UNetDecoder
 from rslearn.train.tasks.classification import ClassificationHead
 from rslearn.train.tasks.regression import RegressionHead
@@ -93,6 +94,31 @@ def get_model(
         )
     else:
         raise NotImplementedError
+
+    if task_name == "forest_loss_driver":
+        return MultiTaskModel(
+            encoder=[
+                SimpleTimeSeries(
+                    encoder=PrithviV2(
+                        num_frames=task_timesteps,
+                    ),
+                    image_channels=6 * 4,
+                    image_key="image",
+                    groups=[[0], [1]],
+                ),
+            ],
+            decoders=dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=1024 * 2,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            ),
+        )
 
     return MultiTaskModel(
         encoder=[

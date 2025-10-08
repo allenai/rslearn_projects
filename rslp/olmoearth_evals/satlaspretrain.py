@@ -78,6 +78,36 @@ def get_model(
     else:
         raise NotImplementedError
 
+    if task_name == "forest_loss_driver":
+        return MultiTaskModel(
+            encoder=[
+                SimpleTimeSeries(
+                    encoder=SimpleTimeSeries(
+                        encoder=Swin(
+                            pretrained=False,
+                            input_channels=9,
+                            output_layers=[1, 3, 5, 7],
+                        ),
+                        image_channels=9,
+                    ),
+                    image_channels=9 * 4,
+                    image_key="image",
+                    groups=[[0], [1]],
+                ),
+            ],
+            decoders=dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=1024 * 2,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            ),
+        )
+
     if task_type == "detect":
         return MultiTaskModel(
             encoder=[

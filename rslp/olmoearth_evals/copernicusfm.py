@@ -119,6 +119,34 @@ def get_model(
         else:
             raise ValueError(f"unsupported modality {modality}")
 
+    if task_name == "forest_loss_driver":
+        return MultiTaskModel(
+            encoder=[
+                SimpleTimeSeries(
+                    encoder=SimpleTimeSeries(
+                        encoder=CopernicusFM(
+                            band_order=band_order,
+                        ),
+                        image_keys=image_keys,
+                    ),
+                    image_channels=12 * 4,
+                    image_key="sentinel2_l2a",
+                    groups=[[0], [1]],
+                ),
+            ],
+            decoders=dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=768 * 2,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            ),
+        )
+
     return MultiTaskModel(
         encoder=[
             SimpleTimeSeries(

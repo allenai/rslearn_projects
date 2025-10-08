@@ -102,6 +102,35 @@ def get_model(
         clay_modality = "landsat-c2l1"
         image_keys[clay_modality] = 6
 
+    if task_name == "forest_loss_driver":
+        return MultiTaskModel(
+            encoder=[
+                SimpleTimeSeries(
+                    encoder=SimpleTimeSeries(
+                        encoder=Clay(
+                            model_size=ClaySize.LARGE,
+                            modality=clay_modality,
+                        ),
+                        image_keys=image_keys,
+                    ),
+                    image_channels=10 * 4,
+                    image_key="sentinel-2-l2a",
+                    groups=[[0], [1]],
+                ),
+            ],
+            decoders=dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=1024 * 2,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            ),
+        )
+
     return MultiTaskModel(
         encoder=[
             SimpleTimeSeries(

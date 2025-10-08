@@ -8,6 +8,7 @@ from rslearn.models.pick_features import PickFeatures
 from rslearn.models.pooling_decoder import PoolingDecoder
 from rslearn.models.presto import Presto
 from rslearn.models.resize_features import ResizeFeatures
+from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.train.tasks.classification import ClassificationHead
 from rslearn.train.tasks.regression import RegressionHead
 from rslearn.train.tasks.segmentation import SegmentationHead
@@ -97,8 +98,31 @@ def get_model(
     else:
         raise NotImplementedError
 
+    if task_name == "forest_loss_driver":
+        return MultiTaskModel(
+            encoder=[
+                SimpleTimeSeries(
+                    encoder=Presto(pixel_batch_size=4096),
+                    image_channels=10 * 4,
+                    image_key="s2",
+                    groups=[[0], [1]],
+                ),
+            ],
+            decoders=dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=128 * 2,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            ),
+        )
+
     return MultiTaskModel(
-        encoder=[Presto(pixel_batch_size=16384)],
+        encoder=[Presto(pixel_batch_size=4096)],
         decoders=decoders,
     )
 
