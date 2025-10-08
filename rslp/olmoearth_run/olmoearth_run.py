@@ -1,7 +1,6 @@
 """Run EsPredictRunner inference pipeline."""
 
 import hashlib
-import logging
 import shutil
 import tempfile
 from enum import StrEnum
@@ -10,7 +9,6 @@ from pathlib import Path
 import fsspec
 from olmoearth_run.runner.local.fine_tune_runner import OlmoEarthRunFineTuneRunner
 from olmoearth_run.runner.local.predict_runner import OlmoEarthRunPredictRunner
-from olmoearth_run.shared.tools.logger import configure_logging
 from upath import UPath
 
 from rslp.log_utils import get_logger
@@ -63,9 +61,9 @@ def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
 
 
 def finetune(project_path: Path, scratch_path: Path) -> None:
-    """Run EsFineTuneRunner finetune pipeline."""
-    logger.info("Loading EsFineTuneRunner")
-    runner = EsFineTuneRunner(
+    """Run OlmoEarthRunFineTuneRunner finetune pipeline."""
+    logger.info("Loading OlmoEarthFineTuneRunner")
+    runner = OlmoEarthRunFineTuneRunner(
         project_path=project_path,
         scratch_path=scratch_path,
     )
@@ -136,9 +134,6 @@ def one_stage(
     """
     if stage == OlmoEarthRunStage.COMBINE and partition_id is not None:
         raise ValueError("partition_id cannot be set for COMBINE stage")
-
-    # Configure esrun logging before creating the runner
-    configure_logging(log_level=logging.INFO)
 
     runner = OlmoEarthRunPredictRunner(
         # ESRun does not work with relative path, so make sure to convert to absolute here.
