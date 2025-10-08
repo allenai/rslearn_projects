@@ -62,6 +62,17 @@ def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
     runner.prepare_labeled_windows()
 
 
+def finetune(project_path: Path, scratch_path: Path) -> None:
+    """Run EsFineTuneRunner finetune pipeline."""
+    logger.info("Loading EsFineTuneRunner")
+    runner = EsFineTuneRunner(
+        project_path=project_path,
+        scratch_path=scratch_path,
+    )
+    logger.info("Running finetune")
+    runner.fine_tune()
+
+
 def esrun(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
     """Run EsPredictRunner inference pipeline.
 
