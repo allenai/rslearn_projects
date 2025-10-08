@@ -73,7 +73,7 @@ data:
       tags:
         olmoearth_evals_split: val
 trainer:
-  max_epochs: 50
+  max_epochs: 100
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
