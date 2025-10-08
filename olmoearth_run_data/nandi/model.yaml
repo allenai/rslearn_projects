@@ -7,7 +7,7 @@ model:
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
-              checkpoint_path: ${EXTRA_FILES_PATH}/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
+              checkpoint_path: ${EXTRA_FILES_PATH}/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               random_initialization: true
               selector: ["encoder"]
               forward_kwargs:
@@ -243,53 +243,27 @@ data:
     num_workers: ${NUM_WORKERS}
     default_config:
       transforms:
-        - class_path: rslearn.train.transforms.pad.Pad
-          init_args:
-            size: 4
-            mode: "center"
-            image_selectors: ["sentinel2_l2a", "target/crop_type_classification/classes", "target/crop_type_classification/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
+      groups: ["random_split"]
       tags:
         split: "train"
       transforms:
-        - class_path: rslearn.train.transforms.pad.Pad
-          init_args:
-            size: 4
-            mode: "center"
-            image_selectors: ["sentinel2_l2a", "target/crop_type_classification/classes", "target/crop_type_classification/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     val_config:
-      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
+      groups: ["random_split"]
       tags:
         split: "val"
     test_config:
-      groups: ["groundtruth_polygon_split_window_32", "worldcover_window_32"]
+      groups: ["random_split"]
       tags:
-        split: "val"
-    predict_config:
-      groups: ["nandi_county"]
-      load_all_patches: true
-      skip_targets: true
-      overlap_ratio: 0.75
-      patch_size: 4
-      transforms:
-        - class_path: rslearn.train.transforms.pad.Pad
-          init_args:
-            size: 4
-            mode: "center"
-            image_selectors: ["sentinel2_l2a"]
-        - class_path: rslp.helios.norm.HeliosNormalize
-          init_args:
-            band_names:
-              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        split: "test"
 trainer:
   max_epochs: 100
   default_root_dir: ${TRAINER_DATA_PATH}
@@ -313,12 +287,3 @@ trainer:
       init_args:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 2
-    - class_path: rslearn.train.prediction_writer.RslearnWriter
-      init_args:
-        path: placeholder
-        output_layer: ${PREDICTION_OUTPUT_LAYER}
-        selector: ["class"]
-        merger:
-          class_path: rslearn.train.prediction_writer.RasterMerger
-          init_args:
-            padding: 2
