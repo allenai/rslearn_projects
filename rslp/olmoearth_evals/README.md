@@ -14,6 +14,8 @@ Not all models support all modalities or multi-modality.
 - Clay: supports Sentinel-1/Sentinel-2/Landsat, but only one modality at a time.
 - Copernicus-FM: supports Sentinel-1 and Sentinel-2.
 - CROMA: supports Sentinel-1 and Sentinel-2.
+- DINOv3: supports Sentinel-2 and Landsat, but only one modality at a time.
+- Galileo: supports all tasks.
 - OlmoEarth: supports all tasks.
 - Panopticon: supports all tasks.
 - Presto: supports Sentinel-1 and Sentinel-2.
@@ -23,9 +25,9 @@ Not all models support all modalities or multi-modality.
 
 ```
 # Sentinel-2 tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,olmoearth,panopticon,presto,prithvi,satlaspretrain,terramind]' --tasks='[pastis_uni,pastis_ts,marine_infra_uni,marine_infra_ts,wind_turbine_uni,wind_turbine_ts,solar_farm_uni,solar_farm_ts,sentinel2_vessel_length,sentinel2_vessel_type,sentinel2_vessels]' --prefix 20251007b --image_name favyen/rslphelios16
+python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,dinov3,galileo,olmoearth,panopticon,presto,prithvi,satlaspretrain,terramind]' --tasks='[pastis_uni,pastis_ts,marine_infra_uni,marine_infra_ts,wind_turbine_uni,wind_turbine_ts,solar_farm_uni,solar_farm_ts,sentinel2_vessel_length,sentinel2_vessel_type,sentinel2_vessels]' --prefix 20251007b --image_name favyen/rslphelios16
 # Sentinel-1 + Sentinel-2 tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,copernicusfm,croma,olmoearth,panopticon,presto,terramind]' --tasks='[pastis_mm,marine_infra_mm,wind_turbine_mm,solar_farm_mm]' --prefix 20251007b --image_name favyen/rslphelios16
+python -m rslp.main olmoearth_evals launch --models='[anysat,copernicusfm,croma,galileo,olmoearth,panopticon,presto,terramind]' --tasks='[pastis_mm,marine_infra_mm,wind_turbine_mm,solar_farm_mm]' --prefix 20251007b --image_name favyen/rslphelios16
 # Sentinel-1 tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,olmoearth,panopticon,presto,terramind]' --tasks='[sentinel1_vessels]' --prefix 20251007b --image_name favyen/rslphelios16
+python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,galileo,olmoearth,panopticon,presto,terramind]' --tasks='[sentinel1_vessels]' --prefix 20251007b --image_name favyen/rslphelios16
 ```
