@@ -153,16 +153,14 @@
             "B11",
             "B12"
           ],
-          "dtype": "uint16",
-          "zoom_offset": -1
+          "dtype": "uint16"
         },
         {
           "bands": [
             "B01",
             "B09"
           ],
-          "dtype": "uint16",
-          "zoom_offset": -2
+          "dtype": "uint16"
         }
       ],
       "data_source": {
