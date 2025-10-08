@@ -16,6 +16,7 @@ from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.utilities import rank_zero_only
 from rslearn.main import RslearnLightningCLI
 from rslearn.train.lightning_module import RslearnLightningModule
+from rslearn.utils.fsspec import open_atomic
 from upath import UPath
 
 import rslp.utils.fs  # noqa: F401 (imported but unused)
@@ -66,9 +67,8 @@ def get_cached_checkpoint(checkpoint_fname: UPath) -> str:
     logger.info("caching checkpoint %s to %s", str(checkpoint_fname), local_fname)
     os.makedirs(os.path.dirname(local_fname), exist_ok=True)
     with checkpoint_fname.open("rb") as src:
-        with open(local_fname + ".tmp", "wb") as dst:
+        with open_atomic(UPath(local_fname), "wb") as dst:
             shutil.copyfileobj(src, dst)
-    os.rename(local_fname + ".tmp", local_fname)
 
     return local_fname
 
@@ -296,7 +296,11 @@ class CustomLightningCLI(RslearnLightningCLI):
         else:
             last_checkpoint_path = checkpoint_dir / "last.ckpt"
             if last_checkpoint_path.exists():
-                raise ValueError("autoresume is off but checkpoint already exists")
+                last_checkpoint_path = str(last_checkpoint_path.resolve())
+                raise ValueError(
+                    "autoresume is off but checkpoint already exists at "
+                    + last_checkpoint_path
+                )
             else:
                 return None
 

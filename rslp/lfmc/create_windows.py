@@ -70,6 +70,13 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
     else:
         split = "train"
 
+    is_site_name_val = hashlib.sha256(site_name.encode()).hexdigest()[0] in ["0", "1"]
+
+    if is_site_name_val:
+        site_name_split = "val"
+    else:
+        site_name_split = "train"
+
     window = Window(
         path=Window.get_window_root(ds_path, group, window_name),
         group=group,
@@ -79,6 +86,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         time_range=(start_time, end_time),
         options={
             "split": split,
+            "site_name_split": site_name_split,
             "site_name": site_name,
             "state_region": state_region,
             "country": country,

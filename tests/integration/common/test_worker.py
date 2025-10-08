@@ -5,11 +5,15 @@ import pathlib
 import time
 from collections.abc import Callable
 
+import pytest
+
 from rslp.common.worker import worker_pipeline, write_jobs
 
 IDLE_TIMEOUT = 2
 
 
+# Group together these tests since they use the same Beaker queue.
+@pytest.mark.xdist_group(name="worker_test_group")
 class TestWorker:
     """Test the rslp.common.worker module."""
 
