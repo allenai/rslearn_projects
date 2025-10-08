@@ -33,8 +33,8 @@ def launch(
 
     Args:
         models: the models to run. For example, ["olmoearth", "satlaspretrain"]. See
-            data/helios_v3/models/ for available configs.
-        tasks: the tasks to run. See data/helios_v3/tasks/ for available configs.
+            data/olmoearth_evals/models/ for available configs.
+        tasks: the tasks to run. See data/olmoearth_evals/tasks/ for available configs.
         prefix: prefix for this experiment.
         image_name: the Beaker image name to use.
         priority: the Beaker priority to use.
@@ -62,8 +62,10 @@ def launch(
                 '{"EVAL_ADAPTER_MODEL_ID": "' + model + '"}',
             ]
             task_config_args = [
-                f"--config_paths+=data/helios_v3/tasks/{cfg_fname}.yaml"
+                f"--config_paths+=data/olmoearth_evals/tasks/{cfg_fname}.yaml"
                 for cfg_fname in TASK_CONFIGS[task]
             ]
-            model_config_args = [f"--config_paths+=data/helios_v3/models/{model}.yaml"]
+            model_config_args = [
+                f"--config_paths+=data/olmoearth_evals/models/{model}.yaml"
+            ]
             subprocess.check_call(basic_args + task_config_args + model_config_args)  # nosec
