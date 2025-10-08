@@ -29,7 +29,7 @@ def get_model(
     task_timesteps: int = 1,
 ) -> torch.nn.Module:
     """Get appropriate Panopticon model."""
-    # Panopticon resizes to 256x256 and always has 16x16 output feature map.
+    # Panopticon resizes to 224x224 and always has 16x16 output feature map (ps=14).
     downsample_factor = input_size // 16
     if task_type == "segment":
         decoders = dict(
