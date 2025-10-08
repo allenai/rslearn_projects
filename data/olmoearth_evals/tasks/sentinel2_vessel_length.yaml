@@ -76,6 +76,6 @@ trainer:
         save_top_k: 1
         save_last: true
         monitor: val_eval_task/l1
-        mode: max
+        mode: min
 rslp_project: placeholder
 rslp_experiment: placeholder
