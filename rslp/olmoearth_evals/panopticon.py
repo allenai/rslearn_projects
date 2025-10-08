@@ -12,12 +12,12 @@ from rslearn.train.tasks.regression import RegressionHead
 from rslearn.train.tasks.segmentation import SegmentationHead
 from rslearn.train.transforms import Sequential
 from rslearn.train.transforms.concatenate import Concatenate
+from rslearn.train.transforms.normalize import Normalize
 from rslearn.train.transforms.select_bands import SelectBands
-from rslearn.train.transforms.transform import Identity
 
 from rslp.nandi.train import SegmentationPoolingDecoder
 
-from .constants import SENTINEL2_BANDS
+from .constants import LANDSAT_BANDS, SENTINEL2_BANDS
 
 
 def get_model(
@@ -111,38 +111,13 @@ def get_model(
                 ]
                 image_keys["sentinel2"] = 10
             else:
-                band_order["sentinel2"] = [
-                    "B01",
-                    "B02",
-                    "B03",
-                    "B04",
-                    "B05",
-                    "B06",
-                    "B07",
-                    "B08",
-                    "B8A",
-                    "B09",
-                    "B11",
-                    "B12",
-                ]
+                band_order["sentinel2"] = SENTINEL2_BANDS
                 image_keys["sentinel2"] = 12
         elif modality == "sentinel1":
             band_order["sentinel1"] = ["VV", "VH"]
             image_keys["sentinel1"] = 2
         elif modality == "landsat":
-            band_order["landsat8"] = [
-                "B1",
-                "B2",
-                "B3",
-                "B4",
-                "B5",
-                "B6",
-                "B7",
-                "B8",
-                "B9",
-                "B10",
-                "B11",
-            ]
+            band_order["landsat8"] = LANDSAT_BANDS
             image_keys["landsat8"] = 11
 
     return MultiTaskModel(
@@ -169,7 +144,7 @@ def get_transform(
     """Get appropriate Panopticon transform."""
     modules: list[torch.nn.Module] = []
 
-    # Rename landsat to landsat8 if it is present.
+    # Rename landsat to landsat8, and normalize, if it is present.
     if "landsat" in input_modalities:
         modules.append(
             Concatenate(
@@ -177,22 +152,31 @@ def get_transform(
                 output_selector="landsat8",
             )
         )
+        modules.append(
+            Normalize(
+                mean=10000,
+                std=8000,
+                selectors=["landsat8"],
+            )
+        )
 
-    # Sub-select Sentinel-2 bands for PASTIS.
-    # Otherwise we can keep sentinel2 as is.
-    if task_name == "pastis" and "sentinel2" in input_modalities:
-        wanted_bands = [
-            "B02",
-            "B03",
-            "B04",
-            "B05",
-            "B06",
-            "B07",
-            "B08",
-            "B8A",
-            "B11",
-            "B12",
-        ]
+    if "sentinel2" in input_modalities:
+        if task_name == "pastis":
+            wanted_bands = [
+                "B02",
+                "B03",
+                "B04",
+                "B05",
+                "B06",
+                "B07",
+                "B08",
+                "B8A",
+                "B11",
+                "B12",
+            ]
+        else:
+            wanted_bands = SENTINEL2_BANDS
+
         band_indices = [SENTINEL2_BANDS.index(band) for band in wanted_bands]
         modules.append(
             SelectBands(
@@ -202,8 +186,22 @@ def get_transform(
                 output_selector="sentinel2",
             )
         )
+        modules.append(
+            Normalize(
+                mean=2000,
+                std=1500,
+                selectors=["sentinel2"],
+            )
+        )
 
-    if len(modules) == 0:
-        return Identity()
-    else:
-        return Sequential(*modules)
+    if "sentinel1" in input_modalities:
+        # For Sentinel-1, we just need to normalize it.
+        modules.append(
+            Normalize(
+                mean=-10,
+                std=10,
+                selectors=["sentinel1"],
+            )
+        )
+
+    return Sequential(*modules)

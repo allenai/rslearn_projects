@@ -12,6 +12,7 @@ from rslearn.train.tasks.classification import ClassificationHead
 from rslearn.train.tasks.regression import RegressionHead
 from rslearn.train.tasks.segmentation import SegmentationHead
 from rslearn.train.transforms import Sequential
+from rslearn.train.transforms.normalize import Normalize
 from rslearn.train.transforms.select_bands import SelectBands
 
 from rslp.nandi.train import SegmentationPoolingDecoder
@@ -142,7 +143,6 @@ def get_transform(
     """Get appropriate Copernicus-FM transform."""
     modules: list[torch.nn.Module] = []
 
-    # Rename sentinel2 to sentinel2_l2a.
     if "sentinel2" in input_modalities:
         if task_name == "pastis":
             wanted_bands = [
@@ -169,8 +169,22 @@ def get_transform(
                 output_selector="sentinel2_l2a",
             )
         )
+        modules.append(
+            Normalize(
+                mean=2000,
+                std=1500,
+                selectors=["sentinel2_l2a"],
+            )
+        )
 
-    if len(modules) == 0:
-        return torch.nn.Identity()
-    else:
-        return Sequential(*modules)
+    if "sentinel1" in input_modalities:
+        # For Sentinel-1, we just need to normalize it.
+        modules.append(
+            Normalize(
+                mean=-10,
+                std=10,
+                selectors=["sentinel1"],
+            )
+        )
+
+    return Sequential(*modules)
