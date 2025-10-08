@@ -11,9 +11,6 @@
       ],
       "type": "raster"
     },
-    "label": {
-      "type": "vector"
-    },
     "label_raster": {
       "band_sets": [
         {
@@ -24,6 +21,9 @@
         }
       ],
       "type": "raster"
+    },
+    "labels": {
+      "type": "vector"
     },
     "output": {
       "band_sets": [
