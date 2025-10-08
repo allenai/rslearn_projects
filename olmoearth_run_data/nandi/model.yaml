@@ -57,7 +57,7 @@ data:
         input_mapping:
           class:
             label: "targets"
-    batch_size: 32
+    batch_size: 512
     num_workers: ${NUM_WORKERS}
     default_config:
       transforms:
