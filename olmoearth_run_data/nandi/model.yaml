@@ -40,7 +40,7 @@ data:
         load_all_layers: true
       label:
         data_type: "vector"
-        layers: ["label"]
+        layers: ["labels"]
         is_target: true
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
