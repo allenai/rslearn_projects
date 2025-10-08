@@ -3,22 +3,28 @@
 import subprocess  # nosec
 
 TASK_CONFIGS = {
-    "pastis_uni": ["pastis_base"],
-    "pastis_ts": ["pastis_base", "pastis_ts"],
-    "pastis_mm": ["pastis_base", "pastis_mm"],
+    "lfmc_uni": ["lfmc_base"],
+    "lfmc_ts": ["lfmc_base", "lfmc_ts"],
+    "lfmc_mm": ["lfmc_base", "lfmc_mm"],
+    "mangrove_uni": ["mangrove_base"],
+    "mangrove_ts": ["mangrove_base", "mangrove_ts"],
+    "mangrove_mm": ["mangrove_base", "mangrove_mm"],
     "marine_infra_uni": ["marine_infra_base"],
     "marine_infra_ts": ["marine_infra_base", "marine_infra_ts"],
     "marine_infra_mm": ["marine_infra_base", "marine_infra_mm"],
+    "pastis_uni": ["pastis_base"],
+    "pastis_ts": ["pastis_base", "pastis_ts"],
+    "pastis_mm": ["pastis_base", "pastis_mm"],
+    "sentinel1_vessels": ["sentinel1_vessels"],
+    "sentinel2_vessel_length": ["sentinel2_vessel_length"],
+    "sentinel2_vessel_type": ["sentinel2_vessel_type"],
+    "sentinel2_vessels": ["sentinel2_vessels"],
     "solar_farm_uni": ["solar_farm_base"],
     "solar_farm_ts": ["solar_farm_base", "solar_farm_ts"],
     "solar_farm_mm": ["solar_farm_base", "solar_farm_mm"],
     "wind_turbine_uni": ["wind_turbine_base"],
     "wind_turbine_ts": ["wind_turbine_base", "wind_turbine_ts"],
     "wind_turbine_mm": ["wind_turbine_base", "wind_turbine_mm"],
-    "sentinel1_vessels": ["sentinel1_vessels"],
-    "sentinel2_vessel_length": ["sentinel2_vessel_length"],
-    "sentinel2_vessel_type": ["sentinel2_vessel_type"],
-    "sentinel2_vessels": ["sentinel2_vessels"],
 }
 
 
