@@ -13,22 +13,28 @@ model:
                 patch_size: 4
         decoders:
           fueltype:
-            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            - class_path: rslearn.models.unet.UNetDecoder
               init_args:
-                in_channels: 768
+                in_channels: [[4, 768]]
                 out_channels: 4
+                conv_layers_per_resolution: 2
+                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
           herbaceousvalue:
-            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            - class_path: rslearn.models.unet.UNetDecoder
               init_args:
-                in_channels: 768
+                in_channels: [[4, 768]]
                 out_channels: 1
+                conv_layers_per_resolution: 2
+                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
             - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
           woodyvalue:
-            - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            - class_path: rslearn.models.unet.UNetDecoder
               init_args:
-                in_channels: 768
+                in_channels: [[4, 768]]
                 out_channels: 1
+                conv_layers_per_resolution: 2
+                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
             - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
     lr: 0.00002
     plateau: true
@@ -43,25 +49,25 @@ data:
     inputs:
       sentinel1:
         data_type: "raster"
-        layers: ["sentinel1_ascending"]
+        layers: ["sentinel1_ascending", "sentinel1_ascending.1", "sentinel1_ascending.2", "sentinel1_ascending.3", "sentinel1_ascending.4", "sentinel1_ascending.5", "sentinel1_ascending.6", "sentinel1_ascending.7", "sentinel1_ascending.8", "sentinel1_ascending.9", "sentinel1_ascending.10", "sentinel1_ascending.11"]
         bands: ["vv", "vh"]
         passthrough: true
         dtype: FLOAT32
-        load_all_item_groups: true
+        load_all_item_groups: false
         load_all_layers: true
       sentinel2_l2a:
         data_type: "raster"
-        layers: ["sentinel2_l2a"]
+        layers: ["sentinel2_l2a", "sentinel2_l2a.1", "sentinel2_l2a.2", "sentinel2_l2a.3", "sentinel2_l2a.4", "sentinel2_l2a.5", "sentinel2_l2a.6", "sentinel2_l2a.7", "sentinel2_l2a.8", "sentinel2_l2a.9", "sentinel2_l2a.10", "sentinel2_l2a.11"]
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
         dtype: FLOAT32
-        load_all_item_groups: true
+        load_all_item_groups: false
         load_all_layers: true
       fueltype_data:
         data_type: "raster"
         layers: ["labels"]
         bands: ["fueltype"]
-        dtype: FLOAT32
+        dtype: INT32
         is_target: true
       herbaceousvalue_data:
         data_type: "raster"
@@ -110,15 +116,15 @@ data:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
               sentinel1: ["vv", "vh"]
     train_config:
-      groups: ["spatial_split"]
+      groups: ["post_spatial_split"]
       tags:
         split: "train"
     val_config:
-      groups: ["spatial_split"]
+      groups: ["post_spatial_split"]
       tags:
         split: "val"
     test_config:
-      groups: ["spatial_split"]
+      groups: ["post_spatial_split"]
       tags:
         split: "val"
 trainer:
