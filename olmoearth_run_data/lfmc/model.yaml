@@ -10,7 +10,7 @@ model:
               checkpoint_path: ${EXTRA_FILES_PATH}/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 1
+                patch_size: 3
         decoders:
           fueltype:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
@@ -59,19 +59,19 @@ data:
         load_all_layers: true
       fueltype_data:
         data_type: "raster"
-        layers: ["target"]
+        layers: ["labels"]
         bands: ["fueltype"]
-        dtype: INT32
+        dtype: FLOAT32
         is_target: true
       herbaceousvalue_data:
         data_type: "raster"
-        layers: ["target"]
+        layers: ["labels"]
         bands: ["herbaceousvalue"]
         dtype: FLOAT32
         is_target: true
       woodyvalue_data:
         data_type: "raster"
-        layers: ["target"]
+        layers: ["labels"]
         bands: ["woodyvalue"]
         dtype: FLOAT32
         is_target: true
@@ -161,30 +161,3 @@ trainer:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
-    - class_path: rslearn.train.prediction_writer.RslearnWriter
-      init_args:
-        path: placeholder
-        output_layer: ${PREDICTION_OUTPUT_LAYER}
-        selector: ["fueltype"]
-        merger:
-          class_path: rslearn.train.prediction_writer.RasterMerger
-          init_args:
-            padding: 2
-    - class_path: rslearn.train.prediction_writer.RslearnWriter
-      init_args:
-        path: placeholder
-        output_layer: ${PREDICTION_OUTPUT_LAYER}
-        selector: ["herbaceousvalue"]
-        merger:
-          class_path: rslearn.train.prediction_writer.RasterMerger
-          init_args:
-            padding: 2
-    - class_path: rslearn.train.prediction_writer.RslearnWriter
-      init_args:
-        path: placeholder
-        output_layer: ${PREDICTION_OUTPUT_LAYER}
-        selector: ["woodyvalue"]
-        merger:
-          class_path: rslearn.train.prediction_writer.RasterMerger
-          init_args:
-            padding: 2
