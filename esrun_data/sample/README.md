@@ -133,6 +133,9 @@ There are 3 different stages to postprocessing:
 
 ### Samples
 
+
+TODO: Add examples with the new rslp cli for this
+
 #### Run a pipeline end-to-end
 
 The simplest way to run a pipeline is to use the `esrun-local-predict` CLI command.  This command will run the entire pipeline end-to-end including partitioning, dataset building, inference, post-processing, and combining the final outputs.
