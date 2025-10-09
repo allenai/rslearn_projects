@@ -1,4 +1,4 @@
-"""Test esrun pipeline."""
+"""Test olmoearth_run pipeline."""
 
 import shutil
 from datetime import UTC, datetime
@@ -15,18 +15,18 @@ from rslearn.utils.geometry import STGeometry
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
-from rslp.esrun.esrun import esrun
+from rslp.olmoearth_run.olmoearth_run import olmoearth_run
 
 
-def test_esrun_solar_farm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test ESRun pipeline by applying solar farm on small request geometry."""
+def test_olmoearth_run_solar_farm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test OlmoEarthRun pipeline by applying solar farm on small request geometry."""
     # For now this is fixed but we should figure out how to have standardized path for
     # each application later, similar to RSLP_PREFIX.
     checkpoint_path = "gs://ai2-rslearn-projects-data/projects/2025_06_06_helios_finetuning/v2_satlas_solar_farm_128_ts_helios_per_mod_patchdisc_contrastive_fix_esrun/checkpoints/epoch=9999-step=99999.ckpt"
 
     # Copy the configuration files. We use the tmp_path as the config dir that we will
     # initialize from since we will customize the request geometry.
-    src_dir = Path("esrun_data/satlas/solar_farm_oe/")
+    src_dir = Path("olmoearth_run_data/satlas/solar_farm_oe/")
     config_dir = tmp_path / "config"
     config_dir.mkdir(parents=True)
 
@@ -61,14 +61,14 @@ def test_esrun_solar_farm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
         UPath(config_dir / "prediction_request_geometry.geojson"), [feat]
     )
 
-    # We also customize the esrun.yaml since we want to use a single window.
-    with (src_dir / "esrun.yaml").open() as f:
-        esrun_config = yaml.safe_load(f)
-    esrun_config["partition_strategies"]["partition_request_geometry"] = {
-        "class_path": "esrun.runner.tools.partitioners.noop_partitioner.NoopPartitioner",
+    # We also customize the olmoearth_run.yaml since we want to use a single window.
+    with (src_dir / "olmoearth_run.yaml").open() as f:
+        olmoearth_run_config = yaml.safe_load(f)
+    olmoearth_run_config["partition_strategies"]["partition_request_geometry"] = {
+        "class_path": "olmoearth_run.runner.tools.partitioners.noop_partitioner.NoopPartitioner",
     }
-    esrun_config["partition_strategies"]["prepare_window_geometries"] = {
-        "class_path": "esrun.runner.tools.partitioners.reprojection_partitioner.ReprojectionPartitioner",
+    olmoearth_run_config["partition_strategies"]["prepare_window_geometries"] = {
+        "class_path": "olmoearth_run.runner.tools.partitioners.reprojection_partitioner.ReprojectionPartitioner",
         "init_args": {
             "output_projection": {
                 "class_path": "rslearn.utils.geometry.Projection",
@@ -81,8 +81,8 @@ def test_esrun_solar_farm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
             "use_utm": True,
         },
     }
-    with (config_dir / "esrun.yaml").open("w") as f:
-        yaml.safe_dump(esrun_config, f)
+    with (config_dir / "olmoearth_run.yaml").open("w") as f:
+        yaml.safe_dump(olmoearth_run_config, f)
 
     # We customize the model.yaml to use smaller batch size.
     # Because in CI we have small system memory.
@@ -100,7 +100,7 @@ def test_esrun_solar_farm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     )
 
     scratch_dir = tmp_path / "scratch"
-    esrun(
+    olmoearth_run(
         config_path=config_dir,
         scratch_path=scratch_dir,
         checkpoint_path=checkpoint_path,
