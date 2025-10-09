@@ -119,12 +119,18 @@ def get_model(
             ),
         )
 
+    do_resizing = True
+    if task_name in ["lfmc", "mangrove"]:
+        # These tasks didn't work with resizing (out of GPU memory).
+        do_resizing = False
+
     return MultiTaskModel(
         encoder=[
             SimpleTimeSeries(
                 encoder=DinoV3(
                     # Needs to be changed if you are outside Ai2, this is Ai2-internal path.
                     checkpoint_dir="/weka/dfive-default/helios/models/dinov3/checkpoints/",
+                    do_resizing=do_resizing,
                 ),
                 image_channels=3,
             ),

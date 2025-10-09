@@ -37,6 +37,7 @@ def launch(
     image_name: str,
     project: str,
     priority: str = "high",
+    clusters: list[str] = ["ai2/jupiter", "ai2/ceres", "ai2/titan"],
 ) -> None:
     """Launch OlmoEarth fine-tuning evaluation.
 
@@ -48,6 +49,7 @@ def launch(
         image_name: the Beaker image name to use.
         project: W&B project name.
         priority: the Beaker priority to use.
+        clusters: Beaker clusters to target.
     """
     for model in models:
         for task in tasks:
@@ -61,9 +63,6 @@ def launch(
                 project,
                 "--experiment_id",
                 f"{prefix}_{task}_{model}",
-                "--cluster+=ai2/jupiter",
-                "--cluster+=ai2/ceres",
-                "--cluster+=ai2/titan",
                 '--weka_mounts+={"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}',
                 "--image_name",
                 image_name,
@@ -72,6 +71,9 @@ def launch(
                 "--extra_env_vars",
                 '{"EVAL_ADAPTER_MODEL_ID": "' + model + '"}',
             ]
+
+            cluster_args = [f"--cluster+={cluster}" for cluster in clusters]
+
             task_config_args = [
                 f"--config_paths+=data/olmoearth_evals/tasks/{cfg_fname}.yaml"
                 for cfg_fname in TASK_CONFIGS[task]
@@ -95,4 +97,6 @@ def launch(
                     f"--config_paths+=data/olmoearth_evals/models/{model}.yaml"
                 ]
 
-            subprocess.check_call(basic_args + task_config_args + model_config_args)  # nosec
+            subprocess.check_call(
+                basic_args + cluster_args + task_config_args + model_config_args
+            )  # nosec
