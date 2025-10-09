@@ -10,7 +10,7 @@ model:
               checkpoint_path: ${EXTRA_FILES_PATH}/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 3
+                patch_size: 4
         decoders:
           fueltype:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
@@ -41,7 +41,7 @@ data:
   init_args:
     path: ${DATASET_PATH}
     inputs:
-      sentinel1_ascending:
+      sentinel1:
         data_type: "raster"
         layers: ["sentinel1_ascending"]
         bands: ["vv", "vh"]
@@ -51,7 +51,7 @@ data:
         load_all_layers: true
       sentinel2_l2a:
         data_type: "raster"
-        layers: ["sentinel2"]
+        layers: ["sentinel2_l2a"]
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
         dtype: FLOAT32
@@ -102,17 +102,13 @@ data:
     batch_size: 32
     num_workers: 32
     default_config:
+      patch_size: 32
       transforms:
-        - class_path: rslearn.train.transforms.pad.Pad
-          init_args:
-            size: 1
-            mode: "center"
-            image_selectors: ["sentinel1_ascending", "sentinel2_l2a"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-              sentinel1_ascending: ["vv", "vh"]
+              sentinel1: ["vv", "vh"]
     train_config:
       groups: ["spatial_split"]
       tags:
@@ -125,18 +121,6 @@ data:
       groups: ["spatial_split"]
       tags:
         split: "val"
-    predict_config:
-      transforms:
-        - class_path: rslearn.train.transforms.pad.Pad
-          init_args:
-            size: 4
-            mode: "center"
-            image_selectors: ["sentinel1_ascending", "sentinel2_l2a"]
-        - class_path: rslp.helios.norm.HeliosNormalize
-          init_args:
-            band_names:
-              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-              sentinel1_ascending: ["vv", "vh"]
 trainer:
   max_epochs: 100
   default_root_dir: ${TRAINER_DATA_PATH}
