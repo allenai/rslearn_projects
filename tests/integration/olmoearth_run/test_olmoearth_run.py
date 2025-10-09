@@ -55,8 +55,8 @@ def test_olmoearth_run_solar_farm(
     feat = Feature(
         request_geometry,
         {
-            "es_start_time": datetime(2024, 12, 1, tzinfo=UTC).isoformat(),
-            "es_end_time": datetime(2025, 7, 1, tzinfo=UTC).isoformat(),
+            "oe_start_time": datetime(2024, 12, 1, tzinfo=UTC).isoformat(),
+            "oe_end_time": datetime(2025, 7, 1, tzinfo=UTC).isoformat(),
         },
     )
     GeojsonVectorFormat().encode_to_file(
