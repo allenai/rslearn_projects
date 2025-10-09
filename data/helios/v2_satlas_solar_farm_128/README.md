@@ -35,4 +35,8 @@ python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-
 
 # Helios with max pooling.
 python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/joer/v0.1_base_latent_mim_space_time/step165000 --patch_size 8 --encoder_embedding_size 768 --image_name favyen/rslphelios2 --config_paths+=data/helios/v2_satlas_solar_farm_128/basecfg.yaml --config_paths+=data/helios/v2_satlas_solar_farm_128/basecfg_helios_ts.yaml --config_paths+=data/helios/v2_shared/helios_freeze_then_lowlr.yaml --config_paths+=data/helios/v2_shared/helios_ts_simple_maxpool_sentinel2.yaml --cluster+=ai2/ceres-cirrascale --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_06_helios_finetuning --experiment_id v2_satlas_solar_farm_128_ts_maxpool_helios_latent_mim_space_time
+
+# sp
+python -m rslp.main common beaker_train --config_paths+=data/helios/v2_satlas_solar_farm_128/basecfg.yaml --config_paths+=data/helios/v2_satlas_solar_farm_128/basecfg_sp.yaml --config_paths+=data/helios/v2_shared/sp.yaml --project_id 2025_06_06_helios_finetuning --experiment_id v2_satlas_solar_farm_128_uni_sp --cluster+=ai2/ceres --cluster+=ai2/jupiter '--weka_mounts+={"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}' --image_name favyen/rslphelios13
+python -m rslp.main common beaker_train --config_paths+=data/helios/v2_satlas_solar_farm_128/basecfg.yaml --config_paths+=data/helios/v2_satlas_solar_farm_128/basecfg_sp_ts.yaml --config_paths+=data/helios/v2_shared/sp.yaml --project_id 2025_06_06_helios_finetuning --experiment_id v2_satlas_solar_farm_128_ts_sp --cluster+=ai2/ceres --cluster+=ai2/jupiter '--weka_mounts+={"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}' --image_name favyen/rslphelios13
 ```

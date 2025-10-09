@@ -1,0 +1,13 @@
+model:
+  init_args:
+    restore_config:
+      restore_path: /weka/dfive-default/rslearn-eai/projects/swin_pretrain/pretrain_4mod_1conv/checkpoints/epoch130.ckpt.bak
+      selector: ["state_dict"]
+      remap_prefixes:
+        - ["model.encoder.0.", "encoder.0."]
+trainer:
+  callbacks+:
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 10
