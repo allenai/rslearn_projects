@@ -18,7 +18,9 @@ from upath import UPath
 from rslp.olmoearth_run.olmoearth_run import olmoearth_run
 
 
-def test_olmoearth_run_solar_farm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_olmoearth_run_solar_farm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Test OlmoEarthRun pipeline by applying solar farm on small request geometry."""
     # For now this is fixed but we should figure out how to have standardized path for
     # each application later, similar to RSLP_PREFIX.
