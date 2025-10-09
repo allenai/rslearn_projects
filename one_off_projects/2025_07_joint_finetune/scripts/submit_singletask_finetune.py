@@ -143,7 +143,7 @@ def submit_job(
                     "task_embedding": trunk_layer_init_args.pop("task_embedding"),
                     "layers": [
                         {
-                            "class_path": "rslearn.models.trunk.MoETransformer",
+                            "class_path": "rslp.helios.moe.MoETransformer",
                             "init_args": trunk_layer_init_args
                         }
                     ]

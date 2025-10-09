@@ -154,7 +154,7 @@ def main():
 
     # Define checkpoint paths
     ckpt_paths = {
-        "base": {
+        "v2_base": {
             "helios": "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
             "sft": None,
         },
@@ -162,10 +162,10 @@ def main():
         #     "helios": "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
         #     "sft": "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/classify_all_v2__unmerged__vessel_classification"
         # },
-        "detect_v2": {
-            "helios": "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
-            "sft": "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/detect_all_v2__unmerged__vessel_detection"
-        },
+        # "detect_v2": {
+        #     "helios": "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
+        #     "sft": "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/detect_all_v2__unmerged__vessel_detection"
+        # },
         # "segment_v2": {
         #     "helios": "/weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000",
         #     "sft": "/weka/dfive-default/rslearn-eai/projects/helios_finetune_cosine_lr/segment_all_v2__unmerged__segment"
@@ -174,24 +174,49 @@ def main():
     
     # Define experiments
     experiments = [
-        # {
-        #     "name": "vessel_detection",
-        #     "config_paths": [
-        #         configs_dir / "v2_landsat_vessels" / "finetune_detector_cosinelr.yaml",
-        #         "/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml"
-        #     ],
-        # },
+        #{
+        #    "name": "vessel_detection",
+        #    "config_paths": [
+        #        configs_dir / "v2_landsat_vessels" / "finetune_detector_cosinelr.yaml",
+        #        #"/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml"
+        #        "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v3_singletask/freeze.yaml"
+        #    ],
+        #},
+        #{
+        #    "name": "cropland_classification",
+        #    "config_paths": [
+        #        configs_dir / "v2_worldcereal_cropland" / "finetune_s1_s2_cosinelr.yaml",
+        #        "/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml"
+        #    ],
+        #},
+        #{
+        #    "name": "nandi_crop_type",
+        #    "config_paths": [
+        #        configs_dir / "v2_nandi_crop_type" / "finetune_s1_s2_cosinelr.yaml",
+        #        #"/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml"
+        #        "/weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v3_singletask/freeze.yaml"
+        #    ],
+        #},
         {
-            "name": "cropland_classification",
+            "name": "marine_infra",
             "config_paths": [
-                configs_dir / "v2_worldcereal_cropland" / "finetune_s1_s2_cosinelr.yaml",
-                "/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml"
-            ],
+                configs_dir / "v2_satlas_marine_infra_128" / "basecfg_cosinelr.yaml",
+                configs_dir / "v2_satlas_marine_infra_128" / "basecfg_helios_mm.yaml",
+                "/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml",
+            ]
         },
+        #{
+        #    "name": "sentinel1_vessels",
+        #    "config_paths": [
+        #        configs_dir / "v2_sentinel1_vessels_128" / "basecfg_cosinelr.yaml",
+        #        configs_dir / "v2_sentinel1_vessels_128" / "basecfg_helios.yaml",
+        #        "/weka/dfive-default/ryanp/rslearn_projects/data/helios/v2_shared/helios_freeze_then_lowlr.yaml",
+        #    ]
+        #},
     ]
     
     # Dataset percentages to test
-    limit_train_batches_values = [0.01, 0.1, 0.2, 0.5, 1.0]
+    limit_train_batches_values = [0.01, 0.1, 0.2, 0.5, 0.7, 0.9]
     
     # Create substitutions dictionary
     substitutions = {

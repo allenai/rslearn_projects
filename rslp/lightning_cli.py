@@ -210,6 +210,12 @@ class CustomLightningCLI(RslearnLightningCLI):
             action="store_true",
             help="Allow missing weights in checkpoint specified in --ckpt_path",
         )
+        parser.add_argument(
+            "--save_eval_path",
+            type=str,
+            help="Path to save evals to if do_eval",
+            default=None,
+        )
 
     def _get_checkpoint_path(
         self, checkpoint_dir: UPath, load_best: bool = False, autoresume: bool = False
@@ -352,6 +358,10 @@ class CustomLightningCLI(RslearnLightningCLI):
                 c.trainer.max_steps = max_steps
                 logger.info(f"Using profiler: {c.profiler}")
                 logger.info(f"Setting max_steps to {max_steps}")
+
+            if c.save_eval_path:
+                c.model.init_args.metrics_file = c.save_eval_path
+                logger.info(f"Saving evals to {c.save_eval_path}")
 
         if subcommand == "fit" and not c.no_log:
             # Set the checkpoint directory to canonical GCS location.

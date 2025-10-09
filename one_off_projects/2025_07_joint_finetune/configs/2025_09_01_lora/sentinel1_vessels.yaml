@@ -1,0 +1,19 @@
+base_cfg: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_09_01_lora/base.yaml
+output_path: /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/2025_09_01_lora/OUT_sentinel1_vessels.yaml
+
+dataset_cfgs:
+  - - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel1_vessels_128/basecfg_cosinelr.yaml
+    - /weka/dfive-default/ryanp/rslearn_projects/one_off_projects/2025_07_joint_finetune/configs/v2_sentinel1_vessels_128/basecfg_helios.yaml
+
+substitutions:
+  patch_size: 8
+  encoder_embedding_size: 768
+  helios_checkpoint_path: /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000
+
+merge_options:
+  merge_heads: true
+  merge_task_labels: true
+
+global_overrides:
+  model:
+    class_path: rslearn.train.lightning_module.RslearnLightningModule
