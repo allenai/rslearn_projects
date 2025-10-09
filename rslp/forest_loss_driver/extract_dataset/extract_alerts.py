@@ -68,6 +68,7 @@ class ExtractAlertsArgs:
         days: the number of days to consider before the prediction time.
         min_area: the minimum area threshold for an event to be extracted.
         max_number_of_events: the maximum number of events to extract per GLAD tile.
+        generate_windows: whether to generate rslearn windows (default True).
     """
 
     gcs_tiff_filenames: list[str] = field(default_factory=list)
@@ -83,6 +84,7 @@ class ExtractAlertsArgs:
     days: int = 365
     min_area: float = 16.0
     max_number_of_events: int | None = None
+    generate_windows: bool = True
     group: str = GROUP
     workers: int = min(multiprocessing.cpu_count(), 128)
 
@@ -431,6 +433,45 @@ def save_inference_dataset_config(
         json.dump(config_json, f)
 
 
+def save_prediction_request_geometry(
+    ds_path: UPath,
+    all_events: list[tuple[ForestLossEvent, str]],
+) -> None:
+    """Save prediction_request_geometry.geojson from all forest loss events.
+
+    Args:
+        ds_path: the path to store the GeoJSON file.
+        all_events: list of tuples containing (ForestLossEvent, fname).
+    """
+    features = []
+    for event, fname in all_events:
+        # Convert polygon to WGS84 for GeoJSON
+        polygon_wgs84_shp: shapely.Polygon = event.polygon_geom.to_projection(
+            WGS84_PROJECTION
+        ).shp
+
+        # Create GeoJSON feature with properties
+        feature = {
+            "type": "Feature",
+            "geometry": shapely.geometry.mapping(polygon_wgs84_shp),
+            "properties": {
+                "fname": fname,
+                "date": event.ts.isoformat(),
+                "center_pixel": event.center_pixel,
+            },
+        }
+        features.append(feature)
+
+    # Create FeatureCollection
+    feature_collection = {"type": "FeatureCollection", "features": features}
+
+    # Write to file
+    output_path = ds_path / "prediction_request_geometry.geojson"
+    logger.info(f"Writing {len(features)} features to {output_path}")
+    with output_path.open("w") as f:
+        json.dump(feature_collection, f, indent=2)
+
+
 def extract_alerts(
     ds_path: str | UPath,
     extract_alerts_args: ExtractAlertsArgs,
@@ -461,7 +502,7 @@ def extract_alerts(
     # Each tile has two files we need to read, the confidence raster (which we use to
     # threshold pixels by confidence threshold) and date raster (which we use to only
     # select pixels with recent forest loss based on specified number of days).
-    total_events = 0
+    all_events: list[tuple[ForestLossEvent, str]] = []
     logger.info(f"Extract_alerts for {str(extract_alerts_args)}")
     country_wgs84_shp = load_country_polygon(
         extract_alerts_args.country_data_path, extract_alerts_args.countries
@@ -514,8 +555,24 @@ def extract_alerts(
             )
             events = random.sample(events, extract_alerts_args.max_number_of_events)
 
-        logger.info(f"Writing {len(events)} windows")
-        total_events += len(events)
+        # Collect all events with their source filename
+        for event in events:
+            all_events.append((event, fname))
+
+    logger.info(f"Total events: {len(all_events)}")
+    if len(all_events) == 0:
+        # Raise an error since this likely means there is a misconfiguration.
+        raise ValueError(
+            "No forest loss events found in the given GeoTIFF files. \
+            Please check the GeoTIFF files and the configuration."
+        )
+
+    # Always generate the prediction_request_geometry.geojson file
+    save_prediction_request_geometry(ds_path, all_events)
+
+    # Optionally generate windows
+    if extract_alerts_args.generate_windows:
+        logger.info(f"Writing {len(all_events)} windows")
         jobs = [
             dict(
                 event=event,
@@ -523,21 +580,15 @@ def extract_alerts(
                 ds_path=ds_path,
                 args=extract_alerts_args,
             )
-            for event in events
+            for event, fname in all_events
         ]
         p = multiprocessing.Pool(extract_alerts_args.workers)
         outputs = star_imap_unordered(p, write_event, jobs)
         for _ in tqdm.tqdm(outputs, desc="Writing windows", total=len(jobs)):
             pass
         p.close()
-
-    logger.info(f"Total events: {total_events}")
-    if total_events == 0:
-        # Raise an error since this likely means there is a misconfiguration.
-        raise ValueError(
-            "No forest loss events found in the given GeoTIFF files. \
-            Please check the GeoTIFF files and the configuration."
-        )
+    else:
+        logger.info("Skipping window generation (generate_windows=False)")
 
     # Mark it completed so we don't run this again in case user reruns the pipeline.
     logger.debug(
