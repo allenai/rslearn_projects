@@ -62,8 +62,8 @@ def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
 
 def finetune(project_path: Path, scratch_path: Path) -> None:
     """Run EsFineTuneRunner finetune pipeline."""
-    logger.info("Loading EsFineTuneRunner")
-    runner = EsFineTuneRunner(
+    logger.info("Loading OlmoEarthRunFineTuneRunner")
+    runner = OlmoEarthRunFineTuneRunner(
         project_path=project_path,
         scratch_path=scratch_path,
     )
