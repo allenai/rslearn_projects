@@ -12,7 +12,7 @@ rslp/crop_type_mapping/geoparquets/
 rslp/mangrove/csv/
 log*.txt
 
-esrun_data/nandi/annotation*.geojson
+olmoearth_run_data/nandi/finetune/annotation*.geojson
 
 # for local finetuning runs
 /config.yaml
