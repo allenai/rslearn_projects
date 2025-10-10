@@ -6,7 +6,7 @@ export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/lfmc/20251007-scrat
 export NUM_WORKERS=32
 export TRAINER_DATA_PATH=/weka/dfive-default/patrickj/test/lfmc
 export WANDB_PROJECT=2025_10_08_lfmc
-export WANDB_NAME=lfmc_helios_base_s2_ts_ws1_ps1
+export WANDB_NAME=lfmc_helios_base_s1_s2
 export WANDB_ENTITY=eai-ai2
 ```
 
