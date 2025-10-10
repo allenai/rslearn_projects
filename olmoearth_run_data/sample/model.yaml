@@ -83,6 +83,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
+        dirpath: ${TRAINER_DATA_PATH}  # this is where intermediate checkpoinst will end up
         save_top_k: 1
         save_last: true
         monitor: val_loss
