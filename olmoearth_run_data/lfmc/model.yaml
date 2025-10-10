@@ -128,7 +128,7 @@ data:
       tags:
         split: "val"
 trainer:
-  max_epochs: 100
+  max_epochs: 25
   default_root_dir: ${TRAINER_DATA_PATH}
   logger:
     class_path: lightning.pytorch.loggers.WandbLogger
@@ -142,8 +142,10 @@ trainer:
         logging_interval: "epoch"
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
+        dirpath: ${TRAINER_DATA_PATH}
         save_top_k: 1
         save_last: true
+        every_n_epochs: 1
         monitor: val_loss
         mode: min
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
