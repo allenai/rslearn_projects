@@ -1,0 +1,41 @@
+model:
+  init_args:
+    model:
+      init_args:
+        task_timesteps: 4
+data:
+  init_args:
+    inputs:
+      sentinel2:
+        data_type: "raster"
+        layers: ["sentinel2", "sentinel2.1", "sentinel2.2", "sentinel2.3"]
+        bands: ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B11", "B12"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+      mask:
+        data_type: "raster"
+        layers: ["mask"]
+        bands: ["mask"]
+        passthrough: true
+        dtype: FLOAT32
+        is_target: true
+      targets:
+        data_type: "raster"
+        layers: ["label_raster"]
+        bands: ["label"]
+        dtype: INT32
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslp.transforms.mask.Mask
+          init_args:
+            selectors: ["sentinel2"]
+        - class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterNormalize
+          init_args:
+            input_size: 128
+            input_modalities: ["sentinel2"]
+            task_type: "segment"
+            task_name: "solar_farm"
+            task_channels: 2
+            task_timesteps: 4

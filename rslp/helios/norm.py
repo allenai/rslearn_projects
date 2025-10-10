@@ -4,7 +4,6 @@ import json
 from typing import Any
 
 from helios.data.normalize import load_computed_config
-from helios.data.utils import convert_to_db
 from rslearn.train.transforms.transform import Transform
 
 from rslp.log_utils import get_logger
@@ -13,7 +12,11 @@ logger = get_logger(__file__)
 
 
 class HeliosNormalize(Transform):
-    """Normalize using Helios JSON config."""
+    """Normalize using Helios JSON config.
+
+    For Sentinel-1 data, the values should be converted to decibels before being passed
+    to this transform.
+    """
 
     def __init__(
         self,
@@ -60,8 +63,6 @@ class HeliosNormalize(Transform):
         for modality_name, cur_band_names in self.band_names.items():
             band_norms = self.norm_config[modality_name]
             image = input_dict[modality_name]
-            if modality_name == "sentinel1":
-                image = convert_to_db(image)
             # Keep a set of indices to make sure that we normalize all of them.
             needed_band_indices = set(range(image.shape[0]))
             num_timesteps = image.shape[0] // len(cur_band_names)
