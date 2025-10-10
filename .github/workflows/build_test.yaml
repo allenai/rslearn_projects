@@ -64,6 +64,7 @@ jobs:
         run: |
           mkdir docker_build
           git clone git@github.com:allenai/helios.git docker_build/helios
+          git -C docker_build/helios checkout f0a63f190b0f99d9c503249daf7e3e47bbd4792a
           echo "helios @ /opt/rslearn_projects/docker_build/helios/" >> requirements-extra.txt
 
       # Same thing for olmoearth_run repository.

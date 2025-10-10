@@ -1,4 +1,4 @@
-"""Run EsPredictRunner inference pipeline."""
+"""Run OlmoEarthRunPredictRunner inference pipeline."""
 
 import hashlib
 import shutil
@@ -70,7 +70,7 @@ def olmoearth_run(config_path: Path, scratch_path: Path, checkpoint_path: str) -
         checkpoint_path: path to the model checkpoint.
     """
     runner = OlmoEarthRunPredictRunner(
-        # ESRun does not work with relative path, so make sure to convert to absolute here.
+        # OlmoEarth Run does not work with relative path, so make sure to convert to absolute here.
         project_path=config_path.absolute(),
         scratch_path=scratch_path,
         checkpoint_path=get_local_checkpoint(UPath(checkpoint_path)),
@@ -92,7 +92,7 @@ def olmoearth_run(config_path: Path, scratch_path: Path, checkpoint_path: str) -
 
 
 class OlmoEarthRunStage(StrEnum):
-    """The stage of esrun pipeline to run.
+    """The stage of olmoearth_run pipeline to run.
 
     We always run the partition stage so that is not an option here.
     """
@@ -110,12 +110,12 @@ def one_stage(
     stage: OlmoEarthRunStage,
     partition_id: str | None = None,
 ) -> None:
-    """Run EsPredictRunner inference pipeline.
+    """Run OlmoEarthRunPredictRunner inference pipeline.
 
     Args:
-        config_path: see esrun.
-        scratch_path: see esrun.
-        checkpoint_path: see esrun.
+        config_path: see olmoearth_run.
+        scratch_path: see olmoearth_run.
+        checkpoint_path: see olmoearth_run.
         stage: which stage to run.
         partition_id: the partition to run the stage for. If not set, we run the stage
             for all partitions, except BUILD_DATASET and COMBINE, which happens across
@@ -125,8 +125,8 @@ def one_stage(
         raise ValueError("partition_id cannot be set for COMBINE stage")
 
     runner = OlmoEarthRunPredictRunner(
-        # ESRun does not work with relative path, so make sure to convert to absolute here.
-        project_path=config_path,
+        # OlmoEarth Run does not work with relative path, so make sure to convert to absolute here.
+        project_path=config_path.absolute(),
         scratch_path=scratch_path,
         checkpoint_path=get_local_checkpoint(UPath(checkpoint_path)),
     )

@@ -1,13 +1,13 @@
 # ES Runner Local Development Guide
 
-## What is esrunner?
+## What is olmoearth_runner?
 
-ESRunner provides:
+OlmoEarthRunner provides:
 
 - the [OlmoEarthRunPredictRunner](https://github.com/allenai/olmoearth_run/blob/develop/src/olmoearth_run/runner/local/predict_runner.py)
 - the [OlmoEarthRunFineTuneRunner](https://github.com/allenai/olmoearth_run/blob/develop/src/olmoearth_run/runner/local/fine_tune_runner.py)
 
-classes, which can be used to run prediction and fine-tuning pipelines outside of the esrun service architecture
+classes, which can be used to run prediction and fine-tuning pipelines outside of the olmoearth_run service architecture
 
 
 ## Setting up your environment
@@ -21,11 +21,11 @@ classes, which can be used to run prediction and fine-tuning pipelines outside o
 ## Project Structure
 - `checkpoint.ckpt`:  This is the model checkpoint file. It is required for running inference. If you are only building datasets, this file is not required.  Note: You probably don't want to check this file into git repository.
 - `dataset.json`: This is the rslearn dataset definition file.
-- `olmoearth_run.yaml`: This file defines the behavior of the esrunner including partitioning, postprocessing, training window prep, etc..
+- `olmoearth_run.yaml`: This file defines the behavior of the olmoearth_runner including partitioning, postprocessing, training window prep, etc..
 - `model.yaml`: This is the rslearn (pytorch) model definition file.
 - `annotation_features.geojson`: Labeled annotation feature collection, exported from Studio. Only required for labeled window prep.
 - `annotation_task_features.geojson`: Studio tasks for the annotation features, also exported from Studio. Only required for labeled window prep.
-- `prediction/test-request1.geojson`: This directory contains the prediction requests in GeoJSON format. Each file represents a set of prediction requests for a specific region or time period.  Many different prediction requests can be defined within a single file as separate features in the feature collection. The esrunner will partition these requests into smaller tasks based on the partition strategies defined in `esrun.yaml#partition_strategies`
+- `prediction/test-request1.geojson`: This directory contains the prediction requests in GeoJSON format. Each file represents a set of prediction requests for a specific region or time period.  Many different prediction requests can be defined within a single file as separate features in the feature collection. The olmoearth_runner will partition these requests into smaller tasks based on the partition strategies defined in `olmoearth_run.yaml#partition_strategies`
 
 ## Fine-Tuning
 
@@ -82,13 +82,13 @@ format via the "Export Annotations" tab. This will create the required data file
 
 ### Writing Your Own Samplers
 
-You may supply your own data samplers by creating a new class that implements the `SamplerInterface` class in the `olmoearth_run.runner.tools.samplers.sampler_interface` module. You can then specify your custom sampler in the `esrun.yaml` file. This
-class must be importable via your PYTHONPATH. Include it as code in this repository or as a new implementation in earth-system-run.git.
+You may supply your own data samplers by creating a new class that implements the `SamplerInterface` class in the `olmoearth_run.runner.tools.samplers.sampler_interface` module. You can then specify your custom sampler in the `olmoearth_run.yaml` file. This
+class must be importable via your PYTHONPATH. Include it as code in this repository or as a new implementation in olmoearth_run.git.
 
 ### Writing Your Own LabeledWindowPreparers
 
 You may supply new implementations for converting raw Studio Tasks + Annotations into LabeledWindows. To do so, implement
-either `olmoearth_run.runner.tools.labeled_window_preparers.labeled_window_preparer.RasterLabelsWindowPreparer` (for rasterized targets) or `olmoearth_run.runner.tools.labeled_window_preparers.labeled_window_preparer.VectorLabelsWindowPreparer` (for vector targets). As with Samplers, these must be importable from your PYTHONPATH and can be referenced by class path in `esrun.yaml`. Include as code in this repository or contribute directly to earth-system-run.git.
+either `olmoearth_run.runner.tools.labeled_window_preparers.labeled_window_preparer.RasterLabelsWindowPreparer` (for rasterized targets) or `olmoearth_run.runner.tools.labeled_window_preparers.labeled_window_preparer.VectorLabelsWindowPreparer` (for vector targets). As with Samplers, these must be importable from your PYTHONPATH and can be referenced by class path in `olmoearth_run.yaml`. Include as code in this repository or contribute directly to earth-system-run.git.
 
 ### Writing Your Own DataPartitioners
 
@@ -102,7 +102,7 @@ Inference is encapsulated in the Prediction Workflow, accessible through `OlmoEa
 - post-processing strategy
 
 ### Partitioning Strategies
-These stanzas defines how esrunner will break the inference request into multiple request geometries for compute parallelization (equivalent to rslearn window groups) and prediction window geometries.
+These stanzas defines how olmoearth_runner will break the inference request into multiple request geometries for compute parallelization (equivalent to rslearn window groups) and prediction window geometries.
 
 Partitioning strategies can be mixed and matched for flexible development.
   - partition_request_geometry
@@ -140,7 +140,7 @@ The simplest way to run a pipeline is to use the `olmoearth-run-local-predict` C
 $ olmoearth-run-local-predict
 ```
 
-If you want more flexibility, you can use the `OlmoEarthRunPredictRunner` class directly.  The following example shows how to run the entire pipeline end-to-end using the `OlmoEarthRunPredictRunner` class.  Note: This example may become out of date very quickly due to ongoing changes in the EsPredictRunner class.  Refer to the esrun repo for the most up-to-date information.
+If you want more flexibility, you can use the `OlmoEarthRunPredictRunner` class directly.  The following example shows how to run the entire pipeline end-to-end using the `OlmoEarthRunPredictRunner` class.  Note: This example may become out of date very quickly due to ongoing changes in the OlmoEarthRunPredictRunner class.  Refer to the olmoearth_run repo for the most up-to-date information.
 
 ```python file=run_pipeline.py
 from pathlib import Path
@@ -164,11 +164,11 @@ runner.combine(partitions)
 #### Run dataset building for the entire prediction request.
 ```python file=run_dataset_building.py
 from pathlib import Path
-from esrun.runner.local.predict_runner import EsPredictRunner
+from olmoearth_run.runner.local.predict_runner import OlmoEarthRunPredictRunner
 
 config_path = Path(__file__).parent
 
-runner = EsPredictRunner(
+runner = OlmoEarthRunPredictRunner(
     project_path=config_path,
     scratch_path=config_path / "scratch",
 )
@@ -196,7 +196,7 @@ runner.run_inference(partition_id)
 #### Run inference for a single window.
 Since we don't expose window-level inference via the runner API, you can configure your partitioners to produce limited sets of partitions and windows.
 
-```yaml file=esrun.yaml
+```yaml file=olmoearth_run.yaml
 partition_request_geometry:
   class_path: olmoearth_run.runner.tools.partitioners.noop_partitioner.NoopPartitioner
   init_args:
@@ -210,7 +210,7 @@ prepare_window_geometries:
 
 ```python file=run_inference_single_window.py
 from pathlib import Path
-from olmoearth_run.runner.local.predict_runner import EsPredictRunner
+from olmoearth_run.runner.local.predict_runner import OlmoEarthRunPredictRunner
 
 config_path = Path(__file__).parent
 
@@ -225,10 +225,10 @@ for partition_id in partitions:
 ```
 
 ### Writing Your Own Partitioners
-You may supply your own partitioners by creating a new class that implements the ` PartitionInterface` class in the `olmoearth_run.runner.tools.partitioners.partition_interface` module.  You can then specify your custom partitioner in the `esrun.yaml` file.  This class must exist on your PYTHONPATH and be importable by the esrunner.  As such we recommend you place your custom partitioner in the `rslp/common/partitioners` directory of this repository to ensure it gets installed into the final Dockerimage artifact.
+You may supply your own partitioners by creating a new class that implements the ` PartitionInterface` class in the `olmoearth_run.runner.tools.partitioners.partition_interface` module.  You can then specify your custom partitioner in the `olmoearth_run.yaml` file.  This class must exist on your PYTHONPATH and be importable by the olmoearth_runner.  As such we recommend you place your custom partitioner in the `rslp/common/partitioners` directory of this repository to ensure it gets installed into the final Dockerimage artifact.
 
 ### Writing your own post-processing strategies
-You may supply your own post-processing strategies by creating a new class that implements the `PostprocessInterface` class in the `olmoearth_run.runner.tools.postprocessors.postprocess_inferface` module.  You can then specify your custom post-processing strategy in the `postprocessing_strategies.yaml` file.  This class must exist on your `PYTHONPATH` and be importable by the esrunner.  As such we recommend you place your custom post-processing strategy in the `rslp/common/postprocessing` directory of this repository to ensure it gets installed into the final Docker image artifact.
+You may supply your own post-processing strategies by creating a new class that implements the `PostprocessInterface` class in the `olmoearth_run.runner.tools.postprocessors.postprocess_inferface` module.  You can then specify your custom post-processing strategy in the `postprocessing_strategies.yaml` file.  This class must exist on your `PYTHONPATH` and be importable by the olmoearth_runner.  As such we recommend you place your custom post-processing strategy in the `rslp/common/postprocessing` directory of this repository to ensure it gets installed into the final Docker image artifact.
 
 #### Testing Partitioner & Post-Processing Implementations
 See the [olmoearth_run](https://github.com/allenai/olmoearth_run) repository for tests covering existing [partitioner](https://github.com/allenai/olmoearth_run/tree/develop/tests/unit/olmoearth_run/runner/tools/partitioners) and [post-processor](https://github.com/allenai/olmoearth_run/tree/develop/tests/unit/olmoearth_run/runner/tools/postprocessors) implementations.
@@ -237,6 +237,6 @@ See the [olmoearth_run](https://github.com/allenai/olmoearth_run) repository for
 1. ML folk will create the requisite configs in a directory like this one.
 2. Any additional or alternate requirements will be specified in a requirements.txt file in the same directory.
 3. When a PR is created, CI will perform a docker build using the main Dockerfile in the root of the repo, but ensure any deviations from the main requirements.txt are merged into the main requirements.txt at build time so that the docker image is built with the correct requirements. This will allow developers to use this docker image for things like beaker runs or other executions (if needed.)
-4. When the PR is merged, the docker build from above will be performed again, but the final image will be published to esrun as a new "model" (model version?) using the configurations in this directory.  (TODO: Should we consider "versioning" models in esrun?)
-5. Once the "model" has been published to esrun, fine-tuning can be performed using esrun. (Longer term I think we can use a standard versioned helios image for this, but for now we can use the bespoke images created in the previous step.)
-6. (Presumably) Once the fine-tuning is complete, esrun will publish the final model (with weights) to esrun as a (new?) model (version?).  OlmoEarth Run can then be used to run predictions with this final model.
+4. When the PR is merged, the docker build from above will be performed again, but the final image will be published to olmoearth_run as a new "model" (model version?) using the configurations in this directory.  (TODO: Should we consider "versioning" models in olmoearth_run?)
+5. Once the "model" has been published to olmoearth_run, fine-tuning can be performed using olmoearth_run. (Longer term I think we can use a standard versioned helios image for this, but for now we can use the bespoke images created in the previous step.)
+6. (Presumably) Once the fine-tuning is complete, olmoearth_run will publish the final model (with weights) to olmoearth_run as a (new?) model (version?).  OlmoEarth Run can then be used to run predictions with this final model.
