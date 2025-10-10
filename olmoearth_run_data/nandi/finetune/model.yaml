@@ -84,7 +84,6 @@ data:
         split: "test"
 trainer:
   max_epochs: 100
-  default_root_dir: ${TRAINER_DATA_PATH}
   logger:
     class_path: lightning.pytorch.loggers.WandbLogger
     init_args:
