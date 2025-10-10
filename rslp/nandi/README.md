@@ -98,4 +98,4 @@ Added AEF embeddings into `20250625` dataset.
 
 ### 2025-09-16
 
-Worked on ES-run inference, see `esrun_data/nandi` for more details.
+Worked on olmoearth_run inference, see `olmoearth_run_data/nandi` for more details.
