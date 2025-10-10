@@ -70,7 +70,7 @@ def olmoearth_run(config_path: Path, scratch_path: Path, checkpoint_path: str) -
         checkpoint_path: path to the model checkpoint.
     """
     runner = OlmoEarthRunPredictRunner(
-        # ESRun does not work with relative path, so make sure to convert to absolute here.
+        # OlmoEarth Run does not work with relative path, so make sure to convert to absolute here.
         project_path=config_path.absolute(),
         scratch_path=scratch_path,
         checkpoint_path=get_local_checkpoint(UPath(checkpoint_path)),
@@ -125,8 +125,8 @@ def one_stage(
         raise ValueError("partition_id cannot be set for COMBINE stage")
 
     runner = OlmoEarthRunPredictRunner(
-        # ESRun does not work with relative path, so make sure to convert to absolute here.
-        project_path=config_path,
+        # OlmoEarth Run does not work with relative path, so make sure to convert to absolute here.
+        project_path=config_path.absolute(),
         scratch_path=scratch_path,
         checkpoint_path=get_local_checkpoint(UPath(checkpoint_path)),
     )
