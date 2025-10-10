@@ -8,10 +8,9 @@ model:
           - class_path: rslp.helios.model.Helios
             init_args:
               checkpoint_path: ${EXTRA_FILES_PATH}/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
-              random_initialization: true
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 1
+                patch_size: 4
         decoders:
           class:
             - class_path: rslp.nandi.train.SegmentationPoolingDecoder
@@ -30,14 +29,6 @@ data:
   init_args:
     path: ${DATASET_PATH}
     inputs:
-      sentinel1:
-        data_type: "raster"
-        layers: ["sentinel1"]
-        bands: ["vv", "vh"]
-        passthrough: true
-        dtype: FLOAT32
-        load_all_item_groups: true
-        load_all_layers: true
       sentinel2_l2a:
         data_type: "raster"
         layers: ["sentinel2"]
@@ -60,7 +51,7 @@ data:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
               num_classes: 110
-              zero_is_invalid: true
+              nodata_value: 54
               metric_kwargs:
                 average: "micro"
         input_mapping:
@@ -74,12 +65,11 @@ data:
           init_args:
             size: 31
             mode: "center"
-            image_selectors: ["sentinel2_l2a", "sentinel1", "target/class/classes", "target/class/valid"]
+            image_selectors: ["sentinel2_l2a", "target/class/classes", "target/class/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-              sentinel1: ["vv", "vh"]
 
     train_config:
       groups: ["north_africa"]

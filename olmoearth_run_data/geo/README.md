@@ -7,7 +7,7 @@ export yamls from studio. do some cleaning maybe
 
     python -m rslp.main olmoearth_run prepare_labeled_windows --project_path /weka/dfive-default/joer/rslearn_projects/olmoearth_run_data/geo --scratch_path /weka/dfive-default/rslearn-eai/datasets/geo
 
-    export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/geo/dataset/
+    export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/geo/dataset_v2/dataset
     rslearn dataset prepare --root $DATASET_PATH --workers 64 --retry-max-attempts 8 --force
     rslearn dataset materialize --root $DATASET_PATH --workers 64 --retry-max-attempts 8
 

@@ -10,7 +10,7 @@ model:
               checkpoint_path: /weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 1
+                patch_size: 4
         decoders:
           class:
             - class_path: rslp.nandi.train.SegmentationPoolingDecoder
@@ -18,7 +18,7 @@ model:
                 in_channels: 768
                 out_channels: 110
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
-    lr: 0.0001
+    lr: 0.00001
     plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
@@ -27,16 +27,8 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/geo/dataset/
+    path: /weka/dfive-default/rslearn-eai/datasets/geo/dataset_v2/dataset/
     inputs:
-      sentinel1:
-        data_type: "raster"
-        layers: ["sentinel1"]
-        bands: ["vv", "vh"]
-        passthrough: true
-        dtype: FLOAT32
-        load_all_item_groups: true
-        load_all_layers: true
       sentinel2_l2a:
         data_type: "raster"
         layers: ["sentinel2"]
@@ -59,13 +51,13 @@ data:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
               num_classes: 110
-              zero_is_invalid: true
+              nodata_value: 54
               metric_kwargs:
                 average: "micro"
         input_mapping:
           class:
             label: "targets"
-    batch_size: 32
+    batch_size: 8
     num_workers: 8
     default_config:
       transforms:
@@ -73,12 +65,11 @@ data:
           init_args:
             size: 31
             mode: "center"
-            image_selectors: ["sentinel2_l2a", "sentinel1", "target/class/classes", "target/class/valid"]
+            image_selectors: ["sentinel2_l2a", "target/class/classes", "target/class/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-              sentinel1: ["vv", "vh"]
 
     train_config:
       groups: ["north_africa"]
@@ -109,4 +100,4 @@ trainer:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 2
 rslp_project: helios_finetuning
-rslp_experiment: geo_north_africa_test1
+rslp_experiment: geo_north_africa_test12

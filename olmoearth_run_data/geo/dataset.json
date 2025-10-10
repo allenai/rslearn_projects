@@ -22,39 +22,6 @@
       ],
       "type": "raster"
     },
-    "sentinel1": {
-      "band_sets": [
-        {
-          "bands": [
-            "vv",
-            "vh"
-          ],
-          "dtype": "float32"
-        }
-      ],
-      "data_source": {
-        "cache_dir": "cache/planetary_computer",
-        "duration": "180d",
-        "ingest": false,
-        "name": "rslp.satlas.data_sources.MonthlySentinel1",
-        "query": {
-          "sar:instrument_mode": {
-            "eq": "IW"
-          },
-          "sar:polarizations": {
-            "eq": [
-              "VV",
-              "VH"
-            ]
-          }
-        },
-        "query_config": {
-          "max_matches": 6
-        },
-        "time_offset": "0d"
-      },
-      "type": "raster"
-    },
     "sentinel2": {
       "band_sets": [
         {
@@ -89,7 +56,7 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
-        "duration": "180d",
+        "duration": "270d",
         "harmonize": true,
         "ingest": false,
         "max_cloud_cover": 50,
@@ -98,7 +65,7 @@
           "max_matches": 6
         },
         "sort_by": "eo:cloud_cover",
-        "time_offset": "0d"
+        "time_offset": "-90d"
       },
       "type": "raster"
     }
