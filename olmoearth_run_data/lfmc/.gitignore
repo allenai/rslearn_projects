@@ -1,0 +1,8 @@
+# Ignore large GeoJSON data files
+annotation_features.geojson
+annotation_task_features.geojson
+prediction_request_geometry.geojson
+
+# Ignore MTBS perimeter data
+mtbs_perimeter_data
+mtbs_perimeter_data.zip
