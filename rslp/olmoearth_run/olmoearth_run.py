@@ -1,6 +1,7 @@
 """Run OlmoEarthRunPredictRunner inference pipeline."""
 
 import hashlib
+import logging
 import shutil
 import tempfile
 from enum import StrEnum
@@ -9,11 +10,14 @@ from pathlib import Path
 import fsspec
 from olmoearth_run.runner.local.fine_tune_runner import OlmoEarthRunFineTuneRunner
 from olmoearth_run.runner.local.predict_runner import OlmoEarthRunPredictRunner
+from olmoearth_run.shared.tools.logger import configure_logging
 from upath import UPath
 
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
+
+configure_logging(log_level=logging.INFO)
 
 
 def get_local_checkpoint(checkpoint_path: UPath) -> Path:
