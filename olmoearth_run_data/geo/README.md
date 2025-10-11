@@ -14,7 +14,7 @@ export yamls from studio. do some cleaning maybe
 
 for local fine tuning
 
-    export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/geo/dataset/
+    export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/geo/dataset_v2/dataset/
     python -m rslp.rslearn_main model fit --config data/helios/v2_geo_north_africa/finetune_6months.yaml
 
 to launch beaker job

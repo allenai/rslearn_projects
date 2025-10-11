@@ -61,11 +61,6 @@ data:
     num_workers: 8
     default_config:
       transforms:
-        - class_path: rslearn.train.transforms.pad.Pad
-          init_args:
-            size: 31
-            mode: "center"
-            image_selectors: ["sentinel2_l2a", "target/class/classes", "target/class/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             band_names:
@@ -100,4 +95,4 @@ trainer:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 2
 rslp_project: helios_finetuning
-rslp_experiment: geo_north_africa_test12
+rslp_experiment: geo_north_africa_test14

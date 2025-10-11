@@ -61,11 +61,6 @@ data:
     num_workers: ${NUM_WORKERS}
     default_config:
       transforms:
-        - class_path: rslearn.train.transforms.pad.Pad
-          init_args:
-            size: 31
-            mode: "center"
-            image_selectors: ["sentinel2_l2a", "target/class/classes", "target/class/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             band_names:
