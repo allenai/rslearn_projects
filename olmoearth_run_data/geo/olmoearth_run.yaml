@@ -1,6 +1,189 @@
 inference_results_config:
-  classification_fields: null
-  data_type: VECTOR
+  data_type: RASTER
+  classification_fields:
+    - property_name: class
+      band_index: 1
+      allowed_values:
+        - value: 0
+          label: T_1_1_TROPICAL_SUBTROPICAL_LOWLAND_RAINFORESTS
+          color: [50, 160, 107]
+        - value: 1
+          label: T_1_2_TROPICAL/SUBTROPICAL_DRY_FORESTS_AND_THICKETS
+          color: [82, 188, 133]
+        - value: 2
+          label: T_1_3_TROPICAL/SUBTROPICAL_MONTANE_RAINFORESTS
+          color: [111, 217, 161]
+        - value: 3
+          label: T_2_1_BOREAL_AND_TEMPERATE_HIGH_MONTANE_FORESTS_AND_WOODLANDS
+          color: [0, 96, 81]
+        - value: 4
+          label: T_3_2_SEASONALLY_DRY_TEMPERATE_HEATH_AND_SHRUBLANDS
+          color: [87, 167, 174]
+        - value: 5
+          label: T_3_4_YOUNG_ROCKY_PAVEMENTS_LAVA_FLOWS_AND_SCREES
+          color: [154, 234, 241]
+        - value: 6
+          label: T_4_1_TROPHIC_SAVANNAS
+          color: [255, 210, 28]
+        - value: 7
+          label: T_4_2_PYRIC_TUSSOCK_SAVANNAS
+          color: [255, 161, 52]
+        - value: 8
+          label: T_4_5_TEMPERATE_SUBHUMID_GRASSLANDS
+          color: [211, 110, 0]
+        - value: 9
+          label: T_5_1_SEMI-DESERT_STEPPE
+          color: [255, 210, 121]
+        - value: 10
+          label: T_5_2_SUCCULENT_OR_THORNY_DESERTS_AND_SEMI-DESERTS
+          color: [238, 196, 113]
+        - value: 11
+          label: T_5_5_HYPER-ARID_DESERTS
+          color: [94, 67, 0]
+        - value: 12
+          label: T_6_5_TROPICAL_ALPINE_GRASSLANDS_AND_HERBFIELDS
+          color: [148, 148, 148]
+        - value: 13
+          label: T_7_1_ANNUAL_CROPLANDS
+          color: [255, 20, 161]
+        - value: 14
+          label: T_7_2_SOWN_PASTURES_AND_FIELDS
+          color: [202, 0, 121]
+        - value: 15
+          label: T_7_3_PLANTATIONS
+          color: [170, 0, 95]
+        - value: 16
+          label: T_7_4_URBAN_AND_INDUSTRIAL_ECOSYSTEMS
+          color: [139, 0, 71]
+        - value: 17
+          label: T_7_5_DERIVED_SEMI-NATURAL_PASTURES_AND_OLD_FIELDS
+          color: [108, 0, 48]
+        - value: 18
+          label: TF_1_3_PERMANENT_MARSHES
+          color: [159, 255, 211]
+        - value: 19
+          label: TF_1_4_SEASONAL_FLOODPLAIN_MARSHES
+          color: [147, 214, 153]
+        - value: 20
+          label: TF_1_5_EPISODIC_ARID_FLOODPLAINS
+          color: [175, 214, 179]
+        - value: 21
+          label: F_1_2_PERMANENT_LOWLAND_RIVERS
+          color: [171, 245, 163]
+        - value: 22
+          label: F_1_4_SEASONAL_UPLAND_STREAMS
+          color: [81, 212, 177]
+        - value: 23
+          label: F_1_5_SEASONAL_LOWLAND_RIVERS
+          color: [71, 186, 155]
+        - value: 24
+          label: F_1_6_EPISODIC_ARID_RIVERS
+          color: [58, 156, 130]
+        - value: 25
+          label: F_2_1_LARGE_PERMANENT_FRESHWATER_LAKES
+          color: [214, 251, 255]
+        - value: 26
+          label: F_2_2_SMALL_PERMANENT_FRESHWATER_LAKES
+          color: [184, 248, 255]
+        - value: 27
+          label: F_2_5_EPHEMERAL_FRESHWATER_LAKES
+          color: [28, 216, 237]
+        - value: 28
+          label: F_2_6_PERMANENT_SALT_AND_SODA_LAKES
+          color: [25, 190, 209]
+        - value: 29
+          label: F_2_7_EPHEMERAL_SALT_LAKES
+          color: [0, 157, 177]
+        - value: 30
+          label: F_2_8_ARTESIAN_SPRINGS_AND_OASES
+          color: [0, 122, 138]
+        - value: 31
+          label: F_2_9_GEOTHERMAL_POOLS_AND_WETLANDS
+          color: [0, 92, 107]
+        - value: 32
+          label: F_3_1_LARGE_RESERVOIRS
+          color: [196, 255, 190]
+        - value: 33
+          label: F_3_2_CONSTRUCTED_LACUSTRINE_WETLANDS
+          color: [171, 245, 163]
+        - value: 34
+          label: F_3_4_FRESHWATER_AQUAFARMS
+          color: [81, 212, 177]
+        - value: 35
+          label: F_3_5_CANALS_DITCHES_AND_DRAINS
+          color: [71, 186, 155]
+        - value: 36
+          label: MFT_1_2_INTERTIDAL_FORESTS_AND_SHRUBLANDS
+          color: [137, 71, 78]
+        - value: 37
+          label: MFT_1_3_COASTAL_SALTMARSHES_AND_REEDBEDS
+          color: [103, 41, 49]
+        - value: 38
+          label: MT_1_1_ROCKY_SHORELINES
+          color: [135, 130, 210]
+        - value: 39
+          label: MT_1_2_MUDDY_SHORELINES
+          color: [164, 158, 240]
+        - value: 40
+          label: MT_1_3_SANDY_SHORELINES
+          color: [194, 186, 255]
+        - value: 41
+          label: MT_1_4_BOULDER_AND_COBBLE_SHORES
+          color: [224, 215, 255]
+        - value: 42
+          label: MT_2_1_COASTAL_SHRUBLANDS_AND_GRASSLANDS
+          color: [114, 107, 218]
+        - value: 43
+          label: MT_2_2_LARGE_SEABIRD_AND_PINNIPED_COLONIES
+          color: [86, 81, 166]
+        - value: 44
+          label: MT_3_1_ARTIFICIAL_SHORELINES
+          color: [206, 201, 255]
+        - value: 45
+          label: FM_1_2_PERMANENTLY_OPEN_RIVERINE_ESTUARIES_AND_BAYS
+          color: [249, 96, 186]
+        - value: 46
+          label: FM_1_3_INTERMITTENTLY_CLOSED_AND_OPEN_LAKES_AND_LAGOONS
+          color: [255, 131, 220]
+        - value: 47
+          label: OPEN_OCEAN
+          color: [0, 0, 255]
+        - value: 48
+          label: T_2_4_WARM_TEMPERATE_LAUROPHYLL_FORESTS
+          color: [115, 209, 190]
+        - value: 49
+          label: M_4_2_MARINE_AQUAFARMS
+          color: [123, 46, 114]
+        - value: 50
+          label: M_1_7_SUBTIDAL_SAND_BEDS
+          color: [111, 102, 238]
+        - value: 51
+          label: M_1_1_SEAGRASS_MEADOWS
+          color: [241, 235, 255]
+        - value: 52
+          label: M_1_3_PHOTIC_CORAL_REEFS
+          color: [224, 211, 255]
+        - value: 53
+          label: T_3_1_SEASONALLY_DRY_TROPICAL_SHRUBLANDS
+          color: [52, 135, 142]
+        - value: 54
+          label: UNKNOWN
+          color: [170, 187, 204]
+        - value: 55
+          label: T_6_4_TEMPERATE_ALPINE_GRASSLANDS_AND_SHRUBLANDS
+          color: [168, 168, 168]
+        - value: 56
+          label: T_4_4_TEMPERATE_WOODLANDS
+          color: [255, 107, 0]
+        - value: 57
+          label: M_1_6_SUBTIDAL_ROCKY_REEFS
+          color: [137, 124, 254]
+        - value: 58
+          label: T_6_2_POLAR/ALPINE_CLIFFS_SCREES_OUTCROPS_AND_LAVA_FLOWS
+          color: [199, 199, 199]
+        - value: 59
+          label: F_3_3_RICE_PADDIES
+          color: [144, 218, 160]
   detection_objects: null
   regression_fields: null
 
@@ -8,7 +191,7 @@ partition_strategies:
   partition_request_geometry:
     class_path: olmoearth_run.runner.tools.partitioners.grid_partitioner.GridPartitioner
     init_args:
-      grid_size: 0.25
+      grid_size: 0.1
 
   prepare_window_geometries:
     class_path: olmoearth_run.runner.tools.partitioners.grid_partitioner.GridPartitioner
@@ -24,9 +207,11 @@ partition_strategies:
 
 postprocessing_strategies:
   process_dataset:
-    class_path: olmoearth_run.runner.tools.postprocessors.noop_raster.NoopRaster
+    class_path: olmoearth_run.runner.tools.postprocessors.combine_geotiff.CombineGeotiff
+
   process_partition:
-    class_path: olmoearth_run.runner.tools.postprocessors.noop_raster.NoopRaster
+    class_path: olmoearth_run.runner.tools.postprocessors.combine_geotiff.CombineGeotiff
+
   process_window:
     class_path: olmoearth_run.runner.tools.postprocessors.noop_raster.NoopRaster
 
