@@ -64,6 +64,7 @@ jobs:
         run: |
           mkdir docker_build
           git clone git@github.com:allenai/olmoearth_pretrain.git docker_build/olmoearth_pretrain
+          git -C docker_build/olmoearth_pretrain checkout 0cd82b4784bc2f246a23f6da98a9bab27761c1ba
           echo "olmoearth_pretrain @ /opt/rslearn_projects/docker_build/olmoearth_pretrain/" >> requirements-extra.txt
 
       # Same thing for olmoearth_run repository.
