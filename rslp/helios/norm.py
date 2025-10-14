@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from helios.data.normalize import load_computed_config
+from olmoearth_pretrain.data.normalize import load_computed_config
 from rslearn.train.transforms.transform import Transform
 
 from rslp.log_utils import get_logger
