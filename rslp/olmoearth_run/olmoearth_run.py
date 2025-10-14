@@ -17,8 +17,6 @@ from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 
-configure_logging(log_level=logging.INFO)
-
 
 def get_local_checkpoint(checkpoint_path: UPath) -> Path:
     """Get a local path to the specified checkpoint file, caching it locally if needed.
@@ -55,6 +53,7 @@ def get_local_checkpoint(checkpoint_path: UPath) -> Path:
 
 def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
     """Run OlmoEarthRunFineTuneRunner's prepare_windows pipeline."""
+    configure_logging(log_level=logging.INFO)
     logger.info("Loading OlmoEarthRunFineTuneRunner")
     runner = OlmoEarthRunFineTuneRunner(
         project_path=project_path,
@@ -66,6 +65,7 @@ def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
 
 def finetune(project_path: Path, scratch_path: Path) -> None:
     """Run EsFineTuneRunner finetune pipeline."""
+    configure_logging(log_level=logging.INFO)
     logger.info("Loading OlmoEarthRunFineTuneRunner")
     runner = OlmoEarthRunFineTuneRunner(
         project_path=project_path,
@@ -84,6 +84,7 @@ def olmoearth_run(config_path: Path, scratch_path: Path, checkpoint_path: str) -
         scratch_path: directory to use for scratch space.
         checkpoint_path: path to the model checkpoint.
     """
+    configure_logging(log_level=logging.INFO)
     runner = OlmoEarthRunPredictRunner(
         # OlmoEarth Run does not work with relative path, so make sure to convert to absolute here.
         project_path=config_path.absolute(),
@@ -136,6 +137,7 @@ def one_stage(
             for all partitions, except BUILD_DATASET and COMBINE, which happens across
             partitions.
     """
+    configure_logging(log_level=logging.INFO)
     if stage == OlmoEarthRunStage.COMBINE and partition_id is not None:
         raise ValueError("partition_id cannot be set for COMBINE stage")
 
