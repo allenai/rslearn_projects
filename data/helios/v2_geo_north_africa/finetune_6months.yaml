@@ -18,7 +18,7 @@ model:
                 in_channels: 768
                 out_channels: 110
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
-    lr: 0.00001
+    lr: 0.0001
     plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
@@ -60,6 +60,7 @@ data:
     batch_size: 8
     num_workers: 8
     default_config:
+      patch_size: 32
       transforms:
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
@@ -93,6 +94,6 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
+        unfreeze_at_epoch: 10
 rslp_project: helios_finetuning
-rslp_experiment: geo_north_africa_test14
+rslp_experiment: geo_north_africa_test16
