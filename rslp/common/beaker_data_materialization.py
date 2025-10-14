@@ -44,7 +44,7 @@ def launch_job(
     command: list[str],
     clusters: list[str] | None = None,
     hostname: str | None = None,
-    priority: BeakerJobPriority | str = BeakerJobPriority.high,
+    priority: BeakerJobPriority = BeakerJobPriority.high,
 ) -> None:
     """Launch a Beaker job that materializes the rslearn dataset.
 
@@ -118,7 +118,7 @@ def launch_jobs(
     num_jobs: int | None = None,
     hosts: list[str] | None = None,
     command: list[str] | None = None,
-    priority: BeakerJobPriority | str = BeakerJobPriority.high,
+    priority: BeakerJobPriority = BeakerJobPriority.high,
 ) -> None:
     """Launch Beaker jobs to materialize an rslearn dataset.
 

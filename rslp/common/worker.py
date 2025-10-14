@@ -130,7 +130,7 @@ def launch_workers(
     cluster: list[str],
     gpus: int = 0,
     shared_memory: str | None = None,
-    priority: BeakerJobPriority | str = BeakerJobPriority.low,
+    priority: BeakerJobPriority = BeakerJobPriority.low,
 ) -> None:
     """Start workers for the prediction jobs.
 
