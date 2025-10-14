@@ -1,5 +1,6 @@
 """Launch OlmoEarth fine-tuning evals."""
 
+import json
 import subprocess  # nosec
 
 TASK_CONFIGS = {
@@ -38,6 +39,7 @@ def launch(
     project: str,
     priority: str = "high",
     clusters: list[str] = ["ai2/jupiter", "ai2/ceres", "ai2/titan"],
+    test: bool = False,
 ) -> None:
     """Launch OlmoEarth fine-tuning evaluation.
 
@@ -50,6 +52,7 @@ def launch(
         project: W&B project name.
         priority: the Beaker priority to use.
         clusters: Beaker clusters to target.
+        test: whether to test the model instead of fit.
     """
     for model in models:
         for task in tasks:
@@ -96,6 +99,16 @@ def launch(
                 model_config_args = [
                     f"--config_paths+=data/olmoearth_evals/models/{model}.yaml"
                 ]
+
+            if test:
+                basic_args.extend(
+                    [
+                        "--mode",
+                        "test",
+                        "--extra_args",
+                        json.dumps(["--force_log=true", "--load_best=true"]),
+                    ]
+                )
 
             subprocess.check_call(
                 basic_args + cluster_args + task_config_args + model_config_args
