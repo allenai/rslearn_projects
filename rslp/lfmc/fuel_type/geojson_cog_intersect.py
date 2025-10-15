@@ -101,7 +101,10 @@ def vectorize_raster_mask(
 
 
 def intersect_geometry_with_rasters(
-    raster_paths: list[str], input_gdf: gpd.GeoDataFrame, threshold: int = 0
+    raster_paths: list[str],
+    input_gdf: gpd.GeoDataFrame,
+    threshold: int = 0,
+    simplify_tolerance: float | None = None,
 ) -> dict:
     """Intersect a WGS84 geometry with the union of pixels (value > threshold) from multiple rasters.
 
@@ -109,6 +112,8 @@ def intersect_geometry_with_rasters(
         raster_paths: List of paths to COG files (gs://bucket/file.tif for GCS)
         input_gdf: GeoDataFrame with input geometry and properties in WGS84
         threshold: Pixel value threshold (default: 0)
+        simplify_tolerance: Optional tolerance for geometry simplification using Douglas-Peucker algorithm.
+                          Higher values result in more simplified geometries. If None, no simplification is applied.
 
     Returns:
         Dictionary with 'geometry' (in WGS84) and 'area' keys
@@ -182,6 +187,13 @@ def intersect_geometry_with_rasters(
         transform_geom(target_crs, f"EPSG:{WGS84_EPSG}", mapping(intersection))
     )
 
+    # Apply geometry simplification if tolerance is specified
+    if simplify_tolerance is not None:
+        print(f"Simplifying geometry with tolerance: {simplify_tolerance}")
+        result_wgs84 = result_wgs84.simplify(
+            tolerance=simplify_tolerance, preserve_topology=True
+        )
+
     return {
         "geometry": mapping(result_wgs84),
         "area": result_wgs84.area,
@@ -190,7 +202,10 @@ def intersect_geometry_with_rasters(
 
 
 def intersect_with_geopandas(
-    raster_paths: list[str], input_gdf: gpd.GeoDataFrame, threshold: int = 0
+    raster_paths: list[str],
+    input_gdf: gpd.GeoDataFrame,
+    threshold: int = 0,
+    simplify_tolerance: float | None = None,
 ) -> gpd.GeoDataFrame:
     """Implementation using GeoPandas for easier manipulation.
 
@@ -198,6 +213,8 @@ def intersect_with_geopandas(
         raster_paths: List of paths to COG files (gs://bucket/file.tif for GCS)
         input_gdf: GeoDataFrame with input geometry and properties in WGS84
         threshold: Pixel value threshold (default: 0)
+        simplify_tolerance: Optional tolerance for geometry simplification using Douglas-Peucker algorithm.
+                          Higher values result in more simplified geometries. If None, no simplification is applied.
 
     Returns:
         GeoDataFrame with intersection result in WGS84, preserving input properties
@@ -257,6 +274,13 @@ def intersect_with_geopandas(
     # Transform back to WGS84
     gdf_result = gdf_result.to_crs(f"EPSG:{WGS84_EPSG}")
 
+    # Apply geometry simplification if tolerance is specified
+    if simplify_tolerance is not None and not gdf_result.empty:
+        print(f"Simplifying geometries with tolerance: {simplify_tolerance}")
+        gdf_result.geometry = gdf_result.geometry.simplify(
+            tolerance=simplify_tolerance, preserve_topology=True
+        )
+
     return gdf_result
 
 
@@ -313,6 +337,14 @@ def main() -> None:
         default=0,
         help="Pixel value threshold (default: 0). Only pixels with value > threshold are included",
     )
+    parser.add_argument(
+        "--simplify_tolerance",
+        type=float,
+        default=None,
+        help="Optional tolerance for geometry simplification using Douglas-Peucker algorithm. "
+        "Higher values result in more simplified geometries. If not specified, no simplification is applied. "
+        "Example values: 0.0001 for minimal simplification, 0.001 for moderate, 0.01 for aggressive.",
+    )
 
     args = parser.parse_args()
 
@@ -331,11 +363,16 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     print("\nProcessing intersection...")
-    print(f"  Threshold: {args.threshold}")
+    print(f"  Pixel value threshold: {args.threshold}")
+    if args.simplify_tolerance is not None:
+        print(f"  Simplification tolerance: {args.simplify_tolerance}")
 
     with rasterio.Env(GSSession()):
         result_gdf = intersect_with_geopandas(
-            args.raster_files, input_gdf, threshold=args.threshold
+            args.raster_files,
+            input_gdf,
+            threshold=args.threshold,
+            simplify_tolerance=args.simplify_tolerance,
         )
 
         if result_gdf.empty:

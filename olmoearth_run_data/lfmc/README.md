@@ -48,7 +48,8 @@ python -m rslp.lfmc.fuel_type.prepare_labels_herbaceous_woody \
     python -m rslp.lfmc.fuel_type.geojson_cog_intersect \
         --raster_files gs://rslearn-eai/artifacts/nlcd/Tree_2011_2024/rcmap_tree_2021.cog.tif gs://rslearn-eai/artifacts/nlcd/Shrub_2011_2024/rcmap_shrub_2021.tif \
         --geometry_file $(pwd)/olmoearth_run_data/lfmc/prediction_request_geometry.geojson \
-        --output $(pwd)/olmoearth_run_data/lfmc/prediction_request_geometry.new.geojson && \
+        --output $(pwd)/olmoearth_run_data/lfmc/prediction_request_geometry.new.geojson \
+        --simplify_tolerance 0.01 && \
     mv $(pwd)/olmoearth_run_data/lfmc/prediction_request_geometry.new.geojson $(pwd)/olmoearth_run_data/lfmc/prediction_request_geometry.geojson
     ```
 
@@ -57,6 +58,7 @@ python -m rslp.lfmc.fuel_type.prepare_labels_herbaceous_woody \
     python -m rslp.lfmc.fuel_type.geojson_cog_intersect \
         --raster_files gs://rslearn-eai/artifacts/nlcd/Tree_2011_2024/rcmap_herbaceous_2021.cog.tif \
         --geometry_file $(pwd)/olmoearth_run_data/lfmc/prediction_request_geometry.geojson \
-        --output $(pwd)/olmoearth_run_data/lfmc/prediction_request_geometry.new.geojson && \
+        --output $(pwd)/olmoearth_run_data/lfmc/prediction_request_geometry.new.geojson \
+        --simplify_tolerance 0.01 && \
     mv $(pwd)/olmoearth_run_data/lfmc/prediction_request_geometry.new.geojson $(pwd)/olmoearth_run_data/lfmc/prediction_request_geometry.geojson
     ```
