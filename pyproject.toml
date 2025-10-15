@@ -26,6 +26,9 @@ extra = { file = ["requirements-extra.txt"] }
 olmoearth_pretrain = { file = ["requirements-olmoearth_pretrain.txt"] }
 olmoearth_run = { file = ["requirements-olmoearth_run.txt"] }
 
+# Kept for backward compatibility
+helios = { file = ["requirements-olmoearth_pretrain.txt"] }
+
 [tool.ruff]
 fix = true
 

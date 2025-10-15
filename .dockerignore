@@ -7,3 +7,4 @@ lightning_logs
 wandb
 **/test_data/**/**/*.tif
 **/project_data
+one_off_projects

@@ -1,1 +1,2 @@
-olmoearth_run @ git+https://github.com/allenai/olmoearth_run.git@develop
+olmoearth_run @ git+ssh://git@github.com/allenai/olmoearth_run.git@develop
+# olmoearth_runner >= 0.1.0 # Once we have packages publishing.

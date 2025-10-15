@@ -55,45 +55,108 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
 
-      # Add deploy key and clone olmoearth_pretrain repository.
-      - name: Start ssh-agent and add olmoearth_pretrain deploy key
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ============================================================================
+      # SSH Multi-Key Setup for Private Repository Access
+      # ============================================================================
+      # The Docker build needs to clone from multiple private GitHub repositories:
+      # - allenai/rslearn
+      # - allenai/olmoearth_pretrain
+      # - allenai/olmoearth_run
+      #
+      # PROBLEM: GitHub deploy keys are scoped to a single repository. We need
+      # separate deploy keys for each repo. However, when SSH connects to github.com
+      # with multiple keys loaded in the agent, it tries them in order. If the first
+      # key authenticates successfully but lacks access to a specific repository,
+      # GitHub returns "Repository not found" and SSH stops trying other keys.
+      #
+      # SOLUTION: We use SSH host aliases to route each repository to its specific key.
+      # webfactory/ssh-agent sets up the SSH agent on the runner, but Docker builds
+      # run in an isolated container that doesn't have access to the runner's SSH
+      # config or git URL rewrites. So we must recreate this setup inside the container.
+
+      - name: Setup SSH agent with deploy keys
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_HELIOS_CLONE }}
-      - name: Clone olmoearth_pretrain and update requirements-extra.txt.
-        run: |
-          mkdir docker_build
-          git clone git@github.com:allenai/olmoearth_pretrain.git docker_build/olmoearth_pretrain
-          git -C docker_build/olmoearth_pretrain checkout 0cd82b4784bc2f246a23f6da98a9bab27761c1ba
-          echo "olmoearth_pretrain @ /opt/rslearn_projects/docker_build/olmoearth_pretrain/" >> requirements-extra.txt
+          ssh-private-key: |
+            ${{ secrets.DEPLOY_KEY_FOR_OLMOEARTH_PRETRAIN_CLONE }}
+            ${{ secrets.DEPLOY_KEY_FOR_OLMOEARTH_RUN_CLONE }}
 
-      # Same thing for olmoearth_run repository.
-      - name: Start ssh-agent and add olmoearth_run deploy key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_OLMOEARTH_RUN_CLONE }}
-      - name: Clone olmoearth_run and update requirements-extra.txt.
+      - name: Debug SSH keys
         run: |
-          git clone git@github.com:allenai/olmoearth_run.git docker_build/olmoearth_run
-          echo "olmoearth_run @ /opt/rslearn_projects/docker_build/olmoearth_run/" >> requirements-extra.txt
+          echo "=== SSH Agent Keys ==="
+          ssh-add -L
+          echo ""
+          echo "=== SSH Config (if any) ==="
+          cat ~/.ssh/config || echo "No SSH config found"
+          echo ""
+          echo "=== Git Config URL Rewrites ==="
+          git config --global --get-regexp 'url\..*\.insteadof' || echo "No git URL rewrites found"
 
-      - name: Build and push Docker image
+      # Prepare all SSH configuration files for Docker build
+      # The SSH agent runs on the runner but we need actual key files and config
+      # inside the Docker container. We pre-build everything here in the workflow
+      # to keep the Dockerfile simple and free of CI-specific logic.
+      - name: Prepare SSH keys for Docker build
+        run: |
+          mkdir -p .docker-ssh
+
+          # Write SSH private keys
+          echo "${{ secrets.DEPLOY_KEY_FOR_OLMOEARTH_PRETRAIN_CLONE }}" > .docker-ssh/olmoearth_pretrain_key
+          echo "${{ secrets.DEPLOY_KEY_FOR_OLMOEARTH_RUN_CLONE }}" > .docker-ssh/olmoearth_run_key
+          chmod 600 .docker-ssh/*_key
+
+          # Create SSH config with host aliases
+          cat > .docker-ssh/config << 'EOF'
+          Host github-olmoearth-pretrain
+            HostName github.com
+            IdentityFile /root/.ssh/olmoearth_pretrain_key
+            IdentitiesOnly yes
+
+          Host github-olmoearth-run
+            HostName github.com
+            IdentityFile /root/.ssh/olmoearth_run_key
+            IdentitiesOnly yes
+          EOF
+
+          # Create modified requirements files with host aliases
+          sed 's|git@github\.com/allenai/olmoearth_pretrain|git@github-olmoearth-pretrain/allenai/olmoearth_pretrain|g' \
+            requirements-olmoearth_pretrain.txt > .docker-ssh/requirements-olmoearth_pretrain.txt
+          sed 's|git@github\.com/allenai/olmoearth_run|git@github-olmoearth-run/allenai/olmoearth_run|g' \
+            requirements-olmoearth_run.txt > .docker-ssh/requirements-olmoearth_run.txt
+
+## REMOVE BEFORE MERGE! ####
+#      - name: Clone olmoearth repositories and update requirements-extra.txt
+#        run: |
+#          mkdir docker_build
+#          git clone git@github.com:allenai/olmoearth_pretrain.git docker_build/olmoearth_pretrain
+#          git -C docker_build/olmoearth_pretrain checkout 0cd82b4784bc2f246a23f6da98a9bab27761c1ba
+#          echo "olmoearth_pretrain @ /opt/rslearn_projects/docker_build/olmoearth_pretrain/" >> requirements-extra.txt
+#          git clone git@github.com:allenai/olmoearth_run.git docker_build/olmoearth_run
+#          echo "olmoearth_run @ /opt/rslearn_projects/docker_build/olmoearth_run/" >> requirements-extra.txt
+############################
+
+      - name: Build and push Docker images with Bake
         id: build-push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            GIT_USERNAME=${{ secrets.GIT_USERNAME }}
-            GIT_TOKEN=${{ secrets.GIT_TOKEN }}
+        run: |
+          docker buildx bake \
+            --allow=ssh \
+            --file ./docker-bake.hcl \
+            --file ${{ steps.meta.outputs.bake-file }} \
+            --set "*.cache-from=type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache" \
+            --set "*.cache-to=type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max" \
+            --metadata-file /tmp/bake-metadata.json \
+            --push
 
       - name: Store Image Names
         # We need the docker image name downstream in test & deploy. This saves the full docker image names to outputs
         id: image-names
         run: |-
-          GHCR_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-push.outputs.digest }}"
+          # Extract the digest for the 'full' target from bake metadata
+          FULL_DIGEST=$(cat /tmp/bake-metadata.json | jq -r '.full."containerimage.digest"')
+          GHCR_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${FULL_DIGEST}"
           GHCR_IMAGE=`echo ${GHCR_IMAGE} | tr '[:upper:]' '[:lower:]'` # docker requires that all image names be lowercase
           echo "ghcr.io Docker image name is ${GHCR_IMAGE}"
           echo "ghcr_image_name=\"${GHCR_IMAGE}\"" >> $GITHUB_OUTPUT
