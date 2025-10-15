@@ -1,4 +1,4 @@
-"""Helios model wrapper for fine-tuning in rslearn."""
+"""OlmoEarth model wrapper for fine-tuning in rslearn."""
 
 import json
 from contextlib import nullcontext
@@ -32,8 +32,8 @@ AUTOCAST_DTYPE_MAP = {
 }
 
 
-class Helios(torch.nn.Module):
-    """A wrapper to support the Helios model."""
+class OlmoEarth(torch.nn.Module):
+    """A wrapper to support the OlmoEarth model."""
 
     def __init__(
         self,
@@ -45,7 +45,7 @@ class Helios(torch.nn.Module):
         patch_size: int | None = None,
         autocast_dtype: str | None = "bfloat16",
     ):
-        """Create a new Helios model.
+        """Create a new OlmoEarth model.
 
         Args:
             checkpoint_path: the checkpoint directory to load. It should contain
@@ -87,11 +87,11 @@ class Helios(torch.nn.Module):
             train_module_dir = _checkpoint_path / "model_and_optim"
             if train_module_dir.exists():
                 load_model_and_optim_state(str(train_module_dir), model)
-                logger.info(f"loaded helios encoder from {train_module_dir}")
+                logger.info(f"loaded OlmoEarth encoder from {train_module_dir}")
             else:
-                logger.info(f"could not find helios encoder at {train_module_dir}")
+                logger.info(f"could not find OlmoEarth encoder at {train_module_dir}")
         else:
-            logger.info("skipping loading helios encoder")
+            logger.info("skipping loading OlmoEarth encoder")
 
         # Select just the portion of the model that we actually want to use.
         for part in selector:
@@ -102,11 +102,11 @@ class Helios(torch.nn.Module):
         self.model = model
 
     def forward(self, inputs: list[dict[str, Any]]) -> list[torch.Tensor]:
-        """Compute feature maps from the Helios backbone.
+        """Compute feature maps from the OlmoEarth backbone.
 
         Inputs:
             inputs: input dicts. It should include keys corresponding to the modalities
-                that should be passed to the Helios model.
+                that should be passed to the OlmoEarth model.
         """
         kwargs = {}
         present_modalities = []
@@ -136,7 +136,7 @@ class Helios(torch.nn.Module):
             kwargs[f"{modality}_mask"] = mask
 
         # Timestamps is required.
-        # Note that only months (0 to 11) are used in Helios position encoding.
+        # Note that only months (0 to 11) are used in OlmoEarth position encoding.
         # For now, we assign same timestamps to all inputs, but later we should handle varying timestamps per input.
         timestamps = torch.zeros(
             (len(inputs), max_timesteps, 3), dtype=torch.int32, device=device

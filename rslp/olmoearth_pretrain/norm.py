@@ -11,8 +11,8 @@ from rslp.log_utils import get_logger
 logger = get_logger(__file__)
 
 
-class HeliosNormalize(Transform):
-    """Normalize using Helios JSON config.
+class OlmoEarthNormalize(Transform):
+    """Normalize using OlmoEarth JSON config.
 
     For Sentinel-1 data, the values should be converted to decibels before being passed
     to this transform.
@@ -24,16 +24,16 @@ class HeliosNormalize(Transform):
         std_multiplier: float | None = 2,
         config_fname: str | None = None,
     ) -> None:
-        """Initialize a new HeliosNormalize.
+        """Initialize a new OlmoEarthNormalize.
 
         Args:
             band_names: map from modality name to the list of bands in that modality in
                 the order they are being loaded. Note that this order must match the
-                expected order for the Helios model.
+                expected order for the OlmoEarth model.
             std_multiplier: the std multiplier matching the one used for the model
-                training in Helios.
+                training in OlmoEarth.
             config_fname: load the normalization configuration from this file, instead
-                of getting it from Helios.
+                of getting it from OlmoEarth.
         """
         super().__init__()
         self.band_names = band_names

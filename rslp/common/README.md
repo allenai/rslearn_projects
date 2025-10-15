@@ -43,7 +43,7 @@ datasets. The command to run can be overridden via an argument to prepare or ing
 data instead.
 
 First, build a Docker image with rslearn and rslearn_projects using the Dockerfile (or
-helios.Dockerfile), and push it as a Beaker image.
+olmoearth_pretrain.Dockerfile), and push it as a Beaker image.
 
 Then, launch the Beaker jobs. The hostnames should be specified to ensure that the CPU
 Beaker jobs are scheduled on different hosts. WEKA is mounted so the `--ds_path` could

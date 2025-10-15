@@ -3,9 +3,9 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
 RUN apt update
 RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
 
-# Install rslearn and helios (need to be in local directory).
+# Install rslearn and olmoearth_pretrain (need to be in local directory).
 COPY ./docker_build/rslearn /opt/rslearn
-COPY ./docker_build/helios /opt/helios
+COPY ./docker_build/olmoearth_pretrain /opt/olmoearth_pretrain
 
 # We also install terratorch so that we can use the same Docker image for TerraMind
 # experiments.
@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir git+https://github.com/IBM/terratorch.git
 RUN pip install --no-cache-dir geobench==0.0.1
 
 RUN pip install --no-cache-dir --upgrade /opt/rslearn[extra]
-RUN pip install --no-cache-dir --upgrade /opt/helios
+RUN pip install --no-cache-dir --upgrade /opt/olmoearth_pretrain
 
 COPY requirements-without-rslearn.txt /opt/rslearn_projects/requirements-without-rslearn.txt
 COPY requirements-extra.txt /opt/rslearn_projects/requirements-extra.txt

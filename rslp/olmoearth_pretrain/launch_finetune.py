@@ -1,4 +1,4 @@
-"""Launch Helios fine-tuning experiments."""
+"""Launch OlmoEarth fine-tuning experiments."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import yaml
 
 from rslp.log_utils import get_logger
 
-DEFAULT_RSLP_PROJECT = "helios_finetuning"
+DEFAULT_RSLP_PROJECT = "olmoearth_finetuning"
 CONFIG_BASE_DIR = Path("data/helios")
 EVAL_BASE_DIR = "helios/eval_sweeps"
 
@@ -22,7 +22,7 @@ def launch_finetune(
     config_paths: list[str],
     image_name: str | None = None,
     cluster: list[str] | None = None,
-    helios_checkpoint_path: str | None = None,
+    olmoearth_checkpoint_path: str | None = None,
     encoder_embedding_size: int | None = None,
     patch_size: int | None = None,
     rslp_project: str = DEFAULT_RSLP_PROJECT,
@@ -36,7 +36,7 @@ def launch_finetune(
     ckpt_path: str | None = None,
     allow_missing_weights: bool = False,
 ) -> None:
-    """Launch Helios fine-tuning experiments.
+    """Launch OlmoEarth fine-tuning experiments.
 
     Args:
         experiment_id: the experiment name.
@@ -44,7 +44,7 @@ def launch_finetune(
             earlier configs in the list.
         image_name: what Beaker image to use. Must be specified if not local.
         cluster: see beaker_train. Must be specified if not local.
-        helios_checkpoint_path: path to Helios checkpoint to fine-tune from. If none, assume
+        olmoearth_checkpoint_path: path to OlmoEarth checkpoint to fine-tune from. If none, assume
             it's already specified in the config.
         encoder_embedding_size: the embedding size of the encoder. If none, assume
             it's already specified in the config.
@@ -62,7 +62,7 @@ def launch_finetune(
     """
     # Go into each config file (including the base ones) and make replacements as
     # needed.
-    # I can't figure out how to override Helios checkpoint_path from
+    # I can't figure out how to override OlmoEarth checkpoint_path from
     # command-line since it appears in a list, so instead we create a copy
     # of all these configuration files in a temporary directory.
     with tempfile.TemporaryDirectory(dir=".") as tmp_dir:
@@ -82,9 +82,9 @@ def launch_finetune(
             with open(cur_config_fname) as f:
                 config_str = f.read()
 
-            if helios_checkpoint_path is not None:
+            if olmoearth_checkpoint_path is not None:
                 config_str = config_str.replace(
-                    "{CHECKPOINT_PATH}", helios_checkpoint_path
+                    "{CHECKPOINT_PATH}", olmoearth_checkpoint_path
                 )
             if patch_size is not None:
                 config_str = config_str.replace("{PATCH_SIZE}", str(patch_size))
