@@ -7,7 +7,7 @@ This covers fine-tuning and prediction workflows for the LFMC model.
 This will prepare labels for CONUS west of 100°W:
 
 ```shell
-python -m rslp.lfmc.prepare_labels_herbaceous_woody \
+python -m rslp.lfmc.fuel_type.prepare_labels_herbaceous_woody \
     --output_dir $(pwd)/olmoearth_run_data/lfmc/ \
     --preset conus \
     --bbox="-124.7844079,24.7433195,-100,49.3457868"
