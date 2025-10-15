@@ -17,20 +17,20 @@ gsutil ls -r "${GCS_PATH}/**/*.tif" | grep -v '\.cog\.tif$' | while read -r GCS_
     FILENAME=$(basename "$GCS_FILE")
     COG_FILE="${FILENAME%.tif}.cog.tif"
     GCS_DIR=$(dirname "$GCS_FILE")
-    
+
     echo "Processing $FILENAME..."
-    
+
     gsutil cp "$GCS_FILE" "$TEMP_DIR/$FILENAME"
-    
+
     rio cogeo create "$TEMP_DIR/$FILENAME" "$TEMP_DIR/$COG_FILE" \
         --cog-profile deflate \
         --overview-level 5 \
         --quiet
-    
+
     gsutil cp "$TEMP_DIR/$COG_FILE" "$GCS_DIR/$COG_FILE"
-    
+
     rm "$TEMP_DIR/$FILENAME" "$TEMP_DIR/$COG_FILE"
-    
+
     echo "Done with $COG_FILE"
 done
 
