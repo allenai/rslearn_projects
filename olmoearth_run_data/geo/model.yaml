@@ -85,12 +85,12 @@ data:
 trainer:
   max_epochs: 100
   default_root_dir: ${TRAINER_DATA_PATH}
-  logger:
-    class_path: lightning.pytorch.loggers.WandbLogger
-    init_args:
-      project: ${WANDB_PROJECT}
-      name: ${WANDB_NAME}
-      entity: ${WANDB_ENTITY}
+    #  logger:
+    #    class_path: lightning.pytorch.loggers.WandbLogger
+    #    init_args:
+    #      project: ${WANDB_PROJECT}
+    #      name: ${WANDB_NAME}
+    #      entity: ${WANDB_ENTITY}
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
