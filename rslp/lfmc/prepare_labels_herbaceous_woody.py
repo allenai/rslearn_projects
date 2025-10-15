@@ -32,14 +32,13 @@ EXCEL_COLUMN_MAP = {
 TASK_NAME_COLUMN = "task_name"
 START_TIME_COLUMN = "start_time"
 END_TIME_COLUMN = "end_time"
+FUELTYPE_COLUMN = "fuel_type"
+VALUE_COLUMN = "value"
 
-# Note: underscores are not yet supported in attribute names because of an rslearn restriction.
-LFMC_VALUE_HERBACEOUS_COLUMN = "herbaceousvalue"
-LFMC_VALUE_WOODY_COLUMN = "woodyvalue"
-FUEL_TYPE_COLUMN = "fueltype"
-
-HERBACEOUS_FUNCTIONAL_TYPES = ["forb", "grass"]
-WOODY_FUNCTIONAL_TYPES = ["large shrub", "shrub", "small tree", "subshrub", "tree"]
+HERBACEOUS_FUNCTIONAL_TYPES = frozenset(["forb", "grass"])
+WOODY_FUNCTIONAL_TYPES = frozenset(
+    ["large shrub", "shrub", "small tree", "subshrub", "tree"]
+)
 
 INPUT_EXCEL_URL = "https://springernature.figshare.com/ndownloader/files/45049786"
 
@@ -104,19 +103,88 @@ def download_excel(output_path: Path) -> None:
         raise RuntimeError("Could not download file")
 
 
+def process_fuel_type_data(
+    data_df: pd.DataFrame, fuel_type_filter: str | None = None
+) -> pd.DataFrame:
+    """Process and group data for a specific fuel type or all data."""
+    if fuel_type_filter:
+        filtered_df = data_df[data_df[FUELTYPE_COLUMN] == fuel_type_filter].copy()
+        print(
+            f"\nProcessing {fuel_type_filter} samples: {len(filtered_df)} raw samples"
+        )
+    else:
+        filtered_df = data_df.copy()
+        print(f"\nProcessing all samples: {len(filtered_df)} raw samples")
+
+    if len(filtered_df) == 0:
+        return pd.DataFrame()
+
+    # Group by location, date, and fuel type, then aggregate
+    # From the Globe-LFMC-2.0 paper:
+    # "For remote sensing applications, it is recommended to average the LFMC measurements taken on
+    # the same date and located within the same pixel of the product employed in the study. The
+    # choice of which functional type to include in the average can be guided by the land cover type
+    # of that pixel. For example, in open canopy forests, both trees and shrubs (or grass) could be
+    # included."
+    grouped_df = filtered_df.groupby(
+        [
+            Column.LATITUDE,
+            Column.LONGITUDE,
+            Column.SAMPLING_DATE,
+            FUELTYPE_COLUMN,
+        ],
+        as_index=False,
+    ).agg(
+        {
+            Column.SITE_NAME: "first",
+            Column.STATE_REGION: "first",
+            Column.COUNTRY: "first",
+            VALUE_COLUMN: "mean",
+        }
+    )
+
+    # Create unique task names by combining site name with count suffix
+    site_counts = grouped_df.groupby(Column.SITE_NAME).cumcount() + 1
+    grouped_df[TASK_NAME_COLUMN] = (
+        grouped_df[Column.SITE_NAME].astype(str)
+        + "_"
+        + site_counts.astype(str).str.zfill(5)
+    )
+
+    # Add time columns
+    grouped_df[START_TIME_COLUMN] = pd.to_datetime(
+        grouped_df[Column.SAMPLING_DATE], errors="raise"
+    )
+    grouped_df[END_TIME_COLUMN] = pd.to_datetime(
+        grouped_df[Column.SAMPLING_DATE], errors="raise"
+    )
+
+    print(f"  Number of tasks: {grouped_df[TASK_NAME_COLUMN].nunique()}")
+    print(f"  Number of samples: {len(grouped_df)}")
+    print(f"  Min start time: {grouped_df[START_TIME_COLUMN].min()}")
+    print(f"  Max end time: {grouped_df[END_TIME_COLUMN].max()}")
+
+    if len(grouped_df) > 0:
+        mean_value = grouped_df[VALUE_COLUMN].mean()
+        std_value = grouped_df[VALUE_COLUMN].std()
+        print(f"  LFMC mean: {mean_value:.2f} ± {std_value:.2f}")
+
+    return grouped_df
+
+
 def create_csv(
     input_excel_path: Path,
-    output_csv_path: Path,
+    output_dir: Path,
     start_date: datetime,
     country_filter: str | None,
     state_region_filter: list[str] | None,
     bounding_box: tuple[float, float, float, float] | None,
 ) -> None:
-    """Create the CSV file.
+    """Create the CSV files.
 
     Args:
         input_excel_path: path to the Excel file
-        output_csv_path: path to the CSV file
+        output_dir: path to the output directory
         start_date: start date
         country_filter: country filter
         state_region_filter: state region filter
@@ -175,115 +243,52 @@ def create_csv(
         f"Unique species functional types ({len(unique_functional_types)}): {list(unique_functional_types)}"
     )
 
-    # Add herbaceous and woody boolean columns (case insensitive)
-    df["herbaceous"] = (
-        df[Column.SPECIES_FUNCTIONAL_TYPE].str.lower().isin(["forb", "grass"])
+    # Add fuel type and value columns based on species functional type
+    species_type_lower = df[Column.SPECIES_FUNCTIONAL_TYPE].str.lower()
+
+    # Create fuel type column
+    df[FUELTYPE_COLUMN] = None
+    df.loc[species_type_lower.isin(HERBACEOUS_FUNCTIONAL_TYPES), FUELTYPE_COLUMN] = (
+        "herbaceous"
     )
-    df["woody"] = df[Column.SPECIES_FUNCTIONAL_TYPE].str.lower().isin(["shrub", "tree"])
+    df.loc[species_type_lower.isin(WOODY_FUNCTIONAL_TYPES), FUELTYPE_COLUMN] = "woody"
 
-    # Group by location and date, then calculate separate averages for herbaceous and woody
-    def calculate_lfmc_averages(grouped_df: pd.DataFrame) -> pd.Series:
-        herbaceous_samples = grouped_df[grouped_df["herbaceous"]]
-        woody_samples = grouped_df[grouped_df["woody"]]
+    # Filter to only herbaceous and woody samples
+    df = df[df[FUELTYPE_COLUMN].notna()]
+    print(f"After filtering to herbaceous/woody samples: {len(df)} samples")
 
-        result = {
-            LFMC_VALUE_HERBACEOUS_COLUMN: herbaceous_samples[Column.LFMC_VALUE].mean()
-            if len(herbaceous_samples) > 0
-            else pd.NA,
-            LFMC_VALUE_WOODY_COLUMN: woody_samples[Column.LFMC_VALUE].mean()
-            if len(woody_samples) > 0
-            else pd.NA,
-            Column.SITE_NAME: grouped_df[Column.SITE_NAME].iloc[0],
-            Column.STATE_REGION: grouped_df[Column.STATE_REGION].iloc[0],
-            Column.COUNTRY: grouped_df[Column.COUNTRY].iloc[0],
-        }
+    # Add value column (same as LFMC_VALUE)
+    df[VALUE_COLUMN] = df[Column.LFMC_VALUE]
 
-        # Determine class based on what types of samples are present
-        has_herbaceous = len(herbaceous_samples) > 0
-        has_woody = len(woody_samples) > 0
+    # Process all three datasets
+    all_df = process_fuel_type_data(df)
+    herbaceous_df = process_fuel_type_data(df, "herbaceous")
+    woody_df = process_fuel_type_data(df, "woody")
 
-        if has_herbaceous and has_woody:
-            result[FUEL_TYPE_COLUMN] = "herbaceous_woody"
-        elif has_herbaceous:
-            result[FUEL_TYPE_COLUMN] = "herbaceous"
-        elif has_woody:
-            result[FUEL_TYPE_COLUMN] = "woody"
-        else:
-            result[FUEL_TYPE_COLUMN] = "other"
+    # Save CSV files
+    all_csv_path = output_dir / "labels_all.csv"
+    all_df.to_csv(all_csv_path, index=False)
+    print(f"\nCreated all samples CSV: {all_csv_path} ({len(all_df)} samples)")
 
-        return pd.Series(result)
-
-    grouped_df = (
-        df.groupby(
-            [
-                Column.LATITUDE,
-                Column.LONGITUDE,
-                Column.SAMPLING_DATE,
-            ]
-        )
-        .apply(calculate_lfmc_averages, include_groups=False)
-        .reset_index()
-    )
-
-    # Create unique task names by combining site name with count suffix
-    site_counts = grouped_df.groupby(Column.SITE_NAME).cumcount() + 1
-    grouped_df[TASK_NAME_COLUMN] = (
-        grouped_df[Column.SITE_NAME].astype(str)
-        + "_"
-        + site_counts.astype(str).str.zfill(5)
-    )
-    grouped_df[START_TIME_COLUMN] = pd.to_datetime(
-        grouped_df[Column.SAMPLING_DATE], errors="raise"
-    )
-    grouped_df[END_TIME_COLUMN] = pd.to_datetime(
-        grouped_df[Column.SAMPLING_DATE], errors="raise"
-    )
-
-    print(f"Number of tasks: {grouped_df[TASK_NAME_COLUMN].nunique()}")
-    print(f"Number of samples: {len(grouped_df)}")
-    print(f"Min start time: {grouped_df[START_TIME_COLUMN].min()}")
-    print(f"Max end time: {grouped_df[END_TIME_COLUMN].max()}")
-
-    # Output class distribution
-    print("\nClass distribution:")
-    class_counts = grouped_df[FUEL_TYPE_COLUMN].value_counts()
-    total_samples = len(grouped_df)
-    for class_name, count in class_counts.sort_values(ascending=False).items():
-        percentage = (count / total_samples) * 100
-        print(f"  {class_name}: {count} ({percentage:.1f}%)")
-
-    # Output LFMC statistics
-    print("\nLFMC statistics:")
-    herbaceous_valid = grouped_df[LFMC_VALUE_HERBACEOUS_COLUMN].notna().sum()
-    woody_valid = grouped_df[LFMC_VALUE_WOODY_COLUMN].notna().sum()
+    herbaceous_csv_path = output_dir / "labels_herbaceous.csv"
+    herbaceous_df.to_csv(herbaceous_csv_path, index=False)
     print(
-        f"  Locations with herbaceous LFMC: {herbaceous_valid} ({(herbaceous_valid / total_samples) * 100:.1f}%)"
-    )
-    print(
-        f"  Locations with woody LFMC: {woody_valid} ({(woody_valid / total_samples) * 100:.1f}%)"
+        f"Created herbaceous-only CSV: {herbaceous_csv_path} ({len(herbaceous_df)} samples)"
     )
 
-    if herbaceous_valid > 0:
-        herbaceous_mean = grouped_df[LFMC_VALUE_HERBACEOUS_COLUMN].mean()
-        herbaceous_std = grouped_df[LFMC_VALUE_HERBACEOUS_COLUMN].std()
-        print(f"  Herbaceous LFMC mean: {herbaceous_mean:.2f} ± {herbaceous_std:.2f}")
-
-    if woody_valid > 0:
-        woody_mean = grouped_df[LFMC_VALUE_WOODY_COLUMN].mean()
-        woody_std = grouped_df[LFMC_VALUE_WOODY_COLUMN].std()
-        print(f"  Woody LFMC mean: {woody_mean:.2f} ± {woody_std:.2f}")
-
-    grouped_df.to_csv(output_csv_path, index=False)
+    woody_csv_path = output_dir / "labels_woody.csv"
+    woody_df.to_csv(woody_csv_path, index=False)
+    print(f"Created woody-only CSV: {woody_csv_path} ({len(woody_df)} samples)")
 
 
 def main() -> None:
     """Main function."""
-    parser = argparse.ArgumentParser("Creates the LFMC CSV file")
+    parser = argparse.ArgumentParser("Creates the LFMC CSV files")
     parser.add_argument(
-        "--csv_path",
+        "--output_dir",
         type=Path,
-        default=Path.cwd() / "lfmc-labels-herbaceous-woody.csv",
-        help="Path to the output CSV file",
+        default=Path.cwd(),
+        help="Path to the output directory for CSV files",
     )
     parser.add_argument(
         "--start_date",
@@ -318,13 +323,16 @@ def main() -> None:
     if args.bbox is not None:
         bounding_box = parse_bounding_box(args.bbox)
 
-    csv_path = args.csv_path.expanduser()
+    output_dir = args.output_dir.expanduser()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Output directory: {output_dir}")
+
     with tempfile.TemporaryDirectory() as temp_dir:
         excel_path = Path(temp_dir) / "lfmc.xlsx"
         download_excel(excel_path)
         create_csv(
             excel_path,
-            csv_path,
+            output_dir,
             args.start_date,
             country_filter,
             state_region_filter,
