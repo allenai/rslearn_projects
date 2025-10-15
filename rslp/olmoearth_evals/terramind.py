@@ -13,7 +13,7 @@ from rslearn.train.tasks.segmentation import SegmentationHead
 from rslearn.train.transforms import Sequential
 from rslearn.train.transforms.select_bands import SelectBands
 
-from rslp.crop.kenya_nandi.train import SegmentationPoolingDecoder
+from rslp.nandi.train import SegmentationPoolingDecoder
 
 from .constants import SENTINEL1_BANDS, SENTINEL2_BANDS
 

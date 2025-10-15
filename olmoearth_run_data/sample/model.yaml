@@ -5,7 +5,7 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslp.helios.model.Helios
+          - class_path: rslp.olmoearth_pretrain.model.OlmoEarth
             init_args:
               checkpoint_path: "{CHECKPOINT_PATH}"
               selector: ["encoder"]
@@ -58,9 +58,8 @@ data:
     num_workers: 64
     default_config:
       transforms:
-        - class_path: rslp.helios.norm.HeliosNormalize
+        - class_path: rslp.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
@@ -92,5 +91,5 @@ trainer:
       init_args:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 2
-rslp_project: helios_finetuning
+rslp_project: olmoearth_finetuning
 rslp_experiment: placeholder
