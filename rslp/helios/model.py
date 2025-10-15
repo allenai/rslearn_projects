@@ -6,11 +6,11 @@ from typing import Any
 
 import torch
 from einops import rearrange
-from helios.data.constants import Modality
-from helios.nn.flexihelios import Encoder, TokensAndMasks
-from helios.train.masking import MaskedHeliosSample, MaskValue
 from olmo_core.config import Config
 from olmo_core.distributed.checkpoint import load_model_and_optim_state
+from olmoearth_pretrain.data.constants import Modality
+from olmoearth_pretrain.nn.flexihelios import Encoder, TokensAndMasks
+from olmoearth_pretrain.train.masking import MaskedOlmoEarthSample, MaskValue
 from upath import UPath
 
 from rslp.log_utils import get_logger
@@ -53,7 +53,7 @@ class Helios(torch.nn.Module):
             selector: an optional sequence of attribute names or list indices to select
                 the sub-module that should be applied on the input images.
             forward_kwargs: additional arguments to pass to forward pass besides the
-                MaskedHeliosSample.
+                 MaskedOlmoEarthSample.
             random_initialization: whether to skip loading the checkpoint so the
                 weights are randomly initialized. In this case, the checkpoint is only
                 used to define the model architecture.
@@ -148,7 +148,7 @@ class Helios(torch.nn.Module):
         timestamps[:, :, 2] = 2024  # year
         kwargs["timestamps"] = timestamps
 
-        sample = MaskedHeliosSample(**kwargs)
+        sample = MaskedOlmoEarthSample(**kwargs)
 
         # Decide context based on self.autocast_dtype.
         if self.autocast_dtype is None:

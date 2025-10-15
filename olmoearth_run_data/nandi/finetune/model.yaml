@@ -7,16 +7,17 @@ model:
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
-              checkpoint_path: "{CHECKPOINT_PATH}"
+              checkpoint_path: ${EXTRA_FILES_PATH}/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
+              random_initialization: true
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: {PATCH_SIZE}
+                patch_size: 1
         decoders:
-          crop_type_mapping:
+          class:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: {ENCODER_EMBEDDING_SIZE}
-                out_channels: 6
+                in_channels: 768
+                out_channels: 10
             - class_path: rslearn.train.tasks.classification.ClassificationHead
     lr: 0.0001
     plateau: true
@@ -27,63 +28,75 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20250409
+    path: ${DATASET_PATH}
     inputs:
       sentinel2_l2a:
         data_type: "raster"
-        layers: ["sentinel2_l2a_mo08"]
+        layers: ["sentinel2"]
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
         dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
       label:
         data_type: "vector"
-        layers: ["label"]
+        layers: ["labels"]
         is_target: true
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
         tasks:
-          crop_type_mapping:
+          class:
             class_path: rslearn.train.tasks.classification.ClassificationTask
             init_args:
               property_name: "category"
-              classes: ["Coffee", "Trees", "Grassland", "Maize", "Sugarcane", "Tea"]
+              classes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
               enable_f1_metric: true
               metric_kwargs:
                 average: "micro"
         input_mapping:
-          crop_type_mapping:
+          class:
             label: "targets"
-    batch_size: 32
-    num_workers: 64
+    batch_size: 512
+    num_workers: ${NUM_WORKERS}
     default_config:
       transforms:
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      groups: ["post_random_split"]
+      groups: ["random_split"]
       tags:
         split: "train"
+      transforms:
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     val_config:
-      groups: ["post_random_split"]
+      groups: ["random_split"]
       tags:
         split: "val"
     test_config:
-      groups: ["post_random_split"]
+      groups: ["random_split"]
       tags:
-        split: "val"
+        split: "test"
 trainer:
-  max_epochs: 300
+  max_epochs: 100
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      project: ${WANDB_PROJECT}
+      name: ${WANDB_NAME}
+      entity: ${WANDB_ENTITY}
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
-        dirpath: ${TRAINER_DATA_PATH}  # this is where intermediate checkpoinst will end up
+        dirpath: ${TRAINER_DATA_PATH}
         save_top_k: 1
         save_last: true
         monitor: val_loss
@@ -92,5 +105,3 @@ trainer:
       init_args:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 2
-rslp_project: helios_finetuning
-rslp_experiment: placeholder

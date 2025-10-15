@@ -44,6 +44,7 @@ def launch_job(
     command: list[str],
     clusters: list[str] | None = None,
     hostname: str | None = None,
+    priority: BeakerJobPriority = BeakerJobPriority.high,
 ) -> None:
     """Launch a Beaker job that materializes the rslearn dataset.
 
@@ -53,6 +54,7 @@ def launch_job(
         clusters: optional list of Beaker clusters to target. One of hostname or
             clusters must be set.
         hostname: optional Beaker host to constrain to.
+        priority: the priority to assign to the Beaker job.
     """
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         experiment_name = str(uuid.uuid4())[0:16]
@@ -93,7 +95,7 @@ def launch_job(
             budget=DEFAULT_BUDGET,
             task_name=experiment_name,
             beaker_image=image,
-            priority=BeakerJobPriority.high,
+            priority=priority,
             command=command,
             datasets=[
                 weka_mount,
@@ -116,6 +118,7 @@ def launch_jobs(
     num_jobs: int | None = None,
     hosts: list[str] | None = None,
     command: list[str] | None = None,
+    priority: BeakerJobPriority = BeakerJobPriority.high,
 ) -> None:
     """Launch Beaker jobs to materialize an rslearn dataset.
 
@@ -129,6 +132,7 @@ def launch_jobs(
         hosts: optional list of Beaker hosts to launch jobs on (one job per host),
             as an alternative to specifying clusters+num_jobs.
         command: override the default materialization command.
+        priority: the priority to assign to the Beaker jobs.
     """
     if (clusters is not None and hosts is not None) or (
         clusters is None and hosts is None
@@ -150,6 +154,7 @@ def launch_jobs(
                 image=image,
                 command=command,
                 clusters=clusters,
+                priority=priority,
             )
 
     else:
@@ -158,4 +163,5 @@ def launch_jobs(
                 image=image,
                 command=command,
                 hostname=host,
+                priority=priority,
             )

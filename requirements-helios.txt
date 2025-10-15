@@ -1,1 +1,1 @@
-helios @ git+https://github.com/allenai/helios.git@f0a63f190b0f99d9c503249daf7e3e47bbd4792a
+olmoearth_pretrain @ git+https://github.com/allenai/olmoearth_pretrain.git@0cd82b4784bc2f246a23f6da98a9bab27761c1ba

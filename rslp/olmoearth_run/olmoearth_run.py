@@ -1,6 +1,7 @@
 """Run OlmoEarthRunPredictRunner inference pipeline."""
 
 import hashlib
+import logging
 import shutil
 import tempfile
 from enum import StrEnum
@@ -9,6 +10,7 @@ from pathlib import Path
 import fsspec
 from olmoearth_run.runner.local.fine_tune_runner import OlmoEarthRunFineTuneRunner
 from olmoearth_run.runner.local.predict_runner import OlmoEarthRunPredictRunner
+from olmoearth_run.shared.tools.logger import configure_logging
 from upath import UPath
 
 from rslp.log_utils import get_logger
@@ -51,6 +53,7 @@ def get_local_checkpoint(checkpoint_path: UPath) -> Path:
 
 def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
     """Run OlmoEarthRunFineTuneRunner's prepare_windows pipeline."""
+    configure_logging(log_level=logging.INFO)
     logger.info("Loading OlmoEarthRunFineTuneRunner")
     runner = OlmoEarthRunFineTuneRunner(
         project_path=project_path,
@@ -58,6 +61,18 @@ def prepare_labeled_windows(project_path: Path, scratch_path: Path) -> None:
     )
     logger.info("Running prepare_labeled_windows")
     runner.prepare_labeled_windows()
+
+
+def finetune(project_path: Path, scratch_path: Path) -> None:
+    """Run EsFineTuneRunner finetune pipeline."""
+    configure_logging(log_level=logging.INFO)
+    logger.info("Loading OlmoEarthRunFineTuneRunner")
+    runner = OlmoEarthRunFineTuneRunner(
+        project_path=project_path,
+        scratch_path=scratch_path,
+    )
+    logger.info("Running finetune")
+    runner.fine_tune()
 
 
 def olmoearth_run(config_path: Path, scratch_path: Path, checkpoint_path: str) -> None:
@@ -69,6 +84,7 @@ def olmoearth_run(config_path: Path, scratch_path: Path, checkpoint_path: str) -
         scratch_path: directory to use for scratch space.
         checkpoint_path: path to the model checkpoint.
     """
+    configure_logging(log_level=logging.INFO)
     runner = OlmoEarthRunPredictRunner(
         # OlmoEarth Run does not work with relative path, so make sure to convert to absolute here.
         project_path=config_path.absolute(),
@@ -121,6 +137,7 @@ def one_stage(
             for all partitions, except BUILD_DATASET and COMBINE, which happens across
             partitions.
     """
+    configure_logging(log_level=logging.INFO)
     if stage == OlmoEarthRunStage.COMBINE and partition_id is not None:
         raise ValueError("partition_id cannot be set for COMBINE stage")
 
