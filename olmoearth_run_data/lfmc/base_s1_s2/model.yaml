@@ -12,23 +12,7 @@ model:
               forward_kwargs:
                 patch_size: 4
         decoders:
-          fueltype:
-            - class_path: rslearn.models.unet.UNetDecoder
-              init_args:
-                in_channels: [[4, 768]]
-                out_channels: 4
-                conv_layers_per_resolution: 2
-                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
-            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
-          herbaceousvalue:
-            - class_path: rslearn.models.unet.UNetDecoder
-              init_args:
-                in_channels: [[4, 768]]
-                out_channels: 1
-                conv_layers_per_resolution: 2
-                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
-            - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
-          woodyvalue:
+          value:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
                 in_channels: [[4, 768]]
@@ -63,48 +47,23 @@ data:
         dtype: FLOAT32
         load_all_item_groups: false
         load_all_layers: true
-      fueltype_data:
+      label:
         data_type: "raster"
         layers: ["labels"]
-        bands: ["fueltype"]
-        dtype: INT32
-        is_target: true
-      herbaceousvalue_data:
-        data_type: "raster"
-        layers: ["labels"]
-        bands: ["herbaceousvalue"]
-        dtype: FLOAT32
-        is_target: true
-      woodyvalue_data:
-        data_type: "raster"
-        layers: ["labels"]
-        bands: ["woodyvalue"]
+        bands: ["value"]
         dtype: FLOAT32
         is_target: true
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
         tasks:
-          fueltype:
-            class_path: rslearn.train.tasks.segmentation.SegmentationTask
-            init_args:
-              num_classes: 4
-              nodata_value: 0
-          woodyvalue:
+          value:
             class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionTask
             init_args:
-              nodata_value: 0
-          herbaceousvalue:
-            class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionTask
-            init_args:
-              nodata_value: 0
+              nodata_value: -1
         input_mapping:
-          fueltype:
-            fueltype_data: "targets"
-          woodyvalue:
-            woodyvalue_data: "targets"
-          herbaceousvalue:
-            herbaceousvalue_data: "targets"
+          value:
+            label: "targets"
     batch_size: 32
     num_workers: ${NUM_WORKERS}
     default_config:
@@ -171,7 +130,7 @@ trainer:
       init_args:
         path: ${DATASET_PATH}
         output_layer: ${PREDICTION_OUTPUT_LAYER}
-        selector: ["woodyvalue"]
+        selector: ["value"]
         merger:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:

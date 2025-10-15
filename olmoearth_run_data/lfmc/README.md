@@ -8,7 +8,7 @@ This will prepare labels for CONUS west of 100°W:
 
 ```shell
 python -m rslp.lfmc.prepare_labels_herbaceous_woody \
-    --csv_path /tmp/lfmc-labels-conus-herbaceous-woody.csv \
+    --output_dir $(pwd)/olmoearth_run_data/lfmc/ \
     --preset conus \
     --bbox="-124.7844079,24.7433195,-100,49.3457868"
 ```

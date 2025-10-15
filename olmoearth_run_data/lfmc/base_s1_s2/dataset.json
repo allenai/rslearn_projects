@@ -4,9 +4,7 @@
       "band_sets": [
         {
           "bands": [
-            "fueltype",
-            "herbaceousvalue",
-            "woodyvalue"
+            "value"
           ],
           "dtype": "float32"
         }
