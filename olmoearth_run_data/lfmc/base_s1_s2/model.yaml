@@ -89,14 +89,8 @@ data:
     predict_config:
       load_all_patches: true
       skip_targets: true
-      overlap_ratio: 0.75
-      patch_size: 4
+      patch_size: 32
       transforms:
-        - class_path: rslearn.train.transforms.pad.Pad
-          init_args:
-            size: 4
-            mode: "center"
-            image_selectors: ["sentinel1", "sentinel2_l2a"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             band_names:
@@ -131,7 +125,3 @@ trainer:
         path: ${DATASET_PATH}
         output_layer: ${PREDICTION_OUTPUT_LAYER}
         selector: ["value"]
-        merger:
-          class_path: rslearn.train.prediction_writer.RasterMerger
-          init_args:
-            padding: 2
