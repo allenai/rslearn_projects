@@ -39,7 +39,10 @@ def assign_split(window: Window) -> None:
     elif normalized_hash < 1.00:
         split = "val"
 
-    window.options["split_256"] = split
+    window.options["split"] = split
+    # remove any "split_256" in the window options
+    if "split_256" in window.options:
+        del window.options["split_256"]
     window.save()
 
 
