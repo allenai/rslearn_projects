@@ -120,7 +120,7 @@ data:
               image3: []
               image4: []
             output_selector: image
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.mask.Mask
     train_config:
       patch_size: 256
       transforms:
@@ -146,7 +146,7 @@ data:
               image3: []
               image4: []
             output_selector: image
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.mask.Mask
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["image", "target/class/classes", "target/class/valid"]

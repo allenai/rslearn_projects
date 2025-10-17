@@ -29,8 +29,8 @@
         "type": "Polygon"
       },
       "properties": {
-        "es_end_time": "2023-03-31T00:00:00+00:00",
-        "es_start_time": "2023-03-01T00:00:00+00:00"
+        "oe_end_time": "2023-03-31T00:00:00+00:00",
+        "oe_start_time": "2023-03-01T00:00:00+00:00"
       },
       "type": "Feature"
     }
