@@ -12,9 +12,9 @@ from rslearn.train.tasks.segmentation import SegmentationHead
 from rslearn.train.transforms import Sequential
 from rslearn.train.transforms.select_bands import SelectBands
 
-from rslp.helios.model import Helios
-from rslp.helios.norm import HeliosNormalize
 from rslp.nandi.train import SegmentationPoolingDecoder
+from rslp.olmoearth_pretrain.model import OlmoEarth
+from rslp.olmoearth_pretrain.norm import OlmoEarthNormalize
 
 from .constants import LANDSAT_BANDS, SENTINEL1_BANDS, SENTINEL2_BANDS
 
@@ -92,8 +92,8 @@ def get_model(
         return MultiTaskModel(
             encoder=[
                 SimpleTimeSeries(
-                    encoder=Helios(
-                        checkpoint_path="/weka/dfive-default/helios/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000",
+                    encoder=OlmoEarth(
+                        checkpoint_path="/weka/dfive-default/olmoearth_pretrain/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000",
                         selector=["encoder"],
                         forward_kwargs=dict(patch_size=4),
                         patch_size=4,
@@ -119,8 +119,8 @@ def get_model(
 
     return MultiTaskModel(
         encoder=[
-            Helios(
-                checkpoint_path="/weka/dfive-default/helios/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000",
+            OlmoEarth(
+                checkpoint_path="/weka/dfive-default/olmoearth_pretrain/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000",
                 selector=["encoder"],
                 forward_kwargs=dict(patch_size=4),
                 patch_size=4,
@@ -208,7 +208,7 @@ def get_transform(
         band_names["sentinel1"] = wanted_sentinel1
 
     modules.append(
-        HeliosNormalize(
+        OlmoEarthNormalize(
             band_names=band_names,
         )
     )
