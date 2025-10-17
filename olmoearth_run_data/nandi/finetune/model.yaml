@@ -65,7 +65,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 0
+                    class_idx: 1
                 coffee_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -74,7 +74,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 0
+                    class_idx: 1
                 trees_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -83,7 +83,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 1
+                    class_idx: 2
                 trees_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -92,7 +92,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 1
+                    class_idx: 2
                 grassland_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -101,7 +101,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 2
+                    class_idx: 3
                 grassland_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -110,7 +110,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 2
+                    class_idx: 3
                 maize_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -119,7 +119,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 3
+                    class_idx: 4
                 maize_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -128,7 +128,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 3
+                    class_idx: 4
                 sugarcane_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -137,7 +137,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 4
+                    class_idx: 5
                 sugarcane_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -146,7 +146,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 4
+                    class_idx: 5
                 tea_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -155,7 +155,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 5
+                    class_idx: 6
                 tea_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -164,7 +164,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 5
+                    class_idx: 6
                 vegetables_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -173,7 +173,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 6
+                    class_idx: 7
                 vegetables_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -182,7 +182,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 6
+                    class_idx: 7
                 legumes_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -191,7 +191,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 7
+                    class_idx: 8
                 legumes_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -200,7 +200,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 7
+                    class_idx: 8
                 water_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -209,7 +209,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 8
+                    class_idx: 9
                 water_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -218,7 +218,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 8
+                    class_idx: 9
                 builtup_precision:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -227,7 +227,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 9
+                    class_idx: 10
                 builtup_recall:
                   class_path: rslearn.train.tasks.segmentation.SegmentationMetric
                   init_args:
@@ -236,7 +236,7 @@ data:
                       init_args:
                         num_classes: 11
                         average: null
-                    class_idx: 9
+                    class_idx: 10
         input_mapping:
           class:
             label: "targets"
