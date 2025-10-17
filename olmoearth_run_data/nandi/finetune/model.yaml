@@ -13,7 +13,7 @@ model:
               forward_kwargs:
                 patch_size: 1
         decoders:
-          segment:
+          class:
             - class_path: rslp.nandi.train.SegmentationPoolingDecoder
               init_args:
                 in_channels: 768
@@ -246,9 +246,9 @@ data:
       transforms:
         - class_path: rslearn.train.transforms.pad.Pad
           init_args:
-            size: 4
+            size: 5
             mode: "center"
-            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["sentinel2_l2a", "target/class/classes", "target/class/valid"]
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
