@@ -19,7 +19,7 @@ model:
                 in_channels: 768
                 out_channels: 11
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
-    lr: 0.0001
+    lr: 0.00001
     plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
@@ -284,8 +284,8 @@ trainer:
         save_last: true
         monitor: val_loss
         mode: min
-    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
-      init_args:
-        module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 20
-        unfreeze_lr_factor: 10
+    # - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+    #   init_args:
+    #     module_selector: ["model", "encoder", 0]
+    #     unfreeze_at_epoch: 20
+    #     unfreeze_lr_factor: 10
