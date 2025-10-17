@@ -17,13 +17,28 @@ def assign_split(window: Window) -> None:
     """
     tile = (window.bounds[0] // 256, window.bounds[1] // 256)
     grid_cell_id = f"{window.projection.crs}_{tile[0]}_{tile[1]}"
-    first_hex_char_in_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()[0]
-    if first_hex_char_in_hash in ["0", "1", "2", "3"]:
-        split = "val"
-    # elif first_hex_char_in_hash in ["4", "5", "6", "7"]:
-    #     split = "test"
-    else:
+    # first_hex_char_in_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()[0]
+    # if first_hex_char_in_hash in ["0", "1", "2", "3"]:
+    #     split = "val"
+    # # elif first_hex_char_in_hash in ["4", "5", "6", "7"]:
+    # #     split = "test"
+    # else:
+    #     split = "train"
+    # window.options["split_256"] = split
+
+    # Create deterministic hash from input string
+    sha_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()
+
+    # Convert full hash to integer and normalize to [0, 1)
+    hash_int = int(sha_hash, 16)
+    normalized_hash = hash_int / (2**256)
+
+    # Assign split based on cumulative proportions
+    if normalized_hash < 0.75:
         split = "train"
+    elif normalized_hash < 1.0:
+        split = "val"
+
     window.options["split_256"] = split
     window.save()
 
