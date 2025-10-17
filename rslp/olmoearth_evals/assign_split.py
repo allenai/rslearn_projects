@@ -15,16 +15,16 @@ def assign_split(window: Window) -> None:
     We split based on a 1024x1024 pixel grid so the train windows are not too close to
     the validation and test windows. We assign 1/4 val, 1/4 test, and 1/2 train.
     """
-    tile = (window.bounds[0] // 1024, window.bounds[1] // 1024)
+    tile = (window.bounds[0] // 256, window.bounds[1] // 256)
     grid_cell_id = f"{window.projection.crs}_{tile[0]}_{tile[1]}"
     first_hex_char_in_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()[0]
     if first_hex_char_in_hash in ["0", "1", "2", "3"]:
         split = "val"
-    elif first_hex_char_in_hash in ["4", "5", "6", "7"]:
-        split = "test"
+    # elif first_hex_char_in_hash in ["4", "5", "6", "7"]:
+    #     split = "test"
     else:
         split = "train"
-    window.options["olmoearth_evals_split"] = split
+    window.options["split_256"] = split
     window.save()
 
 
