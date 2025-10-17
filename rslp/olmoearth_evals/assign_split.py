@@ -15,7 +15,7 @@ def assign_split(window: Window) -> None:
     We split based on a 1024x1024 pixel grid so the train windows are not too close to
     the validation and test windows. We assign 1/4 val, 1/4 test, and 1/2 train.
     """
-    tile = (window.bounds[0] // 256, window.bounds[1] // 256)
+    tile = (window.bounds[0] // 128, window.bounds[1] // 128)
     grid_cell_id = f"{window.projection.crs}_{tile[0]}_{tile[1]}"
     # first_hex_char_in_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()[0]
     # if first_hex_char_in_hash in ["0", "1", "2", "3"]:
@@ -40,9 +40,6 @@ def assign_split(window: Window) -> None:
         split = "val"
 
     window.options["split"] = split
-    # remove any "split_256" in the window options
-    if "split_256" in window.options:
-        del window.options["split_256"]
     window.save()
 
 
