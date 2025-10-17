@@ -34,7 +34,7 @@ def assign_split(window: Window) -> None:
     normalized_hash = hash_int / (2**256)
 
     # Assign split based on cumulative proportions
-    if normalized_hash < 0.80:
+    if normalized_hash < 0.75:
         split = "train"
     elif normalized_hash < 1.00:
         split = "val"
