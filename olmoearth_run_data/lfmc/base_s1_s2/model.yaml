@@ -97,7 +97,7 @@ data:
               sentinel1: ["vv", "vh"]
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
 trainer:
-  max_epochs: 25
+  max_epochs: 100
   logger:
     class_path: lightning.pytorch.loggers.WandbLogger
     init_args:
