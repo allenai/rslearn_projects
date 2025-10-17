@@ -1,0 +1,49 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+            init_args:
+              encoder:
+                class_path: rslearn.models.dinov3.DinoV3
+                init_args:
+                  size: 'dinov3_vitl16_sat'
+              image_channels: 3
+              image_key: "s2"
+        decoders:
+          segment:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[16, 1024]]
+                out_channels: 20
+                conv_layers_per_resolution: 2
+                num_channels: {16: 512, 8: 512, 4: 512, 2: 256, 1: 128}
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+data:
+  init_args:
+    inputs:
+      s2:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B04", "B03", "B02"]
+        passthrough: true
+        dtype: FLOAT32
+      targets:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["class"]
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslearn.models.dinov3.DinoV3Normalize
+          init_args:
+            satellite: true
+    train_config:
+      transforms:
+        - class_path: rslearn.models.dinov3.DinoV3Normalize
+          init_args:
+            satellite: true
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["s2", "target/segment/classes", "target/segment/valid"]

@@ -1,0 +1,56 @@
+model:
+  init_args:
+    model:
+      init_args:
+        input_modalities: ["sentinel2", "sentinel1"]
+        task_timesteps: 4
+data:
+  init_args:
+    inputs:
+      sentinel2:
+        data_type: "raster"
+        layers: ["sentinel2", "sentinel2.1", "sentinel2.2", "sentinel2.3"]
+        bands: ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B11", "B12"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+      sentinel1:
+        data_type: "raster"
+        layers: ["sentinel1_ascending", "sentinel1_ascending.1", "sentinel1_ascending.2", "sentinel1_ascending.3"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+      mask:
+        data_type: "raster"
+        layers: ["mask"]
+        bands: ["mask"]
+        passthrough: true
+        dtype: FLOAT32
+        is_target: true
+      targets:
+        data_type: "vector"
+        layers: ["label"]
+        is_target: true
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
+          init_args:
+            selectors: ["sentinel1"]
+        - class_path: rslp.transforms.mask.Mask
+          init_args:
+            selectors: ["sentinel2", "sentinel1"]
+        # This is for Faster R-CNN head to know the image size.
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2: []
+            output_selector: image
+        - class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterNormalize
+          init_args:
+            input_size: 128
+            input_modalities: ["sentinel2", "sentinel1"]
+            task_type: "detect"
+            task_name: "marine_infra"
+            task_channels: 3
+            task_timesteps: 4
