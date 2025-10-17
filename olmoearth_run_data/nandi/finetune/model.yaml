@@ -11,7 +11,7 @@ model:
               random_initialization: true
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 4
+                patch_size: 1
         decoders:
           segment:
             - class_path: rslp.nandi.train.SegmentationPoolingDecoder
@@ -240,7 +240,7 @@ data:
         input_mapping:
           class:
             label: "targets"
-    batch_size: 32
+    batch_size: 64
     num_workers: ${NUM_WORKERS}
     default_config:
       transforms:
