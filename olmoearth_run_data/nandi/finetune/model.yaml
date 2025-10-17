@@ -5,7 +5,7 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.olmoearth_prertain.model.OlmoEarth
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
               checkpoint_path: ${EXTRA_FILES_PATH}/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               random_initialization: true
