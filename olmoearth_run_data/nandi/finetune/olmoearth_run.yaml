@@ -6,7 +6,7 @@ window_prep:
     init_args:
       window_buffer: 31  # in pixels
       window_resolution: 10.0
-      dtype: UINT8
+      dtype: INT32
       nodata_value: 10
   data_splitter:
     class_path: olmoearth_run.runner.tools.data_splitters.spatial_data_splitter.SpatialDataSplitter
@@ -15,6 +15,6 @@ window_prep:
       val_prop: 0.2
       test_prop: 0.0
       grid_size: 2560 # in meters
-  label_layer: "labels"
+  label_layer: "label"
   group_name: "spatial_split"
   split_property: "split"

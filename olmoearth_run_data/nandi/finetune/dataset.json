@@ -1,67 +1,17 @@
 {
   "layers": {
-    "es_output": {
+    "label": {
       "band_sets": [
         {
           "bands": [
-            "output"
-          ],
-          "dtype": "uint8"
-        }
-      ],
-      "type": "raster"
-    },
-    "label_raster": {
-      "band_sets": [
-        {
-          "bands": [
-            "label"
+            "category"
           ],
           "dtype": "int32"
         }
       ],
       "type": "raster"
     },
-    "labels": {
-      "type": "vector"
-    },
-    "output": {
-      "band_sets": [
-        {
-          "bands": [
-            "output"
-          ],
-          "dtype": "uint8"
-        }
-      ],
-      "type": "raster"
-    },
-    "prediction_v0": {
-      "band_sets": [
-        {
-          "bands": [
-            "output"
-          ],
-          "dtype": "uint8",
-          "format": {
-            "name": "geotiff"
-          }
-        }
-      ],
-      "type": "raster"
-    },
-    "prediction_v1": {
-      "band_sets": [
-        {
-          "bands": [
-            "output"
-          ],
-          "dtype": "uint8"
-        }
-      ],
-      "type": "raster"
-    },
-    "sentinel1_ascending": {
+    "sentinel1": {
       "band_sets": [
         {
           "bands": [
@@ -73,7 +23,6 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
-        "duration": "366d",
         "ingest": false,
         "name": "rslearn.data_sources.planetary_computer.Sentinel1",
         "query": {
@@ -85,55 +34,13 @@
               "VV",
               "VH"
             ]
-          },
-          "sat:orbit_state": {
-            "eq": "ascending"
           }
         },
         "query_config": {
           "max_matches": 12,
           "period_duration": "30d",
           "space_mode": "PER_PERIOD_MOSAIC"
-        },
-        "time_offset": "-180d"
-      },
-      "type": "raster"
-    },
-    "sentinel1_descending": {
-      "band_sets": [
-        {
-          "bands": [
-            "vv",
-            "vh"
-          ],
-          "dtype": "float32"
         }
-      ],
-      "data_source": {
-        "cache_dir": "cache/planetary_computer",
-        "duration": "366d",
-        "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel1",
-        "query": {
-          "sar:instrument_mode": {
-            "eq": "IW"
-          },
-          "sar:polarizations": {
-            "eq": [
-              "VV",
-              "VH"
-            ]
-          },
-          "sat:orbit_state": {
-            "eq": "descending"
-          }
-        },
-        "query_config": {
-          "max_matches": 12,
-          "period_duration": "30d",
-          "space_mode": "PER_PERIOD_MOSAIC"
-        },
-        "time_offset": "-180d"
       },
       "type": "raster"
     },
@@ -169,7 +76,6 @@
       ],
       "data_source": {
         "cache_dir": "cache/planetary_computer",
-        "duration": "366d",
         "harmonize": true,
         "ingest": false,
         "name": "rslearn.data_sources.planetary_computer.Sentinel2",
@@ -178,8 +84,7 @@
           "period_duration": "30d",
           "space_mode": "PER_PERIOD_MOSAIC"
         },
-        "sort_by": "eo:cloud_cover",
-        "time_offset": "-180d"
+        "sort_by": "eo:cloud_cover"
       },
       "type": "raster"
     }
