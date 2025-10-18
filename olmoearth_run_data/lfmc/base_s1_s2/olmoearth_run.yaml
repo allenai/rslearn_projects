@@ -14,7 +14,7 @@ window_prep:
       train_prop: 0.8
       val_prop: 0.2
       test_prop: 0.0
-      grid_size: 100  # in meters
+      grid_size: 1000  # in pixels (~10km)
   label_layer: "labels"
   group_name: "spatial_split"
   split_property: "split"
