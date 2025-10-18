@@ -1,6 +1,6 @@
 # Run source env.sh to set the environment variables
 export DATASET_PATH=/weka/dfive-default/rslearn-eai/datasets/lfmc/20251015-woody-scratch/dataset
-export EXTRA_FILES_PATH=/weka/dfive-default/helios/checkpoints
+export EXTRA_FILES_PATH=/weka/dfive-default/olmoearth_pretrain/checkpoints
 export NUM_WORKERS=32
 export WANDB_ENTITY=eai-ai2
 export WANDB_NAME=lfmc_olmoearth_woody_$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 4)

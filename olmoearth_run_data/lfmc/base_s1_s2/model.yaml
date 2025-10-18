@@ -5,7 +5,7 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslp.helios.model.Helios
+          - class_path: rslp.olmoearth_pretrain.model.OlmoEarth
             init_args:
               checkpoint_path: ${EXTRA_FILES_PATH}/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               selector: ["encoder"]
@@ -69,7 +69,7 @@ data:
     default_config:
       patch_size: 32
       transforms:
-        - class_path: rslp.helios.norm.HeliosNormalize
+        - class_path: rslp.olmoearth_prertain.norm.OlmoEarthNormalize
           init_args:
             band_names:
               sentinel1: ["vv", "vh"]
@@ -91,7 +91,7 @@ data:
       skip_targets: true
       patch_size: 32
       transforms:
-        - class_path: rslp.helios.norm.HeliosNormalize
+        - class_path: rslp.olmoearth_prertain.norm.OlmoEarthNormalize
           init_args:
             band_names:
               sentinel1: ["vv", "vh"]
