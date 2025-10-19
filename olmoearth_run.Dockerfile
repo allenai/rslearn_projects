@@ -18,11 +18,11 @@ RUN uv pip install --system /opt/rslearn[extra]
 COPY . /opt/rslearn_projects/
 RUN uv pip install --system /opt/rslearn_projects[dev,extra]
 
-# Install helios and olmoearth_run dependencies.
-COPY requirements-helios.txt requirements-olmoearth_run.txt /opt/rslearn_projects/
+# Install olmoearth_pretrain and olmoearth_run dependencies.
+COPY requirements-olmoearth_pretrain.txt requirements-olmoearth_run.txt /opt/rslearn_projects/
 RUN --mount=type=secret,id=github_token \
     git config --global url."https://$(cat /run/secrets/github_token)@github.com/".insteadOf "https://github.com/" && \
-    uv pip install --system -r /opt/rslearn_projects/requirements-helios.txt && \
+    uv pip install --system -r /opt/rslearn_projects/requirements-olmoearth_pretrain.txt && \
     uv pip install --system -r /opt/rslearn_projects/requirements-olmoearth_run.txt
 
 WORKDIR /opt/rslearn_projects
