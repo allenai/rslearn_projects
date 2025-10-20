@@ -20,9 +20,13 @@ pixel (with the other pixels marked invalid), hoping that it would have the same
 performance but be able to segment more than one pixel on each forward pass. However,
 this approach provided lower performance (81% instead of 85% accuracy).
 
-
 20251002
 --------
 
 The config `finetune_s2_20251001.yaml` was created for Helios finetuning using only the original ground-truth 10 m pixels (6 categories, ~6K samples). A new split tag `helios_split` was added.
 This dataset is also used for KNN classification in Helios. The window size and patch size were adjusted to be consistent with KNN.
+
+20251020
+--------
+
+The config `finetune_s2_20251020.yaml` was created after we switched to the spatial splitter (128 x 128 pixel) which better mimic our inference set up. With spatial splitter, the overall accuracy drops to 72% compared to the 85% with polygon splitter. In the meantime, the freeze for 20 epochs and then unfreeze strategy seems working well.
