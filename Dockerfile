@@ -52,44 +52,9 @@ COPY . /opt/rslearn_projects/
 # ============================================================================
 # SSH Multi-Key Configuration for GitHub Actions
 # ============================================================================
-# This section handles SSH authentication for multiple private GitHub repositories
-# when building in CI/CD environments that use separate deploy keys per repository.
-#
-# CONTEXT:
-# - GitHub deploy keys are scoped to a single repository for security
-# - We need to clone from multiple repos: rslearn, olmoearth_pretrain, olmoearth_run
-# - Each repository has its own deploy key stored as a GitHub Actions secret
-#
-# THE PROBLEM:
-# When SSH tries to connect to github.com with multiple keys in the agent:
-#   1. SSH tries the first key
-#   2. If it authenticates successfully, SSH stops trying other keys
-#   3. If that key lacks access to a specific repo, GitHub returns "Repository not found"
-#   4. The connection fails even though other keys in the agent might have access
-#
-# This happens because SSH authenticates at the HOST level (github.com), not the
-# repository level. Once any key authenticates with github.com, SSH considers the
-# connection successful and doesn't try other keys.
-#
-# THE SOLUTION:
-# We use SSH host aliases to make SSH think each repository is on a different host:
-#   - git@github-olmoearth-pretrain:allenai/olmoearth_pretrain.git
-#   - git@github-olmoearth-run:allenai/olmoearth_run.git
-#
-# Each alias points to github.com but specifies which SSH key to use via IdentityFile.
-# With IdentitiesOnly=yes, SSH only tries the specified key for that alias.
-#
-# IMPLEMENTATION:
-# The GitHub Actions workflow writes deploy keys to .docker-ssh/ and sets
-# USE_SSH_KEYS_FROM_BUILD=true. This code then:
-#   1. Copies the key files to ~/.ssh/
-#   2. Creates SSH config with host aliases mapped to specific keys
-#   3. Rewrites requirements*.txt files to use the host aliases
-#
-# LOCAL DEVELOPMENT:
-# Local developers typically have a single SSH key with access to all repositories,
-# so this complexity is unnecessary. When USE_SSH_KEYS_FROM_BUILD=false (default),
-# this entire setup is skipped and standard SSH agent forwarding is used.
+# Handles authentication for multiple private GitHub repos using separate deploy
+# keys. See .github/workflows/build_test.yaml for full explanation of why this
+# approach is needed and how it works. Local dev uses standard SSH agent forwarding.
 
 ARG USE_SSH_KEYS_FROM_BUILD=false
 RUN if [ "$USE_SSH_KEYS_FROM_BUILD" = "true" ] && [ -d /opt/rslearn_projects/.docker-ssh ]; then \

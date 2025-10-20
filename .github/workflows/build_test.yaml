@@ -61,21 +61,34 @@ jobs:
       # ============================================================================
       # SSH Multi-Key Setup for Private Repository Access
       # ============================================================================
-      # The Docker build needs to clone from multiple private GitHub repositories:
+      # The Docker build clones from multiple private GitHub repositories, each
+      # requiring its own deploy key (GitHub deploy keys are scoped per-repo):
       # - allenai/rslearn
       # - allenai/olmoearth_pretrain
       # - allenai/olmoearth_run
       #
-      # PROBLEM: GitHub deploy keys are scoped to a single repository. We need
-      # separate deploy keys for each repo. However, when SSH connects to github.com
-      # with multiple keys loaded in the agent, it tries them in order. If the first
-      # key authenticates successfully but lacks access to a specific repository,
-      # GitHub returns "Repository not found" and SSH stops trying other keys.
+      # PROBLEM: When SSH connects to github.com with multiple keys in the agent:
+      #   1. SSH tries the first key
+      #   2. If it authenticates successfully, SSH stops trying other keys
+      #   3. If that key lacks repo access, GitHub returns "Repository not found"
+      #   4. The connection fails even though other keys might have access
+      # This happens because SSH authenticates at the HOST level (github.com), not
+      # per-repository. Once any key authenticates, SSH considers it successful.
       #
-      # SOLUTION: We use SSH host aliases to route each repository to its specific key.
-      # webfactory/ssh-agent sets up the SSH agent on the runner, but Docker builds
-      # run in an isolated container that doesn't have access to the runner's SSH
-      # config or git URL rewrites. So we must recreate this setup inside the container.
+      # SOLUTION: Use SSH host aliases to make SSH treat each repo as a different host.
+      # Each alias points to github.com but specifies which key to use via IdentityFile.
+      # With IdentitiesOnly=yes, SSH only tries the specified key for that alias,
+      # preventing key-guessing and ensuring the correct key is used for each repo.
+      #
+      # IMPLEMENTATION: The webfactory/ssh-agent action loads keys on the runner, but
+      # Docker builds run in isolated containers without access to the runner's SSH
+      # config or git URL rewrites. We prepare key files, SSH config with host aliases,
+      # and modified requirements.txt files here, then copy them into the container.
+      #
+      # LOCAL DEVELOPMENT: Developers typically have a single SSH key with access to
+      # all repos, so this complexity is unnecessary. The Dockerfile only activates
+      # this setup when USE_SSH_KEYS_FROM_BUILD=true (CI only). Otherwise, standard
+      # SSH agent forwarding is used.
 
       - name: Setup SSH agent with deploy keys
         uses: webfactory/ssh-agent@v0.9.0
@@ -84,6 +97,7 @@ jobs:
             ${{ secrets.DEPLOY_KEY_FOR_OLMOEARTH_PRETRAIN_CLONE }}
             ${{ secrets.DEPLOY_KEY_FOR_OLMOEARTH_RUN_CLONE }}
 
+      # Remove me before merge.
       - name: Debug SSH keys
         run: |
           echo "=== SSH Agent Keys ==="
@@ -126,17 +140,6 @@ jobs:
             requirements-olmoearth_pretrain.txt > .docker-ssh/requirements-olmoearth_pretrain.txt
           sed 's|git@github\.com/allenai/olmoearth_run|git@github-olmoearth-run/allenai/olmoearth_run|g' \
             requirements-olmoearth_run.txt > .docker-ssh/requirements-olmoearth_run.txt
-
-## REMOVE BEFORE MERGE! ####
-#      - name: Clone olmoearth repositories and update requirements-extra.txt
-#        run: |
-#          mkdir docker_build
-#          git clone git@github.com:allenai/olmoearth_pretrain.git docker_build/olmoearth_pretrain
-#          git -C docker_build/olmoearth_pretrain checkout 0cd82b4784bc2f246a23f6da98a9bab27761c1ba
-#          echo "olmoearth_pretrain @ /opt/rslearn_projects/docker_build/olmoearth_pretrain/" >> requirements-extra.txt
-#          git clone git@github.com:allenai/olmoearth_run.git docker_build/olmoearth_run
-#          echo "olmoearth_run @ /opt/rslearn_projects/docker_build/olmoearth_run/" >> requirements-extra.txt
-############################
 
       - name: Build and push Docker images with Bake
         id: build-push
