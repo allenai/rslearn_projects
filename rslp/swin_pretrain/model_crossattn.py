@@ -194,6 +194,7 @@ class Model(torch.nn.Module):
         images = torch.stack([inp["image"] for inp in inputs], dim=0)
         image_channels = 12
         batch_size = len(inputs)
+        assert images.shape[1] % image_channels == 0
         n_images = images.shape[1] // image_channels
         # Reshape images to B*T x C x H x W.
         images = rearrange(
