@@ -17,13 +17,18 @@ class TestCollateFunction:
         input_modalities: dict[str, int],
         segment_targets: list[str],
         example_idx: int,
+        timesteps: int = 1,
     ) -> tuple[dict, dict, dict]:
         """Make an example to pass to CollateFunction."""
         input_dict: dict[str, torch.Tensor] = {}
         for modality, num_bands in input_modalities.items():
-            input_dict[modality] = torch.zeros(
-                (num_bands, height, width), dtype=torch.float32
+            image = torch.zeros(
+                (timesteps * num_bands, height, width), dtype=torch.float32
             )
+            # Set each timestep to different value so tests can distinguish them.
+            for timestep in range(timesteps):
+                image[timestep * num_bands : (timestep + 1) * num_bands] = timestep
+            input_dict[modality] = image
         target_dict: dict[str, Any] = {}
         for modality in segment_targets:
             target_dict[modality] = {
@@ -125,3 +130,44 @@ class TestCollateFunction:
 
         # Make sure we got at least two unique widths.
         assert len(all_widths) >= 2
+
+    def test_temporal_subset(self) -> None:
+        """Verify that we get different timesteps but they are always in order."""
+        min_size = 8
+        max_size = 8
+        patch_size = 8
+        collate_fn = CollateFunction(
+            randomize=True,
+            min_size=min_size,
+            max_size=max_size,
+            patch_size=patch_size,
+        )
+        first_timesteps_set = set()
+        num_timesteps_set = set()
+        for _ in range(8):
+            batch = [
+                self.make_example(
+                    height=TILE_SIZE,
+                    width=TILE_SIZE,
+                    input_modalities={"10_sentinel2_l2a_monthly": 12},
+                    segment_targets=[],
+                    example_idx=0,
+                    timesteps=4,
+                )
+            ]
+            inputs, _, _ = collate_fn(batch)
+            image = inputs[0]["10_sentinel2_l2a_monthly"]
+            num_timesteps = image.shape[0] // 12
+
+            # Verify order of timesteps.
+            selected_timesteps = []
+            for timestep in range(num_timesteps):
+                selected_timesteps.append(image[timestep * 12, 0, 0])
+                if len(selected_timesteps) >= 2:
+                    assert selected_timesteps[-1] > selected_timesteps[-2]
+
+            num_timesteps_set.add(num_timesteps)
+            first_timesteps_set.add(selected_timesteps[0])
+
+        # Make sure we got at least two different first timesteps.
+        assert len(first_timesteps_set) >= 2

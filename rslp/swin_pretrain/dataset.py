@@ -172,7 +172,7 @@ class CollateFunction:
                     )
                 else:
                     selected_timesteps = available_timesteps[0:num_timesteps]
-                image = image[selected_timesteps]
+                image = image[sorted(selected_timesteps)]
                 # Reshape back so the timesteps and bands are stacked.
                 image = rearrange(image, "t c h w -> (t c) h w")
                 input_dict[modality] = image
