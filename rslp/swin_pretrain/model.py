@@ -19,6 +19,7 @@ class Model(torch.nn.Module):
         """Initialize the model."""
         super().__init__()
         self.target_resolution_factor = target_resolution_factor
+        # Currently this model can only handle one input image (Sentinel-2).
         self.backbone = SimpleTimeSeries(
             encoder=Swin(
                 arch="swin_v2_b",
