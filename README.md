@@ -33,6 +33,43 @@ environment variable:
     echo "RSLP_PREFIX=project_data/" > .env
 
 
+Docker Build
+------------
+
+The project includes a multi-stage Docker build for creating containerized environments.
+
+### Prerequisites
+
+- Docker with BuildKit support
+- SSH access to the following private repositories:
+  - `github.com:allenai/rslearn`
+  - `github.com:allenai/olmoearth_pretrain`
+  - `github.com:allenai/olmoearth_run`
+- Your SSH key should be loaded in your SSH agent
+
+### Building Images
+
+To build all targets:
+
+    docker buildx bake
+
+To build a specific target:
+
+    docker buildx bake base   # Base image with core dependencies
+    docker buildx bake full   # Full image with all tools and rslearn
+
+### Build Targets
+
+- **base**: Core PyTorch environment with rslearn_projects and olmoearth dependencies
+- **full**: Includes rslearn, tippecanoe, and additional development tools
+
+### Notes for Local Development
+
+Local developers with a single SSH key that has access to all repositories can build directly
+without additional configuration. The multi-key SSH setup is only required in CI/CD environments
+where separate deploy keys are used for each repository.
+
+
 Applications
 ------------
 

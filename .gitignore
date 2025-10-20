@@ -19,6 +19,7 @@ olmoearth_run_data/nandi/finetune/annotation*.geojson
 lightning_logs/
 /tmp*/
 docker_build
+.docker-ssh/
 
 # misc from one off projects
 one_off_projects/2025_07_joint_finetune/data
