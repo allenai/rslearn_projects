@@ -1,4 +1,4 @@
-"""Script to collect Helios embeddings for an rslearn dataset."""
+"""Script to collect OlmoEarth embeddings for an rslearn dataset."""
 
 import argparse
 from typing import Any
@@ -7,14 +7,13 @@ import numpy as np
 import torch
 import tqdm
 from rslearn.dataset.dataset import Dataset
+from rslearn.models.olmoearth_pretrain.model import OlmoEarth
+from rslearn.models.olmoearth_pretrain.norm import OlmoEarthNormalize
 from rslearn.train.data_module import collate_fn
 from rslearn.train.dataset import DataInput, ModelDataset, SplitConfig
 from rslearn.train.tasks.classification import ClassificationTask
 from rslearn.train.transforms.pad import Pad
 from upath import UPath
-
-from rslp.helios.model import Helios
-from rslp.helios.norm import HeliosNormalize
 
 
 def input_to_device(inp: Any, device: torch.DeviceObjType) -> Any:
@@ -24,10 +23,10 @@ def input_to_device(inp: Any, device: torch.DeviceObjType) -> Any:
     return inp
 
 
-def initialize_dataset_for_helios(
+def initialize_dataset_for_olmoearth(
     dataset: Dataset, input_size: int | None = None, workers: int = 32
 ) -> ModelDataset:
-    """Create a ModelDataset for predicting Helios embeddings.
+    """Create a ModelDataset for predicting OlmoEarth embeddings.
 
     The ModelDataset is configured to read only the images from the windows in the
     specified dataset. It is assumed that there is a layer "sentinel2" in the dataset
@@ -43,8 +42,7 @@ def initialize_dataset_for_helios(
         the ModelDataset.
     """
     transforms = [
-        HeliosNormalize(
-            config_fname="/opt/helios/data/norm_configs/computed.json",
+        OlmoEarthNormalize(
             band_names=dict(
                 sentinel2_l2a=[
                     "B02",
@@ -112,17 +110,17 @@ def initialize_dataset_for_helios(
 
 
 def get_embeddings(
-    helios: Helios,
+    model: OlmoEarth,
     model_dataset: ModelDataset,
     batch_size: int,
     mode: str,
     embed_fname: str,
     workers: int = 16,
 ) -> None:
-    """Get Helios embeddings for each window in the ModelDataset.
+    """Get OlmoEarth embeddings for each window in the ModelDataset.
 
     Args:
-        helios: the Helios model to apply.
+        model: the OlmoEarth model to apply.
         model_dataset: the dataset to apply the model on.
         batch_size: batch size to use for data loading.
         mode: embedding selection mode, "center" to pick the embedding for the patch at
@@ -156,7 +154,7 @@ def get_embeddings(
                 {k: input_to_device(v, device) for k, v in input_dict.items()}
                 for input_dict in inputs
             ]
-            features = helios(gpu_inputs)[0]
+            features = model(gpu_inputs)[0]
 
             for cur_feat, metadata in zip(features, metadatas):
                 if mode == "center":
@@ -195,7 +193,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--patch_size",
         type=int,
-        help="Patch size to use for Helios model",
+        help="Patch size to use for OlmoEarth model",
         required=True,
     )
     parser.add_argument(
@@ -207,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--checkpoint_path",
         type=str,
-        help="Helios checkpoint path",
+        help="OlmoEarth checkpoint path",
         required=True,
     )
     parser.add_argument(
@@ -238,24 +236,24 @@ if __name__ == "__main__":
 
     print("Initializing dataset")
     dataset = Dataset(UPath(args.ds_path))
-    model_dataset = initialize_dataset_for_helios(
+    model_dataset = initialize_dataset_for_olmoearth(
         dataset,
         input_size=args.input_size,
         workers=args.workers,
     )
 
-    print("Initializing Helios model")
+    print("Initializing OlmoEarth model")
     device = torch.device("cuda")
-    helios = Helios(
+    model = OlmoEarth(
         checkpoint_path=args.checkpoint_path,
         selector=["encoder"],
         forward_kwargs=dict(patch_size=args.patch_size),
     )
-    helios.to(device)
-    helios.eval()
+    model.to(device)
+    model.eval()
 
     get_embeddings(
-        helios=helios,
+        model=model,
         model_dataset=model_dataset,
         batch_size=args.batch_size,
         mode=args.mode,

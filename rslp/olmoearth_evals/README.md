@@ -25,13 +25,13 @@ Not all models support all modalities or multi-modality.
 
 ```
 # Sentinel-2 tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,dinov3,galileo,olmoearth,panopticon,presto,prithvi,satlaspretrain,terramind]' --tasks='[pastis_uni,pastis_ts,marine_infra_uni,marine_infra_ts,wind_turbine_uni,wind_turbine_ts,solar_farm_uni,solar_farm_ts,sentinel2_vessel_length,sentinel2_vessel_type,sentinel2_vessels,lfmc_uni,lfmc_ts,mangrove_uni,mangrove_ts,forest_loss_driver]' --prefix 20251007b --image_name favyen/rslphelios16
+python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,dinov3,galileo,olmoearth,panopticon,presto,prithvi,satlaspretrain,terramind]' --tasks='[pastis_uni,pastis_ts,marine_infra_uni,marine_infra_ts,wind_turbine_uni,wind_turbine_ts,solar_farm_uni,solar_farm_ts,sentinel2_vessel_length,sentinel2_vessel_type,sentinel2_vessels,lfmc_uni,lfmc_ts,mangrove_uni,mangrove_ts,forest_loss_driver,awf_ts,nandi_ts,ecosystem]' --prefix 20251007b --image_name favyen/rslphelios16 --project final_downstream_eval_train
 # Sentinel-1 + Sentinel-2 tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,copernicusfm,croma,galileo,olmoearth,panopticon,presto,terramind]' --tasks='[pastis_mm,marine_infra_mm,wind_turbine_mm,solar_farm_mm,lfmc_mm,mangrove_mm]' --prefix 20251007b --image_name favyen/rslphelios16
+python -m rslp.main olmoearth_evals launch --models='[anysat,copernicusfm,croma,galileo,olmoearth,panopticon,presto,terramind]' --tasks='[pastis_mm,marine_infra_mm,wind_turbine_mm,solar_farm_mm,lfmc_mm,mangrove_mm,awf_mm,nandi_mm]' --prefix 20251007b --image_name favyen/rslphelios16 --project final_downstream_eval_train
 # Sentinel-1 tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,galileo,olmoearth,panopticon,presto,terramind]' --tasks='[sentinel1_vessels]' --prefix 20251007b --image_name favyen/rslphelios16
+python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,galileo,olmoearth,panopticon,presto,terramind]' --tasks='[sentinel1_vessels]' --prefix 20251007b --image_name favyen/rslphelios16 --project final_downstream_eval_train
 # Landsat tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,clay,dinov3,galileo,olmoearth,panopticon,prithvi]' --tasks='[landsat_vessels]' --prefix 20251007b --image_name favyen/rslphelios17
+python -m rslp.main olmoearth_evals launch --models='[anysat,clay,dinov3,galileo,olmoearth,panopticon,prithvi]' --tasks='[landsat_vessels]' --prefix 20251007b --image_name favyen/rslphelios17 --project final_downstream_eval_train
 ```
 
 Here are subset to run after dropping Presto and not doing the unitemporal version of
@@ -39,9 +39,9 @@ tasks that have a multitemporal option. And dropping PASTIS.
 
 ```
 # Sentinel-2 tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,dinov3,galileo,olmoearth,panopticon,prithvi,satlaspretrain,terramind]' --tasks='[marine_infra_ts,wind_turbine_ts,solar_farm_ts,sentinel2_vessel_length,sentinel2_vessel_type,sentinel2_vessels,lfmc_ts,mangrove_ts,forest_loss_driver]' --prefix final --image_name favyen/rslphelios18 --project final_downstream_eval_train
+python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,dinov3,galileo,olmoearth,panopticon,prithvi,satlaspretrain,terramind]' --tasks='[marine_infra_ts,wind_turbine_ts,solar_farm_ts,sentinel2_vessel_length,sentinel2_vessel_type,sentinel2_vessels,lfmc_ts,mangrove_ts,forest_loss_driver,awf_ts,nandi_ts,ecosystem]' --prefix final --image_name favyen/rslphelios20 --project final_downstream_eval_train
 # Sentinel-1 + Sentinel-2 tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,copernicusfm,croma,galileo,olmoearth,panopticon,terramind]' --tasks='[marine_infra_mm,wind_turbine_mm,solar_farm_mm,lfmc_mm,mangrove_mm]' --prefix final --image_name favyen/rslphelios20 --project final_downstream_eval_train
+python -m rslp.main olmoearth_evals launch --models='[anysat,copernicusfm,croma,galileo,olmoearth,panopticon,terramind]' --tasks='[marine_infra_mm,wind_turbine_mm,solar_farm_mm,lfmc_mm,mangrove_mm,awf_mm,nandi_mm]' --prefix final --image_name favyen/rslphelios20 --project final_downstream_eval_train
 # Sentinel-1 tasks.
 python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,galileo,olmoearth,panopticon,terramind]' --tasks='[sentinel1_vessels]' --prefix final --image_name favyen/rslphelios18 --project final_downstream_eval_train
 # Landsat tasks.

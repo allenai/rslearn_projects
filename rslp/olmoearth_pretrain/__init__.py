@@ -1,4 +1,4 @@
-"""Helios model architecture."""
+"""OlmoEarth model architecture."""
 
 from .launch_finetune import launch_finetune
 

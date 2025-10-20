@@ -242,7 +242,7 @@ class MonthlyAzureSentinel2(DataSource):
         # This only makes sense for mosaic space mode.
         assert query_config.space_mode == SpaceMode.MOSAIC
 
-        client, _ = self.sentinel2._load_client()
+        client = self.sentinel2._load_client()
         groups = []
         for geometry in geometries:
             # This part is the same as in base Sentinel2 class.
@@ -364,7 +364,7 @@ class MonthlySentinel1(DataSource):
         # This only makes sense for mosaic space mode.
         assert query_config.space_mode == SpaceMode.MOSAIC
 
-        client, _ = self.sentinel1._load_client()
+        client = self.sentinel1._load_client()
         groups = []
         for geometry in geometries:
             # This part is the same as in base Sentinel1 class.

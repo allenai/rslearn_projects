@@ -4,6 +4,9 @@ import json
 import subprocess  # nosec
 
 TASK_CONFIGS = {
+    "awf_ts": ["awf_base"],
+    "awf_mm": ["awf_base", "awf_mm"],
+    "ecosystem": ["ecosystem"],
     "forest_loss_driver": ["forest_loss_driver"],
     "landsat_vessels": ["landsat_vessels"],
     "lfmc_uni": ["lfmc_base"],
@@ -15,6 +18,8 @@ TASK_CONFIGS = {
     "marine_infra_uni": ["marine_infra_base"],
     "marine_infra_ts": ["marine_infra_base", "marine_infra_ts"],
     "marine_infra_mm": ["marine_infra_base", "marine_infra_mm"],
+    "nandi_ts": ["nandi_base"],
+    "nandi_mm": ["nandi_base", "nandi_mm"],
     "pastis_uni": ["pastis_base"],
     "pastis_ts": ["pastis_base", "pastis_ts"],
     "pastis_mm": ["pastis_base", "pastis_mm"],

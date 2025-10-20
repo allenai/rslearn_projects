@@ -5,7 +5,7 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslp.helios.model.Helios
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
               checkpoint_path: ${EXTRA_FILES_PATH}/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               random_initialization: true
@@ -61,7 +61,7 @@ data:
     num_workers: ${NUM_WORKERS}
     default_config:
       transforms:
-        - class_path: rslp.helios.norm.HeliosNormalize
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
@@ -69,11 +69,6 @@ data:
       groups: ["random_split"]
       tags:
         split: "train"
-      transforms:
-        - class_path: rslp.helios.norm.HeliosNormalize
-          init_args:
-            band_names:
-              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     val_config:
       groups: ["random_split"]
       tags:
