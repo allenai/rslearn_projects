@@ -145,7 +145,7 @@ class CollateFunction:
         else:
             rng = np.random.default_rng(hash(metadatas[0]["window_name"]) % 65536)
             num_timesteps = rng.integers(minimum_available_timesteps) + 1
-            crop_size = rng.integers(self.max_size - self.min_size) + 1
+            crop_size = self.min_size + rng.integers(self.max_size - self.min_size + 1)
             crop_size = (crop_size // self.patch_size) * self.patch_size
             crop_h_start = 0
             crop_w_start = 0
@@ -183,9 +183,6 @@ class CollateFunction:
         # Spatial crop.
         for input_dict in inputs:
             for modality in list(input_dict.keys()):
-                if not isinstance(modality, torch.Tensor):
-                    continue
-                print("process input modality", modality)
                 input_dict[modality] = input_dict[modality][
                     :,
                     crop_h_start : crop_h_start + crop_size,
