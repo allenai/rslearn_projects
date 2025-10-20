@@ -37,7 +37,7 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-        - class_path: rslp.olmoearth_pretrain.model.OlmoEarth
+        - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
           init_args:
             checkpoint_path: ${EXTRA_FILES_PATH}/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
             selector:
@@ -240,7 +240,7 @@ data:
             s23: []
             s24: []
           output_selector: sentinel2_l2a
-      - class_path: rslp.olmoearth_pretrain.norm.OlmoEarthNormalize
+      - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:
             sentinel2_l2a:
@@ -272,7 +272,7 @@ data:
             s23: []
             s24: []
           output_selector: sentinel2_l2a
-      - class_path: rslp.olmoearth_pretrain.norm.OlmoEarthNormalize
+      - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:
             sentinel2_l2a:
@@ -327,7 +327,7 @@ data:
             s23: []
             s24: []
           output_selector: sentinel2_l2a
-      - class_path: rslp.olmoearth_pretrain.norm.OlmoEarthNormalize
+      - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:
             sentinel2_l2a:

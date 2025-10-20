@@ -7,14 +7,13 @@ import numpy as np
 import torch
 import tqdm
 from rslearn.dataset.dataset import Dataset
+from rslearn.models.olmoearth_pretrain.model import OlmoEarth
+from rslearn.models.olmoearth_pretrain.norm import OlmoEarthNormalize
 from rslearn.train.data_module import collate_fn
 from rslearn.train.dataset import DataInput, ModelDataset, SplitConfig
 from rslearn.train.tasks.classification import ClassificationTask
 from rslearn.train.transforms.pad import Pad
 from upath import UPath
-
-from rslp.olmoearth_pretrain.model import OlmoEarth
-from rslp.olmoearth_pretrain.norm import OlmoEarthNormalize
 
 
 def input_to_device(inp: Any, device: torch.DeviceObjType) -> Any:

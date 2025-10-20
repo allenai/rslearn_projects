@@ -93,8 +93,8 @@
         "type": "Polygon"
       },
       "properties": {
-        "es_end_time": "2024-09-15T00:00:00+00:00",
-        "es_start_time": "2024-09-15T00:00:00+00:00"
+        "oe_end_time": "2024-09-15T00:00:00+00:00",
+        "oe_start_time": "2024-09-15T00:00:00+00:00"
       },
       "type": "Feature"
     },
@@ -199,8 +199,8 @@
         "type": "Polygon"
       },
       "properties": {
-        "es_end_time": "2024-10-17T00:00:00+00:00",
-        "es_start_time": "2024-10-17T00:00:00+00:00"
+        "oe_end_time": "2024-10-17T00:00:00+00:00",
+        "oe_start_time": "2024-10-17T00:00:00+00:00"
       },
       "type": "Feature"
     }

@@ -1,5 +1,10 @@
-This module contains code to wrap OlmoEarth model for training in rslearn/rslearn_projects
-along with launcher for OlmoEarth fine-tuning experiments.
+This module contains:
+
+- Legacy code to launch fine-tuning experiments for OlmoEarth (`launch_finetune.py`).
+  This has been replaced by `rslp.olmoearth_evals`.
+- Script to compute and save OlmoEarth embeddings for a target dataset. This is mainly
+  for AEF evaluation. See `get_embeddings.py`.
+- Script to get the best metric for a W&B run, see `scripts/get_best_wandb_metric.py`.
 
 ## OlmoEarth Fine-tuning
 

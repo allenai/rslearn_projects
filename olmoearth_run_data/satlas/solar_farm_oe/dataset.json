@@ -81,10 +81,11 @@
         "cache_dir": "cache/planetary_computer",
         "harmonize": true,
         "ingest": false,
-        "max_cloud_cover": 50,
-        "name": "rslp.satlas.data_sources.MonthlyAzureSentinel2",
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
         "query_config": {
-          "max_matches": 4
+          "max_matches": 4,
+          "period_duration": "30d",
+          "space_mode": "PER_PERIOD_MOSAIC"
         },
         "sort_by": "eo:cloud_cover"
       },

@@ -75,7 +75,7 @@
         "cache_dir": "cache/planetary_computer",
         "duration": "366d",
         "ingest": false,
-        "name": "rslp.satlas.data_sources.MonthlySentinel1",
+        "name": "rslearn.data_sources.planetary_computer.Sentinel1",
         "query": {
           "sar:instrument_mode": {
             "eq": "IW"
@@ -91,7 +91,9 @@
           }
         },
         "query_config": {
-          "max_matches": 12
+          "max_matches": 12,
+          "period_duration": "30d",
+          "space_mode": "PER_PERIOD_MOSAIC"
         },
         "time_offset": "-180d"
       },
@@ -111,7 +113,7 @@
         "cache_dir": "cache/planetary_computer",
         "duration": "366d",
         "ingest": false,
-        "name": "rslp.satlas.data_sources.MonthlySentinel1",
+        "name": "rslearn.data_sources.planetary_computer.Sentinel1",
         "query": {
           "sar:instrument_mode": {
             "eq": "IW"
@@ -127,7 +129,9 @@
           }
         },
         "query_config": {
-          "max_matches": 12
+          "max_matches": 12,
+          "period_duration": "30d",
+          "space_mode": "PER_PERIOD_MOSAIC"
         },
         "time_offset": "-180d"
       },
@@ -168,10 +172,11 @@
         "duration": "366d",
         "harmonize": true,
         "ingest": false,
-        "max_cloud_cover": 50,
-        "name": "rslp.satlas.data_sources.MonthlyAzureSentinel2",
+        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
         "query_config": {
-          "max_matches": 12
+          "max_matches": 12,
+          "period_duration": "30d",
+          "space_mode": "PER_PERIOD_MOSAIC"
         },
         "sort_by": "eo:cloud_cover",
         "time_offset": "-180d"
