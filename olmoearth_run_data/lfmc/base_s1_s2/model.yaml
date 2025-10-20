@@ -67,7 +67,6 @@ data:
     batch_size: 32
     num_workers: ${NUM_WORKERS}
     default_config:
-      patch_size: 32
       transforms:
         - class_path: rslp.olmoearth_prertain.norm.OlmoEarthNormalize
           init_args:
@@ -75,14 +74,19 @@ data:
               sentinel1: ["vv", "vh"]
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
+      patch_size: 32
       groups: ["spatial_split"]
       tags:
         split: "train"
     val_config:
+      load_all_patches: true
+      patch_size: 63
       groups: ["spatial_split"]
       tags:
         split: "val"
     test_config:
+      load_all_patches: true
+      patch_size: 63
       groups: ["spatial_split"]
       tags:
         split: "val"
