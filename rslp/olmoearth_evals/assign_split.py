@@ -15,31 +15,16 @@ def assign_split(window: Window) -> None:
     We split based on a 1024x1024 pixel grid so the train windows are not too close to
     the validation and test windows. We assign 1/4 val, 1/4 test, and 1/2 train.
     """
-    tile = (window.bounds[0] // 128, window.bounds[1] // 128)
+    tile = (window.bounds[0] // 1024, window.bounds[1] // 1024)
     grid_cell_id = f"{window.projection.crs}_{tile[0]}_{tile[1]}"
-    # first_hex_char_in_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()[0]
-    # if first_hex_char_in_hash in ["0", "1", "2", "3"]:
-    #     split = "val"
-    # # elif first_hex_char_in_hash in ["4", "5", "6", "7"]:
-    # #     split = "test"
-    # else:
-    #     split = "train"
-    # window.options["split_256"] = split
-
-    # Create deterministic hash from input string
-    sha_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()
-
-    # Convert full hash to integer and normalize to [0, 1)
-    hash_int = int(sha_hash, 16)
-    normalized_hash = hash_int / (2**256)
-
-    # Assign split based on cumulative proportions
-    if normalized_hash < 0.75:
-        split = "train"
-    elif normalized_hash < 1.00:
+    first_hex_char_in_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()[0]
+    if first_hex_char_in_hash in ["0", "1", "2", "3"]:
         split = "val"
-
-    window.options["split"] = split
+    elif first_hex_char_in_hash in ["4", "5", "6", "7"]:
+        split = "test"
+    else:
+        split = "train"
+    window.options["olmoearth_evals_split"] = split
     window.save()
 
 
