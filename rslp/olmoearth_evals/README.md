@@ -38,7 +38,6 @@ Here are subset to run after dropping Presto and not doing the unitemporal versi
 tasks that have a multitemporal option. And dropping PASTIS.
 
 ```
-
 # Sentinel-2 tasks.
 python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,dinov3,galileo,olmoearth,panopticon,prithvi,satlaspretrain,terramind]' --tasks='[marine_infra_ts,wind_turbine_ts,solar_farm_ts,sentinel2_vessel_length,sentinel2_vessel_type,sentinel2_vessels,lfmc_ts,mangrove_ts,forest_loss_driver,awf_ts,nandi_ts,ecosystem]' --prefix final --image_name favyen/rslphelios20 --project final_downstream_eval_train
 # Sentinel-1 + Sentinel-2 tasks.
@@ -47,4 +46,10 @@ python -m rslp.main olmoearth_evals launch --models='[anysat,copernicusfm,croma,
 python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,galileo,olmoearth,panopticon,terramind]' --tasks='[sentinel1_vessels]' --prefix final --image_name favyen/rslphelios18 --project final_downstream_eval_train
 # Landsat tasks.
 python -m rslp.main olmoearth_evals launch --models='[anysat,clay,dinov3,galileo,olmoearth,panopticon,prithvi]' --tasks='[landsat_vessels]' --prefix final --image_name favyen/rslphelios18 --project final_downstream_eval_train
+```
+
+Use `--test=true` to run the test stage, e.g.:
+
+```
+python -m rslp.main olmoearth_evals launch --models='[satlaspretrain]' --tasks='[solar_farm_ts]' --prefix final --image_name favyen/rslphelios20 --project final_downstream_eval_train --test=true
 ```
