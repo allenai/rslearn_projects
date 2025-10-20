@@ -264,13 +264,11 @@ data:
         split: "train"
     val_config:
       patch_size: 32
-      load_all_patches: true
       groups: ["spatial_split"]
       tags:
         split: "val"
     test_config:
       patch_size: 32
-      load_all_patches: true
       groups: ["spatial_split"]
       tags:
         split: "val"
