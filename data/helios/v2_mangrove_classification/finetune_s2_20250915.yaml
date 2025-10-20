@@ -1,0 +1,160 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslp.helios.model.Helios
+            init_args:
+              checkpoint_path: /weka/dfive-default/helios/checkpoints/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step300000
+              selector: ["encoder"]
+              forward_kwargs:
+                patch_size: 2
+        decoders:
+          mangrove_classification:
+            - class_path: rslp.nandi.train.SegmentationPoolingDecoder
+              init_args:
+                in_channels: 768
+                out_channels: 4
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+    lr: 0.0001
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
+    plateau_min_lr: 0
+    plateau_cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/mangrove/classification/20250626
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      label:
+        data_type: "raster"
+        layers: ["label_raster"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          mangrove_classification:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 4
+              zero_is_invalid: true
+              metric_kwargs:
+                average: "micro"
+              other_metrics:
+                mangrove_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 4
+                        average: null
+                    class_idx: 1
+                mangrove_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 4
+                        average: null
+                    class_idx: 1
+                water_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 4
+                        average: null
+                    class_idx: 2
+                water_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 4
+                        average: null
+                    class_idx: 2
+                other_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 4
+                        average: null
+                    class_idx: 3
+                other_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 4
+                        average: null
+                    class_idx: 3
+        input_mapping:
+          mangrove_classification:
+            label: "targets"
+    batch_size: 32
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 2
+            mode: "center"
+            image_selectors: ["sentinel2_l2a", "target/mangrove_classification/classes", "target/mangrove_classification/valid"]
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    train_config:
+      groups: ["sample_100K"]
+      tags:
+        split: "train"
+      num_samples: 10000
+    val_config:
+      groups: ["sample_100K"]
+      tags:
+        split: "val"
+    test_config:
+      groups: ["sample_100K"]
+      tags:
+        split: "val"
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_loss
+        mode: min
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 20
+        unfreeze_lr_factor: 10
+rslp_project: 2025_09_15_mangrove_classification
+rslp_experiment: mangrove_classification_segment_helios_base_S2_ts_ws2_ps2

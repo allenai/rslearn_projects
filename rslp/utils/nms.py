@@ -1,10 +1,13 @@
 """NMS for merging predictions from multiple patches."""
 
 import math
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
-from rslearn.train.prediction_writer import PatchPredictionMerger
-from rslearn.utils import Feature, GridIndex
+from rslearn.dataset import Window
+from rslearn.train.prediction_writer import PatchPredictionMerger, PendingPatchOutput
+from rslearn.utils import GridIndex
 
 # Defaults for distance-based NMS
 DEFAULT_GRID_SIZE = 64
@@ -34,15 +37,17 @@ class NMSDistanceMerger(PatchPredictionMerger):
         self.class_agnostic = class_agnostic
         self.property_name = property_name
 
-    def merge(self, features: list[Feature]) -> list[Feature]:
-        """Merge the predictions from multiple patches.
+    def merge(self, window: Window, outputs: Sequence[PendingPatchOutput]) -> Any:
+        """Merge the outputs.
 
         Args:
-            features: predictions (vector data) to merge.
+            window: the window we are merging the outputs for.
+            outputs: the outputs to process.
 
         Returns:
-            the merged vector data.
+            the merged outputs.
         """
+        features = [feat for output in outputs for feat in output.output]
         if len(features) == 0:
             return []
         # TODO: load categories from config

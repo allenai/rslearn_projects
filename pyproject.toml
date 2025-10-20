@@ -23,7 +23,8 @@ file = ["requirements.txt"]
 [tool.setuptools.dynamic.optional-dependencies]
 dev = { file = ["requirements-dev.txt"] }
 extra = { file = ["requirements-extra.txt"] }
-helios = { file = ["requirements-helios.txt"] }
+olmoearth_pretrain = { file = ["requirements-olmoearth_pretrain.txt"] }
+olmoearth_run = { file = ["requirements-olmoearth_run.txt"] }
 
 [tool.ruff]
 fix = true
