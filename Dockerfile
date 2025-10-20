@@ -70,8 +70,7 @@ RUN if [ "$USE_SSH_KEYS_FROM_BUILD" = "true" ] && [ -d /opt/rslearn_projects/.do
     fi
 
 RUN --mount=type=ssh \
-    --mount=type=cache,target=/root/.cache/uv \
-    uv pip install /opt/rslearn_projects[olmoearth_run,olmoearth_pretrain]
+    uv pip install --no-cache /opt/rslearn_projects[olmoearth_run,olmoearth_pretrain]
 
 FROM --platform=${PLATFORM} ${BASE_PYTORCH} AS runner
 
@@ -94,9 +93,7 @@ ARG RSLEARN_BRANCH=master
 RUN --mount=type=ssh git clone git@github.com:allenai/rslearn.git /opt/rslearn
 WORKDIR /opt/rslearn
 RUN git checkout $RSLEARN_BRANCH
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install /opt/rslearn[extra]
+RUN uv pip install --no-cache /opt/rslearn[extra]
 
 RUN --mount=type=ssh \
-    --mount=type=cache,target=/root/.cache/uv \
-    uv pip install /opt/rslearn_projects[dev,extra]
+    uv pip install --no-cache /opt/rslearn_projects[dev,extra]
