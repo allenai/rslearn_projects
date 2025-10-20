@@ -251,16 +251,25 @@ data:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
       patch_size: 32
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        # - class_path: rslearn.train.transforms.flip.Flip
+        #   init_args:
+        #     image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
       groups: ["spatial_split"]
       tags:
         split: "train"
     val_config:
-      patch_size: 63
+      patch_size: 32
+      load_all_patches: true
       groups: ["spatial_split"]
       tags:
         split: "val"
     test_config:
-      patch_size: 64
+      patch_size: 32
       load_all_patches: true
       groups: ["spatial_split"]
       tags:
