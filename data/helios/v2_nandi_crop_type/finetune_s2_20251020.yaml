@@ -12,12 +12,14 @@ model:
               forward_kwargs:
                 patch_size: 4
         decoders:
-          class:
-            # - class_path: rslp.nandi.train.SegmentationPoolingDecoder
-            #   init_args:
-            #     in_channels: 768
-            #     out_channels: 11
-            # - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          segment:
+            - class_path: rslearn.models.unet.UNetDecoder
+              init_args:
+                in_channels: [[4, 768]]
+                out_channels: 11
+                conv_layers_per_resolution: 2
+                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     plateau: true
     plateau_factor: 0.2
@@ -47,7 +49,7 @@ data:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
         tasks:
-          class:
+          segment:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
               num_classes: 11
@@ -242,26 +244,24 @@ data:
     batch_size: 32
     num_workers: 32
     default_config:
-      patch_size: 32
       transforms:
-        # - class_path: rslearn.train.transforms.pad.Pad
-        #   init_args:
-        #     size: 5
-        #     mode: "center"
-        #     image_selectors: ["sentinel2_l2a", "target/crop_type_classification/classes", "target/crop_type_classification/valid"]
         - class_path: rslp.helios.norm.HeliosNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
+      patch_size: 32
       groups: ["spatial_split"]
       tags:
         split: "train"
     val_config:
+      patch_size: 63
       groups: ["spatial_split"]
       tags:
         split: "val"
     test_config:
+      patch_size: 64
+      load_all_patches: true
       groups: ["spatial_split"]
       tags:
         split: "val"
@@ -282,5 +282,5 @@ trainer:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
-rslp_project: 2025_08_15_nandi_crop_type
-rslp_experiment: nandi_crop_type_segment_helios_base_S2_ts_ws4_ps1_bs8_add_annotations_2
+rslp_project: 2025_10_17_nandi_crop_type
+rslp_experiment: nandi_crop_type_segment_helios_base_S2_ts_ws32_ps4
