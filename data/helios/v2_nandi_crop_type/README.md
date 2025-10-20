@@ -29,4 +29,4 @@ This dataset is also used for KNN classification in Helios. The window size and 
 20251020
 --------
 
-The config `finetune_s2_20251020.yaml` was created after we switched to the spatial splitter (128 x 128 pixel) which better mimic our inference set up. With spatial splitter, the overall accuracy drops to 72% compared to the 85% with polygon splitter. In the meantime, the freeze for 20 epochs and then unfreeze strategy seems working well.
+The config `finetune_s2_20251020.yaml` was created after we switched to the spatial splitter (128 x 128 pixel) which better mimic our inference set up. The freeze for 20 epochs and then unfreeze strategy seems working well.
