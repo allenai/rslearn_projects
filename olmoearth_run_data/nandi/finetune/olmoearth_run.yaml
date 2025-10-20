@@ -14,7 +14,7 @@ window_prep:
       train_prop: 0.75
       val_prop: 0.25
       test_prop: 0.0
-      grid_size: 1280 # in meters
+      grid_size: 128 # in pixels
   label_layer: "label"
   group_name: "spatial_split"
   split_property: "split"
