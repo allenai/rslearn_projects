@@ -63,6 +63,7 @@ class Helios(torch.nn.Module):
             autocast_dtype: which dtype to use for autocasting, or set None to disable.
         """
         super().__init__()
+        logger.info(f"checkpoint_path: {checkpoint_path}")
         _checkpoint_path = UPath(checkpoint_path)
         self.forward_kwargs = forward_kwargs
         self.embedding_size = embedding_size
@@ -125,6 +126,7 @@ class Helios(torch.nn.Module):
             num_timesteps = cur.shape[1] // num_bands
             max_timesteps = max(max_timesteps, num_timesteps)
             cur = rearrange(cur, "b (t c) h w -> b h w t c", t=num_timesteps)
+            logger.info(f"cur shape: {cur.shape}")
             kwargs[modality] = cur
             # Create mask array which is BHWTS (without channels but with band sets).
             num_band_sets = len(Modality.get(modality).band_sets)
@@ -158,7 +160,10 @@ class Helios(torch.nn.Module):
             context = torch.amp.autocast(
                 device_type=device.type, dtype=self.autocast_dtype
             )
-
+        import time
+        # do cuda sync
+        start_time = time.perf_counter()
+        torch.cuda.synchronize()
         with context:
             # Currently we assume the provided model always returns a TokensAndMasks object.
             tokens_and_masks: TokensAndMasks
@@ -172,6 +177,10 @@ class Helios(torch.nn.Module):
                 tokens_and_masks = self.model(sample, **self.forward_kwargs)[
                     "tokens_and_masks"
                 ]
+        # sync after forward pass
+        torch.cuda.synchronize()
+        end_time = time.perf_counter()
+        print(f"cuda forward pass time: {end_time - start_time} seconds")
 
         # Apply temporal/modality pooling so we just have one feature per patch.
         features = []

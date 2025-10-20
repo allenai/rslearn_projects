@@ -2,6 +2,7 @@
 
 import json
 from typing import Any
+import time
 
 from olmoearth_pretrain.data.normalize import load_computed_config
 from rslearn.train.transforms.transform import Transform
@@ -60,6 +61,7 @@ class HeliosNormalize(Transform):
         Returns:
             normalized (input_dicts, target_dicts) tuple
         """
+        start_time = time.perf_counter()
         for modality_name, cur_band_names in self.band_names.items():
             band_norms = self.norm_config[modality_name]
             image = input_dict[modality_name]
@@ -80,5 +82,7 @@ class HeliosNormalize(Transform):
                 raise ValueError(
                     f"for modality {modality_name}, bands {needed_band_indices} were unexpectedly not normalized"
                 )
+        end_time = time.perf_counter()
+        # logger.debug(f"HeliosNormalize time: {end_time - start_time} seconds")
 
         return input_dict, target_dict
