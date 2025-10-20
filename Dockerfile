@@ -42,6 +42,11 @@ RUN mkdir -p -m 700 /root/.ssh && \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+# Create virtual environment for package isolation
+RUN uv venv /opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+ENV VIRTUAL_ENV="/opt/venv"
+
 COPY . /opt/rslearn_projects/
 
 # ============================================================================
@@ -101,13 +106,19 @@ RUN if [ "$USE_SSH_KEYS_FROM_BUILD" = "true" ] && [ -d /opt/rslearn_projects/.do
 
 RUN --mount=type=ssh \
     --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system /opt/rslearn_projects[olmoearth_run,olmoearth_pretrain]
+    uv pip install /opt/rslearn_projects[olmoearth_run,olmoearth_pretrain]
+
+FROM --platform=${PLATFORM} ${BASE_PYTORCH} AS runner
+
+# Copy only the virtual environment with installed packages (no source code, build tools, or dev dependencies)
+COPY --from=base /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:${PATH}"
+ENV VIRTUAL_ENV="/opt/venv"
 
 FROM base AS full
 
 COPY --from=tippecanoe /opt/tippecanoe /opt/tippecanoe
 COPY --from=golang /tmp/smooth_point_labels_viterbi/smooth_point_labels_viterbi /usr/local/bin/smooth_point_labels_viterbi
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 ENV PATH="/opt/tippecanoe/bin:${PATH}"
 
@@ -119,9 +130,8 @@ RUN --mount=type=ssh git clone git@github.com:allenai/rslearn.git /opt/rslearn
 WORKDIR /opt/rslearn
 RUN git checkout $RSLEARN_BRANCH
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system /opt/rslearn[extra]
+    uv pip install /opt/rslearn[extra]
 
-COPY . /opt/rslearn_projects/
 RUN --mount=type=ssh \
     --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system /opt/rslearn_projects[dev,extra]
+    uv pip install /opt/rslearn_projects[dev,extra]
