@@ -241,7 +241,7 @@ data:
         input_mapping:
           segment:
             label: "targets"
-    batch_size: 16
+    batch_size: 8
     num_workers: 32
     default_config:
       transforms:
@@ -290,4 +290,4 @@ trainer:
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
 rslp_project: 2025_10_17_nandi_crop_type
-rslp_experiment: nandi_crop_type_segment_helios_base_S2_ts_ws32_ps4
+rslp_experiment: nandi_crop_type_segment_helios_base_S2_ts_ws32_ps4_bs8
