@@ -10,12 +10,12 @@ model:
               checkpoint_path: /weka/dfive-default/helios/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 4
+                patch_size: 2
         decoders:
           segment:
             - class_path: rslearn.models.unet.UNetDecoder
               init_args:
-                in_channels: [[4, 768]]
+                in_channels: [[2, 768]]
                 out_channels: 11
                 conv_layers_per_resolution: 1
                 num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
@@ -41,7 +41,7 @@ data:
         load_all_layers: true
       label:
         data_type: "raster"
-        layers: ["label_expanded"]
+        layers: ["label"]
         bands: ["category"]
         is_target: true
         dtype: INT32
@@ -241,7 +241,7 @@ data:
         input_mapping:
           segment:
             label: "targets"
-    batch_size: 8
+    batch_size: 4
     num_workers: 32
     default_config:
       transforms:
