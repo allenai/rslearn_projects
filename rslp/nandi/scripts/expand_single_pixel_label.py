@@ -14,7 +14,7 @@ BAND_NAME = "category"
 
 def expand_single_pixel_label(window: Window) -> None:
     """Expand single pixel label to 3x3 pixels."""
-    label_dir = window.get_layer_dir("label")
+    label_dir = window.get_raster_dir("label", [BAND_NAME])
     split = window.options["split"]
     np_array = GeotiffRasterFormat().decode_raster(
         label_dir, window.projection, window.bounds
