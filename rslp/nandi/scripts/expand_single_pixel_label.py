@@ -18,7 +18,9 @@ def expand_single_pixel_label(window: Window) -> None:
     split = window.options["split"]
     np_array = GeotiffRasterFormat().decode_raster(
         label_dir, window.projection, window.bounds
-    )[0, :, :]
+    )
+    print(np_array.shape)
+    exit(0)
     center_x, center_y = np_array.shape[0] // 2, np_array.shape[1] // 2
     center_val = np_array[center_x, center_y]
     expanded_np_array = np_array.copy()
