@@ -20,7 +20,7 @@ model:
               init_args:
                 in_channels: 768
                 out_channels: 11
-                kernel_size: 1
+                kernel_size: 3
                 activation:
                   class_path: torch.nn.Identity
             - class_path: rslearn.models.pick_features.PickFeatures
