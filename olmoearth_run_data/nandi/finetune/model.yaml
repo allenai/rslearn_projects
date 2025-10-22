@@ -296,7 +296,7 @@ trainer:
         dirpath: ${TRAINER_DATA_PATH}
         save_top_k: 1
         save_last: true
-        monitor: val_loss
+        monitor: val_segment/accuracy
         mode: min
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
