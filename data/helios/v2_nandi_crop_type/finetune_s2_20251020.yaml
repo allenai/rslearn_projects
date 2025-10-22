@@ -10,12 +10,12 @@ model:
               checkpoint_path: /weka/dfive-default/helios/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 2
+                patch_size: 1
         decoders:
           segment:
             - class_path: rslearn.models.upsample.Upsample
               init_args:
-                scale_factor: 2
+                scale_factor: 1
             - class_path: rslearn.models.conv.Conv
               init_args:
                 in_channels: 768
@@ -302,7 +302,7 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
-        # unfreeze_at_epoch: 20
-        # unfreeze_lr_factor: 10
+        unfreeze_at_epoch: 20
+        unfreeze_lr_factor: 10
 rslp_project: 2025_10_17_nandi_crop_type
 rslp_experiment: nandi_crop_type_segment_helios_base_S2_ts_ws32_ps4_bs8
