@@ -33,7 +33,7 @@ model:
                 out_channels: 11
                 kernel_size: 3
                 conv_layers_per_resolution: 1
-                num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+                # num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     plateau: true
