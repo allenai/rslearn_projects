@@ -10,13 +10,23 @@ model:
               checkpoint_path: ${EXTRA_FILES_PATH}/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 1
+                patch_size: 2
         decoders:
-          class:
-            - class_path: rslp.nandi.train.SegmentationPoolingDecoder
+          segment:
+            - class_path: rslearn.models.upsample.Upsample
+              init_args:
+                scale_factor: 2
+            - class_path: rslearn.models.conv.Conv
               init_args:
                 in_channels: 768
                 out_channels: 11
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.models.pick_features.PickFeatures
+              init_args:
+                indexes: [0]
+                collapse: true
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     plateau: true
@@ -47,7 +57,7 @@ data:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
         tasks:
-          class:
+          segment:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
               num_classes: 11
@@ -237,22 +247,27 @@ data:
                         average: null
                     class_idx: 9
         input_mapping:
-          class:
+          segment:
             label: "targets"
-    batch_size: 64
+    batch_size: 4
     num_workers: ${NUM_WORKERS}
     default_config:
+      patch_size: 32
       transforms:
-        - class_path: rslearn.train.transforms.pad.Pad
-          init_args:
-            size: 5
-            mode: "center"
-            image_selectors: ["sentinel2_l2a", "target/class/classes", "target/class/valid"]
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
+      patch_size: 32
+      transforms:
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
       groups: ["spatial_split"]
       tags:
         split: "train"
