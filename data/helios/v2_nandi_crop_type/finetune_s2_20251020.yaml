@@ -10,12 +10,12 @@ model:
               checkpoint_path: /weka/dfive-default/helios/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 4
+                patch_size: 2
         decoders:
           segment:
             - class_path: rslearn.models.upsample.Upsample
               init_args:
-                scale_factor: 4
+                scale_factor: 2
             - class_path: rslearn.models.conv.Conv
               init_args:
                 in_channels: 768
@@ -256,7 +256,7 @@ data:
         input_mapping:
           segment:
             label: "targets"
-    batch_size: 8
+    batch_size: 4
     num_workers: 32
     default_config:
       transforms:
