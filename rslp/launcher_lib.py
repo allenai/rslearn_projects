@@ -24,6 +24,7 @@ CODE_EXCLUDES = [
     "test_data",
     "wandb",
     "project_data",
+    ".venv"
 ]
 
 logger = get_logger(__name__)
