@@ -274,7 +274,7 @@ data:
             image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.train.transforms.crop.Crop
           init_args:
-            size: 16
+            crop_size: 16
             image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
