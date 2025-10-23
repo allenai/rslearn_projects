@@ -13,6 +13,17 @@ For LULC classification, the train/test splits are:
 
 ## LULC Classification
 
+#### 2025-10-23
+
+Update S1 and S2 training scripts to run with all the updates. This also requires running `python -m rslp.main olmoearth_pretrain` instead of `python -m rslp.main helios`:
+
+```
+python -m rslp.main olmoearth_pretrain launch_finetune --image_name favyen/favyen/rslpomp20251022a --config_paths+=data/helios/v2_mozambique_lulc/finetune_s2.yaml --cluster+=ai2/neptune --rslp_project 2025_09_18_mozambique_lulc --experiment_id mozambique_lulc_helios_base_S2_ts_ws4_ps1_gaza_20251023
+```
+
+Also - the geometry for Gaza province was enormous (hundreds of thousands of points). I have drawn a cruder polygon around the province for the prediction request geometry to try and keep things manageable.
+
+#### Original commands
 ```
 python /weka/dfive-default/yawenz/rslearn_projects/rslp/crop/mozambique/create_windows_for_lulc.py --gpkg_dir /weka/dfive-default/yawenz/datasets/mozambique/train_test_samples --ds_path /weka/dfive-default/rslearn-eai/datasets/crop/mozambique_lulc --window_size 32
 
