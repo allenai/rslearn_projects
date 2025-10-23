@@ -55,16 +55,17 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
 
-      # Add deploy key and clone Helios repository.
-      - name: Start ssh-agent and add helios deploy key
+      # Add deploy key and clone olmoearth_pretrain repository.
+      - name: Start ssh-agent and add olmoearth_pretrain deploy key
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_HELIOS_CLONE }}
-      - name: Clone helios and update requirements-extra.txt.
+      - name: Clone olmoearth_pretrain and update requirements-extra.txt.
         run: |
           mkdir docker_build
-          git clone git@github.com:allenai/helios.git docker_build/helios
-          echo "helios @ /opt/rslearn_projects/docker_build/helios/" >> requirements-extra.txt
+          git clone git@github.com:allenai/olmoearth_pretrain.git docker_build/olmoearth_pretrain
+          git -C docker_build/olmoearth_pretrain checkout 0cd82b4784bc2f246a23f6da98a9bab27761c1ba
+          echo "olmoearth_pretrain @ /opt/rslearn_projects/docker_build/olmoearth_pretrain/" >> requirements-extra.txt
 
       # Same thing for olmoearth_run repository.
       - name: Start ssh-agent and add olmoearth_run deploy key
@@ -74,7 +75,7 @@ jobs:
       - name: Clone olmoearth_run and update requirements-extra.txt.
         run: |
           git clone git@github.com:allenai/olmoearth_run.git docker_build/olmoearth_run
-          echo "earth-system-run @ /opt/rslearn_projects/docker_build/olmoearth_run/" >> requirements-extra.txt
+          echo "olmoearth_run @ /opt/rslearn_projects/docker_build/olmoearth_run/" >> requirements-extra.txt
 
       - name: Build and push Docker image
         id: build-push

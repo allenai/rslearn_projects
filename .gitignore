@@ -4,6 +4,7 @@
 wandb/
 rslp/__pycache__/
 **__pycache__
+.DS_Store
 
 repos/
 project_data
@@ -11,6 +12,8 @@ rslp/crop_type_mapping/csv/
 rslp/crop_type_mapping/geoparquets/
 rslp/mangrove/csv/
 log*.txt
+
+olmoearth_run_data/nandi/finetune/annotation*.geojson
 
 # for local finetuning runs
 /config.yaml
