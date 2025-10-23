@@ -13,7 +13,7 @@ model:
                 patch_size: 1
         decoders:
           crop_type_classification:
-            - class_path: rslp.crop.kenya_nandi.train.SegmentationPoolingDecoder
+            - class_path: rslp.nandi.train.SegmentationPoolingDecoder
               init_args:
                 in_channels: 768
                 out_channels: 8
