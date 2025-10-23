@@ -10,30 +10,23 @@ model:
               checkpoint_path: /weka/dfive-default/helios/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 2
+                patch_size: 1
         decoders:
           segment:
             - class_path: rslearn.models.upsample.Upsample
               init_args:
-                scale_factor: 2
+                scale_factor: 1
             - class_path: rslearn.models.conv.Conv
               init_args:
                 in_channels: 768
                 out_channels: 11
-                kernel_size: 3
+                kernel_size: 1  # with 16x16 and ps = 1, 1x1 works better than 3x3
                 activation:
                   class_path: torch.nn.Identity
             - class_path: rslearn.models.pick_features.PickFeatures
               init_args:
                 indexes: [0]
                 collapse: true
-            # - class_path: rslearn.models.unet.UNetDecoder
-            #   init_args:
-            #     in_channels: [[1, 768]]
-            #     out_channels: 11
-            #     kernel_size: 3
-            #     conv_layers_per_resolution: 1
-            #     num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     plateau: true
@@ -265,17 +258,16 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      patch_size: 32
       transforms:
-        # - class_path: rslearn.train.transforms.pad.Pad
-        #   init_args:
-        #     size: 31
-        #     mode: "center"
-        #     image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
-        # - class_path: rslearn.train.transforms.crop.Crop
-        #   init_args:
-        #     crop_size: 16
-        #     image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 31
+            mode: "center"
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.train.transforms.crop.Crop
+          init_args:
+            crop_size: 16
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
@@ -287,12 +279,12 @@ data:
       tags:
         split: "train"
     val_config:
-      patch_size: 32
+      patch_size: 16
       groups: ["spatial_split"]
       tags:
         split: "val"
     test_config:
-      patch_size: 32
+      patch_size: 16
       groups: ["spatial_split"]
       tags:
         split: "val"
@@ -314,4 +306,4 @@ trainer:
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
 rslp_project: 2025_10_17_nandi_crop_type
-rslp_experiment: nandi_crop_type_segment_helios_base_S2_ts_ws32_ps4_bs8
+rslp_experiment: nandi_crop_type_segment_helios_base_S2_ts_ws16_ps1_bs4
