@@ -194,9 +194,9 @@ data:
                         average: null
                     class_idx: 7
         input_mapping:
-          crop_type_classification:
+          segment:
             label: "targets"
-    batch_size: 32
+    batch_size: 4
     num_workers: 32
     default_config:
       transforms:
