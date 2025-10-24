@@ -59,7 +59,7 @@ data:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
         tasks:
-          crop_type_classification:
+          segment:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
               num_classes: 8
