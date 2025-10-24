@@ -253,6 +253,15 @@ data:
     num_workers: 32
     default_config:
       transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 31
+            mode: "center"
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.train.transforms.crop.Crop
+          init_args:
+            crop_size: 16
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
@@ -279,12 +288,10 @@ data:
       tags:
         split: "train"
     val_config:
-      patch_size: 16
       groups: ["spatial_split"]
       tags:
         split: "val"
     test_config:
-      patch_size: 16
       groups: ["spatial_split"]
       tags:
         split: "val"
