@@ -14,6 +14,7 @@ rslp/mangrove/csv/
 log*.txt
 
 olmoearth_run_data/nandi/finetune/annotation*.geojson
+olmoearth_run_data/awf/annotation*.geojson
 
 # for local finetuning runs
 /config.yaml
