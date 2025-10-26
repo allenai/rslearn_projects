@@ -11,5 +11,7 @@ python -m rslp.main olmoearth_run prepare_labeled_windows --project_path /weka/d
 # Check train/val split
 export GROUP_PATH=/weka/dfive-default/yawenz/datasets/scratch_ft_v3/dataset/windows/spatial_split
 find $GROUP_PATH -maxdepth 2 -name "metadata.json" -exec cat {} \; | grep -oE "train|val|test" | sort | uniq -c | awk 'BEGIN{printf "{"} {printf "%s\"%s\": %d", (NR>1?", ":""), $2, $1} END{print "}"}'
+rslearn dataset prepare --root $DATASET_PATH --workers 64 --retry-max-attempts 8
+rslearn dataset materialize --root $DATASET_PATH --workers 64 --retry-max-attempts 8
 python -m rslp.main olmoearth_run finetune --project_path /weka/dfive-default/yawenz/rslearn_projects/olmoearth_run_data/nandi/finetune --scratch_path /weka/dfive-default/yawenz/datasets/scratch_ft_v3
 ```

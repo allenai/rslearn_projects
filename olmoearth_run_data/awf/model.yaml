@@ -50,7 +50,7 @@ data:
       label:
         data_type: "raster"
         layers: ["label"]
-        bands: ["category"]
+        bands: ["b7b9a1252a0078fb97c618b27faaf9aa504eb119b9ad18c55237b02dbef61cdf"]
         is_target: true
         dtype: INT32
     task:
