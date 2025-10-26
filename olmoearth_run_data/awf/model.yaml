@@ -50,6 +50,7 @@ data:
       label:
         data_type: "raster"
         layers: ["label"]
+        bands: ["category"]
         is_target: true
         dtype: INT32
     task:
