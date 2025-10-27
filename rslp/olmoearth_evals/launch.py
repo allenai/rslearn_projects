@@ -20,6 +20,7 @@ TASK_CONFIGS = {
     "marine_infra_mm": ["marine_infra_base", "marine_infra_mm"],
     "nandi_ts": ["nandi_base"],
     "nandi_mm": ["nandi_base", "nandi_mm"],
+    "nandi_aef": ["nandi_aef"],
     "pastis_uni": ["pastis_base"],
     "pastis_ts": ["pastis_base", "pastis_ts"],
     "pastis_mm": ["pastis_base", "pastis_mm"],
