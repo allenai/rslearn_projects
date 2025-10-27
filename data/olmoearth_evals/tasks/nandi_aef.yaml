@@ -55,7 +55,7 @@ data:
         - class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterNormalize
           init_args:
             input_size: 32
-            input_modalities: ["sentinel2"]
+            input_modalities: ["gse"]
             task_type: "classify"
             task_name: "nandi"
             task_channels: 6
