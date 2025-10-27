@@ -6,6 +6,7 @@ from typing import Any
 import torch
 from rslearn.train.transforms.transform import Transform
 
+import rslp.olmoearth_evals.aef as aef
 import rslp.olmoearth_evals.anysat as anysat
 import rslp.olmoearth_evals.clay as clay
 import rslp.olmoearth_evals.copernicusfm as copernicusfm
@@ -32,6 +33,7 @@ modules_by_model_id = {
     "prithvi": prithvi,
     "satlaspretrain": satlaspretrain,
     "terramind": terramind,
+    "aef": aef,
 }
 
 

@@ -53,3 +53,9 @@ Use `--test=true` to run the test stage, e.g.:
 ```
 python -m rslp.main olmoearth_evals launch --models='[satlaspretrain]' --tasks='[solar_farm_ts]' --prefix final --image_name favyen/rslphelios20 --project final_downstream_eval_train --test=true
 ```
+
+The AEF models are a bit unique because they rely on separately downloaded AEF data, but we keep them here for consistency.
+```
+# AEF
+python -m rslp.main olmoearth_evals launch --models='[aef]' --tasks='[nandi_aef]' --prefix final --image_name favyen/rslphelios20 --project final_downstream_eval_train
+```
