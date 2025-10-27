@@ -7,7 +7,7 @@ window_prep:
       window_buffer: 31  # in pixels
       window_resolution: 10.0
       dtype: INT32
-      nodata_value: 10
+      nodata_value: 9
   data_splitter:
     class_path: olmoearth_run.runner.tools.data_splitters.spatial_data_splitter.SpatialDataSplitter
     init_args:
