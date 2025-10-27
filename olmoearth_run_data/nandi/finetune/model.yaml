@@ -10,12 +10,12 @@ model:
               checkpoint_path: ${EXTRA_FILES_PATH}/joer/phase2.0_base_lr0.0001_wd0.02/step667200
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 2
+                patch_size: 1
         decoders:
           segment:
             - class_path: rslearn.models.upsample.Upsample
               init_args:
-                scale_factor: 2
+                scale_factor: 1
             - class_path: rslearn.models.conv.Conv
               init_args:
                 in_channels: 768
@@ -252,15 +252,31 @@ data:
     batch_size: 4
     num_workers: ${NUM_WORKERS}
     default_config:
-      patch_size: 32
       transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 31
+            mode: "center"
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.train.transforms.crop.Crop
+          init_args:
+            crop_size: 16
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      patch_size: 32
       transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 31
+            mode: "center"
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.train.transforms.crop.Crop
+          init_args:
+            crop_size: 16
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
