@@ -1,5 +1,7 @@
 """Evaluation adapter for OlmoEarth."""
 
+from typing import Any
+
 import torch
 from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.module_wrapper import EncoderModuleWrapper
@@ -14,6 +16,26 @@ from rslearn.train.transforms.normalize import Normalize
 from torch import nn
 
 from rslp.nandi.train import SegmentationPoolingDecoder
+
+
+class Identity(nn.Identity):
+    """Identity which takes two arguments."""
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        """Initialize an Identity."""
+        super().__init__()
+
+    def forward(self, features: list[torch.Tensor], inputs: Any) -> list[torch.Tensor]:
+        """Compute flat output vector from multi-scale feature map.
+
+        Args:
+            features: list of feature maps at different resolutions.
+            inputs: original inputs (ignored).
+
+        Returns:
+            unchanged features
+        """
+        return features
 
 
 def get_model(
@@ -86,7 +108,7 @@ def get_model(
         raise NotImplementedError
 
     return MultiTaskModel(
-        encoder=[EncoderModuleWrapper(module=nn.Identity())],
+        encoder=[EncoderModuleWrapper(module=Identity())],
         decoders=decoders,
     )
 
