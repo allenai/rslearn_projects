@@ -7,7 +7,7 @@ model:
         encoder:
           - class_path: rslp.helios.model.Helios
             init_args:
-              checkpoint_path: ${EXTRA_FILES_PATH}/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
+              checkpoint_path: ${EXTRA_FILES_PATH}
               selector: ["encoder"]
               forward_kwargs:
                 patch_size: 4

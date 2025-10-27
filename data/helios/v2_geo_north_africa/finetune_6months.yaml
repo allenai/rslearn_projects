@@ -74,7 +74,7 @@ data:
     val_config:
       groups: ["north_africa"]
       tags:
-        split: "val"
+        split: "test"
     test_config:
       groups: ["north_africa"]
       tags:
@@ -94,6 +94,6 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 10
+        unfreeze_at_epoch: 40
 rslp_project: helios_finetuning
-rslp_experiment: geo_north_africa_test16
+rslp_experiment: geo_north_africa_test19

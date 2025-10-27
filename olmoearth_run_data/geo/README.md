@@ -22,12 +22,14 @@ to launch beaker job
     python -m rslp.main helios launch_finetune --image_name favyen/rslphelios20 --config_paths+=data/helios/v2_geo_north_africa/finetune_6months.yaml --cluster+=ai2/jupiter --rslp_project helios_finetuning --experiment_id geo_north_africa_test2
 
 
+To run inference:
+
     export EXTRA_FILES_PATH=/weka/dfive-default/helios/checkpoints
-    export DATASET_PATH=/weka/dfive-default/joer/test/datasets/scratch_v0
+    export DATASET_PATH=/tmp/scratch2/dataset_0
     export NUM_WORKERS=32
     export TRAINER_DATA_PATH=/weka/dfive-default/joer/test/geo_north_africa
     export WANDB_PROJECT=helios_finetuning
     export WANDB_NAME=geo_north_africa_testlabel
     export WANDB_ENTITY=eai-ai2
     export GOOGLE_CLOUD_PROJECT=earthsystem-dev-c3po
-    python -m rslp.main olmoearth_run olmoearth_run --config_path olmoearth_run_data/geo/ --scratch_path /weka/dfive-default/joer/test/datasets/scratch_v0/ --checkpoint_path /weka/dfive-default/joer/rslearn_projects/project_data/projects/helios_finetuning/geo_north_africa_test1/checkpoints/last.ckpt
+    python -m rslp.main olmoearth_run olmoearth_run --config_path olmoearth_run_data/geo/ --scratch_path /tmp/scratch2 --checkpoint_path /weka/dfive-default/joer/rslearn_projects/project_data/projects/helios_finetuning/geo_north_africa_test14/checkpoints/last.ckpt
