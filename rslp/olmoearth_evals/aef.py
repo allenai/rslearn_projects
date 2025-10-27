@@ -51,7 +51,7 @@ def get_model(
         decoders = dict(
             eval_task=[
                 UNetDecoder(
-                    in_channels=[[4, 768]],
+                    in_channels=[[4, 64]],
                     out_channels=task_channels,
                     conv_layers_per_resolution=2,
                     num_channels={4: 512, 2: 256, 1: 128},
@@ -63,7 +63,7 @@ def get_model(
         decoders = dict(
             eval_task=[
                 SegmentationPoolingDecoder(
-                    in_channels=768,
+                    in_channels=64,
                     out_channels=task_channels,
                 ),
                 SegmentationHead(),
@@ -74,7 +74,7 @@ def get_model(
             eval_task=[
                 FasterRCNN(
                     downsample_factors=[4],
-                    num_channels=768,
+                    num_channels=64,
                     num_classes=task_channels,
                     anchor_sizes=[[32]],
                 )
@@ -84,7 +84,7 @@ def get_model(
         decoders = dict(
             eval_task=[
                 PoolingDecoder(
-                    in_channels=768,
+                    in_channels=64,
                     out_channels=task_channels,
                     num_conv_layers=1,
                     num_fc_layers=1,
@@ -96,7 +96,7 @@ def get_model(
         decoders = dict(
             eval_task=[
                 PoolingDecoder(
-                    in_channels=768,
+                    in_channels=64,
                     out_channels=task_channels,
                     num_conv_layers=1,
                     num_fc_layers=1,
