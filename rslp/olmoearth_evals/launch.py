@@ -7,6 +7,7 @@ TASK_CONFIGS = {
     "awf_aef": ["awf_aef"],
     "awf_ts": ["awf_base"],
     "awf_mm": ["awf_base", "awf_mm"],
+    "ecosystem_aef": ["ecosystem_aef"],
     "ecosystem": ["ecosystem"],
     "forest_loss_driver": ["forest_loss_driver"],
     "landsat_vessels": ["landsat_vessels"],
