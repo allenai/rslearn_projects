@@ -35,6 +35,7 @@ class Identity(nn.Identity):
         Returns:
             unchanged features
         """
+        print(features)
         return features
 
 
