@@ -9,6 +9,7 @@ TASK_CONFIGS = {
     "ecosystem": ["ecosystem"],
     "forest_loss_driver": ["forest_loss_driver"],
     "landsat_vessels": ["landsat_vessels"],
+    "lfmc_aef": ["lfmc_aef"],
     "lfmc_uni": ["lfmc_base"],
     "lfmc_ts": ["lfmc_base", "lfmc_ts"],
     "lfmc_mm": ["lfmc_base", "lfmc_mm"],
