@@ -4,4 +4,4 @@ model:
     model:
       class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterModel
       init_args:
-        input_modalities: ["gse"]  # this only works for the AEF model
+        input_modalities: ["gsegood"]  # this only works for the AEF model
