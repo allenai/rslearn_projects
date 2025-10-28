@@ -4,6 +4,7 @@ import json
 import subprocess  # nosec
 
 TASK_CONFIGS = {
+    "awf_aef": ["awf_aef"],
     "awf_ts": ["awf_base"],
     "awf_mm": ["awf_base", "awf_mm"],
     "ecosystem": ["ecosystem"],
