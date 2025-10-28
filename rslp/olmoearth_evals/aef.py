@@ -124,7 +124,9 @@ def get_transform(
     """Get appropriate OlmoEarth transform."""
     modules: list[torch.nn.Module] = []
 
-    if (len(input_modalities) != 1) or (input_modalities[0] != "gse"):
+    if (len(input_modalities) != 1) or ("gse" not in input_modalities[0]):
+        # we use '"gse" not in' instead of == because
+        # the layer name can be a slight variant of gse, e.g. 'gsegood'
         raise ValueError("GSE model only works with gse input")
 
     modules.append(Normalize(mean=0, std=16384))
