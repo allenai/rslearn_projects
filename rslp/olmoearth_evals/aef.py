@@ -182,6 +182,6 @@ def get_transform(
         # the layer name can be a slight variant of gse, e.g. 'gsegood'
         raise ValueError("GSE model only works with gse input")
 
-    modules.append(Normalize(mean=0, std=16384, selectors=["gsegood"]))
+    modules.append(Normalize(mean=0, std=16384))
 
     return Sequential(*modules)
