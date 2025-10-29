@@ -7,33 +7,33 @@ import torch
 from rslearn.train.transforms.transform import Transform
 
 import rslp.olmoearth_evals.anysat as anysat
-import rslp.olmoearth_evals.clay as clay
-import rslp.olmoearth_evals.copernicusfm as copernicusfm
-import rslp.olmoearth_evals.croma as croma
-import rslp.olmoearth_evals.dinov3 as dinov3
-import rslp.olmoearth_evals.galileo as galileo
+# import rslp.olmoearth_evals.clay as clay
+# import rslp.olmoearth_evals.copernicusfm as copernicusfm
+# import rslp.olmoearth_evals.croma as croma
+# import rslp.olmoearth_evals.dinov3 as dinov3
+# import rslp.olmoearth_evals.galileo as galileo
 import rslp.olmoearth_evals.olmoearth as olmoearth
-import rslp.olmoearth_evals.panopticon as panopticon
-import rslp.olmoearth_evals.presto as presto
-import rslp.olmoearth_evals.prithvi as prithvi
-import rslp.olmoearth_evals.satlaspretrain as satlaspretrain
-import rslp.olmoearth_evals.terramind as terramind
+# import rslp.olmoearth_evals.panopticon as panopticon
+# import rslp.olmoearth_evals.presto as presto
+# import rslp.olmoearth_evals.prithvi as prithvi
+# import rslp.olmoearth_evals.satlaspretrain as satlaspretrain
+# import rslp.olmoearth_evals.terramind as terramind
 
 modules_by_model_id = {
-    "anysat": anysat,
-    "clay": clay,
-    "copernicusfm": copernicusfm,
-    "croma": croma,
-    "dinov3": dinov3,
-    "galileo": galileo,
+    # "anysat": anysat,
+    # "clay": clay,
+    # "copernicusfm": copernicusfm,
+    # "croma": croma,
+    # "dinov3": dinov3,
+    # "galileo": galileo,
     "olmoearth": olmoearth,
     "olmoearth_tiny": olmoearth,
     "olmoearth_nano": olmoearth,
-    "panopticon": panopticon,
-    "presto": presto,
-    "prithvi": prithvi,
-    "satlaspretrain": satlaspretrain,
-    "terramind": terramind,
+    # "panopticon": panopticon,
+    # "presto": presto,
+    # "prithvi": prithvi,
+    # "satlaspretrain": satlaspretrain,
+    # "terramind": terramind,
 }
 
 

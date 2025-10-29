@@ -125,7 +125,6 @@ def get_model(
                     encoder=OlmoEarth(
                         checkpoint_path=checkpoint_path,
                         selector=["encoder"],
-                        forward_kwargs=dict(patch_size=4),
                         patch_size=4,
                         embedding_size=embedding_size,
                     ),
@@ -152,7 +151,6 @@ def get_model(
             OlmoEarth(
                 checkpoint_path=checkpoint_path,
                 selector=["encoder"],
-                forward_kwargs=dict(patch_size=4),
                 patch_size=4,
                 embedding_size=embedding_size,
             ),
