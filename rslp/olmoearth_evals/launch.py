@@ -31,6 +31,7 @@ TASK_CONFIGS = {
     "sentinel2_vessel_length": ["sentinel2_vessel_length"],
     "sentinel2_vessel_type": ["sentinel2_vessel_type"],
     "sentinel2_vessels": ["sentinel2_vessels"],
+    "solar_farm_aef": ["solar_farm_aef"],
     "solar_farm_uni": ["solar_farm_base"],
     "solar_farm_ts": ["solar_farm_base", "solar_farm_ts"],
     "solar_farm_mm": ["solar_farm_base", "solar_farm_mm"],
