@@ -88,7 +88,7 @@ class ConvSameShapeDecoder(nn.Module):
         # Reverse the features since we will pass them in from lowest resolution to highest.
         if len(in_features) != 1:
             raise ValueError("Expecting a single GSE layer.")
-        return [self.layers(in_features[0])]
+        return self.layers(in_features[0])
 
 
 def get_model(
