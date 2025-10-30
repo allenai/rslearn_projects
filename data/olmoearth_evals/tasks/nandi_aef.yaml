@@ -10,7 +10,7 @@ model:
         task_name: "nandi"
         task_channels: 6
         task_timesteps: 12
-    lr: 0.0001
+    lr: 0.00001
     scheduler:
       class_path: rslearn.train.scheduler.PlateauScheduler
       init_args:
