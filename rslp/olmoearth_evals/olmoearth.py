@@ -1,7 +1,10 @@
 """Evaluation adapter for OlmoEarth."""
 
+import os
+
 import torch
 from rslearn.models.faster_rcnn import FasterRCNN
+from rslearn.models.feature_center_crop import FeatureCenterCrop
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.olmoearth_pretrain.model import OlmoEarth
 from rslearn.models.olmoearth_pretrain.norm import OlmoEarthNormalize
@@ -28,11 +31,24 @@ def get_model(
     task_timesteps: int = 1,
 ) -> torch.nn.Module:
     """Get appropriate OlmoEarth model."""
+    model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
+    if model_id == "olmoearth":
+        embedding_size = 768
+        checkpoint_path = "/weka/dfive-default/helios/checkpoints/joer/phase2.0_base_lr0.0001_wd0.02/step667200"
+    elif model_id == "olmoearth_tiny":
+        embedding_size = 192
+        checkpoint_path = "/weka/dfive-default/helios/checkpoints/joer/tiny_lr0.0002_wd0.02/step360000"
+    elif model_id == "olmoearth_nano":
+        embedding_size = 128
+        checkpoint_path = "/weka/dfive-default/helios/checkpoints/joer/nano_lr0.001_wd0.002/step370000"
+    else:
+        raise ValueError(f"unknown olmoearth model ID {model_id}")
+
     if task_type == "segment":
         decoders = dict(
             eval_task=[
                 UNetDecoder(
-                    in_channels=[[4, 768]],
+                    in_channels=[[4, embedding_size]],
                     out_channels=task_channels,
                     conv_layers_per_resolution=2,
                     num_channels={4: 512, 2: 256, 1: 128},
@@ -44,7 +60,7 @@ def get_model(
         decoders = dict(
             eval_task=[
                 SegmentationPoolingDecoder(
-                    in_channels=768,
+                    in_channels=embedding_size,
                     out_channels=task_channels,
                 ),
                 SegmentationHead(),
@@ -55,29 +71,43 @@ def get_model(
             eval_task=[
                 FasterRCNN(
                     downsample_factors=[4],
-                    num_channels=768,
+                    num_channels=embedding_size,
                     num_classes=task_channels,
                     anchor_sizes=[[32]],
                 )
             ]
         )
     elif task_type == "classify":
-        decoders = dict(
-            eval_task=[
-                PoolingDecoder(
-                    in_channels=768,
-                    out_channels=task_channels,
-                    num_conv_layers=1,
-                    num_fc_layers=1,
-                ),
-                ClassificationHead(),
-            ]
-        )
+        if task_name == "nandi":
+            decoders = dict(
+                eval_task=[
+                    FeatureCenterCrop(
+                        sizes=[[1, 1]],
+                    ),
+                    PoolingDecoder(
+                        in_channels=embedding_size,
+                        out_channels=task_channels,
+                    ),
+                    ClassificationHead(),
+                ]
+            )
+        else:
+            decoders = dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=embedding_size,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            )
     elif task_type == "regress":
         decoders = dict(
             eval_task=[
                 PoolingDecoder(
-                    in_channels=768,
+                    in_channels=embedding_size,
                     out_channels=task_channels,
                     num_conv_layers=1,
                     num_fc_layers=1,
@@ -93,11 +123,11 @@ def get_model(
             encoder=[
                 SimpleTimeSeries(
                     encoder=OlmoEarth(
-                        checkpoint_path="/weka/dfive-default/olmoearth_pretrain/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000",
+                        checkpoint_path=checkpoint_path,
                         selector=["encoder"],
                         forward_kwargs=dict(patch_size=4),
                         patch_size=4,
-                        embedding_size=768,
+                        embedding_size=embedding_size,
                     ),
                     image_channels=12 * 4,
                     image_key="sentinel2_l2a",
@@ -107,7 +137,7 @@ def get_model(
             decoders=dict(
                 eval_task=[
                     PoolingDecoder(
-                        in_channels=768 * 2,
+                        in_channels=embedding_size * 2,
                         out_channels=task_channels,
                         num_conv_layers=1,
                         num_fc_layers=1,
@@ -120,11 +150,11 @@ def get_model(
     return MultiTaskModel(
         encoder=[
             OlmoEarth(
-                checkpoint_path="/weka/dfive-default/olmoearth_pretrain/checkpoints/henryh/base_v6.1_add_chm_cdl_worldcereal/step500000",
+                checkpoint_path=checkpoint_path,
                 selector=["encoder"],
                 forward_kwargs=dict(patch_size=4),
                 patch_size=4,
-                embedding_size=768,
+                embedding_size=embedding_size,
             ),
         ],
         decoders=decoders,
