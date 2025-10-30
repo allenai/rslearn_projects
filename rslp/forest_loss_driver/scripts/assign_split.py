@@ -34,7 +34,12 @@ def assign_split(window: Window) -> None:
 
     # Currently we only validate on Brazil/Colombia labels.
     # Model config can decide whether to train on Peru or not.
-    elif window.group in ["20250428_brazil_phase1", "20250428_colombia_phase1"]:
+    elif window.group in [
+        "20250428_brazil_phase1",
+        "20250428_colombia_phase1",
+        "20250428_brazil_phase2",
+        "20250428_colombia_phase2",
+    ]:
         is_val = hashlib.sha256(window.name.encode()).hexdigest()[0] in [
             "0",
             "1",

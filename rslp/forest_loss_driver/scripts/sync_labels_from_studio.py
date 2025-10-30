@@ -9,22 +9,23 @@ from typing import Any
 import requests
 from upath import UPath
 
-BASE_URL = "https://earth-system-studio.allen.ai/api/v1/"
+BASE_URL = "https://olmoearth.allenai.org/api/v1/"
 LABEL_MAP = {
     "Agriculture-Large": "agriculture",
     "Agriculture-Medium": "agriculture",
     "Agriculture-Small": "agriculture",
-    "Burned areas (Fire)": "burned",
-    "Dry areas (seasonal)": "none",
-    "False positives (not forest loss, an alert error)": "none",
-    "Flooded (rivers)": "river",
+    "Burned_areas_Fire": "burned",
+    "Dry_areas_seasonal": "none",
+    "False_positives_not_forest_loss_an_alert_error": "none",
+    "Flooded_rivers": "river",
     "Landslides": "landslide",
-    "Logging roads": "road",
+    "Logging_clear-cut": "logging",
+    "Logging_roads": "road",
     "Mining": "mining",
-    "Pasture (praderas, ganadería)": "agriculture",
+    "Pasture_praderas_ganaderia": "agriculture",
     "Roads": "road",
-    "Selective Logging": "logging",
-    "Windthrows/blowdowns (Hurricane winds)": "hurricane",
+    "Selective_Logging": "logging",
+    "Windthrowsblowdowns_Hurricane_winds": "hurricane",
 }
 
 
@@ -82,6 +83,8 @@ def get_annotations(project_id: str) -> dict[str, Any]:
 
 def get_label_from_feat(feat: dict[str, Any]) -> str | None:
     """Get the labeled category for this GeoJSON feature (if any)."""
+    if "metadata_values" not in feat["properties"]:
+        return None
     for metadata_value in feat["properties"]["metadata_values"]:
         if metadata_value["name"] != "tag_name":
             continue
@@ -126,6 +129,7 @@ if __name__ == "__main__":
 
         if args.remap_labels:
             if label not in LABEL_MAP:
+                print(f"skipping unknown label {label}")
                 continue
             label = LABEL_MAP[label]
 
