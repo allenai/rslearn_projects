@@ -40,7 +40,10 @@ python -m rslp.olmoearth_pretrain.get_embeddings --ds_path /weka/dfive-default/r
 python -m rslp.olmoearth_pretrain.get_embeddings --ds_path /weka/dfive-default/rslearn-eai/datasets/geo/dataset_v2/dataset/ --patch_size 2 --input_size 16 --embed_fname olmoearth_v1_tiny --model_id OlmoEarth-v1-Tiny --num_timesteps 6 --mode center
 ```
 
-Evaluate:
+Evaluate, here we pass `--metric accuracy` to use accuracy metric instead of balanced
+accuracy. The `--repeats 1 --samples 0` means to do one kNN with all the training data.
+`--k 3` is how many nearest neighbors to use, and `--label_key` and `--split_key` and
+`--groups` are task-specific options.
 
 ```
 # Nandi
