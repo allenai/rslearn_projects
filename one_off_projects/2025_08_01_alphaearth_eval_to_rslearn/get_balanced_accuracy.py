@@ -10,7 +10,7 @@ import torch
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
 from rslearn.utils.raster_format import GeotiffRasterFormat
-from sklearn.metrics import balanced_accuracy_score
+from sklearn.metrics import balanced_accuracy_score, accuracy_score
 from torch import nn
 from upath import UPath
 
@@ -147,11 +147,35 @@ if __name__ == "__main__":
         help="Similarity mode, cos or l2",
         default="l2",
     )
+    parser.add_argument(
+        "--label_key",
+        type=str,
+        help="Key in window options containing the label",
+        default="label", # lulc for awf, category for nandi
+    )
+    parser.add_argument(
+        "--split_key",
+        type=str,
+        help="Key in window options containing the split, or 'group' to expect train and test groups in the rslearn dataset",
+        default="group", # helios_split for awf and nandi, split for ecosystem
+    )
+    parser.add_argument(
+        "--groups",
+        type=str,
+        help="Only use windows in these comma-separated groups",
+        default=None,
+    )
+    parser.add_argument(
+        "--metric",
+        type=str,
+        help="Either balanced_accuracy or accuracy",
+        default="balanced_accuracy",
+    )
     args = parser.parse_args()
 
     # Load windows and all embeddings.
     dataset = Dataset(UPath(args.ds_path))
-    windows = dataset.load_windows(workers=args.workers)
+    windows = dataset.load_windows(workers=args.workers, groups=args.groups.split(",") if args.groups else None)
     p = multiprocessing.Pool(args.workers)
     if args.embed_fname == "gse":
         embeddings = list(tqdm.tqdm(p.imap(load_gse_embedding, windows), desc="Loading embeddings", total=len(windows)))
@@ -174,26 +198,36 @@ if __name__ == "__main__":
         if embedding is None:
             continue
 
-        class_name = window.options["label"]
+        class_name = window.options[args.label_key]
         if class_name not in class_names:
             class_names.append(class_name)
         label = class_names.index(class_name)
 
-        if window.group == "train":
+        split_key: str = "helios_split"
+        if "helios_split" not in window.options and "split" in window.options:
+            split_key = "split"
+
+        split: str
+        if args.split_key == "group":
+            split = window.group
+        else:
+            split = window.options[args.split_key]
+
+        if split == "train":
             train_embedding_list.append(embedding)
             train_labels.append(label)
 
             # Get partition, or for classification tasks we use the label instead.
-            if window.options["partition"] is not None:
+            if "partition" in window.options and window.options["partition"] is not None:
                 train_partitions.append(window.options["partition"])
             else:
                 train_partitions.append(label)
 
-        elif window.group == "test":
+        elif split == "test":
             test_embedding_list.append(embedding)
             test_labels.append(label)
 
-        else:
+        elif args.split_key == "group":
             raise ValueError(f"expected all windows to be in train or test but got group {window.group}")
 
     test_embeddings = torch.stack(test_embedding_list, dim=0)
@@ -224,7 +258,10 @@ if __name__ == "__main__":
         cur_train_labels = torch.tensor([train_labels[idx] for idx in cur_train_indices], dtype=torch.int64)
 
         preds = run_knn_for_k(cur_train_embeddings, cur_train_labels, test_embeddings, len(class_names), args.k, args.sim_mode)
-        accuracy_score = balanced_accuracy_score(test_labels, preds)
+        if args.metric == "balanced_accuracy":
+            accuracy_score = balanced_accuracy_score(test_labels, preds)
+        elif args.metric == "accuracy":
+            accuracy_score = accuracy_score(test_labels, preds)
         accuracy_scores.append(accuracy_score)
 
         print(f"fold {fold_idx}: got accuracy {accuracy_score}")
