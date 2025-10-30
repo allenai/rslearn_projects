@@ -15,7 +15,7 @@ Not all models support all modalities or multi-modality.
 - Copernicus-FM: supports Sentinel-1 and Sentinel-2.
 - CROMA: supports Sentinel-1 and Sentinel-2.
 - DINOv3: supports Sentinel-2 and Landsat, but only one modality at a time.
-- Galileo: supports all tasks.
+- Galileo: supports Sentinel-1 and Sentinel-2.
 - OlmoEarth: supports all tasks.
 - Panopticon: supports all tasks.
 - Presto: supports Sentinel-1 and Sentinel-2.
@@ -31,7 +31,7 @@ python -m rslp.main olmoearth_evals launch --models='[anysat,copernicusfm,croma,
 # Sentinel-1 tasks.
 python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,galileo,olmoearth,panopticon,presto,terramind]' --tasks='[sentinel1_vessels]' --prefix 20251007b --image_name favyen/rslphelios16 --project final_downstream_eval_train
 # Landsat tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,clay,dinov3,galileo,olmoearth,panopticon,prithvi]' --tasks='[landsat_vessels]' --prefix 20251007b --image_name favyen/rslphelios17 --project final_downstream_eval_train
+python -m rslp.main olmoearth_evals launch --models='[anysat,clay,dinov3,olmoearth,panopticon,prithvi]' --tasks='[landsat_vessels]' --prefix 20251007b --image_name favyen/rslphelios17 --project final_downstream_eval_train
 ```
 
 Here are subset to run after dropping Presto and not doing the unitemporal version of
@@ -45,7 +45,7 @@ python -m rslp.main olmoearth_evals launch --models='[anysat,copernicusfm,croma,
 # Sentinel-1 tasks.
 python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,galileo,olmoearth,panopticon,terramind]' --tasks='[sentinel1_vessels]' --prefix final --image_name favyen/rslphelios18 --project final_downstream_eval_train
 # Landsat tasks.
-python -m rslp.main olmoearth_evals launch --models='[anysat,clay,dinov3,galileo,olmoearth,panopticon,prithvi]' --tasks='[landsat_vessels]' --prefix final --image_name favyen/rslphelios18 --project final_downstream_eval_train
+python -m rslp.main olmoearth_evals launch --models='[anysat,clay,dinov3,olmoearth,panopticon,prithvi]' --tasks='[landsat_vessels]' --prefix final --image_name favyen/rslphelios18 --project final_downstream_eval_train
 ```
 
 Use `--test=true` to run the test stage, e.g.:
@@ -53,6 +53,13 @@ Use `--test=true` to run the test stage, e.g.:
 ```
 python -m rslp.main olmoearth_evals launch --models='[satlaspretrain]' --tasks='[solar_farm_ts]' --prefix final --image_name favyen/rslphelios20 --project final_downstream_eval_train --test=true
 ```
+
+Then get the metric, e.g.:
+
+```
+python -m rslp.olmoearth_pretrain.scripts.get_best_wandb_metric --project final_downstream_eval_train --run_regex 'final_landsat_vessels_.*' --runs_after '2025-10-20T00:00:00Z' --metric test_eval_task/F1 --mode max
+```
+
 
 The AEF models are a bit unique because they rely on separately downloaded AEF data, but we keep them here for consistency.
 ```

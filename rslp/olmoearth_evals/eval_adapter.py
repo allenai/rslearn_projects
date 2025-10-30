@@ -28,6 +28,8 @@ modules_by_model_id = {
     "dinov3": dinov3,
     "galileo": galileo,
     "olmoearth": olmoearth,
+    "olmoearth_tiny": olmoearth,
+    "olmoearth_nano": olmoearth,
     "panopticon": panopticon,
     "presto": presto,
     "prithvi": prithvi,
