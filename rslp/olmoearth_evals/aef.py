@@ -4,6 +4,7 @@ from typing import Any
 
 import torch
 from rslearn.models.faster_rcnn import FasterRCNN
+from rslearn.models.feature_center_crop import FeatureCenterCrop
 from rslearn.models.module_wrapper import EncoderModuleWrapper
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.pooling_decoder import PoolingDecoder
@@ -134,17 +135,31 @@ def get_model(
             ]
         )
     elif task_type == "classify":
-        decoders = dict(
-            eval_task=[
-                PoolingDecoder(
-                    in_channels=64,
-                    out_channels=task_channels,
-                    num_conv_layers=1,
-                    num_fc_layers=1,
-                ),
-                ClassificationHead(),
-            ]
-        )
+        if task_name == "nandi":
+            decoders = dict(
+                eval_task=[
+                    FeatureCenterCrop(
+                        sizes=[[1, 1]],
+                    ),
+                    PoolingDecoder(
+                        in_channels=64,
+                        out_channels=task_channels,
+                    ),
+                    ClassificationHead(),
+                ]
+            )
+        else:
+            decoders = dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=64,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            )
     elif task_type == "regress":
         decoders = dict(
             eval_task=[
