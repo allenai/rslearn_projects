@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import tqdm
 from rslearn.dataset.dataset import Dataset
-from rslearn.models.olmoearth_pretrain.model import OlmoEarth
+from rslearn.models.olmoearth_pretrain.model import ModelID, OlmoEarth
 from rslearn.models.olmoearth_pretrain.norm import OlmoEarthNormalize
 from rslearn.train.data_module import collate_fn
 from rslearn.train.dataset import DataInput, ModelDataset, SplitConfig
@@ -115,6 +115,7 @@ def get_embeddings(
     batch_size: int,
     mode: str,
     embed_fname: str,
+    num_timesteps: int,
     workers: int = 16,
 ) -> None:
     """Get OlmoEarth embeddings for each window in the ModelDataset.
@@ -125,8 +126,9 @@ def get_embeddings(
         batch_size: batch size to use for data loading.
         mode: embedding selection mode, "center" to pick the embedding for the patch at
             the center, or "pool" to average pool the embedding across the patches.
-        workers: number of data loader worker processes.
         embed_fname: the filename to use to store the embeddings. It should be .npy.
+        num_timesteps: the number of Sentinel-2 timesteps to input.
+        workers: number of data loader worker processes.
     """
     data_loader = torch.utils.data.DataLoader(
         dataset=model_dataset,
@@ -140,10 +142,10 @@ def get_embeddings(
             # Skip inputs without enough Sentinel-2 images.
             # Currently we assume there are twelve timesteps, so the number of channels
             # in the image (which has T*C on first axis since the images are stacked)
-            # should be 144 (12 Sentinel-2 L2A bands).
+            # should be 12*num_timesteps (12 Sentinel-2 L2A bands).
             good_indexes = []
             for idx, input_dict in enumerate(inputs):
-                if input_dict["sentinel2_l2a"].shape[0] != 144:
+                if input_dict["sentinel2_l2a"].shape[0] != 12 * num_timesteps:
                     continue
                 good_indexes.append(idx)
             inputs = [inputs[idx] for idx in good_indexes]
@@ -170,7 +172,7 @@ def get_embeddings(
                     / "windows"
                     / metadata["group"]
                     / metadata["window_name"]
-                    / args.embed_fname
+                    / embed_fname
                 )
                 np.save(out_fname.path, selected)
 
@@ -184,12 +186,12 @@ if __name__ == "__main__":
         required=True,
     )
     # Currently this assumes there are twelve timesteps and we read all of the timesteps.
-    # parser.add_argument(
-    #     "--num_timesteps",
-    #     type=int,
-    #     help="Number of timesteps to input",
-    #     required=True,
-    # )
+    parser.add_argument(
+        "--num_timesteps",
+        type=int,
+        help="Number of timesteps to input",
+        required=True,
+    )
     parser.add_argument(
         "--patch_size",
         type=int,
@@ -201,12 +203,6 @@ if __name__ == "__main__":
         type=int,
         help="Input crop size",
         default=None,
-    )
-    parser.add_argument(
-        "--checkpoint_path",
-        type=str,
-        help="OlmoEarth checkpoint path",
-        required=True,
     )
     parser.add_argument(
         "--workers",
@@ -232,6 +228,12 @@ if __name__ == "__main__":
         help="Either center or pool, default center",
         default="center",
     )
+    parser.add_argument(
+        "--model_id",
+        type=str,
+        help="OlmoEarth model ID",
+        default="OlmoEarth-v1-Base",
+    )
     args = parser.parse_args()
 
     print("Initializing dataset")
@@ -245,9 +247,8 @@ if __name__ == "__main__":
     print("Initializing OlmoEarth model")
     device = torch.device("cuda")
     model = OlmoEarth(
-        checkpoint_path=args.checkpoint_path,
-        selector=["encoder"],
-        forward_kwargs=dict(patch_size=args.patch_size),
+        model_id=ModelID(args.model_id),
+        patch_size=args.patch_size,
     )
     model.to(device)
     model.eval()
@@ -258,5 +259,6 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         mode=args.mode,
         embed_fname=args.embed_fname,
+        num_timesteps=args.num_timesteps,
         workers=args.workers,
     )
