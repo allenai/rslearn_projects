@@ -57,22 +57,17 @@ repos:
         args:
           - -s
           - B101,B311,B324,B108,B104
-  - repo: local
+  - repo: https://github.com/econchick/interrogate
+    rev: 1.7.0
     hooks:
       - id: interrogate
-        name: interrogate
-        language: system
-        entry: interrogate
-        types: [python]
         args:
-          [
-            --ignore-init-method,
-            --ignore-init-module,
-            -p,
-            -vv,
-            rslp,
-            --fail-under=80,
-          ]
+          - --ignore-init-method
+          - --ignore-init-module
+          - -p
+          - -vv
+          - rslp
+          - --fail-under=80
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.4.4
     hooks:
