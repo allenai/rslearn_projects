@@ -4,11 +4,14 @@ import json
 import subprocess  # nosec
 
 TASK_CONFIGS = {
+    "awf_aef": ["awf_aef"],
     "awf_ts": ["awf_base"],
     "awf_mm": ["awf_base", "awf_mm"],
+    "ecosystem_aef": ["ecosystem_aef"],
     "ecosystem": ["ecosystem"],
     "forest_loss_driver": ["forest_loss_driver"],
     "landsat_vessels": ["landsat_vessels"],
+    "lfmc_aef": ["lfmc_aef"],
     "lfmc_uni": ["lfmc_base"],
     "lfmc_ts": ["lfmc_base", "lfmc_ts"],
     "lfmc_mm": ["lfmc_base", "lfmc_mm"],
@@ -20,6 +23,7 @@ TASK_CONFIGS = {
     "marine_infra_mm": ["marine_infra_base", "marine_infra_mm"],
     "nandi_ts": ["nandi_base"],
     "nandi_mm": ["nandi_base", "nandi_mm"],
+    "nandi_aef": ["nandi_aef"],
     "pastis_uni": ["pastis_base"],
     "pastis_ts": ["pastis_base", "pastis_ts"],
     "pastis_mm": ["pastis_base", "pastis_mm"],
@@ -27,6 +31,7 @@ TASK_CONFIGS = {
     "sentinel2_vessel_length": ["sentinel2_vessel_length"],
     "sentinel2_vessel_type": ["sentinel2_vessel_type"],
     "sentinel2_vessels": ["sentinel2_vessels"],
+    "solar_farm_aef": ["solar_farm_aef"],
     "solar_farm_uni": ["solar_farm_base"],
     "solar_farm_ts": ["solar_farm_base", "solar_farm_ts"],
     "solar_farm_mm": ["solar_farm_base", "solar_farm_mm"],

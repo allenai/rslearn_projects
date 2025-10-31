@@ -23,6 +23,8 @@ Not all models support all modalities or multi-modality.
 - SatlasPretrain: in this eval it only supports Sentinel-2.
 - TerraMind: supports Sentinel-1 and Sentinel-2.
 
+If you want to run a frozen backbone, remove the `unfreeze_at_epoch` key in the model yaml for the backbone you want to freeze.
+
 ```
 # Sentinel-2 tasks.
 python -m rslp.main olmoearth_evals launch --models='[anysat,clay,copernicusfm,croma,dinov3,galileo,olmoearth,panopticon,presto,prithvi,satlaspretrain,terramind]' --tasks='[pastis_uni,pastis_ts,marine_infra_uni,marine_infra_ts,wind_turbine_uni,wind_turbine_ts,solar_farm_uni,solar_farm_ts,sentinel2_vessel_length,sentinel2_vessel_type,sentinel2_vessels,lfmc_uni,lfmc_ts,mangrove_uni,mangrove_ts,forest_loss_driver,awf_ts,nandi_ts,ecosystem]' --prefix 20251007b --image_name favyen/rslphelios16 --project final_downstream_eval_train
@@ -58,4 +60,11 @@ Then get the metric, e.g.:
 
 ```
 python -m rslp.olmoearth_pretrain.scripts.get_best_wandb_metric --project final_downstream_eval_train --run_regex 'final_landsat_vessels_.*' --runs_after '2025-10-20T00:00:00Z' --metric test_eval_task/F1 --mode max
+```
+
+
+The AEF models are a bit unique because they rely on separately downloaded AEF data, but we keep them here for consistency.
+```
+# AEF
+python -m rslp.main olmoearth_evals launch --models='[aef]' --tasks='[nandi_aef,lfmc_aef,awf_aef,ecosystem_aef]' --prefix final --image_name favyen/rslpomp20251022a --project final_downstream_eval_train
 ```
