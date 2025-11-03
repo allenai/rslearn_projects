@@ -72,7 +72,9 @@ For more details, [see here](https://github.com/allenai/olmoearth_projects/blob/
 
 ### Mangrove Classification
 
-The mangrove dataset is converted to rslearn format from ??.
+The mangrove dataset is converted to rslearn format from [Global Mangrove Watch v4 Reference Samples](https://zenodo.org/records/17394267).
+The dataset is created by [Global Mangrove Watch](https://www.mangrovealliance.org/global-mangrove-watch)
+and is released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 - Download link: https://storage.googleapis.com/ai2-olmoearth-projects-public-data/evals/partner_tasks/mangrove.tar
 
