@@ -173,7 +173,10 @@ Not all models support all modalities or multi-modality.
 - SatlasPretrain: in this eval it only supports Sentinel-2.
 - TerraMind: supports Sentinel-1 and Sentinel-2.
 
-Here are the `--config` options for the available tasks:
+Here are the `--config` options for the available tasks, which can replace the marine infrastructure ones in the example above.
+Note that some tasks use multiple configuration files, with a base shared configuration file followed by different configs for
+training with Sentinel-2 time series vs Sentinel-1 + Sentinel-2 multi-modal time series; later configuration files override
+earlier ones.
 
 ```
 # Forest loss driver.
