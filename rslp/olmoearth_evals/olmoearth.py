@@ -6,7 +6,7 @@ import torch
 from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.feature_center_crop import FeatureCenterCrop
 from rslearn.models.multitask import MultiTaskModel
-from rslearn.models.olmoearth_pretrain.model import OlmoEarth
+from rslearn.models.olmoearth_pretrain.model import EMBEDDING_SIZES, ModelID, OlmoEarth
 from rslearn.models.olmoearth_pretrain.norm import OlmoEarthNormalize
 from rslearn.models.pooling_decoder import PoolingDecoder
 from rslearn.models.simple_time_series import SimpleTimeSeries
@@ -33,16 +33,15 @@ def get_model(
     """Get appropriate OlmoEarth model."""
     model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
     if model_id == "olmoearth":
-        embedding_size = 768
-        checkpoint_path = "/weka/dfive-default/helios/checkpoints/joer/phase2.0_base_lr0.0001_wd0.02/step667200"
+        olmoearth_model_id = ModelID.OLMOEARTH_V1_BASE
     elif model_id == "olmoearth_tiny":
-        embedding_size = 192
-        checkpoint_path = "/weka/dfive-default/helios/checkpoints/joer/tiny_lr0.0002_wd0.02/step360000"
+        olmoearth_model_id = ModelID.OLMOEARTH_V1_TINY
     elif model_id == "olmoearth_nano":
-        embedding_size = 128
-        checkpoint_path = "/weka/dfive-default/helios/checkpoints/joer/nano_lr0.001_wd0.002/step370000"
+        olmoearth_model_id = ModelID.OLMOEARTH_V1_NANO
     else:
         raise ValueError(f"unknown olmoearth model ID {model_id}")
+
+    embedding_size = EMBEDDING_SIZES[olmoearth_model_id]
 
     if task_type == "segment":
         decoders = dict(
@@ -123,9 +122,8 @@ def get_model(
             encoder=[
                 SimpleTimeSeries(
                     encoder=OlmoEarth(
-                        checkpoint_path=checkpoint_path,
+                        model_id=olmoearth_model_id,
                         patch_size=4,
-                        embedding_size=embedding_size,
                     ),
                     image_channels=12 * 4,
                     image_key="sentinel2_l2a",
@@ -148,9 +146,8 @@ def get_model(
     return MultiTaskModel(
         encoder=[
             OlmoEarth(
-                checkpoint_path=checkpoint_path,
+                model_id=olmoearth_model_id,
                 patch_size=4,
-                embedding_size=embedding_size,
             ),
         ],
         decoders=decoders,
