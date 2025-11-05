@@ -13,6 +13,14 @@ For LULC classification, the train/test splits are:
 
 ## LULC Classification
 
+#### 2025-11-05
+
+Updates so that it works with all the changes. Also now a forward pass does a patch not a pixel; this makes inference far faster.
+
+```
+python -m rslp.main olmoearth_pretrain launch_finetune --image_name gabrielt/rslpomp_20251027b --config_paths+=data/helios/v2_mozambique_lulc/finetune_s2_20251024.yml --cluster+=ai2/saturn --rslp_project 2025_09_18_mozambique_lulc --experiment_id mozambique_lulc_helios_base_S2_ts_ws4_ps1_gaza_20251105_saturn_b
+```
+
 #### 2025-10-23
 
 Update S1 and S2 training scripts to run with all the updates. This also requires running `python -m rslp.main olmoearth_pretrain` instead of `python -m rslp.main helios`:

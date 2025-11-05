@@ -5,20 +5,19 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          - class_path: rslearn.olmoearth_pretrain.model.OlmoEarth
             init_args:
-              checkpoint_path: ${EXTRA_FILES_PATH}/yawenzzzz/latent_mim_cross_random_per_modality_patchdisc_add_contrastive_0.1_1/step400000
+              checkpoint_path: ${EXTRA_FILES_PATH}
               random_initialization: true
               selector: ["encoder"]
               forward_kwargs:
                 patch_size: 1
         decoders:
           class:
-            - class_path: rslearn.models.pooling_decoder.SegmentationPoolingDecoder
+            - class_path: rslp.nandi.train.SegmentationPoolingDecoder
               init_args:
                 in_channels: 768
                 out_channels: 8
-                image_key: "sentinel2_l2a"
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     plateau: true
