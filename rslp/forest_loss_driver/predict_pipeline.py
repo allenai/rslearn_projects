@@ -5,7 +5,7 @@ from upath import UPath
 from rslp.log_utils import get_logger
 from rslp.utils.rslearn import run_model_predict
 
-MODEL_CFG_FNAME = "data/forest_loss_driver/config.yaml"
+MODEL_CFG_FNAME = "data/forest_loss_driver/20251104/config.yaml"
 
 logger = get_logger(__name__)
 

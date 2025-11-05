@@ -2,6 +2,7 @@
 
 import multiprocessing
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from upath import UPath
 
@@ -103,7 +104,8 @@ class VisLayerMaterializeArgs(MaterializePipelineArgs):
             apply_windows_args=ApplyWindowsArgs(
                 use_initial_job=True, workers=DEFAULT_VIS_LAYER_WORKERS
             ),
-            retry_max_attempts=5,
+            retry_max_attempts=20,
+            retry_backoff=timedelta(seconds=30),
         ),
     )
     ingest_args: IngestArgs = field(
@@ -116,6 +118,8 @@ class VisLayerMaterializeArgs(MaterializePipelineArgs):
         default_factory=lambda: MaterializeArgs(
             ignore_errors=True,
             apply_windows_args=ApplyWindowsArgs(workers=DEFAULT_VIS_LAYER_WORKERS),
+            retry_max_attempts=5,
+            retry_backoff=timedelta(seconds=30),
         ),
     )
 
