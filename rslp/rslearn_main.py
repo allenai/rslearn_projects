@@ -16,12 +16,12 @@ def main() -> None:
     from dotenv import load_dotenv
 
     load_dotenv()
-    import rslearn.main
+    import rslearn.lightning_cli
 
     from rslp.lightning_cli import CustomLightningCLI, custom_model_handler
 
-    rslearn.main.RslearnLightningCLI = CustomLightningCLI
-    rslearn.main.model_handler = custom_model_handler
+    rslearn.lightning_cli.RslearnLightningCLI = CustomLightningCLI
+    rslearn.lightning_cli.model_handler = custom_model_handler
     rslearn.main.main()
 
 
