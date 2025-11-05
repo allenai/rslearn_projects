@@ -203,10 +203,6 @@ if __name__ == "__main__":
             class_names.append(class_name)
         label = class_names.index(class_name)
 
-        split_key: str = "helios_split"
-        if "helios_split" not in window.options and "split" in window.options:
-            split_key = "split"
-
         split: str
         if args.split_key == "group":
             split = window.group
