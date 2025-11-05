@@ -14,7 +14,7 @@ from lightning.pytorch import LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.callbacks import Callback
 from lightning.pytorch.cli import SaveConfigCallback
 from lightning.pytorch.utilities import rank_zero_only
-from rslearn.main import RslearnLightningCLI
+from rslearn.lightning_cli import RslearnLightningCLI
 from rslearn.train.lightning_module import RslearnLightningModule
 from rslearn.utils.fsspec import open_atomic
 from upath import UPath
@@ -421,7 +421,7 @@ class CustomLightningCLI(RslearnLightningCLI):
 
 
 def custom_model_handler() -> None:
-    """Overrides model_handler in rslearn.main to use CustomLightningCLI.
+    """Overrides model_handler in rslearn.lightning_cli to use CustomLightningCLI.
 
     It also sets the save_config_callback.
     """
