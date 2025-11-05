@@ -22,6 +22,9 @@ def main() -> None:
 
     rslearn.lightning_cli.RslearnLightningCLI = CustomLightningCLI
     rslearn.lightning_cli.model_handler = custom_model_handler
+
+    import rslearn.main
+
     rslearn.main.main()
 
 
