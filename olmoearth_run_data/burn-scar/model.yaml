@@ -1,0 +1,139 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+                #TODO: remove checkpoint_path and use model_id instead
+                #model_id: "OLMOEARTH_V1_BASE"
+                checkpoint_path: /weka/dfive-default/helios/checkpoints/joer/phase2.0_base_lr0.0001_wd0.02/step667200
+                patch_size: 4
+        decoders:
+          burnscar_segmentation:
+          - class_path: rslearn.models.unet.UNetDecoder
+            init_args:
+              in_channels:
+                - [4, 768]
+              out_channels: 2
+              conv_layers_per_resolution: 2
+              kernel_size: 3
+              num_channels:
+                '1': 128
+                '2': 256
+                '4': 512
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+    lr: 0.0001
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
+    plateau_min_lr: 0
+    plateau_cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/burn-scar/oerun_raster/dataset
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2_l2a"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+      label:
+        data_type: "raster"
+        layers: ["label"]
+        bands: ["label"]
+        dtype: INT32
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          burnscar_segmentation:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 2
+              zero_is_invalid: false
+              enable_f1_metric: true
+              f1_metric_thresholds: [[0.5]]
+              metric_kwargs:
+                average: "micro"
+              nodata_value: 255
+        input_mapping:
+          burnscar_segmentation:
+            label: "targets"
+    batch_size: 32
+    num_workers: ${NUM_WORKERS}
+    default_config:
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+      patch_size: 128
+    train_config:
+      groups: ["spatial_split_10km"]
+      tags:
+        split: "train"
+    val_config:
+      groups: ["spatial_split_10km"]
+      patch_size: 128
+      load_all_patches: true
+      tags:
+        split: "val"
+    test_config:
+      groups: ["spatial_split_10km"]
+      patch_size: 128
+      load_all_patches: true
+      tags:
+        split: "test"
+    predict_config:
+      groups: ["spatial_split_10km"]
+      tags:
+        split: "test"
+      patch_size: 128
+      load_all_patches: true
+      overlap_ratio: 0.125  # 16 / 128
+      skip_targets: true
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+
+trainer:
+  max_epochs: 40
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: ${TRAINER_DATA_PATH}  # this is where intermediate checkpoinst will end up
+        save_top_k: 1
+        save_last: true
+        monitor: val_loss
+        mode: min
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 20
+        unfreeze_lr_factor: 10
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: ${DATASET_PATH}
+        output_layer: output
+        selector: ["value"]
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            padding: 8
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      project: ${WANDB_PROJECT}
+      name: ${WANDB_NAME}
+      entity: ${WANDB_ENTITY}

@@ -8,7 +8,7 @@ ci:
   skip: [end-of-file-fixer, equirements-txt-fixer]
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: check-yaml
       - id: end-of-file-fixer
@@ -23,7 +23,7 @@ repos:
       - id: check-added-large-files
         exclude: wheels/*
       - id: check-ast
-      - id: check-byte-order-marker
+      - id: fix-byte-order-marker
       - id: check-executables-have-shebangs
       - id: check-merge-conflict
       - id: check-toml
@@ -33,7 +33,7 @@ repos:
       - id: detect-private-key
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.1.1
+    rev: v1.18.2
     hooks:
       - id: mypy
         args: [
@@ -57,19 +57,25 @@ repos:
         args:
           - -s
           - B101,B311,B324,B108,B104
-  - repo: https://github.com/econchick/interrogate
-    rev: 1.7.0
+  - repo: local
     hooks:
       - id: interrogate
+        name: interrogate
+        language: python
+        additional_dependencies: [interrogate==1.7.0]
+        entry: interrogate
+        types: [python]
         args:
-          - --ignore-init-method
-          - --ignore-init-module
-          - -p
-          - -vv
-          - rslp
-          - --fail-under=80
+          [
+            --ignore-init-method,
+            --ignore-init-module,
+            -p,
+            -vv,
+            rslp,
+            --fail-under=80,
+          ]
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.4
+    rev: v0.14.3
     hooks:
       - id: ruff
         args: [ --fix ]
