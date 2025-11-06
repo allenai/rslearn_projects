@@ -11,7 +11,7 @@ model:
             selector:
             - encoder
             forward_kwargs:
-              patch_size: 1
+              patch_size: 4
             random_initialization: false
             embedding_size: null
             patch_size: null
@@ -20,7 +20,7 @@ model:
           segment:
           - class_path: rslearn.models.upsample.Upsample
             init_args:
-              scale_factor: 1
+              scale_factor: 4
               mode: bilinear
           - class_path: rslearn.models.conv.Conv
             init_args:
