@@ -1,5 +1,7 @@
 """Evaluation adapter for CROMA."""
 
+import os
+
 import torch
 from rslearn.models.croma import Croma, CromaModality, CromaNormalize, CromaSize
 from rslearn.models.faster_rcnn import FasterRCNN
@@ -27,11 +29,21 @@ def get_model(
     task_timesteps: int = 1,
 ) -> torch.nn.Module:
     """Get appropriate CROMA model."""
+    model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
+    if model_id == "croma":
+        croma_size = CromaSize.BASE
+        embedding_size = 768
+    elif model_id == "croma_large":
+        croma_size = CromaSize.LARGE
+        embedding_size = 1024
+    else:
+        raise ValueError(f"unknown croma model ID {model_id}")
+
     if task_type == "segment":
         decoders = dict(
             eval_task=[
                 UNetDecoder(
-                    in_channels=[[8, 768]],
+                    in_channels=[[8, embedding_size]],
                     out_channels=task_channels,
                     conv_layers_per_resolution=2,
                     num_channels={8: 512, 4: 512, 2: 256, 1: 128},
@@ -43,7 +55,7 @@ def get_model(
         decoders = dict(
             eval_task=[
                 SegmentationPoolingDecoder(
-                    in_channels=768,
+                    in_channels=embedding_size,
                     out_channels=task_channels,
                 ),
                 SegmentationHead(),
@@ -54,7 +66,7 @@ def get_model(
             eval_task=[
                 FasterRCNN(
                     downsample_factors=[8],
-                    num_channels=768,
+                    num_channels=embedding_size,
                     num_classes=task_channels,
                     anchor_sizes=[[32]],
                 )
@@ -64,7 +76,7 @@ def get_model(
         decoders = dict(
             eval_task=[
                 PoolingDecoder(
-                    in_channels=768,
+                    in_channels=embedding_size,
                     out_channels=task_channels,
                     num_conv_layers=1,
                     num_fc_layers=1,
@@ -76,7 +88,7 @@ def get_model(
         decoders = dict(
             eval_task=[
                 PoolingDecoder(
-                    in_channels=768,
+                    in_channels=embedding_size,
                     out_channels=task_channels,
                     num_conv_layers=1,
                     num_fc_layers=1,
@@ -108,7 +120,7 @@ def get_model(
                 SimpleTimeSeries(
                     encoder=SimpleTimeSeries(
                         encoder=Croma(
-                            size=CromaSize.BASE,
+                            size=croma_size,
                             modality=modality,
                             image_resolution=input_size,
                         ),
@@ -122,7 +134,7 @@ def get_model(
             decoders=dict(
                 eval_task=[
                     PoolingDecoder(
-                        in_channels=768 * 2,
+                        in_channels=embedding_size * 2,
                         out_channels=task_channels,
                         num_conv_layers=1,
                         num_fc_layers=1,
@@ -136,7 +148,7 @@ def get_model(
         encoder=[
             SimpleTimeSeries(
                 encoder=Croma(
-                    size=CromaSize.BASE,
+                    size=croma_size,
                     modality=modality,
                     image_resolution=input_size,
                 ),

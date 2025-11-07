@@ -32,12 +32,14 @@ def get_model(
 ) -> torch.nn.Module:
     """Get appropriate OlmoEarth model."""
     model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
-    if model_id == "olmoearth":
+    if model_id in ["olmoearth", "olmoearth_random"]:
         olmoearth_model_id = ModelID.OLMOEARTH_V1_BASE
-    elif model_id == "olmoearth_tiny":
-        olmoearth_model_id = ModelID.OLMOEARTH_V1_TINY
     elif model_id == "olmoearth_nano":
         olmoearth_model_id = ModelID.OLMOEARTH_V1_NANO
+    elif model_id == "olmoearth_tiny":
+        olmoearth_model_id = ModelID.OLMOEARTH_V1_TINY
+    elif model_id == "olmoearth_large":
+        olmoearth_model_id = ModelID.OLMOEARTH_V1_LARGE
     else:
         raise ValueError(f"unknown olmoearth model ID {model_id}")
 
@@ -124,6 +126,7 @@ def get_model(
                     encoder=OlmoEarth(
                         model_id=olmoearth_model_id,
                         patch_size=4,
+                        random_initialization=model_id == "olmoearth_random",
                     ),
                     image_channels=12 * 4,
                     image_key="sentinel2_l2a",
@@ -148,6 +151,7 @@ def get_model(
             OlmoEarth(
                 model_id=olmoearth_model_id,
                 patch_size=4,
+                random_initialization=model_id == "olmoearth_random",
             ),
         ],
         decoders=decoders,
