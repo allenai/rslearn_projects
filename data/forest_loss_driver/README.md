@@ -18,7 +18,6 @@ Dataset Versions
 Dataset Configurations
 ----------------------
 
-- config.json: current inference config that uses RGB PNGs.
 - config_ms.json: corresponds to dataset 20250429, it gets L2A images with all bands
   stored as GeoTIFF.
 - config_studio_annotation.json: this is original config used for Brazil+Colombia
@@ -26,3 +25,12 @@ Dataset Configurations
   Studio. It also gets Planet Labs RGB images.
 - config_multimodal.json: this gets inputs that match what Helios can do, Sentinel-2 +
   Sentinel-1 + Landsat.
+
+
+Deployment Details
+------------------
+
+- 20251104: deploy OlmoEarth-v1-FT-ForestLossDriver-Base on Brazil, Peru, and Colombia.
+  The model uses Sentinel-2 L2A images from Microsoft Planetary Computer.
+- 20240912: original deployment trained on Peru only, applying Satlas on Sentinel-2 L1C
+  RGB PNGs.

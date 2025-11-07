@@ -11,11 +11,10 @@ import tqdm
 from rslearn.config import RasterFormatConfig, RasterLayerConfig
 from rslearn.data_sources import Item
 from rslearn.dataset import Dataset, Window, WindowLayerData
-from rslearn.utils.raster_format import load_raster_format
+from rslearn.utils.raster_format import SingleImageRasterFormat, load_raster_format
 from upath import UPath
 
 from rslp.log_utils import get_logger
-from rslp.utils.fs import copy_files
 
 logger = get_logger(__name__)
 
@@ -87,7 +86,8 @@ def select_least_cloudy_images(
             layer_times[(layer_name, group_idx)] = item.geometry.time_range[0]
 
     # Find least cloudy pre and post images.
-    layer_cloudiness: dict[tuple[str, int], int] = {}
+    # layer_cloudiness maps from (layer_name, group_idx) => (cloudiness, RGB image).
+    layer_cloudiness: dict[tuple[str, int], tuple[int, np.ndarray]] = {}
     for layer_name, group_idx in layer_times.keys():
         if not window.is_layer_completed(layer_name, group_idx):
             continue
@@ -106,26 +106,19 @@ def select_least_cloudy_images(
             raster_dir, window.projection, window.bounds
         )
 
+        # Get RGB by selecting (B04, B03, B02) and dividing by 10.
+        rgb_indices = (
+            bands.index("B04"),
+            bands.index("B03"),
+            bands.index("B02"),
+        )
+        rgb_array = array[rgb_indices, :, :] // 10
+
         # Use the center crop since that's the most important part.
-        array = array[:, 32:96, 32:96]
+        center_crop = rgb_array[:, 32:96, 32:96]
+        cloudiness = compute_cloudiness_score(center_crop)
 
-        # Handle differently depending on if we have TCI (RGB) data or the individual
-        # bands.
-        if "R" in bands:
-            assert array.shape[0] == 3
-            cloudiness = compute_cloudiness_score(array)
-
-        else:
-            # Get RGB by selecting (B04, B03, B02) and dividing by 10.
-            rgb_indices = (
-                bands.index("B04"),
-                bands.index("B03"),
-                bands.index("B02"),
-            )
-            rgb_array = array[rgb_indices, :, :] // 10
-            cloudiness = compute_cloudiness_score(rgb_array)
-
-        layer_cloudiness[(layer_name, group_idx)] = cloudiness
+        layer_cloudiness[(layer_name, group_idx)] = (cloudiness, rgb_array)
 
     # Determine the least cloudy pre and post images.
     # We copy those images to a new "best_X" layer.
@@ -137,21 +130,32 @@ def select_least_cloudy_images(
     least_cloudy_times = {}
     for pre_or_post in ["pre", "post"]:
         image_list = [
-            (layer_name, group_idx, cloudiness)
-            for (layer_name, group_idx), cloudiness in layer_cloudiness.items()
+            (layer_name, group_idx, cloudiness, rgb_array)
+            for (layer_name, group_idx), (
+                cloudiness,
+                rgb_array,
+            ) in layer_cloudiness.items()
             if layer_name.startswith(pre_or_post)
         ]
         if len(image_list) < min_choices:
             return
         # Sort by cloudiness (third element of tuple) so we can pick the least cloudy.
         image_list.sort(key=lambda t: t[2])
-        for idx, (layer_name, group_idx, _) in enumerate(image_list[0:num_outs]):
+        for idx, (layer_name, group_idx, _, rgb_array) in enumerate(
+            image_list[0:num_outs]
+        ):
             # The layer name for the best images is e.g. "best_pre_0".
             dst_layer_name = f"best_{pre_or_post}_{idx}"
 
-            src_layer_dir = window.get_layer_dir(layer_name, group_idx)
-            dst_layer_dir = window.get_layer_dir(dst_layer_name)
-            copy_files(src_layer_dir, dst_layer_dir)
+            # Write the RGB version of the data.
+            dst_raster_dir = window.get_raster_dir(dst_layer_name, ["R", "G", "B"])
+            SingleImageRasterFormat().encode_raster(
+                dst_raster_dir,
+                window.projection,
+                window.bounds,
+                np.clip(rgb_array, 0, 255).astype(np.uint8),
+            )
+            window.mark_layer_completed(dst_layer_name)
 
             layer_time = layer_times[(layer_name, group_idx)]
             least_cloudy_times[dst_layer_name] = layer_time.isoformat()
