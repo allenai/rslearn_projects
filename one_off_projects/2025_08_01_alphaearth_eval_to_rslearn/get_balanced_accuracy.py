@@ -10,7 +10,7 @@ import torch
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
 from rslearn.utils.raster_format import GeotiffRasterFormat
-from sklearn.metrics import balanced_accuracy_score
+from sklearn.metrics import balanced_accuracy_score, accuracy_score
 from torch import nn
 from upath import UPath
 
@@ -101,6 +101,44 @@ def run_knn_for_k(
     return torch.LongTensor(all_preds).cpu()
 
 
+def compute_bootstrap_stats(true_labels: torch.Tensor, predictions: torch.Tensor, n_bootstraps: int, metric: str = "balanced_accuracy") -> dict | None:
+    """Compute bootstrap statistics for accuracy metrics.
+
+    Args:
+        true_labels: Ground truth labels
+        predictions: Predicted labels
+        n_bootstraps: Number of bootstrap iterations
+        metric: Either "balanced_accuracy" or "accuracy"
+
+    Returns:
+        Dictionary with mean, std, and 95% CI, or None if not implemented
+    """
+    if metric == "balanced_accuracy":
+        return None  # Not implemented for balanced accuracy
+
+    n_samples = len(true_labels)
+    bootstrap_scores = []
+
+    for _ in range(n_bootstraps):
+        # Sample with replacement
+        indices = np.random.choice(n_samples, size=n_samples, replace=True)
+        bootstrap_labels = true_labels[indices]
+        bootstrap_preds = predictions[indices]
+
+        # Compute accuracy metric on bootstrap sample
+        score = accuracy_score(bootstrap_labels, bootstrap_preds)
+        bootstrap_scores.append(score)
+
+    bootstrap_scores = np.array(bootstrap_scores)
+
+    return {
+        "mean": np.mean(bootstrap_scores),
+        "std": np.std(bootstrap_scores),
+        "ci_lower": np.percentile(bootstrap_scores, 2.5),
+        "ci_upper": np.percentile(bootstrap_scores, 97.5),
+    }
+
+
 if __name__ == "__main__":
     multiprocessing.set_start_method("forkserver")
 
@@ -147,11 +185,41 @@ if __name__ == "__main__":
         help="Similarity mode, cos or l2",
         default="l2",
     )
+    parser.add_argument(
+        "--label_key",
+        type=str,
+        help="Key in window options containing the label",
+        default="label", # lulc for awf, category for nandi
+    )
+    parser.add_argument(
+        "--split_key",
+        type=str,
+        help="Key in window options containing the split, or 'group' to expect train and test groups in the rslearn dataset",
+        default="group", # helios_split for awf and nandi, split for ecosystem
+    )
+    parser.add_argument(
+        "--groups",
+        type=str,
+        help="Only use windows in these comma-separated groups",
+        default=None,
+    )
+    parser.add_argument(
+        "--metric",
+        type=str,
+        help="Either balanced_accuracy or accuracy",
+        default="balanced_accuracy",
+    )
+    parser.add_argument(
+        "--n_bootstraps",
+        type=int,
+        help="Number of bootstrap samples for computing confidence intervals (default: 0, no bootstrapping)",
+        default=0,
+    )
     args = parser.parse_args()
 
     # Load windows and all embeddings.
     dataset = Dataset(UPath(args.ds_path))
-    windows = dataset.load_windows(workers=args.workers)
+    windows = dataset.load_windows(workers=args.workers, groups=args.groups.split(",") if args.groups else None)
     p = multiprocessing.Pool(args.workers)
     if args.embed_fname == "gse":
         embeddings = list(tqdm.tqdm(p.imap(load_gse_embedding, windows), desc="Loading embeddings", total=len(windows)))
@@ -174,26 +242,32 @@ if __name__ == "__main__":
         if embedding is None:
             continue
 
-        class_name = window.options["label"]
+        class_name = window.options[args.label_key]
         if class_name not in class_names:
             class_names.append(class_name)
         label = class_names.index(class_name)
 
-        if window.group == "train":
+        split: str
+        if args.split_key == "group":
+            split = window.group
+        else:
+            split = window.options[args.split_key]
+
+        if split == "train":
             train_embedding_list.append(embedding)
             train_labels.append(label)
 
             # Get partition, or for classification tasks we use the label instead.
-            if window.options["partition"] is not None:
+            if "partition" in window.options and window.options["partition"] is not None:
                 train_partitions.append(window.options["partition"])
             else:
                 train_partitions.append(label)
 
-        elif window.group == "test":
+        elif split == "test":
             test_embedding_list.append(embedding)
             test_labels.append(label)
 
-        else:
+        elif args.split_key == "group":
             raise ValueError(f"expected all windows to be in train or test but got group {window.group}")
 
     test_embeddings = torch.stack(test_embedding_list, dim=0)
@@ -210,6 +284,8 @@ if __name__ == "__main__":
     print({partition: len(partition_indexes) for partition, partition_indexes in train_indexes_by_partition.items()})
 
     accuracy_scores = []
+    all_fold_bootstrap_stats = []
+
     for fold_idx in range(args.repeats):
         print(f"evaluating for fold {fold_idx}")
         # Take a balanced subset of the training data.
@@ -224,9 +300,34 @@ if __name__ == "__main__":
         cur_train_labels = torch.tensor([train_labels[idx] for idx in cur_train_indices], dtype=torch.int64)
 
         preds = run_knn_for_k(cur_train_embeddings, cur_train_labels, test_embeddings, len(class_names), args.k, args.sim_mode)
-        accuracy_score = balanced_accuracy_score(test_labels, preds)
-        accuracy_scores.append(accuracy_score)
 
-        print(f"fold {fold_idx}: got accuracy {accuracy_score}")
+        if args.metric == "balanced_accuracy":
+            accuracy_value = balanced_accuracy_score(test_labels, preds)
+        elif args.metric == "accuracy":
+            accuracy_value = accuracy_score(test_labels, preds)
 
-    print(np.mean(accuracy_scores))
+        # Compute bootstrap statistics if requested
+        if args.n_bootstraps > 0:
+            bootstrap_stats = compute_bootstrap_stats(test_labels, preds, args.n_bootstraps, args.metric)
+            if bootstrap_stats is not None:
+                all_fold_bootstrap_stats.append(bootstrap_stats)
+                print(f"fold {fold_idx}: accuracy={accuracy_value:.4f}, bootstrap mean={bootstrap_stats['mean']:.4f}, "
+                      f"std={bootstrap_stats['std']:.4f}, 95% CI=[{bootstrap_stats['ci_lower']:.4f}, {bootstrap_stats['ci_upper']:.4f}]")
+            else:
+                print(f"fold {fold_idx}: got accuracy {accuracy_value} (bootstrapping not implemented for {args.metric})")
+        else:
+            print(f"fold {fold_idx}: got accuracy {accuracy_value}")
+
+        accuracy_scores.append(accuracy_value)
+
+    accuracy_scores_array = np.array(accuracy_scores)
+    print(f"\nFold {args.metric} statistics:")
+    print(f"  Mean: {np.mean(accuracy_scores_array):.4f}")
+    print(f"  Std: {np.std(accuracy_scores_array):.4f}")
+    print(f"  95% CI: [{np.percentile(accuracy_scores_array, 2.5):.4f}, {np.percentile(accuracy_scores_array, 97.5):.4f}]")
+
+    if args.n_bootstraps > 0 and all_fold_bootstrap_stats:
+        print(f"\nPer-fold bootstrap statistics (n_bootstraps={args.n_bootstraps}):")
+        for fold_idx, stats in enumerate(all_fold_bootstrap_stats):
+            print(f"  Fold {fold_idx}: mean={stats['mean']:.4f}, std={stats['std']:.4f}, "
+                  f"95% CI=[{stats['ci_lower']:.4f}, {stats['ci_upper']:.4f}]")
