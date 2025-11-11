@@ -3,7 +3,9 @@
 from typing import Any
 
 import torch
+from rslearn.models.conv import Conv
 from rslearn.models.faster_rcnn import FasterRCNN
+from rslearn.models.feature_center_crop import FeatureCenterCrop
 from rslearn.models.module_wrapper import EncoderModuleWrapper
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.pooling_decoder import PoolingDecoder
@@ -37,60 +39,6 @@ class Identity(nn.Identity):
         return features
 
 
-class ConvSameShapeDecoder(nn.Module):
-    """Multiple Conv layers.
-
-    A UNet expects upsampling, but the GSE embeddings have the same
-    resolutions as the tasks. To remain comparable to the UNet, we stack
-    consecutive convolution layers.
-    """
-
-    def __init__(
-        self,
-        num_channels: list[int],
-        in_channels: int,
-        out_channels: int | None,
-        kernel_size: int = 3,
-    ):
-        """Multiple conv layers."""
-        super().__init__()
-        num_channels.insert(0, in_channels)
-        if out_channels is not None:
-            num_channels.append(out_channels)
-
-        layers = []
-        for i in range(len(num_channels) - 1):
-            layers.extend(
-                [
-                    torch.nn.Conv2d(
-                        in_channels=num_channels[i],
-                        out_channels=num_channels[i + 1],
-                        kernel_size=kernel_size,
-                        padding="same",
-                    ),
-                    torch.nn.ReLU(inplace=True),
-                ]
-            )
-        self.layers = nn.Sequential(*layers)
-
-    def forward(
-        self, in_features: list[torch.Tensor], inputs: list[dict[str, Any]]
-    ) -> torch.Tensor:
-        """Compute output from multi-scale feature map.
-
-        Args:
-            in_features: list of feature maps.
-            inputs: original inputs (ignored).
-
-        Returns:
-            output image
-        """
-        # Reverse the features since we will pass them in from lowest resolution to highest.
-        if len(in_features) != 1:
-            raise ValueError("Expecting a single GSE layer.")
-        return self.layers(in_features[0])
-
-
 def get_model(
     input_size: int,
     input_modalities: list[str],
@@ -103,11 +51,26 @@ def get_model(
     if task_type == "segment":
         decoders = dict(
             eval_task=[
-                ConvSameShapeDecoder(
+                Conv(
                     in_channels=64,
+                    out_channels=256,
+                    kernel_size=3,
+                ),
+                Conv(
+                    in_channels=256,
+                    out_channels=256,
+                    kernel_size=3,
+                ),
+                Conv(
+                    in_channels=256,
+                    out_channels=256,
+                    kernel_size=3,
+                ),
+                Conv(
+                    in_channels=256,
                     out_channels=task_channels,
-                    # keep the channels constant?
-                    num_channels=[64, 64, 64, 64, 64],
+                    kernel_size=3,
+                    activation=torch.nn.Identity(),
                 ),
                 SegmentationHead(),
             ]
@@ -136,10 +99,27 @@ def get_model(
     elif task_type == "classify":
         decoders = dict(
             eval_task=[
-                PoolingDecoder(
+                Conv(
                     in_channels=64,
+                    out_channels=256,
+                    kernel_size=3,
+                ),
+                Conv(
+                    in_channels=256,
+                    out_channels=256,
+                    kernel_size=3,
+                ),
+                Conv(
+                    in_channels=256,
+                    out_channels=256,
+                    kernel_size=3,
+                ),
+                FeatureCenterCrop(
+                    sizes=[[1, 1]],
+                ),
+                PoolingDecoder(
+                    in_channels=256,
                     out_channels=task_channels,
-                    num_conv_layers=1,
                     num_fc_layers=1,
                 ),
                 ClassificationHead(),
@@ -148,10 +128,27 @@ def get_model(
     elif task_type == "regress":
         decoders = dict(
             eval_task=[
-                PoolingDecoder(
+                Conv(
                     in_channels=64,
+                    out_channels=256,
+                    kernel_size=3,
+                ),
+                Conv(
+                    in_channels=256,
+                    out_channels=256,
+                    kernel_size=3,
+                ),
+                Conv(
+                    in_channels=256,
+                    out_channels=256,
+                    kernel_size=3,
+                ),
+                FeatureCenterCrop(
+                    sizes=[[1, 1]],
+                ),
+                PoolingDecoder(
+                    in_channels=256,
                     out_channels=task_channels,
-                    num_conv_layers=1,
                     num_fc_layers=1,
                 ),
                 RegressionHead(),
