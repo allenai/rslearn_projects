@@ -6,6 +6,7 @@ import torch
 from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.pooling_decoder import PoolingDecoder
+from rslearn.models.resize_features import ResizeFeatures
 from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.terramind import Terramind, TerramindNormalize, TerramindSize
 from rslearn.models.unet import UNetDecoder

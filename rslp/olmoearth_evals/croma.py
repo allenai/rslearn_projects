@@ -7,6 +7,7 @@ from rslearn.models.croma import Croma, CromaModality, CromaNormalize, CromaSize
 from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.pooling_decoder import PoolingDecoder
+from rslearn.models.resize_features import ResizeFeatures
 from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.unet import UNetDecoder
 from rslearn.train.tasks.classification import ClassificationHead
