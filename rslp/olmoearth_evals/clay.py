@@ -110,6 +110,7 @@ def get_model(
                         encoder=Clay(
                             model_size=ClaySize.LARGE,
                             modality=clay_modality,
+                            do_resizing=True,
                         ),
                         image_keys=image_keys,
                     ),
@@ -137,6 +138,7 @@ def get_model(
                 encoder=Clay(
                     model_size=ClaySize.LARGE,
                     modality=clay_modality,
+                    do_resizing=True,
                 ),
                 image_keys=image_keys,
             ),

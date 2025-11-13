@@ -116,6 +116,7 @@ def get_model(
                         encoder=Terramind(
                             model_size=terramind_size,
                             modalities=modalities,
+                            do_resizing=True,
                         ),
                         image_keys=image_keys,
                     ),
@@ -143,6 +144,7 @@ def get_model(
                 encoder=Terramind(
                     model_size=terramind_size,
                     modalities=modalities,
+                    do_resizing=True,
                 ),
                 image_keys=image_keys,
             ),
