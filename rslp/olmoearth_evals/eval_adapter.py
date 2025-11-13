@@ -8,7 +8,8 @@ from rslearn.train.transforms.transform import Transform
 
 import rslp.olmoearth_evals.aef as aef
 import rslp.olmoearth_evals.anysat as anysat
-# import rslp.olmoearth_evals.clay as clay
+
+import rslp.olmoearth_evals.clay as clay
 import rslp.olmoearth_evals.croma as croma
 import rslp.olmoearth_evals.dinov3 as dinov3
 import rslp.olmoearth_evals.galileo as galileo
@@ -21,7 +22,7 @@ import rslp.olmoearth_evals.terramind as terramind
 
 modules_by_model_id = {
     "anysat": anysat,
-    # "clay": clay,
+    "clay": clay,
     "croma": croma,
     "croma_large": croma,
     "dinov3": dinov3,
