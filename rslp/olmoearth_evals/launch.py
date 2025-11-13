@@ -48,7 +48,7 @@ def launch(
     image_name: str,
     project: str,
     priority: str = "high",
-    clusters: list[str] = ["ai2/jupiter", "ai2/ceres"],
+    clusters: list[str] = ["ai2/jupiter", "ai2/ceres", "ai2/saturn"],
     test: bool = False,
 ) -> None:
     """Launch OlmoEarth fine-tuning evaluation.
