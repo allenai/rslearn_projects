@@ -194,7 +194,7 @@ def beaker_train(
                         constraints=BeakerConstraints(
                             cluster=cluster,
                         ),
-                        preemptible=True,
+                        preemptible=False,
                         datasets=datasets,
                         env_vars=env_vars,
                         resources=BeakerTaskResources(
