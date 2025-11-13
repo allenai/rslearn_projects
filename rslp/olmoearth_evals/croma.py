@@ -39,16 +39,15 @@ def get_model(
     else:
         raise ValueError(f"unknown croma model ID {model_id}")
 
-    # CROMA resizes to 120x120 and always has 15x15 output feature map.
-    downsample_factor = input_size // 15
     if task_type == "segment":
         decoders = dict(
             eval_task=[
                 UNetDecoder(
-                    in_channels=[[downsample_factor, embedding_size]],
+                    in_channels=[[8, embedding_size]],
                     out_channels=task_channels,
                     conv_layers_per_resolution=2,
                     num_channels={8: 512, 4: 512, 2: 256, 1: 128},
+                    original_size_to_interpolate=[input_size, input_size],
                 ),
                 SegmentationHead(),
             ]
@@ -66,12 +65,13 @@ def get_model(
     elif task_type == "detect":
         decoders = dict(
             eval_task=[
+                ResizeFeatures(out_sizes=[(input_size // 8, input_size // 8)]),
                 FasterRCNN(
-                    downsample_factors=[downsample_factor],
+                    downsample_factors=[8],
                     num_channels=embedding_size,
                     num_classes=task_channels,
                     anchor_sizes=[[32]],
-                )
+                ),
             ]
         )
     elif task_type == "classify":
