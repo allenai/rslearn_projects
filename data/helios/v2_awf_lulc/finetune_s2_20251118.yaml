@@ -295,7 +295,6 @@ data:
             mean: [224, 0]
             std: [80, 0.4]
             valid_range: [0, 1]
-            bands: ["2m-temperature", "total-precipitation"]
             selectors: ["era5"]
             num_bands: 2
       groups: ["spatial_split"]
