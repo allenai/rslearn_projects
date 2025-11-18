@@ -51,7 +51,7 @@ data:
         load_all_layers: true
       era5:
         data_type: "raster"
-        layers: ["era5", "era5.1", "era5.2", "era5.3", ""]
+        layers: ["era5"]
         bands: ["2m-temperature", "total-precipitation"]
         passthrough: true
         dtype: FLOAT32
