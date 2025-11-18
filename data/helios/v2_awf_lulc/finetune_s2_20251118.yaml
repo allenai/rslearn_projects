@@ -15,16 +15,16 @@ model:
             - class_path: rslearn.models.upsample.Upsample
               init_args:
                 scale_factor: 4
+            - class_path: rslearn.models.concatenate_features.ConcatenateFeatures
+              init_args:
+                key: "era5"
             - class_path: rslearn.models.conv.Conv
               init_args:
-                in_channels: 768
+                in_channels: 770
                 out_channels: 10
                 kernel_size: 1
                 activation:
                   class_path: torch.nn.Identity
-            - class_path: rslearn.models.concatenate_features.ConcatenateFeatures
-              init_args:
-                key: "era5"
             - class_path: rslearn.models.pick_features.PickFeatures
               init_args:
                 indexes: [0]
