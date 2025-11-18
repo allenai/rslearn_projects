@@ -9,8 +9,7 @@ model:
             init_args:
               checkpoint_path: /weka/dfive-default/helios/checkpoints/joer/phase2.0_base_lr0.0001_wd0.02/step667200
               selector: ["encoder"]
-              forward_kwargs:
-                patch_size: 4
+              patch_size: 4
         decoders:
           segment:
             - class_path: rslearn.models.upsample.Upsample
