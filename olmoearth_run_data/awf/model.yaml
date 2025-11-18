@@ -10,12 +10,12 @@ model:
               checkpoint_path: ${EXTRA_FILES_PATH}/joer/phase2.0_base_lr0.0001_wd0.02/step667200
               selector: ["encoder"]
               forward_kwargs:
-                patch_size: 1
+                patch_size: 4
         decoders:
           segment:
             - class_path: rslearn.models.upsample.Upsample
               init_args:
-                scale_factor: 1
+                scale_factor: 4
             - class_path: rslearn.models.conv.Conv
               init_args:
                 in_channels: 768
@@ -23,6 +23,9 @@ model:
                 kernel_size: 1
                 activation:
                   class_path: torch.nn.Identity
+            - class_path: rslearn.models.concatenate_features.ConcatenateFeatures
+              init_args:
+                key: "era5"
             - class_path: rslearn.models.pick_features.PickFeatures
               init_args:
                 indexes: [0]
@@ -43,6 +46,14 @@ data:
         data_type: "raster"
         layers: ["sentinel2"]
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      era5:
+        data_type: "raster"
+        layers: ["era5"]
+        bands: ["2m-temperature", "total-precipitation"]
         passthrough: true
         dtype: FLOAT32
         load_all_item_groups: true
@@ -248,24 +259,46 @@ data:
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            # From https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_MONTHLY#bands
+            # 2m-temperature: min 224, max 304
+            # total-precipitation: min 0, max 0.4
+            mean: [224, 0]
+            std: [80, 0.4]
+            valid_range: [0, 1]
+            bands: ["2m-temperature", "total-precipitation"]
+            selectors: ["era5"]
+            num_bands: 2
     train_config:
       transforms:
         - class_path: rslearn.train.transforms.pad.Pad
           init_args:
             size: 31
             mode: "center"
-            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["sentinel2_l2a", "era5", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.train.transforms.crop.Crop
           init_args:
             crop_size: 16
-            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["sentinel2_l2a", "era5", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
-            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["sentinel2_l2a", "era5", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            # From https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_MONTHLY#bands
+            # 2m-temperature: min 224, max 304
+            # total-precipitation: min 0, max 0.4
+            mean: [224, 0]
+            std: [80, 0.4]
+            valid_range: [0, 1]
+            bands: ["2m-temperature", "total-precipitation"]
+            selectors: ["era5"]
+            num_bands: 2
       groups: ["spatial_split"]
       tags:
         split: "train"

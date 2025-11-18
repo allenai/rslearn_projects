@@ -5,7 +5,7 @@ export DATASET_PATH=/weka/dfive-default/olmoearth_release_data/rslearn_datasets/
 export NUM_WORKERS=32
 export TRAINER_DATA_PATH=/weka/dfive-default/olmoearth_release_data/checkpoints/awf
 export WANDB_PROJECT=2025_10_25_awf_land_cover
-export WANDB_NAME=awf_land_cover_segment_helios_base_S2_ts_ws16_ps1_bs4
+export WANDB_NAME=awf_land_cover_segment_helios_base_S2_ts_ws16_ps4_bs4_add_era5_features
 export WANDB_ENTITY=eai-ai2
 python -m rslp.main olmoearth_run prepare_labeled_windows --project_path /weka/dfive-default/yawenz/rslearn_projects/olmoearth_run_data/awf --scratch_path /weka/dfive-default/olmoearth_release_data/rslearn_datasets/awf
 # Check train/val split
