@@ -15,17 +15,12 @@ model:
             - class_path: rslearn.models.upsample.Upsample
               init_args:
                 scale_factor: 4
+            - class_path: rslearn.models.concatenate_features.ConcatenateFeatures
+              init_args:
+                key: "era5"
             - class_path: rslearn.models.conv.Conv
               init_args:
-                in_channels: 768
-                out_channels: 24
-                kernel_size: 1
-            # - class_path: rslearn.models.concatenate_features.ConcatenateFeatures
-            #   init_args:
-            #     key: "era5"
-            - class_path: rslearn.models.conv.Conv
-              init_args:
-                in_channels: 24  # 24 channels from ERA5
+                in_channels: 792  # 24 channels from ERA5
                 out_channels: 10
                 kernel_size: 1
                 activation:
@@ -330,4 +325,4 @@ trainer:
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
 rslp_project: 2025_10_25_awf_land_cover
-rslp_experiment: awf_lulc_segment_helios_base_S2_ts_ws16_ps4_bs4_no_era5_features_1
+rslp_experiment: awf_lulc_segment_helios_base_S2_ts_ws16_ps4_bs4_add_era5_features
