@@ -53,7 +53,7 @@ data:
         data_type: "raster"
         layers: ["era5"]
         # bands: ["2m-temperature", "total-precipitation"]
-        bands: ["total-precipitation"]
+        bands: ["2m-temperature"]
         passthrough: true
         dtype: FLOAT32
         load_all_item_groups: true
@@ -274,8 +274,8 @@ data:
             # From https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_MONTHLY#bands
             # 2m-temperature: min 224, max 304
             # total-precipitation: min 0, max 0.4
-            mean: [0]
-            std: [0.4]
+            mean: [224]
+            std: [80]
             valid_range: [0, 1]
             selectors: ["era5"]
             num_bands: 1
@@ -312,8 +312,8 @@ data:
             # From https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_MONTHLY#bands
             # 2m-temperature: min 224, max 304
             # total-precipitation: min 0, max 0.4
-            mean: [0]
-            std: [0.1]
+            mean: [224]
+            std: [80]
             valid_range: [0, 1]
             selectors: ["era5"]
             num_bands: 1
@@ -346,4 +346,4 @@ trainer:
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
 rslp_project: 2025_10_25_awf_land_cover
-rslp_experiment: awf_lulc_segment_helios_base_S2_ts_ws16_ps4_bs4_add_precip_features_std0.1
+rslp_experiment: awf_lulc_segment_helios_base_S2_ts_ws16_ps4_bs4_add_temp_features
