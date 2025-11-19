@@ -20,7 +20,7 @@ model:
                 key: "era5"
             - class_path: rslearn.models.conv.Conv
               init_args:
-                in_channels: 770
+                in_channels: 792  # 24 channels from ERA5
                 out_channels: 10
                 kernel_size: 1
                 activation:
