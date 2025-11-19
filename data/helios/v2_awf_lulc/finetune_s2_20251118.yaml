@@ -330,4 +330,4 @@ trainer:
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
 rslp_project: 2025_10_25_awf_land_cover
-rslp_experiment: awf_lulc_segment_helios_base_S2_ts_ws16_ps4_bs4_add_era5_features
+rslp_experiment: awf_lulc_segment_helios_base_S2_ts_ws16_ps4_bs4_add_era5_features_1
