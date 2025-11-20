@@ -66,6 +66,7 @@ def get_model(
     elif task_type == "detect":
         decoders = dict(
             eval_task=[
+                # TerraMind patch_size = 16
                 ResizeFeatures(out_sizes=[(input_size // 16, input_size // 16)]),
                 FasterRCNN(
                     downsample_factors=[16],

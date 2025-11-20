@@ -66,6 +66,7 @@ def get_model(
     elif task_type == "detect":
         decoders = dict(
             eval_task=[
+                # CROMA patch_size = 8
                 ResizeFeatures(out_sizes=[(input_size // 8, input_size // 8)]),
                 FasterRCNN(
                     downsample_factors=[8],
