@@ -6,6 +6,7 @@ import torch
 from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.pooling_decoder import PoolingDecoder
+from rslearn.models.resize_features import ResizeFeatures
 from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.terramind import Terramind, TerramindNormalize, TerramindSize
 from rslearn.models.unet import UNetDecoder
@@ -47,6 +48,7 @@ def get_model(
                     out_channels=task_channels,
                     conv_layers_per_resolution=2,
                     num_channels={16: 512, 8: 512, 4: 512, 2: 256, 1: 128},
+                    original_size_to_interpolate=[input_size, input_size],
                 ),
                 SegmentationHead(),
             ]
@@ -64,12 +66,14 @@ def get_model(
     elif task_type == "detect":
         decoders = dict(
             eval_task=[
+                # TerraMind patch_size = 16
+                ResizeFeatures(out_sizes=[(input_size // 16, input_size // 16)]),
                 FasterRCNN(
                     downsample_factors=[16],
                     num_channels=embedding_size,
                     num_classes=task_channels,
                     anchor_sizes=[[32]],
-                )
+                ),
             ]
         )
     elif task_type == "classify":
@@ -116,6 +120,7 @@ def get_model(
                         encoder=Terramind(
                             model_size=terramind_size,
                             modalities=modalities,
+                            do_resizing=True,
                         ),
                         image_keys=image_keys,
                     ),
@@ -143,6 +148,7 @@ def get_model(
                 encoder=Terramind(
                     model_size=terramind_size,
                     modalities=modalities,
+                    do_resizing=True,
                 ),
                 image_keys=image_keys,
             ),

@@ -7,6 +7,7 @@ from rslearn.models.croma import Croma, CromaModality, CromaNormalize, CromaSize
 from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.pooling_decoder import PoolingDecoder
+from rslearn.models.resize_features import ResizeFeatures
 from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.unet import UNetDecoder
 from rslearn.train.tasks.classification import ClassificationHead
@@ -47,6 +48,7 @@ def get_model(
                     out_channels=task_channels,
                     conv_layers_per_resolution=2,
                     num_channels={8: 512, 4: 512, 2: 256, 1: 128},
+                    original_size_to_interpolate=[input_size, input_size],
                 ),
                 SegmentationHead(),
             ]
@@ -64,12 +66,14 @@ def get_model(
     elif task_type == "detect":
         decoders = dict(
             eval_task=[
+                # CROMA patch_size = 8
+                ResizeFeatures(out_sizes=[(input_size // 8, input_size // 8)]),
                 FasterRCNN(
                     downsample_factors=[8],
                     num_channels=embedding_size,
                     num_classes=task_channels,
                     anchor_sizes=[[32]],
-                )
+                ),
             ]
         )
     elif task_type == "classify":
@@ -123,6 +127,7 @@ def get_model(
                             size=croma_size,
                             modality=modality,
                             image_resolution=input_size,
+                            do_resizing=True,
                         ),
                         image_keys=image_keys,
                     ),
@@ -151,6 +156,7 @@ def get_model(
                     size=croma_size,
                     modality=modality,
                     image_resolution=input_size,
+                    do_resizing=True,
                 ),
                 image_keys=image_keys,
             ),
