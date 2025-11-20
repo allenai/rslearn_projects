@@ -8,7 +8,6 @@ from rslearn.train.transforms.transform import Transform
 
 import rslp.olmoearth_evals.aef as aef
 import rslp.olmoearth_evals.anysat as anysat
-
 import rslp.olmoearth_evals.clay as clay
 import rslp.olmoearth_evals.croma as croma
 import rslp.olmoearth_evals.dinov3 as dinov3
