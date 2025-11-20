@@ -18,6 +18,10 @@ model:
             - class_path: rslearn.models.concatenate_features.ConcatenateFeatures
               init_args:
                 key: "era5"
+                in_channels: 24
+                out_channels: 24
+                num_conv_layers: 1
+                kernel_size: 3
             - class_path: rslearn.models.conv.Conv
               init_args:
                 in_channels: 792  # 24 channels from ERA5
