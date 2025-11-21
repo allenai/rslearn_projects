@@ -46,7 +46,7 @@ data:
         input_mapping:
           eval_task:
             label: "targets"
-    batch_size: 16
+    batch_size: 8
     num_workers: 32
     default_config:
       transforms:

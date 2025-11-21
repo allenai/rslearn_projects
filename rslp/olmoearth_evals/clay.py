@@ -27,11 +27,13 @@ def get_model(
     task_timesteps: int = 1,
 ) -> torch.nn.Module:
     """Get appropriate Clay model."""
+    # Clay resizes to 128x128 and always has 16x16 output feature map.
+    downsample_factor = input_size // 16
     if task_type == "segment":
         decoders = dict(
             eval_task=[
                 UNetDecoder(
-                    in_channels=[[8, 1024]],
+                    in_channels=[[downsample_factor, 1024]],
                     out_channels=task_channels,
                     conv_layers_per_resolution=2,
                     num_channels={8: 512, 4: 512, 2: 256, 1: 128},
@@ -53,7 +55,7 @@ def get_model(
         decoders = dict(
             eval_task=[
                 FasterRCNN(
-                    downsample_factors=[8],
+                    downsample_factors=[downsample_factor],
                     num_channels=1024,
                     num_classes=task_channels,
                     anchor_sizes=[[32]],
@@ -110,6 +112,7 @@ def get_model(
                         encoder=Clay(
                             model_size=ClaySize.LARGE,
                             modality=clay_modality,
+                            do_resizing=True,
                         ),
                         image_keys=image_keys,
                     ),
@@ -137,6 +140,7 @@ def get_model(
                 encoder=Clay(
                     model_size=ClaySize.LARGE,
                     modality=clay_modality,
+                    do_resizing=True,
                 ),
                 image_keys=image_keys,
             ),
