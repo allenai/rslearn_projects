@@ -1,0 +1,122 @@
+model:
+#  class_path: olmoearth_projects.train.classification_confusion_matrix.CMLightningModule
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        # We use SimpleTimeSeries not for time series but just to concatenate the
+        # feature maps for pre-forest-loss and post-forest-loss.
+        encoder:
+          - class_path: rslearn.models.simple_time_series.SimpleTimeSeries
+            init_args:
+              encoder:
+                class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+                init_args:
+                  model_id: OLMOEARTH_V1_BASE
+                  patch_size: 4
+              image_channels: 48
+              image_key: "sentinel2_l2a"
+              groups: [[0], [1]]
+        decoder:
+          - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            init_args:
+              in_channels: 1536
+              out_channels: 10
+              num_conv_layers: 1
+              num_fc_layers: 2
+          - class_path: rslearn.train.tasks.classification.ClassificationHead
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.0001
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["pre_sentinel2", "pre_sentinel2.1", "pre_sentinel2.2", "pre_sentinel2.3", "post_sentinel2", "post_sentinel2.1", "post_sentinel2.2", "post_sentinel2.3"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        load_all_layers: true
+      targets:
+        data_type: "vector"
+        layers: ["label"]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.classification.ClassificationTask
+      init_args:
+        property_name: "new_label"
+        classes: ["agriculture", "mining", "airstrip", "road", "logging", "burned", "landslide", "hurricane", "river", "none"]
+        allow_invalid: true
+        metric_kwargs:
+          average: "micro"
+        prob_property: "probs"
+        skip_unknown_categories: true
+    batch_size: 8
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            mode: "center"
+            size: 64
+            image_selectors:
+              - sentinel2_l2a
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors:
+              - sentinel2_l2a
+        # To support visualization via image key.
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2_l2a: [2, 1, 0]
+            output_selector: image
+    train_config:
+      tags:
+        split: train
+    val_config:
+      tags:
+        split: val
+    test_config:
+      tags:
+        split: val
+    predict_config:
+      skip_targets: true
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0, "encoder", "model"]
+        unfreeze_at_epoch: 20
+        unfreeze_lr_factor: 10
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_accuracy
+        mode: max
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: placeholder
+        output_layer: output
+rslp_project: olmoearth_forest_loss_driver
+rslp_experiment: forest_loss_driver_00

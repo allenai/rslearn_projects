@@ -55,18 +55,6 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
 
-      # Add deploy key and clone olmoearth_pretrain repository.
-      - name: Start ssh-agent and add olmoearth_pretrain deploy key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_KEY_FOR_HELIOS_CLONE }}
-      - name: Clone olmoearth_pretrain and update requirements-extra.txt.
-        run: |
-          mkdir docker_build
-          git clone git@github.com:allenai/olmoearth_pretrain.git docker_build/olmoearth_pretrain
-          git -C docker_build/olmoearth_pretrain checkout 0cd82b4784bc2f246a23f6da98a9bab27761c1ba
-          echo "olmoearth_pretrain @ /opt/rslearn_projects/docker_build/olmoearth_pretrain/" >> requirements-extra.txt
-
       # Same thing for olmoearth_run repository.
       - name: Start ssh-agent and add olmoearth_run deploy key
         uses: webfactory/ssh-agent@v0.9.0

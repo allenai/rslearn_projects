@@ -46,7 +46,7 @@ PIXEL_SIZE = WEB_MERCATOR_M / (2**13) / 512
 WEB_MERCATOR_PROJECTION = Projection(WEB_MERCATOR_CRS, PIXEL_SIZE, -PIXEL_SIZE)
 
 ANNOTATION_WEBSITE_MERCATOR_OFFSET = 512 * (2**12)
-INFERENCE_DATASET_CONFIG = "data/forest_loss_driver/config.json"
+INFERENCE_DATASET_CONFIG = "data/forest_loss_driver/20251104/config.json"
 
 # Filename used to indicate that alert extraction is done for a given dataset.
 COMPLETED_FNAME = "extract_alerts_completed"
