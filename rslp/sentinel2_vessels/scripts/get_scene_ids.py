@@ -5,11 +5,10 @@ import json
 from datetime import datetime
 
 import shapely
-from rslearn.config import LayerType, QueryConfig, RasterLayerConfig, SpaceMode
+from rslearn.config import QueryConfig, SpaceMode
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources.gcp_public_data import Sentinel2
 from rslearn.utils import STGeometry
-from upath import UPath
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -66,10 +65,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     query_config = QueryConfig(space_mode=SpaceMode.INTERSECTS, max_matches=100000)
-    layer_config = RasterLayerConfig(LayerType.RASTER, [])
-    sentinel2 = Sentinel2(
-        layer_config, index_cache_dir=UPath(args.cache_path), use_rtree_index=False
-    )
+    sentinel2 = Sentinel2(index_cache_dir=args.cache_path, use_rtree_index=False)
 
     shp = shapely.box(args.sx, args.sy, args.ex, args.ey)
     projection = WGS84_PROJECTION

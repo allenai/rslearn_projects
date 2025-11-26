@@ -8,10 +8,10 @@ from functools import partial
 
 import numpy as np
 import tqdm
-from rslearn.config import RasterFormatConfig, RasterLayerConfig
+from rslearn.config import LayerType
 from rslearn.data_sources import Item
 from rslearn.dataset import Dataset, Window, WindowLayerData
-from rslearn.utils.raster_format import SingleImageRasterFormat, load_raster_format
+from rslearn.utils.raster_format import SingleImageRasterFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
@@ -93,13 +93,10 @@ def select_least_cloudy_images(
             continue
 
         layer_config = dataset.layers[layer_name]
-        assert isinstance(layer_config, RasterLayerConfig)
+        assert layer_config.type == LayerType.RASTER
         assert len(layer_config.band_sets) == 1
+        raster_format = layer_config.band_sets[0].instantiate_raster_format()
         bands = layer_config.band_sets[0].bands
-        raster_format_config = RasterFormatConfig.from_config(
-            layer_config.band_sets[0].format
-        )
-        raster_format = load_raster_format(raster_format_config)
 
         raster_dir = window.get_raster_dir(layer_name, bands, group_idx)
         array = raster_format.decode_raster(
