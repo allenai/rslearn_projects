@@ -74,7 +74,20 @@ def launch_job(
                     value=os.environ["NASA_EARTHDATA_PASSWORD"],
                 ),
             ]
-
+        if "HTTP_PROXY" in os.environ:
+            env_vars += [
+                BeakerEnvVar(
+                    name="HTTP_PROXY",
+                    value=os.environ["HTTP_PROXY"],
+                )
+            ]
+        if "HTTPS_PROXY" in os.environ:
+            env_vars += [
+                BeakerEnvVar(
+                    name="HTTPS_PROXY",
+                    value=os.environ["HTTPS_PROXY"],
+                ),
+            ]
         # Set one GPU if not targeting a specific host, otherwise we might have
         # hundreds of jobs scheduled on the same host.
         # Also we can only set cluster constraint if we do not specify hostname.
