@@ -46,7 +46,7 @@ def test_predict_pipeline(
         ),
         vis_materialize_args=vis_materialize_args,
     )
-    predict_pipeline(ds_path)
+    predict_pipeline(ds_path, extra_args=["--data.init_args.num_workers", "2"])
 
     # assert that the output files exist
     output_path = (

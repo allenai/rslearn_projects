@@ -146,7 +146,7 @@ jobs:
             -e TEST_PUBSUB_SUBSCRIPTION=rslearn_projects_test_subscription \
             -e TEST_QUEUE_NAME=favyen/rslearn-projects-test-queue \
             ${{ needs.build.outputs.ghcr_docker_image }} \
-            pytest -sx -vv --forked tests/integration/forest_loss_driver/test_predict_pipeline.py # pytest tests/integration -vv --forked
+            pytest tests/integration -vv --forked
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
