@@ -297,7 +297,7 @@ def predict_pipeline(
         if "data_source" not in layer_cfg:
             continue
         layer_source_cfg = layer_cfg["data_source"]
-        if not layer_source_cfg["name"].endswith("MonthlySentinel2"):
+        if not layer_source_cfg["name"].endswith("Sentinel2"):
             continue
         layer_source_cfg["index_cache_dir"] = str(index_cache_dir)
         layer_source_cfg["rtree_cache_dir"] = str(UPath(out_path) / "index")

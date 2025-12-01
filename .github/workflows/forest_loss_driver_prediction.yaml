@@ -99,7 +99,7 @@ jobs:
               "bucket_name": "dfive-default",
               "mount_path": "/dfive-default"
             }]
-          RSLP_PREFIX: ${{ secrets.RSLP_PREFIX }}
+          RSLP_PREFIX: "/dfive-default/rslearn-eai/"
           TASK_ENV_VARS: |
             [{
               "class_path": "beaker.BeakerEnvVar",

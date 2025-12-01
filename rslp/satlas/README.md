@@ -9,10 +9,11 @@ includes any manmade object in the ocean that is stationary and would not normal
 considered an artificial island.
 
 The model inputs four Sentinel-2 images, where each image should be a mosaic that uses
-Sentinel-2 scenes from a distinct month. The dataset configuration uses
-`MonthlySentinel2` in `rslp/satlas/data_sources.py` to achieve this, and only uses
-Sentinel-2 scenes with at most 50% cloud cover. If a given month does not have enough
-matching images under the cloud threshold, then images from earlier months may be used.
+Sentinel-2 scenes from a distinct month (using PER_PERIOD_MOSAIC). If a given month
+does not have enough matching images, then images from earlier months may be used.
+
+TODO: previously we had cloud threshold of 50% but it is no longer supported with
+`gcp_public_data.Sentinel2` data source.
 
 The model is meant to be run on a quarterly basis, using images up to 4 months
 before the start of the quarter (giving 7 possible months to pick 4 mosaics from). If
