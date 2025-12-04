@@ -53,6 +53,17 @@ These are all passed through the `rslp.rslearn_main` entrypoint, e.g.:
 python -m rslp.rslearn_main model fit --config data/20251104/config.yaml` --autoresume=true
 ```
 
+## Beaker Sessions
+
+To mount WEKA in Beaker sessions, launch sessions like this:
+
+```
+beaker session create --budget ai2/es-platform --workspace ai2/earth-systems --gpus 1 --shared-memory 256GiB --mount src=weka,ref=dfive-default,dst=/weka/dfive-default --bare --priority high
+```
+
+You can keep your code on WEKA or in `/data/[USERNAME]/`, the latter would only exist
+within a single Beaker machine.
+
 ## Data Materialization and Training on Beaker
 
 See `rslp/common/README.md` for information about launching data materialization jobs

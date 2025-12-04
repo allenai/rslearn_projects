@@ -62,8 +62,9 @@ Beaker Training and Prediction
 In rslearn_projects, model commands are run through the `rslp.rslearn_main` endpoint to
 take advantage of specialized checkpoint and logging handling.
 
-First, build a Docker image using `olmoearth_pretrain.Dockerfile` and push it to
-Beaker, per the instructions at `rslp/olmoearth_pretrain/README.md`.
+We can also run that in Beaker jobs instead of locally. First, build a Docker image
+using `olmoearth_pretrain.Dockerfile` and push it to Beaker, per the instructions at
+`rslp/olmoearth_pretrain/README.md`.
 
 To launch a training job, e.g.:
 
