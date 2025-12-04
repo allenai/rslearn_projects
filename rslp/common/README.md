@@ -54,3 +54,26 @@ be on WEKA instead.
 Here is an example overriding the command to ingest instead:
 
     python -m rslp.main common launch_data_materialization_jobs --image favyen/rslp_image --ds_path gs://path/to/rslearn_dataset/ --hosts+=jupiter-cs-aus-134.reviz.ai2.in --command '["rslearn", "dataset", "ingest", "--root", "gs://path/to/rslearn_dataset/", "--workers", "64", "--no-use-initial-job", "--retry-max-attempts", "5", "--retry-backoff-seconds", "60", "--ignore-errors"]'
+
+
+Beaker Training and Prediction
+------------------------------
+
+In rslearn_projects, model commands are run through the `rslp.rslearn_main` endpoint to
+take advantage of specialized checkpoint and logging handling.
+
+We can also run that in Beaker jobs instead of locally. First, build a Docker image
+using `olmoearth_pretrain.Dockerfile` and push it to Beaker, per the instructions at
+`rslp/olmoearth_pretrain/README.md`.
+
+To launch a training job, e.g.:
+
+```
+python -m rslp.main common beaker_train --image_name YOUR_BEAKER_IMAGE --cluster+=ai2/jupiter --gpus 1 --weka_mounts+='{"bucket_name": "dfive-default", "mount_path": "/weka/dfive-default"}' --priority high
+```
+
+To launch a prediction job, e.g.:
+
+```
+python -m rslp.main common beaker_train --image_name YOUR_BEAKER_IMAGE --cluster+=ai2/jupiter --gpus 1 --weka_mounts+='{"bucket_name": "dfive-default", "mount_path": "/weka/dfive-default"}' --priority high --mode predict --extra_args='["--data.init_args.path", "/path/to/dataset"]'
+```
