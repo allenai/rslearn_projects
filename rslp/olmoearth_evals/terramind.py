@@ -67,9 +67,18 @@ def get_model(
         decoders = dict(
             eval_task=[
                 # TerraMind image size is 224 x 224, patch size is 16
-                ResizeFeatures(out_sizes=[(input_size // 16, input_size // 16)]),
+                # ResizeFeatures(out_sizes=[(input_size // 16, input_size // 16)]),
+                # FasterRCNN(
+                #     downsample_factors=[16],
+                #     num_channels=embedding_size,
+                #     num_classes=task_channels,
+                #     anchor_sizes=[[32]],
+                # ),
+                # Instead of resizing it to 8 x 8, we should resize it 16 x 16 to keep more features
+                ResizeFeatures(out_sizes=[(16, 16)]),
                 FasterRCNN(
-                    downsample_factors=[16],
+                    # The downsample factor is based on the input size 128 x 128
+                    downsample_factors=[8],
                     num_channels=embedding_size,
                     num_classes=task_channels,
                     anchor_sizes=[[32]],
