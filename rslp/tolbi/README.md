@@ -47,8 +47,11 @@ We can start by using 10K samples per category, which results in 60K samples.
 python rslp/tolbi/scripts/create_samples.py --pos_geojson_dir /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/geojsons/ --pos_output /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/positive_samples.csv --neg_input /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/final_reference_data_ivory_coast.csv --neg_output /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/negative_samples.csv --sample_size 10000 --combined_output /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/combined_samples.csv
 ```
 
-TODO: use Gabi's tool to examine the points.
+TODO: use Gabi's tool to examine the points. TODO: check
+`2022_af_dewatrain1_poly_100_dataset.parquet`, 55 polygons in West Africa,
+mainly `non_cropland_excl_perennial`
 
-
-
-
+Definition of crops in WorldCover labels: Lands covered with temporary crops
+followed by harvest and a bare soil period (e.g., single and multiple cropping
+systems). These crops are harvested at least once per year. Note that perennial
+woody crops were classified as the appropriate forest or shrub land cover type.
