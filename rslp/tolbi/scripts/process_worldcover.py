@@ -1,9 +1,8 @@
-"""Process WorldCover labels and extract negative samples for the Tolbi
-project."""
+"""Process WorldCover labels and extract samples within the Ivory Coast region. The output has been uploaded to Studio: https://olmoearth.allenai.org/projects/3be91801-f894-498a-b6cd-f05a00706b11/tasks."""
 
 import argparse
-import pandas as pd
 
+import pandas as pd
 
 # WorldCover labels reference year is 2015
 START_DATE = "2015-01-01"
@@ -42,7 +41,7 @@ if __name__ == "__main__":
         description="Process WorldCover labels and extract points for Tolbi."
     )
     parser.add_argument(
-        "--input", 
+        "--input",
         type=str,
         required=True,
         help="Path to WorldCover CSV input file.",
