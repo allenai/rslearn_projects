@@ -1,13 +1,12 @@
 """Create samples for the Tolbi project."""
 
-import os
 import argparse
+import json
+import os
+
 import numpy as np
 import pandas as pd
-import json
-from shapely.geometry import shape, Point
-from shapely.ops import unary_union
-
+from shapely.geometry import Point, shape
 
 # Label reference years
 POSTIVE_LABEL_YEAR = 2024
@@ -36,11 +35,11 @@ NEGATIVE_LABEL_MAPPING = {
     "shrub": "shrub",
 }
 
+
 def get_points_within_polygon(
     geojson_data: dict,
 ) -> list[tuple[float, float, str, int]]:
-    """Get all points within the polygons of each feature, with per-feature
-    class_name and id (no fallback)."""
+    """Get all points within the polygons of each feature."""
     grid_points = []
     for feature in geojson_data["features"]:
         geom = shape(feature["geometry"])
@@ -60,7 +59,7 @@ def get_points_within_polygon(
 
 
 def create_positive_samples(
-    geojson_dir: str, 
+    geojson_dir: str,
     output_path: str,
 ) -> pd.DataFrame:
     """Create positive samples from the geojsons."""
@@ -68,14 +67,15 @@ def create_positive_samples(
     for geojson_file in os.listdir(geojson_dir):
         if geojson_file.endswith(".geojson"):
             geojson_path = os.path.join(geojson_dir, geojson_file)
-            with open(geojson_path, "r") as f:
+            with open(geojson_path) as f:
                 geojson = json.load(f)
                 grid_points = get_points_within_polygon(geojson)
                 positive_samples.extend(grid_points)
     print(f"Created {len(positive_samples)} positive samples")
     # Remove duplicates (overlapped polygons)
     positive_samples_df = pd.DataFrame(
-        positive_samples, columns=["longitude", "latitude", "class_name", "reference_year"]
+        positive_samples,
+        columns=["longitude", "latitude", "class_name", "reference_year"],
     ).drop_duplicates()
     print(positive_samples_df.groupby("class_name").size())
     positive_samples_df.to_csv(output_path, index=False)
@@ -83,15 +83,21 @@ def create_positive_samples(
 
 
 def create_negative_samples(
-    worldcover_path: str, 
+    worldcover_path: str,
     output_path: str,
 ) -> pd.DataFrame:
     """Create negative samples from the worldcover."""
     negative_samples_df = pd.read_csv(worldcover_path)
-    negative_samples_df["class_name"] = negative_samples_df["class_name"].map(NEGATIVE_LABEL_MAPPING)
+    negative_samples_df["class_name"] = negative_samples_df["class_name"].map(
+        NEGATIVE_LABEL_MAPPING
+    )
     # Remove unknown samples
-    negative_samples_df = negative_samples_df[negative_samples_df["class_name"] != "unknown"]
-    negative_samples_df = negative_samples_df[["longitude", "latitude", "class_name", "reference_year"]]
+    negative_samples_df = negative_samples_df[
+        negative_samples_df["class_name"] != "unknown"
+    ]
+    negative_samples_df = negative_samples_df[
+        ["longitude", "latitude", "class_name", "reference_year"]
+    ]
     print(f"Created {len(negative_samples_df)} negative samples")
     negative_samples_df.to_csv(output_path, index=False)
     return negative_samples_df
@@ -121,45 +127,45 @@ def combine_samples(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--pos_geojson_dir", 
-        type=str, 
+        "--pos_geojson_dir",
+        type=str,
         required=True,
-        help="Directory containing positive sample geojson files."
+        help="Directory containing positive sample geojson files.",
     )
     parser.add_argument(
-        "--pos_output", 
-        type=str, 
+        "--pos_output",
+        type=str,
         required=True,
-        help="Output CSV path for positive samples."
+        help="Output CSV path for positive samples.",
     )
     parser.add_argument(
-        "--neg_input", 
-        type=str, 
+        "--neg_input",
+        type=str,
         required=True,
-        help="Input CSV path for negative samples (e.g., filtered WorldCover for region)."
+        help="Input CSV path for negative samples (e.g., filtered WorldCover for region).",
     )
     parser.add_argument(
-        "--neg_output", 
-        type=str, 
+        "--neg_output",
+        type=str,
         required=True,
-        help="Output CSV path for negative samples."
+        help="Output CSV path for negative samples.",
     )
     parser.add_argument(
-        "--sample_size", 
-        type=int, 
+        "--sample_size",
+        type=int,
         required=True,
-        help="Number of samples per class to include in the combined output."
+        help="Number of samples per class to include in the combined output.",
     )
     parser.add_argument(
-        "--combined_output", 
-        type=str, 
+        "--combined_output",
+        type=str,
         required=True,
-        help="Output CSV path for combined positive and negative samples."
+        help="Output CSV path for combined positive and negative samples.",
     )
     args = parser.parse_args()
 
     positive_samples_df = create_positive_samples(args.pos_geojson_dir, args.pos_output)
     negative_samples_df = create_negative_samples(args.neg_input, args.neg_output)
-    combined_samples_df = combine_samples(positive_samples_df, negative_samples_df, args.sample_size, args.combined_output)
-
-
+    combined_samples_df = combine_samples(
+        positive_samples_df, negative_samples_df, args.sample_size, args.combined_output
+    )
