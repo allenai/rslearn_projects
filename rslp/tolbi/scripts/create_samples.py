@@ -37,7 +37,8 @@ NEGATIVE_LABEL_MAPPING = {
 }
 
 def get_points_within_polygon(geojson_data: dict) -> list[tuple[float, float, str, int]]:
-    """Get all points within the polygons of each feature, with per-feature class_name and id (no fallback)."""
+    """Get all points within the polygons of each feature, with per-feature
+    class_name and id (no fallback)."""
     grid_points = []
     for feature in geojson_data["features"]:
         geom = shape(feature["geometry"])

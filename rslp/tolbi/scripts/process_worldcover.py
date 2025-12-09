@@ -1,4 +1,5 @@
-"""Process WorldCover labels and extract negative samples for the Tolbi project."""
+"""Process WorldCover labels and extract negative samples for the Tolbi
+project."""
 
 import argparse
 import pandas as pd
