@@ -23,15 +23,14 @@ python rslp/tolbi/scripts/process_worldcover.py --input ~/Downloads/final_refere
 As an initial approach, we focuses on classifying plam oil, rubber, cacao, tree,
 shrub, and others. Though the WorldCover samples may include tree samples that
 are actually palm oil / rubber, or shrub that are actually cacao, it's hard to
-filter out those samples (maybe the Tolbi team can help on this), give that the
-natural forest is heavily fragmented by cacao, rubber, and palm.
+filter out those samples (Tolbi team can probably help on this).
 
 TODO: (1) Tolbi team can help remove WorldCover clusters (each cluster includes
-10x10 pixels) that are actually cash crops, (2) Another approach is to keep only
-non-tree, non-shrub samples from WorldCover, and later add other trees or tree
-crops and shrub samples (new annotations or from existing forest or shrub
-dataset). This may be easier and faster than (1) as we don't need to go through
-all clusters from WorldCover (about 1K).
+10x10 pixels) that are actually the target cash crops, (2) Another approach is
+to keep only non-tree, non-shrub samples from WorldCover, and later add other
+trees or tree crops and shrub samples (new annotations or from existing forest
+or shrub dataset). This may be easier and faster than (1) as we don't need to go
+through all clusters from WorldCover (about 1K).
 
 Some data quality issues:
 
@@ -47,6 +46,8 @@ We can start by using 10K samples per category, which results in 60K samples.
 ```
 python rslp/tolbi/scripts/create_samples.py --pos_geojson_dir /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/geojsons/ --pos_output /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/positive_samples.csv --neg_input /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/final_reference_data_ivory_coast.csv --neg_output /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/negative_samples.csv --sample_size 10000 --combined_output /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/combined_samples.csv
 ```
+
+TODO: use Gabi's tool to examine the points.
 
 
 
