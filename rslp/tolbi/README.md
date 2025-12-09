@@ -49,7 +49,9 @@ python rslp/tolbi/scripts/create_samples.py --pos_geojson_dir /Users/yawenz/Down
 
 TODO: use Gabi's tool to examine the points. TODO: check
 `2022_af_dewatrain1_poly_100_dataset.parquet`, 55 polygons in West Africa,
-mainly `non_cropland_excl_perennial`
+mainly `non_cropland_excl_perennial` - Not annual cropland, but may be perennial
+cropland
+([Link](https://artifactory.vgt.vito.be/artifactory/auxdata-public/worldcereal/legend/WorldCereal_LC_CT_legend_latest.pdf))
 
 Definition of crops in WorldCover labels: Lands covered with temporary crops
 followed by harvest and a bare soil period (e.g., single and multiple cropping
