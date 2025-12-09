@@ -2,7 +2,7 @@
 
 This project focuses on mapping a variety of cash crops (palm oil, cacao, rubber
 , etc) within the Ivory Coast region. The Tolbi team sent us mainly positive
-samples (and some negative samples, mainly water, building, and soil), and we
+samples (and some negative samples, like water, building, and soil), and we
 need to extract negative samples to ensure the model can correctly identify the
 cash crops. The main challenge is to differentiate cacao from shrub, and palm
 oil / rubber from natural trees and other tree crops.
