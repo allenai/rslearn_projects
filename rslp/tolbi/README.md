@@ -2,10 +2,10 @@
 
 This project focuses on mapping a variety of cash crops (palm oil, cacao, rubber
 , etc) within the Ivory Coast region. The Tolbi team sent us mainly positive
-samples (and some negative samples, like water, building, and soil), and we
-need to extract negative samples to ensure the model can correctly identify the
-cash crops. The main challenge is to differentiate cacao from shrub, and palm
-oil / rubber from natural trees and other tree crops.
+samples (and some negative samples, like water, building, and soil), and we need
+to extract negative samples to ensure the model can correctly identify the cash
+crops. The main challenge is to differentiate cacao from shrub, and palm oil /
+rubber from natural trees and other tree crops.
 
 ### Extract LULC Labels from WorldCover
 
@@ -44,7 +44,7 @@ samples (tree: 30K, shrub: 27K, others: 35K).
 We can start by using 10K samples per category, which results in 60K samples.
 
 ```
-python rslp/tolbi/scripts/create_samples.py --pos_geojson_dir /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/geojsons/ --pos_output /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/positive_samples.csv --neg_input /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/final_reference_data_ivory_coast.csv --neg_output /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/negative_samples.csv --sample_size 10000 --combined_output /Users/yawenz/Downloads/local/rslearn_projects/rslp/tolbi/data/csv/combined_samples.csv
+python rslp/tolbi/scripts/create_samples.py --pos_geojson_dir rslp/tolbi/data/geojsons/ --pos_output rslp/tolbi/data/csv/positive_samples.csv --neg_input rslp/tolbi/data/csv/final_reference_data_ivory_coast.csv --neg_output rslp/tolbi/data/csv/negative_samples.csv --sample_size 10000 --combined_output rslp/tolbi/data/csv/combined_samples.csv
 ```
 
 TODO: use Gabi's tool to examine the points. TODO: check
@@ -57,3 +57,8 @@ Definition of crops in WorldCover labels: Lands covered with temporary crops
 followed by harvest and a bare soil period (e.g., single and multiple cropping
 systems). These crops are harvested at least once per year. Note that perennial
 woody crops were classified as the appropriate forest or shrub land cover type.
+
+### Create, Prepare, and Materialize windows
+
+```
+python rslp/tolbi/create_windows.py --csv_path /rslp/tolbi/data/csv/combined_samples.csv --ds_path /weka/
