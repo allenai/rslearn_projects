@@ -46,7 +46,7 @@ def get_points_within_polygon(
         class_name = feature["properties"]["crop"]
         class_name = POSITIVE_LABEL_MAPPING.get(class_name, class_name)
         minx, miny, maxx, maxy = geom.bounds
-        # Define grid size in degrees, about 10 meters at the equator
+        # In degrees (about 10 meters at the equator)
         grid_size = 0.0001
         lons = np.arange(minx, maxx, grid_size)
         lats = np.arange(miny, maxy, grid_size)
