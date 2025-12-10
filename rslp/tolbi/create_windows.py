@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import shapely
 import tqdm
+from rslearn.config.dataset import StorageConfig
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
@@ -66,12 +67,14 @@ def create_window(
     else:
         split = "train"
 
-    window_name = f"{csv_row.index}_{latitude}_{longitude}"
+    window_name = f"{csv_row["id"]}_{round(latitude, 4)}_{round(longitude, 4)}"
     start_time = datetime(int(csv_row["reference_year"]), 1, 1, tzinfo=timezone.utc)
     end_time = datetime(int(csv_row["reference_year"]), 12, 31, tzinfo=timezone.utc)
 
     window = Window(
-        path=Window.get_window_root(ds_path, group_name, window_name),
+        storage=StorageConfig()
+        .instantiate_window_storage_factory()
+        .get_storage(ds_path),
         group=group_name,
         name=window_name,
         projection=dst_projection,
@@ -113,6 +116,7 @@ def create_windows_from_csv(
         window_size: window size
     """
     df_sampled = pd.read_csv(csv_path)
+    df_sampled["id"] = df_sampled.index
     csv_rows = []
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
