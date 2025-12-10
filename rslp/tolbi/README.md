@@ -61,4 +61,5 @@ woody crops were classified as the appropriate forest or shrub land cover type.
 ### Create, Prepare, and Materialize windows
 
 ```
-python rslp/tolbi/create_windows.py --csv_path /rslp/tolbi/data/csv/combined_samples.csv --ds_path /weka/
+python rslp/tolbi/create_windows.py --csv_path /rslp/tolbi/data/csv/combined_samples.csv --ds_path /weka/dfive-default/rslearn-eai/datasets/tolbi --group_name 20251210 --window_size 31
+```

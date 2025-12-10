@@ -157,9 +157,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--window_size",
         type=int,
-        required=False,
+        required=True,
         help="Window size",
-        default=1,
     )
     args = parser.parse_args()
     create_windows_from_csv(
