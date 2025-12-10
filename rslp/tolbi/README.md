@@ -61,9 +61,9 @@ woody crops were classified as the appropriate forest or shrub land cover type.
 ### Create, Prepare, and Materialize windows
 
 ```
-python rslp/tolbi/create_windows.py --csv_path rslp/tolbi/data/csv/combined_samples.csv --ds_path /weka/dfive-default/rslearn-eai/datasets/tolbi --group_name 20251210 --window_size 31
-```
-
-```
-python rslp/tolbi/create_windows.py --csv_path rslp/tolbi/data/csv/combined_samples.csv --ds_path gs://rslearn-eai/datasets/tolbi --group_name 20251210 --window_size 31
+export DATASET_PATH=gs://rslearn-eai/datasets/tolbi
+export DATASET_GROUP=20251210
+python rslp/tolbi/create_windows.py --csv_path rslp/tolbi/data/csv/combined_samples.csv --ds_path $DATASET_PATH --group_name $DATASET_GROUP --window_size 31
+rslearn dataset prepare --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --retry-max-attempts 8
+rslearn dataset materialize --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --retry-max-attempts 8
 ```
