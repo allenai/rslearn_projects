@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 import shapely
+from rslearn.config import LayerConfig, LayerType
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.dataset.storage.file import FileWindowStorage
@@ -41,6 +42,7 @@ class TestDistanceNms:
                     output=[],
                 )
             ],
+            LayerConfig(type=LayerType.VECTOR),
         )
         # Expected: No boxes, so the result should be an empty list.
         assert len(merged_features) == 0
@@ -77,6 +79,7 @@ class TestDistanceNms:
                     output=features,
                 )
             ],
+            LayerConfig(type=LayerType.VECTOR),
         )
         assert set(merged_features) == {features[0], features[2]}
 
@@ -90,6 +93,7 @@ class TestDistanceNms:
                     output=features,
                 )
             ],
+            LayerConfig(type=LayerType.VECTOR),
         )
         assert set(merged_features) == set(features)
 
@@ -127,6 +131,7 @@ class TestDistanceNms:
                     output=features,
                 )
             ],
+            LayerConfig(type=LayerType.VECTOR),
         )
 
         # Expected: Box 0 (highest score) and Box 2 (no overlap) should be kept.
@@ -164,6 +169,7 @@ class TestDistanceNms:
                     output=features,
                 )
             ],
+            LayerConfig(type=LayerType.VECTOR),
         )
         # Expected: For Class 0, Box 0 kept (higher score); Box 1 suppressed.
         # For Class 1, Box 3 kept (higher score); Box 2 suppressed.
@@ -203,6 +209,7 @@ class TestDistanceNms:
                     output=features,
                 )
             ],
+            LayerConfig(type=LayerType.VECTOR),
         )
         # Expected: Box 3 kept (highest score); Box 0, Box 1, and Box 2 suppressed.
         assert set(merged_features) == {features[3]}
