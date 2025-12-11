@@ -73,7 +73,7 @@ def get_cached_checkpoint(checkpoint_fname: UPath) -> str:
     return local_fname
 
 
-class SaveWandbRunIdCallback(Callback):
+class SaveWandbRunIdCallbackRSLP(Callback):
     """Callback to save the wandb run ID to GCS in case of resume."""
 
     def __init__(
@@ -83,7 +83,7 @@ class SaveWandbRunIdCallback(Callback):
         run_id: str | None,
         config_str: str | None,
     ) -> None:
-        """Create a new SaveWandbRunIdCallback.
+        """Create a new SaveWandbRunIdCallbackRSLP.
 
         Args:
             project_id: the project ID.
@@ -364,7 +364,7 @@ class CustomLightningCLI(RslearnLightningCLI):
                         == "lightning.pytorch.callbacks.ModelCheckpoint"
                     ):
                         checkpoint_callback = existing_callback
-                    if existing_callback.class_path == "SaveWandbRunIdCallback":
+                    if existing_callback.class_path == "SaveWandbRunIdCallbackRSLP":
                         upload_wandb_callback = existing_callback
             else:
                 c.trainer.callbacks = []
@@ -392,7 +392,7 @@ class CustomLightningCLI(RslearnLightningCLI):
                 )
                 upload_wandb_callback = jsonargparse.Namespace(
                     {
-                        "class_path": "SaveWandbRunIdCallback",
+                        "class_path": "SaveWandbRunIdCallbackRSLP",
                         "init_args": jsonargparse.Namespace(
                             {
                                 "project_id": c.rslp_project,
