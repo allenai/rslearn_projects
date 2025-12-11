@@ -1,0 +1,227 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_BASE
+              patch_size: 4
+        decoders:
+          segment:
+            - class_path: rslearn.models.upsample.Upsample
+              init_args:
+                scale_factor: 1
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 768
+                out_channels: 7
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+    lr: 0.0001
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
+    plateau_min_lr: 0
+    plateau_cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: gs://rslearn-eai/datasets/tolbi
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      label:
+        data_type: "raster"
+        layers: ["label_raster"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          segment:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 7
+              zero_is_invalid: true
+              metric_kwargs:
+                average: "micro"
+              other_metrics:
+                cacao_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 1
+                cacao_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 1
+                palmoil_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 2
+                palmoil_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 2
+                rubber_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 3
+                rubber_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 3
+                tree_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 4
+                tree_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 4
+                shrub_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 5
+                shrub_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 5
+                others_precision:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassPrecision
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 6
+                others_recall:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassRecall
+                      init_args:
+                        num_classes: 7
+                        average: null
+                    class_idx: 6
+        input_mapping:
+          segment:
+            label: "targets"
+    batch_size: 16
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.crop.Crop
+          init_args:
+            crop_size: 16
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    train_config:
+      transforms:
+        - class_path: rslearn.train.transforms.crop.Crop
+          init_args:
+            crop_size: 16
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+      groups: ["20251210"]
+      tags:
+        split: "train"
+    val_config:
+      groups: ["20251210"]
+      tags:
+        split: "val"
+    test_config:
+      groups: ["20251210"]
+      tags:
+        split: "val"
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_segment/accuracy
+        mode: max
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 20
+        unfreeze_lr_factor: 10
+rslp_project: 2025_12_11_tolbi
+rslp_experiment: tolbi_crop_S2_ts_ws16_ps4_bs8
