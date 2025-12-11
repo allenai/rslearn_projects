@@ -2,7 +2,7 @@ model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     model:
-      class_path: rslearn.train.tasks.multi_task.MultiTask
+      class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
           - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
