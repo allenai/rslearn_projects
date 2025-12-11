@@ -261,15 +261,14 @@ def get_vessel_detections(
         scene_datas: the SceneDatas to apply the detector on.
     """
     # Create a window for each SceneData.
+    dataset = Dataset(ds_path)
     windows: list[Window] = []
     group = "detector_predict"
     for scene_idx, scene_data in enumerate(scene_datas):
-        window_name = str(scene_idx)
-        window_path = ds_path / "windows" / group / window_name
         window = Window(
-            path=window_path,
+            storage=dataset.storage,
             group=group,
-            name=window_name,
+            name=str(scene_idx),
             projection=scene_data.projection,
             bounds=scene_data.bounds,
             time_range=scene_data.time_range,
@@ -362,13 +361,13 @@ def run_attribute_model(
         return []
 
     # Create windows for applying attribute prediction model.
+    dataset = Dataset(ds_path)
     group = "attribute_predict"
     windows: list[Window] = []
     for detection in detections:
         window_name = (
             f"{detection.metadata['task_idx']}_{detection.col}_{detection.row}"
         )
-        window_path = Window.get_window_root(ds_path, group, window_name)
         bounds = [
             detection.col - CROP_WINDOW_SIZE // 2,
             detection.row - CROP_WINDOW_SIZE // 2,
@@ -380,7 +379,7 @@ def run_attribute_model(
         task_idx = detection.metadata["task_idx"]
         scene_data = scene_datas[task_idx]
         window = Window(
-            path=window_path,
+            storage=dataset.storage,
             group=group,
             name=window_name,
             projection=detection.projection,

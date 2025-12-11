@@ -19,7 +19,7 @@ import shapely.ops
 import tqdm
 from rasterio.crs import CRS
 from rslearn.const import SHAPEFILE_AUX_EXTENSIONS, WGS84_PROJECTION
-from rslearn.dataset import Window
+from rslearn.dataset import Dataset, Window
 from rslearn.utils.feature import Feature
 from rslearn.utils.fsspec import get_upath_local
 from rslearn.utils.geometry import Projection, STGeometry
@@ -193,7 +193,7 @@ def output_mask_raster(
 
 
 def write_event(
-    event: ForestLossEvent, fname: str, ds_path: UPath, args: ExtractAlertsArgs
+    event: ForestLossEvent, fname: str, dataset: Dataset, args: ExtractAlertsArgs
 ) -> None:
     """Write a window for this forest loss event.
 
@@ -205,7 +205,7 @@ def write_event(
     Args:
         event: the event details.
         fname: the GeoTIFF filename that this alert came from.
-        ds_path: the path of dataset to write to.
+        dataset: the dataset to write to.
         args: the ExtractAlertsArgs config.
     """
     # Transform the center to Web-Mercator for populating the window.
@@ -233,7 +233,7 @@ def write_event(
     # Create the new rslearn windows.
     window_name = f"feat_x_{mercator_point[0]}_{mercator_point[1]}_{event.center_pixel[0]}_{event.center_pixel[1]}"
     window = Window(
-        path=Window.get_window_root(ds_path, args.group, window_name),
+        storage=dataset.storage,
         group=args.group,
         name=window_name,
         projection=WEB_MERCATOR_PROJECTION,
@@ -456,6 +456,7 @@ def extract_alerts(
         index_cache_dir=extract_alerts_args.index_cache_dir,
         tile_store_dir=extract_alerts_args.tile_store_dir,
     )
+    dataset = Dataset(ds_path)
 
     # Process the GLAD alert tiles one tile at a time.
     # Each tile has two files we need to read, the confidence raster (which we use to
@@ -520,7 +521,7 @@ def extract_alerts(
             dict(
                 event=event,
                 fname=fname,
-                ds_path=ds_path,
+                dataset=dataset,
                 args=extract_alerts_args,
             )
             for event in events

@@ -2,6 +2,7 @@ from typing import Any
 
 import numpy as np
 import torch
+from rslearn.train.model_context import ModelContext, ModelOutput
 from rslearn.train.tasks.multi_task import MultiTask
 from rslearn.train.tasks.segmentation import SegmentationTask
 
@@ -12,8 +13,10 @@ class TestModel(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> dict[str, Any]:
-        return {"outputs": inputs, "loss_dict": {"loss": 0}}
+    def forward(
+        self, context: ModelContext, targets: list[dict[str, Any]] | None = None
+    ) -> ModelOutput:
+        return ModelOutput(outputs=context.inputs, loss_dict={"loss": 0})
 
 
 def test_cm_module_step() -> None:

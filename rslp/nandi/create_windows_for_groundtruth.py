@@ -9,7 +9,7 @@ import pandas as pd
 import shapely
 import tqdm
 from rslearn.const import WGS84_PROJECTION
-from rslearn.dataset import Window
+from rslearn.dataset import Dataset, Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 from rslearn.utils.feature import Feature
 from rslearn.utils.mp import star_imap_unordered
@@ -89,7 +89,7 @@ def process_csv(
 
 def create_window(
     csv_row: pd.Series,
-    ds_path: UPath,
+    dataset: Dataset,
     group_name: str,
     split_by_polygon: bool,
     window_size: int,
@@ -98,7 +98,7 @@ def create_window(
 
     Args:
         csv_row: a row of the dataframe
-        ds_path: path to the dataset
+        dataset: the dataset to create the window in
         group_name: name of the group
         split_by_polygon: whether to split by polygon
         window_size: window size
@@ -139,7 +139,7 @@ def create_window(
         split = "train"
 
     window = Window(
-        path=Window.get_window_root(ds_path, group, window_name),
+        path=dataset.storage,
         group=group,
         name=window_name,
         projection=dst_projection,
@@ -192,10 +192,11 @@ def create_windows_from_csv(
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
 
+    dataset = Dataset(ds_path)
     jobs = [
         dict(
             csv_row=row,
-            ds_path=ds_path,
+            dataset=dataset,
             group_name=group_name,
             split_by_polygon=split_by_polygon,
             window_size=window_size,

@@ -4,6 +4,7 @@ import pytest
 import shapely
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
+from rslearn.dataset.storage.file import FileWindowStorage
 from rslearn.train.prediction_writer import PendingPatchOutput
 from rslearn.utils import Feature, STGeometry
 from upath import UPath
@@ -18,7 +19,7 @@ class TestDistanceNms:
     @pytest.fixture
     def nms_window(self, tmp_path: Path) -> Window:
         return Window(
-            path=UPath(tmp_path),
+            storage=FileWindowStorage(UPath(tmp_path)),
             group="fake",
             name="fake",
             projection=self.PROJECTION,

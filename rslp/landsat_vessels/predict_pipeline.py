@@ -95,11 +95,11 @@ def get_vessel_detections(
         scene_data: the SceneData to apply the detector in.
     """
     # Create a window for applying detector.
+    dataset = Dataset(ds_path)
     group = "default"
     window_name = "default"
-    window_path = Window.get_window_root(ds_path, group, window_name)
     window = Window(
-        path=window_path,
+        storage=dataset.storage,
         group=group,
         name=window_name,
         projection=scene_data.projection,
@@ -184,11 +184,10 @@ def run_classifier(
         return []
 
     # Create windows for applying classifier.
+    dataset = Dataset(ds_path)
     group = "classify_predict"
     windows: list[Window] = []
     for detection in detections:
-        window_name = f"{detection.col}_{detection.row}"
-        window_path = ds_path / "windows" / group / window_name
         bounds = [
             detection.col - CLASSIFY_WINDOW_SIZE // 2,
             detection.row - CLASSIFY_WINDOW_SIZE // 2,
@@ -196,9 +195,9 @@ def run_classifier(
             detection.row + CLASSIFY_WINDOW_SIZE // 2,
         ]
         window = Window(
-            path=window_path,
+            storage=dataset.storage,
             group=group,
-            name=window_name,
+            name=f"{detection.col}_{detection.row}",
             projection=detection.projection,
             bounds=bounds,
             time_range=scene_data.time_range,
