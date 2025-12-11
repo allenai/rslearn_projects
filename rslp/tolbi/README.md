@@ -65,5 +65,5 @@ export DATASET_PATH=gs://rslearn-eai/datasets/tolbi
 export DATASET_GROUP=20251210
 python rslp/tolbi/create_windows.py --csv_path rslp/tolbi/data/csv/combined_samples.csv --ds_path $DATASET_PATH --group_name $DATASET_GROUP --window_size 31
 rslearn dataset prepare --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --retry-max-attempts 8
-rslearn dataset materialize --root $DATASET_PATH --group $DATASET_GROUP --workers 64 --retry-max-attempts 8
+python -m rslp.main common launch_data_materialization_jobs --image yawenzzzz/rslpomp20251210a --ds_path $DATASET_PATH --clusters '["ai2/neptune"]' --num_jobs 10
 ```
