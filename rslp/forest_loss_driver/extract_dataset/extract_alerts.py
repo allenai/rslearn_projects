@@ -140,7 +140,8 @@ def output_forest_event_metadata(
     polygon_wgs84_shp: shapely.Polygon = event.polygon_geom.to_projection(
         WGS84_PROJECTION
     ).shp
-    with (window.path / "info.json").open("w") as f:
+    window_path = window.storage.get_window_root(window.group, window.name)
+    with (window_path / "info.json").open("w") as f:
         json.dump(
             {
                 "fname": fname,

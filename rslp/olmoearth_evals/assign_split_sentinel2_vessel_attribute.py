@@ -16,14 +16,12 @@ def assign_split(window: Window) -> None:
     This is specialized for vessel attribute prediction to only set the split for
     windows where length and type are both known.
     """
-    print(window.path, "get feat")
     features = GeojsonVectorFormat().decode_vector(
         window.get_layer_dir("info"), window.projection, window.bounds
     )
     assert len(features) == 1
     feat = features[0]
 
-    print(window.path, "compute split")
     tile = (window.bounds[0] // 1024, window.bounds[1] // 1024)
     grid_cell_id = f"{window.projection.crs}_{tile[0]}_{tile[1]}"
     first_hex_char_in_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()[0]
@@ -36,9 +34,7 @@ def assign_split(window: Window) -> None:
     else:
         split = "train"
     window.options["olmoearth_evals_split"] = split
-    print(window.path, "saving")
     window.save()
-    print(window.path, "done")
 
 
 if __name__ == "__main__":

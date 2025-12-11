@@ -143,7 +143,7 @@ def merge_and_upload_points(
     }
     valid_patches = []
     for window in windows:
-        window_output_fname = window.path / "layers" / "output" / "data.geojson"
+        window_output_fname = window.get_layer_dir("output") / "data.geojson"
 
         if not window_output_fname.exists():
             continue
@@ -222,7 +222,7 @@ def merge_and_upload_raster(
                 "expected projection of window to match the task projection"
             )
 
-        window_output_fname = window.path / "layers" / "output" / "output" / "image.png"
+        window_output_fname = window.get_raster_dir("output", ["output"]) / "image.png"
         if not window_output_fname.exists():
             # This indicates that some required input layers must have been missing so
             # no prediction was made.
