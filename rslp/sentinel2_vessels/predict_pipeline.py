@@ -9,7 +9,7 @@ from datetime import datetime
 import numpy as np
 from PIL import Image
 from rslearn.const import WGS84_PROJECTION
-from rslearn.data_sources import Item, data_source_from_config
+from rslearn.data_sources import Item
 from rslearn.data_sources.gcp_public_data import Sentinel2
 from rslearn.dataset import Dataset, Window, WindowLayerData
 from rslearn.utils.fsspec import open_rasterio_upath_reader
@@ -135,9 +135,9 @@ def setup_dataset_with_scene_ids(
     # Initialize Sentinel2 data source object so we can lookup the Item that each scene
     # ID corresponds to.
     dataset = Dataset(ds_path)
-    data_source: Sentinel2 = data_source_from_config(
-        dataset.layers[SENTINEL2_LAYER_NAME], dataset.path
-    )
+    data_source: Sentinel2 = dataset.layers[
+        SENTINEL2_LAYER_NAME
+    ].instantiate_data_source(ds_path=ds_path)
 
     # Get the SceneData based on looking up the scene.
     scene_datas: list[SceneData] = []

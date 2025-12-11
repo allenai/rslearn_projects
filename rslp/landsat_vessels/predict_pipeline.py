@@ -12,7 +12,7 @@ import rasterio
 from PIL import Image
 from rasterio.enums import Resampling
 from rslearn.const import WGS84_PROJECTION
-from rslearn.data_sources import Item, data_source_from_config
+from rslearn.data_sources import Item
 from rslearn.data_sources.aws_landsat import LandsatOliTirs
 from rslearn.dataset import Dataset, Window, WindowLayerData
 from rslearn.utils.geometry import PixelBounds, Projection
@@ -366,9 +366,10 @@ def setup_dataset(
         if scene_id:
             # Get the projection and scene bounds using the Landsat data source.
             dataset = Dataset(ds_path)
-            data_source: LandsatOliTirs = data_source_from_config(
-                dataset.layers[LANDSAT_LAYER_NAME], dataset.path
+            data_source = dataset.layers[LANDSAT_LAYER_NAME].instantiate_data_source(
+                ds_path=dataset.path
             )
+            assert isinstance(data_source, LandsatOliTirs)
             item = data_source.get_item_by_name(scene_id)
             wgs84_geom = item.geometry.to_projection(WGS84_PROJECTION)
             projection = get_utm_ups_projection(
