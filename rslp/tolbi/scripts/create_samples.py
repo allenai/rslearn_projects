@@ -10,7 +10,7 @@ from shapely.geometry import Point, shape
 
 # Label reference years
 POSTIVE_LABEL_YEAR = 2024
-NEGATIVE_LABEL_YEAR = 2015
+NEGATIVE_LABEL_YEAR = 2016
 
 # Label mapping
 POSITIVE_LABEL_MAPPING = {
