@@ -34,23 +34,19 @@ data:
     path: gs://rslearn-eai/datasets/tolbi
     inputs:
       sentinel2_l2a:
-        class_path: rslearn.train.dataset.DataInput
-        init_args:
-          data_type: "raster"
-          layers: ["sentinel2"]
-          bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-          passthrough: true
-          dtype: FLOAT32
-          load_all_item_groups: true
-          load_all_layers: true
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
       label:
-        class_path: rslearn.train.dataset.DataInput
-        init_args:
-          data_type: "raster"
-          layers: ["label_raster"]
-          bands: ["label"]
-          is_target: true
-          dtype: INT32
+        data_type: "raster"
+        layers: ["label_raster"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
       init_args:
