@@ -165,11 +165,12 @@ def select_least_cloudy_images(
             )
 
     output_fname = "least_cloudy_times.json"
-    logger.debug(f"Writing least cloudy times to {window.path / output_fname}...")
-    with (window.path / output_fname).open("w") as f:
+    window_path = window.storage.get_window_root(window.group, window.name)
+    logger.debug(f"Writing least cloudy times to {window_path / output_fname}...")
+    with (window_path / output_fname).open("w") as f:
         json.dump(least_cloudy_times, f)
 
-    logger.debug(f"Saving updated layer datas for {window.path}")
+    logger.debug(f"Saving updated layer datas for {window_path}")
     window.save_layer_datas(layer_datas)
 
 

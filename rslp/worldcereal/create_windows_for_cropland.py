@@ -9,7 +9,7 @@ import pandas as pd
 import shapely
 import tqdm
 from rslearn.const import WGS84_PROJECTION
-from rslearn.dataset import Window
+from rslearn.dataset import Dataset, Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 from rslearn.utils.feature import Feature
 from rslearn.utils.mp import star_imap_unordered
@@ -22,12 +22,12 @@ WINDOW_RESOLUTION = 10
 LABEL_LAYER = "label"
 
 
-def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
+def create_window(csv_row: pd.Series, dataset: Dataset, window_size: int) -> None:
     """Create windows for crop type mapping.
 
     Args:
         csv_row: a row of the dataframe
-        ds_path: path to the dataset
+        dataset: the dataset to create the window in
         window_size: window size
     """
     # Get sample metadata
@@ -73,7 +73,7 @@ def create_window(csv_row: pd.Series, ds_path: UPath, window_size: int) -> None:
         split = "train"
 
     window = Window(
-        path=Window.get_window_root(ds_path, group, window_name),
+        storage=dataset.storage,
         group=group,
         name=window_name,
         projection=dst_projection,
@@ -123,10 +123,11 @@ def create_windows_from_csv(
     for _, row in df_sampled.iterrows():
         csv_rows.append(row)
 
+    dataset = Dataset(ds_path)
     jobs = [
         dict(
             csv_row=row,
-            ds_path=ds_path,
+            dataset=dataset,
             window_size=window_size,
         )
         for row in csv_rows

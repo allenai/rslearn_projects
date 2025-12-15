@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
+from rslearn.config import LayerConfig
 from rslearn.dataset import Window
 from rslearn.train.prediction_writer import PatchPredictionMerger, PendingPatchOutput
 from rslearn.utils import GridIndex
@@ -37,12 +38,18 @@ class NMSDistanceMerger(PatchPredictionMerger):
         self.class_agnostic = class_agnostic
         self.property_name = property_name
 
-    def merge(self, window: Window, outputs: Sequence[PendingPatchOutput]) -> Any:
+    def merge(
+        self,
+        window: Window,
+        outputs: Sequence[PendingPatchOutput],
+        layer_config: LayerConfig,
+    ) -> Any:
         """Merge the outputs.
 
         Args:
             window: the window we are merging the outputs for.
             outputs: the outputs to process.
+            layer_config: the layer configuration.
 
         Returns:
             the merged outputs.
