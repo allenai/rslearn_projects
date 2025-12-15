@@ -94,8 +94,9 @@ def get_copy_jobs_for_window(
             )
 
     # Copy additional JSON files.
+    window_path = window.storage.get_window_root(window.group, window.name)
     for window_suffix in ["info.json", "metadata.json", "least_cloudy_times.json"]:
-        src_fname = window.path / window_suffix
+        src_fname = window_path / window_suffix
         if not src_fname.exists():
             # Could happen if the window did not end up being used due to missing some
             # layers.

@@ -257,6 +257,7 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
     """
     window_prefix = job.prefix
     dst_path = UPath(job.config.ds_root)
+    dataset = Dataset(dst_path)
     is_val = hashlib.sha256(window_prefix.encode()).hexdigest()[0] in ["0", "1"]
     if is_val:
         split = "val"
@@ -293,12 +294,10 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
     )
 
     # First create window for the entire GeoTIFF.
-    window_name = window_prefix
-    window_root = dst_path / "windows" / "images" / window_name
     window = Window(
-        path=window_root,
+        storage=dataset.storage,
         group="images",
-        name=window_name,
+        name=window_prefix,
         projection=projection,
         bounds=raster_bounds,
         time_range=(ts - timedelta(minutes=1), ts + timedelta(minutes=1)),
@@ -306,12 +305,11 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
     )
     window.save()
 
-    layer_dir = window_root / "layers" / "maxar"
-    out_fname = layer_dir / "R_G_B" / "geotiff.tif"
-    out_fname.parent.mkdir(parents=True, exist_ok=True)
-    with out_fname.open("wb") as f:
+    raster_dir = window.get_raster_dir("maxar", ["R", "G", "B"])
+    raster_dir.mkdir(parents=True, exist_ok=True)
+    with (raster_dir / "geotiff.tif").open("wb") as f:
         f.write(buf.getvalue())
-    (layer_dir / "completed").touch()
+    window.mark_layer_completed("maxar")
 
     # Second create a window just for the annotated patch.
     # Starting by converting the label bounding geometry and polygons to the projection
@@ -348,12 +346,10 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
     ]
 
     # Create window.
-    window_name = f"{window_prefix}_{pixel_bounds[0]}_{pixel_bounds[1]}"
-    window_root = dst_path / "windows" / "crops" / window_name
     window = Window(
-        path=window_root,
+        storage=dataset.storage,
         group="crops",
-        name=window_name,
+        name=f"{window_prefix}_{pixel_bounds[0]}_{pixel_bounds[1]}",
         projection=projection,
         bounds=proj_bounds,
         time_range=(ts - timedelta(minutes=1), ts + timedelta(minutes=1)),
@@ -362,11 +358,10 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
     window.save()
 
     # Write the Maxar GeoTIFF.
-    layer_dir = window_root / "layers" / "maxar"
     GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
-        layer_dir / "R_G_B", projection, proj_bounds, crop
+        window.get_raster_dir("maxar", ["R", "G", "B"]), projection, proj_bounds, crop
     )
-    (layer_dir / "completed").touch()
+    window.mark_layer_completed("maxar")
 
     # Render the GeoJSON labels and write that too.
     pixel_shapes = []
@@ -379,22 +374,25 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
         pixel_shapes,
         out_shape=(proj_bounds[3] - proj_bounds[1], proj_bounds[2] - proj_bounds[0]),
     )
-    layer_dir = window_root / "layers" / "label"
     GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
-        layer_dir / "label", projection, proj_bounds, mask[None, :, :]
+        window.get_raster_dir("label", ["label"]),
+        projection,
+        proj_bounds,
+        mask[None, :, :],
     )
-    (layer_dir / "completed").touch()
 
     # Along with a visualization image.
     label_vis = np.zeros((mask.shape[0], mask.shape[1], 3))
     for category_id in range(len(CATEGORIES)):
         color = COLORS[category_id % len(COLORS)]
         label_vis[mask == category_id] = color
-    layer_dir = window_root / "layers" / "label"
     GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
-        layer_dir / "vis", projection, proj_bounds, label_vis.transpose(2, 0, 1)
+        window.get_raster_dir("label", ["vis"]),
+        projection,
+        proj_bounds,
+        label_vis.transpose(2, 0, 1),
     )
-    (layer_dir / "completed").touch()
+    window.mark_layer_completed("label")
 
     return job.prefix, ts
 
@@ -407,6 +405,7 @@ def process_bare(job: BareJob) -> None:
     """
     window_prefix = job.window_prefix
     dst_path = UPath(job.config.ds_root)
+    dataset = Dataset(dst_path)
     is_val = hashlib.sha256(window_prefix.encode()).hexdigest()[0] in ["0", "1"]
     if is_val:
         split = "val"
@@ -422,13 +421,10 @@ def process_bare(job: BareJob) -> None:
         ts = DEFAULT_TS
 
     # First create window for the entire GeoTIFF.
-    window_name = f"{window_prefix}_{job.suffix}"
-    group_name = f"images_{job.suffix}"
-    window_root = dst_path / "windows" / group_name / window_name
     window = Window(
-        path=window_root,
-        group=group_name,
-        name=window_name,
+        storage=dataset.storage,
+        group=f"images_{job.suffix}",
+        name=f"{window_prefix}_{job.suffix}",
         projection=projection,
         bounds=island_bounds,
         time_range=(ts - timedelta(minutes=1), ts + timedelta(minutes=1)),
@@ -448,13 +444,10 @@ def process_bare(job: BareJob) -> None:
         proj_shapes.append((geom.shp, category_id))
 
     # Create window.
-    window_name = f"{window_prefix}_{proj_bounds[0]}_{proj_bounds[1]}_{job.suffix}"
-    group_name = f"crops_{job.suffix}"
-    window_root = dst_path / "windows" / group_name / window_name
     window = Window(
-        path=window_root,
-        group=group_name,
-        name=window_name,
+        storage=dataset.storage,
+        group=f"crops_{job.suffix}",
+        name=f"{window_prefix}_{proj_bounds[0]}_{proj_bounds[1]}_{job.suffix}",
         projection=projection,
         bounds=proj_bounds,
         time_range=(ts - timedelta(minutes=1), ts + timedelta(minutes=1)),
@@ -473,22 +466,25 @@ def process_bare(job: BareJob) -> None:
         pixel_shapes,
         out_shape=(proj_bounds[3] - proj_bounds[1], proj_bounds[2] - proj_bounds[0]),
     )
-    layer_dir = window_root / "layers" / "label"
     GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
-        layer_dir / "label", projection, proj_bounds, mask[None, :, :]
+        window.get_raster_dir("label", ["label"]),
+        projection,
+        proj_bounds,
+        mask[None, :, :],
     )
-    (layer_dir / "completed").touch()
 
     # Along with a visualization image.
     label_vis = np.zeros((mask.shape[0], mask.shape[1], 3))
     for category_id in range(len(CATEGORIES)):
         color = COLORS[category_id % len(COLORS)]
         label_vis[mask == category_id] = color
-    layer_dir = window_root / "layers" / "label"
     GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
-        layer_dir / "vis", projection, proj_bounds, label_vis.transpose(2, 0, 1)
+        window.get_raster_dir("label", ["vis"]),
+        projection,
+        proj_bounds,
+        label_vis.transpose(2, 0, 1),
     )
-    (layer_dir / "completed").touch()
+    window.mark_layer_completed("label")
 
 
 def get_bare_jobs(

@@ -11,7 +11,7 @@ from typing import Any
 import shapely
 import tqdm
 from rslearn.const import WGS84_PROJECTION
-from rslearn.dataset import Window
+from rslearn.dataset import Dataset, Window
 from rslearn.utils.feature import Feature
 from rslearn.utils.geometry import STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
@@ -26,12 +26,12 @@ WINDOW_SIZE = 128
 DATASET_CONFIG_FNAME = "data/sentinel2_vessel_attribute/config.json"
 
 
-def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
+def process_row(group: str, dataset: Dataset, csv_row: dict[str, str]) -> None:
     """Create a window from one row in the vessel CSV.
 
     Args:
         group: the rslearn group to add the window to.
-        ds_upath: the path of the output rslearn dataset.
+        dataset: the output rslearn dataset.
         csv_row: the row from vessel CSV.
     """
 
@@ -83,12 +83,10 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
     split = "val" if is_val else "train"
 
     # Create the window.
-    window_name = event_id
-    window_root = Window.get_window_root(ds_upath, group, window_name)
     window = Window(
-        path=window_root,
+        storage=dataset.storage,
         group=group,
-        name=window_name,
+        name=event_id,
         projection=dst_projection,
         bounds=bounds,
         time_range=time_range,
@@ -99,6 +97,7 @@ def process_row(group: str, ds_upath: UPath, csv_row: dict[str, str]) -> None:
     window.save()
 
     # Save metadata in case we want to refer to it later.
+    window_root = Window.get_window_root(dataset.path, window.group, window.name)
     with (window_root / "info.json").open("w") as f:
         json.dump(
             {
@@ -166,6 +165,7 @@ def create_windows(group: str, csv_dir: str, ds_path: str, workers: int = 32) ->
         with (ds_upath / "config.json").open("wb") as dst:
             shutil.copyfileobj(src, dst)
 
+    dataset = Dataset(ds_upath)
     jobs = []
     for fname in csv_upath.iterdir():
         with fname.open() as f:
@@ -174,7 +174,7 @@ def create_windows(group: str, csv_dir: str, ds_path: str, workers: int = 32) ->
                 jobs.append(
                     dict(
                         group=group,
-                        ds_upath=ds_upath,
+                        dataset=dataset,
                         csv_row=csv_row,
                     )
                 )

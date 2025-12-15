@@ -81,8 +81,6 @@
       "data_source": {
         "harmonize": true,
         "index_cache_dir": "file:///dfive-default/rslearn-eai/datasets/sentinel2_vessels/data_source_cache/sentinel2",
-        "max_time_delta": "1d",
-        "modality": "L1C",
         "name": "rslearn.data_sources.gcp_public_data.Sentinel2",
         "use_rtree_index": false
       },

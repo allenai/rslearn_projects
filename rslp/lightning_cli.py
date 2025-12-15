@@ -17,6 +17,7 @@ from lightning.pytorch.utilities import rank_zero_only
 from rslearn.lightning_cli import RslearnLightningCLI
 from rslearn.train.lightning_module import RslearnLightningModule
 from rslearn.utils.fsspec import open_atomic
+from rslearn.utils.jsonargparse import init_jsonargparse
 from upath import UPath
 
 import rslp.utils.fs  # noqa: F401 (imported but unused)
@@ -425,6 +426,7 @@ def custom_model_handler() -> None:
 
     It also sets the save_config_callback.
     """
+    init_jsonargparse()
     CustomLightningCLI(
         model_class=RslearnLightningModule,
         datamodule_class=LightningDataModule,
