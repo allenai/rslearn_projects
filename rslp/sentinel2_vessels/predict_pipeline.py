@@ -9,7 +9,7 @@ from datetime import datetime
 import numpy as np
 from PIL import Image
 from rslearn.const import WGS84_PROJECTION
-from rslearn.data_sources import Item, data_source_from_config
+from rslearn.data_sources import Item
 from rslearn.data_sources.gcp_public_data import Sentinel2
 from rslearn.dataset import Dataset, Window, WindowLayerData
 from rslearn.utils.fsspec import open_rasterio_upath_reader
@@ -135,9 +135,9 @@ def setup_dataset_with_scene_ids(
     # Initialize Sentinel2 data source object so we can lookup the Item that each scene
     # ID corresponds to.
     dataset = Dataset(ds_path)
-    data_source: Sentinel2 = data_source_from_config(
-        dataset.layers[SENTINEL2_LAYER_NAME], dataset.path
-    )
+    data_source: Sentinel2 = dataset.layers[
+        SENTINEL2_LAYER_NAME
+    ].instantiate_data_source(ds_path=ds_path)
 
     # Get the SceneData based on looking up the scene.
     scene_datas: list[SceneData] = []
@@ -261,15 +261,14 @@ def get_vessel_detections(
         scene_datas: the SceneDatas to apply the detector on.
     """
     # Create a window for each SceneData.
+    dataset = Dataset(ds_path)
     windows: list[Window] = []
     group = "detector_predict"
     for scene_idx, scene_data in enumerate(scene_datas):
-        window_name = str(scene_idx)
-        window_path = ds_path / "windows" / group / window_name
         window = Window(
-            path=window_path,
+            storage=dataset.storage,
             group=group,
-            name=window_name,
+            name=str(scene_idx),
             projection=scene_data.projection,
             bounds=scene_data.bounds,
             time_range=scene_data.time_range,
@@ -362,13 +361,13 @@ def run_attribute_model(
         return []
 
     # Create windows for applying attribute prediction model.
+    dataset = Dataset(ds_path)
     group = "attribute_predict"
     windows: list[Window] = []
     for detection in detections:
         window_name = (
             f"{detection.metadata['task_idx']}_{detection.col}_{detection.row}"
         )
-        window_path = Window.get_window_root(ds_path, group, window_name)
         bounds = [
             detection.col - CROP_WINDOW_SIZE // 2,
             detection.row - CROP_WINDOW_SIZE // 2,
@@ -380,7 +379,7 @@ def run_attribute_model(
         task_idx = detection.metadata["task_idx"]
         scene_data = scene_datas[task_idx]
         window = Window(
-            path=window_path,
+            storage=dataset.storage,
             group=group,
             name=window_name,
             projection=detection.projection,

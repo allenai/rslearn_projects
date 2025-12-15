@@ -5,6 +5,8 @@ from typing import Any
 import numpy as np
 import wandb
 from rslearn.train.lightning_module import RslearnLightningModule
+from rslearn.train.model_context import ModelContext, ModelOutput
+from typing_extensions import override
 
 from .config import CATEGORIES
 
@@ -12,25 +14,21 @@ from .config import CATEGORIES
 class CMLightningModule(RslearnLightningModule):
     """Lightning module extended with test segmentation confusion matrix."""
 
+    @override
     def on_test_epoch_start(self) -> None:
         """Initialize test confusion matrix."""
         self.probs: list = []
         self.y_true: list = []
 
+    @override
     def on_test_forward(
         self,
-        inputs: list[dict[str, Any]],
+        context: ModelContext,
         targets: list[dict[str, Any]],
-        model_outputs: dict[str, Any],
+        model_outputs: ModelOutput,
     ) -> None:
-        """Hook to run after the forward pass of the model during testing.
-
-        Args:
-            inputs: The input batch.
-            targets: The target batch.
-            model_outputs: The output of the model, with keys "outputs" and "loss_dict", and possibly other keys.
-        """
-        for output, target in zip(model_outputs["outputs"], targets):
+        """Save the probabilities and labels for confusion matrix logging."""
+        for output, target in zip(model_outputs.outputs, targets):
             # cur_probs is CxN array of valid probabilities, N=H*W.
             cur_probs = output["segment"][:, target["segment"]["valid"] > 0]
             # cur_labels is N array of labels.

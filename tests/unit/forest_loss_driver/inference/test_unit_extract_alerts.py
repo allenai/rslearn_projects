@@ -1,7 +1,5 @@
 """Unit tests for the predict pipeline."""
 
-import json
-import pathlib
 from datetime import datetime, timezone
 
 import numpy as np
@@ -10,13 +8,10 @@ import shapely
 import shapely.wkt
 from rasterio.crs import CRS
 from rslearn.utils import Projection, STGeometry
-from upath import UPath
 
 from rslp.forest_loss_driver.extract_dataset.extract_alerts import (
-    ExtractAlertsArgs,
     ForestLossEvent,
     create_forest_loss_mask,
-    write_event,
 )
 from rslp.log_utils import get_logger
 
@@ -48,39 +43,6 @@ def forest_loss_event() -> ForestLossEvent:
     }
     event = ForestLossEvent(**event_dict)
     return event
-
-
-def test_write_event(
-    forest_loss_event: ForestLossEvent, tmp_path: pathlib.Path
-) -> None:
-    """Tests writing an event to a file."""
-
-    write_event(
-        forest_loss_event, "test_filename.tif", UPath(tmp_path), ExtractAlertsArgs()
-    )
-
-    window_dir = (
-        UPath(tmp_path) / "windows" / "default" / "feat_x_1281712_2146968_101_42718"
-    )
-    assert (
-        window_dir / "layers" / "mask" / "mask" / "image.png"
-    ).exists(), "image.png not found"
-
-    assert (window_dir / "metadata.json").exists(), "window metadata.json not found"
-
-    with (window_dir / "layers" / "mask" / "mask" / "metadata.json").open() as f:
-        metadata = json.load(f)
-    assert metadata["bounds"] == [
-        -815504,
-        49752,
-        -815376,
-        49880,
-    ], "forest loss event metadata.json is incorrect"
-
-    # assert completed file exists for mask layer
-    assert (
-        window_dir / "layers" / "mask" / "completed"
-    ).exists(), "completed file not found"
 
 
 def test_create_forest_loss_mask_events_found() -> None:

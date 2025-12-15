@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image
 from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
-from rslearn.dataset import Window
+from rslearn.dataset import Dataset, Window
 from rslearn.utils.geometry import PixelBounds, Projection
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
@@ -143,7 +143,7 @@ def merge_and_upload_points(
     }
     valid_patches = []
     for window in windows:
-        window_output_fname = window.path / "layers" / "output" / "data.geojson"
+        window_output_fname = window.get_layer_dir("output") / "data.geojson"
 
         if not window_output_fname.exists():
             continue
@@ -222,7 +222,7 @@ def merge_and_upload_raster(
                 "expected projection of window to match the task projection"
             )
 
-        window_output_fname = window.path / "layers" / "output" / "output" / "image.png"
+        window_output_fname = window.get_raster_dir("output", ["output"]) / "image.png"
         if not window_output_fname.exists():
             # This indicates that some required input layers must have been missing so
             # no prediction was made.
@@ -325,20 +325,19 @@ def predict_pipeline(
     for value in bounds:
         assert value % PATCH_SIZE == 0
     tile_to_window = {}
+    dataset = Dataset(ds_path)
     for tile_col in range(bounds[0] // PATCH_SIZE, bounds[2] // PATCH_SIZE):
         for tile_row in range(bounds[1] // PATCH_SIZE, bounds[3] // PATCH_SIZE):
-            window_name = f"{tile_col}_{tile_row}"
             window_bounds = (
                 tile_col * PATCH_SIZE,
                 tile_row * PATCH_SIZE,
                 (tile_col + 1) * PATCH_SIZE,
                 (tile_row + 1) * PATCH_SIZE,
             )
-            window_path = ds_path / "windows" / PREDICTION_GROUP / window_name
             window = Window(
-                path=window_path,
+                storage=dataset.storage,
                 group=PREDICTION_GROUP,
-                name=window_name,
+                name=f"{tile_col}_{tile_row}",
                 projection=projection,
                 bounds=window_bounds,
                 time_range=time_range,

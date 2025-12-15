@@ -12,7 +12,7 @@ import rasterio
 from PIL import Image
 from rasterio.enums import Resampling
 from rslearn.const import WGS84_PROJECTION
-from rslearn.data_sources import Item, data_source_from_config
+from rslearn.data_sources import Item
 from rslearn.data_sources.aws_landsat import LandsatOliTirs
 from rslearn.dataset import Dataset, Window, WindowLayerData
 from rslearn.utils.geometry import PixelBounds, Projection
@@ -95,11 +95,11 @@ def get_vessel_detections(
         scene_data: the SceneData to apply the detector in.
     """
     # Create a window for applying detector.
+    dataset = Dataset(ds_path)
     group = "default"
     window_name = "default"
-    window_path = Window.get_window_root(ds_path, group, window_name)
     window = Window(
-        path=window_path,
+        storage=dataset.storage,
         group=group,
         name=window_name,
         projection=scene_data.projection,
@@ -184,11 +184,10 @@ def run_classifier(
         return []
 
     # Create windows for applying classifier.
+    dataset = Dataset(ds_path)
     group = "classify_predict"
     windows: list[Window] = []
     for detection in detections:
-        window_name = f"{detection.col}_{detection.row}"
-        window_path = ds_path / "windows" / group / window_name
         bounds = [
             detection.col - CLASSIFY_WINDOW_SIZE // 2,
             detection.row - CLASSIFY_WINDOW_SIZE // 2,
@@ -196,9 +195,9 @@ def run_classifier(
             detection.row + CLASSIFY_WINDOW_SIZE // 2,
         ]
         window = Window(
-            path=window_path,
+            storage=dataset.storage,
             group=group,
-            name=window_name,
+            name=f"{detection.col}_{detection.row}",
             projection=detection.projection,
             bounds=bounds,
             time_range=scene_data.time_range,
@@ -367,9 +366,10 @@ def setup_dataset(
         if scene_id:
             # Get the projection and scene bounds using the Landsat data source.
             dataset = Dataset(ds_path)
-            data_source: LandsatOliTirs = data_source_from_config(
-                dataset.layers[LANDSAT_LAYER_NAME], dataset.path
+            data_source = dataset.layers[LANDSAT_LAYER_NAME].instantiate_data_source(
+                ds_path=dataset.path
             )
+            assert isinstance(data_source, LandsatOliTirs)
             item = data_source.get_item_by_name(scene_id)
             wgs84_geom = item.geometry.to_projection(WGS84_PROJECTION)
             projection = get_utm_ups_projection(
