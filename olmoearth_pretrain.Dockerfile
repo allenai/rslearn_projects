@@ -3,24 +3,24 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
 RUN apt update
 RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
 
-# Install rslearn and olmoearth_pretrain (need to be in local directory).
+# Use uv to install everything.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Install dependencies for rslearn, olmoearth_pretrain, and rslearn_projects.
+COPY docker_build/rslearn/pyproject.toml /opt/rslearn/pyproject.toml
+COPY docker_build/olmoearth_pretrain/pyproject.toml /opt/olmoearth_pretrain/pyproject.toml
+COPY requirements.txt /opt/rslearn_projects/requirements.txt
+COPY requirements-extra.txt /opt/rslearn_projects/requirements-extra.txt
+# Using cache mount here avoids needing to re-download dependencies for later builds if the version didn't change.
+RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system /opt/rslearn[extra] /opt/olmoearth_pretrain -r /opt/rslearn_projects/requirements.txt -r /opt/rslearn_projects/requirements-extra.txt
+
+# Now copy the source code and install for real.
+# If we don't change any dependencies, then only these steps need to be repeated
+# (fast and means the new layers have small size).
 COPY ./docker_build/rslearn /opt/rslearn
 COPY ./docker_build/olmoearth_pretrain /opt/olmoearth_pretrain
-
-# We also install terratorch so that we can use the same Docker image for TerraMind
-# experiments.
-RUN pip install --no-cache-dir git+https://github.com/IBM/terratorch.git
-RUN pip install --no-cache-dir geobench==0.0.1
-
-RUN pip install --no-cache-dir --upgrade /opt/rslearn[extra]
-RUN pip install --no-cache-dir --upgrade /opt/olmoearth_pretrain
-
-COPY requirements-without-rslearn.txt /opt/rslearn_projects/requirements-without-rslearn.txt
-COPY requirements-extra.txt /opt/rslearn_projects/requirements-extra.txt
-RUN pip install --no-cache-dir -r /opt/rslearn_projects/requirements-without-rslearn.txt -r /opt/rslearn_projects/requirements-extra.txt
-
-# Copy rslearn_projects and install it too.
 COPY . /opt/rslearn_projects/
-RUN pip install --no-cache-dir /opt/rslearn_projects
+
+RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system /opt/rslearn[extra] /opt/olmoearth_pretrain /opt/rslearn_projects[extra]
 
 WORKDIR /opt/rslearn_projects
