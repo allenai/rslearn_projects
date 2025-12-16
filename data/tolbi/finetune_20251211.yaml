@@ -41,7 +41,11 @@ data:
         dtype: FLOAT32
         load_all_item_groups: true
         load_all_layers: true
-        resolution_factor: 1
+        resolution_factor:
+          class_path: rslearn.utils.geometry.ResolutionFactor
+          init_args:
+            numerator: 1
+            denominator: 1
       label:
         data_type: "raster"
         layers: ["label_raster"]
