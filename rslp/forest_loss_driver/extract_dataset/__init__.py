@@ -67,20 +67,27 @@ class InferenceLayerMaterializeArgs(MaterializePipelineArgs):
     prepare_args: PrepareArgs = field(
         default_factory=lambda: PrepareArgs(
             apply_windows_args=ApplyWindowsArgs(
-                use_initial_job=True, workers=get_default_workers()
+                use_initial_job=True,
+                workers=get_default_workers(),
             ),
+            retry_max_attempts=5,
+            retry_backoff=timedelta(seconds=5),
         )
     )
     ingest_args: IngestArgs = field(
         default_factory=lambda: IngestArgs(
             ignore_errors=True,
             apply_windows_args=ApplyWindowsArgs(workers=get_default_workers()),
+            retry_max_attempts=5,
+            retry_backoff=timedelta(seconds=5),
         )
     )
     materialize_args: MaterializeArgs = field(
         default_factory=lambda: MaterializeArgs(
             ignore_errors=True,
             apply_windows_args=ApplyWindowsArgs(workers=get_default_workers()),
+            retry_max_attempts=5,
+            retry_backoff=timedelta(seconds=5),
         ),
     )
 
@@ -104,14 +111,15 @@ class VisLayerMaterializeArgs(MaterializePipelineArgs):
             apply_windows_args=ApplyWindowsArgs(
                 use_initial_job=True, workers=DEFAULT_VIS_LAYER_WORKERS
             ),
-            retry_max_attempts=20,
-            retry_backoff=timedelta(seconds=30),
+            retry_max_attempts=5,
+            retry_backoff=timedelta(seconds=5),
         ),
     )
     ingest_args: IngestArgs = field(
         default_factory=lambda: IngestArgs(
             apply_windows_args=ApplyWindowsArgs(workers=DEFAULT_VIS_LAYER_WORKERS),
             retry_max_attempts=5,
+            retry_backoff=timedelta(seconds=5),
         )
     )
     materialize_args: MaterializeArgs = field(
@@ -119,7 +127,7 @@ class VisLayerMaterializeArgs(MaterializePipelineArgs):
             ignore_errors=True,
             apply_windows_args=ApplyWindowsArgs(workers=DEFAULT_VIS_LAYER_WORKERS),
             retry_max_attempts=5,
-            retry_backoff=timedelta(seconds=30),
+            retry_backoff=timedelta(seconds=5),
         ),
     )
 
