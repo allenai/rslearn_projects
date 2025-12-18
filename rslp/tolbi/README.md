@@ -71,5 +71,5 @@ python -m rslp.main common launch_data_materialization_jobs --image yawenzzzz/rs
 ### Finetune
 
 ```
-python -m rslp.main olmoearth_pretrain launch_finetune --image_name yawenzzzz/rslpomp20251216 --config_paths+=data/tolbi/finetune_20251211.yaml --cluster+=ai2/saturn --rslp_project 2025_12_11_tolbi --experiment_id tolbi_crop_S2_ts_ws16_ps4_bs16
+python -m rslp.main olmoearth_pretrain launch_finetune --image_name yawenzzzz/rslpomp20251216a --config_paths+=data/tolbi/finetune_20251211.yaml --cluster+=ai2/saturn --rslp_project 2025_12_11_tolbi --experiment_id tolbi_crop_S2_ts_ws16_ps4_bs16
 ```
