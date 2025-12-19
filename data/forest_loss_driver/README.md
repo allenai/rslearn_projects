@@ -1,3 +1,7 @@
+This file summarizes the different dataset and model configuration files here. For
+details on how the dataset was created, see `rslp/forest_loss_driver/README.md`.
+
+
 Dataset Versions
 ----------------
 
@@ -30,6 +34,11 @@ Dataset Configurations
 Deployment Details
 ------------------
 
+- 20251219: the deployment is moved from rslearn_projects, where it was running in a
+  Beaker job, onto the OlmoEarth platform, with the code to update forest-loss.allen.ai
+  in `olmoearth_projects.projects.forest_loss_driver.deploy`. It still uses
+  OlmoEarth-v1-FT-ForestLossDriver-Base, which corresponds to  `20251104/config.yaml`
+  here.
 - 20251104: deploy OlmoEarth-v1-FT-ForestLossDriver-Base on Brazil, Peru, and Colombia.
   The model uses Sentinel-2 L2A images from Microsoft Planetary Computer.
 - 20240912: original deployment trained on Peru only, applying Satlas on Sentinel-2 L1C

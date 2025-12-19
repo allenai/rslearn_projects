@@ -8,66 +8,17 @@ components of GLAD alert pixels, threshold the area, and then apply the model on
 polygon. The model inputs 3-5 images before the detected forest loss and 3-5 images
 after the detected forest loss, and classifies the driver.
 
-This project consists of several components:
+The inference pipeline and dataset extraction pipeline have been moved to
+olmoearth_projects, see `olmoearth_projects.projects.forest_loss_driver.deploy`.
 
-- Dataset extraction: the `rslp.forest_loss_driver.extract_dataset` module contains
-  code for creating and materializing an rslearn dataset based on GLAD forest loss
-  alerts. It is used both to create a dataset for annotation, and during weekly
-  inference runs to get the most recent windows to apply the model on.
-- Publication: the `rslp.forest_loss_driver.webapp` module publishes the model outputs
-  to https://forest-loss.allen.ai. It creates both a single GeoJSON file containing the
-  latest predictions, along with a vector tile layer that is used for the Leaflet.js
-  map.
-- Integrated pipeline: in `rslp/forest_loss_driver/__init__.py` it combines both of the
-  above pipelines, along with a call to run the model on the extracted rslearn dataset,
-  into one integrated pipeline.
-- Dataset configuration file: `data/forest_loss_driver/config.json`.
-- Model configuration file: `data/forest_loss_driver/config.yaml`.
+The rslearn dataset (both for training and for prediction) is derived from GLAD forest
+loss alerts published on GCS at `gs://earthenginepartners-hansen/S2alert/`. The dataset
+contains one window per selected GLAD forest loss alert. The model inputs several
+Sentinel-2 images before each event and several images after, and it classifies the
+driver in each window (forest loss alert).
 
-The extracted rslearn dataset contains one window per selected GLAD forest loss alert.
-It is populated with 6-7 Sentinel-2 images before and after each event, and the
-`select_least_cloudy_images` pipeline picks the 3 least cloudy before/after images.
-
-The model classifies the driver in each window (forest loss alert).
-
-## Inference Pipeline Setup
-
-### Environment Variables
-
-Several environment variables are required:
-- RSLP_PREFIX: GCS bucket prefix for model checkpoints (`gs://rslearn-eai`).
-- `PL_API_KEY`: Planet API key, supplied by `.github/workflows/forest_loss_driver_prediction.yaml`
-  from a Github secret. It is no longer used since NICFI is deprecated; instead, now
-  the Planet layers are always empty.
-
-There may be others needed that are supplied by `rslp/utils/beaker.py` but not
-documented here.
-
-### Configuration
-
-The inference pipeline configuration is at `rslp/forest_loss_driver/config/forest_loss_driver_predict_pipeline_config.yaml`.
-
-- `index_cache_dir` fills in the placeholder in the dataset configuration file. We use
-  a temporary directory here since this directory should NOT be shared across inference
-  runs, as the available Sentinel-2 scenes will change between them and we want to use
-  the latest Sentinel-2 scenes. A stale `index_cache_dir` may mean that the newer
-  scenes are not discovered.
-- `tile_store_dir`: this is also a placeholder in the dataset config. We keep the tile
-  store on WEKA since it stores items (Sentinel-2 scenes) and these scenes should be
-  mostly immutable.
-- countries and gcs_tiff_filenames: these control which GLAD forest loss alerts we turn
-  into rslearn windows. Currently the pipeline runs in Peru only.
-
-### Running the Pipeline
-
-Run the pipeline locally:
-
-```
-python -m rslp.main forest_loss_driver integrated_pipeline --integrated_config rslp/forest_loss_driver/config/forest_loss_driver_predict_pipeline_config.yaml
-```
-
-The pipeline is set up to run weekly via a Github Action, see
-`.github/workflows/forest_loss_driver_prediction.yaml` for details.
+For a summary of the version history of dataset and model configuration files, see
+`data/forest_loss_driver/README.md`.
 
 ## Adding Examples to ES Studio
 
