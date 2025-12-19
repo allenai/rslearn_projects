@@ -23,6 +23,7 @@ from rslp.main import run_workflow
 from rslp.utils.beaker import (
     DEFAULT_BUDGET,
     DEFAULT_WORKSPACE,
+    WekaMount,
     create_gcp_credentials_mount,
     get_base_env_vars,
 )
@@ -131,6 +132,7 @@ def launch_workers(
     gpus: int = 0,
     shared_memory: str | None = None,
     priority: BeakerJobPriority = BeakerJobPriority.low,
+    weka_mounts: list[WekaMount] = [],
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -142,10 +144,14 @@ def launch_workers(
         gpus: number of GPUs to request per worker.
         shared_memory: shared memory string like "256GiB".
         priority: priority to assign the Beaker jobs.
+        weka_mounts: list of weka mounts for Beaker job.
     """
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         for _ in tqdm.tqdm(range(num_workers)):
             env_vars = get_base_env_vars(use_weka_prefix=False)
+
+            datasets = [create_gcp_credentials_mount()]
+            datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
 
             spec = BeakerExperimentSpec.new(
                 budget=DEFAULT_BUDGET,
@@ -163,7 +169,7 @@ def launch_workers(
                     cluster=cluster,
                 ),
                 preemptible=True,
-                datasets=[create_gcp_credentials_mount()],
+                datasets=datasets,
                 env_vars=env_vars,
                 resources=BeakerTaskResources(
                     gpu_count=gpus, shared_memory=shared_memory

@@ -49,6 +49,15 @@ ATTRIBUTE_MODEL_CONFIG = "data/sentinel2_vessel_attribute/config.yaml"
 SENTINEL2_RESOLUTION = 10
 CROP_WINDOW_SIZE = 128
 
+# Use lower number of data loader workers for prediction since each worker will read a
+# big scene (unlike the small windows used during training).
+NUM_DATA_LOADER_WORKERS = 4
+
+# We make sure the windows we create for Sentinel-2 scenes are multiples of this amount
+# because we store some bands at 1/4 of the input resolution, so the window size needs
+# be a multiple of 4.
+WINDOW_MIN_MULTIPLE = 4
+
 # Distance threshold for near marine infrastructure filter in km.
 # 0.05 km = 50 m
 INFRA_DISTANCE_THRESHOLD = 0.05
@@ -265,12 +274,21 @@ def get_vessel_detections(
     windows: list[Window] = []
     group = "detector_predict"
     for scene_idx, scene_data in enumerate(scene_datas):
+        # Pad the bounds so they are multiple of WINDOW_MIN_MULTIPLE.
+        padded_bounds = (
+            (scene_data.bounds[0] // WINDOW_MIN_MULTIPLE) * WINDOW_MIN_MULTIPLE,
+            (scene_data.bounds[1] // WINDOW_MIN_MULTIPLE) * WINDOW_MIN_MULTIPLE,
+            ((scene_data.bounds[2] + WINDOW_MIN_MULTIPLE - 1) // WINDOW_MIN_MULTIPLE)
+            * WINDOW_MIN_MULTIPLE,
+            ((scene_data.bounds[3] + WINDOW_MIN_MULTIPLE - 1) // WINDOW_MIN_MULTIPLE)
+            * WINDOW_MIN_MULTIPLE,
+        )
         window = Window(
             storage=dataset.storage,
             group=group,
             name=str(scene_idx),
             projection=scene_data.projection,
-            bounds=scene_data.bounds,
+            bounds=padded_bounds,
             time_range=scene_data.time_range,
         )
         window.save()
@@ -305,7 +323,11 @@ def get_vessel_detections(
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
-        run_model_predict(DETECT_MODEL_CONFIG, ds_path)
+        run_model_predict(
+            DETECT_MODEL_CONFIG,
+            ds_path,
+            extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+        )
 
     # Read the detections.
     detections: list[VesselDetection] = []
