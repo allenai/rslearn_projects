@@ -62,7 +62,7 @@ def create_window(
 
     # Get metadata from the first row (assuming all rows in group have same year, etc.)
     first_row = group.iloc[0]
-    reference_year = first_row["reference_year"]
+    year = int(first_row["reference_year"]) + 1
     sample_id = first_row.get("sampleid", group_name)
 
     # The center of the 10x10 grid will be used to create the window
@@ -85,8 +85,8 @@ def create_window(
         split = "train"
 
     window_name = f"{sample_id}_{round(center_lat, 6)}_{round(center_lon, 6)}"
-    start_time = datetime(int(reference_year), 1, 1, tzinfo=timezone.utc)
-    end_time = datetime(int(reference_year), 12, 31, tzinfo=timezone.utc)
+    start_time = datetime(year, 1, 1, tzinfo=timezone.utc)
+    end_time = datetime(year, 12, 31, tzinfo=timezone.utc)
 
     window = Window(
         storage=StorageConfig()
@@ -111,7 +111,7 @@ def create_window(
     # Process each point in the 10x10 grid
     for _, row in group.iterrows():
         point_lat, point_lon = row["latitude"], row["longitude"]
-        point_category = row["class_name"]
+        point_category = row["tag_name"]
 
         # Get class_id: use 0 for "Not sure", otherwise use CLASS_NAMES.index
         if point_category == "Not sure":
