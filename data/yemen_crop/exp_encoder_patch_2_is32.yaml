@@ -1,0 +1,39 @@
+# Encoder patch_size=2, input_size=32 (so 16x16 tokens)
+rslp_project: 01_06_yemen_crop
+rslp_experiment: yemen_crop_ps2_is32
+
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_BASE
+              patch_size: 2
+
+data:
+  init_args:
+    default_config:
+      patch_size: 32
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    train_config:
+      transforms:
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+      groups: ["spatial_split"]
+      tags:
+        split: "train"
+    predict_config:
+      load_all_patches: true
+      patch_size: 32
+      skip_targets: true

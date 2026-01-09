@@ -1,0 +1,13 @@
+# Encoder patch_size=2, input_size=16 (so 8x8 tokens)
+rslp_project: 01_06_yemen_crop
+rslp_experiment: yemen_crop_ps2_is16
+
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_BASE
+              patch_size: 2
