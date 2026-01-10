@@ -104,6 +104,7 @@ def create_window(
     window.save()
 
     # Add the label raster for all 100 points in the 10x10 grid
+    # Bounds are in pixels
     raster_height = window.bounds[3] - window.bounds[1]
     raster_width = window.bounds[2] - window.bounds[0]
     raster = np.zeros((1, raster_height, raster_width), dtype=np.uint8)
@@ -124,10 +125,10 @@ def create_window(
         point_dst_geometry = point_src_geometry.to_projection(dst_projection)
 
         # Calculate pixel coordinates in the raster
-        # Note: bounds are (min_x, min_y, max_x, max_y) in UTM coordinates
-        pixel_x = int((point_dst_geometry.shp.x - window.bounds[0]) / WINDOW_RESOLUTION)
+        # Geometry coordinates are already in pixels
+        pixel_x = int(point_dst_geometry.shp.x - window.bounds[0])
         # Y-axis is flipped in raster (top-left origin)
-        pixel_y = int((window.bounds[3] - point_dst_geometry.shp.y) / WINDOW_RESOLUTION)
+        pixel_y = int(window.bounds[3] - point_dst_geometry.shp.y)
 
         # Ensure pixel coordinates are within bounds
         if 0 <= pixel_y < raster_height and 0 <= pixel_x < raster_width:
