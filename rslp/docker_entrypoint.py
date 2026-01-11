@@ -23,5 +23,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    # Use spawn instead of forkserver to avoid "too many fds" error
+    # when dataset has many open file handles
+    multiprocessing.set_start_method("spawn")
     main()

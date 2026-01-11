@@ -376,7 +376,7 @@ data:
           segment:
             targets: targets
     batch_size: 16 # could I use a bigger batch size?
-    num_workers: 16
+    num_workers: 8
     default_config:
       patch_size: 16 # input_size for the model
       transforms:
