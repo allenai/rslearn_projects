@@ -1,7 +1,5 @@
 """Docker entrypoint for rslp."""
 
-import multiprocessing
-
 
 def main() -> None:
     """Docker entrypoint for rslp.
@@ -23,7 +21,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Use spawn instead of forkserver to avoid "too many fds" error
-    # when dataset has many open file handles
-    multiprocessing.set_start_method("spawn")
     main()
