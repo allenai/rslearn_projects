@@ -35,6 +35,7 @@ def launch_finetune(
     do_eval: bool = False,
     ckpt_path: str | None = None,
     allow_missing_weights: bool = False,
+    multiprocessing_context: str = "forkserver",
 ) -> None:
     """Launch OlmoEarth fine-tuning experiments.
 
@@ -59,6 +60,7 @@ def launch_finetune(
         do_eval: Whether to just run evals.
         ckpt_path: Optionally specify checkpoint path to load from if do_eval.
         allow_missing_weights: Whether to allow missing weights in checkpoint specified in --ckpt_path.
+        multiprocessing_context: Multiprocessing start method to use.
     """
     # Go into each config file (including the base ones) and make replacements as
     # needed.
@@ -155,7 +157,9 @@ def launch_finetune(
                 with open(path, "w") as f:
                     f.write(string)
 
-            subprocess.check_call(args)  # nosec
+            env = os.environ.copy()
+            env["RSLEARN_MULTIPROCESSING_CONTEXT"] = multiprocessing_context
+            subprocess.check_call(args, env=env)  # nosec
 
         else:
             if do_eval:
@@ -171,6 +175,9 @@ def launch_finetune(
             if allow_missing_weights:
                 extra_args.append("--allow_missing_weights")
 
+            extra_env_vars = {
+                "RSLEARN_MULTIPROCESSING_CONTEXT": multiprocessing_context
+            }
             args = [
                 "python",
                 "-m",
@@ -197,6 +204,8 @@ def launch_finetune(
                 priority,
                 "--retries",
                 str(retries),
+                "--extra_env_vars",
+                json.dumps(extra_env_vars),
             ]
             if extra_args:
                 args.extend(["--extra_args", json.dumps(extra_args)])
