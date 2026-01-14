@@ -33,7 +33,7 @@ def process_window(window_dir: UPath) -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("spawn")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--ds_path", type=str, required=True)

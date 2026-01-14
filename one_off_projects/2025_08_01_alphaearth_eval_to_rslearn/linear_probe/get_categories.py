@@ -16,7 +16,7 @@ def get_category(window_dir: UPath) -> str:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("spawn")
     ds_path = UPath(sys.argv[1])
 
     window_dirs = list((ds_path / "windows" / "train").iterdir())

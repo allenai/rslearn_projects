@@ -42,7 +42,7 @@ def process_window(window: Window, boundary_geom: STGeometry) -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("spawn")
 
     # Read boundary polygon.
     features = GeojsonVectorFormat().decode_from_file(UPath(BOUNDARY_FNAME))

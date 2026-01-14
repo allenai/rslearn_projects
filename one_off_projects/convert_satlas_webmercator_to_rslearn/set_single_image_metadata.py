@@ -29,5 +29,5 @@ def set_single_image_metadata(ds_root: str, workers: int = 32):
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("spawn")
     set_single_image_metadata(ds_root=sys.argv[1])

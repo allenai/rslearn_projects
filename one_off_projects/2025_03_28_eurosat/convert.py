@@ -106,7 +106,7 @@ def convert_eurosat(eurosat_dir: str, ds_path: UPath, workers: int = 64) -> None
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("spawn")
     parser = argparse.ArgumentParser(
         description="Convert EuroSat dataset to rslearn format",
     )

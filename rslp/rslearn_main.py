@@ -16,7 +16,6 @@ def main() -> None:
     from dotenv import load_dotenv
 
     load_dotenv()
-    init_mp()
     import rslearn.lightning_cli
 
     from rslp.lightning_cli import CustomLightningCLI, custom_model_handler
@@ -30,4 +29,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    init_mp()
     main()

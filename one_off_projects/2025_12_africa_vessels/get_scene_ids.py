@@ -63,7 +63,7 @@ def get_items(geom: STGeometry, cache_path: UPath) -> list[Sentinel2Item]:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("spawn")
 
     parser = argparse.ArgumentParser(
         description="Get Sentinel-2 scene IDs",

@@ -31,7 +31,7 @@ if __name__ == "__main__":
     parser.add_argument("-j", "--jobs", type=int, default=128)
     args = parser.parse_args()
 
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("spawn")
 
     windows = Dataset(args.ds_path).load_windows(
         groups=args.ds_group, workers=args.jobs, show_progress=True

@@ -101,7 +101,7 @@ def handle_window(window_root: UPath):
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("spawn")
     ds_path = UPath(sys.argv[1])
 
     metadata_fnames = list(ds_path.glob("windows/*/*/metadata.json"))

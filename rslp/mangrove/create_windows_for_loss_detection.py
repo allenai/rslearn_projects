@@ -140,7 +140,7 @@ def create_windows_from_csv(
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("spawn")
     parser = argparse.ArgumentParser(description="Create windows from csv")
     parser.add_argument(
         "--true_positives_csv_path",

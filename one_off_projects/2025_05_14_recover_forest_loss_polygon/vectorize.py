@@ -56,7 +56,7 @@ def process_window(window_dir: UPath) -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
+    multiprocessing.set_start_method("spawn")
     ds_path = UPath("gs://rslearn-eai/datasets/forest_loss_driver/dataset_v1/20250514/")
     window_dirs = list(ds_path.glob("windows/*/*"))
     p = multiprocessing.Pool(128)
