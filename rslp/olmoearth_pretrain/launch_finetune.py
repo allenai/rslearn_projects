@@ -36,6 +36,7 @@ def launch_finetune(
     ckpt_path: str | None = None,
     allow_missing_weights: bool = False,
     multiprocessing_context: str = "forkserver",
+    torch_sharing_strategy: str | None = None,
 ) -> None:
     """Launch OlmoEarth fine-tuning experiments.
 
@@ -61,6 +62,7 @@ def launch_finetune(
         ckpt_path: Optionally specify checkpoint path to load from if do_eval.
         allow_missing_weights: Whether to allow missing weights in checkpoint specified in --ckpt_path.
         multiprocessing_context: Multiprocessing start method (e.g. "forkserver", "spawn").
+        torch_sharing_strategy: Torch multiprocessing sharing strategy (e.g. "file_system").
     """
     # Go into each config file (including the base ones) and make replacements as
     # needed.
@@ -159,6 +161,8 @@ def launch_finetune(
 
             env = os.environ.copy()
             env["RSLEARN_MULTIPROCESSING_CONTEXT"] = multiprocessing_context
+            if torch_sharing_strategy:
+                env["RSLEARN_TORCH_MP_SHARING_STRATEGY"] = torch_sharing_strategy
             subprocess.check_call(args, env=env)  # nosec
 
         else:
@@ -174,6 +178,14 @@ def launch_finetune(
                 extra_args.extend(["--profiler", profiler])
             if allow_missing_weights:
                 extra_args.append("--allow_missing_weights")
+
+            extra_env_vars = {
+                "RSLEARN_MULTIPROCESSING_CONTEXT": multiprocessing_context,
+            }
+            if torch_sharing_strategy:
+                extra_env_vars["RSLEARN_TORCH_MP_SHARING_STRATEGY"] = (
+                    torch_sharing_strategy
+                )
 
             args = [
                 "python",
@@ -201,6 +213,8 @@ def launch_finetune(
                 priority,
                 "--retries",
                 str(retries),
+                "--extra_env_vars",
+                json.dumps(extra_env_vars),
             ]
             if extra_args:
                 args.extend(["--extra_args", json.dumps(extra_args)])
