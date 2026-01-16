@@ -2,15 +2,13 @@
 
 import multiprocessing
 import os
-from typing import Optional
-
 
 DEFAULT_MP_CONTEXT = "forkserver"
 MP_CONTEXT_ENV_VAR = "RSLEARN_MULTIPROCESSING_CONTEXT"
 MP_SHARING_STRATEGY_ENV_VAR = "RSLEARN_TORCH_MP_SHARING_STRATEGY"
 
 
-def init_mp(context: str | None = None, sharing_strategy: Optional[str] = None) -> None:
+def init_mp(context: str | None = None, sharing_strategy: str | None = None) -> None:
     """Set start method for multiprocessing.
 
     Uses RSLEARN_MULTIPROCESSING_CONTEXT if provided, else defaults to forkserver.
@@ -22,8 +20,8 @@ def init_mp(context: str | None = None, sharing_strategy: Optional[str] = None) 
             import torch.multiprocessing as torch_mp
 
             torch_mp.set_sharing_strategy(sharing_strategy)
-        except Exception:
-            # Avoid failing to start if torch is not available yet.
+        except ImportError:
+            # Torch may not be installed/available yet.
             pass
     if context is None:
         context = os.environ.get(MP_CONTEXT_ENV_VAR, DEFAULT_MP_CONTEXT)
