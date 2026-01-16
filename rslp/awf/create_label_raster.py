@@ -50,7 +50,7 @@ def create_label_raster(window: Window) -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("forkserver")
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--ds_path",

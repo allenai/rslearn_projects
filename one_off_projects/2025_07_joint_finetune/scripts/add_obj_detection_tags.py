@@ -35,5 +35,5 @@ def assign_split(ds_root: str, workers: int = 32):
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("forkserver")
     assign_split(ds_root=sys.argv[1])

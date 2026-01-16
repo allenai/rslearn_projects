@@ -129,7 +129,7 @@ def process_dataset(csv_fname: str) -> None:
     p.close()
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("forkserver")
     for csv_name in DATASET_CSVS:
         csv_fname = os.path.join(DATASET_PATH, csv_name)
         process_dataset(csv_fname)

@@ -26,7 +26,7 @@ def process(job):
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("forkserver")
     db_path = "/weka/dfive-default/rslearn-eai/artifacts/siv-annotations/sentinel1-data/siv.sqlite3"
     out_dir = UPath("/weka/dfive-default/rslearn-eai/datasets/sentinel1_vessels/dataset_v1/20250602/")
 

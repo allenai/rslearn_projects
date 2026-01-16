@@ -99,10 +99,10 @@ def upload_code(project_id: str, experiment_id: str) -> None:
             root_dir=".",
             exclude_prefixes=CODE_EXCLUDES,
         )
+        logger.info("uploading archive")
         project_code_fname = rslp_prefix / CODE_BLOB_PATH.format(
             project_id=project_id, experiment_id=experiment_id
         )
-        logger.info("uploading archive to %s", project_code_fname)
         project_code_fname.parent.mkdir(parents=True, exist_ok=True)
         with open(zip_fname, "rb") as src:
             with project_code_fname.open("wb") as dst:

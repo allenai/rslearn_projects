@@ -71,7 +71,7 @@ def process_window(window: Window) -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("forkserver")
     parser = argparse.ArgumentParser(
         description="Split ascending and descending Sentinel-1 windows",
     )

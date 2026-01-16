@@ -30,7 +30,7 @@ def assign_split(window: Window) -> None:
 
 if __name__ == "__main__":
     ds_path = UPath(sys.argv[1])
-    multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("forkserver")
     windows = Dataset(ds_path).load_windows(workers=128, show_progress=True)
     p = multiprocessing.Pool(128)
     outputs = p.imap_unordered(assign_split, windows)

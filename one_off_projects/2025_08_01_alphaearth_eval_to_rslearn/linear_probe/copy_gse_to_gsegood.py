@@ -38,7 +38,7 @@ def process_window(window_dir: UPath) -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("forkserver")
 
     ds_path = UPath(sys.argv[1])
     window_dirs = list(ds_path.glob("windows/*/*"))

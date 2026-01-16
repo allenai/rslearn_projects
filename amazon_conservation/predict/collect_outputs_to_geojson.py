@@ -46,7 +46,7 @@ def get_feature(index: int, window_root: UPath) -> list[dict[str, Any]]:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("forkserver")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--ds_path", help="Dataset root path", type=str, required=True)

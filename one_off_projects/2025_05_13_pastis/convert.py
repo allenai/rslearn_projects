@@ -148,7 +148,7 @@ def convert_pastis(src_path: Path, ds_path: UPath, workers: int = 64) -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("forkserver")
     parser = argparse.ArgumentParser(
         description="Convert PASTIS dataset to rslearn format",
     )
