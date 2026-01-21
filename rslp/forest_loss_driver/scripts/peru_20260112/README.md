@@ -79,5 +79,9 @@ Then make request to have it import the dataset (need to create project in Studi
 curl https://olmoearth.allenai.org/api/v1/datasets/ingest --request PUT --header 'Content-Type: application/json' --header "Authorization: Bearer $STUDIO_API_TOKEN" --data '{"dataset_path": "gs://ai2-rslearn-projects-data/datasets/forest_loss_driver/dataset_v1/peru_20260112/rslearn_dataset_for_selected_events/", "project_id": "60e16f40-dbe8-4932-af1b-3f762572530d", "layer_source_names": {}, "prediction_layer_names": []}'
 ```
 
+After the project is populated, copy the annotation metadata fields from another
+project (should have Confidence enum with High/Medium/Low and Area number with 0-9999)
+and use `../add_area_to_studio_tasks.py` to set the area in hectares for each polygon.
+
 At 2026-01-20 we sent the project to ACA and they are now looking at it, once
 annotation is completed we will need to look into retraining the model.
