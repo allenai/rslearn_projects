@@ -21,27 +21,36 @@ from rslearn.utils.raster_format import (
 from upath import UPath
 
 SRC_DIR = "/weka/dfive-default/rslearn-eai/artifacts/fields_of_the_world/"
+# Path to write dataset that uses projection and images from original dataset.
+# They are WGS84 at roughly 6 m/pixel at the equator (but resolution is in degrees).
 ORIG_DST_DIR = (
     "/weka/dfive-default/rslearn-eai/datasets/fields_of_the_world/rslearn_dataset_orig/"
 )
+# Path to write dataset that uses UTM projection.
 UTM_DST_DIR = (
     "/weka/dfive-default/rslearn-eai/datasets/fields_of_the_world/rslearn_dataset_utm/"
 )
 # Order of bands in the s2_a/s2_b GeoTIFFs.
+# The source dataset only has these bands.
 S2_BANDS = ["B04", "B03", "B02", "B08"]
-# Duration for our time ranges.
+# Duration for the window time ranges.
 DURATION = timedelta(days=30 * 8)
 
 
 @dataclass
 class Example:
-    """One example in the source dataset."""
+    """One example in the source dataset.
+
+    This contains all the information needed to convert the example.
+    """
 
     # Country name for this example.
     country_name: str
     # 3-class semantic GeoTIFF path.
     semantic_fname: UPath
     # window_a GeoTIFF path.
+    # The dataset specifies two windows, one at the first half of the agricultural
+    # season and one at the second half. One image is provided for each window.
     s2_a_fname: UPath
     # window_b GeoTIFF path.
     s2_b_fname: UPath
@@ -50,7 +59,7 @@ class Example:
 
 
 def season_to_time_range(season: dict) -> tuple[datetime, datetime]:
-    """Get the time range for the season dict.
+    """Get the window time range from the season dict.
 
     We compute it by adding DURATION days to the start of the first (a) time window.
     """
@@ -64,8 +73,11 @@ def create_window(
     """Create an rslearn window from the given example."""
     suffix = example.semantic_fname.name.split(".tif")[0]
     window_name = f"{example.country_name}_{suffix}"
-    is_val = hashlib.sha256(window_name.encode()).hexdigest()[0] in ["0", "1", "2", "3"]
-    is_test = hashlib.sha256(window_name.encode()).hexdigest()[0] in [
+
+    # Use hash to determine val vs test.
+    hash_hex_char = hashlib.sha256(window_name.encode()).hexdigest()[0]
+    is_val = hash_hex_char in ["0", "1", "2", "3"]
+    is_test = hash_hex_char in [
         "4",
         "5",
         "6",
@@ -96,7 +108,7 @@ def create_window(
         int(utm_geom.shp.bounds[3]),
     )
 
-    # Create the original window.
+    # Create the original window (keep source projection).
     orig_window = Window(
         storage=orig_dataset.storage,
         group=example.country_name,
@@ -141,6 +153,7 @@ def create_window(
     orig_window.mark_layer_completed("s2_b")
 
     # Create the UTM window and copy the label only.
+    # The images should be obtained with prepare/ingest/materialize.
     utm_window = Window(
         storage=utm_dataset.storage,
         group=example.country_name,
@@ -220,6 +233,7 @@ if __name__ == "__main__":
                 )
             )
 
+    # Run the conversion in parallel.
     orig_dataset = Dataset(UPath(ORIG_DST_DIR))
     utm_dataset = Dataset(UPath(UTM_DST_DIR))
     p = multiprocessing.Pool(128)
