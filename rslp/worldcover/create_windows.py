@@ -128,7 +128,7 @@ def create_window(
         # Geometry coordinates are already in pixels
         pixel_x = int(point_dst_geometry.shp.x - window.bounds[0])
         # Y-axis is flipped in raster (top-left origin)
-        pixel_y = int(window.bounds[3] - point_dst_geometry.shp.y)
+        pixel_y = int(point_dst_geometry.shp.y - window.bounds[1])
 
         # Ensure pixel coordinates are within bounds
         if 0 <= pixel_y < raster_height and 0 <= pixel_x < raster_width:
