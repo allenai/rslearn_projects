@@ -27,6 +27,22 @@
           "dtype": "int32"
         }
       ],
+      "class_names": [
+        "no_data",
+        "bare",
+        "burnt",
+        "crops",
+        "fallow/shifting cultivation",
+        "grassland",
+        "Lichen and moss",
+        "shrub",
+        "snow and ice",
+        "tree",
+        "urban/built-up",
+        "water",
+        "wetland (herbaceous)"
+      ],
+      "class_property_name": "label",
       "type": "raster"
     },
     "output": {

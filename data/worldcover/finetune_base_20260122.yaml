@@ -14,8 +14,7 @@ model:
             init_args:
               in_channels: [[4, 768]]
               out_channels: 1
-              conv_layers_per_resolution: 2
-              num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+              num_channels: {2: 256, 1: 128}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     lr: 0.0001
     plateau: true
@@ -36,7 +35,6 @@ data:
         dtype: FLOAT32
         load_all_item_groups: true
         load_all_layers: true
-        resolution_factor: 1
       targets:
         data_type: "raster"
         layers: ["label_raster"]
@@ -48,6 +46,8 @@ data:
       init_args:
         num_classes: 13
         zero_is_invalid: true
+        enable_confusion_matrix: true
+        confusion_matrix_normalize: "true"
         metric_kwargs:
           average: "micro"
         other_metrics:
@@ -273,7 +273,7 @@ data:
       transforms:
         - class_path: rslearn.train.transforms.crop.Crop
           init_args:
-            crop_size: 16
+            crop_size: 32
             image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
@@ -283,7 +283,7 @@ data:
       transforms:
         - class_path: rslearn.train.transforms.crop.Crop
           init_args:
-            crop_size: 16
+            crop_size: 32
             image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
@@ -292,15 +292,15 @@ data:
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-      groups: ["20251210"]
+      groups: ["20260109"]
       tags:
         split: "train"
     val_config:
-      groups: ["20251210"]
+      groups: ["20260109"]
       tags:
         split: "val"
     test_config:
-      groups: ["20251210"]
+      groups: ["20260109"]
       tags:
         split: "val"
 trainer:
@@ -318,7 +318,7 @@ trainer:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
+        unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
-rslp_project: 2025_12_11_tolbi
-rslp_experiment: tolbi_crop_S2_ts_ws16_ps4_bs16
+rslp_project: 2026_01_22_worldcover
+rslp_experiment: base_S2_ts_ws32_ps4
