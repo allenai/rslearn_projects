@@ -24,18 +24,18 @@ LABEL_LAYER = "label_raster"
 BAND_NAME = "label"
 CLASS_NAMES = [
     "invalid",  # "Not sure" belongs to invalid
-    "bare",  # 1
-    "burnt",  # 2
-    "crops",  # 3
-    "fallow/shifting cultivation",  # 4
-    "grassland",  # 5
-    "Lichen and moss",  # 6
-    "shrub",  # 7
-    "snow and ice",  # 8
-    "tree",  # 9
-    "urban/built-up",  # 10
-    "water",  # 11
-    "wetland (herbaceous)",  # 12
+    "bare",
+    "burnt",
+    "crops",
+    "fallow/shifting cultivation",
+    "grassland",
+    "Lichen and moss",
+    "shrub",
+    "snow and ice",
+    "tree",
+    "urban/built-up",
+    "water",
+    "wetland (herbaceous)",
 ]
 # index from 0 to 12 (12 classes)
 
