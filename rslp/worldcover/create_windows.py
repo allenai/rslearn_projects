@@ -9,9 +9,8 @@ import numpy as np
 import pandas as pd
 import shapely
 import tqdm
-from rslearn.config.dataset import StorageConfig
 from rslearn.const import WGS84_PROJECTION
-from rslearn.dataset import Window
+from rslearn.dataset import Dataset, Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.raster_format import GeotiffRasterFormat
@@ -77,9 +76,9 @@ def create_window(
     tile = (bounds[0] // 1024, bounds[1] // 1024)
     grid_cell_id = f"{dst_projection.crs}_{tile[0]}_{tile[1]}"
     first_hex_char_in_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()[0]
-    if first_hex_char_in_hash in ["0", "1"]:
+    if first_hex_char_in_hash in ["0", "1", "2", "3"]:
         split = "val"
-    elif first_hex_char_in_hash in ["2", "3"]:
+    elif first_hex_char_in_hash in ["4", "5", "6", "7"]:
         split = "test"
     else:
         split = "train"
@@ -88,10 +87,9 @@ def create_window(
     start_time = datetime(year, 1, 1, tzinfo=timezone.utc)
     end_time = datetime(year, 12, 31, tzinfo=timezone.utc)
 
+    dataset = Dataset(UPath(ds_path))
     window = Window(
-        storage=StorageConfig()
-        .instantiate_window_storage_factory()
-        .get_storage(ds_path),
+        storage=dataset.storage,
         group=group_name,
         name=window_name,
         projection=dst_projection,
