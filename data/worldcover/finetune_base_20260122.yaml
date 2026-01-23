@@ -94,7 +94,7 @@ data:
               metric:
                 class_path: torchmetrics.classification.MulticlassPrecision
                 init_args:
-                  num_classes: 7
+                  num_classes: 12
                   average: null
               class_idx: 2
           crops_recall:
