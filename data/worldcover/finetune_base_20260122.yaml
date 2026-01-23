@@ -274,7 +274,7 @@ data:
         - class_path: rslearn.train.transforms.crop.Crop
           init_args:
             crop_size: 32
-            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["sentinel2_l2a", "target/classes", "target/valid"]
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
@@ -284,10 +284,10 @@ data:
         - class_path: rslearn.train.transforms.crop.Crop
           init_args:
             crop_size: 32
-            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["sentinel2_l2a", "target/classes", "target/valid"]
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
-            image_selectors: ["sentinel2_l2a", "target/segment/classes", "target/segment/valid"]
+            image_selectors: ["sentinel2_l2a", "target/classes", "target/valid"]
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:

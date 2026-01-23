@@ -76,9 +76,9 @@ def create_window(
     tile = (bounds[0] // 1024, bounds[1] // 1024)
     grid_cell_id = f"{dst_projection.crs}_{tile[0]}_{tile[1]}"
     first_hex_char_in_hash = hashlib.sha256(grid_cell_id.encode()).hexdigest()[0]
-    if first_hex_char_in_hash in ["0", "1", "2", "3"]:
+    if first_hex_char_in_hash in ["0", "1"]:
         split = "val"
-    elif first_hex_char_in_hash in ["4", "5", "6", "7"]:
+    elif first_hex_char_in_hash in ["2", "3"]:
         split = "test"
     else:
         split = "train"
