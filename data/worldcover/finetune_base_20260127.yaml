@@ -81,6 +81,10 @@ data:
       groups: ["20260109"]
       tags:
         split: "train"
+      sampler:
+        class_path: rslearn.train.dataset.RandomSamplerFactory
+        init_args:
+          num_samples: 1000
     val_config:
       groups: ["20260109"]
       tags:
@@ -90,7 +94,7 @@ data:
       tags:
         split: "val"
 trainer:
-  max_epochs: 6
+  max_epochs: 1
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -106,5 +110,5 @@ trainer:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
-rslp_project: 2026_01_22_worldcover
+rslp_project: 2026_01_27_worldcover
 rslp_experiment: base_S2_ts_ws32_ps4
