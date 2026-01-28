@@ -188,6 +188,20 @@ def create_window_pair(
             window_geom_wgs84_coords,
             time_range=(extended_start_time, positive_start_time)
         )
+        
+        # Ensure the primary landslide is always included in positive windows
+        primary_landslide_found = any(ls["id"] == sample_id for ls in positive_overlapping)
+        if not primary_landslide_found:
+            # Add the primary landslide to the list
+            primary_landslide = {
+                "id": sample_id,
+                "geometry": geometry,
+                "event_type": event_type,
+                "event_date": event_date,
+            }
+            positive_overlapping.append(primary_landslide)
+            print(f"  Added primary landslide {sample_id} to positive window (was not in spatial query results)")
+        
         print(f"  Found {len(positive_overlapping)} spatially overlapping landslides in positive window")
         print(f"  (Including landslides from 180 days before up to {event_date})")
     
