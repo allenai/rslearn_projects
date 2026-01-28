@@ -12,6 +12,18 @@ for more details about the model and dataset.
 
 ![Image showing a Sentinel-2 image with predicted positions of ships from the model overlayed.](./images/sentinel2_vessels/prediction.png)
 
+To visualize samples from the dataset, you can use the rslearn visualization module:
+```
+python -m rslearn.vis.server \
+    {DATASET_PATH} \
+    --layers sentinel2 \
+    --label_layers label \
+    --bands '{"pre_sentinel2": ["B04", "B03", "B02"], "post_sentinel2": ["B04", "B03", "B02"]}' \
+    --normalization '{"pre_sentinel2": "sentinel2_rgb", "post_sentinel2": "sentinel2_rgb"}' \
+    --task_type detection \
+    --max_samples 100
+```
+
 
 Inference
 ---------

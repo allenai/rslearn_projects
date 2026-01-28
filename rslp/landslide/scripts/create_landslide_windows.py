@@ -12,7 +12,7 @@ python create_windows_for_landslide_detection.py \
     --ds_path data/landslide/20260106_positives/ \
     --sample_type positive \
     --max_samples 1 \
-    --buffer_distance 5  # buffer in meters around landslides
+    --buffer_distance 20  # buffer in meters around landslides (default: 20m = 2 pixels at 10m/pixel)
 """
 
 import argparse
@@ -35,9 +35,10 @@ from upath import UPath
 
 from rslp.utils.windows import calculate_bounds
 
-WINDOW_RESOLUTION = 10
+WINDOW_RESOLUTION = 10  # meters per pixel
 WINDOW_SIZE_PIXELS = 64
 LABEL_LAYER = "label"
+DEFAULT_BUFFER_DISTANCE = 30.0  # meters (2 pixels at 10m/pixel resolution)
 
 
 class LandslideSpatialIndex:
@@ -103,7 +104,7 @@ def create_window_pair(
     dataset: Dataset, 
     sample_type: str,
     spatial_index: LandslideSpatialIndex,
-    buffer_distance: float = 5.0,
+    buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
 ) -> None:
     """Create pre-event and post-event windows for landslide detection.
 
@@ -459,7 +460,7 @@ def create_windows_from_shapefile(
     ds_path: UPath,
     sample_type: str,
     max_samples: int = None,
-    buffer_distance: float = 5.0,
+    buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
 ) -> None:
     """Create windows from Sen12Landslides shapefile.
 
@@ -552,8 +553,8 @@ if __name__ == "__main__":
         "--buffer_distance",
         type=float,
         required=False,
-        default=5.0,
-        help="Buffer distance in meters around landslides for no_data zone (default: 5.0)",
+        default=DEFAULT_BUFFER_DISTANCE,
+        help=f"Buffer distance in meters around landslides for no_data zone (default: {DEFAULT_BUFFER_DISTANCE}, ~{DEFAULT_BUFFER_DISTANCE/WINDOW_RESOLUTION:.1f} pixels at {WINDOW_RESOLUTION}m/pixel)",
     )
     args = parser.parse_args()
     
