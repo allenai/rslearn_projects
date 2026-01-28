@@ -51,26 +51,234 @@ data:
         class_names: ["bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
         metric_kwargs:
           average: "micro"
-        enable_f1_metric: true
-        report_metric_per_class: true
+        other_metrics:
+          bare_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 0
+          bare_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 0
+          burnt_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 1
+          burnt_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 1
+          crops_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 2
+          crops_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 2
+          fallow_shifting_cultivation_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 3
+          fallow_shifting_cultivation_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 3
+          grassland_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 4
+          grassland_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 4
+          lichen_moss_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 5
+          lichen_moss_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 5
+          shrub_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 6
+          shrub_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 6
+          snow_ice_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 7
+          snow_ice_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 7
+          tree_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 8
+          tree_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 8
+          urban_built_up_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 9
+          urban_built_up_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 9
+          water_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 10
+          water_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 10
+          wetland_herbaceous_precision:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassPrecision
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 11
+          wetland_herbaceous_recall:
+            class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+            init_args:
+              metric:
+                class_path: torchmetrics.classification.MulticlassRecall
+                init_args:
+                  num_classes: 12
+                  average: null
+              class_idx: 11
     batch_size: 16
     num_workers: 32
     default_config:
+      patch_size: 32
       transforms:
-        - class_path: rslearn.train.transforms.crop.Crop
-          init_args:
-            crop_size: 32
-            image_selectors: ["sentinel2_l2a", "target/classes", "target/valid"]
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
       transforms:
-        - class_path: rslearn.train.transforms.crop.Crop
-          init_args:
-            crop_size: 32
-            image_selectors: ["sentinel2_l2a", "target/classes", "target/valid"]
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["sentinel2_l2a", "target/classes", "target/valid"]
@@ -81,10 +289,6 @@ data:
       groups: ["20260109"]
       tags:
         split: "train"
-      sampler:
-        class_path: rslearn.train.dataset.RandomSamplerFactory
-        init_args:
-          num_samples: 1000
     val_config:
       groups: ["20260109"]
       tags:
@@ -94,7 +298,7 @@ data:
       tags:
         split: "val"
 trainer:
-  max_epochs: 1
+  max_epochs: 100
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -111,4 +315,4 @@ trainer:
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
 rslp_project: 2026_01_27_worldcover
-rslp_experiment: base_S2_ts_ws32_ps4
+rslp_experiment: base_S2_12months_ws32_ps4
