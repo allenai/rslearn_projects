@@ -512,6 +512,7 @@ def create_windows_from_shapefile(
     centroids_wgs84 = centroids_proj.apply(lambda geom: transformer.transform(geom.x, geom.y))
     gdf["longitude"] = centroids_wgs84.apply(lambda coord: coord[0])
     gdf["latitude"] = centroids_wgs84.apply(lambda coord: coord[1])
+    
     # Parse dates from the 'Name' column using the utility function
     gdf["event_date"] = gdf["Name"].apply(parse_name_as_date)
     gdf["event_date"] = pd.to_datetime(gdf["event_date"], errors="coerce")
@@ -620,5 +621,3 @@ if __name__ == "__main__":
         max_samples=args.max_samples,
         buffer_distance=args.buffer_distance,
     )
-
-

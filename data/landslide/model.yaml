@@ -37,7 +37,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: '/weka/dfive-default/piperw/rslearn_projects/data/landslide/20260118_positives'
+    path: '/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides'
     inputs:
       # We read the four Sentinel-2 images materialized earlier.
       # OlmoEarth expects the input to be called "sentinel2_l2a".
@@ -64,7 +64,7 @@ data:
     batch_size: 8
     num_workers: 32
     default_config:
-      groups: ["default"]
+      groups: ["1k_positives"]
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
@@ -111,11 +111,11 @@ trainer:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
         # This path will be copied from data.init_args.path by rslearn.
-        path: gs://rslearn-eai/datasets/landslide/20260118_positives/
+        path: gs://rslearn-eai/datasets/landslide/sen12landslides_1k_positives/
         #output_layer: output
         selector: ["segment"]
 # Here we enable automatic checkpoint management and logging to W&B.
 # Set WANDB_MODE=offline to disable online logging.
-project_name: ${PROJECT_NAME}
-run_name: ${RUN_NAME}
+project_name: landslides
+run_name: sen12landslides_1k_base
 management_dir: ${MANAGEMENT_DIR}
