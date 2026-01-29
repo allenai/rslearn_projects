@@ -107,13 +107,14 @@ trainer:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 10
     # The RslearnWriter is used during `model predict` to save the predicted outputs to
-    # the rslearn dataset.
-    - class_path: rslearn.train.prediction_writer.RslearnWriter
-      init_args:
-        # This path will be copied from data.init_args.path by rslearn.
-        path: gs://rslearn-eai/datasets/landslide/sen12landslides_1k_positives/
-        #output_layer: output
-        selector: ["segment"]
+    # the rslearn dataset. It's not needed for training, so we comment it out here.
+    # Uncomment and set output_layer when using this config for prediction.
+    # - class_path: rslearn.train.prediction_writer.RslearnWriter
+    #   init_args:
+    #     # This path will be copied from data.init_args.path by rslearn.
+    #     path: gs://rslearn-eai/datasets/landslide/sen12landslides_1k_positives/
+    #     output_layer: segment
+    #     selector: ["segment"]
 # Here we enable automatic checkpoint management and logging to W&B.
 # Set WANDB_MODE=offline to disable online logging.
 project_name: landslides
