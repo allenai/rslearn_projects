@@ -189,21 +189,18 @@ def create_window_pair(
             time_range=(extended_start_time, positive_start_time)
         )
         
-        # Ensure the primary landslide is always included in positive windows
-        primary_landslide_found = any(ls["id"] == sample_id for ls in positive_overlapping)
-        if not primary_landslide_found:
-            # Add the primary landslide to the list
-            primary_landslide = {
-                "id": sample_id,
-                "geometry": geometry,
-                "event_type": event_type,
-                "event_date": event_date,
-            }
-            positive_overlapping.append(primary_landslide)
-            print(f"  Added primary landslide {sample_id} to positive window (was not in spatial query results)")
-        
+        # ALWAYS include the primary landslide in positive windows (the window is created for this landslide)
+        # Remove it from the list if it's already there (to avoid duplicates), then add it at the beginning
+        positive_overlapping = [ls for ls in positive_overlapping if ls["id"] != sample_id]
+        primary_landslide = {
+            "id": sample_id,
+            "geometry": geometry,
+            "event_type": event_type,
+            "event_date": event_date,
+        }
+        positive_overlapping.insert(0, primary_landslide)  # Add at the beginning
         print(f"  Found {len(positive_overlapping)} spatially overlapping landslides in positive window")
-        print(f"  (Including landslides from 180 days before up to {event_date})")
+        print(f"  (Including primary landslide {sample_id} and landslides from 180 days before up to {event_date})")
     
     print(f"  Found {len(negative_overlapping)} overlapping landslides in negative window")
     if len(negative_overlapping) > 0:
@@ -304,6 +301,15 @@ def create_window_pair(
             event_type,
             event_date
         )
+        
+        # Verify that positive window has at least one landslide feature
+        landslide_features = [f for f in positive_features if f.properties.get("label") == "landslide"]
+        if len(landslide_features) == 0:
+            raise ValueError(
+                f"Positive window {positive_window_name} has no landslide features! "
+                f"This should not happen - the primary landslide should always be included. "
+                f"Found {len(positive_overlapping)} overlapping landslides."
+            )
         
         # Encode all features to the label layer
         positive_layer_dir = positive_window.get_layer_dir(LABEL_LAYER)
