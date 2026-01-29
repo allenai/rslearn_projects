@@ -512,7 +512,6 @@ def create_windows_from_shapefile(
     centroids_wgs84 = centroids_proj.apply(lambda geom: transformer.transform(geom.x, geom.y))
     gdf["longitude"] = centroids_wgs84.apply(lambda coord: coord[0])
     gdf["latitude"] = centroids_wgs84.apply(lambda coord: coord[1])
-
     # Parse dates from the 'Name' column using the utility function
     gdf["event_date"] = gdf["Name"].apply(parse_name_as_date)
     gdf["event_date"] = pd.to_datetime(gdf["event_date"], errors="coerce")
@@ -520,13 +519,13 @@ def create_windows_from_shapefile(
     # Drop rows without valid dates
     gdf = gdf.dropna(subset=["event_date"])
     
+    print(f"Total landslide events with valid dates: {len(gdf)}")
+    
     # Filter to only include samples from June 2015 onwards (Sentinel-2 availability)
     sentinel2_start_date = pd.to_datetime("2015-06-01")
     gdf = gdf[gdf["event_date"] >= sentinel2_start_date].copy()
     
     print(f"Landslide events from June 2015 onwards (Sentinel-2 available): {len(gdf)}")
-
-    print(f"Total landslide events with valid dates: {len(gdf)}")
     
     # Generate IDs for each landslide (ICIMOD doesn't have an id column)
     # Use index-based IDs with prefix to ensure uniqueness
