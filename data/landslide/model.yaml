@@ -50,10 +50,10 @@ data:
         dtype: FLOAT32
         load_all_layers: true
       targets:
-        data_type: "vector"
-        layers: ["label"]
-        #bands: ["label"]
-        #dtype: FLOAT32
+        data_type: "raster"
+        layers: ["label_raster"]
+        bands: ["label"]
+        dtype: UINT8
         is_target: true
     task:
       class_path: rslearn.train.tasks.segmentation.SegmentationTask
