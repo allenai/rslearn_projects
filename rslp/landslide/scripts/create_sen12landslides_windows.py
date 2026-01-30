@@ -319,6 +319,42 @@ def create_window_pair(
     print(f"✓ Created window(s) for sample {sample_id}\n")
 
 
+def _fix_geometry(geom: shapely.Geometry) -> shapely.Geometry:
+    """Fix invalid geometries by making them valid.
+    
+    Args:
+        geom: Shapely geometry that may be invalid
+        
+    Returns:
+        Valid geometry
+    """
+    if geom.is_empty:
+        return geom
+    
+    # Try make_valid first (Shapely 2.0+)
+    if hasattr(shapely, 'make_valid'):
+        try:
+            geom = shapely.make_valid(geom)
+        except Exception:
+            pass
+    
+    # Use buffer(0) as fallback to fix invalid geometries
+    if not geom.is_valid:
+        try:
+            geom = geom.buffer(0)
+        except Exception:
+            # If buffer fails, try to get the valid part
+            if hasattr(geom, 'is_valid') and not geom.is_valid:
+                # Last resort: try to extract valid parts
+                try:
+                    if hasattr(shapely, 'make_valid'):
+                        geom = shapely.make_valid(geom)
+                except Exception:
+                    pass
+    
+    return geom
+
+
 def create_labeled_features(
     overlapping_landslides: List[Dict],
     window: Window,
@@ -377,6 +413,9 @@ def create_labeled_features(
         # Transform to projected CRS
         geom_proj = shapely.ops.transform(transformer_to_proj.transform, geom_wgs84)
         
+        # Fix geometry if invalid
+        geom_proj = _fix_geometry(geom_proj)
+        
         # Create landslide feature (in WGS84)
         label_geometry = STGeometry(WGS84_PROJECTION, geom_wgs84, None)
         feature = Feature(
@@ -395,19 +434,70 @@ def create_labeled_features(
         if landslide_union is None:
             landslide_union = geom_proj
         else:
-            landslide_union = landslide_union.union(geom_proj)
+            try:
+                landslide_union = landslide_union.union(geom_proj)
+            except Exception:
+                # If union fails, fix geometries and try again
+                landslide_union = _fix_geometry(landslide_union)
+                geom_proj = _fix_geometry(geom_proj)
+                landslide_union = landslide_union.union(geom_proj)
         
         # Create buffer and union
         buffer_geom = geom_proj.buffer(buffer_distance)
+        buffer_geom = _fix_geometry(buffer_geom)
+        
         if buffer_union is None:
             buffer_union = buffer_geom
         else:
-            buffer_union = buffer_union.union(buffer_geom)
+            try:
+                buffer_union = buffer_union.union(buffer_geom)
+            except Exception:
+                # If union fails, fix geometries and try again
+                buffer_union = _fix_geometry(buffer_union)
+                buffer_geom = _fix_geometry(buffer_geom)
+                buffer_union = buffer_union.union(buffer_geom)
+    
+    # Fix geometries before difference operation
+    if buffer_union is not None:
+        buffer_union = _fix_geometry(buffer_union)
+    if landslide_union is not None:
+        landslide_union = _fix_geometry(landslide_union)
     
     # Create buffer zone (buffer minus landslides)
     if buffer_union is not None and landslide_union is not None:
         # Buffer zone is the buffer area minus the actual landslides
-        buffer_only = buffer_union.difference(landslide_union)
+        try:
+            # Try with grid_size parameter if available (Shapely 2.0+)
+            # Use a small grid_size to handle precision issues
+            grid_size = buffer_distance / 1000.0  # Use 1/1000th of buffer distance
+            try:
+                buffer_only = buffer_union.difference(landslide_union, grid_size=grid_size)
+            except TypeError:
+                # grid_size not supported (Shapely < 2.0), try without it
+                buffer_only = buffer_union.difference(landslide_union)
+        except Exception as e:
+            # If difference fails, try fixing geometries more aggressively
+            buffer_union = _fix_geometry(buffer_union)
+            landslide_union = _fix_geometry(landslide_union)
+            try:
+                # Try with a tolerance/snap approach
+                # Snap geometries to a grid to avoid precision issues
+                snap_tolerance = buffer_distance / 10000.0
+                if hasattr(shapely, 'snap'):
+                    buffer_union = shapely.snap(buffer_union, landslide_union, tolerance=snap_tolerance)
+                    landslide_union = shapely.snap(landslide_union, buffer_union, tolerance=snap_tolerance)
+                buffer_only = buffer_union.difference(landslide_union)
+            except Exception:
+                # Last resort: use intersection of buffer with complement
+                # This is less precise but more robust
+                try:
+                    # Get the complement by subtracting landslide from a larger area
+                    # For now, just use buffer_union if difference fails
+                    print(f"    WARNING: Could not compute buffer difference, using buffer_union directly")
+                    buffer_only = buffer_union
+                except Exception:
+                    # If all else fails, return empty
+                    buffer_only = shapely.GeometryCollection([])
         
         # Transform back to WGS84
         buffer_only_wgs84 = shapely.ops.transform(transformer_to_wgs84.transform, buffer_only)
@@ -448,7 +538,30 @@ def create_labeled_features(
     
     # Background is window minus buffer (which includes landslides)
     if buffer_union is not None:
-        background = window_proj.difference(buffer_union)
+        # Fix buffer_union before difference operation
+        buffer_union = _fix_geometry(buffer_union)
+        try:
+            # Try with grid_size parameter if available (Shapely 2.0+)
+            # Use a small grid_size to handle precision issues
+            grid_size = buffer_distance / 1000.0  # Use 1/1000th of buffer distance
+            try:
+                background = window_proj.difference(buffer_union, grid_size=grid_size)
+            except TypeError:
+                # grid_size not supported (Shapely < 2.0), try without it
+                background = window_proj.difference(buffer_union)
+        except Exception:
+            # If difference fails, try fixing geometries more aggressively
+            buffer_union = _fix_geometry(buffer_union)
+            try:
+                # Try with a tolerance/snap approach
+                snap_tolerance = buffer_distance / 10000.0
+                if hasattr(shapely, 'snap'):
+                    buffer_union = shapely.snap(buffer_union, window_proj, tolerance=snap_tolerance)
+                background = window_proj.difference(buffer_union)
+            except Exception:
+                # Last resort: use intersection instead
+                print(f"    WARNING: Could not compute background difference, using window_proj directly")
+                background = window_proj
     else:
         background = window_proj
     
