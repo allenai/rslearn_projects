@@ -68,6 +68,17 @@ To visualize outputs on the validation set:
     mkdir vis
     python -m rslp.rslearn_main model test --config data/sentinel2_vessels/config.yaml --data.init_args.path project_data/datasets/sentinel2_vessels/ --model.init_args.visualize_dir vis/ --load_best true
 
+To visualize samples from the dataset, you can use the rslearn visualization module:
+```
+python -m rslearn.vis.server \
+    {DATASET_PATH} \
+    --layers sentinel2 \
+    --label_layers label \
+    --bands '{"pre_sentinel2": ["B04", "B03", "B02"], "post_sentinel2": ["B04", "B03", "B02"]}' \
+    --normalization '{"pre_sentinel2": "sentinel2_rgb", "post_sentinel2": "sentinel2_rgb"}' \
+    --task_type detection \
+    --max_samples 100
+```
 
 Model Version History
 ---------------------

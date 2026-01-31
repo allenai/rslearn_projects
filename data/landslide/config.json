@@ -1,0 +1,105 @@
+{
+  "layers": {
+    "label": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "vector",
+      "class_names": ["no_data","no_landslide", "landslide"],
+      "class_property_name": "label"
+    },
+    "label_raster": {
+      "band_sets": [
+        {
+          "bands": ["label"],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster",
+      "class_names": ["no_data", "no_landslide", "landslide"]
+    },
+    "pre_sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "duration": "60d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/planetary_computer",
+          "harmonize": true,
+          "sort_by": "eo:cloud_cover"
+        },
+        "query_config": {
+          "max_matches": 8,
+          "min_matches": 1,
+          "period_duration": "15d",
+          "space_mode": "PER_PERIOD_MOSAIC"
+        },
+        "time_offset": "-365d"
+      },
+      "type": "raster"
+    },
+    "post_sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "duration": "60d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/planetary_computer",
+          "harmonize": true,
+          "sort_by": "eo:cloud_cover"
+        },
+        "query_config": {
+          "max_matches": 8,
+          "min_matches": 1,
+          "period_duration": "15d",
+          "space_mode": "PER_PERIOD_MOSAIC"
+        },
+        "time_offset": "0d"
+      },
+      "type": "raster"
+    }
+  }
+}
