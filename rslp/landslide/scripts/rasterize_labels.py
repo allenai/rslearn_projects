@@ -232,7 +232,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Update global class property name if provided
-    global CLASS_PROPERTY_NAME
     CLASS_PROPERTY_NAME = args.class_property
 
     dataset_dir = UPath(args.ds_path)

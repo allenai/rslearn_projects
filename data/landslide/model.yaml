@@ -53,7 +53,7 @@ data:
         data_type: "raster"
         layers: ["label_raster"]
         bands: ["label"]
-        dtype: UINT8
+        dtype: INT32
         is_target: true
     task:
       class_path: rslearn.train.tasks.segmentation.SegmentationTask
@@ -119,4 +119,4 @@ trainer:
 # Set WANDB_MODE=offline to disable online logging.
 project_name: landslides
 run_name: sen12landslides_1k_base
-management_dir: ${MANAGEMENT_DIR}
+management_dir: ./checkpoints

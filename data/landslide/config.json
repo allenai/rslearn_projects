@@ -13,6 +13,16 @@
       "class_names": ["no_data","no_landslide", "landslide"],
       "class_property_name": "label"
     },
+    "label_raster": {
+      "band_sets": [
+        {
+          "bands": ["label"],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster",
+      "class_names": ["no_data", "no_landslide", "landslide"]
+    },
     "pre_sentinel2": {
       "band_sets": [
         {
