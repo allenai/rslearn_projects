@@ -8,11 +8,11 @@ model:
           - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
               model_id: OLMOEARTH_V1_BASE
-              patch_size: 4
+              patch_size: 2
         decoder:
           - class_path: rslearn.models.unet.UNetDecoder
             init_args:
-              in_channels: [[4, 768]]
+              in_channels: [[2, 768]]
               out_channels: 12
               num_channels: {2: 256, 1: 128}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -271,7 +271,7 @@ data:
     batch_size: 16
     num_workers: 32
     default_config:
-      patch_size: 32
+      patch_size: 16
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
@@ -315,4 +315,4 @@ trainer:
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
 rslp_project: 2026_01_27_worldcover
-rslp_experiment: base_S2_12months_ws32_ps4
+rslp_experiment: base_S2_12months_ws16_ps2
