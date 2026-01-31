@@ -56,7 +56,7 @@
       ],
       "type": "raster"
     },
-    "sentinel1_descending": {
+    "sentinel1": {
       "band_sets": [
         {
           "bands": [
@@ -80,9 +80,6 @@
                 "VV",
                 "VH"
               ]
-            },
-            "sat:orbit_state": {
-              "eq": "descending"
             }
           }
         },
