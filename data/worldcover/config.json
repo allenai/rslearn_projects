@@ -13,7 +13,8 @@
       "data_source": {
         "class_path": "rslearn.data_sources.climate_data_store.ERA5LandMonthlyMeans",
         "query_config": {
-          "max_matches": 12
+          "max_matches": 12,
+          "min_matches": 12
         }
       },
       "type": "raster"
