@@ -1,26 +1,28 @@
 """Multi-processing utilities."""
 
 import multiprocessing
+import os
+
+DEFAULT_MP_CONTEXT = "forkserver"
+MP_CONTEXT_ENV_VAR = "RSLEARN_MULTIPROCESSING_CONTEXT"
+MP_SHARING_STRATEGY_ENV_VAR = "RSLEARN_TORCH_MP_SHARING_STRATEGY"
 
 
-def init_mp() -> None:
-    """Set start method to preload and configure forkserver preload."""
-    multiprocessing.set_start_method("forkserver", force=True)
-    multiprocessing.set_forkserver_preload(
-        [
-            "pickle",
-            "fiona",
-            "gcsfs",
-            "jsonargparse",
-            "numpy",
-            "PIL",
-            "torch",
-            "torch.multiprocessing",
-            "torchvision",
-            "upath",
-            "wandb",
-            "rslearn.main",
-            "rslearn.train.dataset",
-            "rslearn.train.data_module",
-        ]
-    )
+def init_mp(context: str | None = None, sharing_strategy: str | None = None) -> None:
+    """Set start method for multiprocessing.
+
+    Uses RSLEARN_MULTIPROCESSING_CONTEXT if provided, else defaults to forkserver.
+    """
+    if sharing_strategy is None:
+        sharing_strategy = os.environ.get(MP_SHARING_STRATEGY_ENV_VAR)
+    if sharing_strategy:
+        try:
+            import torch.multiprocessing as torch_mp
+
+            torch_mp.set_sharing_strategy(sharing_strategy)
+        except ImportError:
+            # Torch may not be installed/available yet.
+            pass
+    if context is None:
+        context = os.environ.get(MP_CONTEXT_ENV_VAR, DEFAULT_MP_CONTEXT)
+    multiprocessing.set_start_method(context, force=True)

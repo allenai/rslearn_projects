@@ -1,7 +1,5 @@
 """Docker entrypoint for rslp."""
 
-import multiprocessing
-
 
 def main() -> None:
     """Docker entrypoint for rslp.
@@ -23,5 +21,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("forkserver")
     main()

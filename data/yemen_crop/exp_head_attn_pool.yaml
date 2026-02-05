@@ -1,0 +1,32 @@
+# Attention pooling head
+# Requires token_pooling=false to get TokenFeatureMaps from encoder
+rslp_project: 01_06_yemen_crop
+rslp_experiment: yemen_crop_attn_pool_head
+
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_BASE
+              patch_size: 1
+              token_pooling: false
+        decoders:
+          segment:
+            - class_path: rslearn.models.attention_pooling.AttentionPool
+              init_args:
+                in_dim: 768
+                num_heads: 8
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 768
+                out_channels: 9
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.models.pick_features.PickFeatures
+              init_args:
+                indexes: [0]
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
