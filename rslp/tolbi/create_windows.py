@@ -67,7 +67,7 @@ def create_window(
     else:
         split = "train"
 
-    window_name = f"{csv_row["id"]}_{round(latitude, 4)}_{round(longitude, 4)}"
+    window_name = f"{csv_row['id']}_{round(latitude, 4)}_{round(longitude, 4)}"
     start_time = datetime(int(csv_row["reference_year"]), 1, 1, tzinfo=timezone.utc)
     end_time = datetime(int(csv_row["reference_year"]), 12, 31, tzinfo=timezone.utc)
 
