@@ -1,0 +1,96 @@
+{
+  "checkpoint_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/henryh/base_all_bands_single_token_2/step300000",
+  "crop_configs": [
+    {
+      "input_size": 4,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 4,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    },
+    {
+      "input_size": 8,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 8,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    },
+    {
+      "input_size": 16,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 16,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    },
+    {
+      "input_size": 32,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 32,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    },
+    {
+      "input_size": 64,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 64,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    },
+    {
+      "input_size": 128,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 128,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    }
+  ],
+  "h5_suffix": "_singlebandset",
+  "methods": [
+    "knn",
+    "linear_probe"
+  ],
+  "patch_size": 4,
+  "results_file": "/weka/dfive-default/rslearn-eai/datasets/alphaearth_supplemental_evaluations/crop_experiment_results_singlebandset.json"
+}

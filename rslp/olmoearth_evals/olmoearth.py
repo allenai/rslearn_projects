@@ -1,8 +1,10 @@
 """Evaluation adapter for OlmoEarth."""
 
+import json
 import os
 
 import torch
+from rslearn.models.conv import Conv
 from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.feature_center_crop import FeatureCenterCrop
 from rslearn.models.multitask import MultiTaskModel
@@ -11,15 +13,19 @@ from rslearn.models.olmoearth_pretrain.norm import OlmoEarthNormalize
 from rslearn.models.pooling_decoder import PoolingDecoder
 from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.unet import UNetDecoder
+from rslearn.models.upsample import Upsample
 from rslearn.train.tasks.classification import ClassificationHead
 from rslearn.train.tasks.regression import RegressionHead
 from rslearn.train.tasks.segmentation import SegmentationHead
 from rslearn.train.transforms import Sequential
 from rslearn.train.transforms.select_bands import SelectBands
 
+from rslp.log_utils import get_logger
 from rslp.nandi.train import SegmentationPoolingDecoder
 
 from .constants import LANDSAT_BANDS, SENTINEL1_BANDS, SENTINEL2_BANDS
+
+logger = get_logger(__name__)
 
 
 def get_model(
@@ -32,6 +38,10 @@ def get_model(
 ) -> torch.nn.Module:
     """Get appropriate OlmoEarth model."""
     model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
+    model_config_env = os.environ.get("EVAL_ADAPTER_MODEL_CONFIG")
+    model_config: dict[str, str] = (
+        json.loads(model_config_env) if model_config_env else {}
+    )
     if model_id in ["olmoearth", "olmoearth_random"]:
         olmoearth_model_id = ModelID.OLMOEARTH_V1_BASE
     elif model_id == "olmoearth_nano":
@@ -44,19 +54,37 @@ def get_model(
         raise ValueError(f"unknown olmoearth model ID {model_id}")
 
     embedding_size = EMBEDDING_SIZES[olmoearth_model_id]
+    decoder_type = model_config.get("decoder", "default")
+    logger.info(
+        f"olmoearth: using decoder_type={decoder_type} embedding_size={embedding_size}"
+    )
 
     if task_type == "segment":
-        decoders = dict(
-            eval_task=[
-                UNetDecoder(
-                    in_channels=[[4, embedding_size]],
-                    out_channels=task_channels,
-                    conv_layers_per_resolution=2,
-                    num_channels={4: 512, 2: 256, 1: 128},
-                ),
-                SegmentationHead(),
-            ]
-        )
+        if decoder_type == "singleconv":
+            decoders = dict(
+                eval_task=[
+                    Upsample(scale_factor=4),
+                    Conv(
+                        in_channels=embedding_size,
+                        out_channels=task_channels,
+                        kernel_size=1,
+                        activation=torch.nn.Identity(),
+                    ),
+                    SegmentationHead(),
+                ]
+            )
+        else:
+            decoders = dict(
+                eval_task=[
+                    UNetDecoder(
+                        in_channels=[[4, embedding_size]],
+                        out_channels=task_channels,
+                        conv_layers_per_resolution=1,
+                        num_channels={4: 512, 2: 256, 1: 128},
+                    ),
+                    SegmentationHead(),
+                ]
+            )
     elif task_type == "segment_small":
         decoders = dict(
             eval_task=[
@@ -127,6 +155,7 @@ def get_model(
                         model_id=olmoearth_model_id,
                         patch_size=4,
                         random_initialization=model_id == "olmoearth_random",
+                        use_legacy_timestamps=False,
                     ),
                     image_channels=12 * 4,
                     image_key="sentinel2_l2a",
@@ -152,6 +181,7 @@ def get_model(
                 model_id=olmoearth_model_id,
                 patch_size=4,
                 random_initialization=model_id == "olmoearth_random",
+                use_legacy_timestamps=False,
             ),
         ],
         decoders=decoders,
@@ -189,7 +219,6 @@ def get_transform(
         modules.append(
             SelectBands(
                 band_indices=sentinel2_indexes,
-                num_bands_per_timestep=len(SENTINEL2_BANDS),
                 input_selector="sentinel2",
                 output_selector="sentinel2_l2a",
             ),
@@ -214,7 +243,6 @@ def get_transform(
         modules.append(
             SelectBands(
                 band_indices=landsat_indexes,
-                num_bands_per_timestep=len(LANDSAT_BANDS),
                 input_selector="landsat",
                 output_selector="landsat",
             ),
@@ -227,7 +255,6 @@ def get_transform(
         modules.append(
             SelectBands(
                 band_indices=sentinel1_indexes,
-                num_bands_per_timestep=len(SENTINEL1_BANDS),
                 input_selector="sentinel1",
                 output_selector="sentinel1",
             ),
