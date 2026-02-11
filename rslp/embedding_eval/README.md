@@ -184,3 +184,8 @@ will try to evaluate AlphaEarth embeddings as well.
 ```bash
 python -m rslp.embedding_eval.run_crop_experiments --experiment_config rslp/embedding_eval/crop_experiment_configs/crop_experiment_results.json
 ```
+
+The script is designed to run correctly when executed in parallel across multiple GPUs:
+it will shuffle the experiments specified by the experiment config and iterate over
+them, so different executions will process different experiments and skip over ones
+that were previously completed based on the results JSON file.
