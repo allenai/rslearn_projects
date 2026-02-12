@@ -88,6 +88,13 @@ def launch_job(
                     value=os.environ["HTTPS_PROXY"],
                 ),
             ]
+        if "EARTHDATAHUB_TOKEN" in os.environ:
+            env_vars += [
+                BeakerEnvVar(
+                    name="EARTHDATAHUB_TOKEN",
+                    value=os.environ["EARTHDATAHUB_TOKEN"],
+                ),
+            ]
         # Set one GPU if not targeting a specific host, otherwise we might have
         # hundreds of jobs scheduled on the same host.
         # Also we can only set cluster constraint if we do not specify hostname.
