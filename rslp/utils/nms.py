@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 from rslearn.config import LayerConfig
 from rslearn.dataset import Window
-from rslearn.train.prediction_writer import PatchPredictionMerger, PendingPatchOutput
+from rslearn.train.prediction_writer import CropPredictionMerger, PendingCropOutput
 from rslearn.utils import GridIndex
 
 # Defaults for distance-based NMS
@@ -15,7 +15,7 @@ DEFAULT_GRID_SIZE = 64
 DEFAULT_DISTANCE_THRESHOLD = 10
 
 
-class NMSDistanceMerger(PatchPredictionMerger):
+class NMSDistanceMerger(CropPredictionMerger):
     """Merge predictions by applying distance-based NMS."""
 
     def __init__(
@@ -41,7 +41,7 @@ class NMSDistanceMerger(PatchPredictionMerger):
     def merge(
         self,
         window: Window,
-        outputs: Sequence[PendingPatchOutput],
+        outputs: Sequence[PendingCropOutput],
         layer_config: LayerConfig,
     ) -> Any:
         """Merge the outputs.
