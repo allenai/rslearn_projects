@@ -6,7 +6,7 @@ from rslearn.config import LayerConfig, LayerType
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Window
 from rslearn.dataset.storage.file import FileWindowStorage
-from rslearn.train.prediction_writer import PendingPatchOutput
+from rslearn.train.prediction_writer import PendingCropOutput
 from rslearn.utils import Feature, STGeometry
 from upath import UPath
 
@@ -37,7 +37,7 @@ class TestDistanceNms:
         merged_features = merger.merge(
             nms_window,
             [
-                PendingPatchOutput(
+                PendingCropOutput(
                     bounds=self.BOUNDS,
                     output=[],
                 )
@@ -74,7 +74,7 @@ class TestDistanceNms:
         merged_features = merger.merge(
             nms_window,
             [
-                PendingPatchOutput(
+                PendingCropOutput(
                     bounds=self.BOUNDS,
                     output=features,
                 )
@@ -88,7 +88,7 @@ class TestDistanceNms:
         merged_features = merger.merge(
             nms_window,
             [
-                PendingPatchOutput(
+                PendingCropOutput(
                     bounds=self.BOUNDS,
                     output=features,
                 )
@@ -126,7 +126,7 @@ class TestDistanceNms:
         merged_features = merger.merge(
             nms_window,
             [
-                PendingPatchOutput(
+                PendingCropOutput(
                     bounds=self.BOUNDS,
                     output=features,
                 )
@@ -164,7 +164,7 @@ class TestDistanceNms:
         merged_features = merger.merge(
             nms_window,
             [
-                PendingPatchOutput(
+                PendingCropOutput(
                     bounds=self.BOUNDS,
                     output=features,
                 )
@@ -204,7 +204,7 @@ class TestDistanceNms:
         merged_features = merger.merge(
             nms_window,
             [
-                PendingPatchOutput(
+                PendingCropOutput(
                     bounds=self.BOUNDS,
                     output=features,
                 )

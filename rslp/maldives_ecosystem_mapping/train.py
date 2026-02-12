@@ -29,10 +29,12 @@ class CMLightningModule(RslearnLightningModule):
     ) -> None:
         """Save the probabilities and labels for confusion matrix logging."""
         for output, target in zip(model_outputs.outputs, targets):
+            valid = target["segment"]["valid"].get_hw_tensor()
+            classes = target["segment"]["classes"].get_hw_tensor()
             # cur_probs is CxN array of valid probabilities, N=H*W.
-            cur_probs = output["segment"][:, target["segment"]["valid"] > 0]
+            cur_probs = output["segment"][:, valid > 0]
             # cur_labels is N array of labels.
-            cur_labels = target["segment"]["classes"][target["segment"]["valid"] > 0]
+            cur_labels = classes[valid > 0]
             # Make sure probs is list of NxC arrays.
             self.probs.append(cur_probs.cpu().numpy().transpose(1, 0))
             self.y_true.append(cur_labels.cpu().numpy())
