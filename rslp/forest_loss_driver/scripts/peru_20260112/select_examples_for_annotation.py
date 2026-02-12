@@ -2,7 +2,7 @@
 
 Based on predictions in Peru over five-year period:
 - Select 100 for each of logging/burned/none/river/airstrip
-- Select 500 where max(probs) < 0.5
+- Select 500 from other categories where max(probs) < 0.5
 """
 
 import random
