@@ -58,6 +58,9 @@ if __name__ == "__main__":
                 best_feat = candidate
                 best_distance = distance
 
+        # The rslearn windows were created using select_examples_for_annotation.py
+        # based on the centroid of the GeoJSON featuers, so if there is large distance
+        # then it must mean we matched to the wrong feature.
         if best_feat is None or best_distance is None or best_distance > 10:
             raise ValueError(f"no spatially matching feature for window {window.name}")
 
