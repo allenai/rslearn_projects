@@ -1,0 +1,54 @@
+{
+  "layers": {
+    "label": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "s2_a": {
+      "band_sets": [
+        {
+          "bands": [
+            "B04",
+            "B03",
+            "B02",
+            "B08"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "type": "raster"
+    },
+    "s2_b": {
+      "band_sets": [
+        {
+          "bands": [
+            "B04",
+            "B03",
+            "B02",
+            "B08"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "type": "raster"
+    }
+  }
+}
