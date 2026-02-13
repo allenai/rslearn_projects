@@ -82,6 +82,20 @@ data:
             selectors: ["target/segmentation/classes","target/segmentation/valid"] #target / MultiTask task name / SegmentationTask output, both classes and mask
     train_config:
       groups: ["train"]
+      transforms:
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            horizontal: true
+            vertical: true
+            image_selectors: ["sentinel2_l2a", "target/segmentation/classes", "target/segmentation/valid"]
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslearn.train.transforms.resize.Resize
+          init_args:
+            target_size: [5,5]
+            selectors: ["target/segmentation/classes","target/segmentation/valid"] #target / MultiTask task name / SegmentationTask output, both classes and mask
     val_config:
       groups: ["val"]
       load_all_patches: true
