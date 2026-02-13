@@ -9,8 +9,15 @@ model:
             init_args:
               model_id: OLMOEARTH_V1_BASE
               patch_size: 5
+              use_legacy_timestamps: false
+              token_pooling: false
         decoders:
           segmentation:
+            - class_path: rslearn.models.attention_pooling.AttentionPool
+              init_args:
+                in_dim: 768
+                num_heads: 8
+                linear_on_kv: true
             - class_path: rslearn.models.conv.Conv
               init_args:
                 in_channels: 768
@@ -20,29 +27,37 @@ model:
                 stride: 2
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
               init_args:
-                weights: [0.1, 0.9]
+                weights: [0.05, 0.95]
                 dice_loss: true
-    lr: 0.0001
+                temperature: 3.0
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.00004
+        weight_decay: 0.01
     plateau: true
     plateau_factor: 0.2
     plateau_patience: 2
     plateau_min_lr: 0
-    plateau_cooldown: 10
+    plateau_cooldown: 4
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/wildfire/canada_fire_sat_full
+    path: ${DATASET_PATH}
     inputs:
       sentinel2_l2a:
         data_type: "raster"
-        layers: ["sentinel2.5"]
+        layers: ["sentinel2"]
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true #gets passed to the model even if no task returns it (most classes only process targets)
+        passthrough: true
         dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      # Note: label input is kept but will be skipped due to skip_targets: true
       label:
         data_type: "raster"
         layers: ["label_100m"]
-        bands: ["label_100m"] #is matched against config.json to figure out which band (ix=0 here) to read
+        bands: ["label_100m"]
         dtype: INT32
         is_target: true
         resolution_factor:
@@ -62,10 +77,12 @@ data:
               enable_miou_metric: true
               enable_f1_metric: true
               report_metric_per_class: true
+              output_probs: true
+              output_class_idx: 1
         input_mapping:
           segmentation:
-            label: "targets" #remap the "label" input to "targets" which is the expected key for the regression task, i.e. "process_inputs"
-    batch_size: 128
+            label: "targets"
+    batch_size: 64
     num_workers: 16
     default_config:
       patch_size: 50
@@ -74,57 +91,27 @@ data:
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        - class_path: rslearn.train.transforms.resize.Resize
-          init_args:
-            target_size: [5,5]
-            selectors: ["target/segmentation/classes","target/segmentation/valid"] #target / MultiTask task name / SegmentationTask output, both classes and mask
-    train_config:
-      groups: ["train"]
-      transforms:
-        - class_path: rslearn.train.transforms.flip.Flip
-          init_args:
-            horizontal: true
-            vertical: true
-            image_selectors: ["sentinel2_l2a", "target/segmentation/classes", "target/segmentation/valid"]
-        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
-          init_args:
-            band_names:
-              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        - class_path: rslearn.train.transforms.resize.Resize
-          init_args:
-            target_size: [5,5]
-            selectors: ["target/segmentation/classes","target/segmentation/valid"] #target / MultiTask task name / SegmentationTask output, both classes and mask
-    val_config:
-      groups: ["val"]
-      load_all_patches: true
-    test_config:
-      groups: ["test_hard"]
-      load_all_patches: true
+    # No train/val configs needed for predict-only
     predict_config:
+      groups: ["predict_ES",  "predict_jenkins",  "predict_LA",  "predict_WT"]  # Windows in the "predict" group will be processed
       load_all_patches: true
-      overlap_ratio: 0.1 # 10/100
-      skip_targets: true
+      overlap_ratio: 0.2
+      skip_targets: true  # Don't expect labels during prediction
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
 trainer:
-  max_epochs: 100
+  max_epochs: 1  # Not used for predict, but required
   callbacks:
-    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    # RslearnWriter to save predictions to the dataset
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        logging_interval: "epoch"
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
-      init_args:
-        save_top_k: 1
-        save_last: true
-        monitor: val_segmentation/F1_cls_1
-        mode: max
-    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
-      init_args:
-        module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 3
-        unfreeze_lr_factor: 10
-rslp_project: 20260111_wf_burnrisk_nbac
-rslp_experiment: placeholder
+        path: placeholder  # Will be overridden by data.init_args.path
+        output_layer: output_t30
+        selector: ["segmentation"]  # Select segmentation output from MultiTask
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            downsample_factor: 10  # 50 input pixels → 5 output pixels
