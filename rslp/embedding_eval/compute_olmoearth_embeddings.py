@@ -18,7 +18,7 @@ from rslearn.train.data_module import collate_fn
 from rslearn.train.dataset import DataInput, ModelDataset, SplitConfig
 from rslearn.train.model_context import ModelContext, RasterImage
 from rslearn.train.tasks.classification import ClassificationTask
-from rslearn.train.transforms.crop_to import CropTo
+from rslearn.train.transforms.crop import Crop
 from rslearn.train.transforms.pad import Pad
 from upath import UPath
 
@@ -77,13 +77,13 @@ def initialize_dataset_for_olmoearth(
     ]
     if input_size is not None:
         if label_position is not None:
-            # Two-step crop: first Pad (center crop) to a known intermediate size, then
-            # CropTo to place the label point at label_position in the final crop.
-            # The intermediate size must be large enough that the CropTo region fits.
+            # Two-step crop: first Pad (center crop) to a known intermediate size,
+            # then Crop with offset to place the label point at label_position.
+            # The intermediate size must be large enough that the crop region fits.
             lx, ly = label_position
             # e.g. if user wants label at (2, 2) in an 8x8 crop then we can center crop
-            # down to 12x12 around the window's center and then crop further
-            # (4, 4, 12, 12).
+            # down to 12x12 around the window's center and then crop further from
+            # offset (4, 4).
             center_crop_size = 2 * max(lx, ly, input_size - lx, input_size - ly)
             transforms.append(
                 Pad(
@@ -96,8 +96,9 @@ def initialize_dataset_for_olmoearth(
             col1 = center_crop_size // 2 - lx
             row1 = center_crop_size // 2 - ly
             transforms.append(
-                CropTo(
-                    bounds=(col1, row1, col1 + input_size, row1 + input_size),
+                Crop(
+                    crop_size=input_size,
+                    offset=(col1, row1),
                     image_selectors=["sentinel2_l2a"],
                 ),
             )

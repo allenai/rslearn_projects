@@ -7,10 +7,9 @@ import torch
 from rslearn.models.embedding_cache import EmbeddingCache
 from rslearn.models.multitask import MultiTaskModel
 from rslearn.train.model_context import ModelContext, ModelOutput
-from rslearn.train.transforms.crop_to import CropTo
+from rslearn.train.transforms.crop import Crop
 from rslearn.train.transforms.pad import Pad
 from rslearn.train.transforms.transform import Transform
-from rslearn.utils.geometry import PixelBounds
 
 import rslp.olmoearth_evals.aef as aef
 import rslp.olmoearth_evals.anysat as anysat
@@ -168,18 +167,25 @@ class EvalAdapterNormalize(Transform):
         if pad_to_env:
             pad_to = int(pad_to_env)
 
-        crop_to: PixelBounds | None = None
+        crop_to_size: int | None = None
+        crop_to_offset: tuple[int, int] | None = None
         crop_to_env = os.environ.get("EVAL_ADAPTER_CROP_TO")
         if crop_to_env:
             parts = [int(x) for x in crop_to_env.split(",")]
-            crop_to = (parts[0], parts[1], parts[2], parts[3])
+            if parts[3] - parts[1] != parts[2] - parts[0]:
+                raise ValueError(
+                    f"EVAL_ADAPTER_CROP_TO must specify a square region, "
+                    f"got width={parts[2] - parts[0]} height={parts[3] - parts[1]}"
+                )
+            crop_to_size = parts[2] - parts[0]
+            crop_to_offset = (parts[0], parts[1])
 
         # Build selectors to transform: input modalities + target rasters when present.
         # For segment/segment_small: target/eval_task/classes, target/eval_task/valid.
         # For per_pixel_regress: target/eval_task/values, target/eval_task/valid.
         # classify/regress have no target rasters (targets are vectors or scalars).
         image_selectors = list(input_modalities)
-        if pad_to is not None or crop_to is not None:
+        if pad_to is not None or crop_to_size is not None:
             if task_type in ("segment", "segment_small"):
                 image_selectors.extend(
                     [
@@ -207,9 +213,11 @@ class EvalAdapterNormalize(Transform):
             )
 
         self.crop_transform: torch.nn.Module | None = None
-        if crop_to is not None:
-            self.crop_transform = CropTo(
-                bounds=crop_to, image_selectors=image_selectors
+        if crop_to_size is not None:
+            self.crop_transform = Crop(
+                crop_size=crop_to_size,
+                offset=crop_to_offset,
+                image_selectors=image_selectors,
             )
 
     def forward(
