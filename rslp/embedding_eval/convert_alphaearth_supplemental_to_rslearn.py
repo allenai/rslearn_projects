@@ -4,18 +4,18 @@ import csv
 import multiprocessing
 import os
 import shutil
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 import shapely
 import tqdm
-from upath import UPath
 from rslearn.const import WGS84_PROJECTION
-from rslearn.dataset import Dataset, Window
-from rslearn.utils.geometry import Projection, STGeometry
-from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
-from rslearn.utils.vector_format import GeojsonVectorFormat, GeojsonCoordinateMode
+from rslearn.dataset import Window
 from rslearn.utils.feature import Feature
+from rslearn.utils.geometry import STGeometry
+from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.mp import star_imap_unordered
+from rslearn.utils.vector_format import GeojsonCoordinateMode, GeojsonVectorFormat
+from upath import UPath
 
 DATASET_PATH = "/weka/dfive-default/rslearn-eai/artifacts/deepmind_alphaearth_supplemental_evaluation_datasets/"
 DATASET_CSVS = [
@@ -41,6 +41,7 @@ WINDOW_SIZE = 256
 
 
 def process_row(ds_path: UPath, example_idx: int, csv_row: dict[str, str]) -> None:
+    """Process one row in the CSV into a Window."""
     lon = float(csv_row["x"])
     lat = float(csv_row["y"])
     start_ms = int(csv_row["support_time_start_ms"])
@@ -91,7 +92,7 @@ def process_row(ds_path: UPath, example_idx: int, csv_row: dict[str, str]) -> No
             split=split,
             partition=partition,
             label=label,
-        )
+        ),
     )
     window.save()
 
@@ -101,32 +102,41 @@ def process_row(ds_path: UPath, example_idx: int, csv_row: dict[str, str]) -> No
     feature = Feature(dst_geom, dict(label=label))
     layer_name = "label"
     layer_dir = window.get_layer_dir(layer_name)
-    GeojsonVectorFormat(coordinate_mode=GeojsonCoordinateMode.WGS84).encode_vector(layer_dir, [feature])
+    GeojsonVectorFormat(coordinate_mode=GeojsonCoordinateMode.WGS84).encode_vector(
+        layer_dir, [feature]
+    )
 
 
 def process_dataset(csv_fname: str) -> None:
+    """Process the raw dataset into rslearn dataset."""
     dataset_name = csv_fname.split(".csv")[0].split("/")[-1]
     ds_path = UPath(OUT_DIR) / dataset_name
     ds_path.mkdir(parents=True, exist_ok=True)
     print(f"creating windows for dataset {dataset_name} in {ds_path}")
-    shutil.copyfile("one_off_projects/2025_08_01_alphaearth_eval_to_rslearn/config.json", (ds_path / "config.json").path)
+    shutil.copyfile(
+        "one_off_projects/2025_08_01_alphaearth_eval_to_rslearn/config.json",
+        (ds_path / "config.json").path,
+    )
 
     # Get list of arguments to call process_row with.
     jobs = []
     with open(csv_fname) as f:
         reader = csv.DictReader(f)
         for example_idx, csv_row in enumerate(reader):
-            jobs.append(dict(
-                ds_path=ds_path,
-                example_idx=example_idx,
-                csv_row=csv_row,
-            ))
+            jobs.append(
+                dict(
+                    ds_path=ds_path,
+                    example_idx=example_idx,
+                    csv_row=csv_row,
+                )
+            )
 
     p = multiprocessing.Pool(128)
     outputs = star_imap_unordered(p, process_row, jobs)
     for _ in tqdm.tqdm(outputs, total=len(jobs)):
         pass
     p.close()
+
 
 if __name__ == "__main__":
     multiprocessing.set_start_method("forkserver")

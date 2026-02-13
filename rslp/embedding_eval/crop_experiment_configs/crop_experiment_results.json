@@ -1,0 +1,81 @@
+{
+  "crop_configs": [
+    {
+      "input_size": 4,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 4,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    },
+    {
+      "input_size": 8,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 8,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    },
+    {
+      "input_size": 16,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 16,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    },
+    {
+      "input_size": 32,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 32,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    },
+    {
+      "input_size": 64,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 64,
+      "pos_args": [
+        "--label_position",
+        "0",
+        "0"
+      ],
+      "pos_name": "tl"
+    }
+  ],
+  "methods": [
+    "knn",
+    "linear_probe"
+  ],
+  "model_id": "OlmoEarth-v1-Base",
+  "patch_size": 4,
+  "results_file": "/weka/dfive-default/rslearn-eai/datasets/alphaearth_supplemental_evaluations/crop_experiment_results.json"
+}

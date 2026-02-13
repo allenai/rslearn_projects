@@ -4,6 +4,11 @@ import os
 from typing import Any
 
 import torch
+from rslearn.models.embedding_cache import EmbeddingCache
+from rslearn.models.multitask import MultiTaskModel
+from rslearn.train.model_context import ModelContext, ModelOutput
+from rslearn.train.transforms.crop import Crop
+from rslearn.train.transforms.pad import Pad
 from rslearn.train.transforms.transform import Transform
 
 import rslp.olmoearth_evals.aef as aef
@@ -40,6 +45,9 @@ modules_by_model_id = {
     "aef": aef,
 }
 
+# Task key used in MultiTask for eval configs; target rasters live under target/<key>/...
+EVAL_TASK_KEY = "eval_task"
+
 
 class EvalAdapterModel(torch.nn.Module):
     """Adapter model for evaluation tasks in the OlmoEarth model paper.
@@ -60,18 +68,23 @@ class EvalAdapterModel(torch.nn.Module):
         task_name: str,
         task_channels: int = 1,
         task_timesteps: int = 1,
+        use_embeddings: bool = False,
     ):
         """Create a new EvalAdapterModel.
 
         Args:
             input_size: height and width of the input in pixels.
             input_modalities: subset of ["sentinel2", "sentinel1", "landsat"].
-            task_type: either "segment", "segment_small", "regress", or "detect".
+            task_type: "segment", "segment_small", "regress", "per_pixel_regress",
+                "classify", or "detect".
             task_name: the name of the task, like "pastis".
             task_channels: how many output channels there are. For example, this is the
                 number of classes for segmentation and detection tasks. For regression,
                 it should be 1 which is also the default value.
             task_timesteps: number of input timesteps.
+            use_embeddings: add an EmbeddingsCache after the encoder so that the
+                does not get gradients (even if its unfrozen) and the embeddings are
+                cached for faster training (although data loading will still happen).
         """
         super().__init__()
         model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
@@ -84,25 +97,36 @@ class EvalAdapterModel(torch.nn.Module):
             task_timesteps=task_timesteps,
         )
 
+        if use_embeddings:
+            assert isinstance(self.model, MultiTaskModel)
+            self.model.encoder = torch.nn.ModuleList(
+                [EmbeddingCache(encoder=list(self.model.encoder))]
+            )
+
     def forward(
         self,
-        inputs: list[dict[str, Any]],
+        context: ModelContext,
         targets: list[dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+    ) -> ModelOutput:
         """Apply the sequence of modules on the inputs, including shared trunk.
 
         Args:
-            inputs: list of input dicts
+            context: the model context.
             targets: optional list of target dicts
 
         Returns:
-            dict with keys "outputs" and "loss_dict".
+            ModelOutput with outputs and loss_dict.
         """
-        return self.model(inputs, targets)
+        return self.model(context, targets)
 
 
 class EvalAdapterNormalize(Transform):
-    """Normalization for evaluation tasks."""
+    """Normalization for evaluation tasks.
+
+    Optionally applies pad_to and crop_to transforms before the model-specific
+    normalization. These are configured via the EVAL_ADAPTER_PAD_TO and
+    EVAL_ADAPTER_CROP_TO environment variables.
+    """
 
     def __init__(
         self,
@@ -115,7 +139,16 @@ class EvalAdapterNormalize(Transform):
     ):
         """Create a new EvalAdapterNormalize.
 
-        This has the same arguments as EvalAdapterModel.
+        Args:
+            input_size: height and width of the input in pixels.
+            input_modalities: subset of ["sentinel2", "sentinel1", "landsat"].
+            task_type: "segment", "segment_small", "regress", "per_pixel_regress",
+                "classify", or "detect".
+            task_name: the name of the task, like "pastis".
+            task_channels: how many output channels there are. For example, this is the
+                number of classes for segmentation and detection tasks. For regression,
+                it should be 1 which is also the default value.
+            task_timesteps: number of input timesteps.
         """
         super().__init__()
         model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
@@ -128,8 +161,71 @@ class EvalAdapterNormalize(Transform):
             task_timesteps=task_timesteps,
         )
 
+        # Read pad_to and crop_to from env vars.
+        pad_to: int | None = None
+        pad_to_env = os.environ.get("EVAL_ADAPTER_PAD_TO")
+        if pad_to_env:
+            pad_to = int(pad_to_env)
+
+        crop_to_size: int | None = None
+        crop_to_offset: tuple[int, int] | None = None
+        crop_to_env = os.environ.get("EVAL_ADAPTER_CROP_TO")
+        if crop_to_env:
+            parts = [int(x) for x in crop_to_env.split(",")]
+            if parts[3] - parts[1] != parts[2] - parts[0]:
+                raise ValueError(
+                    f"EVAL_ADAPTER_CROP_TO must specify a square region, "
+                    f"got width={parts[2] - parts[0]} height={parts[3] - parts[1]}"
+                )
+            crop_to_size = parts[2] - parts[0]
+            crop_to_offset = (parts[0], parts[1])
+
+        # Build selectors to transform: input modalities + target rasters when present.
+        # For segment/segment_small: target/eval_task/classes, target/eval_task/valid.
+        # For per_pixel_regress: target/eval_task/values, target/eval_task/valid.
+        # classify/regress have no target rasters (targets are vectors or scalars).
+        image_selectors = list(input_modalities)
+        if pad_to is not None or crop_to_size is not None:
+            if task_type in ("segment", "segment_small"):
+                image_selectors.extend(
+                    [
+                        f"target/{EVAL_TASK_KEY}/classes",
+                        f"target/{EVAL_TASK_KEY}/valid",
+                    ]
+                )
+            elif task_type == "per_pixel_regress":
+                image_selectors.extend(
+                    [
+                        f"target/{EVAL_TASK_KEY}/values",
+                        f"target/{EVAL_TASK_KEY}/valid",
+                    ]
+                )
+            elif task_type not in ("classify", "regress"):
+                raise ValueError(
+                    f"pad_to and crop_to require task_type one of classify, regress, "
+                    f"segment, segment_small, per_pixel_regress; got task_type={task_type!r}"
+                )
+
+        self.pad_transform: torch.nn.Module | None = None
+        if pad_to is not None:
+            self.pad_transform = Pad(
+                size=pad_to, mode="center", image_selectors=image_selectors
+            )
+
+        self.crop_transform: torch.nn.Module | None = None
+        if crop_to_size is not None:
+            self.crop_transform = Crop(
+                crop_size=crop_to_size,
+                offset=crop_to_offset,
+                image_selectors=image_selectors,
+            )
+
     def forward(
         self, input_dict: dict[str, Any], target_dict: dict[str, Any]
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Normalize the input_dict."""
+        """Apply pad_to, crop_to, then model-specific normalization."""
+        if self.pad_transform:
+            input_dict, target_dict = self.pad_transform(input_dict, target_dict)
+        if self.crop_transform:
+            input_dict, target_dict = self.crop_transform(input_dict, target_dict)
         return self.transform(input_dict, target_dict)

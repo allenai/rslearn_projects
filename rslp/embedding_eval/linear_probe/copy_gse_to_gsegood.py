@@ -16,6 +16,7 @@ GSE_BAND_DIR = "610a2ee7942f0f42b7a9bddea505048ac5b6d68739b0d848c0b30e36b201d01a
 
 
 def process_window(window_dir: UPath) -> None:
+    """Process one window to copy the gse layer to gsegood."""
     good_fname: UPath | None = None
     for layer_name in ["gse", "gse.1", "gse.2", "gse.3"]:
         fname = window_dir / "layers" / layer_name / GSE_BAND_DIR / "geotiff.tif"
