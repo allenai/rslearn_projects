@@ -78,7 +78,7 @@ data:
     batch_size: ${BATCH_SIZE}
     num_workers: ${NUM_WORKERS}
     default_config:
-      patch_size: 30
+      crop_size: 30
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
@@ -93,13 +93,13 @@ data:
       groups: ["train"]
     val_config:
       groups: ["val"]
-      load_all_patches: true
+      load_all_crops: true
     test_config:
       groups: ["test"]
-      load_all_patches: true
+      load_all_crops: true
     predict_config:
-      load_all_patches: true
-      overlap_ratio: 0.1 # 10/100
+      load_all_crops: true
+      overlap_pixels: 3
       skip_targets: true
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize

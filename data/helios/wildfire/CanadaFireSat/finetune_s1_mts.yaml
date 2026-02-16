@@ -69,7 +69,7 @@ data:
     batch_size: 8
     num_workers: 16
     default_config:
-      patch_size: 50
+      crop_size: 50
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
@@ -97,13 +97,13 @@ data:
             selectors: ["target/segmentation/classes","target/segmentation/valid"] #target / MultiTask task name / SegmentationTask output, both classes and mask
     val_config:
       groups: ["val"]
-      load_all_patches: true
+      load_all_crops: true
     test_config:
       groups: ["test_hard"]
-      load_all_patches: true
+      load_all_crops: true
     predict_config:
-      load_all_patches: true
-      overlap_ratio: 0.1 # 10/100
+      load_all_crops: true
+      overlap_pixels: 5
       skip_targets: true
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize

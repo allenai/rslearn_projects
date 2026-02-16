@@ -85,7 +85,7 @@ data:
     batch_size: 64
     num_workers: 16
     default_config:
-      patch_size: 50
+      crop_size: 50
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
@@ -94,8 +94,8 @@ data:
     # No train/val configs needed for predict-only
     predict_config:
       groups: ["predict_ES",  "predict_jenkins",  "predict_LA",  "predict_WT"]  # Windows in the "predict" group will be processed
-      load_all_patches: true
-      overlap_ratio: 0.2
+      load_all_crops: true
+      overlap_pixels: 10
       skip_targets: true  # Don't expect labels during prediction
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
