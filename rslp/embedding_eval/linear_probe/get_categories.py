@@ -9,6 +9,7 @@ from upath import UPath
 
 
 def get_category(window_dir: UPath) -> str:
+    """Get the category for this window."""
     fname = window_dir / "layers" / "label" / "data.geojson"
     with fname.open() as f:
         fc = json.load(f)
