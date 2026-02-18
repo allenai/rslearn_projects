@@ -111,7 +111,7 @@ data:
             mean: 0
             std: 250
             valid_range: [0, 4]
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.mask.Mask
     train_config:
       patch_size: 512
       transforms:
@@ -127,7 +127,7 @@ data:
             mean: 0
             std: 250
             valid_range: [0, 4]
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.mask.Mask
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["image"]
