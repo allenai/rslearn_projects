@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import rasterio
 from rasterio.features import rasterize
+import shapely
 import tqdm
 from rslearn.utils.geometry import Projection
 from rslearn.utils.raster_format import GeotiffRasterFormat, get_transform_from_projection_and_bounds
@@ -122,25 +123,34 @@ def create_label_raster(window_dir: UPath) -> None:
         width = bounds[2] - bounds[0]
         raster = np.zeros((1, height, width), dtype=np.uint8)
     else:
-        # Prepare shapes for rasterization: (geometry, value) tuples
+        # Prepare shapes for rasterization: (geometry, value) tuples.
+        # decode_vector returns geometries in the window's projection, where .shp is in
+        # *pixel* coordinates (same units as bounds). rasterio.rasterize expects
+        # geometries in *CRS* coordinates for the given transform. Convert pixel -> CRS
+        # by scaling: x_crs = x_pixel * x_resolution, y_crs = y_pixel * y_resolution.
+        transform = get_transform_from_projection_and_bounds(projection, bounds)
+        height = bounds[3] - bounds[1]
+        width = bounds[2] - bounds[0]
+
+        def pixel_to_crs(geom: shapely.Geometry) -> shapely.Geometry:
+            if geom is None or geom.is_empty:
+                return geom
+            return shapely.affinity.scale(
+                geom,
+                xfact=projection.x_resolution,
+                yfact=projection.y_resolution,
+                origin=(0, 0),
+            )
+
         shapes = []
         for feature in features:
             class_value = get_class_value(feature.properties)
-            # Convert geometry to the window's projection
             geom_pixel = feature.geometry.to_projection(projection)
-            shapes.append((geom_pixel.shp, class_value))
-        
-        # Calculate raster dimensions
-        height = bounds[3] - bounds[1]
-        width = bounds[2] - bounds[0]
-        
-        # Create transform from projection and bounds using rslearn utility
-        # This handles the conversion from pixel bounds to projection units correctly
-        transform = get_transform_from_projection_and_bounds(projection, bounds)
-        
-        # Rasterize the geometries
-        # Default value is 0 (background), all_touched=True means pixels touching
-        # the geometry boundary are included
+            geom_crs = pixel_to_crs(geom_pixel.shp)
+            if geom_crs is not None and not geom_crs.is_empty:
+                shapes.append((geom_crs, class_value))
+
+        # Rasterize the geometries (in CRS coordinates)
         rasterized = rasterize(
             shapes,
             out_shape=(height, width),
