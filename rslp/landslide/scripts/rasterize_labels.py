@@ -25,13 +25,13 @@ BAND_NAME = "label"
 # Property name in the geojson features that contains the class label
 CLASS_PROPERTY_NAME = "label"
 
-# Class mapping: map from geojson property values to raster pixel values
-# Based on config.json: ["no_data", "no_landslide", "landslide"]
-# Maps to: 2 (nodata), 0 (background), 1 (landslide)
+# Class mapping: map from geojson property values to raster pixel values.
+# Must match config.json class_names order: pixel value = index into class_names.
+# ["no_data", "no_landslide", "landslide"] -> 0, 1, 2
 CLASS_MAPPING = {
-    "no_data": 2,
-    "no_landslide": 0,
-    "landslide": 1,
+    "no_data": 0,
+    "no_landslide": 1,
+    "landslide": 2,
 }
 
 
@@ -55,12 +55,12 @@ def get_class_value(feature_properties: dict) -> int:
         mapped_value = CLASS_MAPPING.get(label)
         if mapped_value is not None:
             return mapped_value
-        # If not found in mapping, default to background
-        print(f"Warning: Unknown label value '{label}', defaulting to 0")
-        return 0
+        # If not found in mapping, default to no_landslide
+        print(f"Warning: Unknown label value '{label}', defaulting to 1 (no_landslide)")
+        return 1
     
-    # Default fallback (background)
-    return 0
+    # Default fallback (no_landslide)
+    return 1
 
 
 def load_window_metadata(window_dir: UPath) -> tuple[Projection, tuple[int, int, int, int]]:
@@ -118,10 +118,10 @@ def create_label_raster(window_dir: UPath) -> None:
     )
     
     if not features:
-        # No features in this window - create empty raster with background class (0 = no_landslide)
+        # No features in this window - fill with no_landslide (index 1)
         height = bounds[3] - bounds[1]
         width = bounds[2] - bounds[0]
-        raster = np.zeros((1, height, width), dtype=np.uint8)
+        raster = np.full((1, height, width), 1, dtype=np.uint8)
     else:
         # Prepare shapes for rasterization: (geometry, value) tuples.
         # decode_vector returns geometries in the window's projection, where .shp is in
@@ -150,12 +150,13 @@ def create_label_raster(window_dir: UPath) -> None:
             if geom_crs is not None and not geom_crs.is_empty:
                 shapes.append((geom_crs, class_value))
 
-        # Rasterize the geometries (in CRS coordinates)
+        # Rasterize the geometries (in CRS coordinates). Fill uncovered pixels with
+        # no_landslide (1) so they match the vector label background.
         rasterized = rasterize(
             shapes,
             out_shape=(height, width),
             transform=transform,
-            fill=0,  # Background value
+            fill=1,  # no_landslide (index in class_names)
             all_touched=True,  # Include pixels that touch the geometry
             dtype=np.uint8,
         )
