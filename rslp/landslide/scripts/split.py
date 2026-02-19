@@ -3,7 +3,7 @@ import tqdm
 from rslearn.dataset import Dataset, Window
 from upath import UPath
 
-ds_path = UPath("/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/1k_positives")
+ds_path = UPath("/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives")
 dataset = Dataset(ds_path)
 windows = dataset.load_windows(show_progress=True, workers=32)
 

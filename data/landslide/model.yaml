@@ -37,7 +37,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: '/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/1k_positives/'
+    path: '/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives/'
     inputs:
       # We read the four Sentinel-2 images materialized earlier.
       # OlmoEarth expects the input to be called "sentinel2_l2a".
@@ -109,14 +109,14 @@ trainer:
     # The RslearnWriter is used during `model predict` to save the predicted outputs to
     # the rslearn dataset. It's not needed for training, so we comment it out here.
     # Uncomment and set output_layer when using this config for prediction.
-    # - class_path: rslearn.train.prediction_writer.RslearnWriter
-    #   init_args:
-    #     # This path will be copied from data.init_args.path by rslearn.
-    #     path: gs://rslearn-eai/datasets/landslide/sen12landslides_1k_positives/
-    #     output_layer: segment
-    #     selector: ["segment"]
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        # This path will be copied from data.init_args.path by rslearn.
+        path: gs://rslearn-eai/datasets/landslide/sen12landslides_all_positives_1epoch/
+        output_layer: "label_raster" 
+        selector: ["segment"]
 # Here we enable automatic checkpoint management and logging to W&B.
 # Set WANDB_MODE=offline to disable online logging.
 project_name: landslides
-run_name: sen12landslides_1k_base
+run_name: sen12landslides_base_1epoch
 management_dir: ./checkpoints
