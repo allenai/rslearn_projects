@@ -1,4 +1,4 @@
-"""Create windows for the Tolbi project."""
+"""Create windows for the Worldcover project."""
 
 import argparse
 import hashlib
@@ -36,7 +36,6 @@ CLASS_NAMES = [
     "water",
     "wetland (herbaceous)",
 ]
-# index from 0 to 12 (12 classes)
 
 
 def create_window(
@@ -210,5 +209,3 @@ if __name__ == "__main__":
         group_name=args.group_name,
         window_size=args.window_size,
     )
-
-# Try to have window size: 53 x 53, crop size: 32 x 32
