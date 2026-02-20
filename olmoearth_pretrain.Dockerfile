@@ -21,6 +21,6 @@ COPY ./docker_build/rslearn /opt/rslearn
 COPY ./docker_build/olmoearth_pretrain /opt/olmoearth_pretrain
 COPY . /opt/rslearn_projects/
 
-RUN uv pip install --system /opt/rslearn[extra] /opt/olmoearth_pretrain /opt/rslearn_projects[extra]
+RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system /opt/rslearn[extra] /opt/olmoearth_pretrain -r /opt/rslearn_projects/requirements.txt -r /opt/rslearn_projects/requirements-extra.txt
 
 WORKDIR /opt/rslearn_projects
