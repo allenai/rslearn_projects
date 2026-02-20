@@ -11,6 +11,7 @@ project_data
 rslp/crop_type_mapping/csv/
 rslp/crop_type_mapping/geoparquets/
 rslp/mangrove/csv/
+rslp/tolbi/data/
 log*.txt
 
 olmoearth_run_data/nandi/finetune/annotation*.geojson
