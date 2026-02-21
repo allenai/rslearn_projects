@@ -581,6 +581,12 @@ def create_labeled_features(
         )
         features.append(background_feature)
     
+    # Sort so landslides come last. Renderers (vis server, rasterize) draw later
+    # features on top, so this ensures landslide polygons are never hidden by
+    # background or buffer due to coordinate precision overlap.
+    LABEL_PRIORITY = {"no_landslide": 0, "no_data": 1, "landslide": 2}
+    features.sort(key=lambda f: LABEL_PRIORITY.get(f.properties.get("label"), 0))
+
     print(f"    Created {len(features)} label features: {sum(1 for f in features if f.properties['label']=='landslide')} landslides, "
           f"{sum(1 for f in features if f.properties['label']=='no_data')} buffer, "
           f"{sum(1 for f in features if f.properties['label']=='no_landslide')} background")

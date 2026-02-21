@@ -150,6 +150,13 @@ def create_label_raster(window_dir: UPath) -> None:
             if geom_crs is not None and not geom_crs.is_empty:
                 shapes.append((geom_crs, class_value))
 
+        # Sort so landslide (1) is rasterized last. rasterio.features.rasterize
+        # draws later shapes on top of earlier ones, so this guarantees landslide
+        # pixels are never overwritten by background or buffer due to coordinate
+        # precision issues across transformations.
+        RASTERIZE_PRIORITY = {0: 0, 2: 1, 1: 2}  # no_landslide < no_data < landslide
+        shapes.sort(key=lambda s: RASTERIZE_PRIORITY.get(s[1], 0))
+
         # Rasterize the geometries (in CRS coordinates). Fill uncovered pixels with
         # no_landslide (0) so they match the vector label background.
         rasterized = rasterize(
