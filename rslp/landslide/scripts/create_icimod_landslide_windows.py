@@ -329,12 +329,12 @@ def create_labeled_features(
     event_type: str,
     event_date
 ) -> List[Feature]:
-    """
-    Create labeled features with three zones:
-    1. Landslide polygons (label='landslide')
-    2. Buffer zones around landslides (label='no_data')
-    3. Background (label='no_landslide')
-    
+    """Create labeled features using overlapping polygons with draw-order priority.
+
+    Features are returned in draw order (background, buffer, landslide) so that
+    later features overwrite earlier ones during rendering and rasterization.
+    This avoids fragile geometry difference() operations.
+
     Args:
         overlapping_landslides: List of landslide dictionaries
         window: The window object
@@ -343,45 +343,57 @@ def create_labeled_features(
         sample_id: Primary sample ID
         event_type: Event type
         event_date: Event date
-        
+
     Returns:
-        List of Feature objects
+        List of Feature objects ordered: background, buffer, landslides
     """
     from pyproj import Transformer
-    
+
     features = []
-    
+
+    # 1. Background: entire window as no_landslide (drawn first, lowest priority)
+    features.append(Feature(
+        window.get_geometry(),
+        {
+            "label": "no_landslide",
+            "event_type": event_type,
+            "event_date": str(event_date),
+        },
+    ))
+
     if len(overlapping_landslides) == 0:
-        # No landslides - entire window is no_landslide
-        features.append(Feature(
-            window.get_geometry(),
-            {
-                "label": "no_landslide",
-                "event_type": event_type,
-                "event_date": str(event_date),
-            },
-        ))
         return features
-    
-    # Transform landslides to projected CRS for buffering
+
+    # 2. Buffer: union of buffered landslide polygons as no_data (drawn second)
     transformer_to_proj = Transformer.from_crs("EPSG:4326", dst_crs, always_xy=True)
     transformer_to_wgs84 = Transformer.from_crs(dst_crs, "EPSG:4326", always_xy=True)
-    
-    # Collect all landslide polygons and their buffers in projected CRS
-    landslide_union = None
+
     buffer_union = None
-    
     for landslide in overlapping_landslides:
-        # Get geometry in WGS84
-        geom_wgs84 = landslide["geometry"]
-        
-        # Transform to projected CRS
-        geom_proj = shapely.ops.transform(transformer_to_proj.transform, geom_wgs84)
-        
-        # Create landslide feature (in WGS84)
-        label_geometry = STGeometry(WGS84_PROJECTION, geom_wgs84, None)
-        feature = Feature(
-            label_geometry,
+        geom_proj = shapely.ops.transform(transformer_to_proj.transform, landslide["geometry"])
+        geom_proj = shapely.make_valid(geom_proj) if not geom_proj.is_valid else geom_proj
+        buffer_geom = geom_proj.buffer(buffer_distance)
+
+        if buffer_union is None:
+            buffer_union = buffer_geom
+        else:
+            buffer_union = buffer_union.union(buffer_geom)
+
+    if buffer_union is not None:
+        buffer_wgs84 = shapely.ops.transform(transformer_to_wgs84.transform, buffer_union)
+        if not buffer_wgs84.is_empty:
+            features.append(Feature(
+                STGeometry(WGS84_PROJECTION, buffer_wgs84, None),
+                {
+                    "label": "no_data",
+                    "buffer_distance_m": float(buffer_distance),
+                },
+            ))
+
+    # 3. Landslide polygons (drawn last, highest priority — always visible)
+    for landslide in overlapping_landslides:
+        features.append(Feature(
+            STGeometry(WGS84_PROJECTION, landslide["geometry"], None),
             {
                 "label": "landslide",
                 "landslide_id": str(landslide["id"]),
@@ -389,96 +401,13 @@ def create_labeled_features(
                 "event_date": str(landslide["event_date"]),
                 "is_primary": bool(landslide["id"] == sample_id),
             },
-        )
-        features.append(feature)
-        
-        # Union all landslides
-        if landslide_union is None:
-            landslide_union = geom_proj
-        else:
-            landslide_union = landslide_union.union(geom_proj)
-        
-        # Create buffer and union
-        buffer_geom = geom_proj.buffer(buffer_distance)
-        if buffer_union is None:
-            buffer_union = buffer_geom
-        else:
-            buffer_union = buffer_union.union(buffer_geom)
-    
-    # Create buffer zone (buffer minus landslides)
-    if buffer_union is not None and landslide_union is not None:
-        # Buffer zone is the buffer area minus the actual landslides
-        buffer_only = buffer_union.difference(landslide_union)
-        
-        # Transform back to WGS84
-        buffer_only_wgs84 = shapely.ops.transform(transformer_to_wgs84.transform, buffer_only)
-        
-        # Create feature for buffer zone
-        if not buffer_only_wgs84.is_empty:
-            buffer_geometry = STGeometry(WGS84_PROJECTION, buffer_only_wgs84, None)
-            buffer_feature = Feature(
-                buffer_geometry,
-                {
-                    "label": "no_data",
-                    "buffer_distance_m": float(buffer_distance),
-                    "description": "Buffer zone around landslides",
-                },
-            )
-            features.append(buffer_feature)
-    
-    # Create background (window minus landslides minus buffer)
-    window_geom = window.get_geometry()
-    # STGeometry has a shapely property that returns the shapely geometry
-    # Or we can use the projection to get bounds and create a box
-    # Let's create the window geometry directly from bounds
-    window_bounds = window.bounds
-    if hasattr(window_bounds, 'min_x'):
-        w_min_x, w_min_y = window_bounds.min_x, window_bounds.min_y
-        w_max_x, w_max_y = window_bounds.max_x, window_bounds.max_y
-    else:
-        w_min_x, w_min_y, w_max_x, w_max_y = window_bounds[0], window_bounds[1], window_bounds[2], window_bounds[3]
-    
-    # Convert to projected coordinates
-    w_proj_min_x = w_min_x * window.projection.x_resolution
-    w_proj_min_y = w_min_y * window.projection.y_resolution
-    w_proj_max_x = w_max_x * window.projection.x_resolution
-    w_proj_max_y = w_max_y * window.projection.y_resolution
-    
-    # Create window box in projected CRS
-    window_proj = shapely.box(w_proj_min_x, w_proj_min_y, w_proj_max_x, w_proj_max_y)
-    
-    # Background is window minus buffer (which includes landslides)
-    if buffer_union is not None:
-        background = window_proj.difference(buffer_union)
-    else:
-        background = window_proj
-    
-    # Transform back to WGS84
-    background_wgs84 = shapely.ops.transform(transformer_to_wgs84.transform, background)
-    
-    # Create feature for background
-    if not background_wgs84.is_empty:
-        background_geometry = STGeometry(WGS84_PROJECTION, background_wgs84, None)
-        background_feature = Feature(
-            background_geometry,
-            {
-                "label": "no_landslide",
-                "event_type": event_type,
-                "event_date": str(event_date),
-            },
-        )
-        features.append(background_feature)
-    
-    # Sort so landslides come last. Renderers (vis server, rasterize) draw later
-    # features on top, so this ensures landslide polygons are never hidden by
-    # background or buffer due to coordinate precision overlap.
-    LABEL_PRIORITY = {"no_landslide": 0, "no_data": 1, "landslide": 2}
-    features.sort(key=lambda f: LABEL_PRIORITY.get(f.properties.get("label"), 0))
+        ))
 
-    print(f"    Created {len(features)} label features: {sum(1 for f in features if f.properties['label']=='landslide')} landslides, "
+    print(f"    Created {len(features)} label features: "
+          f"{sum(1 for f in features if f.properties['label']=='landslide')} landslides, "
           f"{sum(1 for f in features if f.properties['label']=='no_data')} buffer, "
           f"{sum(1 for f in features if f.properties['label']=='no_landslide')} background")
-    
+
     return features
 
 
