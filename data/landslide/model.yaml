@@ -30,6 +30,9 @@ model:
               num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
           # The SegmentationHead computes softmax and cross entropy loss.
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+            init_args:
+                weights: [0.05, 0.95]
+                dice_loss: true
     optimizer:
       class_path: rslearn.train.optimizer.AdamW
       init_args:
@@ -112,11 +115,11 @@ trainer:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
         # This path will be copied from data.init_args.path by rslearn.
-        path: gs://rslearn-eai/datasets/landslide/sen12landslides_all_positives_1epoch/
+        path: gs://rslearn-eai/datasets/landslide/sen12landslides_all_positives_base/
         output_layer: "label_raster" 
-        selector: ["segment"]
+        selector: []
 # Here we enable automatic checkpoint management and logging to W&B.
 # Set WANDB_MODE=offline to disable online logging.
 project_name: landslides
-run_name: sen12landslides_base_1epoch
+run_name: sen12landslides_base
 management_dir: ./checkpoints

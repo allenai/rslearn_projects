@@ -10,7 +10,7 @@
         }
       ],
       "type": "vector",
-      "class_names": ["no_data","no_landslide", "landslide"],
+      "class_names": ["no_landslide", "landslide", "no_data"],
       "class_property_name": "label"
     },
     "label_raster": {
@@ -21,7 +21,7 @@
         }
       ],
       "type": "raster",
-      "class_names": ["no_data", "no_landslide", "landslide"]
+      "class_names": ["no_landslide", "landslide", "no_data"]
     },
     "pre_sentinel2": {
       "band_sets": [

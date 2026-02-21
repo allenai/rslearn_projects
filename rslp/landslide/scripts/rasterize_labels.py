@@ -29,9 +29,9 @@ CLASS_PROPERTY_NAME = "label"
 # Must match config.json class_names order: pixel value = index into class_names.
 # ["no_data", "no_landslide", "landslide"] -> 0, 1, 2
 CLASS_MAPPING = {
-    "no_data": 0,
-    "no_landslide": 1,
-    "landslide": 2,
+    "no_landslide": 0,
+    "landslide": 1,
+    "no_data": 2,
 }
 
 
@@ -56,11 +56,11 @@ def get_class_value(feature_properties: dict) -> int:
         if mapped_value is not None:
             return mapped_value
         # If not found in mapping, default to no_landslide
-        print(f"Warning: Unknown label value '{label}', defaulting to 1 (no_landslide)")
-        return 1
+        print(f"Warning: Unknown label value '{label}', defaulting to 0 (no_landslide)")
+        return 0
     
     # Default fallback (no_landslide)
-    return 1
+    return 0
 
 
 def load_window_metadata(window_dir: UPath) -> tuple[Projection, tuple[int, int, int, int]]:
@@ -118,10 +118,10 @@ def create_label_raster(window_dir: UPath) -> None:
     )
     
     if not features:
-        # No features in this window - fill with no_landslide (index 1)
+        # No features in this window - fill with no_landslide (index 0)
         height = bounds[3] - bounds[1]
         width = bounds[2] - bounds[0]
-        raster = np.full((1, height, width), 1, dtype=np.uint8)
+        raster = np.full((1, height, width), 0, dtype=np.uint8)
     else:
         # Prepare shapes for rasterization: (geometry, value) tuples.
         # decode_vector returns geometries in the window's projection, where .shp is in
@@ -151,12 +151,12 @@ def create_label_raster(window_dir: UPath) -> None:
                 shapes.append((geom_crs, class_value))
 
         # Rasterize the geometries (in CRS coordinates). Fill uncovered pixels with
-        # no_landslide (1) so they match the vector label background.
+        # no_landslide (0) so they match the vector label background.
         rasterized = rasterize(
             shapes,
             out_shape=(height, width),
             transform=transform,
-            fill=1,  # no_landslide (index in class_names)
+            fill=0,  # no_landslide (index in class_names)
             all_touched=True,  # Include pixels that touch the geometry
             dtype=np.uint8,
         )
