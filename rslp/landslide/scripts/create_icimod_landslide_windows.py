@@ -391,9 +391,37 @@ def create_labeled_features(
             ))
 
     # 3. Landslide polygons (drawn last, highest priority — always visible)
+    min_pixel_area = WINDOW_RESOLUTION * WINDOW_RESOLUTION  # 1 pixel in m^2
     for landslide in overlapping_landslides:
+        raw_geom = landslide["geometry"]
+
+        # Project to UTM, fix validity, ensure it's a polygon
+        geom_proj = shapely.ops.transform(transformer_to_proj.transform, raw_geom)
+        if not geom_proj.is_valid:
+            geom_proj = shapely.make_valid(geom_proj)
+        if not geom_proj.is_valid:
+            geom_proj = geom_proj.buffer(0)
+
+        # Extract polygon parts from GeometryCollections
+        if isinstance(geom_proj, shapely.GeometryCollection) and not isinstance(geom_proj, (shapely.Polygon, shapely.MultiPolygon)):
+            polys = [g for g in geom_proj.geoms if isinstance(g, (shapely.Polygon, shapely.MultiPolygon)) and not g.is_empty]
+            geom_proj = shapely.unary_union(polys) if polys else shapely.Polygon()
+
+        # If geometry has no area (Point, LineString, degenerate), buffer centroid
+        if geom_proj.is_empty or geom_proj.area < min_pixel_area:
+            centroid = shapely.ops.transform(transformer_to_proj.transform, raw_geom.centroid if not raw_geom.is_empty else raw_geom)
+            geom_proj = centroid.buffer(WINDOW_RESOLUTION)
+            print(f"    WARNING: Landslide {landslide['id']} had no/tiny polygon area, "
+                  f"buffered centroid to {WINDOW_RESOLUTION}m radius circle")
+
+        landslide_wgs84 = shapely.ops.transform(transformer_to_wgs84.transform, geom_proj)
+
+        if landslide_wgs84.is_empty or not landslide_wgs84.is_valid:
+            print(f"    WARNING: Landslide {landslide['id']} still invalid after fix, skipping")
+            continue
+
         features.append(Feature(
-            STGeometry(WGS84_PROJECTION, landslide["geometry"], None),
+            STGeometry(WGS84_PROJECTION, landslide_wgs84, None),
             {
                 "label": "landslide",
                 "landslide_id": str(landslide["id"]),

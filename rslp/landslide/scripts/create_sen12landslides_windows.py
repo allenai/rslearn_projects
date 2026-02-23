@@ -331,28 +331,44 @@ def _fix_geometry(geom: shapely.Geometry) -> shapely.Geometry:
     if geom.is_empty:
         return geom
     
-    # Try make_valid first (Shapely 2.0+)
-    if hasattr(shapely, 'make_valid'):
-        try:
-            geom = shapely.make_valid(geom)
-        except Exception:
-            pass
-    
-    # Use buffer(0) as fallback to fix invalid geometries
     if not geom.is_valid:
-        try:
-            geom = geom.buffer(0)
-        except Exception:
-            # If buffer fails, try to get the valid part
-            if hasattr(geom, 'is_valid') and not geom.is_valid:
-                # Last resort: try to extract valid parts
-                try:
-                    if hasattr(shapely, 'make_valid'):
-                        geom = shapely.make_valid(geom)
-                except Exception:
-                    pass
+        geom = shapely.make_valid(geom)
+    
+    if not geom.is_valid:
+        geom = geom.buffer(0)
     
     return geom
+
+
+def _ensure_polygon(geom: shapely.Geometry, min_buffer_m: float = 10.0) -> shapely.Geometry:
+    """Ensure geometry is a Polygon or MultiPolygon with nonzero area.
+
+    Handles Points, LineStrings, and GeometryCollections by extracting polygon
+    parts or buffering as needed.
+
+    Args:
+        geom: Any shapely geometry
+        min_buffer_m: Buffer distance (meters) to apply if geometry has no area
+
+    Returns:
+        A valid Polygon or MultiPolygon, or an empty polygon if unrecoverable
+    """
+    if geom.is_empty:
+        return shapely.Polygon()
+
+    geom = _fix_geometry(geom)
+
+    if isinstance(geom, (shapely.Polygon, shapely.MultiPolygon)):
+        return geom
+
+    # GeometryCollection: extract polygon parts
+    if isinstance(geom, shapely.GeometryCollection):
+        polys = [g for g in geom.geoms if isinstance(g, (shapely.Polygon, shapely.MultiPolygon)) and not g.is_empty]
+        if polys:
+            return shapely.unary_union(polys)
+
+    # Point or LineString: cannot represent area, caller should buffer in projected CRS
+    return shapely.Polygon()
 
 
 def create_labeled_features(
@@ -426,9 +442,29 @@ def create_labeled_features(
             ))
 
     # 3. Landslide polygons (drawn last, highest priority — always visible)
+    min_pixel_area = WINDOW_RESOLUTION * WINDOW_RESOLUTION  # 1 pixel in m^2
     for landslide in overlapping_landslides:
+        raw_geom = landslide["geometry"]
+
+        # Project to UTM, fix, ensure polygon, project back to WGS84
+        geom_proj = shapely.ops.transform(transformer_to_proj.transform, raw_geom)
+        geom_proj = _ensure_polygon(_fix_geometry(geom_proj))
+
+        # If geometry has no area (Point, LineString, degenerate), buffer to 1-pixel circle
+        if geom_proj.is_empty or geom_proj.area < min_pixel_area:
+            centroid = shapely.ops.transform(transformer_to_proj.transform, raw_geom.centroid if not raw_geom.is_empty else raw_geom)
+            geom_proj = centroid.buffer(WINDOW_RESOLUTION)
+            print(f"    WARNING: Landslide {landslide['id']} had no/tiny polygon area, "
+                  f"buffered centroid to {WINDOW_RESOLUTION}m radius circle")
+
+        landslide_wgs84 = shapely.ops.transform(transformer_to_wgs84.transform, geom_proj)
+
+        if landslide_wgs84.is_empty or not landslide_wgs84.is_valid:
+            print(f"    WARNING: Landslide {landslide['id']} still invalid after fix, skipping")
+            continue
+
         features.append(Feature(
-            STGeometry(WGS84_PROJECTION, landslide["geometry"], None),
+            STGeometry(WGS84_PROJECTION, landslide_wgs84, None),
             {
                 "label": "landslide",
                 "landslide_id": str(landslide["id"]),
