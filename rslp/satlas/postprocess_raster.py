@@ -11,6 +11,7 @@ import shapely
 import torch
 from rslearn.utils.feature import Feature
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
+from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from rslearn.utils.vector_format import GeojsonCoordinateMode, GeojsonVectorFormat
 from upath import UPath
@@ -129,9 +130,10 @@ def download_and_downsample(
         HW tensor containing segmentation mask.
     """
     logger.info(f"Downloading image from {tile_path}")
-    np_array = GeotiffRasterFormat().decode_raster(
+    raster = GeotiffRasterFormat().decode_raster(
         tile_path.parent, projection, bounds, fname=tile_path.name
-    )[0, :, :]
+    )
+    np_array = raster.get_chw_array()[0, :, :]
     return downsample(torch.as_tensor(np_array), factor=DOWNSAMPLE_FACTOR)
 
 
@@ -148,7 +150,11 @@ def upload_smoothed_raster(
     """
     logger.info(f"Uploading image to {dst_path}")
     GeotiffRasterFormat().encode_raster(
-        dst_path.parent, projection, bounds, array, fname=dst_path.name
+        dst_path.parent,
+        projection,
+        bounds,
+        RasterArray(chw_array=array),
+        fname=dst_path.name,
     )
 
 
@@ -415,9 +421,10 @@ def extract_polygons(
     )
     in_fname = UPath(smoothed_path) / label / f"{tile_prefix}.tif"
     logger.info("Downloading smoothed raster from %s", in_fname)
-    array = raster_format.decode_raster(
+    raster = raster_format.decode_raster(
         in_fname.parent, downsampled_projection, downsampled_bounds, fname=in_fname.name
     )
+    array = raster.get_chw_array()
 
     # Set value 1 (assumed to be background) to 0 for simplicity.
     array[array == 1] = 0

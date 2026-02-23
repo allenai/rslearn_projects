@@ -557,7 +557,7 @@ def _write_detection_crop(
             crop_window.projection,
             crop_window.bounds,
             resampling=Resampling.nearest,
-        )
+        ).get_chw_array()
         if image.shape[0] != 1:
             raise ValueError(
                 f"expected single-band image for {band} but got {image.shape[0]} bands"

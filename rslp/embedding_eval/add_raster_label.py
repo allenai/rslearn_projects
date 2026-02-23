@@ -20,6 +20,7 @@ from rslearn.config import LayerType
 from rslearn.dataset import Dataset
 from rslearn.dataset.window import Window
 from rslearn.utils.mp import star_imap_unordered
+from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from tqdm import tqdm
 from upath import UPath
@@ -71,7 +72,11 @@ def add_raster_label_for_window(
         dataset.layers[label_raster_layer].band_sets[0].instantiate_raster_format()
     )
     raster_format.encode_raster(
-        out_dir, window.projection, window.bounds, arr, nodata_val=NODATA
+        out_dir,
+        window.projection,
+        window.bounds,
+        RasterArray(chw_array=arr),
+        nodata_val=NODATA,
     )
     window.mark_layer_completed(label_raster_layer)
 
