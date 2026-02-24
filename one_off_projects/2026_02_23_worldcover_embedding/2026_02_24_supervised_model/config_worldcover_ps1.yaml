@@ -110,4 +110,4 @@ trainer:
           init_args:
             overlap_pixels: 4
 rslp_project: 2026_02_11_embedding_interpolation
-rslp_experiment: worldcover_ps1_01
+rslp_experiment: worldcover_ps1_01_supervisedpretraining
