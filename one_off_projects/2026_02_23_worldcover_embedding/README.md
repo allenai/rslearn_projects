@@ -31,5 +31,5 @@ export DATASET_PATH=./dataset
 mkdir $DATASET_PATH
 cp one_off_projects/2026_02_23_worldcover_embedding/config.json $DATASET_PATH/config.json
 rslearn dataset add_windows --root $DATASET_PATH --group default --utm --resolution 10 --window_size 2048 --src_crs EPSG:4326 --box=-122.255,47.589,-122.255,47.589 --start 2025-01-01T00:00:00+00:00 --end 2026-01-01T00:00:00+00:00 --name seattle
-python -m rslp.rslearn_main model predict --config one_off_projects/2026_02_23_worldcover_embedding/config_worldcover_ps4.yaml --data.init_args.path=$DATASET_PATH
+python -m rslp.rslearn_main model predict --config one_off_projects/2026_02_23_worldcover_embedding/config_worldcover_ps4.yaml --data.init_args.path=$DATASET_PATH --load_best=true
 ```
