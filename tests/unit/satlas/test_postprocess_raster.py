@@ -6,6 +6,7 @@ import pathlib
 import numpy as np
 import numpy.typing as npt
 from rslearn.const import WGS84_PROJECTION
+from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
 
@@ -44,7 +45,11 @@ class TestSmoothRasters:
                 bounds,
             )
             GeotiffRasterFormat().encode_raster(
-                fname.parent, projection, bounds, array, fname=fname.name
+                fname.parent,
+                projection,
+                bounds,
+                RasterArray(chw_array=array),
+                fname=fname.name,
             )
 
         # Apply smoothing.
@@ -67,10 +72,10 @@ class TestSmoothRasters:
                 projection,
                 bounds,
             )
-            array = GeotiffRasterFormat().decode_raster(
+            raster = GeotiffRasterFormat().decode_raster(
                 fname.parent, projection, bounds, fname=fname.name
             )
-            outputs.append(array)
+            outputs.append(raster.get_chw_array())
 
         return outputs
 

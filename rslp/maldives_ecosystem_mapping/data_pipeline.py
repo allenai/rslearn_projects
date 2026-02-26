@@ -27,6 +27,7 @@ from rslearn.main import (
 from rslearn.utils import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.mp import star_imap_unordered
+from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
 
@@ -359,7 +360,10 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
 
     # Write the Maxar GeoTIFF.
     GeotiffRasterFormat(always_enable_tiling=True).encode_raster(
-        window.get_raster_dir("maxar", ["R", "G", "B"]), projection, proj_bounds, crop
+        window.get_raster_dir("maxar", ["R", "G", "B"]),
+        projection,
+        proj_bounds,
+        RasterArray(chw_array=crop),
     )
     window.mark_layer_completed("maxar")
 
@@ -378,7 +382,7 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
         window.get_raster_dir("label", ["label"]),
         projection,
         proj_bounds,
-        mask[None, :, :],
+        RasterArray(chw_array=mask[None, :, :]),
     )
 
     # Along with a visualization image.
@@ -390,7 +394,7 @@ def process_maxar(job: MaxarJob) -> tuple[str, datetime]:
         window.get_raster_dir("label", ["vis"]),
         projection,
         proj_bounds,
-        label_vis.transpose(2, 0, 1),
+        RasterArray(chw_array=label_vis.transpose(2, 0, 1)),
     )
     window.mark_layer_completed("label")
 
@@ -470,7 +474,7 @@ def process_bare(job: BareJob) -> None:
         window.get_raster_dir("label", ["label"]),
         projection,
         proj_bounds,
-        mask[None, :, :],
+        RasterArray(chw_array=mask[None, :, :]),
     )
 
     # Along with a visualization image.
@@ -482,7 +486,7 @@ def process_bare(job: BareJob) -> None:
         window.get_raster_dir("label", ["vis"]),
         projection,
         proj_bounds,
-        label_vis.transpose(2, 0, 1),
+        RasterArray(chw_array=label_vis.transpose(2, 0, 1)),
     )
     window.mark_layer_completed("label")
 
