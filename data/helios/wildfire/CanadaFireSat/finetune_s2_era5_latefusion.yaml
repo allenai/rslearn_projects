@@ -5,22 +5,41 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          - class_path: rslearn.models.LateFusionFeatureExtractor.LateFusionFeatureExtractor
             init_args:
-              model_id: OLMOEARTH_V1_BASE
-              patch_size: 5
-              use_legacy_timestamps: false
-              token_pooling: false
+              paths:
+                # ── Path 0: Sentinel-2 via OlmoEarth + AttentionPool ──
+                # OlmoEarth (token_pooling=false) → TokenFeatureMaps (B×768×H×W×N)
+                # AttentionPool pools over N → FeatureMaps (B×768×10×10)
+                - - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+                    init_args:
+                      model_id: OLMOEARTH_V1_BASE
+                      patch_size: 5
+                      use_legacy_timestamps: false
+                      token_pooling: false
+                  - class_path: rslearn.models.attention_pooling.AttentionPool
+                    init_args:
+                      in_dim: 768
+                      num_heads: 8
+                      linear_on_kv: true
+                # ── Path 1: ERA5 daily via TCNEncoder ──
+                # TCNEncoder → FeatureMaps (B×128×10×10) replicated embedding
+                - - class_path: rslearn.models.tcn_encoder.TCNEncoder
+                    init_args:
+                      in_channels: 14
+                      d_model: 128
+                      d_output: 128
+                      dilations: [1, 2, 4, 8, 16, 32, 64, 128]
+                      pooling_windows: [1, 2, 4, 12]
+                      dropout: 0.1
+                      output_spatial_size: 10  # match OlmoEarth spatial grid (crop_size 50 / patch_size 5)
+              fusion_mode: concat  # simple channel-wise concatenation → 768 + 128 = 896 channels
         decoders:
           segmentation:
-            - class_path: rslearn.models.attention_pooling.AttentionPool
-              init_args:
-                in_dim: 768
-                num_heads: 8
-                linear_on_kv: true
+            # Conv brings 10×10 → 5×5 (matches 100m label resolution)
             - class_path: rslearn.models.conv.Conv
               init_args:
-                in_channels: 768
+                in_channels: 896  # 768 (OlmoEarth S2) + 128 (TCN ERA5)
                 out_channels: 2
                 kernel_size: 2
                 padding: "valid"
@@ -31,7 +50,6 @@ model:
               init_args:
                 weights: [0.05, 0.95]
                 dice_loss: true
-                loss_weigths: [0.5, 1.5]
     optimizer:
       class_path: rslearn.train.optimizer.AdamW
       init_args:
@@ -47,25 +65,39 @@ data:
   init_args:
     path: /weka/dfive-default/rslearn-eai/datasets/wildfire/canada_fire_sat_full
     inputs:
+      # ── Sentinel-2 (consumed by OlmoEarth in path 0) ──
       sentinel2_l2a:
         data_type: "raster"
         layers: ["sentinel2"]
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-        passthrough: true #gets passed to the model even if no task returns it (most classes only process targets)
+        passthrough: true
         dtype: FLOAT32
-        load_all_item_groups: true #automatically detects the variable number of groups (time steps) per window
-        load_all_layers: true #read all time steps available
+        load_all_item_groups: true
+        load_all_layers: true
+      # ── ERA5 daily (consumed by TCNEncoder in path 1) ──
+      era5_daily:
+        data_type: "raster"
+        layers: ["era5_365d"]
+        num_bands: 5110
+        passthrough: true
+        dtype: FLOAT32
+        resolution_factor:
+          class_path: rslearn.utils.geometry.ResolutionFactor
+          init_args:
+            numerator: 1
+            denominator: 260
+      # ── Label ──
       label:
         data_type: "raster"
         layers: ["label_100m"]
-        bands: ["label_100m"] #is matched against config.json to figure out which band (ix=0 here) to read
+        bands: ["label_100m"]
         dtype: INT32
         is_target: true
         resolution_factor:
-            class_path: rslearn.utils.geometry.ResolutionFactor
-            init_args:
-              numerator: 1
-              denominator: 1
+          class_path: rslearn.utils.geometry.ResolutionFactor
+          init_args:
+            numerator: 1
+            denominator: 1
 
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
@@ -101,7 +133,7 @@ data:
                     class_idx: 1
         input_mapping:
           segmentation:
-            label: "targets" #remap the "label" input to "targets" which is the expected key for the regression task, i.e. "process_inputs"
+            label: "targets"
     batch_size: 16
     num_workers: 16
     default_config:
@@ -113,8 +145,8 @@ data:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         - class_path: rslearn.train.transforms.resize.Resize
           init_args:
-            target_size: [5,5]
-            selectors: ["target/segmentation/classes","target/segmentation/valid"] #target / MultiTask task name / SegmentationTask output, both classes and mask
+            target_size: [5, 5]
+            selectors: ["target/segmentation/classes", "target/segmentation/valid"]
     train_config:
       groups: ["train"]
       transforms:
@@ -129,9 +161,8 @@ data:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         - class_path: rslearn.train.transforms.resize.Resize
           init_args:
-            target_size: [5,5]
-            selectors: ["target/segmentation/classes","target/segmentation/valid"] #target / MultiTask task name / SegmentationTask output, both classes and mask
-
+            target_size: [5, 5]
+            selectors: ["target/segmentation/classes", "target/segmentation/valid"]
     val_config:
       groups: ["val"]
       center_crop: true
@@ -155,16 +186,20 @@ trainer:
         save_last: true
         monitor: val_segmentation/F1_segmentation/f1/cls_1
         mode: max
+    # ── Freeze OlmoEarth backbone for first 15 epochs, then unfreeze ──
+    # model.encoder.0         = LateFusionFeatureExtractor
+    # model.encoder.0.paths.0 = S2 path (ModuleList)
+    # model.encoder.0.paths.0.0 = OlmoEarth  ← freeze target
     - class_path: rslearn.train.callbacks.freeze_unfreeze.MultiStageFineTuning
       init_args:
         stages:
           - at_epoch: 0
-            freeze_selectors: ["model.encoder.0"]
+            freeze_selectors: ["model.encoder.0.paths.0.0"]
             unfreeze_selectors: []
           - at_epoch: 15
             freeze_selectors: []
-            unfreeze_selectors: ["model.encoder.0"]
-            scale_existing_groups: 0.0666667   # 1/15
+            unfreeze_selectors: ["model.encoder.0.paths.0.0"]
+            scale_existing_groups: 0.0666667   # 1/15 — calm down head + TCN LR
             unfreeze_lr_factor: 1.0
 rslp_project: 20260211_wf_burnrisk_nbac
 rslp_experiment: placeholder

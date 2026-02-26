@@ -1,0 +1,192 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+        - class_path: rslearn.models.tcn_encoder.TCNEncoder
+          init_args:
+            in_channels: 14
+            d_model: 128
+            d_output: 2
+            dilations:
+            - 1
+            - 2
+            - 4
+            - 8
+            - 16
+            - 32
+            - 64
+            - 128
+            pooling_windows:
+            - 1
+            - 2
+            - 4
+            - 12
+            dropout: 0.5
+            output_spatial_size: 1
+        decoders:
+          segmentation:
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+            init_args:
+              weights:
+              - 0.4
+              - 0.6
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 5.0e-05
+        weight_decay: 0.01
+    scheduler:
+      class_path: rslearn.train.scheduler.CosineAnnealingScheduler
+      init_args:
+        T_max: 40
+        eta_min: 1.0e-06
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/wildfire/canada_fire_sat_full
+    inputs:
+      era5_daily:
+        data_type: raster
+        layers:
+        - era5_365d
+        num_bands: 5110
+        passthrough: true
+        dtype: FLOAT32
+        resolution_factor:
+          class_path: rslearn.utils.geometry.ResolutionFactor
+          init_args:
+            numerator: 1
+            denominator: 260
+      label:
+        data_type: raster
+        layers:
+        - label_100m
+        bands:
+        - label_100m
+        dtype: INT32
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          segmentation:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 2
+              enable_miou_metric: true
+              enable_f1_metric: true
+              report_metric_per_class: true
+              other_metrics:
+                PRAUC_cls0:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassAveragePrecision
+                      init_args:
+                        num_classes: 2
+                        average: null
+                        thresholds: 128
+                    class_idx: 0
+                PRAUC_cls1:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassAveragePrecision
+                      init_args:
+                        num_classes: 2
+                        average: null
+                        thresholds: 128
+                    class_idx: 1
+        input_mapping:
+          segmentation:
+            label: targets
+    batch_size: 64
+    num_workers: 16
+    default_config:
+      transforms:
+      - class_path: rslearn.train.transforms.normalize.Normalize
+        init_args:
+          mean: &id001
+          - 268.209
+          - -0.00113
+          - -0.00833
+          - 0.000897
+          - 94745.2
+          - 9079014.2
+          - 11716921.0
+          - -4499458.3
+          - 0.343
+          - 0.339
+          - -0.0584
+          - 0.00188
+          - 0.463
+          - 0.0691
+          std: &id002
+          - 14.149
+          - 0.00125
+          - 0.00966
+          - 0.00221
+          - 5192.3
+          - 7486798.9
+          - 8479277.6
+          - 2228211.3
+          - 0.1436
+          - 0.1426
+          - 13.825
+          - 0.00425
+          - 1.787
+          - 1.697
+          selectors:
+          - era5_daily
+      - class_path: rslearn.train.transforms.resize.MaxPoolResize
+        init_args:
+          target_size:
+          - 1
+          - 1
+          selectors:
+          - target/segmentation/classes
+          - target/segmentation/valid
+    train_config:
+      groups:
+      - train
+      transforms:
+      - class_path: rslearn.train.transforms.normalize.Normalize
+        init_args:
+          mean: *id001
+          std: *id002
+          selectors:
+          - era5_daily
+      - class_path: rslearn.train.transforms.resize.MaxPoolResize
+        init_args:
+          target_size:
+          - 1
+          - 1
+          selectors:
+          - target/segmentation/classes
+          - target/segmentation/valid
+    val_config:
+      groups:
+      - val
+    test_config:
+      groups:
+      - test
+    predict_config:
+      skip_targets: true
+trainer:
+  max_epochs: 40
+  callbacks:
+  - class_path: lightning.pytorch.callbacks.progress.tqdm_progress.TQDMProgressBar
+  - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    init_args:
+      logging_interval: epoch
+  - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    init_args:
+      save_top_k: 1
+      save_last: true
+      monitor: val_segmentation/F1_segmentation/f1/cls_1
+      mode: max
+rslp_project: 20260211_wf_burnrisk_nbac
+rslp_experiment: era5d_fullTCN_lr5e5_bs64_w0406_d5_nocrop

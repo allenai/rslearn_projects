@@ -112,6 +112,7 @@ data:
 trainer:
   max_epochs: 60
   callbacks:
+    - class_path: lightning.pytorch.callbacks.progress.tqdm_progress.TQDMProgressBar
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"

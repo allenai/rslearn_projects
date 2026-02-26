@@ -108,6 +108,7 @@ trainer:
       entity: ${WANDB_ENTITY}
       name: ${WANDB_NAME}
   callbacks:
+    - class_path: lightning.pytorch.callbacks.progress.tqdm_progress.TQDMProgressBar
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"

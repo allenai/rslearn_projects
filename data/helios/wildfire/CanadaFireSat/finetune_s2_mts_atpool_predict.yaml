@@ -25,6 +25,8 @@ model:
                 kernel_size: 2
                 padding: "valid"
                 stride: 2
+                activation:
+                  class_path: torch.nn.Identity
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
               init_args:
                 weights: [0.05, 0.95]
@@ -105,6 +107,7 @@ data:
 trainer:
   max_epochs: 1  # Not used for predict, but required
   callbacks:
+    - class_path: lightning.pytorch.callbacks.progress.tqdm_progress.TQDMProgressBar
     # RslearnWriter to save predictions to the dataset
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:

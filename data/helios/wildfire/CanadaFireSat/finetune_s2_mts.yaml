@@ -18,6 +18,8 @@ model:
                 kernel_size: 2
                 padding: "valid"
                 stride: 2
+                activation:
+                  class_path: torch.nn.Identity
             - class_path: rslearn.train.tasks.segmentation.SegmentationHead
               init_args:
                 weights: [0.05, 0.95]
@@ -114,6 +116,7 @@ data:
 trainer:
   max_epochs: 100
   callbacks:
+    - class_path: lightning.pytorch.callbacks.progress.tqdm_progress.TQDMProgressBar
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
@@ -121,7 +124,7 @@ trainer:
       init_args:
         save_top_k: 1
         save_last: true
-        monitor: val_segmentation/F1_cls_1
+        monitor: val_segmentation/F1_segmentation/f1/cls_1
         mode: max
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
