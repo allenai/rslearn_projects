@@ -25,6 +25,11 @@ Model configuration files for rslearn_projects have two additional fields:
 - `rslp_experiment`: a unique name for this experiment. This corresponds to the W&B run
   name.
 
+You may often also need to set:
+
+- `rslp_monitor`: the metric to monitor for saving best checkpoint.
+- `rslp_monitor_mode`: min if metric is best when smaller, max if metric is best when larger.
+
 Note: similar project management functionality has since been added to rslearn, and we
 should move to just using that eventually, but for now we still use the system in
 rslearn_projects which uses slightly different paths and config options.
@@ -44,8 +49,8 @@ logging and checkpoint loading (see `rslp/lightning_cli.py` for all options):
   existing checkpoint. This option will load the latest checkpoint (`last.ckpt`)
   instead, if it exists. It is typically enabled during training.
 - `--load_best=true`: like autoresume but instead of loading the latest checkpoint, it
-  will load the best checkpoint (typically named like `epoch=X....ckpt`). Unlike
-  autoresume, it will raise an error if there is no existing checkpoint.
+  will load the best checkpoint `best.ckpt`. Unlike autoresume, it will raise an error
+  if there is no existing checkpoint.
 
 These are all passed through the `rslp.rslearn_main` entrypoint, e.g.:
 
