@@ -444,7 +444,6 @@ class CustomLightningCLI(RslearnLightningCLI):
                 )
                 c.trainer.callbacks.append(save_last_callback)
 
-                # For the default save_topk_callback, we monitor val_loss.
                 save_best_callback = jsonargparse.Namespace(
                     {
                         "class_path": "lightning.pytorch.callbacks.ModelCheckpoint",
