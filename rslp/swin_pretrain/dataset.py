@@ -14,6 +14,7 @@ import torch
 from einops import rearrange
 from rasterio.crs import CRS
 from rslearn.train.data_module import collate_fn
+from rslearn.train.model_context import RasterImage, SampleMetadata
 from rslearn.train.tasks import Task
 from rslearn.utils.geometry import Projection
 from torch.utils.data import DataLoader, DistributedSampler
@@ -143,7 +144,7 @@ class CollateFunction:
             crop_h_start = random.randint(0, TILE_SIZE - crop_size)
             crop_w_start = random.randint(0, TILE_SIZE - crop_size)
         else:
-            rng = np.random.default_rng(hash(metadatas[0]["window_name"]) % 65536)
+            rng = np.random.default_rng(hash(metadatas[0].window_name) % 65536)
             num_timesteps = rng.integers(minimum_available_timesteps) + 1
             crop_size = self.min_size + rng.integers(self.max_size - self.min_size + 1)
             crop_size = (crop_size // self.patch_size) * self.patch_size
@@ -192,7 +193,17 @@ class CollateFunction:
             for task_name in list(target_dict.keys()):
                 for sub_name in list(target_dict[task_name].keys()):
                     image = target_dict[task_name][sub_name]
-                    if len(image.shape) == 2:
+                    if isinstance(image, RasterImage):
+                        image = RasterImage(
+                            image=image.image[
+                                :,
+                                :,
+                                crop_h_start : crop_h_start + crop_size,
+                                crop_w_start : crop_w_start + crop_size,
+                            ],
+                            timestamps=image.timestamps,
+                        )
+                    elif len(image.shape) == 2:
                         image = image[
                             crop_h_start : crop_h_start + crop_size,
                             crop_w_start : crop_w_start + crop_size,
@@ -342,7 +353,7 @@ class HeliosDataset(torch.utils.data.Dataset):
 
     def __getitem__(
         self, idx: int
-    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    ) -> tuple[dict[str, Any], dict[str, Any], SampleMetadata]:
         """Get the dataset item at the specified index."""
         tile_name = self.tile_list[idx]
         raw_inputs = {}
@@ -361,32 +372,32 @@ class HeliosDataset(torch.utils.data.Dataset):
                 image = torch.zeros((1, TILE_SIZE, TILE_SIZE), dtype=torch.long)
             else:
                 image = image + 1
-            raw_inputs[modality] = image
+            raw_inputs[modality] = RasterImage(image[:, None, :, :])
 
-        metadata = {
-            "group": "fake",
-            "window_name": tile_name,
-            "window_bounds": (0, 0, TILE_SIZE, TILE_SIZE),
-            "bounds": (0, 0, TILE_SIZE, TILE_SIZE),
-            "time_range": (
+        sample_metadata = SampleMetadata(
+            window_group="fake",
+            window_name=tile_name,
+            window_bounds=(0, 0, TILE_SIZE, TILE_SIZE),
+            crop_bounds=(0, 0, TILE_SIZE, TILE_SIZE),
+            crop_idx=0,
+            num_crops_in_window=1,
+            time_range=(
                 datetime(2024, 1, 1, tzinfo=UTC),
                 datetime(2024, 2, 1, tzinfo=UTC),
             ),
-            "projection": Projection(CRS.from_epsg(32610), 10, -10),
-            "dataset_source": None,
-            "patch_idx": 0,
-            "num_patches": 1,
-        }
+            projection=Projection(CRS.from_epsg(32610), 10, -10),
+            dataset_source=None,
+        )
 
         input_dict, target_dict = self.task.process_inputs(
             raw_inputs,
-            metadata=metadata,
+            metadata=sample_metadata,
             load_targets=True,
         )
         input_dict.update(passthrough_inputs)
         # input_dict, target_dict = self.transforms(input_dict, target_dict)
 
-        return input_dict, target_dict, metadata
+        return input_dict, target_dict, sample_metadata
 
 
 class HeliosDataModule(L.LightningDataModule):

@@ -583,8 +583,10 @@ def _build_predictions_and_crops(
                 SENTINEL2_LAYER_NAME,
                 HIGH_RES_BAND_SET,
             )
-            image = GeotiffRasterFormat().decode_raster(
-                raster_dir, crop_window.projection, crop_window.bounds
+            image = (
+                GeotiffRasterFormat()
+                .decode_raster(raster_dir, crop_window.projection, crop_window.bounds)
+                .get_chw_array()
             )
             rgb_image = image[RGB_BAND_INDICES, :, :]
             rgb_image = np.clip(rgb_image // RGB_NORM_FACTOR, 0, 255).astype(np.uint8)
