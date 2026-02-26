@@ -177,6 +177,18 @@ class CustomLightningCLI(RslearnLightningCLI):
             default="",
         )
         parser.add_argument(
+            "--rslp_monitor",
+            type=str,
+            help="The metric to monitor for automatic ModelCheckpoint configuration. Set to empty string to use custom ModelCheckpoint callbacks.",
+            default="val_loss",
+        )
+        parser.add_argument(
+            "--rslp_monitor_mode",
+            type=str,
+            help="min if the metric being monitored is better when minimized, max otherwise",
+            default="min",
+        )
+        parser.add_argument(
             "--autoresume",
             type=bool,
             help="Auto-resume from existing checkpoint",
@@ -355,38 +367,17 @@ class CustomLightningCLI(RslearnLightningCLI):
                 logger.info(f"Setting max_steps to {max_steps}")
 
         if subcommand == "fit" and not c.no_log:
-            # Set the checkpoint directory to canonical GCS location.
-            checkpoint_callback = None
-            upload_wandb_callback = None
-            if "callbacks" in c.trainer:
-                for existing_callback in c.trainer.callbacks:
-                    if (
-                        existing_callback.class_path
-                        == "lightning.pytorch.callbacks.ModelCheckpoint"
-                    ):
-                        checkpoint_callback = existing_callback
-                    if existing_callback.class_path == "SaveWandbRunIdCallbackRSLP":
-                        upload_wandb_callback = existing_callback
-            else:
+            # Look for existing callbacks in the config.
+            # We add default callbacks only if they are not already set.
+            if "callbacks" not in c.trainer:
                 c.trainer.callbacks = []
 
-            if not checkpoint_callback:
-                checkpoint_callback = jsonargparse.Namespace(
-                    {
-                        "class_path": "lightning.pytorch.callbacks.ModelCheckpoint",
-                        "init_args": jsonargparse.Namespace(
-                            {
-                                "save_last": True,
-                                "save_top_k": 1,
-                                "monitor": "val_loss",
-                            }
-                        ),
-                    }
-                )
-                c.trainer.callbacks.append(checkpoint_callback)
-            checkpoint_callback.init_args.dirpath = str(checkpoint_dir)
-
             # Save W&B run ID callback.
+            upload_wandb_callback = None
+            for existing_callback in c.trainer.callbacks:
+                if existing_callback.class_path == "SaveWandbRunIdCallbackRSLP":
+                    upload_wandb_callback = existing_callback
+
             if not upload_wandb_callback:
                 config_str = json.dumps(
                     c.as_dict(), default=lambda _: "<not serializable>"
@@ -405,6 +396,70 @@ class CustomLightningCLI(RslearnLightningCLI):
                     }
                 )
                 c.trainer.callbacks.append(upload_wandb_callback)
+
+            # ModelCheckpoint callbacks: one for saving latest checkpoint, one for saving
+            # the best checkpoint.
+            existing_callbacks = []
+            for existing_callback in c.trainer.callbacks:
+                if (
+                    existing_callback.class_path
+                    != "lightning.pytorch.callbacks.ModelCheckpoint"
+                ):
+                    continue
+                existing_callbacks.append(existing_callback)
+
+                # Show warning if save_last is set. Usually this option does not do what
+                # the user expects and it has caused issues in the past.
+                if getattr(existing_callback.init_args, "save_last", None):
+                    logger.warning(
+                        "Warning: a ModelCheckpoint with save_last=True is configured. "
+                        "The behavior of save_last varies by Lightning version and may yield unexpected results."
+                    )
+
+            if existing_callbacks and c.rslp_monitor:
+                raise ValueError(
+                    "Custom ModelCheckpoints cannot be set when using --rslp_monitor (either remove the callbacks or use --rslp_monitor='')"
+                )
+            if not existing_callbacks and not c.rslp_monitor:
+                raise ValueError(
+                    "Custom ModelCheckpoints must be set when using --rslp_monitor=''"
+                )
+
+            if existing_callbacks:
+                for existing_callback in existing_callbacks:
+                    existing_callback.init_args.dirpath = str(checkpoint_dir)
+
+            else:
+                save_last_callback = jsonargparse.Namespace(
+                    {
+                        "class_path": "lightning.pytorch.callbacks.ModelCheckpoint",
+                        "init_args": jsonargparse.Namespace(
+                            {
+                                "filename": "last",
+                                "save_top_k": 1,
+                                "dirpath": str(checkpoint_dir),
+                            }
+                        ),
+                    }
+                )
+                c.trainer.callbacks.append(save_last_callback)
+
+                # For the default save_topk_callback, we monitor val_loss.
+                save_best_callback = jsonargparse.Namespace(
+                    {
+                        "class_path": "lightning.pytorch.callbacks.ModelCheckpoint",
+                        "init_args": jsonargparse.Namespace(
+                            {
+                                "filename": "best",
+                                "save_top_k": 1,
+                                "monitor": c.rslp_monitor,
+                                "mode": c.rslp_monitor_mode,
+                                "dirpath": str(checkpoint_dir),
+                            }
+                        ),
+                    }
+                )
+                c.trainer.callbacks.append(save_best_callback)
 
         checkpoint_path = self._get_checkpoint_path(
             checkpoint_dir, load_best=c.load_best, autoresume=c.autoresume
