@@ -124,7 +124,6 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: gs://rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20240924/
         output_layer: output
         selector: ["detect"]
         merger:
