@@ -1,0 +1,25 @@
+# No LR patience, longer freeze period before unfreezing encoder
+rslp_project: 01_06_yemen_crop
+rslp_experiment: yemen_crop_no_patience_long_freeze
+
+model:
+  init_args:
+    plateau: false
+
+trainer:
+  max_epochs: 1000
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_segment/macro_f1
+        mode: max
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 300
+        unfreeze_lr_factor: 10

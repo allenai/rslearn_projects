@@ -1,0 +1,37 @@
+# Encoder patch_size=2, input_size=16 (so 8x8 tokens)
+# Need 2x upsample in decoder to match 16x16 targets
+rslp_project: 01_06_yemen_crop
+rslp_experiment: yemen_crop_ps2_is16
+
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_BASE
+              patch_size: 2
+        decoders:
+          segment:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 768
+                out_channels: 512
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.GELU
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 512
+                out_channels: 9
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.models.upsample.Upsample
+              init_args:
+                scale_factor: 2
+            - class_path: rslearn.models.pick_features.PickFeatures
+              init_args:
+                indexes: [0]
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
