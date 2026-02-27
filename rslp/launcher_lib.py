@@ -14,7 +14,6 @@ from upath import UPath
 from rslp.log_utils import get_logger
 
 CODE_BLOB_PATH = "projects/{project_id}/{experiment_id}/code.zip"
-WANDB_ID_BLOB_PATH = "projects/{project_id}/{experiment_id}/{run_id}wandb_id"
 CODE_EXCLUDES = [
     ".git",
     "rslp/__pycache__",
@@ -41,8 +40,8 @@ def get_project_and_experiment(config_path: str) -> tuple[str, str]:
     """
     with open(config_path) as f:
         data = yaml.safe_load(f)
-    project_id = data["rslp_project"]
-    experiment_id = data["rslp_experiment"]
+    project_id = data["project_name"]
+    experiment_id = data["run_name"]
     return project_id, experiment_id
 
 
@@ -134,51 +133,6 @@ def download_code(project_id: str, experiment_id: str) -> None:
         logger.info("extraction complete")
 
 
-def upload_wandb_id(
-    project_id: str, experiment_id: str, run_id: str | None, wandb_id: str
-) -> None:
-    """Save a W&B run ID to RSLP_PREFIX.
-
-    Args:
-        project_id: the project ID.
-        experiment_id: the experiment ID.
-        run_id: optional run ID (for hyperparameter experiments)
-        wandb_id: the W&B run ID.
-    """
-    rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
-    run_id_path = f"{run_id}/" if run_id else ""
-    project_wandb_fname = rslp_prefix / WANDB_ID_BLOB_PATH.format(
-        project_id=project_id, experiment_id=experiment_id, run_id=run_id_path
-    )
-    project_wandb_fname.parent.mkdir(parents=True, exist_ok=True)
-    with project_wandb_fname.open("w") as f:
-        f.write(wandb_id)
-
-
-def download_wandb_id(
-    project_id: str, experiment_id: str, run_id: str | None
-) -> str | None:
-    """Retrieve W&B run ID from RSLP_PREFIX.
-
-    Args:
-        project_id: the project ID.
-        experiment_id: the experiment ID.
-        run_id: the run ID (for hyperparameter experiments)
-
-    Returns:
-        the W&B run ID, or None if it wasn't saved on GCS.
-    """
-    rslp_prefix = UPath(os.environ["RSLP_PREFIX"])
-    run_id_path = f"{run_id}/" if run_id else ""
-    project_wandb_fname = rslp_prefix / WANDB_ID_BLOB_PATH.format(
-        project_id=project_id, experiment_id=experiment_id, run_id=run_id_path
-    )
-    if not project_wandb_fname.exists():
-        return None
-    with project_wandb_fname.open() as f:
-        return f.read().strip()
-
-
 def extract_parameters(
     config: dict, path: list[str] | None = None
 ) -> list[tuple[list[str], list]]:
@@ -265,7 +219,7 @@ def create_custom_configs(
     configs_paths = {}
     for idx, config in enumerate(custom_configs):
         # Not sure if it's better to add the hyperparameters to the filename
-        experiment_id = base_config["rslp_experiment"]
+        experiment_id = base_config["run_name"]
         config_filename = os.path.join(custom_dir, f"{experiment_id}_{idx}.yaml")
         with open(config_filename, "w") as f:
             yaml.dump(config, f)

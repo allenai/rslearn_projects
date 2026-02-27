@@ -3,7 +3,9 @@
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 
+from rslearn.arg_parser import RslearnArgumentParser
 from rslearn.dataset import Dataset
+from rslearn.lightning_cli import RslearnLightningCLI
 
 # Should wandb required from rslearn to run rslp?
 from rslearn.main import (
@@ -16,7 +18,6 @@ from rslearn.train.data_module import RslearnDataModule
 from rslearn.train.lightning_module import RslearnLightningModule
 from upath import UPath
 
-from rslp.lightning_cli import CustomLightningCLI
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -140,14 +141,13 @@ def run_model_predict(
         groups: the groups to predict.
         extra_args: additional arguments to pass to model predict.
     """
-    CustomLightningCLI(
+    RslearnLightningCLI(
         model_class=RslearnLightningModule,
         datamodule_class=RslearnDataModule,
         args=[
             "predict",
             "--config",
             model_cfg_fname,
-            "--load_best=true",
             "--data.init_args.path",
             str(ds_path),
         ]
@@ -156,6 +156,5 @@ def run_model_predict(
         subclass_mode_model=True,
         subclass_mode_data=True,
         save_config_kwargs={"overwrite": True},
-        # We allow environment var overrides for flexibility in deployment.
-        parser_kwargs={"default_env": True},
+        parser_class=RslearnArgumentParser,
     )

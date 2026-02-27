@@ -28,7 +28,7 @@ rslearn dataset materialize --root $DATASET_PATH --group $DATASET_GROUP --worker
 
 Launch finetune:
 ```
-python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_awf_lulc/finetune_s2_20250822.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_08_22_awf_lulc_classification --experiment_id awf_lulc_classification_helios_base_S2_ts_ws8_ps2_bs8_new_checkpoint_lower_lr
+python -m rslp.main olmoearth_pretrain launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_awf_lulc/finetune_s2_20250822.yaml --cluster+=ai2/saturn-cirrascale --project_name 2025_08_22_awf_lulc_classification --run_name awf_lulc_classification_helios_base_S2_ts_ws8_ps2_bs8_new_checkpoint_lower_lr
 ```
 
 Prediction for Amboseli:
@@ -38,5 +38,5 @@ rslearn dataset add_windows --root $DATASET_PATH --group amboseli --utm --resolu
 ```
 
 ```
-python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_awf_lulc/finetune_s2_20250822.yaml --cluster+=ai2/titan --mode predict --gpus 4 --experiment_id awf_lulc_classification_helios_base_S2_ts_ws8_ps2_bs8_new_checkpoint_lower_lr --rslp_project 2025_08_22_awf_lulc_classification
+python -m rslp.main olmoearth_pretrain launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_awf_lulc/finetune_s2_20250822.yaml --cluster+=ai2/titan --mode predict --gpus 4 --run_name awf_lulc_classification_helios_base_S2_ts_ws8_ps2_bs8_new_checkpoint_lower_lr --project_name 2025_08_22_awf_lulc_classification
 ```

@@ -42,7 +42,7 @@ rslearn dataset materialize --root $DATASET_PATH --group $DATASET_GROUP --worker
 
 **Sentinel-2 only (12 months), ws=4, ps=1**
 ```bash
-python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/titan-cirrascale --rslp_project 2025_08_15_nandi_crop_type --experiment_id nandi_crop_type_segment_helios_base_S2_ts_ws4_ps1_bs8
+python -m rslp.main olmoearth_pretrain launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/titan-cirrascale --project_name 2025_08_15_nandi_crop_type --run_name nandi_crop_type_segment_helios_base_S2_ts_ws4_ps1_bs8
 ```
 
 ---
@@ -57,7 +57,7 @@ rslearn dataset add_windows --root $DATASET_PATH --group nandi_county --utm --re
 
 **Run prediction:**
 ```bash
-python -m rslp.main helios launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/saturn-cirrascale --mode predict --gpus 4 --experiment_id nandi_crop_type_segment_helios_base_S2_S1_ts_ws4_ps1_bs8_add_annotations_2 --rslp_project 2025_08_15_nandi_crop_type
+python -m rslp.main olmoearth_pretrain launch_finetune --image_name favyen/rslphelios10 --config_paths+=data/helios/v2_nandi_crop_type/finetune_s2_20250815.yaml --cluster+=ai2/saturn-cirrascale --mode predict --gpus 4 --run_name nandi_crop_type_segment_helios_base_S2_S1_ts_ws4_ps1_bs8_add_annotations_2 --project_name 2025_08_15_nandi_crop_type
 ```
 
 ---

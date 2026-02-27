@@ -23,8 +23,8 @@ Inference
 First, download the model checkpoint to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
-    mkdir -p project_data/projects/satlas_marine_infra/data_20241210_run_20241210_00/checkpoints/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/satlas_marine_infra/best.ckpt -O project_data/projects/satlas_marine_infra/data_20241210_run_20241210_00/checkpoints/last.ckpt
+    mkdir -p project_data/projects/satlas_marine_infra/data_20241210_run_20241210_00/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/satlas_marine_infra/best.ckpt -O project_data/projects/satlas_marine_infra/data_20241210_run_20241210_00/last.ckpt
 
 The Satlas prediction pipeline applies the model on a bounding box in a UTM projection
 at 10 m/pixel. Given a longitude and latitude where you want to apply the model, you
@@ -105,11 +105,11 @@ It is an rslearn dataset consisting of window folders like
   other parts of the input image.
 
 Use the command below to train the model. Note that Weights & Biases is needed. You can
-disable W&B with `--no_log true` but then it may be difficult to track the metrics.
+disable W&B with `--log_mode=no` but then it may be difficult to track the metrics.
 
-    python -m rslp.rslearn_main model fit --config data/satlas_marine_infra/config.yaml --data.init_args.path project_data/datasets/satlas_marine_infra/
+    rslearn model fit --config data/satlas_marine_infra/config.yaml --data.init_args.path project_data/datasets/satlas_marine_infra/
 
 To visualize outputs on the validation set:
 
     mkdir vis
-    python -m rslp.rslearn_main model test --config data/satlas_marine_infra/config.yaml --data.init_args.path project_data/datasets/satlas_marine_infra/ --model.init_args.visualize_dir=vis/ --load_best true
+    rslearn model test --config data/satlas_marine_infra/config.yaml --data.init_args.path project_data/datasets/satlas_marine_infra/ --model.init_args.visualize_dir=vis/ --load_checkpoint_mode=best
