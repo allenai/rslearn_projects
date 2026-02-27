@@ -1,0 +1,201 @@
+{
+  "layers": {
+    "label_raster": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "int32"
+        }
+      ],
+      "class_names": [
+        "no_data",
+        "bare",
+        "burnt",
+        "crops",
+        "fallow/shifting cultivation",
+        "grassland",
+        "Lichen and moss",
+        "shrub",
+        "snow and ice",
+        "tree",
+        "urban/built-up",
+        "water",
+        "wetland (herbaceous)"
+      ],
+      "class_property_name": "label",
+      "type": "raster"
+    },
+    "output": {
+      "band_sets": [
+        {
+          "bands": [
+            "output"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "type": "raster"
+    },
+    "gse": {
+      "band_sets": [
+        {
+          "bands": [
+            "A00",
+            "A01",
+            "A02",
+            "A03",
+            "A04",
+            "A05",
+            "A06",
+            "A07",
+            "A08",
+            "A09",
+            "A10",
+            "A11",
+            "A12",
+            "A13",
+            "A14",
+            "A15",
+            "A16",
+            "A17",
+            "A18",
+            "A19",
+            "A20",
+            "A21",
+            "A22",
+            "A23",
+            "A24",
+            "A25",
+            "A26",
+            "A27",
+            "A28",
+            "A29",
+            "A30",
+            "A31",
+            "A32",
+            "A33",
+            "A34",
+            "A35",
+            "A36",
+            "A37",
+            "A38",
+            "A39",
+            "A40",
+            "A41",
+            "A42",
+            "A43",
+            "A44",
+            "A45",
+            "A46",
+            "A47",
+            "A48",
+            "A49",
+            "A50",
+            "A51",
+            "A52",
+            "A53",
+            "A54",
+            "A55",
+            "A56",
+            "A57",
+            "A58",
+            "A59",
+            "A60",
+            "A61",
+            "A62",
+            "A63"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.aws_google_satellite_embedding_v1.GoogleSatelliteEmbeddingV1",
+        "ingest": false,
+        "init_args": {
+          "metadata_cache_dir": "cache/gse"
+        },
+        "query_config": {
+          "max_matches": 8
+        }
+      },
+      "resampling_method": "nearest",
+      "type": "raster"
+    },
+    "gsegood": {
+      "band_sets": [
+        {
+          "bands": [
+            "A00",
+            "A01",
+            "A02",
+            "A03",
+            "A04",
+            "A05",
+            "A06",
+            "A07",
+            "A08",
+            "A09",
+            "A10",
+            "A11",
+            "A12",
+            "A13",
+            "A14",
+            "A15",
+            "A16",
+            "A17",
+            "A18",
+            "A19",
+            "A20",
+            "A21",
+            "A22",
+            "A23",
+            "A24",
+            "A25",
+            "A26",
+            "A27",
+            "A28",
+            "A29",
+            "A30",
+            "A31",
+            "A32",
+            "A33",
+            "A34",
+            "A35",
+            "A36",
+            "A37",
+            "A38",
+            "A39",
+            "A40",
+            "A41",
+            "A42",
+            "A43",
+            "A44",
+            "A45",
+            "A46",
+            "A47",
+            "A48",
+            "A49",
+            "A50",
+            "A51",
+            "A52",
+            "A53",
+            "A54",
+            "A55",
+            "A56",
+            "A57",
+            "A58",
+            "A59",
+            "A60",
+            "A61",
+            "A62",
+            "A63"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "type": "raster"
+    }
+  }
+}
