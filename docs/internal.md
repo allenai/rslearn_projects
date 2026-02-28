@@ -38,27 +38,10 @@ trainer:
         mode: min
 ```
 
-Files related to an experiment are stored in
-`{management_dir}/{project_name}/{run_name}/`.
+Files related to an experiment are stored in `{management_dir}/{project_name}/{run_name}/`.
 
 There are command-line options provided by rslearn that control W&B logging and
-checkpoint loading (see `rslearn/lightning_cli.py` for all options):
-
-- `--log_mode=no`: by default, a W&B logger is automatically configured during
-  `model fit`. This option prevents adding the logger.
-- `--log_mode=yes`: by default, W&B logging is not enabled for test/predict. This
-  option enables the logger even for these other subcommands.
-- `--load_checkpoint_mode=best`: load the best checkpoint (`best.ckpt`). By default,
-  `auto` mode is used which loads `last.ckpt` during fit and `best.ckpt` during
-  val/test/predict.
-- `--load_checkpoint_mode=last`: explicitly load the latest checkpoint.
-- `--load_checkpoint_mode=none`: do not load any checkpoint.
-
-These are all passed through rslearn directly, e.g.:
-
-```
-python -m rslearn.main model fit --config data/config.yaml
-```
+checkpoint loading, see https://github.com/allenai/rslearn/blob/master/docs/ModelConfig.md#model-management-options.
 
 ## Beaker Sessions
 
