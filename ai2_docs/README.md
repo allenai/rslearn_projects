@@ -21,7 +21,7 @@ rslearn datasets, model checkpoints, etc. The easiest way is to create a `.env` 
 You will also need to setup GCP credentials that have access to this bucket.
 
 Training additionally depends on credentials for W&B. If you train directly using
-`rslp.rslearn_main`, then you will need to setup these credentials. If you use a
+`rslearn model fit`, then you will need to setup these credentials. If you use a
 launcher like `rslp.main common beaker_train`, then it isn't needed since the credentials are
 already configured as secrets on the platform, but you would need to setup your Beaker
 or other platform credentials to be able to launch the jobs.
@@ -48,7 +48,7 @@ Execute a data processing pipeline:
 
 Manually train locally:
 
-    python -m rslp.rslearn_main model fit --config_path data/maldives_ecosystem_mapping/config.yaml
+    rslearn model fit --config_path data/maldives_ecosystem_mapping/config.yaml
 
 To launch training on Beaker, first build and push a Docker image:
 
@@ -58,10 +58,6 @@ To launch training on Beaker, first build and push a Docker image:
 Launch training on Beaker:
 
     python -m rslp.main common beaker_train --config_path data/maldives_ecosystem_mapping/config_planetscope_plus_sentinel2.yaml --image_name [YOUR_BEAKER_USERNAME]/rslp --cluster '["ai2/jupiter-cirrascale-2"]'
-
-Note that `rslp.main` is the entrypoint for rslp pipelines (see Pipelines section
-below) while `rslp.rslearn_main` simply wraps the rslearn commands but with the various
-functionality in `rslearn_projects` added in.
 
 
 Tooling for Model Training and Inference

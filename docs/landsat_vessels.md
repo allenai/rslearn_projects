@@ -20,11 +20,11 @@ Inference
 First, download the detector and classifier checkpoints to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
-    mkdir -p project_data/projects/landsat_vessels/data_20240924_model_20240924_imagenet_patch512_flip_03/checkpoints/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/detector/best.ckpt -O project_data/projects/landsat_vessels/data_20240924_model_20240924_imagenet_patch512_flip_03/checkpoints/best.ckpt
+    mkdir -p project_data/projects/landsat_vessels/data_20240924_model_20240924_imagenet_patch512_flip_03/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/detector/best.ckpt -O project_data/projects/landsat_vessels/data_20240924_model_20240924_imagenet_patch512_flip_03/best.ckpt
 
-    mkdir -p project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/checkpoints/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/classifer/best.ckpt -O project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/checkpoints/best.ckpt
+    mkdir -p project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/classifer/best.ckpt -O project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in `rslp/landsat_vessels/predict_pipeline.py`. You can download the Landsat scene files, e.g. from USGS EarthExplorer or AWS, and then create a configuration file for the prediction pipeline, here is an example:
 
@@ -78,9 +78,9 @@ It is an rslearn dataset consisting of window folders like `windows/labels_utm/4
   bounds to get pixel coordinates relative to the image.
 
 Use the command below to train the detector. Note that Weights & Biases is needed. You can
-disable W&B with `--no_log true` but then it may be difficult to track the metrics.
+disable W&B with `--log_mode=no` but then it may be difficult to track the metrics.
 
-    python -m rslp.rslearn_main model fit --config data/landsat_vessels/config_detector.yaml --data.init_args.path project_data/datasets/landsat_vessels/dataset_20240924/
+    rslearn model fit --config data/landsat_vessels/config_detector.yaml --data.init_args.path project_data/datasets/landsat_vessels/dataset_20240924/
 
 Second, download the training dataset for classifier:
 
@@ -89,4 +89,4 @@ Second, download the training dataset for classifier:
 
 Use the command below to train the classifier.
 
-    python -m rslp.rslearn_main model fit --config data/landsat_vessels/config_classifier.yaml --data.init_args.path project_data/datasets/landsat_vessels/dataset_20240905/
+    rslearn model fit --config data/landsat_vessels/config_classifier.yaml --data.init_args.path project_data/datasets/landsat_vessels/dataset_20240905/

@@ -3,11 +3,11 @@
 import os
 import shutil
 
+from rslearn.arg_parser import RslearnArgumentParser
+from rslearn.lightning_cli import RslearnLightningCLI
 from rslearn.train.data_module import RslearnDataModule
 from rslearn.train.lightning_module import RslearnLightningModule
 from upath import UPath
-
-from rslp.lightning_cli import CustomLightningCLI
 
 
 def maxar_predict_pipeline(out_dir: str) -> None:
@@ -17,18 +17,18 @@ def maxar_predict_pipeline(out_dir: str) -> None:
         out_dir: directory to write the output GeoTIFFs.
     """
     model_cfg_fname = "data/maldives_ecosystem_mapping/config.yaml"
-    lightning_cli = CustomLightningCLI(
+    lightning_cli = RslearnLightningCLI(
         model_class=RslearnLightningModule,
         datamodule_class=RslearnDataModule,
         args=[
             "predict",
             "--config",
             model_cfg_fname,
-            "--autoresume=true",
         ],
         subclass_mode_model=True,
         subclass_mode_data=True,
         save_config_kwargs={"overwrite": True},
+        parser_class=RslearnArgumentParser,
     )
     group_name = "images"
     path: UPath = lightning_cli.datamodule.path / "windows" / group_name
@@ -47,18 +47,18 @@ def sentinel2_predict_pipeline(out_dir: str) -> None:
         out_dir: directory to write the output GeoTIFFs.
     """
     model_cfg_fname = "data/maldives_ecosystem_mapping/config_sentinel2.yaml"
-    lightning_cli = CustomLightningCLI(
+    lightning_cli = RslearnLightningCLI(
         model_class=RslearnLightningModule,
         datamodule_class=RslearnDataModule,
         args=[
             "predict",
             "--config",
             model_cfg_fname,
-            "--autoresume=true",
         ],
         subclass_mode_model=True,
         subclass_mode_data=True,
         save_config_kwargs={"overwrite": True},
+        parser_class=RslearnArgumentParser,
     )
     group_name = "images_sentinel2"
     path: UPath = lightning_cli.datamodule.path / "windows" / group_name

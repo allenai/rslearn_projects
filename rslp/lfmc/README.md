@@ -50,14 +50,14 @@ Sentinel-2 images. Note that you will need to setup the RSLP_PREFIX. This model
 achieves 12.6 L1 error, and uses only Sentinel-2 images.
 
 ```
-python -m rslp.rslearn_main model fit --config data/lfmc/config_satlaspretrain.yaml --data.init_args.path=$DATASET_PATH
+rslearn model fit --config data/lfmc/config_satlaspretrain.yaml --data.init_args.path=$DATASET_PATH
 ```
 
 If you don't want to train the model, you can get the checkpoint:
 
 ```
-mkdir -p project_data/projects/lfmc/lfmc_satlaspretrain_s2_ts_ws32_03/checkpoints
-wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/lfmc/lfmc_satlaspretrain_s2_ts_ws32_03/checkpoints/best.ckpt -O project_data/projects/lfmc/lfmc_satlaspretrain_s2_ts_ws32_03/checkpoints/best.ckpt
+mkdir -p project_data/projects/lfmc/lfmc_satlaspretrain_s2_ts_ws32_03/
+wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/lfmc/lfmc_satlaspretrain_s2_ts_ws32_03/checkpoints/best.ckpt -O project_data/projects/lfmc/lfmc_satlaspretrain_s2_ts_ws32_03/best.ckpt
 ```
 
 ### 5. Make Prediction
@@ -82,7 +82,7 @@ rslearn dataset add_windows --root $INFERENCE_PATH --group predict --box=-121.55
 rslearn dataset prepare --root $INFERENCE_PATH --group predict --workers 64 --retry-max-attempts 8 --retry-backoff-seconds 60 --disabled-layers sentinel1,srtm
 rslearn dataset ingest --root $INFERENCE_PATH --group predict --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60 --disabled-layers sentinel1,srtm
 rslearn dataset materialize --root $INFERENCE_PATH --group predict --workers 64 --no-use-initial-job --retry-max-attempts 8 --retry-backoff-seconds 60 --disabled-layers sentinel1,srtm
-python -m rslp.rslearn_main model predict --config data/lfmc/config_satlaspretrain.yaml --data.init_args.path=$INFERENCE_PATH --load_best=true
+rslearn model predict --config data/lfmc/config_satlaspretrain.yaml --data.init_args.path=$INFERENCE_PATH --load_checkpoint_mode=best
 ```
 
 ### 6. Finetune OlmoEarth

@@ -3,9 +3,9 @@
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 
+from rslearn.arg_parser import RslearnArgumentParser
 from rslearn.dataset import Dataset
-
-# Should wandb required from rslearn to run rslp?
+from rslearn.lightning_cli import RslearnLightningCLI
 from rslearn.main import (
     IngestHandler,
     MaterializeHandler,
@@ -16,7 +16,6 @@ from rslearn.train.data_module import RslearnDataModule
 from rslearn.train.lightning_module import RslearnLightningModule
 from upath import UPath
 
-from rslp.lightning_cli import CustomLightningCLI
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -95,34 +94,40 @@ def materialize_dataset(
     )
     logger.debug("materialize_pipeline_args: %s", materialize_pipeline_args)
     logger.info("Running prepare step")
-    apply_on_windows(
-        PrepareHandler(
-            force=False,
-            retry_max_attempts=materialize_pipeline_args.prepare_args.retry_max_attempts,
-            retry_backoff=materialize_pipeline_args.prepare_args.retry_backoff,
-        ),
-        dataset,
-        **asdict(materialize_pipeline_args.prepare_args.apply_windows_args),
+    list(
+        apply_on_windows(
+            PrepareHandler(
+                force=False,
+                retry_max_attempts=materialize_pipeline_args.prepare_args.retry_max_attempts,
+                retry_backoff=materialize_pipeline_args.prepare_args.retry_backoff,
+            ),
+            dataset,
+            **asdict(materialize_pipeline_args.prepare_args.apply_windows_args),
+        )
     )
     logger.info("Running ingest step")
-    apply_on_windows(
-        IngestHandler(
-            ignore_errors=materialize_pipeline_args.ingest_args.ignore_errors,
-            retry_max_attempts=materialize_pipeline_args.ingest_args.retry_max_attempts,
-            retry_backoff=materialize_pipeline_args.ingest_args.retry_backoff,
-        ),
-        dataset,
-        **asdict(materialize_pipeline_args.ingest_args.apply_windows_args),
+    list(
+        apply_on_windows(
+            IngestHandler(
+                ignore_errors=materialize_pipeline_args.ingest_args.ignore_errors,
+                retry_max_attempts=materialize_pipeline_args.ingest_args.retry_max_attempts,
+                retry_backoff=materialize_pipeline_args.ingest_args.retry_backoff,
+            ),
+            dataset,
+            **asdict(materialize_pipeline_args.ingest_args.apply_windows_args),
+        )
     )
     logger.info("Running materialize step")
-    apply_on_windows(
-        MaterializeHandler(
-            ignore_errors=materialize_pipeline_args.materialize_args.ignore_errors,
-            retry_max_attempts=materialize_pipeline_args.materialize_args.retry_max_attempts,
-            retry_backoff=materialize_pipeline_args.materialize_args.retry_backoff,
-        ),
-        dataset,
-        **asdict(materialize_pipeline_args.materialize_args.apply_windows_args),
+    list(
+        apply_on_windows(
+            MaterializeHandler(
+                ignore_errors=materialize_pipeline_args.materialize_args.ignore_errors,
+                retry_max_attempts=materialize_pipeline_args.materialize_args.retry_max_attempts,
+                retry_backoff=materialize_pipeline_args.materialize_args.retry_backoff,
+            ),
+            dataset,
+            **asdict(materialize_pipeline_args.materialize_args.apply_windows_args),
+        )
     )
 
 
@@ -140,14 +145,13 @@ def run_model_predict(
         groups: the groups to predict.
         extra_args: additional arguments to pass to model predict.
     """
-    CustomLightningCLI(
+    RslearnLightningCLI(
         model_class=RslearnLightningModule,
         datamodule_class=RslearnDataModule,
         args=[
             "predict",
             "--config",
             model_cfg_fname,
-            "--load_best=true",
             "--data.init_args.path",
             str(ds_path),
         ]
@@ -156,6 +160,5 @@ def run_model_predict(
         subclass_mode_model=True,
         subclass_mode_data=True,
         save_config_kwargs={"overwrite": True},
-        # We allow environment var overrides for flexibility in deployment.
-        parser_kwargs={"default_env": True},
+        parser_class=RslearnArgumentParser,
     )

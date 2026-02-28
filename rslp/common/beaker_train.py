@@ -130,10 +130,6 @@ def beaker_train(
                         name="RSLP_EXPERIMENT",
                         value=experiment_id,
                     ),
-                    BeakerEnvVar(
-                        name="RSLP_RUN_ID",
-                        value=run_id,
-                    ),
                 ]
             )
 
@@ -166,15 +162,16 @@ def beaker_train(
                         config_path,
                     ]
                 )
+            # Override project_name/run_name to ensure they match the launcher's
+            # values (in case the user overwrote them in the config file).
+            # run_id is folded into run_name for hyperparameter sweeps.
+            run_name = f"{experiment_id}/{run_id}" if run_id else experiment_id
             run_arguments.extend(
                 [
-                    "--autoresume=true",
-                    # Ensure that the experiment/project are correctly set (in case the
-                    # user overwrote the one in the configuration file).
-                    "--rslp_experiment",
-                    experiment_id,
-                    "--rslp_project",
+                    "--project_name",
                     project_id,
+                    "--run_name",
+                    run_name,
                 ]
             )
             run_arguments.extend(extra_args)

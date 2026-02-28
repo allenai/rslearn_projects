@@ -56,11 +56,11 @@ python -m rslp.fields_of_the_world.convert_to_rslearn_dataset
 Train a model on the original Sentinel-2 images from the source dataset:
 
 ```
-python -m rslp.rslearn_main model fit --config data/fields_of_the_world/model_two_image.yaml
+rslearn model fit --config data/fields_of_the_world/model_two_image.yaml
 ```
 
 Train a model on our version of the images:
 
 ```
-python -m rslp.rslearn_main model fit --config data/fields_of_the_world/model_eight_image.yaml
+rslearn model fit --config data/fields_of_the_world/model_eight_image.yaml
 ```

@@ -124,7 +124,6 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: gs://rslearn-eai/datasets/landsat_vessel_detection/detector/dataset_20240924/
         output_layer: output
         selector: ["detect"]
         merger:
@@ -134,11 +133,10 @@ trainer:
             distance_threshold: 10
             property_name: "category"  # same as task.property_name
             class_agnostic: false
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        save_top_k: 1
-        save_last: true
         monitor: val_detect/mAP
         mode: max
-rslp_project: landsat_vessels
-rslp_experiment: data_20240924_model_20240924_imagenet_patch512_flip_03
+project_name: landsat_vessels
+run_name: data_20240924_model_20240924_imagenet_patch512_flip_03
+management_dir: ${RSLP_PREFIX}/projects

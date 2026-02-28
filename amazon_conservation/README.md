@@ -10,7 +10,7 @@ Training and Prediction
 
 Train the model:
 
-    python -m rslp.rslearn_main model fit --config amazon_conservation/train/config_satlaspretrain_flip_oldmodel_unfreeze.yaml
+    rslearn model fit --config amazon_conservation/train/config_satlaspretrain_flip_oldmodel_unfreeze.yaml
 
 Run the prediction data preparation pipeline, this populates an rslearn dataset with windows corresponding to recent forest loss events:
 
@@ -31,7 +31,7 @@ Run the second step of the pipeline which identifies the least cloudy images, th
 
 Now the model can be applied:
 
-    python -m rslp.rslearn_main model predict --config data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml --data.init_args.path gs://rslearn-eai/datasets/forest_loss_driver/prediction/dataset_YYYYMMDD/
+    rslearn model predict --config data/forest_loss_driver/config_satlaspretrain_flip_oldmodel_unfreeze.yaml --data.init_args.path gs://rslearn-eai/datasets/forest_loss_driver/prediction/dataset_YYYYMMDD/
 
 
 Visualization

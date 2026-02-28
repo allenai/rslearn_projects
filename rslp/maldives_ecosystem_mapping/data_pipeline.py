@@ -666,24 +666,30 @@ def data_pipeline(dp_config: DataPipelineConfig) -> None:
         print("prepare, ingest, materialize")
         dataset = Dataset(dst_path)
         for group in ["images_sentinel2", "crops_sentinel2"]:
-            apply_on_windows(
-                PrepareHandler(force=False),
-                dataset,
-                workers=dp_config.workers,
-                group=group,
+            list(
+                apply_on_windows(
+                    PrepareHandler(force=False),
+                    dataset,
+                    workers=dp_config.workers,
+                    group=group,
+                )
             )
-            apply_on_windows(
-                IngestHandler(),
-                dataset,
-                workers=dp_config.workers,
-                use_initial_job=False,
-                jobs_per_process=1,
-                group=group,
+            list(
+                apply_on_windows(
+                    IngestHandler(),
+                    dataset,
+                    workers=dp_config.workers,
+                    use_initial_job=False,
+                    jobs_per_process=1,
+                    group=group,
+                )
             )
-            apply_on_windows(
-                MaterializeHandler(),
-                dataset,
-                workers=dp_config.workers,
-                use_initial_job=False,
-                group=group,
+            list(
+                apply_on_windows(
+                    MaterializeHandler(),
+                    dataset,
+                    workers=dp_config.workers,
+                    use_initial_job=False,
+                    group=group,
+                )
             )

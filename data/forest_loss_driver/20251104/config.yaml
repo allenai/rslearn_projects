@@ -108,15 +108,13 @@ trainer:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 20
         unfreeze_lr_factor: 10
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        save_top_k: 1
-        save_last: true
         monitor: val_accuracy
         mode: max
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: placeholder
         output_layer: output
-rslp_project: olmoearth_forest_loss_driver
-rslp_experiment: forest_loss_driver_00
+project_name: olmoearth_forest_loss_driver
+run_name: forest_loss_driver_00
+management_dir: ${RSLP_PREFIX}/projects

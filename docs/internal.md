@@ -2,9 +2,11 @@
 
 ## RSLP_PREFIX
 
-rslearn_projects provides tooling on top of rslearn to automatically determine where to
-store model checkpoints and related files within the directory specified by the
-`RSLP_PREFIX` environment variable.
+rslearn_projects provides tooling on top of rslearn to launch training jobs on Beaker,
+including code upload/download so that the exact code state is reproduced in the job.
+
+Checkpoint management, W&B logging, and related model management are handled by
+rslearn's built-in project management system (`--management_dir`).
 
 Generally, we set `RSLP_PREFIX` on WEKA (via a `.env` file):
 
@@ -18,45 +20,28 @@ Historically, we have also used GCS:
 RSLP_PREFIX=gs://rslearn-eai
 ```
 
-Model configuration files for rslearn_projects have two additional fields:
+Model configuration files should include:
 
-- `rslp_project`: a unique name for the project for which this is one experiment. This
-  corresponds to the W&B project name.
-- `rslp_experiment`: a unique name for this experiment. This corresponds to the W&B run
-  name.
+- `management_dir`: the directory for project management (typically `${RSLP_PREFIX}/projects`).
+- `project_name`: a unique name for the project. This corresponds to the W&B project name.
+- `run_name`: a unique name for this experiment. This corresponds to the W&B run name.
 
-You may often also need to set:
+Checkpointing is handled by adding a `ManagedBestLastCheckpoint` callback to
+`trainer.callbacks` in the model config:
 
-- `rslp_monitor`: the metric to monitor for saving best checkpoint.
-- `rslp_monitor_mode`: min if metric is best when smaller, max if metric is best when larger.
-
-Note: similar project management functionality has since been added to rslearn, and we
-should move to just using that eventually, but for now we still use the system in
-rslearn_projects which uses slightly different paths and config options.
-
-Then, files related to that experiment would be stored in
-`{RSLP_PREFIX}/projects/{rslp_project}/{rslp_experiment}`.
-
-There are a few command-line options provided by rslearn_projects that control W&B
-logging and checkpoint loading (see `rslp/lightning_cli.py` for all options):
-
-- `--no_log=true`: by default, a W&B logger is automatically configured during
-  `model fit` even if it doesn't appear in the model config file (under `trainer:`
-  section). This option will prevent adding the logger.
-- `--force_log=true`: by default, W&B logging is not enabled for test/predict. This
-  option will add the logger even for these other subcommands.
-- `--autoresume=true`: by default, the system will raise an error if there is an
-  existing checkpoint. This option will load the latest checkpoint (`last.ckpt`)
-  instead, if it exists. It is typically enabled during training.
-- `--load_best=true`: like autoresume but instead of loading the latest checkpoint, it
-  will load the best checkpoint `best.ckpt`. Unlike autoresume, it will raise an error
-  if there is no existing checkpoint.
-
-These are all passed through the `rslp.rslearn_main` entrypoint, e.g.:
-
+```yaml
+trainer:
+  callbacks:
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_loss
+        mode: min
 ```
-python -m rslp.rslearn_main model fit --config data/20251104/config.yaml` --autoresume=true
-```
+
+Files related to an experiment are stored in `{management_dir}/{project_name}/{run_name}/`.
+
+There are command-line options provided by rslearn that control W&B logging and
+checkpoint loading, see https://github.com/allenai/rslearn/blob/master/docs/ModelConfig.md#model-management-options.
 
 ## Beaker Sessions
 
