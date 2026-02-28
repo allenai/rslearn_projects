@@ -6,8 +6,6 @@ from datetime import timedelta
 from rslearn.arg_parser import RslearnArgumentParser
 from rslearn.dataset import Dataset
 from rslearn.lightning_cli import RslearnLightningCLI
-
-# Should wandb required from rslearn to run rslp?
 from rslearn.main import (
     IngestHandler,
     MaterializeHandler,
