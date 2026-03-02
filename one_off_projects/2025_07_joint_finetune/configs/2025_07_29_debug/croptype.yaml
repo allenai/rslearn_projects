@@ -257,11 +257,10 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        save_top_k: 1
-        save_last: true
         monitor: val_loss
         mode: min
-rslp_project: placeholder
-rslp_experiment: placeholder
+project_name: placeholder
+run_name: placeholder
+management_dir: ${RSLP_PREFIX}/projects

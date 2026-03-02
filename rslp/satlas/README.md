@@ -27,7 +27,7 @@ images available.
 The model is trained using the rslearn dataset in `gs://rslearn-eai`. See the model
 configuration file for more details.
 
-    python -m rslp.rslearn_main model fit --config data/satlas/marine_infra/config.yaml
+    rslearn model fit --config data/satlas/marine_infra/config.yaml
 
 ### Inference
 
@@ -112,7 +112,7 @@ model, each is a mosaic using images within a 30-day period.
 
 Training:
 
-    python -m rslp.rslearn_main model fit --config data/satlas/wind_turbine/config.yaml
+    rslearn model fit --config data/satlas/wind_turbine/config.yaml
 
 Inference:
 
@@ -135,7 +135,7 @@ quarterly basis, and inputs four Sentinel-2 images (each one being a 30-day mosa
 
 Training:
 
-    python -m rslp.rslearn_main model fit --config data/satlas/solar_farm/config.yaml
+    rslearn model fit --config data/satlas/solar_farm/config.yaml
 
 Inference:
 

@@ -128,13 +128,6 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
-      init_args:
-#        dirpath: ${TRAINER_DATA_PATH}
-        save_top_k: 1
-        save_last: true
-        monitor: val_accuracy
-        mode: max
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
@@ -149,6 +142,11 @@ trainer:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
             padding: 4
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_accuracy
+        mode: max
 # unused: ${EXTRA_FILES_PATH}
-rslp_project: 2026_01_06_fields_of_the_world
-rslp_experiment: model_two_image_02
+project_name: 2026_01_06_fields_of_the_world
+run_name: model_two_image_02
+management_dir: ${RSLP_PREFIX}/projects

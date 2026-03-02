@@ -18,28 +18,27 @@ logger = get_logger(__name__)
 
 
 def launch_finetune(
-    experiment_id: str,
+    run_name: str,
     config_paths: list[str],
     image_name: str | None = None,
     cluster: list[str] | None = None,
     olmoearth_checkpoint_path: str | None = None,
     encoder_embedding_size: int | None = None,
     patch_size: int | None = None,
-    rslp_project: str = DEFAULT_RSLP_PROJECT,
+    project_name: str = DEFAULT_RSLP_PROJECT,
     gpus: int = 1,
     priority: str = "high",
     retries: int = 0,
     mode: str = "fit",
-    profiler: str | None = None,
     local: bool = False,
     do_eval: bool = False,
     ckpt_path: str | None = None,
-    allow_missing_weights: bool = False,
+    extra_args: list[str] | None = None,
 ) -> None:
     """Launch OlmoEarth fine-tuning experiments.
 
     Args:
-        experiment_id: the experiment name.
+        run_name: the experiment/run name.
         config_paths: list of configuration files to use. Later config files override
             earlier configs in the list.
         image_name: what Beaker image to use. Must be specified if not local.
@@ -49,17 +48,18 @@ def launch_finetune(
         encoder_embedding_size: the embedding size of the encoder. If none, assume
             it's already specified in the config.
         patch_size: the patch size to use. If none, assume it's already specified in the config.
-        rslp_project: optional override for W&B project to use. By default, uses DEFAULT_RSLP_PROJECT.
+        project_name: optional override for W&B project to use. By default, uses DEFAULT_RSLP_PROJECT.
         gpus: how many GPUs to assign in the Beaker job. By default, uses 1.
         priority: what priority to use. By default, uses "high".
         retries: Beaker job retries. By default, uses 0.
         mode: Mode to run the model ('fit', 'validate', 'test', or 'predict').
-        profiler: Profiler to use for training. Can be 'simple' or 'advanced' or None.
         local: Whether to run the command locally instead of spawning a Beaker job.
         do_eval: Whether to just run evals.
         ckpt_path: Optionally specify checkpoint path to load from if do_eval.
-        allow_missing_weights: Whether to allow missing weights in checkpoint specified in --ckpt_path.
+        extra_args: extra CLI args to pass through (e.g. --trainer.profiler=simple).
     """
+    if extra_args is None:
+        extra_args = []
     # Go into each config file (including the base ones) and make replacements as
     # needed.
     # I can't figure out how to override OlmoEarth checkpoint_path from
@@ -100,46 +100,33 @@ def launch_finetune(
                 )
 
             # Save the config file to the temporary directory
-            tmp_config_fname = os.path.join(
-                tmp_dir, f"{experiment_id}_{config_idx}.yaml"
-            )
+            tmp_config_fname = os.path.join(tmp_dir, f"{run_name}_{config_idx}.yaml")
             with open(tmp_config_fname, "w") as f:
                 config = yaml.safe_load(config_str)
                 yaml.dump(config, f, default_flow_style=False)
             tmp_config_fnames.append(tmp_config_fname)
 
         if local:
-            # If running locally, assume we are in a gpu session
-            # NOTE: assuming that all the args are passed through to the config file and do NOT get
-            # passed through the final call to rslp.rslearn_main (except for profiler)
             args = [
                 "python",
                 "-m",
-                "rslp.rslearn_main",
+                "rslearn.main",
                 "model",
                 "fit" if not do_eval else "validate",
             ]
             paths = []
             for i, _ in enumerate(config_paths):
                 args.append("--config")
-                path = f"{tmp_dir}/{experiment_id}_{i}.yaml"
+                path = f"{tmp_dir}/{run_name}_{i}.yaml"
                 paths.append(path)
                 args.append(path)
 
-            args.extend(
-                ["--rslp_experiment", experiment_id, "--rslp_project", rslp_project]
-            )
-
-            if allow_missing_weights:
-                args.append("--allow_missing_weights")
-
-            if profiler:
-                args.append("--profiler")
-                args.append(profiler)
-            args.append("--autoresume=true")
+            args.extend(["--run_name", run_name, "--project_name", project_name])
 
             if ckpt_path:
                 args.extend(["--ckpt_path", ckpt_path])
+
+            args.extend(extra_args)
 
             s = "\n" + "=" * 80
             s += "\nNOTE: Command being spawned:\n"
@@ -165,12 +152,6 @@ def launch_finetune(
             if cluster is None:
                 raise ValueError("cluster must be specified if not local")
 
-            extra_args = []
-            if profiler:
-                extra_args.extend(["--profiler", profiler])
-            if allow_missing_weights:
-                extra_args.append("--allow_missing_weights")
-
             args = [
                 "python",
                 "-m",
@@ -190,9 +171,9 @@ def launch_finetune(
                 "--gpus",
                 str(gpus),
                 "--project_id",
-                rslp_project,
+                project_name,
                 "--experiment_id",
-                experiment_id,
+                run_name,
                 "--priority",
                 priority,
                 "--retries",
