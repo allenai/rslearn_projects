@@ -62,8 +62,10 @@ def load_pixel_embedding(window: Window) -> torch.Tensor | None:
             ["B05", "B06", "B07", "B8A", "B11", "B12"],
         ]:
             raster_dir = window.get_raster_dir("sentinel2", bands, group_idx)
-            array = GeotiffRasterFormat().decode_raster(
-                raster_dir, window.projection, window.bounds
+            array = (
+                GeotiffRasterFormat()
+                .decode_raster(raster_dir, window.projection, window.bounds)
+                .get_chw_array()
             )
             center_col = array.shape[2] // 2
             center_row = array.shape[1] // 2

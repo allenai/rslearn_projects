@@ -125,16 +125,14 @@ trainer:
       init_args:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 5
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        save_top_k: 1
-        save_last: true
         monitor: val_class/accuracy
         mode: max
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: gs://rslearn-eai/datasets/forest_loss_driver/prediction/dataset_20240828/
         output_layer: output
         selector: ["class"]
-rslp_project: amazon_conservation
-rslp_experiment: data_20240912_satlaspretrain_swinb_oldmodel_unfreeze_02
+project_name: amazon_conservation
+run_name: data_20240912_satlaspretrain_swinb_oldmodel_unfreeze_02
+management_dir: ${RSLP_PREFIX}/projects

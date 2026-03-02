@@ -196,7 +196,6 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: placeholder
         output_layer: output
         selector: ["detect"]
         merger:
@@ -206,15 +205,14 @@ trainer:
             distance_threshold: 10
             property_name: "category"  # same as task.property_name
             class_agnostic: false
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
-      init_args:
-        save_top_k: 1
-        save_last: true
-        monitor: val_detect/mAP
-        mode: max
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0, "encoder", "model"]
         unfreeze_at_epoch: 4
-rslp_project: sentinel1_vessels
-rslp_experiment: data_20250521_model_20250530_satlaspretrain_unfreeze4_13
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_detect/mAP
+        mode: max
+project_name: sentinel1_vessels
+run_name: data_20250521_model_20250530_satlaspretrain_unfreeze4_13
+management_dir: ${RSLP_PREFIX}/projects

@@ -13,6 +13,7 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 from rslearn.utils.mp import star_imap_unordered
+from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
 
@@ -133,7 +134,7 @@ def create_window(
 
     raster_dir = window.get_raster_dir(LABEL_LAYER, [BAND_NAME])
     GeotiffRasterFormat().encode_raster(
-        raster_dir, window.projection, window.bounds, raster
+        raster_dir, window.projection, window.bounds, RasterArray(chw_array=raster)
     )
     window.mark_layer_completed(LABEL_LAYER)
 

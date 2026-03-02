@@ -1,8 +1,12 @@
 """Unit tests for rslp.swin_pretrain.dataset."""
 
+from datetime import datetime, timezone
 from typing import Any
 
 import torch
+from rasterio.crs import CRS
+from rslearn.train.model_context import SampleMetadata
+from rslearn.utils.geometry import Projection
 
 from rslp.swin_pretrain.dataset import TILE_SIZE, CollateFunction
 
@@ -18,7 +22,7 @@ class TestCollateFunction:
         segment_targets: list[str],
         example_idx: int,
         timesteps: int = 1,
-    ) -> tuple[dict, dict, dict]:
+    ) -> tuple[dict, dict, SampleMetadata]:
         """Make an example to pass to CollateFunction."""
         input_dict: dict[str, torch.Tensor] = {}
         for modality, num_bands in input_modalities.items():
@@ -35,9 +39,20 @@ class TestCollateFunction:
                 "classes": torch.zeros((height, width), dtype=torch.int32),
                 "valid": torch.zeros((height, width), dtype=torch.int32),
             }
-        metadata = {
-            "window_name": f"window{example_idx}",
-        }
+        metadata = SampleMetadata(
+            window_group="fake",
+            window_name=f"window{example_idx}",
+            window_bounds=(0, 0, height, width),
+            crop_bounds=(0, 0, height, width),
+            crop_idx=0,
+            num_crops_in_window=1,
+            time_range=(
+                datetime(2024, 1, 1, tzinfo=timezone.utc),
+                datetime(2024, 2, 1, tzinfo=timezone.utc),
+            ),
+            projection=Projection(CRS.from_epsg(32610), 10, -10),
+            dataset_source=None,
+        )
         return input_dict, target_dict, metadata
 
     def test_random_cropping(self) -> None:

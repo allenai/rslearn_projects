@@ -91,7 +91,7 @@ python -m rslp.forest_loss_driver.scripts.assign_split /weka/dfive-default/rslea
 Next we can train a model on the data.
 
 ```
-python -m rslp.rslearn_main model fit --config data/forest_loss_driver/model_for_phase2/config_helios_frozen.yaml
+rslearn model fit --config data/forest_loss_driver/model_for_phase2/config_helios_frozen.yaml
 ```
 
 This model performs well but all of these configs have been updated for training on
@@ -104,7 +104,7 @@ this data.
 Apply the model to the remaining collected windows:
 
 ```
-python -m rslp.rslearn_main model predict --config data/forest_loss_driver/model_for_phase2/config_helios_frozen.yaml --data.init_args.path=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --data.init_args.predict_config.groups=["20250428_colombia","20250428_brazil"] --load_best=true
+rslearn model predict --config data/forest_loss_driver/model_for_phase2/config_helios_frozen.yaml --data.init_args.path=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --data.init_args.predict_config.groups=["20250428_colombia","20250428_brazil"] --load_checkpoint_mode=best
 ```
 
 Then we have a script to select windows:
@@ -143,7 +143,7 @@ Download and extract the dataset from here:
 Now train the model:
 
 ```
-python -m rslp.rslearn_main model fit --config data/forest_loss_driver/brazil_colombia_model/config_satlaspretrain.yaml
+rslearn model fit --config data/forest_loss_driver/brazil_colombia_model/config_satlaspretrain.yaml
 ```
 
 It should show loss, accuracy, confusion matrix, etc. on W&B.
@@ -151,5 +151,5 @@ It should show loss, accuracy, confusion matrix, etc. on W&B.
 Get outputs from the model:
 
 ```
-python -m rslp.rslearn_main model predict --config data/forest_loss_driver/brazil_colombia_model/config_satlaspretrain.yaml --data.init_args.predict_config.groups='["20250428_brazil_phase1","20250428_colombia_phase1"]'
+rslearn model predict --config data/forest_loss_driver/brazil_colombia_model/config_satlaspretrain.yaml --data.init_args.predict_config.groups='["20250428_brazil_phase1","20250428_colombia_phase1"]'
 ```

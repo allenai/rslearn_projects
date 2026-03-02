@@ -6,6 +6,7 @@ import multiprocessing
 import tqdm
 from rslearn.dataset.dataset import Dataset
 from rslearn.dataset.window import Window
+from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
 
@@ -16,8 +17,10 @@ def expand_single_pixel_label(window: Window) -> None:
     """Expand single pixel label to 3x3 pixels."""
     label_dir = window.get_raster_dir("label", [BAND_NAME])
     split = window.options["split"]
-    np_array = GeotiffRasterFormat().decode_raster(
-        label_dir, window.projection, window.bounds
+    np_array = (
+        GeotiffRasterFormat()
+        .decode_raster(label_dir, window.projection, window.bounds)
+        .get_chw_array()
     )
     center_x, center_y = np_array.shape[1] // 2, np_array.shape[2] // 2
     center_val = np_array[0, center_x, center_y]
@@ -34,7 +37,10 @@ def expand_single_pixel_label(window: Window) -> None:
     # OK got the expanded array, now save it to a new window
     raster_dir = window.get_raster_dir("label_expanded", [BAND_NAME])
     GeotiffRasterFormat().encode_raster(
-        raster_dir, window.projection, window.bounds, expanded_np_array
+        raster_dir,
+        window.projection,
+        window.bounds,
+        RasterArray(chw_array=expanded_np_array),
     )
     window.mark_layer_completed("label_expanded")
 

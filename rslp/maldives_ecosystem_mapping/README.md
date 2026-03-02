@@ -40,15 +40,15 @@ Model Training
 
 Train the model:
 
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model fit --config data/maldives_ecosystem_mapping/config.yaml --autoresume=true
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model fit --config data/maldives_ecosystem_mapping/config_sentinel2.yaml --autoresume=true
+    PYTHONPATH=/path/to/rslearn:. rslearn model fit --config data/maldives_ecosystem_mapping/config.yaml
+    PYTHONPATH=/path/to/rslearn:. rslearn model fit --config data/maldives_ecosystem_mapping/config_sentinel2.yaml
 
 Get visualizations of validation crops:
 
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model test --config data/maldives_ecosystem_mapping/config.yaml --autoresume=true --model.init_args.visualize_dir ~/vis/
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model test --config data/maldives_ecosystem_mapping/config_sentinel2.yaml --autoresume=true --model.init_args.visualize_dir ~/vis/
+    PYTHONPATH=/path/to/rslearn:. rslearn model test --config data/maldives_ecosystem_mapping/config.yaml --model.init_args.visualize_dir ~/vis/
+    PYTHONPATH=/path/to/rslearn:. rslearn model test --config data/maldives_ecosystem_mapping/config_sentinel2.yaml --model.init_args.visualize_dir ~/vis/
 
 Write predictions of the whole images:
 
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model predict --config data/maldives_ecosystem_mapping/config.yaml --autoresume=true
-    PYTHONPATH=/path/to/rslearn:. python -m rslp.rslearn_main model predict --config data/maldives_ecosystem_mapping/config_sentinel2.yaml --autoresume=true
+    PYTHONPATH=/path/to/rslearn:. rslearn model predict --config data/maldives_ecosystem_mapping/config.yaml
+    PYTHONPATH=/path/to/rslearn:. rslearn model predict --config data/maldives_ecosystem_mapping/config_sentinel2.yaml
