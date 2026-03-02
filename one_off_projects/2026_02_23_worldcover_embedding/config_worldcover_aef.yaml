@@ -1,0 +1,93 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.module_wrapper.EncoderModuleWrapper
+            init_args:
+              module:
+                class_path: rslearn.models.conv.Conv
+                init_args:
+                  in_channels: 64
+                  out_channels: 13
+                  kernel_size: 1
+                  activation:
+                    class_path: torch.nn.Identity
+        decoder:
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.0001
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/worldcover/
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["gsegood"]
+        bands: ["A00", "A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A11", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19", "A20", "A21", "A22", "A23", "A24", "A25", "A26", "A27", "A28", "A29", "A30", "A31", "A32", "A33", "A34", "A35", "A36", "A37", "A38", "A39", "A40", "A41", "A42", "A43", "A44", "A45", "A46", "A47", "A48", "A49", "A50", "A51", "A52", "A53", "A54", "A55", "A56", "A57", "A58", "A59", "A60", "A61", "A62", "A63"]
+        passthrough: true
+        dtype: FLOAT32
+      targets:
+        data_type: "raster"
+        layers: ["label_raster"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+    task:
+      class_path: rslearn.train.tasks.segmentation.SegmentationTask
+      init_args:
+        num_classes: 13
+        nodata_value: 0
+        metric_kwargs:
+          average: "micro"
+    batch_size: 4
+    num_workers: 32
+    default_config:
+      crop_size: 32
+    train_config:
+      transforms:
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["image", "target/classes", "target/valid"]
+      tags:
+        split: "train"
+    val_config:
+      tags:
+        split: "val"
+    test_config:
+      tags:
+        split: "test"
+    predict_config:
+      load_all_crops: true
+      skip_targets: true
+trainer:
+  max_epochs: 100
+  logger:
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_accuracy
+        mode: max
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: placeholder
+        output_layer: output
+rslp_project: 2026_02_11_embedding_interpolation
+rslp_experiment: worldcover_aef_00
