@@ -7,7 +7,7 @@ model:
         encoder:
           - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
-              checkpoint_path: /weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/v1.5_supervision/step179750
+              checkpoint_path: /weka/dfive-default/helios/checkpoints/gabrielt/single_bandset_all12_random_band_dropout_ndvi_era5_random_time_decode_masked_neg_decoder_supervision_updated/step295750
               patch_size: 1
         decoder:
           - class_path: rslearn.models.conv.Conv
