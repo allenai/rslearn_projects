@@ -86,7 +86,7 @@
       "pos_name": "tl"
     }
   ],
-  "h5_suffix": "_singlebandset",
+  "h5_suffix": "_singlebandset_randomdecode",
   "methods": [
     "knn",
     "linear_probe"
