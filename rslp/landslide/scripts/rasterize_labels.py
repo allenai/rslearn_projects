@@ -15,6 +15,7 @@ from rasterio.features import rasterize
 import shapely
 import tqdm
 from rslearn.utils.geometry import Projection
+from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat, get_transform_from_projection_and_bounds
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
@@ -175,8 +176,10 @@ def create_label_raster(window_dir: UPath) -> None:
     raster_dir = window_dir / "layers" / "label_raster" / BAND_NAME
     raster_dir.mkdir(parents=True, exist_ok=True)
     
+    # GeotiffRasterFormat.encode_raster expects a RasterArray (CTHW), not a raw ndarray.
+    raster_array = RasterArray(chw_array=raster)
     GeotiffRasterFormat().encode_raster(
-        raster_dir, projection, bounds, raster
+        raster_dir, projection, bounds, raster_array
     )
     
     # Mark layer as completed
