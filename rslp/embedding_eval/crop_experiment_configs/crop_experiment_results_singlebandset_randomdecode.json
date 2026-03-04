@@ -70,20 +70,6 @@
         "0"
       ],
       "pos_name": "tl"
-    },
-    {
-      "input_size": 128,
-      "pos_args": [],
-      "pos_name": "center"
-    },
-    {
-      "input_size": 128,
-      "pos_args": [
-        "--label_position",
-        "0",
-        "0"
-      ],
-      "pos_name": "tl"
     }
   ],
   "h5_suffix": "_singlebandset_randomdecode",
