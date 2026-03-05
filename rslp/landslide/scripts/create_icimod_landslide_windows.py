@@ -508,11 +508,14 @@ def create_windows_from_shapefile(
     
     print(f"Total landslide events with valid dates: {len(gdf)}")
     
-    # Filter to only include samples from June 2015 onwards (Sentinel-2 availability)
-    sentinel2_start_date = pd.to_datetime("2015-06-01")
-    gdf = gdf[gdf["event_date"] >= sentinel2_start_date].copy()
+    # Filter so both pre_sentinel2 and post_sentinel2 can get data. Dataset config uses
+    # time_offset -365d for pre_sentinel2, so it queries 1 year before the window.
+    # Sentinel-2A launched 2015-06-23. So we need event_date >= 2016-07-01 so that
+    # post = window (event_date..+60d) is in 2016+, and pre = (window - 365d) is in 2015+.
+    sentinel2_ready_date = pd.to_datetime("2016-07-01")
+    gdf = gdf[gdf["event_date"] >= sentinel2_ready_date].copy()
     
-    print(f"Landslide events from June 2015 onwards (Sentinel-2 available): {len(gdf)}")
+    print(f"Landslide events from 2016-07-01 onwards (pre+post Sentinel-2 queryable): {len(gdf)}")
     
     # Generate IDs for each landslide (ICIMOD doesn't have an id column)
     # Use index-based IDs with prefix to ensure uniqueness
