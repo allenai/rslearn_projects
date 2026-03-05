@@ -12,7 +12,8 @@ python create_icimod_landslide_windows.py \
     --ds_path data/landslide/icimod_windows/ \
     --sample_type positive \
     --max_samples 1 \
-    --buffer_distance 20  # buffer in meters around landslides (default: 20m = 2 pixels at 10m/pixel)
+    --buffer_distance 20 \
+    --group predict  # optional: use "predict" to create windows in the predict group (default: icimod_landslides)
 """
 
 import argparse
@@ -106,6 +107,7 @@ def create_window_pair(
     sample_type: str,
     spatial_index: LandslideSpatialIndex,
     buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
+    group: str = "icimod_landslides",
 ) -> None:
     """Create pre-event and post-event windows for landslide detection.
 
@@ -145,8 +147,6 @@ def create_window_pair(
     is_val = event_year >= 2021
     split = "val" if is_val else "train"
 
-    group = "icimod_landslides"
-    
     # Create window geometry in projected coordinates, then transform to WGS84 for spatial query
     # bounds is typically (min_col, min_row, max_col, max_row) or an object with attributes
     if hasattr(bounds, 'min_x'):
@@ -445,6 +445,7 @@ def create_windows_from_shapefile(
     sample_type: str,
     max_samples: int = None,
     buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
+    group: str = "icimod_landslides",
 ) -> None:
     """Create windows from ICIMOD shapefile.
 
@@ -454,6 +455,7 @@ def create_windows_from_shapefile(
         sample_type: "positive" or "negative", which windows to create
         max_samples: maximum number of samples to process (None for all)
         buffer_distance: distance in meters to buffer around landslides
+        group: dataset group to create windows in (e.g. "icimod_landslides" or "predict")
     """
     gdf = gpd.read_file(shapefile_path)
     
@@ -529,6 +531,7 @@ def create_windows_from_shapefile(
             sample_type=sample_type,
             spatial_index=spatial_index,
             buffer_distance=buffer_distance,
+            group=group,
         )
         for row in rows_data
     ]
@@ -575,6 +578,13 @@ if __name__ == "__main__":
         default=DEFAULT_BUFFER_DISTANCE,
         help=f"Buffer distance in meters around landslides for no_data zone (default: {DEFAULT_BUFFER_DISTANCE}, ~{DEFAULT_BUFFER_DISTANCE/WINDOW_RESOLUTION:.1f} pixels at {WINDOW_RESOLUTION}m/pixel)",
     )
+    parser.add_argument(
+        "--group",
+        type=str,
+        required=False,
+        default="icimod_landslides",
+        help="Dataset group to create windows in (default: icimod_landslides). Use 'predict' for prediction windows.",
+    )
     args = parser.parse_args()
     
     create_windows_from_shapefile(
@@ -583,4 +593,5 @@ if __name__ == "__main__":
         sample_type=args.sample_type,
         max_samples=args.max_samples,
         buffer_distance=args.buffer_distance,
+        group=args.group,
     )
