@@ -35,12 +35,33 @@ from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 from rslp.utils.windows import calculate_bounds
-from rslp.landslide.scripts.utils import parse_name_as_date
 
 WINDOW_RESOLUTION = 10  # meters per pixel
 WINDOW_SIZE_PIXELS = 64
 LABEL_LAYER = "label"
 DEFAULT_BUFFER_DISTANCE = 30.0  # meters (2 pixels at 10m/pixel resolution)
+
+
+def parse_name_as_date(name: str) -> datetime | None:
+    """
+    Parses ICIMOD Name values like '5/3/015' or '5/4/15' into datetime.
+    Assumes M/D/YYYY where 15 or 015 → 2015.
+    """
+    if not isinstance(name, str):
+        return None
+    parts = name.split("/")
+    if len(parts) != 3:
+        return None
+    month_str, day_str, year_str = parts
+    year_digits = "".join(ch for ch in year_str if ch.isdigit())
+    if not year_digits:
+        return None
+    y = int(year_digits)
+    year = 2000 + y  # 15 or 015 → 2015
+    try:
+        return datetime(year, int(month_str), int(day_str))
+    except ValueError:
+        return None
 
 
 class LandslideSpatialIndex:
