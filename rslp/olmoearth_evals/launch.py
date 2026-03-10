@@ -152,7 +152,7 @@ def launch(
                 )
             if test:
                 basic_args.extend(["--mode", "test"])
-                all_extra_args.extend(["--force_log=true", "--load_best=true"])
+                all_extra_args.extend(["--log_mode=yes", "--load_checkpoint_mode=best"])
             if all_extra_args:
                 basic_args.extend(["--extra_args", json.dumps(all_extra_args)])
 

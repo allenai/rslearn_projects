@@ -13,6 +13,7 @@ from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
 from rslearn.utils.geometry import PixelBounds, Projection
+from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
 
@@ -241,7 +242,7 @@ def merge_and_upload_raster(
         out_fname.parent,
         projection,
         bounds,
-        prediction[None, :, :],
+        RasterArray(chw_array=prediction[None, :, :]),
         fname=out_fname.name,
     )
 

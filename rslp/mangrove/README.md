@@ -31,7 +31,7 @@ python rslp/scripts/launch_beaker_data_materialization.py --project mangrove_cla
 Each point represents an 20x20m area, so by default, we set window_size = 2. Run the following command to finetune Helios for mangrove classification.
 
 ```
-python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_classification/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_classification_helios_base_S2_ts_ws2_ps2
+python -m rslp.main olmoearth_pretrain launch_finetune --olmoearth_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_classification/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --project_name 2025_06_26_helios_finetuning --run_name v2_mangrove_classification_helios_base_S2_ts_ws2_ps2
 ```
 
 By changing the `num_samples` in the `train_config`, we can train Helios with different number of samples but evaluate on the same validation set.
@@ -73,5 +73,5 @@ python rslp/scripts/launch_beaker_data_materialization.py --project mangrove_los
 
 Run the following commands to finetune Helios for alert classification:
 ```
-python -m rslp.main helios launch_finetune --helios_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_loss/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --rslp_project 2025_06_26_helios_finetuning --experiment_id v2_mangrove_loss_helios_base_S2_ts_ws2_ps2
+python -m rslp.main olmoearth_pretrain launch_finetune --olmoearth_checkpoint_path /weka/dfive-default/helios/checkpoints/favyen/v0.2_base_latent_mim_128_alldata_random_fixed_modality_0.5/step320000 --patch_size 2 --encoder_embedding_size 768 --image_name favyen/rslphelios3 --config_paths+=data/helios/v2_mangrove_loss/finetune_s2.yaml --cluster+=ai2/saturn-cirrascale --project_name 2025_06_26_helios_finetuning --run_name v2_mangrove_loss_helios_base_S2_ts_ws2_ps2
 ```

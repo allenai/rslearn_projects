@@ -616,8 +616,10 @@ def _build_predictions_and_crops(
                 SENTINEL1_LAYER_NAME,
                 BAND_NAMES,
             )
-            image = GeotiffRasterFormat().decode_raster(
-                raster_dir, crop_window.projection, crop_window.bounds
+            image = (
+                GeotiffRasterFormat()
+                .decode_raster(raster_dir, crop_window.projection, crop_window.bounds)
+                .get_chw_array()
             )
             for band_idx, band_name in enumerate(BAND_NAMES):
                 band_image = np.clip(

@@ -7,6 +7,7 @@ import numpy as np
 import tqdm
 from rslearn.dataset.dataset import Dataset
 from rslearn.dataset.window import Window
+from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
@@ -38,7 +39,7 @@ def create_label_raster(window: Window) -> None:
     raster[:, raster.shape[1] // 2, raster.shape[2] // 2] = class_id
     raster_dir = window.get_raster_dir("label_raster", [BAND_NAME])
     GeotiffRasterFormat().encode_raster(
-        raster_dir, window.projection, window.bounds, raster
+        raster_dir, window.projection, window.bounds, RasterArray(chw_array=raster)
     )
     window.mark_layer_completed("label_raster")
 

@@ -19,10 +19,10 @@ Inference
 First, download the model checkpoint to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
-    mkdir -p project_data/projects/sentinel2_vessels/data_20240927_satlaspretrain_patch512_00/checkpoints/
-    mkdir -p project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt
+    mkdir -p project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/
+    mkdir -p project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/best.ckpt
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in
 `rslp/sentinel2_vessels/predict_pipeline.py`. It accepts a Sentinel-2 scene ID and
@@ -59,20 +59,20 @@ It is an rslearn dataset consisting of window folders like
   bounds to get pixel coordinates relative to the image.
 
 Use the command below to train the model. Note that Weights & Biases is needed. You can
-disable W&B with `--no_log true` but then it may be difficult to track the metrics.
+disable W&B with `--log_mode=no` but then it may be difficult to track the metrics.
 
-    python -m rslp.rslearn_main model fit --config data/sentinel2_vessels/config.yaml --data.init_args.path project_data/datasets/sentinel2_vessels/
+    rslearn model fit --config data/sentinel2_vessels/config.yaml --data.init_args.path project_data/datasets/sentinel2_vessels/
 
 To visualize outputs on the validation set:
 
     mkdir vis
-    python -m rslp.rslearn_main model test --config data/sentinel2_vessels/config.yaml --data.init_args.path project_data/datasets/sentinel2_vessels/ --model.init_args.visualize_dir vis/ --load_best true
+    rslearn model test --config data/sentinel2_vessels/config.yaml --data.init_args.path project_data/datasets/sentinel2_vessels/ --model.init_args.visualize_dir vis/ --load_checkpoint_mode=best
 
 
 Model Version History
 ---------------------
 
-The version names correspond to the `rslp_experiment` field in the model configuration
+The version names correspond to the `run_name` field in the model configuration
 file (`data/sentinel2_vessels/config.yaml`).
 
 - `data_20250213_02_all_bands`: Train on all bands instead of just RGB. Note that it
@@ -115,10 +115,10 @@ The Docker container does not contain the model weights. Instead, it expects the
 weights to be present in a directory based on the `RSLP_PREFIX` environment variable.
 So download the model checkpoint:
 
-    mkdir -p project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/
-    mkdir -p project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt
+    mkdir -p project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/
+    mkdir -p project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/best.ckpt
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/best.ckpt
 
 Run the container:
 

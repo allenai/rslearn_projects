@@ -59,8 +59,9 @@ Here is an example overriding the command to ingest instead:
 Beaker Training and Prediction
 ------------------------------
 
-In rslearn_projects, model commands are run through the `rslp.rslearn_main` endpoint to
-take advantage of specialized checkpoint and logging handling.
+In rslearn_projects, we generally use the model management feature in rslearn with
+management directory set to `{RSLP_PREFIX}/projects`, to get built-in checkpoint
+and logging management.
 
 We can also run that in Beaker jobs instead of locally. First, build a Docker image
 using `olmoearth_pretrain.Dockerfile` and push it to Beaker, per the instructions at

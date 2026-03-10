@@ -199,15 +199,13 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        save_top_k: 1
-        save_last: true
         monitor: val_loss
         mode: min
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: placeholder
         output_layer: output
-rslp_project: sentinel2_vessel_attribute
-rslp_experiment: data_20250205_heading2_with_flipping_01
+project_name: sentinel2_vessel_attribute
+run_name: data_20250205_heading2_with_flipping_01
+management_dir: ${RSLP_PREFIX}/projects

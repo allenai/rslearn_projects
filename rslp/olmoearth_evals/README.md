@@ -146,7 +146,7 @@ tar xvf marine_infra.tar -C partner_datasets/marine_infra/
 export RSLP_PREFIX=./project_data/
 # Run training. EVAL_ADAPTER_MODEL_ID is used to indicate which model to train with.
 export EVAL_ADAPTER_MODEL_ID=olmoearth_tiny
-python -m rslp.rslearn_main model fit --config data/olmoearth_evals/tasks/marine_infra_base.yaml --config data/olmoearth_evals/tasks/marine_infra_ts.yaml --config data/olmoearth_evals/models/$EVAL_ADAPTER_MODEL_ID.yaml --autoresume=true --rslp_experiment marine_infra_ts_olmoearth_tiny --rslp_project olmoearth_evals --data.init_args.path=./partner_task/marine_infra/
+rslearn model fit --config data/olmoearth_evals/tasks/marine_infra_base.yaml --config data/olmoearth_evals/tasks/marine_infra_ts.yaml --config data/olmoearth_evals/models/$EVAL_ADAPTER_MODEL_ID.yaml --run_name marine_infra_ts_olmoearth_tiny --project_name olmoearth_evals --data.init_args.path=./partner_task/marine_infra/
 ```
 
 During training, it will log the training and validation metrics to W&B, and save the
@@ -155,7 +155,7 @@ Then to evaluate on the test set using the best checkpoint on val:
 
 ```
 export EVAL_ADAPTER_MODEL_ID=olmoearth_tiny
-python -m rslp.rslearn_main model test --config data/olmoearth_evals/tasks/marine_infra_base.yaml --config data/olmoearth_evals/tasks/marine_infra_ts.yaml --config data/olmoearth_evals/models/$EVAL_ADAPTER_MODEL_ID.yaml --rslp_experiment marine_infra_ts_olmoearth_tiny --rslp_project olmoearth_evals --data.init_args.path=./partner_task/marine_infra/ --force_log=true --load_best=true
+rslearn model test --config data/olmoearth_evals/tasks/marine_infra_base.yaml --config data/olmoearth_evals/tasks/marine_infra_ts.yaml --config data/olmoearth_evals/models/$EVAL_ADAPTER_MODEL_ID.yaml --run_name marine_infra_ts_olmoearth_tiny --project_name olmoearth_evals --data.init_args.path=./partner_task/marine_infra/ --log_mode=yes --load_checkpoint_mode=best
 ```
 
 Not all models support all modalities or multi-modality.

@@ -213,16 +213,15 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
-      init_args:
-        save_top_k: 1
-        save_last: true
-        monitor: val_segment/accuracy
-        mode: max
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 2
         unfreeze_lr_factor: 10
-rslp_project: 2025_12_11_tolbi
-rslp_experiment: tolbi_crop_S2_ts_ws16_ps4_bs16
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_segment/accuracy
+        mode: max
+project_name: 2025_12_11_tolbi
+run_name: tolbi_crop_S2_ts_ws16_ps4_bs16
+management_dir: ${RSLP_PREFIX}/projects

@@ -92,14 +92,13 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
-      init_args:
-        save_top_k: 1
-        save_last: true
-        monitor: val_loss
-        mode: min
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0]
-rslp_project: 2025_08_28_aef_linear_probe
-rslp_experiment: lcmap_lu_helios_01
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_loss
+        mode: min
+project_name: 2025_08_28_aef_linear_probe
+run_name: lcmap_lu_helios_01
+management_dir: ${RSLP_PREFIX}/projects
