@@ -118,10 +118,8 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        save_top_k: 1
-        save_last: true
         monitor: val_accuracy
         mode: max
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
@@ -135,5 +133,6 @@ trainer:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
             overlap_pixels: 4
-rslp_project: 2026_02_11_embedding_interpolation
-rslp_experiment: nandi_ps4_interpolate_01_supervisedpretraining_v2
+project_name: 2026_02_11_embedding_interpolation
+run_name: nandi_ps4_interpolate_01_supervisedpretraining_v2
+management_dir: ${RSLP_PREFIX}/projects
