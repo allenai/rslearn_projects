@@ -102,7 +102,7 @@ trainer:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
         path: null
-        output_layer: output_worldcover_ps1
+        output_layer: output
         merger:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
