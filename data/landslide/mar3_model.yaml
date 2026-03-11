@@ -84,7 +84,7 @@ data:
       tags:
         split: "val"
     predict_config:
-      groups: ["predict"]
+      groups: ["icimod"]
       load_all_patches: true
       # We set patch_size=128 here to support the option of using larger windows during
       # prediction. Note that this controls the sliding window inference crop size.
