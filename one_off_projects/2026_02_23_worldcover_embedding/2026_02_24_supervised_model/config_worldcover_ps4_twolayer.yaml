@@ -109,7 +109,7 @@ trainer:
         module_selector: ["model", "encoder", 0]
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: placeholder
+        path: null
         output_layer: output
         merger:
           class_path: rslearn.train.prediction_writer.RasterMerger
