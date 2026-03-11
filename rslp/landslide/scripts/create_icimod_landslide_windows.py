@@ -468,6 +468,7 @@ def create_windows_from_shapefile(
     max_samples: int = None,
     buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
     group: str = "icimod_landslides",
+    min_event_date: str = "2016-07-01",
 ) -> None:
     """Create windows from ICIMOD shapefile.
 
@@ -478,6 +479,9 @@ def create_windows_from_shapefile(
         max_samples: maximum number of samples to process (None for all)
         buffer_distance: distance in meters to buffer around landslides
         group: dataset group to create windows in (e.g. "icimod_landslides" or "predict")
+        min_event_date: only create windows for events on or after this date (YYYY-MM-DD).
+            Default 2016-07-01 ensures both pre_sentinel2 and post_sentinel2 query in the
+            Sentinel-2 era. Use e.g. 2015-06-01 for more events (prepare may reject some).
     """
     gdf = gpd.read_file(shapefile_path)
     
@@ -511,12 +515,13 @@ def create_windows_from_shapefile(
     
     # Filter so both pre_sentinel2 and post_sentinel2 can get data. Dataset config uses
     # time_offset -365d for pre_sentinel2, so it queries 1 year before the window.
-    # Sentinel-2A launched 2015-06-23. So we need event_date >= 2016-07-01 so that
-    # post = window (event_date..+60d) is in 2016+, and pre = (window - 365d) is in 2015+.
-    sentinel2_ready_date = pd.to_datetime("2016-07-01")
+    # Sentinel-2A launched 2015-06-23. event_date >= 2016-07-01 guarantees both pre and
+    # post query in S2 era; earlier dates (e.g. 2015-06-01) give more events but prepare
+    # may reject some for missing pre_sentinel2.
+    sentinel2_ready_date = pd.to_datetime(min_event_date)
     gdf = gdf[gdf["event_date"] >= sentinel2_ready_date].copy()
     
-    print(f"Landslide events from 2016-07-01 onwards (pre+post Sentinel-2 queryable): {len(gdf)}")
+    print(f"Landslide events from {min_event_date} onwards: {len(gdf)}")
     
     # Generate IDs for each landslide (ICIMOD doesn't have an id column)
     # Use index-based IDs with prefix to ensure uniqueness
@@ -610,6 +615,13 @@ if __name__ == "__main__":
         default="icimod_landslides",
         help="Dataset group to create windows in (default: icimod_landslides). Use 'predict' for prediction windows.",
     )
+    parser.add_argument(
+        "--min_event_date",
+        type=str,
+        required=False,
+        default="2016-07-01",
+        help="Only events on or after this date (YYYY-MM-DD). Default 2016-07-01 gives reliable pre+post S2; use 2015-06-01 for more events (some may fail prepare).",
+    )
     args = parser.parse_args()
     
     create_windows_from_shapefile(
@@ -619,4 +631,5 @@ if __name__ == "__main__":
         max_samples=args.max_samples,
         buffer_distance=args.buffer_distance,
         group=args.group,
+        min_event_date=args.min_event_date,
     )
