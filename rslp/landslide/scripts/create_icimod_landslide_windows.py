@@ -44,8 +44,8 @@ DEFAULT_BUFFER_DISTANCE = 30.0  # meters (2 pixels at 10m/pixel resolution)
 
 def parse_name_as_date(name: str) -> datetime | None:
     """
-    Parses ICIMOD Name values like '5/3/015' or '5/4/15' into datetime.
-    Assumes M/D/YYYY where 15 or 015 → 2015.
+    Parses ICIMOD Name values like '5/3/015', '5/4/15', or '4/1/2016' into datetime.
+    Assumes M/D/YYYY where 15 or 015 → 2015; 2016 stays 2016.
     """
     if not isinstance(name, str):
         return None
@@ -57,7 +57,8 @@ def parse_name_as_date(name: str) -> datetime | None:
     if not year_digits:
         return None
     y = int(year_digits)
-    year = 2000 + y  # 15 or 015 → 2015
+    # Already 4-digit year (e.g. 2016) → use as-is; else 2–3 digit (15, 015) → 2000 + y
+    year = y if y >= 1000 else (2000 + y)
     try:
         return datetime(year, int(month_str), int(day_str))
     except ValueError:
