@@ -1,5 +1,5 @@
 {
-  "checkpoint_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/yawenzzzz/single_bandset_all12_random_band_dropout_era5_cross_random_masked_neg/step667200",
+  "checkpoint_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/single_bandset_all12_random_band_dropout_ndvi_era5_random_time_decode_masked_neg_ic_weight_005/step300000",
   "crop_configs": [
     {
       "input_size": 4,
@@ -72,11 +72,11 @@
       "pos_name": "tl"
     }
   ],
-  "h5_suffix": "_singlebandset_crossrandom_era5",
+  "h5_suffix": "_singlebandset_randomtime_ndvi",
   "methods": [
     "knn",
     "linear_probe"
   ],
   "patch_size": 4,
-  "results_file": "/weka/dfive-default/rslearn-eai/datasets/alphaearth_supplemental_evaluations/crop_experiment_results_singlebandset_crossrandom_era5.json"
+  "results_file": "/weka/dfive-default/rslearn-eai/datasets/alphaearth_supplemental_evaluations/crop_experiment_results_singlebandset_randomtime_ndvi.json"
 }
