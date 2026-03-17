@@ -69,6 +69,7 @@ class EvalAdapterModel(torch.nn.Module):
         task_channels: int = 1,
         task_timesteps: int = 1,
         use_embeddings: bool = False,
+        checkpoint_path: str | None = None,
     ):
         """Create a new EvalAdapterModel.
 
@@ -85,16 +86,24 @@ class EvalAdapterModel(torch.nn.Module):
             use_embeddings: add an EmbeddingsCache after the encoder so that the
                 does not get gradients (even if its unfrozen) and the embeddings are
                 cached for faster training (although data loading will still happen).
+            checkpoint_path: optional path to a pretrained checkpoint directory. When
+                set, this is forwarded to the model adapter's get_model() so it can
+                load weights from this path instead of the default released model.
         """
         super().__init__()
         model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
-        self.model = modules_by_model_id[model_id].get_model(
+        adapter_module = modules_by_model_id[model_id]
+        extra_kwargs: dict[str, object] = {}
+        if checkpoint_path is not None and adapter_module is olmoearth:
+            extra_kwargs["checkpoint_path"] = checkpoint_path
+        self.model = adapter_module.get_model(
             input_size=input_size,
             input_modalities=input_modalities,
             task_type=task_type,
             task_name=task_name,
             task_channels=task_channels,
             task_timesteps=task_timesteps,
+            **extra_kwargs,
         )
 
         if use_embeddings:
