@@ -86,5 +86,3 @@ trainer:
         save_last: true
         monitor: val_eval_task/mean_iou
         mode: max
-rslp_project: placeholder
-rslp_experiment: placeholder
