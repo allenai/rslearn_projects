@@ -87,5 +87,3 @@ trainer:
         save_last: true
         monitor: val_eval_task/accuracy
         mode: max
-rslp_project: placeholder
-rslp_experiment: placeholder
