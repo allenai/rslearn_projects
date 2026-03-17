@@ -149,7 +149,9 @@ def launch(
                 ]
 
             # Build extra_args for the training script.
-            all_extra_args: list[str] = []
+            all_extra_args: list[str] = [
+                "--management_dir=${RSLP_PREFIX}/projects",
+            ]
             if checkpoint_path is not None:
                 all_extra_args.append(
                     f"--model.init_args.model.init_args.checkpoint_path={checkpoint_path}"
