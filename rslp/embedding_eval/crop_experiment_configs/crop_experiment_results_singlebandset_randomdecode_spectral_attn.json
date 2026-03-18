@@ -1,5 +1,5 @@
 {
-  "checkpoint_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/yawenzzzz/single_bandset_all12_spectral_attn_d128_random_band_dropout_random_decode_masked_neg/step552000",
+  "checkpoint_dir": "/weka/dfive-default/olmoearth_pretrain/checkpoints/yawenzzzz/single_bandset_all12_spectral_attn_d128_random_band_dropout_random_decode_masked_neg/step540000",
   "crop_configs": [
     {
       "input_size": 4,
