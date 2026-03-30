@@ -26,9 +26,7 @@ class Filter:
 
 # Default URL for the marine infrastructure GeoJSON file.
 # Override with MARINE_INFRA_PATH env var to use a local file (e.g. in Docker).
-_DEFAULT_INFRA_URL = (
-    "https://storage.googleapis.com/satlas-explorer-public/outputs/marine/latest.geojson"
-)
+_DEFAULT_INFRA_URL = "https://storage.googleapis.com/satlas-explorer-public/outputs/marine/latest.geojson"
 DEFAULT_INFRA_PATH = os.environ.get("MARINE_INFRA_PATH", _DEFAULT_INFRA_URL)
 DEFAULT_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
