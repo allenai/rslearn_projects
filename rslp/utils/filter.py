@@ -2,6 +2,7 @@
 
 import functools
 import json
+from pathlib import Path
 
 import numpy as np
 from upath import UPath
@@ -23,9 +24,9 @@ class Filter:
         raise NotImplementedError
 
 
-# URL to the marine infrastructure GeoJSON file.
-DEFAULT_INFRA_URL = (
-    "https://pub-956f3eb0f5974f37b9228e0a62f449bf.r2.dev/outputs/marine/latest.geojson"
+# Path to the marine infrastructure GeoJSON file, bundled in the repo.
+DEFAULT_INFRA_PATH = str(
+    Path(__file__).parent / "data" / "marine_infrastructure.geojson"
 )
 DEFAULT_DISTANCE_THRESHOLD = 0.1  # unit: km, 100 meters
 
@@ -58,17 +59,17 @@ class NearInfraFilter(Filter):
 
     def __init__(
         self,
-        infra_url: str = DEFAULT_INFRA_URL,
+        infra_path: str = DEFAULT_INFRA_PATH,
         infra_distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
     ) -> None:
         """Initialize marine infrastructure filter.
 
         Args:
-            infra_url: url to the marine infrastructure GeoJSON file.
+            infra_path: path to the marine infrastructure GeoJSON file.
             infra_distance_threshold: distance threshold for marine infrastructure.
         """
-        self.infra_url = infra_url
-        self.infra_lonlats = get_infra_lonlats(UPath(self.infra_url))
+        self.infra_path = infra_path
+        self.infra_lonlats = get_infra_lonlats(UPath(self.infra_path))
         self.infra_distance_threshold = infra_distance_threshold
 
     def _get_haversine_distances(
