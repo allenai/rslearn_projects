@@ -14,7 +14,7 @@ services:
       context: .
       dockerfile: Dockerfile
       additional_contexts:
-        base-image: target:base-image
+        base-image: service:base-image
     image: sentinel1_vessels:latest
     depends_on:
       - base-image
