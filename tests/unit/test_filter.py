@@ -32,7 +32,7 @@ class TestNearInfraFilter:
         with fname.open("w") as f:
             json.dump(geojson_data, f)
 
-        return NearInfraFilter(infra_url=str(fname))
+        return NearInfraFilter(infra_path=str(fname))
 
     def test_exactly_on_infra(self, single_point_infra_filter: NearInfraFilter) -> None:
         # Test when detection is exactly on infrastructure.
