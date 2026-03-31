@@ -1,6 +1,6 @@
 prometheus-client>=0.21.1
 python-dotenv>=1.0
 PyYAML>=6
-rslearn>=0.0.18
+rslearn @ git+https://github.com/allenai/rslearn.git@e7053a36c3962b9c93b08f09ed939470c8b79030
 s3fs>=2025.2.0
 wandb>=0.21

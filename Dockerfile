@@ -10,16 +10,7 @@ ENV PATH="${PATH}:/usr/local/go/bin"
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Install rslearn.
-# We use git clone and then git checkout instead of git clone -b so that the user could
-# specify a commit name or branch instead of only accepting a branch.
-ARG RSLEARN_BRANCH=e7053a36c3962b9c93b08f09ed939470c8b79030
-RUN git clone https://github.com/allenai/rslearn.git /opt/rslearn
-WORKDIR /opt/rslearn
-RUN git checkout $RSLEARN_BRANCH
-RUN uv pip install --system /opt/rslearn[extra]
-
-# Install rslearn_projects.
+# Install rslearn_projects (rslearn is pinned to a specific commit in requirements.txt).
 COPY . /opt/rslearn_projects/
 RUN uv pip install --system /opt/rslearn_projects[dev,extra,olmoearth_pretrain]
 
