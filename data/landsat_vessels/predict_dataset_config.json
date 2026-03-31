@@ -141,9 +141,5 @@
     "output": {
       "type": "vector"
     }
-  },
-  "tile_store": {
-    "name": "file",
-    "root_dir": "tiles"
   }
 }
