@@ -22,7 +22,7 @@ def get_projection_and_bounds(
     """Derive a UTM projection and pixel bounds from WGS84_ITEM_BOUNDS."""
     wgs84_geom = STGeometry(WGS84_PROJECTION, box(*WGS84_ITEM_BOUNDS), None)
     projection = get_utm_ups_projection(
-        wgs84_geom.shp.x, wgs84_geom.shp.y, x_resolution, y_resolution
+        wgs84_geom.shp.centroid.x, wgs84_geom.shp.centroid.y, x_resolution, y_resolution
     )
     utm_geom = wgs84_geom.to_projection(projection)
     minx, miny, maxx, maxy = utm_geom.shp.bounds
