@@ -330,12 +330,14 @@ def setup_dataset(
             "bands": [],
         }
         for band, image_path in image_files.items():
-            cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["src_dir"] = str(
-                UPath(image_path).parent
+            cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["init_args"]["src_dir"] = (
+                str(UPath(image_path).parent)
             )
             item_spec["fnames"].append(image_path)
             item_spec["bands"].append([band])
-        cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["item_specs"] = [item_spec]
+        cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["init_args"][
+            "raster_item_specs"
+        ] = [item_spec]
 
         with (ds_path / "config.json").open("w") as f:
             json.dump(cfg, f)
