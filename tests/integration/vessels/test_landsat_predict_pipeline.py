@@ -66,10 +66,10 @@ class _FakeS3Bucket:
     def download_fileobj(
         self, key: str, f: BinaryIO, ExtraArgs: dict | None = None
     ) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".tif") as tmp:
             self.download_file(key, tmp.name)
-            tmp.seek(0)
-            f.write(tmp.read())
+            with open(tmp.name, "rb") as src:
+                f.write(src.read())
 
     class objects:
         @staticmethod

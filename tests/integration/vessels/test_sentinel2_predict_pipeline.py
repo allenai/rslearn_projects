@@ -73,10 +73,10 @@ class _FakeBlob:
         )
 
     def download_to_file(self, f: BinaryIO) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".tif") as tmp:
             self.download_to_filename(tmp.name)
-            tmp.seek(0)
-            f.write(tmp.read())
+            with open(tmp.name, "rb") as src:
+                f.write(src.read())
 
 
 class _FakeGCSBucket:
