@@ -46,8 +46,8 @@ First, download the training dataset:
 
     cd rslearn_projects
     mkdir -p project_data/datasets/sentinel2_vessels/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/sentinel2_vessels/sentinel2_vessels.tar -O project_data/datasets/sentinel2_vessels.tar
-    tar xvf project_data/datasets/sentinel2_vessels.tar --directory project_data/datasets/sentinel2_vessels/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/sentinel2_vessels/dataset_20250213.tar -O project_data/datasets/dataset_20250213.tar
+    tar xvf project_data/datasets/dataset_20250213.tar --directory project_data/datasets/sentinel2_vessels/
 
 It is an rslearn dataset consisting of window folders like
 `windows/sargassum_train/1186117_1897173_158907/`. Inside each window folder:
