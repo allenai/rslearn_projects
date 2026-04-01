@@ -618,9 +618,9 @@ class VesselAttributeFlip(torch.nn.Module):
         """
         for k in image_keys:
             if state["horizontal"]:
-                d[k] = torch.flip(d[k], dims=[-1])
+                d[k].image = torch.flip(d[k].image, dims=[-1])
             if state["vertical"]:
-                d[k] = torch.flip(d[k], dims=[-2])
+                d[k].image = torch.flip(d[k].image, dims=[-2])
 
         if update_heading:
             if self.heading_mode == HeadingMode.XY:

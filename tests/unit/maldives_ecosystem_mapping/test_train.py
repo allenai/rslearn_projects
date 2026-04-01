@@ -2,7 +2,7 @@ from typing import Any
 
 import numpy as np
 import torch
-from rslearn.train.model_context import ModelContext, ModelOutput
+from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 from rslearn.train.tasks.multi_task import MultiTask
 from rslearn.train.tasks.segmentation import SegmentationTask
 
@@ -38,20 +38,20 @@ def test_cm_module_step() -> None:
     targets = [
         {
             "segment": {
-                "classes": torch.zeros((8, 8), dtype=torch.int32),
-                "valid": torch.ones((8, 8), dtype=torch.int32),
+                "classes": RasterImage(torch.zeros((1, 1, 8, 8), dtype=torch.int32)),
+                "valid": RasterImage(torch.ones((1, 1, 8, 8), dtype=torch.int32)),
             }
         },
         {
             "segment": {
-                "classes": torch.ones((8, 8), dtype=torch.int32),
-                "valid": torch.ones((8, 8), dtype=torch.int32),
+                "classes": RasterImage(torch.ones((1, 1, 8, 8), dtype=torch.int32)),
+                "valid": RasterImage(torch.ones((1, 1, 8, 8), dtype=torch.int32)),
             }
         },
         {
             "segment": {
-                "classes": torch.zeros((8, 8), dtype=torch.int32),
-                "valid": torch.zeros((8, 8), dtype=torch.int32),
+                "classes": RasterImage(torch.zeros((1, 1, 8, 8), dtype=torch.int32)),
+                "valid": RasterImage(torch.zeros((1, 1, 8, 8), dtype=torch.int32)),
             }
         },
     ]

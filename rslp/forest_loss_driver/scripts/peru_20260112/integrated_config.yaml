@@ -1,0 +1,17 @@
+integrated_config:
+  weka_base_dir: "/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/peru_20260112/inference/"
+  gcs_base_dir: "gs://ai2-rslearn-projects-data/forest_loss_driver/dataset_v1/peru_20260112/inference/"
+  extract_alerts_args:
+    gcs_tiff_filenames:
+      - "070W_10S_060W_00N.tif"
+      - "070W_20S_060W_10S.tif"
+      - "080W_10S_070W_00N.tif"
+      - "080W_20S_070W_10S.tif"
+    out_fname: "placeholder"
+    country_data_path: "/weka/dfive-default/rslearn-eai/artifacts/natural_earth_countries/20240830/ne_10m_admin_0_countries.shp"
+    countries: ["PE"]
+    days: 1825
+    max_number_of_events: 200000
+  asset_workers: 128
+  make_tiles_workers: 128
+  write_individual_events_workers: 128

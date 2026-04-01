@@ -148,7 +148,6 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: gs://rslearn-eai/datasets/sentinel2_vessels/dataset_v1/20250213/
         output_layer: output
         selector: ["detect"]
         merger:
@@ -158,15 +157,14 @@ trainer:
             distance_threshold: 10
             property_name: "category"  # same as task.property_name
             class_agnostic: false
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        save_top_k: 1
-        save_last: true
         monitor: val_detect/mAP
         mode: max
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
         module_selector: ["model", "encoder", 0, "model"]
         unfreeze_at_epoch: 4
-rslp_project: sentinel2_vessels
-rslp_experiment: data_20250213_02_all_bands
+project_name: sentinel2_vessels
+run_name: data_20250213_02_all_bands
+management_dir: ${RSLP_PREFIX}/projects

@@ -20,7 +20,7 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 
-BASE_URL = "https://earth-system-studio.allen.ai/api/v1"
+BASE_URL = "https://olmoearth.allenai.org/api/v1"
 
 # Arbitrary user ID to save the annotation under.
 # This one is ES Studio User.
@@ -37,8 +37,10 @@ if __name__ == "__main__":
     # Get the annotation metadata field ID for the Area field.
     url = f"{BASE_URL}/projects/{project_id}"
     response = requests.get(url, headers=headers, timeout=10)
-    assert response.status_code == 200
-    project_data = response.json()
+    response.raise_for_status()
+    json_data = response.json()
+    assert len(json_data["records"]) == 1
+    project_data = json_data["records"][0]
     metadata_field_id = None
     for metadata_field in project_data["template"]["annotation_metadata_fields"]:
         if metadata_field["name"] != "Area":
@@ -50,13 +52,13 @@ if __name__ == "__main__":
     # Now iterate through tasks.
     url = f"{BASE_URL}/projects/{project_id}/tasks?limit=1000"
     response = requests.get(url, headers=headers, timeout=10)
-    assert response.status_code == 200
+    response.raise_for_status()
     item_list = response.json()["items"]
     for task in tqdm.tqdm(item_list):
         task_id = task["id"]
         url = f"{BASE_URL}/tasks/{task_id}/annotations"
         response = requests.get(url, headers=headers, timeout=10)
-        assert response.status_code == 200
+        response.raise_for_status()
         fc = response.json()
         if len(fc["features"]) != 1:
             continue
@@ -106,4 +108,4 @@ if __name__ == "__main__":
 
         url = f"{BASE_URL}/annotations/{annotation_id}"
         response = requests.put(url, json.dumps(post_data), headers=headers, timeout=10)
-        assert response.status_code == 200
+        response.raise_for_status()

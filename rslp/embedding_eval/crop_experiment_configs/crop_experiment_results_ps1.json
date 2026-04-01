@@ -1,0 +1,26 @@
+{
+  "crop_configs": [
+    {
+      "input_size": 4,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 8,
+      "pos_args": [],
+      "pos_name": "center"
+    },
+    {
+      "input_size": 16,
+      "pos_args": [],
+      "pos_name": "center"
+    }
+  ],
+  "methods": [
+    "knn",
+    "linear_probe"
+  ],
+  "model_id": "OlmoEarth-v1-Base",
+  "patch_size": 1,
+  "results_file": "/weka/dfive-default/rslearn-eai/datasets/alphaearth_supplemental_evaluations/crop_experiment_results_ps1.json"
+}

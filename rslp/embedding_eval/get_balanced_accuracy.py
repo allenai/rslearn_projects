@@ -1,0 +1,515 @@
+"""Script to compute balanced accuracy of embeddings with kNN or linear probe."""
+
+import argparse
+import multiprocessing
+import random
+
+import h5py
+import numpy as np
+import rasterio
+import torch
+import tqdm
+from rslearn.const import WGS84_PROJECTION
+from rslearn.dataset import Dataset, Window
+from rslearn.utils.raster_format import GeotiffRasterFormat
+from sklearn.metrics import accuracy_score, balanced_accuracy_score
+from torch import nn
+from upath import UPath
+
+
+def load_gse_embedding(window: Window) -> torch.Tensor | None:
+    """Load Google Satellite Embedding from layer dir.
+
+    Handles both uint16 (needs dequantization) and float32 (already dequantized).
+    """
+    window_root = window.storage.get_window_root(window.group, window.name)
+    for fname in window_root.glob("layers/gse*/*/geotiff.tif"):
+        with rasterio.open(fname.path) as raster:
+            array = raster.read()
+        center = array[:, array.shape[1] // 2, array.shape[2] // 2]
+        if center.max() == 0:
+            continue
+        if array.dtype == np.float32:
+            return torch.tensor(center)
+        else:
+            # uint16: dequantize
+            return torch.tensor(center.astype(np.float32)) / 8192 - 1
+    return None
+
+
+def load_location_embedding(window: Window) -> torch.Tensor:
+    """Load location 'embeddings'."""
+    wgs84_geom = window.get_geometry().to_projection(WGS84_PROJECTION)
+    lon = wgs84_geom.shp.centroid.x
+    lat = wgs84_geom.shp.centroid.y
+    return torch.tensor([lon, lat])
+
+
+def load_pixel_embedding(window: Window) -> torch.Tensor | None:
+    """Get Sentinel-2 pixel values embedding.
+
+    We load center 4x4, averaging on all bands but concatenating over time.
+    """
+    for group_idx in range(12):
+        if not window.is_layer_completed("sentinel2", group_idx):
+            return None
+    values = []
+    for group_idx in range(12):
+        cur_values = []
+        for bands in [
+            ["B01", "B09", "B10"],
+            ["B02", "B03", "B04", "B08"],
+            ["B05", "B06", "B07", "B8A", "B11", "B12"],
+        ]:
+            raster_dir = window.get_raster_dir("sentinel2", bands, group_idx)
+            array = (
+                GeotiffRasterFormat()
+                .decode_raster(raster_dir, window.projection, window.bounds)
+                .get_chw_array()
+            )
+            center_col = array.shape[2] // 2
+            center_row = array.shape[1] // 2
+            center_crop = array[
+                :, center_row - 2 : center_row + 2, center_col - 2 : center_col + 2
+            ]
+            mean_values = center_crop.mean(axis=(1, 2))
+            cur_values.extend(mean_values.tolist())
+        values.append(torch.tensor(cur_values))
+    return torch.cat(values, dim=0)
+
+
+def load_embeddings_from_h5(
+    h5_path: str, windows: list[Window]
+) -> list[torch.Tensor | None]:
+    """Load embeddings from an H5 file, matching by group/name key."""
+    with h5py.File(h5_path, "r") as f:
+        h5_names = list(f["window_names"][:])
+        h5_embeds = f["embeddings"][:]
+    lookup: dict[str, np.ndarray] = {}
+    for i, name in enumerate(h5_names):
+        if isinstance(name, bytes):
+            name = name.decode()
+        lookup[name] = h5_embeds[i]
+    embeddings: list[torch.Tensor | None] = []
+    n_missing = 0
+    for window in windows:
+        key = f"{window.group}/{window.name}"
+        if key in lookup:
+            embeddings.append(torch.as_tensor(lookup[key]))
+        else:
+            n_missing += 1
+            embeddings.append(None)
+    if n_missing > 0:
+        print(f"warning: {n_missing}/{len(windows)} windows not found in H5 file")
+    return embeddings
+
+
+def run_knn_for_k(
+    train_embeddings: torch.Tensor,
+    train_labels: torch.Tensor,
+    test_embeddings: torch.Tensor,
+    num_classes: int,
+    k: int,
+    sim_mode: str,
+) -> torch.Tensor:
+    """Run kNN evaluation over the embeddings."""
+    device = torch.device("cuda")
+    train_embeddings = train_embeddings.to(device=device)
+    train_labels = train_labels.to(device=device)
+    test_embeddings = test_embeddings.to(device=device)
+
+    cos = nn.CosineSimilarity(dim=-1)
+    all_preds = []
+    for idx in range(test_embeddings.shape[0]):
+        test_embedding = (
+            test_embeddings[idx].unsqueeze(dim=0).repeat(train_embeddings.shape[0], 1)
+        )
+
+        if sim_mode == "cos":
+            sims = cos(test_embedding, train_embeddings)
+        elif sim_mode == "l2":
+            sims = -torch.square(test_embedding - train_embeddings).sum(dim=-1)
+
+        top_k = torch.topk(sims, k=k)
+        top_k_indices = top_k.indices
+
+        fetched_labels = train_labels[top_k_indices]
+        fetched_onehots = nn.functional.one_hot(fetched_labels, num_classes=num_classes)
+        sum_onehots = fetched_onehots.sum(dim=0)
+        prediction = torch.argmax(sum_onehots)
+        all_preds.append(prediction)
+
+    return torch.LongTensor(all_preds).cpu()
+
+
+def run_linear_probe(
+    train_embeddings: torch.Tensor,
+    train_labels: torch.Tensor,
+    test_embeddings: torch.Tensor,
+    num_classes: int,
+    lr: float,
+    epochs: int,
+    batch_size: int,
+) -> torch.Tensor:
+    """Train a linear probe on the embeddings and return test predictions."""
+    device = torch.device("cuda")
+    train_embeddings = train_embeddings.float().to(device=device)
+    train_labels = train_labels.to(device=device)
+    test_embeddings = test_embeddings.float().to(device=device)
+
+    embed_dim = train_embeddings.shape[1]
+    model = nn.Linear(embed_dim, num_classes).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.CrossEntropyLoss()
+
+    model.train()
+    for _ in tqdm.tqdm(range(epochs), desc="Linear probe training"):
+        perm = torch.randperm(train_embeddings.shape[0])
+        for i in range(0, train_embeddings.shape[0], batch_size):
+            batch_idx = perm[i : i + batch_size]
+            logits = model(train_embeddings[batch_idx])
+            loss = criterion(logits, train_labels[batch_idx])
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+    model.eval()
+    all_preds = []
+    with torch.no_grad():
+        for i in range(0, test_embeddings.shape[0], batch_size):
+            batch = test_embeddings[i : i + batch_size]
+            logits = model(batch)
+            all_preds.append(logits.argmax(dim=1).cpu())
+    return torch.cat(all_preds, dim=0)
+
+
+def compute_bootstrap_stats(
+    true_labels: torch.Tensor,
+    predictions: torch.Tensor,
+    n_bootstraps: int,
+    metric: str = "balanced_accuracy",
+) -> dict | None:
+    """Compute bootstrap statistics for accuracy metrics.
+
+    Args:
+        true_labels: Ground truth labels
+        predictions: Predicted labels
+        n_bootstraps: Number of bootstrap iterations
+        metric: Either "balanced_accuracy" or "accuracy"
+
+    Returns:
+        Dictionary with mean, std, and 95% CI, or None if not implemented
+    """
+    if metric == "balanced_accuracy":
+        return None  # Not implemented for balanced accuracy
+
+    n_samples = len(true_labels)
+    bootstrap_scores = []
+
+    for _ in range(n_bootstraps):
+        # Sample with replacement
+        indices = np.random.choice(n_samples, size=n_samples, replace=True)
+        bootstrap_labels = true_labels[indices]
+        bootstrap_preds = predictions[indices]
+
+        # Compute accuracy metric on bootstrap sample
+        score = accuracy_score(bootstrap_labels, bootstrap_preds)
+        bootstrap_scores.append(score)
+
+    bootstrap_scores = np.array(bootstrap_scores)
+
+    return {
+        "mean": np.mean(bootstrap_scores),
+        "std": np.std(bootstrap_scores),
+        "ci_lower": np.percentile(bootstrap_scores, 2.5),
+        "ci_upper": np.percentile(bootstrap_scores, 97.5),
+    }
+
+
+if __name__ == "__main__":
+    multiprocessing.set_start_method("forkserver")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--ds_path",
+        type=str,
+        help="The path to the rslearn dataset",
+        required=True,
+    )
+    parser.add_argument(
+        "--repeats",
+        type=int,
+        help="Number of repeats (folds)",
+        required=True,
+    )
+    parser.add_argument(
+        "--samples",
+        type=int,
+        help="Number of samples per class or partition",
+        required=True,
+    )
+    parser.add_argument(
+        "--k",
+        type=int,
+        help="k for k nearest neighbor (required for knn method)",
+        default=5,
+    )
+    parser.add_argument(
+        "--embed_fname",
+        type=str,
+        help="Path to H5 embeddings file, or 'gse' for Google Satellite Embedding from layer dir, or 'loc' for location, or 'pixel' for pixel values",
+        required=True,
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        help="Number of worker processes",
+        default=32,
+    )
+    parser.add_argument(
+        "--method",
+        type=str,
+        help="Evaluation method: knn or linear_probe",
+        default="knn",
+    )
+    parser.add_argument(
+        "--sim_mode",
+        type=str,
+        help="Similarity mode for knn, cos or l2",
+        default="l2",
+    )
+    parser.add_argument(
+        "--label_key",
+        type=str,
+        help="Key in window options containing the label",
+        default="label",  # lulc for awf, category for nandi
+    )
+    parser.add_argument(
+        "--split_key",
+        type=str,
+        help="Key in window options containing the split, or 'group' to expect train and test groups in the rslearn dataset",
+        default="group",  # helios_split for awf and nandi, split for ecosystem
+    )
+    parser.add_argument(
+        "--groups",
+        type=str,
+        help="Only use windows in these comma-separated groups",
+        default=None,
+    )
+    parser.add_argument(
+        "--metric",
+        type=str,
+        help="Either balanced_accuracy or accuracy",
+        default="balanced_accuracy",
+    )
+    parser.add_argument(
+        "--n_bootstraps",
+        type=int,
+        help="Number of bootstrap samples for computing confidence intervals (default: 0, no bootstrapping)",
+        default=0,
+    )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        help="Learning rate for linear probe (default: 0.001)",
+        default=0.001,
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        help="Number of training epochs for linear probe (default: 100)",
+        default=100,
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        help="Batch size for linear probe training (default: 32)",
+        default=32,
+    )
+    args = parser.parse_args()
+
+    # Load windows and all embeddings.
+    dataset = Dataset(UPath(args.ds_path))
+    windows = dataset.load_windows(
+        workers=args.workers, groups=args.groups.split(",") if args.groups else None
+    )
+    if args.embed_fname == "gse":
+        p = multiprocessing.Pool(args.workers)
+        embeddings = list(
+            tqdm.tqdm(
+                p.imap(load_gse_embedding, windows),
+                desc="Loading embeddings",
+                total=len(windows),
+            )
+        )
+        p.close()
+    elif args.embed_fname == "loc":
+        p = multiprocessing.Pool(args.workers)
+        embeddings = list(
+            tqdm.tqdm(
+                p.imap(load_location_embedding, windows),
+                desc="Loading embeddings",
+                total=len(windows),
+            )
+        )
+        p.close()
+    elif args.embed_fname == "pixel":
+        p = multiprocessing.Pool(args.workers)
+        embeddings = list(
+            tqdm.tqdm(
+                p.imap(load_pixel_embedding, windows),
+                desc="Loading embeddings",
+                total=len(windows),
+            )
+        )
+        p.close()
+    else:
+        # Load from H5 file.
+        embeddings = load_embeddings_from_h5(args.embed_fname, windows)
+
+    # Get train and test embeddings, along with label / partition.
+    class_names = []
+    train_embedding_list = []
+    train_labels = []
+    train_partitions: list[str | int] = []
+    test_embedding_list = []
+    test_labels = []
+    for window, embedding in zip(windows, embeddings):
+        if embedding is None:
+            continue
+
+        class_name = window.options[args.label_key]
+        if class_name not in class_names:
+            class_names.append(class_name)
+        label = class_names.index(class_name)
+
+        split: str
+        if args.split_key == "group":
+            split = window.group
+        else:
+            split = window.options[args.split_key]
+
+        if split == "train":
+            train_embedding_list.append(embedding)
+            train_labels.append(label)
+
+            # Get partition, or for classification tasks we use the label instead.
+            if (
+                "partition" in window.options
+                and window.options["partition"] is not None
+            ):
+                train_partitions.append(window.options["partition"])
+            else:
+                train_partitions.append(label)
+
+        elif split == "test":
+            test_embedding_list.append(embedding)
+            test_labels.append(label)
+
+        elif args.split_key == "group":
+            raise ValueError(
+                f"expected all windows to be in train or test but got group {window.group}"
+            )
+
+    test_embeddings = torch.stack(test_embedding_list, dim=0)
+    test_labels = torch.tensor(test_labels, dtype=torch.int64)
+
+    print(
+        f"got n_train={len(train_embedding_list)}, n_test={len(test_embedding_list)}, classes={class_names}, embed_size={len(test_embeddings[0])}"
+    )
+
+    train_indexes_by_partition: dict[str | int, list[int]] = {}
+    for train_idx, partition in enumerate(train_partitions):
+        if partition not in train_indexes_by_partition:
+            train_indexes_by_partition[partition] = []
+        train_indexes_by_partition[partition].append(train_idx)
+
+    print(
+        {
+            partition: len(partition_indexes)
+            for partition, partition_indexes in train_indexes_by_partition.items()
+        }
+    )
+
+    accuracy_scores = []
+    all_fold_bootstrap_stats = []
+
+    for fold_idx in range(args.repeats):
+        print(f"evaluating for fold {fold_idx}")
+        # Take a balanced subset of the training data.
+        cur_train_indices = []
+        for partition_indexes in train_indexes_by_partition.values():
+            if args.samples == 0:
+                cur_train_indices.extend(partition_indexes)
+            else:
+                cur_train_indices.extend(random.sample(partition_indexes, args.samples))
+
+        cur_train_embeddings = torch.stack(
+            [train_embedding_list[idx] for idx in cur_train_indices], dim=0
+        )
+        cur_train_labels = torch.tensor(
+            [train_labels[idx] for idx in cur_train_indices], dtype=torch.int64
+        )
+
+        if args.method == "knn":
+            preds = run_knn_for_k(
+                cur_train_embeddings,
+                cur_train_labels,
+                test_embeddings,
+                len(class_names),
+                args.k,
+                args.sim_mode,
+            )
+        elif args.method == "linear_probe":
+            preds = run_linear_probe(
+                cur_train_embeddings,
+                cur_train_labels,
+                test_embeddings,
+                len(class_names),
+                lr=args.lr,
+                epochs=args.epochs,
+                batch_size=args.batch_size,
+            )
+        else:
+            raise ValueError(f"unknown method {args.method}")
+
+        if args.metric == "balanced_accuracy":
+            accuracy_value = balanced_accuracy_score(test_labels, preds)
+        elif args.metric == "accuracy":
+            accuracy_value = accuracy_score(test_labels, preds)
+
+        # Compute bootstrap statistics if requested
+        if args.n_bootstraps > 0:
+            bootstrap_stats = compute_bootstrap_stats(
+                test_labels, preds, args.n_bootstraps, args.metric
+            )
+            if bootstrap_stats is not None:
+                all_fold_bootstrap_stats.append(bootstrap_stats)
+                print(
+                    f"fold {fold_idx}: accuracy={accuracy_value:.4f}, bootstrap mean={bootstrap_stats['mean']:.4f}, "
+                    f"std={bootstrap_stats['std']:.4f}, 95% CI=[{bootstrap_stats['ci_lower']:.4f}, {bootstrap_stats['ci_upper']:.4f}]"
+                )
+            else:
+                print(
+                    f"fold {fold_idx}: got accuracy {accuracy_value} (bootstrapping not implemented for {args.metric})"
+                )
+        else:
+            print(f"fold {fold_idx}: got accuracy {accuracy_value}")
+
+        accuracy_scores.append(accuracy_value)
+
+    accuracy_scores_array = np.array(accuracy_scores)
+    print(f"\nFold {args.metric} statistics:")
+    print(f"  Mean: {np.mean(accuracy_scores_array):.4f}")
+    print(f"  Std: {np.std(accuracy_scores_array):.4f}")
+    print(
+        f"  95% CI: [{np.percentile(accuracy_scores_array, 2.5):.4f}, {np.percentile(accuracy_scores_array, 97.5):.4f}]"
+    )
+
+    if args.n_bootstraps > 0 and all_fold_bootstrap_stats:
+        print(f"\nPer-fold bootstrap statistics (n_bootstraps={args.n_bootstraps}):")
+        for fold_idx, stats in enumerate(all_fold_bootstrap_stats):
+            print(
+                f"  Fold {fold_idx}: mean={stats['mean']:.4f}, std={stats['std']:.4f}, "
+                f"95% CI=[{stats['ci_lower']:.4f}, {stats['ci_upper']:.4f}]"
+            )
