@@ -50,6 +50,8 @@ from rslp.vessels import VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
 
+NUM_DATA_LOADER_WORKERS = int(os.environ.get("RSLEARN_NUM_DATA_LOADER_WORKERS", 4))
+
 
 @dataclass
 class SceneData:
@@ -136,7 +138,11 @@ def get_vessel_detections(
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
-        run_model_predict(DETECT_MODEL_CONFIG, ds_path)
+        run_model_predict(
+            DETECT_MODEL_CONFIG,
+            ds_path,
+            extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+        )
 
     # Read the detections.
     layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
@@ -232,7 +238,12 @@ def run_classifier(
             raise ValueError(f"window {window.name} does not have materialized Landsat")
 
     # Run classification model.
-    run_model_predict(CLASSIFY_MODEL_CONFIG, ds_path, groups=[group])
+    run_model_predict(
+        CLASSIFY_MODEL_CONFIG,
+        ds_path,
+        groups=[group],
+        extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+    )
 
     # Read the results.
     good_detections = []
