@@ -64,6 +64,7 @@ def launch(
     crop_to: PixelBounds | None = None,
     use_embeddings: bool = False,
     model_config: dict[str, str] | None = None,
+    checkpoint_path: str | None = None,
 ) -> None:
     """Launch OlmoEarth fine-tuning evaluation.
 
@@ -84,6 +85,9 @@ def launch(
             also the encoder will not see gradients.
         model_config: optional dict of model configuration overrides. For example,
             {"decoder": "singleconv"} to use a single conv decoder for segmentation.
+        checkpoint_path: optional path to a pretrained checkpoint directory. When set,
+            the OlmoEarth adapter will load weights from this path instead of the
+            default released model.
     """
     for model in models:
         for task in tasks:
@@ -145,7 +149,13 @@ def launch(
                 ]
 
             # Build extra_args for the training script.
-            all_extra_args: list[str] = []
+            all_extra_args: list[str] = [
+                "--management_dir=${RSLP_PREFIX}/projects",
+            ]
+            if checkpoint_path is not None:
+                all_extra_args.append(
+                    f"--model.init_args.model.init_args.checkpoint_path={checkpoint_path}"
+                )
             if use_embeddings:
                 all_extra_args.append(
                     "--model.init_args.model.init_args.use_embeddings=true"

@@ -64,7 +64,7 @@ data:
     num_workers: 16
     default_config:
       transforms:
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.mask.Mask
           init_args:
             selectors: ["image"]
         - class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterNormalize
@@ -108,5 +108,3 @@ trainer:
         save_last: true
         monitor: val_eval_task/accuracy
         mode: max
-rslp_project: placeholder
-rslp_experiment: placeholder
