@@ -24,7 +24,7 @@ First, download the detector and classifier checkpoints to the `RSLP_PREFIX` dir
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/detector/best.ckpt -O project_data/projects/landsat_vessels/data_20240924_model_20240924_imagenet_patch512_flip_03/best.ckpt
 
     mkdir -p project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/classifer/best.ckpt -O project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt -O project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in `rslp/landsat_vessels/predict_pipeline.py`. You can download the Landsat scene files, e.g. from USGS EarthExplorer or AWS, and then create a configuration file for the prediction pipeline, here is an example:
 

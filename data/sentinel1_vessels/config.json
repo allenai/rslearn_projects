@@ -11,8 +11,10 @@
           ],
           "dtype": "uint8",
           "format": {
-            "format": "png",
-            "name": "single_image"
+            "class_path": "rslearn.utils.raster_format.SingleImageRasterFormat",
+            "init_args": {
+              "format": "png"
+            }
           }
         }
       ],
@@ -33,7 +35,7 @@
         }
       ],
       "data_source": {
-        "name": "rslearn.data_sources.aws_sentinel1.Sentinel1"
+        "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1"
       },
       "resampling_method": "cubic",
       "type": "raster"
@@ -50,9 +52,11 @@
         }
       ],
       "data_source": {
+        "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1",
         "duration": "60d",
-        "name": "rslearn.data_sources.aws_sentinel1.Sentinel1",
-        "orbit_direction": "ASCENDING",
+        "init_args": {
+          "orbit_direction": "ASCENDING"
+        },
         "query_config": {
           "max_matches": 2
         },

@@ -33,6 +33,7 @@ from rslp.landsat_vessels.config import (
     LANDSAT_RESOLUTION,
     LOCAL_FILES_DATASET_CONFIG,
     OUTPUT_LAYER_NAME,
+    WINDOW_MIN_MULTIPLE,
 )
 from rslp.landsat_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.log_utils import get_logger
@@ -49,6 +50,8 @@ from rslp.utils.rslearn import (
 from rslp.vessels import VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
+
+NUM_DATA_LOADER_WORKERS = int(os.environ.get("RSLEARN_NUM_DATA_LOADER_WORKERS", 4))
 
 
 @dataclass
@@ -94,6 +97,16 @@ def get_vessel_detections(
             detector.
         scene_data: the SceneData to apply the detector in.
     """
+    # Pad the bounds so they are multiple of WINDOW_MIN_MULTIPLE.
+    padded_bounds = (
+        (scene_data.bounds[0] // WINDOW_MIN_MULTIPLE) * WINDOW_MIN_MULTIPLE,
+        (scene_data.bounds[1] // WINDOW_MIN_MULTIPLE) * WINDOW_MIN_MULTIPLE,
+        ((scene_data.bounds[2] + WINDOW_MIN_MULTIPLE - 1) // WINDOW_MIN_MULTIPLE)
+        * WINDOW_MIN_MULTIPLE,
+        ((scene_data.bounds[3] + WINDOW_MIN_MULTIPLE - 1) // WINDOW_MIN_MULTIPLE)
+        * WINDOW_MIN_MULTIPLE,
+    )
+
     # Create a window for applying detector.
     dataset = Dataset(ds_path)
     group = "default"
@@ -103,7 +116,7 @@ def get_vessel_detections(
         group=group,
         name=window_name,
         projection=scene_data.projection,
-        bounds=scene_data.bounds,
+        bounds=padded_bounds,
         time_range=scene_data.time_range,
     )
     window.save()
@@ -136,7 +149,11 @@ def get_vessel_detections(
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
-        run_model_predict(DETECT_MODEL_CONFIG, ds_path)
+        run_model_predict(
+            DETECT_MODEL_CONFIG,
+            ds_path,
+            extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+        )
 
     # Read the detections.
     layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
@@ -232,7 +249,12 @@ def run_classifier(
             raise ValueError(f"window {window.name} does not have materialized Landsat")
 
     # Run classification model.
-    run_model_predict(CLASSIFY_MODEL_CONFIG, ds_path, groups=[group])
+    run_model_predict(
+        CLASSIFY_MODEL_CONFIG,
+        ds_path,
+        groups=[group],
+        extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+    )
 
     # Read the results.
     good_detections = []
@@ -330,12 +352,14 @@ def setup_dataset(
             "bands": [],
         }
         for band, image_path in image_files.items():
-            cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["src_dir"] = str(
-                UPath(image_path).parent
+            cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["init_args"]["src_dir"] = (
+                str(UPath(image_path).parent)
             )
             item_spec["fnames"].append(image_path)
             item_spec["bands"].append([band])
-        cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["item_specs"] = [item_spec]
+        cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["init_args"][
+            "raster_item_specs"
+        ] = [item_spec]
 
         with (ds_path / "config.json").open("w") as f:
             json.dump(cfg, f)

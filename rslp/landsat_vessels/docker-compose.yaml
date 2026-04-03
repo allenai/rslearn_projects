@@ -22,7 +22,12 @@ services:
       - 5555:5555
     shm_size: '15G'  # Add the shared memory size
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all  # Make all GPUs visible
+      # Make all GPUs visible.
+      - NVIDIA_VISIBLE_DEVICES=all
+      # Passthrough AWS credentials if available, since those are needed for handling
+      # scene_id requests.
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
     deploy:
       resources:
         reservations:

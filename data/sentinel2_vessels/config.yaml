@@ -93,7 +93,7 @@ data:
             std: 8160
             valid_range: [0, 1]
             bands: [3, 4, 5, 6, 7, 8]
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.mask.Mask
     train_config:
       patch_size: 512
       transforms:
@@ -109,7 +109,7 @@ data:
             std: 8160
             valid_range: [0, 1]
             bands: [3, 4, 5, 6, 7, 8]
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.mask.Mask
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["image"]
