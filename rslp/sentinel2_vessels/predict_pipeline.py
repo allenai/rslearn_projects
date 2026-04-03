@@ -1,6 +1,7 @@
 """Sentinel-2 vessel prediction pipeline."""
 
 import json
+import os
 import shutil
 import tempfile
 from dataclasses import dataclass
@@ -51,7 +52,7 @@ CROP_WINDOW_SIZE = 128
 
 # Use lower number of data loader workers for prediction since each worker will read a
 # big scene (unlike the small windows used during training).
-NUM_DATA_LOADER_WORKERS = 4
+NUM_DATA_LOADER_WORKERS = int(os.environ.get("RSLEARN_NUM_DATA_LOADER_WORKERS", 4))
 
 # We make sure the windows we create for Sentinel-2 scenes are multiples of this amount
 # because we store some bands at 1/4 of the input resolution, so the window size needs
@@ -445,7 +446,12 @@ def run_attribute_model(
             )
 
     # Run classification model.
-    run_model_predict(ATTRIBUTE_MODEL_CONFIG, ds_path, groups=[group])
+    run_model_predict(
+        ATTRIBUTE_MODEL_CONFIG,
+        ds_path,
+        groups=[group],
+        extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+    )
 
     # Read the results.
     for detection, window in zip(detections, windows):
