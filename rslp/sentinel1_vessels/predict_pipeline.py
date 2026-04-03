@@ -1,6 +1,7 @@
 """Sentinel-1 vessel prediction pipeline."""
 
 import json
+import math
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -218,7 +219,7 @@ def setup_dataset_with_scene_ids(
             best_hist_option: Item | None = None
             best_intersect_area = 0
             for group in result_item_groups:
-                hist_option = group[0]
+                hist_option = group.items[0]
                 hist_option_geom = hist_option.geometry.to_projection(WGS84_PROJECTION)
                 intersect_area = hist_option_geom.shp.intersection(wgs84_geom.shp).area
                 if intersect_area > best_intersect_area:
@@ -250,9 +251,9 @@ def setup_dataset_with_scene_ids(
     # file (which is set up to get Sentinel-1 images from AWS.)
     with open(SCENE_ID_DATASET_CONFIG) as f:
         ds_config = json.load(f)
-    ds_config["layers"][HISTORICAL_LAYER_NAME]["data_source"]["orbit_direction"] = (
-        orbit_direction
-    )
+    ds_config["layers"][HISTORICAL_LAYER_NAME]["data_source"]["init_args"][
+        "orbit_direction"
+    ] = orbit_direction
     with (ds_path / "config.json").open("w") as f:
         json.dump(ds_config, f)
 
@@ -272,17 +273,30 @@ def setup_dataset_with_image_files(
         a list of SceneData corresponding to the specified images.
     """
     # Write dataset configuration file.
-    # We need to override the item_specs and src_dir placeholders.
+    # We need to override the item_specs and src_dir placeholders for both the target
+    # image layer and the historical images layer.
     # The src_dir is only used to store summary.json, since we require absolute paths
     # for the actual image files and they will be set directly.
     with open(IMAGE_FILES_DATASET_CONFIG) as f:
         cfg = json.load(f)
-    item_specs = []
+
+    target_item_specs = []
+    historical_item_specs = []
     for task in tasks:
-        for image in [task.image, task.historical1, task.historical2]:
-            assert image is not None
-            # Ensure the filename is a URI so it won't be treated as a relative path.
-            item_specs.append(
+        assert task.image is not None
+        assert task.historical1 is not None
+        assert task.historical2 is not None
+        target_item_specs.append(
+            {
+                "fnames": [
+                    UPath(task.image.vv).absolute().as_uri(),
+                    UPath(task.image.vh).absolute().as_uri(),
+                ],
+                "bands": [["vv"], ["vh"]],
+            }
+        )
+        for image in [task.historical1, task.historical2]:
+            historical_item_specs.append(
                 {
                     "fnames": [
                         UPath(image.vv).absolute().as_uri(),
@@ -291,25 +305,27 @@ def setup_dataset_with_image_files(
                     "bands": [["vv"], ["vh"]],
                 }
             )
-    cfg["layers"][SENTINEL1_LAYER_NAME]["data_source"]["init_args"][
-        "raster_item_specs"
-    ] = item_specs
 
-    src_dir = ds_path / "source_dir"
-    src_dir.mkdir(parents=True)
-    cfg["layers"][SENTINEL1_LAYER_NAME]["data_source"]["init_args"]["src_dir"] = (
-        src_dir.name
-    )
+    for layer_name, item_specs, dir_name in [
+        (SENTINEL1_LAYER_NAME, target_item_specs, "source_dir"),
+        (HISTORICAL_LAYER_NAME, historical_item_specs, "historical_source_dir"),
+    ]:
+        cfg["layers"][layer_name]["data_source"]["init_args"]["raster_item_specs"] = (
+            item_specs
+        )
+        src_dir = ds_path / dir_name
+        src_dir.mkdir(parents=True)
+        cfg["layers"][layer_name]["data_source"]["init_args"]["src_dir"] = src_dir.name
 
     with (ds_path / "config.json").open("w") as f:
         json.dump(cfg, f)
 
-    # Get the projection and scene bounds for each task from the vv image.
-    # We need to do it based on the ground control points though.
+    # Get the projection and scene bounds for each task from the vv image ground
+    # control points.
     scene_datas: list[SceneData] = []
     for task in tasks:
         assert task.image is not None
-        with open_rasterio_upath_reader(task.image.vv) as raster:
+        with open_rasterio_upath_reader(UPath(task.image.vv)) as raster:
             gcps, gcp_crs = raster.gcps
             xs = [gcp.x for gcp in gcps]
             ys = [gcp.y for gcp in gcps]
@@ -318,6 +334,7 @@ def setup_dataset_with_image_files(
                 shapely.box(min(xs), min(ys), max(xs), max(ys)),
                 None,
             )
+
             wgs84_geom = src_geom.to_projection(WGS84_PROJECTION)
             dst_proj = get_utm_ups_projection(
                 wgs84_geom.shp.centroid.x,
@@ -326,11 +343,17 @@ def setup_dataset_with_image_files(
                 -RESOLUTION,
             )
             dst_geom = src_geom.to_projection(dst_proj)
+            minx, miny, maxx, maxy = dst_geom.shp.bounds
 
             scene_datas.append(
                 SceneData(
                     projection=dst_proj,
-                    bounds=dst_geom.shp.bounds,
+                    bounds=(
+                        math.floor(minx),
+                        math.floor(miny),
+                        math.ceil(maxx),
+                        math.ceil(maxy),
+                    ),
                 )
             )
 
