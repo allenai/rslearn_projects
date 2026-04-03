@@ -211,11 +211,15 @@ def setup_dataset_with_image_files(
             item_spec["fnames"].append(UPath(image_file.fname).absolute().as_uri())
             item_spec["bands"].append(image_file.bands)
         item_specs.append(item_spec)
-    cfg["layers"][SENTINEL2_LAYER_NAME]["data_source"]["item_specs"] = item_specs
+    cfg["layers"][SENTINEL2_LAYER_NAME]["data_source"]["init_args"][
+        "raster_item_specs"
+    ] = item_specs
 
     src_dir = ds_path / "source_dir"
     src_dir.mkdir(parents=True)
-    cfg["layers"][SENTINEL2_LAYER_NAME]["data_source"]["src_dir"] = src_dir.name
+    cfg["layers"][SENTINEL2_LAYER_NAME]["data_source"]["init_args"]["src_dir"] = (
+        src_dir.name
+    )
 
     with (ds_path / "config.json").open("w") as f:
         json.dump(cfg, f)

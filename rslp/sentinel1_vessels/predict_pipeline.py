@@ -291,11 +291,15 @@ def setup_dataset_with_image_files(
                     "bands": [["vv"], ["vh"]],
                 }
             )
-    cfg["layers"][SENTINEL1_LAYER_NAME]["data_source"]["item_specs"] = item_specs
+    cfg["layers"][SENTINEL1_LAYER_NAME]["data_source"]["init_args"][
+        "raster_item_specs"
+    ] = item_specs
 
     src_dir = ds_path / "source_dir"
     src_dir.mkdir(parents=True)
-    cfg["layers"][SENTINEL1_LAYER_NAME]["data_source"]["src_dir"] = src_dir.name
+    cfg["layers"][SENTINEL1_LAYER_NAME]["data_source"]["init_args"]["src_dir"] = (
+        src_dir.name
+    )
 
     with (ds_path / "config.json").open("w") as f:
         json.dump(cfg, f)

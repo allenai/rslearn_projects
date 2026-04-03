@@ -28,3 +28,8 @@ INFRA_THRESHOLD_KM = 0.03  # max-distance between marine infra and prediction
 
 # Evaluation config
 MATCH_THRESHOLD_KM = 0.1  # max-distance between ground-truth and prediction
+
+# We make sure the windows we create for Landsat scenes are multiples of this amount
+# because we store some bands at 1/2 of the input resolution, so the window size needs
+# be a multiple of 2.
+WINDOW_MIN_MULTIPLE = 2

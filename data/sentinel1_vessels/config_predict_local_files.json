@@ -11,8 +11,10 @@
           ],
           "dtype": "uint8",
           "format": {
-            "format": "png",
-            "name": "single_image"
+            "class_path": "rslearn.utils.raster_format.SingleImageRasterFormat",
+            "init_args": {
+              "format": "png"
+            }
           }
         }
       ],
@@ -33,9 +35,11 @@
         }
       ],
       "data_source": {
-        "item_specs": "PLACEHOLDER",
-        "name": "rslearn.data_sources.local_files.LocalFiles",
-        "src_dir": "PLACEHOLDER"
+        "class_path": "rslearn.data_sources.local_files.LocalFiles",
+        "init_args": {
+          "raster_item_specs": "PLACEHOLDER",
+          "src_dir": "PLACEHOLDER"
+        }
       },
       "resampling_method": "cubic",
       "type": "raster"
@@ -52,12 +56,14 @@
         }
       ],
       "data_source": {
-        "item_specs": "PLACEHOLDER",
-        "name": "rslearn.data_sources.local_files.LocalFiles",
+        "class_path": "rslearn.data_sources.local_files.LocalFiles",
+        "init_args": {
+          "raster_item_specs": "PLACEHOLDER",
+          "src_dir": "PLACEHOLDER"
+        },
         "query_config": {
           "max_matches": 2
-        },
-        "src_dir": "PLACEHOLDER"
+        }
       },
       "resampling_method": "cubic",
       "type": "raster"
