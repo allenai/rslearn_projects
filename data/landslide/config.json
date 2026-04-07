@@ -100,6 +100,26 @@
         "time_offset": "0d"
       },
       "type": "raster"
+    },
+    "srtm": {
+      "band_sets": [
+        {
+          "bands": ["dem"],
+          "dtype": "int16"
+        }
+      ],
+      "data_source": {
+        "name": "rslearn.data_sources.hf_srtm.SRTM",
+        "ingest": true,
+        "cache_dir": "cache/srtm",
+        "always_use_3arcsecond": false,
+        "query_config": {
+          "max_matches": 1,
+          "min_matches": 0,
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
     }
   }
 }

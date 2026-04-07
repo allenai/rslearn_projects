@@ -16,9 +16,10 @@ python create_windows_for_landslide_detection.py \
 """
 
 import argparse
+import json
 import multiprocessing
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict
+from typing import Dict, List, Optional, Set
 
 import geopandas as gpd
 import pandas as pd
@@ -39,6 +40,66 @@ WINDOW_RESOLUTION = 10  # meters per pixel
 WINDOW_SIZE_PIXELS = 64
 LABEL_LAYER = "label"
 DEFAULT_BUFFER_DISTANCE = 30.0  # meters (2 pixels at 10m/pixel resolution)
+
+
+def _get_existing_split(ds_path: UPath, group: str, window_name: str) -> Optional[str]:
+    meta_path = ds_path / "windows" / group / window_name / "metadata.json"
+    if not meta_path.exists():
+        return None
+    try:
+        data = json.loads(meta_path.read_text())
+        s = data.get("options", {}).get("split")
+        if s in ("train", "val"):
+            return s
+    except (json.JSONDecodeError, OSError, TypeError):
+        pass
+    return None
+
+
+def _year_default_split(event_year: int) -> str:
+    return "val" if event_year >= 2021 else "train"
+
+
+def _vector_label_complete(dataset: Dataset, group: str, window_name: str) -> bool:
+    """True if rslearn has marked the vector label layer completed for this window."""
+    return dataset.storage.is_layer_completed(group, window_name, LABEL_LAYER, 0)
+
+
+def _patch_metadata_split_if_changed(
+    ds_path: UPath, group: str, window_name: str, new_split: str
+) -> bool:
+    """If metadata exists and options.split differs, write new split. Returns True if updated."""
+    meta_path = ds_path / "windows" / group / window_name / "metadata.json"
+    if not meta_path.exists():
+        return False
+    try:
+        data = json.loads(meta_path.read_text())
+    except (json.JSONDecodeError, OSError, TypeError):
+        return False
+    opts = data.setdefault("options", {})
+    if opts.get("split") == new_split:
+        return False
+    opts["split"] = new_split
+    meta_path.write_text(json.dumps(data, separators=(",", ":")))
+    return True
+
+
+def _resolve_split(
+    window_name: str,
+    event_year: int,
+    reviewed_windows: Optional[Set[str]],
+    ds_path: UPath,
+    group: str,
+) -> str:
+    """If reviews.json mode: unreviewed windows → train; reviewed → keep disk split or train if new."""
+    if reviewed_windows is None:
+        return _year_default_split(event_year)
+    if window_name not in reviewed_windows:
+        return "train"
+    existing = _get_existing_split(ds_path, group, window_name)
+    if existing is not None:
+        return existing
+    return "train"
 
 
 class LandslideSpatialIndex:
@@ -100,11 +161,14 @@ class LandslideSpatialIndex:
 
 
 def create_window_pair(
-    row_data: dict, 
-    dataset: Dataset, 
+    row_data: dict,
+    dataset: Dataset,
     sample_type: str,
     spatial_index: LandslideSpatialIndex,
     buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
+    reviewed_windows: Optional[Set[str]] = None,
+    ds_path: Optional[UPath] = None,
+    skip_existing: bool = True,
 ) -> None:
     """Create pre-event and post-event windows for landslide detection.
 
@@ -114,6 +178,8 @@ def create_window_pair(
         sample_type: "positive" creates both positive and negative windows, "negative" creates only negative windows
         spatial_index: spatial index of all landslide polygons
         buffer_distance: distance in meters to buffer around landslides for no_data zone
+        skip_existing: if True, skip windows whose vector ``label`` layer is already completed
+            (unless ``--force`` on CLI); cheap early-exit before geometry work when both twins exist.
     """
     sample_id = str(row_data["id"])  # Convert to string to ensure JSON serializable
     latitude, longitude = float(row_data["latitude"]), float(row_data["longitude"])
@@ -124,7 +190,53 @@ def create_window_pair(
     
     sampling_date = pd.to_datetime(event_date).to_pydatetime().replace(tzinfo=timezone.utc)
     event_year = int(sampling_date.year)
-    
+
+    group = "sen12_landslides"
+    ds_root = ds_path if ds_path is not None else dataset.path
+    negative_window_name = f"{sample_id}_negative_{latitude:.4f}_{longitude:.4f}_{event_year}"
+    positive_window_name: str | None = None
+    if sample_type == "positive":
+        positive_window_name = f"{sample_id}_positive_{latitude:.4f}_{longitude:.4f}_{event_year}"
+
+    skip_neg = False
+    skip_pos = False
+    if skip_existing:
+        skip_neg = _vector_label_complete(dataset, group, negative_window_name)
+        skip_pos = positive_window_name is not None and _vector_label_complete(
+            dataset, group, positive_window_name
+        )
+        if skip_neg and (positive_window_name is None or skip_pos):
+            if reviewed_windows is not None:
+                n = 0
+                sn = _resolve_split(
+                    negative_window_name, event_year, reviewed_windows, ds_root, group
+                )
+                if _patch_metadata_split_if_changed(
+                    ds_root, group, negative_window_name, sn
+                ):
+                    n += 1
+                if positive_window_name is not None:
+                    sp = _resolve_split(
+                        positive_window_name,
+                        event_year,
+                        reviewed_windows,
+                        ds_root,
+                        group,
+                    )
+                    if _patch_metadata_split_if_changed(
+                        ds_root, group, positive_window_name, sp
+                    ):
+                        n += 1
+                if n:
+                    print(
+                        f"SKIP (label complete); updated split in metadata for {n} window(s): {sample_id}"
+                    )
+                else:
+                    print(f"SKIP (label layer complete, splits unchanged): {sample_id}")
+                return
+            print(f"SKIP (label layer complete): {sample_id}")
+            return
+
     # Create spatial geometry centered on the landslide centroid
     src_point = shapely.Point(longitude, latitude)
     src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
@@ -141,11 +253,6 @@ def create_window_pair(
     bounds = calculate_bounds(dst_geometry, window_size)
     print(f"  Window size: {window_size} pixels (~{max_extent:.2f} m extent)")
 
-    is_val = event_year >= 2021
-    split = "val" if is_val else "train"
-
-    group = "sen12_landslides"
-    
     # Create window geometry in projected coordinates, then transform to WGS84 for spatial query
     # bounds is typically (min_col, min_row, max_col, max_row) or an object with attributes
     if hasattr(bounds, 'min_x'):
@@ -207,9 +314,11 @@ def create_window_pair(
         print(f"  WARNING: Negative window has {len(negative_overlapping)} landslides! Will label them.")
     
     # Create negative window (always created, or only when sample_type is "negative")
-    if sample_type == "negative" or sample_type == "positive":
-        negative_window_name = f"{sample_id}_negative_{latitude:.4f}_{longitude:.4f}_{event_year}"
-        
+    if (sample_type == "negative" or sample_type == "positive") and not skip_neg:
+        split_neg = _resolve_split(
+            negative_window_name, event_year, reviewed_windows, ds_root, group
+        )
+
         print(f"Creating NEGATIVE window: {negative_window_name}")
         print(f"  Time range: {negative_start_time} to {negative_end_time} (1 year before event, 60 days)")
         print(f"  Window size: {window_size} pixels ({max_extent:.2f}m extent)")
@@ -222,7 +331,7 @@ def create_window_pair(
             bounds=bounds,
             time_range=(negative_start_time, negative_end_time),
             options={
-                "split": split,
+                "split": split_neg,
                 "latitude": float(latitude),
                 "longitude": float(longitude),
                 "event_date": event_date.isoformat() if hasattr(event_date, 'isoformat') else str(event_date),
@@ -255,10 +364,24 @@ def create_window_pair(
         GeojsonVectorFormat().encode_vector(negative_layer_dir, negative_features)
         negative_window.mark_layer_completed(LABEL_LAYER)
 
+    elif (sample_type == "negative" or sample_type == "positive") and skip_neg:
+        print(f"  Skip negative (existing label): {negative_window_name}")
+        if reviewed_windows is not None:
+            sn = _resolve_split(
+                negative_window_name, event_year, reviewed_windows, ds_root, group
+            )
+            if _patch_metadata_split_if_changed(
+                ds_root, group, negative_window_name, sn
+            ):
+                print(f"    -> metadata split -> {sn}")
+
     # Create positive window (only when sample_type is "positive")
-    if sample_type == "positive":
-        positive_window_name = f"{sample_id}_positive_{latitude:.4f}_{longitude:.4f}_{event_year}"
-        
+    if sample_type == "positive" and not skip_pos:
+        assert positive_window_name is not None
+        split_pos = _resolve_split(
+            positive_window_name, event_year, reviewed_windows, ds_root, group
+        )
+
         print(f"Creating POSITIVE window: {positive_window_name}")
         print(f"  Time range: {positive_start_time} to {positive_end_time} (event date + 60 days)")
         print(f"  (pre_sentinel2 will query 1 year before this via config time_offset)")
@@ -273,7 +396,7 @@ def create_window_pair(
             bounds=bounds,
             time_range=(positive_start_time, positive_end_time),
             options={
-                "split": split,
+                "split": split_pos,
                 "latitude": float(latitude),
                 "longitude": float(longitude),
                 "event_date": event_date.isoformat() if hasattr(event_date, 'isoformat') else str(event_date),
@@ -289,9 +412,8 @@ def create_window_pair(
                 "buffer_distance_m": float(buffer_distance),
             },
         )
-        positive_window.save()
 
-        # Create features: landslides, buffers, and background
+        # Build labels before save() so we do not leave metadata without a vector label on failure
         positive_features = create_labeled_features(
             positive_overlapping,
             positive_window,
@@ -299,24 +421,51 @@ def create_window_pair(
             dst_crs,
             sample_id,
             event_type,
-            event_date
+            event_date,
         )
-        
-        # Verify that positive window has at least one landslide feature
-        landslide_features = [f for f in positive_features if f.properties.get("label") == "landslide"]
+
+        landslide_features = [
+            f for f in positive_features if f.properties.get("label") == "landslide"
+        ]
         if len(landslide_features) == 0:
-            raise ValueError(
-                f"Positive window {positive_window_name} has no landslide features! "
-                f"This should not happen - the primary landslide should always be included. "
-                f"Found {len(positive_overlapping)} overlapping landslides."
+            # Same window metadata/window_type as any other positive; pixels follow what we could draw
+            # from the shapefile (here: no valid landslide polygon → entire chip no_landslide).
+            print(
+                f"  WARNING: {positive_window_name}: no landslide geometry drawable from source data "
+                f"(sample_id={sample_id}, {len(positive_overlapping)} overlap record(s)); "
+                "using full-window no_landslide."
             )
-        
+            positive_features = [
+                Feature(
+                    positive_window.get_geometry(),
+                    {
+                        "label": "no_landslide",
+                        "event_type": event_type,
+                        "event_date": str(event_date),
+                    },
+                ),
+            ]
+
+        positive_window.save()
+
         # Encode all features to the label layer
         positive_layer_dir = positive_window.get_layer_dir(LABEL_LAYER)
         GeojsonVectorFormat().encode_vector(positive_layer_dir, positive_features)
         positive_window.mark_layer_completed(LABEL_LAYER)
 
-    print(f"✓ Created window(s) for sample {sample_id}\n")
+    elif sample_type == "positive" and skip_pos:
+        print(f"  Skip positive (existing label): {positive_window_name}")
+        if reviewed_windows is not None:
+            assert positive_window_name is not None
+            sp = _resolve_split(
+                positive_window_name, event_year, reviewed_windows, ds_root, group
+            )
+            if _patch_metadata_split_if_changed(
+                ds_root, group, positive_window_name, sp
+            ):
+                print(f"    -> metadata split -> {sp}")
+
+    print(f"✓ Finished sample {sample_id}\n")
 
 
 def _fix_geometry(geom: shapely.Geometry) -> shapely.Geometry:
@@ -450,29 +599,42 @@ def create_labeled_features(
         geom_proj = shapely.ops.transform(transformer_to_proj.transform, raw_geom)
         geom_proj = _ensure_polygon(_fix_geometry(geom_proj))
 
-        # If geometry has no area (Point, LineString, degenerate), buffer to 1-pixel circle
         if geom_proj.is_empty or geom_proj.area < min_pixel_area:
-            centroid = shapely.ops.transform(transformer_to_proj.transform, raw_geom.centroid if not raw_geom.is_empty else raw_geom)
-            geom_proj = centroid.buffer(WINDOW_RESOLUTION)
-            print(f"    WARNING: Landslide {landslide['id']} had no/tiny polygon area, "
-                  f"buffered centroid to {WINDOW_RESOLUTION}m radius circle")
-
-        landslide_wgs84 = shapely.ops.transform(transformer_to_wgs84.transform, geom_proj)
-
-        if landslide_wgs84.is_empty or not landslide_wgs84.is_valid:
-            print(f"    WARNING: Landslide {landslide['id']} still invalid after fix, skipping")
+            print(
+                f"    WARNING: Landslide {landslide['id']} has no drawable polygon area in projected CRS; skipping"
+            )
             continue
 
-        features.append(Feature(
-            STGeometry(WGS84_PROJECTION, landslide_wgs84, None),
-            {
-                "label": "landslide",
-                "landslide_id": str(landslide["id"]),
-                "event_type": str(landslide["event_type"]),
-                "event_date": str(landslide["event_date"]),
-                "is_primary": bool(landslide["id"] == sample_id),
-            },
-        ))
+        landslide_wgs84 = shapely.ops.transform(transformer_to_wgs84.transform, geom_proj)
+        if not landslide_wgs84.is_valid:
+            landslide_wgs84 = shapely.make_valid(landslide_wgs84)
+        if isinstance(landslide_wgs84, shapely.GeometryCollection):
+            polys = [
+                g
+                for g in landslide_wgs84.geoms
+                if isinstance(g, (shapely.Polygon, shapely.MultiPolygon)) and not g.is_empty
+            ]
+            if polys:
+                landslide_wgs84 = _fix_geometry(shapely.unary_union(polys))
+
+        if landslide_wgs84.is_empty or not landslide_wgs84.is_valid:
+            print(
+                f"    WARNING: Landslide {landslide['id']} unusable in WGS84 after fix, skipping"
+            )
+            continue
+
+        features.append(
+            Feature(
+                STGeometry(WGS84_PROJECTION, landslide_wgs84, None),
+                {
+                    "label": "landslide",
+                    "landslide_id": str(landslide["id"]),
+                    "event_type": str(landslide["event_type"]),
+                    "event_date": str(landslide["event_date"]),
+                    "is_primary": bool(landslide["id"] == sample_id),
+                },
+            )
+        )
 
     print(f"    Created {len(features)} label features: "
           f"{sum(1 for f in features if f.properties['label']=='landslide')} landslides, "
@@ -488,6 +650,8 @@ def create_windows_from_shapefile(
     sample_type: str,
     max_samples: int = None,
     buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
+    reviews_json: Optional[UPath] = None,
+    skip_existing: bool = True,
 ) -> None:
     """Create windows from Sen12Landslides shapefile.
 
@@ -497,6 +661,10 @@ def create_windows_from_shapefile(
         sample_type: "positive" or "negative", which windows to create
         max_samples: maximum number of samples to process (None for all)
         buffer_distance: distance in meters to buffer around landslides
+        reviews_json: if set, any window name not in this JSON gets split=train; names
+            present keep their existing metadata split when rerunning, else train if new.
+        skip_existing: skip windows whose vector ``label`` layer already has ``completed``;
+            use ``--force`` to rebuild everything.
     """
     gdf = gpd.read_file(shapefile_path)
     
@@ -508,7 +676,26 @@ def create_windows_from_shapefile(
     gdf = gdf.dropna(subset=["event_date"])
     
     print(f"Total landslide events: {len(gdf)}")
-    
+
+    reviewed_windows: Optional[Set[str]] = None
+    if reviews_json is not None:
+        if not reviews_json.exists():
+            raise FileNotFoundError(f"reviews_json not found: {reviews_json}")
+        reviewed_data = json.loads(reviews_json.read_text())
+        reviewed_windows = set(reviewed_data.keys())
+        print(
+            f"reviews_json mode: {len(reviewed_windows)} window names; "
+            "all others will be tagged split=train"
+        )
+
+    if skip_existing:
+        print(
+            "skip_existing: windows with completed vector 'label' layer are skipped "
+            "(use --force to rebuild all)"
+        )
+    else:
+        print("skip_existing off: rebuilding label + metadata for every window")
+
     # Build spatial index from all landslides
     spatial_index = LandslideSpatialIndex(gdf)
     
@@ -537,6 +724,9 @@ def create_windows_from_shapefile(
             sample_type=sample_type,
             spatial_index=spatial_index,
             buffer_distance=buffer_distance,
+            reviewed_windows=reviewed_windows,
+            ds_path=ds_path,
+            skip_existing=skip_existing,
         )
         for row in rows_data
     ]
@@ -583,12 +773,29 @@ if __name__ == "__main__":
         default=DEFAULT_BUFFER_DISTANCE,
         help=f"Buffer distance in meters around landslides for no_data zone (default: {DEFAULT_BUFFER_DISTANCE}, ~{DEFAULT_BUFFER_DISTANCE/WINDOW_RESOLUTION:.1f} pixels at {WINDOW_RESOLUTION}m/pixel)",
     )
+    parser.add_argument(
+        "--reviews_json",
+        type=str,
+        default=None,
+        help=(
+            "Path to landslide reviewer reviews.json. When set: windows not listed get "
+            "split=train; listed windows keep existing metadata split if present, else "
+            "train for new windows. Omit for legacy behavior (year-based only)."
+        ),
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Rebuild every window (ignore completed vector label layer).",
+    )
     args = parser.parse_args()
-    
+
     create_windows_from_shapefile(
         UPath(args.shapefile_path),
         UPath(args.ds_path),
         sample_type=args.sample_type,
         max_samples=args.max_samples,
         buffer_distance=args.buffer_distance,
+        reviews_json=UPath(args.reviews_json) if args.reviews_json else None,
+        skip_existing=not args.force,
     )

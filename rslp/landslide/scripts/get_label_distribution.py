@@ -4,8 +4,8 @@ import rasterio
 from collections import defaultdict
 from pathlib import Path
 
-#ROOT = "/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives/windows/sen12_landslides"
-ROOT = "/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/1k_positives_fix/windows/sen12_landslides"
+ROOT = "/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives/windows/sen12_landslides"
+#ROOT = "/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/1k_positives_fix/windows/sen12_landslides"
 LABEL_PATH = "layers/label_raster/label/geotiff.tif"
 LABELS = [0, 1, 2]
 

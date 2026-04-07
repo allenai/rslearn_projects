@@ -117,6 +117,7 @@ trainer:
     # Uncomment and set output_layer when using this config for prediction.
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
+        # This path will be copied from data.init_args.path by rslearn.
         path: /weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives/
         output_layer: "label_raster" 
         selector: []

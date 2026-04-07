@@ -619,7 +619,7 @@ if __name__ == "__main__":
         "--min_event_date",
         type=str,
         required=False,
-        default="2016-07-01",
+        default="2015-07-01",
         help="Only events on or after this date (YYYY-MM-DD). Default 2016-07-01 gives reliable pre+post S2; use 2015-06-01 for more events (some may fail prepare).",
     )
     args = parser.parse_args()
