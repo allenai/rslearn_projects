@@ -84,18 +84,12 @@ def _compute_change_scores(embeddings: np.ndarray) -> np.ndarray | None:
 def _raster_to_rgb(raster: RasterImage) -> np.ndarray:
     """Convert a RasterImage (C, T, H, W) to RGB array (T, H, W, 3) in uint8.
 
-    Applies a simple percentile stretch for visualization.
+    Maps [0, 2550] -> [0, 255] which works well for Sentinel-2 reflectance values.
     """
     img = raster.image.numpy()  # (C, T, H, W)
     rgb = img[RGB_BAND_INDICES]  # (3, T, H, W)
     rgb = rgb.transpose(1, 2, 3, 0).astype(np.float32)  # (T, H, W, 3)
-
-    lo = np.nanpercentile(rgb, 2)
-    hi = np.nanpercentile(rgb, 98)
-    if hi - lo < 1e-6:
-        hi = lo + 1.0
-    rgb = (rgb - lo) / (hi - lo)
-    rgb = np.clip(rgb * 255, 0, 255).astype(np.uint8)
+    rgb = np.clip(rgb / 2550.0 * 255, 0, 255).astype(np.uint8)
     return rgb
 
 
@@ -105,7 +99,6 @@ def visualize_embeddings(
     mask_filename: str = "embeddings.png",
     out_dir: str = "change_finder_vis",
     num_windows: int | None = None,
-    split: str | None = "val",
     workers: int = 32,
 ) -> None:
     """Produce per-window visualization PNGs.
@@ -116,7 +109,6 @@ def visualize_embeddings(
         mask_filename: PNG filename for per-patch change mask (from compute_embeddings).
         out_dir: local directory to write output PNGs.
         num_windows: maximum number of windows to visualize (None = all).
-        split: filter windows by split tag. None = all.
         workers: number of workers for dataset initialization.
     """
     dataset = Dataset(UPath(ds_path))
@@ -132,8 +124,7 @@ def visualize_embeddings(
             load_all_layers=True,
         )
 
-    tags = {"split": split} if split else None
-    split_config = SplitConfig(tags=tags)
+    split_config = SplitConfig()
     task = ChangeFinderTask()
 
     model_dataset = ModelDataset(
@@ -265,7 +256,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num_windows", type=int, default=None, help="Max windows to visualize"
     )
-    parser.add_argument("--split", default="val", help="Split tag filter (empty=all)")
     parser.add_argument("--workers", type=int, default=32)
     args = parser.parse_args()
 
@@ -275,6 +265,5 @@ if __name__ == "__main__":
         mask_filename=args.mask_filename,
         out_dir=args.out_dir,
         num_windows=args.num_windows,
-        split=args.split or None,
         workers=args.workers,
     )

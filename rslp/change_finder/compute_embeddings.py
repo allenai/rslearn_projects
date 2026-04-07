@@ -103,7 +103,6 @@ def compute_embeddings(
     patch_size: int = 8,
     batch_size: int = 8,
     device: str = "cuda",
-    split: str | None = "val",
     workers: int = 32,
 ) -> None:
     """Compute and save per-year OlmoEarth embeddings for each window.
@@ -116,7 +115,6 @@ def compute_embeddings(
         patch_size: patch size for OlmoEarth.
         batch_size: number of windows to load per batch.
         device: torch device string.
-        split: only process windows with this split tag. None = all windows.
         workers: number of workers for dataset initialization.
     """
     dataset = Dataset(UPath(ds_path))
@@ -139,8 +137,7 @@ def compute_embeddings(
             load_all_layers=True,
         )
 
-    tags = {"split": split} if split else None
-    split_config = SplitConfig(tags=tags, transforms=[normalizer])
+    split_config = SplitConfig(transforms=[normalizer])
     task = ChangeFinderTask()
 
     model_dataset = ModelDataset(
@@ -222,9 +219,6 @@ if __name__ == "__main__":
     parser.add_argument("--patch_size", type=int, default=8)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--device", default="cuda")
-    parser.add_argument(
-        "--split", default="val", help="Split tag to filter windows (empty=all)"
-    )
     parser.add_argument("--workers", type=int, default=32)
     args = parser.parse_args()
 
@@ -236,6 +230,5 @@ if __name__ == "__main__":
         patch_size=args.patch_size,
         batch_size=args.batch_size,
         device=args.device,
-        split=args.split or None,
         workers=args.workers,
     )
