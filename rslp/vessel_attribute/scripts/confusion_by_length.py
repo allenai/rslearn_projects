@@ -62,7 +62,7 @@ def print_confusion_matrix(
     print(f"{'=' * 60}")
 
     col_w = max(len(c) for c in class_names) + 2
-    print(f"{'GT \\ Pred':>{col_w}}" + "".join(c.rjust(col_w) for c in class_names))
+    print(f"{'GT / Pred':>{col_w}}" + "".join(c.rjust(col_w) for c in class_names))
     for i, name in enumerate(class_names):
         row_str = "".join(str(cm[i, j]).rjust(col_w) for j in range(n))
         print(f"{name:>{col_w}}{row_str}")
