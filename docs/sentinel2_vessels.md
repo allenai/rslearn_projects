@@ -185,5 +185,10 @@ Vessel Attribute Prediction
 ---------------------------
 
 The vessel attribute prediction model predicts the vessel type, length, width, speed,
-and heading of each detected vessel. The predicted values are available under the
-"attributes" key of the JSON or GeoJSON vessel object.
+and heading of each detected vessel. It uses a separate model configured in
+`data/sentinel2_vessel_attribute/config.yaml`. The predicted values are available under
+the "attributes" key of the JSON or GeoJSON vessel object.
+
+Attribute prediction and near-marine-infrastructure filtering (which removes detections
+within 50 m of known marine infrastructure) are always applied during `predict_pipeline`,
+both when using the CLI and the Docker API.
