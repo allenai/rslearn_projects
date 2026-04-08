@@ -20,6 +20,9 @@ from rslearn.utils.geometry import STGeometry
 from shapely.geometry import box
 
 from rslp.sentinel1_vessels.predict_pipeline import (
+    ATTRIBUTE_MODEL_CONFIG,
+    DETECT_MODEL_CONFIG,
+    SCENE_ID_DATASET_CONFIG,
     PredictionTask,
     Sentinel1Image,
     predict_pipeline,
@@ -203,13 +206,11 @@ def _patch_model_configs(
 ) -> None:
     """Create tiny model configs and monkeypatch the module constants."""
     detect_cfg = str(tmp_path / "detect_config.yaml")
-    _create_tiny_detect_config("data/sentinel1_vessels/config.yaml", detect_cfg)
+    _create_tiny_detect_config(DETECT_MODEL_CONFIG, detect_cfg)
     monkeypatch.setattr(_s1_mod, "DETECT_MODEL_CONFIG", detect_cfg)
 
     attr_cfg = str(tmp_path / "attribute_config.yaml")
-    _create_tiny_attribute_config(
-        "data/sentinel1_vessel_attribute/config.yaml", attr_cfg
-    )
+    _create_tiny_attribute_config(ATTRIBUTE_MODEL_CONFIG, attr_cfg)
     monkeypatch.setattr(_s1_mod, "ATTRIBUTE_MODEL_CONFIG", attr_cfg)
 
     monkeypatch.setenv("RSLP_PREFIX", str(tmp_path / "rslp"))
@@ -258,7 +259,7 @@ def test_predict_pipeline_scene_id(
 
     # Point to a copy of the dataset config (so writes don't pollute the repo).
     ds_cfg = str(tmp_path / "config.json")
-    with open("data/sentinel1_vessels/config.json") as f:
+    with open(SCENE_ID_DATASET_CONFIG) as f:
         cfg = json.load(f)
     with open(ds_cfg, "w") as f:
         json.dump(cfg, f)

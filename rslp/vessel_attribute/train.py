@@ -387,6 +387,9 @@ class VesselAttributeMultiTask(MultiTask):
 
             lines.append(s)
 
+        if self.heading_mode == HeadingMode.XYD:
+            raise ValueError("visualize does not support HeadingMode.XYD")
+
         for task in ["heading"]:
             pred_cog = (
                 math.atan2(output[task + "_y"], output[task + "_x"]) * 180 / math.pi
