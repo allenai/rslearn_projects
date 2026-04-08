@@ -1,4 +1,4 @@
-"""Custom task and augmentation for vessel attribute trianing."""
+"""Custom task and augmentation for vessel attribute training."""
 
 import math
 import os

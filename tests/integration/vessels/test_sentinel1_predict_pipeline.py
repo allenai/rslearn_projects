@@ -15,6 +15,7 @@ from rasterio.control import GroundControlPoint
 from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources.copernicus import CopernicusItem
+from rslearn.data_sources.utils import MatchedItemGroup
 from rslearn.utils.geometry import STGeometry
 from shapely.geometry import box
 
@@ -168,9 +169,9 @@ class _FakeCopernicusSentinel1:
 
     def get_items(
         self, geometries: list, query_config: Any
-    ) -> list[list[list[CopernicusItem]]]:
+    ) -> list[list[MatchedItemGroup[CopernicusItem]]]:
         hist_item = _make_copernicus_item(FAKE_S1_HIST_ID, datetime(2024, 8, 1))
-        return [[[hist_item]]]
+        return [[MatchedItemGroup(items=[hist_item], request_time_range=None)]]
 
 
 # --- Helpers ---
