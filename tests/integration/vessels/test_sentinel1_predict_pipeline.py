@@ -252,6 +252,10 @@ def test_predict_pipeline_scene_id(
     # Replace the Copernicus Sentinel1 class used for metadata lookup.
     monkeypatch.setattr(_s1_mod, "Sentinel1", _FakeCopernicusSentinel1)
 
+    # aws_sentinel1.Sentinel1 internally creates a real CopernicusSentinel1 which
+    # requires credentials at init time even though it won't call the API.
+    monkeypatch.setenv("COPERNICUS_ACCESS_TOKEN", "fake-token")
+
     # Point to a copy of the dataset config (so writes don't pollute the repo).
     ds_cfg = str(tmp_path / "config.json")
     with open("data/sentinel1_vessels/config.json") as f:
