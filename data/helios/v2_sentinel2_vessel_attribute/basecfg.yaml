@@ -13,7 +13,7 @@ data:
   init_args:
     path: /weka/dfive-default/rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20250205/
     task:
-      class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeMultiTask
+      class_path: rslp.vessel_attribute.train.VesselAttributeMultiTask
       init_args:
         length_buckets: [10, 20, 30, 50, 75, 100, 150, 200]
         width_buckets: [5, 10, 20]

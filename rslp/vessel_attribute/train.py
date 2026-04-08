@@ -12,6 +12,7 @@ import torch
 import wandb
 from PIL import Image, ImageDraw
 from rslearn.train.lightning_module import RslearnLightningModule
+from rslearn.train.model_context import ModelContext
 from rslearn.train.tasks.multi_task import MultiTask
 from rslearn.train.tasks.regression import RegressionTask
 from rslearn.train.tasks.task import BasicTask, Task
@@ -176,6 +177,12 @@ class VesselAttributeMultiTask(MultiTask):
         width_buckets: list[float] = [],
         speed_buckets: list[float] = [],
         heading_mode: HeadingMode = HeadingMode.XY,
+        image_bands: tuple[int, ...] = (0, 1, 2),
+        # This default is suitable for Sentinel-2 with divide-by-10000 normalization.
+        remap_values: tuple[tuple[float, float], tuple[int, int]] | None = (
+            (0.0, 0.3),
+            (0, 255),
+        ),
     ):
         """Create a new VesselAttributeMultiTask.
 
@@ -186,8 +193,12 @@ class VesselAttributeMultiTask(MultiTask):
             width_buckets: which buckets to use for width attribute.
             speed_buckets: which attributes to use for speed attribute.
             heading_mode: how heading should be predicted
+            image_bands: which bands from the input image to use for visualization
+            remap_values: if set, remap image values from the first range to the second
         """
         super().__init__(tasks, input_mapping)
+        self.image_bands = image_bands
+        self.remap_values = remap_values
         self.heading_mode = heading_mode
         self.buckets = dict(
             length=length_buckets,
@@ -335,7 +346,9 @@ class VesselAttributeMultiTask(MultiTask):
             a dictionary mapping image name to visualization image
         """
         # Create combined visualization showing all the attributes.
-        basic_task = BasicTask(remap_values=[[0.0, 0.3], [0, 255]])
+        basic_task = BasicTask(
+            image_bands=self.image_bands, remap_values=self.remap_values
+        )
         scale_factor = 0.01
 
         image = basic_task.visualize(input_dict, target_dict, output)["image"]
@@ -452,32 +465,40 @@ class VesselAttributeLightningModule(RslearnLightningModule):
 
     def test_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
         """Test step extended with confusion matrix."""
-        # Code below is copied from RslearnLightningModule.test_step.
         inputs, targets, metadatas = batch
+        context = ModelContext(inputs=inputs, metadatas=metadatas)
         batch_size = len(inputs)
-        outputs, loss_dict = self(inputs, targets)
+        model_outputs = self(context, targets)
+
+        loss_dict = model_outputs.loss_dict
+        outputs = model_outputs.outputs
         test_loss = sum(loss_dict.values())
         self.log_dict(
             {"test_" + k: v for k, v in loss_dict.items()},
             batch_size=batch_size,
             on_step=False,
             on_epoch=True,
+            sync_dist=True,
         )
         self.log(
-            "test_loss", test_loss, batch_size=batch_size, on_step=False, on_epoch=True
+            "test_loss",
+            test_loss,
+            batch_size=batch_size,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
         )
         self.test_metrics.update(outputs, targets)
-        self.log_dict(self.test_metrics, batch_size=batch_size, on_epoch=True)
 
         if self.visualize_dir:
-            for idx, (inp, target, output, metadata) in enumerate(
-                zip(inputs, targets, outputs, metadatas)
+            for inp, target, output, metadata in zip(
+                inputs, targets, outputs, metadatas
             ):
                 images = self.task.visualize(inp, target, output)
                 for image_suffix, image in images.items():
                     out_fname = os.path.join(
                         self.visualize_dir,
-                        f'{metadata["window_name"]}_{metadata["bounds"][0]}_{metadata["bounds"][1]}_{image_suffix}.png',
+                        f"{metadata.window_name}_{metadata.crop_bounds[0]}_{metadata.crop_bounds[1]}_{image_suffix}.png",
                     )
                     Image.fromarray(image).save(out_fname)
 
@@ -534,6 +555,8 @@ class VesselAttributeLightningModule(RslearnLightningModule):
 
     def on_test_epoch_end(self) -> None:
         """Push the confusion matrices to W&B."""
+        super().on_test_epoch_end()
+
         vessel_attribute_multi_task = self.task
         assert isinstance(vessel_attribute_multi_task, VesselAttributeMultiTask)
 
@@ -571,6 +594,7 @@ class VesselAttributeFlip(torch.nn.Module):
         horizontal: bool = True,
         vertical: bool = True,
         heading_mode: HeadingMode = HeadingMode.XY,
+        image_keys: list[str] = ["image"],
     ):
         """Initialize a new VesselAttributeFlip.
 
@@ -578,11 +602,13 @@ class VesselAttributeFlip(torch.nn.Module):
             horizontal: whether to randomly flip horizontally
             vertical: whether to randomly flip vertically
             heading_mode: how the heading is being represented.
+            image_keys: which image keys to flip.
         """
         super().__init__()
         self.horizontal = horizontal
         self.vertical = vertical
         self.heading_mode = heading_mode
+        self.image_keys = image_keys
 
     def sample_state(self) -> dict[str, bool]:
         """Randomly decide how to transform the input.
@@ -662,7 +688,7 @@ class VesselAttributeFlip(torch.nn.Module):
             transformed (input_dicts, target_dicts) tuple
         """
         state = self.sample_state()
-        self.apply_state(state, input_dict, ["image"], False)
+        self.apply_state(state, input_dict, self.image_keys, False)
         self.apply_state(state, target_dict, [], True)
         return input_dict, target_dict
 

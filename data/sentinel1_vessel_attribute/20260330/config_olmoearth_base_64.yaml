@@ -5,18 +5,15 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslp.helios.model.Helios
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
-              checkpoint_path: "{CHECKPOINT_PATH}"
-              selector: ["encoder"]
-              forward_kwargs:
-                patch_size: {PATCH_SIZE}
-              random_initialization: true
+              model_id: OLMOEARTH_V1_BASE
+              patch_size: 4
         decoders:
           length:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: {ENCODER_EMBEDDING_SIZE}
+                in_channels: 768
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -24,7 +21,7 @@ model:
           width:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: {ENCODER_EMBEDDING_SIZE}
+                in_channels: 768
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -32,7 +29,7 @@ model:
           speed:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: {ENCODER_EMBEDDING_SIZE}
+                in_channels: 768
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -40,7 +37,7 @@ model:
           heading_x:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: {ENCODER_EMBEDDING_SIZE}
+                in_channels: 768
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -48,7 +45,7 @@ model:
           heading_y:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: {ENCODER_EMBEDDING_SIZE}
+                in_channels: 768
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -56,26 +53,31 @@ model:
           ship_type:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: {ENCODER_EMBEDDING_SIZE}
+                in_channels: 768
                 out_channels: 9
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.classification.ClassificationHead
-    lr: 0.0001
-    plateau: true
-    plateau_factor: 0.2
-    plateau_patience: 2
-    plateau_min_lr: 0
-    plateau_cooldown: 10
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.0001
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20250205/
+    path: /weka/dfive-default/rslearn-eai/datasets/sentinel1_vessel_attribute/dataset_v1/20260330/
     inputs:
-      sentinel2_l2a:
+      sentinel1:
         data_type: "raster"
-        layers: ["sentinel2"]
-        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        layers: ["sentinel1"]
+        bands: ["vv", "vh"]
         passthrough: true
         dtype: FLOAT32
       info:
@@ -143,27 +145,41 @@ data:
             info: "targets"
           ship_type:
             info: "targets"
-    batch_size: 16
-    num_workers: 32
+    batch_size: 32
+    num_workers: 64
     default_config:
       transforms:
-        - class_path: rslp.helios.norm.HeliosNormalize
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
-            config_fname: "/opt/helios/data/norm_configs/computed.json"
             band_names:
-              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+              sentinel1: ["vv", "vh"]
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 64
+            mode: "center"
+            image_selectors: ["sentinel1"]
     train_config:
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel1: ["vv", "vh"]
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 64
+            mode: "center"
+            image_selectors: ["sentinel1"]
+        - class_path: rslp.vessel_attribute.train.VesselAttributeFlip
+          init_args:
+            image_keys: ["sentinel1"]
       tags:
         split: "train"
-      groups: ["detections_bigtable"]
     val_config:
       tags:
         split: "val"
-      groups: ["detections_bigtable"]
     test_config:
       tags:
         split: "val"
-      groups: ["detections_bigtable"]
     predict_config:
       groups: ["attribute_predict"]
       skip_targets: true
@@ -173,15 +189,13 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        save_top_k: 1
-        save_last: true
         monitor: val_loss
         mode: min
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        path: placeholder
         output_layer: output
-rslp_project: helios_finetuning
-rslp_experiment: placeholder
+project_name: sentinel1_vessel_attribute
+run_name: data_20260330_olmoearth_base_64_01
+management_dir: ${RSLP_PREFIX}/projects

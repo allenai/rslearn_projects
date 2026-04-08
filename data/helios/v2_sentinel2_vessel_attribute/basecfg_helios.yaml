@@ -87,7 +87,7 @@ data:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
       transforms:
-        - class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeFlip
+        - class_path: rslp.vessel_attribute.train.VesselAttributeFlip
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
             selections:
