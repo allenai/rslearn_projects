@@ -25,7 +25,7 @@ from rslp.utils.prometheus import setup_prom_metrics
 from rslp.vessels import VesselDetectionDict
 
 # Load environment variables from the .env file
-load_dotenv(override=True)
+load_dotenv()
 # Configurable host and port, overridable via environment variables
 SENTINEL1_HOST = os.getenv("SENTINEL1_HOST", "0.0.0.0")
 SENTINEL1_PORT = int(os.getenv("SENTINEL1_PORT", 5555))
@@ -175,7 +175,7 @@ async def get_detections(
     Returns:
         Sentinel1Response: Response object with status and predictions.
     """
-    if not info.scene_id or not (info.image and info.historical1 and info.historical2):
+    if not info.scene_id and not (info.image and info.historical1 and info.historical2):
         logger.error(
             "Invalid request: Missing scene_id or image/historical1/historical2."
         )
