@@ -42,12 +42,11 @@ images must have the same orbit direction as the target image.
 Training
 --------
 
-The detector uses a SimpleTimeSeries encoder with a Swin backbone, FPN, and Faster
-R-CNN. It takes three groups of images as input: the target scene and two historical
-scenes, each with VV and VH bands.
+The object detection model applies a SwinB backbone on each of three images (the target
+scene and two historical scenes), then passes the features to a feature pyramid network
+and Faster R-CNN detection head.
 
-Use the command below to train the model. Note that Weights & Biases is needed. You can
-disable W&B with `--log_mode=no` but then it may be difficult to track the metrics.
+Use the command below to train the model:
 
     rslearn model fit --config data/sentinel1_vessels/config.yaml --data.init_args.path /path/to/sentinel1_vessels_dataset/
 
