@@ -1,0 +1,93 @@
+config_version: 0.3.0
+
+data:
+  temporality:
+    name: framed_point_in_time
+    lookbehind_observation:
+      name: repeating_interval
+      period_duration_days: 15
+      num_periods: 4
+    lookbehind_offset_days: 305
+    lookahead_observation:
+      name: repeating_interval
+      period_duration_days: 15
+      num_periods: 4
+    lookahead_offset_days: 0
+
+  modalities:
+    sentinel2_l2a:
+      space_mode: mosaic
+
+  output:
+    data_type: raster
+    fields:
+      segment:
+        field_type: segmentation
+        allowed_values:
+          - value: 0
+            label: no_landslide
+            color: [124, 67, 18]
+          - value: 1
+            label: landslide
+            color: [169, 214, 146]
+        nodata_value: 2
+
+model:
+  encoder:
+    name: olmoearth
+    patch_size: 4
+    source:
+      name: registry
+      model_name: OlmoEarth-v1-Base
+      embedding_size: 768
+  tasks:
+    segment:
+      name: manual
+      decoder_layers:
+          - class_path: rslearn.models.unet.UNetDecoder
+            init_args:
+              in_channels: [[4, 768]]
+              out_channels: 2
+              conv_layers_per_resolution: 2
+              num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+            init_args:
+                weights: [0.05, 0.95]
+                dice_loss: true
+      task:
+        class_path: rslearn.train.tasks.segmentation.SegmentationTask
+        init_args:
+          num_classes: 2
+          enable_miou_metric: true
+          nodata_value: 2
+
+input_preprocessing:
+  default:
+    input_size: 32
+    input_mode: all_tiles
+  predict:
+    overlap_pixels: 8
+
+prediction_requests:
+  partitioners:
+    request_to_partitions:
+      name: grid
+      grid_size: 1.0
+      overlap_size: 0.0
+      projection: null
+      clip: false
+    partition_to_windows:
+      name: grid
+      grid_size: 1024
+      overlap_size: 0.0
+      projection:
+        method: use_utm
+      clip: false
+
+  postprocessors:
+    window:
+      name: noop
+    partition:
+      name: combine_geotiff
+    request:
+      name: combine_geotiff
