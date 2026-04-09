@@ -9,11 +9,16 @@ Features are collected from OSM objects tagged with ski-related keys (``piste:ty
 
 **Performance:** continent-scale ``*.osm.pbf`` files are huge. Prefer a regional extract or
 pre-filter with ``osmium extract`` (bbox or poly) before running this script.
+The ``osmium`` **shell command** is from the ``osmium-tool`` package (not ``pip install osmium``);
+e.g. ``conda install -c conda-forge osmium-tool`` or ``apt install osmium-tool`` on Debian/Ubuntu.
 
 With ``--max_samples``, the default ``--sample_mode reservoir`` keeps an *unbiased* random
-subset but must scan the **entire** PBF. For quick smoke tests on huge extracts, use
-``--sample_mode prefix`` to stop after the first N accepted sites (order is PBF-dependent,
-not uniformly random over the planet).
+subset but must scan the **entire** PBF. ``--sample_mode prefix`` stops right after N
+accepted sites, but on standard extracts **nodes are stored before ways**, and polygon
+``Area`` objects are built from ways. So for ``--areas_only`` on continent-scale files you
+still pay a **full sequential read of the node section** (often tens of GB / long wall time)
+before the first resort polygon can appear. For quick tests, **clip the PBF** with
+``osmium extract -b ...`` or use a **country / regional** extract (see example below).
 
 Example (full run, unbiased subsample after one full scan):
     PYTHONPATH=/path/to/rslearn_projects python rslp/landslide/scripts/create_osm_ski_windows.py \\
@@ -23,13 +28,15 @@ Example (full run, unbiased subsample after one full scan):
         --time_start 2019-06-01 \\
         --time_end 2019-08-31
 
-Example (fast test: first 20 polygonal ski areas only, stop reading early):
+Example (actually fast: small bbox clip, then prefix sampling):
+    osmium extract -b 6.0,45.5,10.5,47.5 europe-latest.osm.pbf -o alps.osm.pbf
     PYTHONPATH=/path/to/rslearn_projects python rslp/landslide/scripts/create_osm_ski_windows.py \\
-        --pbf_path /weka/dfive-default/piperw/data/europe-latest.osm.pbf \\
+        --pbf_path alps.osm.pbf \\
         --ds_path data/landslide/osm_ski_windows_test/ \\
         --max_samples 20 \\
         --sample_mode prefix \\
         --areas_only \\
+        --progress_every 2000000 \\
         --num_workers 4
 
 ``--ds_path`` must be an existing rslearn dataset directory containing ``config.json``
@@ -43,6 +50,8 @@ import hashlib
 import json
 import multiprocessing
 import random
+import threading
+import time
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -182,6 +191,7 @@ def iter_ski_sites_from_pbf(
     bbox: tuple[float, float, float, float] | None = None,
     min_polygon_area_m2: float = 0.0,
     areas_only: bool = False,
+    progress_every: int = 0,
 ) -> Iterator[SkiSiteRecord]:
     """Stream ski-related features from a PBF path.
 
@@ -191,6 +201,8 @@ def iter_ski_sites_from_pbf(
         min_polygon_area_m2: Drop polygon sites smaller than this area (meters), after UTM warp.
         areas_only: If True, only emit polygonal ``Area`` features (e.g. resort footprints),
             skipping nodes and open ways such as lifts and pistes as lines.
+        progress_every: If > 0, print a heartbeat every this many raw (key-filtered) objects
+            so long node-section scans do not look hung.
     """
     # Restrict to objects that might carry ski tags to speed up I/O.
     key_filter = KeyFilter(
@@ -204,7 +216,17 @@ def iter_ski_sites_from_pbf(
     proc = osmium.FileProcessor(pbf_path).with_areas(key_filter)
     wkt_factory = WKTFactory()
 
+    seen = 0
+    emitted = 0
     for obj in proc:
+        seen += 1
+        if progress_every > 0 and seen % progress_every == 0:
+            print(
+                f"  ... PBF scan: {seen:,} key-filtered objects read, "
+                f"{emitted} ski site(s) emitted so far ...",
+                flush=True,
+            )
+
         if not _tags_indicate_ski(obj.tags):
             continue
 
@@ -235,6 +257,7 @@ def iter_ski_sites_from_pbf(
                 continue
 
         kind = type_name.lower()
+        emitted += 1
         yield SkiSiteRecord(
             osm_kind=kind,
             osm_id=int(obj.id),
@@ -246,6 +269,18 @@ def iter_ski_sites_from_pbf(
 SampleMode = Literal["reservoir", "prefix"]
 
 
+def _pbf_scan_heartbeat(stop: threading.Event, interval_s: float) -> None:
+    """Print elapsed time periodically until stop is set (daemon thread)."""
+    t0 = time.monotonic()
+    while not stop.wait(timeout=interval_s):
+        dt = time.monotonic() - t0
+        print(
+            f"  ... still scanning PBF ({dt:.0f}s elapsed; large extracts spend a long time "
+            f"in the node section before polygon areas) ...",
+            flush=True,
+        )
+
+
 def collect_ski_sites(
     pbf_path: str,
     max_samples: int | None,
@@ -254,6 +289,7 @@ def collect_ski_sites(
     random_seed: int,
     sample_mode: SampleMode = "reservoir",
     areas_only: bool = False,
+    progress_every: int = 0,
 ) -> list[SkiSiteRecord]:
     """Materialize ski sites from PBF, optionally subsampling for memory/runtime.
 
@@ -266,6 +302,7 @@ def collect_ski_sites(
         bbox=bbox,
         min_polygon_area_m2=min_polygon_area_m2,
         areas_only=areas_only,
+        progress_every=progress_every,
     )
     if max_samples is None:
         return list(stream)
@@ -413,6 +450,8 @@ def create_windows_from_pbf(
     skip_existing: bool = True,
     sample_mode: SampleMode = "reservoir",
     areas_only: bool = False,
+    progress_every: int = 0,
+    progress_seconds: float = 0.0,
 ) -> None:
     """Scan PBF for ski features and write rslearn windows under ``ds_path``."""
     if time_start is None or time_end is None:
@@ -420,15 +459,40 @@ def create_windows_from_pbf(
         time_end = datetime(2019, 8, 31, tzinfo=timezone.utc)
 
     print(f"Reading ski features from {pbf_path} (sample_mode={sample_mode}) ...")
-    records = collect_ski_sites(
-        str(pbf_path),
-        max_samples=max_samples,
-        bbox=bbox,
-        min_polygon_area_m2=min_polygon_area_m2,
-        random_seed=random_seed,
-        sample_mode=sample_mode,
-        areas_only=areas_only,
-    )
+    if sample_mode == "prefix" and areas_only:
+        print(
+            "Hint: on large extracts, nodes precede ways in the PBF; expect a long read "
+            "before the first polygon Area, or clip with osmium extract (see script docstring).",
+            flush=True,
+        )
+
+    hb_stop: threading.Event | None = None
+    hb_thread: threading.Thread | None = None
+    if progress_seconds > 0:
+        hb_stop = threading.Event()
+        hb_thread = threading.Thread(
+            target=_pbf_scan_heartbeat,
+            args=(hb_stop, progress_seconds),
+            daemon=True,
+        )
+        hb_thread.start()
+
+    try:
+        records = collect_ski_sites(
+            str(pbf_path),
+            max_samples=max_samples,
+            bbox=bbox,
+            min_polygon_area_m2=min_polygon_area_m2,
+            random_seed=random_seed,
+            sample_mode=sample_mode,
+            areas_only=areas_only,
+            progress_every=progress_every,
+        )
+    finally:
+        if hb_stop is not None:
+            hb_stop.set()
+        if hb_thread is not None:
+            hb_thread.join(timeout=1.0)
     print(f"Collected {len(records)} ski sites for windows.")
 
     dataset = Dataset(ds_path)
@@ -459,7 +523,11 @@ def create_windows_from_pbf(
 if __name__ == "__main__":
     multiprocessing.set_start_method("forkserver")
     parser = argparse.ArgumentParser(
-        description="Create rslearn windows from OSM PBF ski features (false positives for landslide detection)"
+        description="Create rslearn windows from OSM PBF ski features (false positives for landslide detection)",
+        epilog="Large extracts: use a regional PBF or `osmium extract -b minlon,minlat,maxlon,maxlat` "
+        "before running; continent files list billions of nodes before polygon areas appear. "
+        "Install the extract CLI with: conda install -c conda-forge osmium-tool (not pip).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--pbf_path",
@@ -492,7 +560,8 @@ if __name__ == "__main__":
         choices=("reservoir", "prefix"),
         default="reservoir",
         help="reservoir: unbiased random sample over the entire file (slow on continent PBFs). "
-        "prefix: first N accepted sites then stop (fast for testing; not spatially uniform).",
+        "prefix: stop after N accepted sites (still slow on full Europe + --areas_only until the "
+        "ways section; clip the PBF first).",
     )
     parser.add_argument(
         "--areas_only",
@@ -549,6 +618,22 @@ if __name__ == "__main__":
         action="store_true",
         help="Rebuild windows even if the vector label layer is already completed",
     )
+    parser.add_argument(
+        "--progress_every",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Print heartbeat every N key-filtered OSM objects during the scan (0=off). "
+        "Use e.g. 5000000 on huge files so long node-section reads do not look stuck.",
+    )
+    parser.add_argument(
+        "--progress_seconds",
+        type=float,
+        default=120.0,
+        metavar="SEC",
+        help="Wall-clock heartbeat every SEC seconds while scanning the PBF (0=off). "
+        "Default 120 so silent node-section reads on Europe-sized files do not look hung.",
+    )
     args = parser.parse_args()
 
     create_windows_from_pbf(
@@ -566,4 +651,6 @@ if __name__ == "__main__":
         skip_existing=not args.force,
         sample_mode=cast(SampleMode, args.sample_mode),
         areas_only=args.areas_only,
+        progress_every=args.progress_every,
+        progress_seconds=args.progress_seconds,
     )
