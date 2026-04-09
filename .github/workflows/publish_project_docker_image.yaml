@@ -57,5 +57,7 @@ jobs:
           docker compose build
           docker tag ${{ inputs.rslp_project }}:latest ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ inputs.image_name }}:sha-${{ env.SHORT_SHA }}
           docker tag ${{ inputs.rslp_project }}:latest ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ inputs.image_name }}:${{ env.LATEST_TAG }}
+          docker tag ${{ inputs.rslp_project }}:latest ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ inputs.image_name }}:latest
           docker push ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ inputs.image_name }}:sha-${{ env.SHORT_SHA }}
           docker push ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ inputs.image_name }}:${{ env.LATEST_TAG }}
+          docker push ${{ env.REGISTRY }}/${{ env.ORG_NAME }}/${{ inputs.image_name }}:latest

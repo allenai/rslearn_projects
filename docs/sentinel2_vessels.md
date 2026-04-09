@@ -131,7 +131,7 @@ docker run \
     -v $PWD/project_data/:/project_data/ \
     --shm-size=15g \
     --gpus all \
-    ghcr.io/allenai/sentinel2-vessel-detection:sentinel2_vessels_v0.0.6
+    ghcr.io/allenai/sentinel2-vessel-detection:latest
 ```
 
 ### Auto Documentation
