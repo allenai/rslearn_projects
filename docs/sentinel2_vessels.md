@@ -171,15 +171,6 @@ These bands must be provided. In this case the scene must be processed with proc
 - B12
 - B8A
 
-### Docker Container Version History
-
-- v0.0.6: enable Pytorch Lightning environment variable parsing to allow disabling progress bar via environment variable.
-- v0.0.5: add Prometheus metrics.
-- v0.0.4: fix bug predicting attributes in scenes with zero vessel detections.
-- v0.0.3: fix bug with image_files execution.
-- v0.0.2: add attribute prediction (`data_20250205_regress_00`) and use model `data_20250213_02_all_bands`.
-- v0.0.1: initial version. It uses model `data_20240213_01_add_freezing_and_fix_fpn_restore`.
-
 
 Vessel Attribute Prediction
 ---------------------------

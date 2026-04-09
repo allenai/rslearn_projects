@@ -147,7 +147,7 @@ data:
             info: "targets"
           ship_type:
             info: "targets"
-    batch_size: 32
+    batch_size: 8
     num_workers: 64
     default_config:
       transforms:

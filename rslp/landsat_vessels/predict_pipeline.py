@@ -126,10 +126,17 @@ def get_vessel_detections(
 
     # Restrict to the item if set.
     if scene_data.item:
-        layer_data = WindowLayerData(
-            LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+        window.save_layer_datas(
+            {
+                LANDSAT_LAYER_NAME: WindowLayerData(
+                    LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+                ),
+                # Empty layer data so it doesn't go through ingest/materialize.
+                LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
+                    LANDSAT_ALLBANDS_LAYER_NAME, []
+                ),
+            }
         )
-        window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     logger.info("materialize dataset")
     apply_windows_args = ApplyWindowsArgs(group=group, workers=1)
@@ -227,10 +234,17 @@ def run_classifier(
         detection.metadata["crop_window"] = window
 
         if scene_data.item:
-            layer_data = WindowLayerData(
-                LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+            window.save_layer_datas(
+                {
+                    LANDSAT_LAYER_NAME: WindowLayerData(
+                        LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+                    ),
+                    # Empty layer data so it doesn't go through ingest/materialize.
+                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
+                        LANDSAT_ALLBANDS_LAYER_NAME, []
+                    ),
+                }
             )
-            window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     logger.info("materialize dataset")
     apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
@@ -312,12 +326,13 @@ def run_attribute_model(
         detection.metadata["crop_window"] = window
 
         if scene_data.item:
-            allbands_layer_data = WindowLayerData(
-                LANDSAT_ALLBANDS_LAYER_NAME, [[scene_data.item.serialize()]]
-            )
             window.save_layer_datas(
                 {
-                    LANDSAT_ALLBANDS_LAYER_NAME: allbands_layer_data,
+                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
+                        LANDSAT_ALLBANDS_LAYER_NAME, [[scene_data.item.serialize()]]
+                    ),
+                    # Empty layer data so it doesn't go through ingest/materialize.
+                    LANDSAT_LAYER_NAME: WindowLayerData(LANDSAT_LAYER_NAME, []),
                 }
             )
 
