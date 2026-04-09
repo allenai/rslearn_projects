@@ -63,10 +63,10 @@ def _property_to_class_index(
     num_classes: int,
 ) -> int | None:
     """Map a feature property value to a raster class index, or None to skip."""
-    if isinstance(raw, (bool, np.bool_)):
+    if isinstance(raw, bool | np.bool_):
         return int(raw)
 
-    if isinstance(raw, (int, np.integer)):
+    if isinstance(raw, int | np.integer):
         v = int(raw)
         if 0 <= v < num_classes:
             return v

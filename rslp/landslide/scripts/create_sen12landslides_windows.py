@@ -496,12 +496,16 @@ def _ensure_polygon(geom: shapely.Geometry, min_buffer_m: float = 10.0) -> shape
 
     geom = _fix_geometry(geom)
 
-    if isinstance(geom, (shapely.Polygon, shapely.MultiPolygon)):
+    if isinstance(geom, shapely.Polygon | shapely.MultiPolygon):
         return geom
 
     # GeometryCollection: extract polygon parts
     if isinstance(geom, shapely.GeometryCollection):
-        polys = [g for g in geom.geoms if isinstance(g, (shapely.Polygon, shapely.MultiPolygon)) and not g.is_empty]
+        polys = [
+            g
+            for g in geom.geoms
+            if isinstance(g, shapely.Polygon | shapely.MultiPolygon) and not g.is_empty
+        ]
         if polys:
             return shapely.unary_union(polys)
 
@@ -601,7 +605,7 @@ def create_labeled_features(
             polys = [
                 g
                 for g in landslide_wgs84.geoms
-                if isinstance(g, (shapely.Polygon, shapely.MultiPolygon)) and not g.is_empty
+                if isinstance(g, shapely.Polygon | shapely.MultiPolygon) and not g.is_empty
             ]
             if polys:
                 landslide_wgs84 = _fix_geometry(shapely.unary_union(polys))

@@ -418,8 +418,14 @@ def create_labeled_features(
             geom_proj = geom_proj.buffer(0)
 
         # Extract polygon parts from GeometryCollections
-        if isinstance(geom_proj, shapely.GeometryCollection) and not isinstance(geom_proj, (shapely.Polygon, shapely.MultiPolygon)):
-            polys = [g for g in geom_proj.geoms if isinstance(g, (shapely.Polygon, shapely.MultiPolygon)) and not g.is_empty]
+        if isinstance(geom_proj, shapely.GeometryCollection) and not isinstance(
+            geom_proj, shapely.Polygon | shapely.MultiPolygon
+        ):
+            polys = [
+                g
+                for g in geom_proj.geoms
+                if isinstance(g, shapely.Polygon | shapely.MultiPolygon) and not g.is_empty
+            ]
             geom_proj = shapely.unary_union(polys) if polys else shapely.Polygon()
 
         # If geometry has no area (Point, LineString, degenerate), buffer centroid
