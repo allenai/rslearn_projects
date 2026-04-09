@@ -1,5 +1,4 @@
-"""
-Create windows for false positives of landslide detection (segmentation task) - data source is OSM ski resorts.
+r"""Create windows for false positives of landslide detection (segmentation task) - data source is OSM ski resorts.
 
 Features are collected from OSM objects tagged with ski-related keys (``piste:type``,
 ``landuse=winter_sports``, ``aerialway``, etc.) using pyosmium's area-aware reader.

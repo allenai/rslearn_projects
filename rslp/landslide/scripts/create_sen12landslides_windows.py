@@ -1,5 +1,4 @@
-"""
-Create windows for landslide detection (segmentation task) - data source is Sen12Landslides dataset.
+"""Create windows for landslide detection (segmentation task) - data source is Sen12Landslides dataset.
 
 For each landslide event, there are 2 window types:
 1. Negative window: 1 year before event, 60 day window (no_landslide label)
@@ -16,13 +15,11 @@ python create_windows_for_landslide_detection.py \
 import argparse
 import json
 import multiprocessing
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Set
+from datetime import timedelta, timezone
 
 import geopandas as gpd
 import pandas as pd
 import shapely
-from shapely.strtree import STRtree
 import tqdm
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
@@ -30,6 +27,7 @@ from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 from rslearn.utils.feature import Feature
 from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.vector_format import GeojsonVectorFormat
+from shapely.strtree import STRtree
 from upath import UPath
 
 from rslp.utils.windows import calculate_bounds
@@ -40,7 +38,7 @@ LABEL_LAYER = "label"
 DEFAULT_BUFFER_DISTANCE = 30.0  # meters (2 pixels at 10m/pixel resolution)
 
 
-def _get_existing_split(ds_path: UPath, group: str, window_name: str) -> Optional[str]:
+def _get_existing_split(ds_path: UPath, group: str, window_name: str) -> str | None:
     meta_path = ds_path / "windows" / group / window_name / "metadata.json"
     if not meta_path.exists():
         return None
@@ -85,7 +83,7 @@ def _patch_metadata_split_if_changed(
 def _resolve_split(
     window_name: str,
     event_year: int,
-    reviewed_windows: Optional[Set[str]],
+    reviewed_windows: set[str] | None,
     ds_path: UPath,
     group: str,
 ) -> str:
@@ -114,7 +112,7 @@ class LandslideSpatialIndex:
         self.tree = STRtree(self.gdf.geometry)
         print(f"Built spatial index with {len(self.gdf)} landslide polygons")
     
-    def query_overlapping(self, window_geometry: shapely.Geometry, time_range: tuple = None) -> List[Dict]:
+    def query_overlapping(self, window_geometry: shapely.Geometry, time_range: tuple = None) -> list[dict]:
         """Find all landslides that overlap with the given window.
         
         Args:
@@ -162,8 +160,8 @@ def create_window_pair(
     sample_type: str,
     spatial_index: LandslideSpatialIndex,
     buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
-    reviewed_windows: Optional[Set[str]] = None,
-    ds_path: Optional[UPath] = None,
+    reviewed_windows: set[str] | None = None,
+    ds_path: UPath | None = None,
     skip_existing: bool = True,
 ) -> None:
     """Create pre-event and post-event windows for landslide detection.
@@ -174,6 +172,8 @@ def create_window_pair(
         sample_type: "positive" creates both positive and negative windows, "negative" creates only negative windows
         spatial_index: spatial index of all landslide polygons
         buffer_distance: distance in meters to buffer around landslides for no_data zone
+        reviewed_windows: optional set of window names with user-reviewed splits for metadata patching
+        ds_path: dataset root path; defaults to ``dataset.path`` when None
         skip_existing: if True, skip windows whose vector ``label`` layer is already completed
             (unless ``--force`` on CLI); cheap early-exit before geometry work when both twins exist.
     """
@@ -240,10 +240,6 @@ def create_window_pair(
     dst_projection = Projection(dst_crs, WINDOW_RESOLUTION, -WINDOW_RESOLUTION)
     dst_geometry = src_geometry.to_projection(dst_projection)
 
-    # Calculate window size based on polygon extent
-    src_polygon_geometry = STGeometry(WGS84_PROJECTION, geometry, None)
-    dst_polygon_geometry = src_polygon_geometry.to_projection(dst_projection)
-    
     window_size = WINDOW_SIZE_PIXELS  # 64 pixels on a side
     max_extent = window_size * WINDOW_RESOLUTION  # for logging, in meters
     bounds = calculate_bounds(dst_geometry, window_size)
@@ -377,8 +373,8 @@ def create_window_pair(
 
         print(f"Creating POSITIVE window: {positive_window_name}")
         print(f"  Time range: {positive_start_time} to {positive_end_time} (event date + 60 days)")
-        print(f"  (pre_sentinel2 will query 1 year before this via config time_offset)")
-        print(f"  (post_sentinel2 will query during this window)")
+        print("  (pre_sentinel2 will query 1 year before this via config time_offset)")
+        print("  (post_sentinel2 will query during this window)")
         print(f"  Window size: {window_size} pixels ({max_extent:.2f}m extent)")
         
         positive_window = Window(
@@ -514,14 +510,14 @@ def _ensure_polygon(geom: shapely.Geometry, min_buffer_m: float = 10.0) -> shape
 
 
 def create_labeled_features(
-    overlapping_landslides: List[Dict],
+    overlapping_landslides: list[dict],
     window: Window,
     buffer_distance: float,
     dst_crs: str,
     sample_id: str,
     event_type: str,
     event_date
-) -> List[Feature]:
+) -> list[Feature]:
     """Create labeled features using overlapping polygons with draw-order priority.
 
     Features are returned in draw order (background, buffer, landslide) so that
@@ -643,7 +639,7 @@ def create_windows_from_shapefile(
     sample_type: str,
     max_samples: int = None,
     buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
-    reviews_json: Optional[UPath] = None,
+    reviews_json: UPath | None = None,
     skip_existing: bool = True,
 ) -> None:
     """Create windows from Sen12Landslides shapefile.
@@ -670,7 +666,7 @@ def create_windows_from_shapefile(
     
     print(f"Total landslide events: {len(gdf)}")
 
-    reviewed_windows: Optional[Set[str]] = None
+    reviewed_windows: set[str] | None = None
     if reviews_json is not None:
         if not reviews_json.exists():
             raise FileNotFoundError(f"reviews_json not found: {reviews_json}")

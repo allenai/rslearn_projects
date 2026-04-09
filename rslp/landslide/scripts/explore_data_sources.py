@@ -1,24 +1,20 @@
-"""
-Explore the available data sources for landslides.
-"""
+"""Explore the available data sources for landslides."""
 import os
-import pandas as pd
-import numpy as np
-import geopandas as gpd
-from pathlib import Path
-import numpy as np
-from scipy.spatial.distance import cdist
-import matplotlib.pyplot as plt
-from PIL import Image
 from datetime import datetime
 
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from PIL import Image
+from scipy.spatial.distance import cdist
 
 data_root = '/weka/dfive-default/piperw/data/landslide/'
 
 
 def parse_name_as_date(name: str):
-    """
-    Parses Name values like '5/3/015' or '5/4/15' into datetime.
+    """Parse Name values like '5/3/015' or '5/4/15' into datetime.
+
     Assumes M/D/YYYY where:
         - 15 → 2015
         - 015 → 2015
@@ -320,7 +316,7 @@ print(f"\nChecking for nearby duplicates within {threshold_deg} degrees (~{thres
 
 # This can be slow for large datasets, so let's sample if needed
 if len(coords) > 10000:
-    print(f"  (Sampling 10,000 points for performance...)")
+    print("  (Sampling 10,000 points for performance...)")
     sample_indices = np.random.choice(len(coords), 10000, replace=False)
     coords_sample = coords[sample_indices]
 else:
@@ -346,7 +342,7 @@ if max_nearby > 0:
     print(f"  Location with most neighbors: lat={max_coord[0]:.4f}, lon={max_coord[1]:.4f}")
     
 # Method 3: Grid-based counting (faster for large datasets)
-print(f"\nGrid-based analysis:")
+print("\nGrid-based analysis:")
 # Round coordinates to grid cells
 grid_resolution = 0.01  # degrees (~1.1 km)
 valid_events['lat_grid'] = (valid_events['latitude'] / grid_resolution).round() * grid_resolution
@@ -358,11 +354,11 @@ grid_counts_sorted = grid_counts.sort_values('count', ascending=False)
 
 print(f"  Grid resolution: {grid_resolution}° (~{grid_resolution*111:.1f} km)")
 print(f"  Total grid cells with events: {len(grid_counts):,}")
-print(f"\nTop 10 grid cells with most events:")
+print("\nTop 10 grid cells with most events:")
 print(grid_counts_sorted.head(10).to_string(index=False))
 
 # Distribution of events per cell
-print(f"\nDistribution of events per grid cell:")
+print("\nDistribution of events per grid cell:")
 print(f"  1 event: {(grid_counts['count'] == 1).sum():,} cells")
 print(f"  2-5 events: {((grid_counts['count'] >= 2) & (grid_counts['count'] <= 5)).sum():,} cells")
 print(f"  6-10 events: {((grid_counts['count'] >= 6) & (grid_counts['count'] <= 10)).sum():,} cells")

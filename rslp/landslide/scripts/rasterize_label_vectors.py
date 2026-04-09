@@ -1,5 +1,4 @@
-"""
-Rasterize vector label GeoJSON into label_raster GeoTIFFs per rslearn window.
+"""Rasterize vector label GeoJSON into label_raster GeoTIFFs per rslearn window.
 
 The create_{dataset_name}_windows.py script creates the vector label GeoJSON files, so this 
 script is used to rasterize them into GeoTIFFs using ``rasterio.features.rasterize``.
@@ -16,7 +15,6 @@ import numpy as np
 import shapely
 import tqdm
 from rasterio.features import rasterize
-
 from rslearn.dataset.dataset import Dataset
 from rslearn.dataset.window import Window
 from rslearn.utils.raster_array import RasterArray
@@ -209,6 +207,7 @@ _WORKER_KWARGS: dict[str, Any] = {}
 
 
 def main() -> None:
+    """CLI entry: rasterize vector labels to raster layers for all windows."""
     parser = argparse.ArgumentParser(
         description=(
             "Rasterize per-window vector labels to label_raster using "

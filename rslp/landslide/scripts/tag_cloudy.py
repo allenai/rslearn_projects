@@ -1,5 +1,4 @@
-"""
-Tag rslearn windows by Sentinel-2 cloudiness (pre vs post landslide event).
+r"""Tag rslearn windows by Sentinel-2 cloudiness (pre vs post landslide event).
 
 Walks window directories under an rslearn dataset (or a single ``windows/<group>`` folder),
 runs cloud screening on each materialized ``pre_sentinel2*`` / ``post_sentinel2*`` stack
@@ -50,9 +49,8 @@ from pathlib import Path
 import numpy as np
 import rasterio
 import tqdm
-from upath import UPath
-
 from rslearn.utils.fsspec import open_atomic
+from upath import UPath
 
 # Band order in materialized stacks (dataset band_sets).
 _BANDS_12 = [
@@ -293,6 +291,10 @@ def process_window(
     omni_device: str | None,
     dry_run: bool,
 ) -> dict:
+    """Run cloud screening on one window and write ``is_cloudy`` into ``metadata.json``.
+
+    Returns a small dict with paths and counts for logging.
+    """
     pre_paths = discover_s2_geotiffs(window_dir, "pre_sentinel2")
     post_paths = discover_s2_geotiffs(window_dir, "post_sentinel2")
 
@@ -350,6 +352,7 @@ def process_window(
 
 
 def main() -> None:
+    """Parse CLI args and tag windows under a dataset or a single group directory."""
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
         "--dataset",

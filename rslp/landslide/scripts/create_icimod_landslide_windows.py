@@ -1,5 +1,4 @@
-"""
-Create windows for landslide detection (segmentation task) - data source is ICIMOD dataset.
+"""Create windows for landslide detection (segmentation task) - data source is ICIMOD dataset.
 
 For each landslide event, there are 2 window types:
 1. Negative window: 1 year before event, 60 day window (no_landslide label)
@@ -17,12 +16,10 @@ python create_icimod_landslide_windows.py \
 import argparse
 import multiprocessing
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict
 
 import geopandas as gpd
 import pandas as pd
 import shapely
-from shapely.strtree import STRtree
 import tqdm
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
@@ -30,6 +27,7 @@ from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
 from rslearn.utils.feature import Feature
 from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.vector_format import GeojsonVectorFormat
+from shapely.strtree import STRtree
 from upath import UPath
 
 from rslp.utils.windows import calculate_bounds
@@ -41,8 +39,8 @@ DEFAULT_BUFFER_DISTANCE = 30.0  # meters (2 pixels at 10m/pixel resolution)
 
 
 def parse_name_as_date(name: str) -> datetime | None:
-    """
-    Parses ICIMOD Name values like '5/3/015', '5/4/15', or '4/1/2016' into datetime.
+    """Parse ICIMOD Name values like '5/3/015', '5/4/15', or '4/1/2016' into datetime.
+
     Assumes M/D/YYYY where 15 or 015 → 2015; 2016 stays 2016.
     """
     if not isinstance(name, str):
@@ -77,7 +75,7 @@ class LandslideSpatialIndex:
         self.tree = STRtree(self.gdf.geometry)
         print(f"Built spatial index with {len(self.gdf)} landslide polygons")
     
-    def query_overlapping(self, window_geometry: shapely.Geometry, time_range: tuple = None) -> List[Dict]:
+    def query_overlapping(self, window_geometry: shapely.Geometry, time_range: tuple = None) -> list[dict]:
         """Find all landslides that overlap with the given window.
         
         Args:
@@ -137,6 +135,7 @@ def create_window_pair(
         sample_type: "positive" creates both positive and negative windows, "negative" creates only negative windows
         spatial_index: spatial index of all landslide polygons
         buffer_distance: distance in meters to buffer around landslides for no_data zone
+        group: window group name in the dataset (e.g. icimod_landslides or predict)
     """
     sample_id = str(row_data["id"])  # Convert to string to ensure JSON serializable
     latitude, longitude = float(row_data["latitude"]), float(row_data["longitude"])
@@ -155,10 +154,6 @@ def create_window_pair(
     dst_projection = Projection(dst_crs, WINDOW_RESOLUTION, -WINDOW_RESOLUTION)
     dst_geometry = src_geometry.to_projection(dst_projection)
 
-    # Calculate window size based on polygon extent
-    src_polygon_geometry = STGeometry(WGS84_PROJECTION, geometry, None)
-    dst_polygon_geometry = src_polygon_geometry.to_projection(dst_projection)
-    
     window_size = WINDOW_SIZE_PIXELS  # 64 pixels on a side
     max_extent = window_size * WINDOW_RESOLUTION  # for logging, in meters
     bounds = calculate_bounds(dst_geometry, window_size)
@@ -282,8 +277,8 @@ def create_window_pair(
         
         print(f"Creating POSITIVE window: {positive_window_name}")
         print(f"  Time range: {positive_start_time} to {positive_end_time} (event date + 60 days)")
-        print(f"  (pre_sentinel2 will query 1 year before this via config time_offset)")
-        print(f"  (post_sentinel2 will query during this window)")
+        print("  (pre_sentinel2 will query 1 year before this via config time_offset)")
+        print("  (post_sentinel2 will query during this window)")
         print(f"  Window size: {window_size} pixels ({max_extent:.2f}m extent)")
         
         positive_window = Window(
@@ -341,14 +336,14 @@ def create_window_pair(
 
 
 def create_labeled_features(
-    overlapping_landslides: List[Dict],
+    overlapping_landslides: list[dict],
     window: Window,
     buffer_distance: float,
     dst_crs: str,
     sample_id: str,
     event_type: str,
     event_date
-) -> List[Feature]:
+) -> list[Feature]:
     """Create labeled features using overlapping polygons with draw-order priority.
 
     Features are returned in draw order (background, buffer, landslide) so that
