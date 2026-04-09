@@ -169,7 +169,7 @@ def _geometry_area_m2(geom: shapely.Geometry, utm_epsg: int) -> float:
         if g.geom_type in ("Polygon", "MultiPolygon"):
             return float(g.area)
     except Exception:
-        pass
+        return 0.0
     return 0.0
 
 
