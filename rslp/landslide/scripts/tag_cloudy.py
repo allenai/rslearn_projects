@@ -1,4 +1,5 @@
-r"""Tag rslearn windows by Sentinel-2 cloudiness (pre vs post stacks).
+"""
+Tag rslearn windows by Sentinel-2 cloudiness (pre vs post landslide event).
 
 Walks window directories under an rslearn dataset (or a single ``windows/<group>`` folder),
 runs cloud screening on each materialized ``pre_sentinel2*`` / ``post_sentinel2*`` stack
@@ -28,12 +29,6 @@ Or point at one group directory (no dataset root required)::
 
     python rslp/landslide/scripts/tag_cloudy.py \\
         --windows_group_dir /weka/.../all_positives/windows/sen12_landslides
-
-Same path on this machine::
-
-    PYTHONPATH=/weka/dfive-default/piperw/rslearn_projects:/weka/dfive-default/piperw/rslearn \\
-        python rslp/landslide/scripts/tag_cloudy.py \\
-        --windows_group_dir /weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives/windows/sen12_landslides
 
 By default, windows whose ``metadata.json`` already contains ``options.is_cloudy`` are skipped.
 Use ``--force_rerun`` to recompute and overwrite for every window.

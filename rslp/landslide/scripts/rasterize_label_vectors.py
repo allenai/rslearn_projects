@@ -1,13 +1,8 @@
-"""Rasterize vector label GeoJSON into label_raster GeoTIFFs per rslearn window.
+"""
+Rasterize vector label GeoJSON into label_raster GeoTIFFs per rslearn window.
 
-Uses ``rasterio.features.rasterize`` with geometries in **window-local pixel
-coordinates** (translate global pixel coords by ``(-bounds[0], -bounds[1])``) and an
-identity affine transform. This matches how ``GeotiffRasterFormat`` maps array indices
-to the window bounds without multiplying large pixel indices by CRS resolution in the
-rasterize step.
-
-Class indices are taken from the dataset ``config.json`` label layer ``class_names``
-(by default), so raster values always align with training config.
+The create_{dataset_name}_windows.py script creates the vector label GeoJSON files, so this 
+script is used to rasterize them into GeoTIFFs using ``rasterio.features.rasterize``.
 """
 
 from __future__ import annotations
@@ -33,8 +28,7 @@ DEFAULT_VECTOR_LAYER = "label"
 DEFAULT_RASTER_LAYER = "label_raster"
 DEFAULT_BAND = "label"
 
-# Testing: restrict to these window ``name`` values (folder name under each group).
-# Set to ``None`` to process all windows loaded from the dataset.
+# Testing: restrict to these window ``name`` values.
 # _TEST_ONLY_WINDOW_NAMES: frozenset[str] | None = frozenset(
 #     {
 #         "63628_positive_43.9371_12.2082_2023",

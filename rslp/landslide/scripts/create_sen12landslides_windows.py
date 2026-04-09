@@ -1,11 +1,9 @@
 """
-Create windows for landslide detection (segmentation task) - multiple landslides in a window are all labeled as landslide.
-
-Data source is Sen12Landslides dataset.
+Create windows for landslide detection (segmentation task) - data source is Sen12Landslides dataset.
 
 For each landslide event, there are 2 window types:
 1. Negative window: 1 year before event, 60 day window (no_landslide label)
-2. Positive window: After event, 60 day window (landslide label) - uses both pre and post sentinel2 imagery
+2. Positive window: After event, 60 day window (landslide label)
 
 python create_windows_for_landslide_detection.py \
     --shapefile_path /weka/dfive-default/piperw/data/landslide/sen12landslides/inventories.shp \
@@ -129,7 +127,6 @@ class LandslideSpatialIndex:
         # Query the spatial index
         possible_matches_idx = self.tree.query(window_geometry)
         
-        # Filter to actual intersections
         overlapping = []
         for idx in possible_matches_idx:
             if self.gdf.iloc[idx].geometry.intersects(window_geometry):
@@ -139,19 +136,18 @@ class LandslideSpatialIndex:
                 if time_range is not None:
                     event_date = pd.to_datetime(row.get("event_date"))
                     if pd.isna(event_date):
-                        continue  # Skip if no valid event date
+                        continue  
                     
                     start_time, end_time = time_range
-                    # Convert to timezone-aware if needed
                     if event_date.tzinfo is None:
                         event_date = event_date.replace(tzinfo=timezone.utc)
                     
                     # Check if event_date is within the time range
                     if not (start_time <= event_date <= end_time):
-                        continue  # Skip landslides outside the time window
+                        continue 
                 
                 overlapping.append({
-                    "id": str(row["id"]),  # Convert to string for JSON serialization
+                    "id": str(row["id"]), 
                     "geometry": row["geometry"],
                     "event_type": str(row.get("event_type", "unknown")),
                     "event_date": row.get("event_date"),
@@ -254,11 +250,9 @@ def create_window_pair(
     print(f"  Window size: {window_size} pixels (~{max_extent:.2f} m extent)")
 
     # Create window geometry in projected coordinates, then transform to WGS84 for spatial query
-    # bounds is typically (min_col, min_row, max_col, max_row) or an object with attributes
     if hasattr(bounds, 'min_x'):
         min_x, min_y, max_x, max_y = bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y
     else:
-        # bounds is a tuple: (min_col, min_row, max_col, max_row)
         min_x, min_y, max_x, max_y = bounds[0], bounds[1], bounds[2], bounds[3]
     
     # Convert pixel coordinates to projected CRS coordinates
@@ -275,7 +269,6 @@ def create_window_pair(
     window_geom_wgs84_coords = shapely.ops.transform(transformer.transform, window_geom_projected)
     
     # Query for overlapping landslides with appropriate filtering
-    # Always query for negative window landslides
     negative_start_time = sampling_date.replace(year=sampling_date.year - 1)
     negative_end_time = negative_start_time + timedelta(days=60)
     negative_overlapping = spatial_index.query_overlapping(

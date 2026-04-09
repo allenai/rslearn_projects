@@ -1,11 +1,9 @@
 """
-Create windows for landslide detection (segmentation task) - multiple landslides in a window are all labeled as landslide.
-
-Data source is ICIMOD dataset.
+Create windows for landslide detection (segmentation task) - data source is ICIMOD dataset.
 
 For each landslide event, there are 2 window types:
 1. Negative window: 1 year before event, 60 day window (no_landslide label)
-2. Positive window: After event, 60 day window (landslide label) - uses both pre and post sentinel2 imagery
+2. Positive window: After event, 60 day window (landslide label) 
 
 python create_icimod_landslide_windows.py \
     --shapefile_path /weka/dfive-default/piperw/data/landslide/icimod/data/14dist_ls.shp \

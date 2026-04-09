@@ -1,16 +1,13 @@
-r"""Create rslearn geospatial windows from OpenStreetMap PBF extracts for ski-related features.
-
-These windows are intended as **hard negatives / false positives** for landslide segmentation:
-every window is labeled ``no_landslide`` over the full chip (ski infrastructure and terrain
-can resemble landslide-like appearance in imagery).
+"""
+Create windows for false positives of landslide detection (segmentation task) - data source is OSM ski resorts.
 
 Features are collected from OSM objects tagged with ski-related keys (``piste:type``,
 ``landuse=winter_sports``, ``aerialway``, etc.) using pyosmium's area-aware reader.
 
-**Performance:** continent-scale ``*.osm.pbf`` files are huge. Prefer a regional extract or
-pre-filter with ``osmium extract`` (bbox or poly) before running this script.
-The ``osmium`` **shell command** is from the ``osmium-tool`` package (not ``pip install osmium``);
-e.g. ``conda install -c conda-forge osmium-tool`` or ``apt install osmium-tool`` on Debian/Ubuntu.
+``*.osm.pbf`` files are huge - can extract a small region with: 
+```osmium extract -b 6.0,45.5,10.5,47.5 \
+  /path/to/europe-latest.osm.pbf \
+  -o /path/to/alps-ski-trial.osm.pbf```
 
 With ``--max_samples``, the default ``--sample_mode reservoir`` keeps an *unbiased* random
 subset but must scan the **entire** PBF. ``--sample_mode prefix`` stops right after N
@@ -20,7 +17,7 @@ still pay a **full sequential read of the node section** (often tens of GB / lon
 before the first resort polygon can appear. For quick tests, **clip the PBF** with
 ``osmium extract -b ...`` or use a **country / regional** extract (see example below).
 
-Example (full run, unbiased subsample after one full scan):
+Example (full run, takes long time):
     PYTHONPATH=/path/to/rslearn_projects python rslp/landslide/scripts/create_osm_ski_windows.py \\
         --pbf_path /weka/dfive/default/piperw/data/europe-latest.osm.pbf \\
         --ds_path data/landslide/osm_ski_windows/ \\
@@ -39,8 +36,7 @@ Example (actually fast: small bbox clip, then prefix sampling):
         --progress_every 2000000 \\
         --num_workers 4
 
-``--ds_path`` must be an existing rslearn dataset directory containing ``config.json``
-(with at least a vector ``label`` layer, consistent with your landslide dataset).
+``--ds_path`` must be an existing rslearn dataset directory containing ``config.json``, consistent with the landslide dataset.
 """
 
 from __future__ import annotations
