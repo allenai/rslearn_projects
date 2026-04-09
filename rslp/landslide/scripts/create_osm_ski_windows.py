@@ -3,7 +3,7 @@ r"""Create windows for false positives of landslide detection (segmentation task
 Features are collected from OSM objects tagged with ski-related keys (``piste:type``,
 ``landuse=winter_sports``, ``aerialway``, etc.) using pyosmium's area-aware reader.
 
-``*.osm.pbf`` files are huge - can extract a small region with: 
+``*.osm.pbf`` files are huge - can extract a small region with:
 ```osmium extract -b 6.0,45.5,10.5,47.5 \
   /path/to/europe-latest.osm.pbf \
   -o /path/to/alps-ski-trial.osm.pbf```
@@ -107,7 +107,9 @@ def _closed_way_polygon_from_wkt(wkt: str) -> shapely.Geometry | None:
         return None
 
 
-def _geometry_from_osm_object(obj: Any, wkt_factory: WKTFactory) -> shapely.Geometry | None:
+def _geometry_from_osm_object(
+    obj: Any, wkt_factory: WKTFactory
+) -> shapely.Geometry | None:
     """Turn a pyosmium Node, Way, or Area into a Shapely geometry in WGS84 (lon/lat)."""
     type_name = type(obj).__name__
 
@@ -372,7 +374,9 @@ def create_ski_window_job(
     pt = _representative_point(record.geometry)
     longitude, latitude = float(pt.x), float(pt.y)
 
-    window_name = f"ski_{record.osm_kind}_{record.osm_id}_{latitude:.4f}_{longitude:.4f}"
+    window_name = (
+        f"ski_{record.osm_kind}_{record.osm_id}_{latitude:.4f}_{longitude:.4f}"
+    )
     window_key = f"{record.osm_kind}:{record.osm_id}"
 
     if skip_existing and _vector_label_complete(dataset, group, window_name):
@@ -506,7 +510,9 @@ def create_windows_from_pbf(
     ]
 
     if skip_existing:
-        print("skip_existing: windows with completed vector 'label' layer are skipped (--force to rebuild)")
+        print(
+            "skip_existing: windows with completed vector 'label' layer are skipped (--force to rebuild)"
+        )
 
     p = multiprocessing.Pool(num_workers)
     outputs = star_imap_unordered(p, create_ski_window_job, jobs)

@@ -1,6 +1,6 @@
 """Rasterize vector label GeoJSON into label_raster GeoTIFFs per rslearn window.
 
-The create_{dataset_name}_windows.py script creates the vector label GeoJSON files, so this 
+The create_{dataset_name}_windows.py script creates the vector label GeoJSON files, so this
 script is used to rasterize them into GeoTIFFs using ``rasterio.features.rasterize``.
 """
 
@@ -115,8 +115,8 @@ def rasterize_window(
 
     name_to_index = {name: i for i, name in enumerate(class_names)}
     num_classes = len(class_names)
-    order = draw_order if draw_order is not None else _default_draw_class_order(
-        class_names
+    order = (
+        draw_order if draw_order is not None else _default_draw_class_order(class_names)
     )
     draw_rank = {class_idx: rank for rank, class_idx in enumerate(order)}
 
@@ -287,7 +287,9 @@ def main() -> None:
 
     draw_order: list[int] | None
     if args.rasterize_order:
-        ordered_names = [s.strip() for s in args.rasterize_order.split(",") if s.strip()]
+        ordered_names = [
+            s.strip() for s in args.rasterize_order.split(",") if s.strip()
+        ]
         name_to_i = {n: i for i, n in enumerate(class_names)}
         draw_order = []
         for n in ordered_names:

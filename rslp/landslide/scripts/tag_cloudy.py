@@ -223,7 +223,9 @@ def iter_window_paths(
     win_root = ds / "windows"
     if not win_root.is_dir():
         raise SystemExit(f"No windows/ under dataset: {ds}")
-    groups = [group] if group else sorted(p.name for p in win_root.iterdir() if p.is_dir())
+    groups = (
+        [group] if group else sorted(p.name for p in win_root.iterdir() if p.is_dir())
+    )
     for g in groups:
         gd = win_root / g
         if not gd.is_dir():
@@ -259,9 +261,7 @@ def window_is_cloudy_from_fractions(
         all_pre_cloudy: True only if there is at least one pre image and each is cloudy.
         all_post_cloudy: True only if there is at least one post image and each is cloudy.
     """
-    all_pre_cloudy = len(pre_fracs) > 0 and all(
-        f >= frac_threshold for f in pre_fracs
-    )
+    all_pre_cloudy = len(pre_fracs) > 0 and all(f >= frac_threshold for f in pre_fracs)
     all_post_cloudy = len(post_fracs) > 0 and all(
         f >= frac_threshold for f in post_fracs
     )

@@ -1,6 +1,6 @@
 # Landslide Detection
 
-This project aims to detect landslides with semantic segmentation, i.e. predict each pixel as `no_landslide` or `landslide`. 
+This project aims to detect landslides with semantic segmentation, i.e. predict each pixel as `no_landslide` or `landslide`.
 
 ## Data
 
@@ -52,18 +52,18 @@ rslearn dataset materialize --root "$ROOT" --group "$GROUP"
 The `ingest` step is just needed for the `srtm` layer.
 
 ### 3. Rasterize
-The above steps create vector geojsons, but we need rasters for training. 
+The above steps create vector geojsons, but we need rasters for training.
 
 Run the following script to generate label rasters for all windows in `all_positives/`:
 ```
 python rslp/landslide/scripts/rasterize_label_vectors.py   --ds_path /weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives ```
 
 ### 4. Splits
-I manually sampled 100 held out windows from Sen12Landslides to assure correctness and diversity. 
+I manually sampled 100 held out windows from Sen12Landslides to assure correctness and diversity.
 
 
 ## Finetune OlmoEarth
-So far, I have just been finetuning in interactive session with 1-4 gpus. This requires installation of olmoearth_pretrain, rslearn, and rslearn_projects. 
+So far, I have just been finetuning in interactive session with 1-4 gpus. This requires installation of olmoearth_pretrain, rslearn, and rslearn_projects.
 
 ```
 rslearn model fit --config data/landslide/model.yaml

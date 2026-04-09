@@ -114,7 +114,7 @@ trainer:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
         path: /weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives/
-        output_layer: "label_raster" 
+        output_layer: "label_raster"
         selector: []
 # Here we enable automatic checkpoint management and logging to W&B.
 # Set WANDB_MODE=offline to disable online logging.

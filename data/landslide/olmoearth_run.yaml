@@ -54,7 +54,7 @@ model:
             init_args:
                 weights: [0.05, 0.95]
                 dice_loss: true
-      task: 
+      task:
         class_path: rslearn.train.tasks.segmentation.SegmentationTask
         init_args:
           num_classes: 2
