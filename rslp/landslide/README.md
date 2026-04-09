@@ -49,7 +49,7 @@ rslearn dataset prepare --root "$ROOT" --group "$GROUP"
 rslearn dataset ingest --root "$ROOT" --group "$GROUP"
 rslearn dataset materialize --root "$ROOT" --group "$GROUP"
 ```
-The `ingest` step is just needed for the `srtm` layer.
+The `ingest` step is only needed for the `srtm` layer.
 
 ### 3. Rasterize
 The above steps create vector geojsons, but we need rasters for training.
