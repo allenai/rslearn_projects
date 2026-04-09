@@ -13,7 +13,7 @@ from scipy.spatial.distance import cdist
 data_root = "/weka/dfive-default/piperw/data/landslide/"
 
 
-def parse_name_as_date(name: str):
+def parse_name_as_date(name: str) -> datetime | None:
     """Parse Name values like '5/3/015' or '5/4/15' into datetime.
 
     Assumes M/D/YYYY where:

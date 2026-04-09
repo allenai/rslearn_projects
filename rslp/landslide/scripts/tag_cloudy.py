@@ -471,8 +471,8 @@ def main() -> None:
             except Exception as ex:
                 tqdm.tqdm.write(f"[skip] {w}: {ex}")
     else:
-        with ThreadPoolExecutor(max_workers=args.num_workers) as ex:
-            future_map = {ex.submit(_run_one, w): w for w in to_process}
+        with ThreadPoolExecutor(max_workers=args.num_workers) as executor:
+            future_map = {executor.submit(_run_one, w): w for w in to_process}
             for fut in tqdm.tqdm(
                 as_completed(future_map),
                 total=len(future_map),

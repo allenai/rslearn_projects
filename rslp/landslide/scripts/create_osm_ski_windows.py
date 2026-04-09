@@ -642,7 +642,11 @@ if __name__ == "__main__":
         UPath(args.ds_path),
         group=args.group,
         max_samples=args.max_samples,
-        bbox=tuple(args.bbox) if args.bbox is not None else None,
+        bbox=(
+            cast(tuple[float, float, float, float], tuple(args.bbox))
+            if args.bbox is not None
+            else None
+        ),
         min_polygon_area_m2=args.min_polygon_area_m2,
         time_start=_parse_time(args.time_start),
         time_end=_parse_time(args.time_end),

@@ -76,7 +76,9 @@ class LandslideSpatialIndex:
         print(f"Built spatial index with {len(self.gdf)} landslide polygons")
 
     def query_overlapping(
-        self, window_geometry: shapely.Geometry, time_range: tuple = None
+        self,
+        window_geometry: shapely.Geometry,
+        time_range: tuple[datetime, datetime] | None = None,
     ) -> list[dict]:
         """Find all landslides that overlap with the given window.
 
@@ -171,17 +173,8 @@ def create_window_pair(
     split = "val" if is_val else "train"
 
     # Create window geometry in projected coordinates, then transform to WGS84 for spatial query
-    # bounds is typically (min_col, min_row, max_col, max_row) or an object with attributes
-    if hasattr(bounds, "min_x"):
-        min_x, min_y, max_x, max_y = (
-            bounds.min_x,
-            bounds.min_y,
-            bounds.max_x,
-            bounds.max_y,
-        )
-    else:
-        # bounds is a tuple: (min_col, min_row, max_col, max_row)
-        min_x, min_y, max_x, max_y = bounds[0], bounds[1], bounds[2], bounds[3]
+    # bounds: (min_col, min_row, max_col, max_row) from calculate_bounds
+    min_x, min_y, max_x, max_y = bounds
 
     # Convert pixel coordinates to projected CRS coordinates
     proj_min_x = min_x * dst_projection.x_resolution
@@ -381,7 +374,7 @@ def create_labeled_features(
     dst_crs: str,
     sample_id: str,
     event_type: str,
-    event_date,
+    event_date: object,
 ) -> list[Feature]:
     """Create labeled features using overlapping polygons with draw-order priority.
 
@@ -527,7 +520,7 @@ def create_windows_from_shapefile(
     shapefile_path: UPath,
     ds_path: UPath,
     sample_type: str,
-    max_samples: int = None,
+    max_samples: int | None = None,
     buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
     group: str = "icimod_landslides",
     min_event_date: str = "2016-07-01",
