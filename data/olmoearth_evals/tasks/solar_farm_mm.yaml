@@ -39,7 +39,7 @@ data:
         - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
           init_args:
             selectors: ["sentinel1"]
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.mask.Mask
           init_args:
             selectors: ["sentinel2", "sentinel1"]
         - class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterNormalize

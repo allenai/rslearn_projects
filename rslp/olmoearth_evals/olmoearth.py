@@ -35,8 +35,21 @@ def get_model(
     task_name: str,
     task_channels: int = 1,
     task_timesteps: int = 1,
+    checkpoint_path: str | None = None,
 ) -> torch.nn.Module:
-    """Get appropriate OlmoEarth model."""
+    """Get appropriate OlmoEarth model.
+
+    Args:
+        input_size: height and width of the input in pixels.
+        input_modalities: subset of ["sentinel2", "sentinel1", "landsat"].
+        task_type: the task type string.
+        task_name: the name of the task.
+        task_channels: number of output channels.
+        task_timesteps: number of input timesteps.
+        checkpoint_path: optional path to an OlmoEarth checkpoint directory.
+            When set, weights are loaded from this path instead of the default
+            released model for the given model ID.
+    """
     model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
     model_config_env = os.environ.get("EVAL_ADAPTER_MODEL_CONFIG")
     model_config: dict[str, str] = (
@@ -57,7 +70,22 @@ def get_model(
     decoder_type = model_config.get("decoder", "default")
     logger.info(
         f"olmoearth: using decoder_type={decoder_type} embedding_size={embedding_size}"
+        f" checkpoint_path={checkpoint_path}"
     )
+
+    def _make_encoder() -> OlmoEarth:
+        if checkpoint_path is not None:
+            return OlmoEarth(
+                checkpoint_path=checkpoint_path,
+                patch_size=4,
+                use_legacy_timestamps=False,
+            )
+        return OlmoEarth(
+            model_id=olmoearth_model_id,
+            patch_size=4,
+            random_initialization=model_id == "olmoearth_random",
+            use_legacy_timestamps=False,
+        )
 
     if task_type == "segment":
         if decoder_type == "singleconv":
@@ -151,12 +179,7 @@ def get_model(
         return MultiTaskModel(
             encoder=[
                 SimpleTimeSeries(
-                    encoder=OlmoEarth(
-                        model_id=olmoearth_model_id,
-                        patch_size=4,
-                        random_initialization=model_id == "olmoearth_random",
-                        use_legacy_timestamps=False,
-                    ),
+                    encoder=_make_encoder(),
                     image_channels=12 * 4,
                     image_key="sentinel2_l2a",
                     groups=[[0], [1]],
@@ -176,14 +199,7 @@ def get_model(
         )
 
     return MultiTaskModel(
-        encoder=[
-            OlmoEarth(
-                model_id=olmoearth_model_id,
-                patch_size=4,
-                random_initialization=model_id == "olmoearth_random",
-                use_legacy_timestamps=False,
-            ),
-        ],
+        encoder=[_make_encoder()],
         decoders=decoders,
     )
 

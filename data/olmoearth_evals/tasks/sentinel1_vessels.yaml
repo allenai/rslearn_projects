@@ -71,7 +71,7 @@ data:
         - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
           init_args:
             selectors: ["sentinel1"]
-        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.mask.Mask
           init_args:
             selectors: ["sentinel1"]
         # This is for Faster R-CNN head to know the image size.
@@ -119,5 +119,3 @@ trainer:
         save_last: true
         monitor: val_eval_task/F1
         mode: max
-rslp_project: placeholder
-rslp_experiment: placeholder
