@@ -122,11 +122,11 @@
       ],
       "data_source": {
         "class_path": "rslearn.data_sources.hf_srtm.SRTM",
+        "ingest": true,
         "init_args": {
           "always_use_3arcsecond": false,
           "cache_dir": "cache/srtm"
         },
-        "ingest": true,
         "query_config": {
           "max_matches": 1,
           "min_matches": 0,
