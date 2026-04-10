@@ -2,6 +2,7 @@
 
 import json
 import math
+import os
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -37,9 +38,11 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
-from rslp.vessels import VesselDetection, VesselDetectionSource
+from rslp.vessels import VesselAttributes, VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
+
+NUM_DATA_LOADER_WORKERS = int(os.environ.get("RSLEARN_NUM_DATA_LOADER_WORKERS", 4))
 
 # Layer name for the Sentinel-1 image in which we want to detect vessels.
 SENTINEL1_LAYER_NAME = "sentinel1"
@@ -53,6 +56,7 @@ OUTPUT_LAYER_NAME = "output"
 SCENE_ID_DATASET_CONFIG = "data/sentinel1_vessels/config.json"
 IMAGE_FILES_DATASET_CONFIG = "data/sentinel1_vessels/config_predict_local_files.json"
 DETECT_MODEL_CONFIG = "data/sentinel1_vessels/config.yaml"
+ATTRIBUTE_MODEL_CONFIG = "data/sentinel1_vessel_attribute/config.yaml"
 
 RESOLUTION = 10
 CROP_WINDOW_SIZE = 128
@@ -416,7 +420,11 @@ def get_vessel_detections(
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
-        run_model_predict(DETECT_MODEL_CONFIG, ds_path)
+        run_model_predict(
+            DETECT_MODEL_CONFIG,
+            ds_path,
+            extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+        )
 
     # Read the detections.
     detections: list[VesselDetection] = []
@@ -450,28 +458,28 @@ def get_vessel_detections(
     return detections
 
 
-def get_vessel_crop_windows(
+def run_attribute_model(
     ds_path: UPath,
     detections: list[VesselDetection],
     scene_datas: list[SceneData],
 ) -> list[Window]:
-    """Create a window for each vessel to obtain a cropped image for it.
+    """Run the attribute prediction model.
 
     Args:
-        ds_path: the dataset path that will be populated with new windows.
+        ds_path: the dataset path that will be populated with new windows to apply the
+            attribute model.
         detections: the detections from the detector.
         scene_datas: the list of SceneDatas.
 
     Returns:
-        the new windows.
+        the new windows. The detections will also be updated with the predicted
+            attributes.
     """
-    # Avoid errors with materialize_dataset when there are no detections to process.
     if len(detections) == 0:
         return []
 
-    # Create windows for collecting the cropped images.
     dataset = Dataset(ds_path)
-    group = "crops"
+    group = "attribute_predict"
     windows: list[Window] = []
     for detection in detections:
         window_name = (
@@ -503,7 +511,7 @@ def get_vessel_crop_windows(
             window.save_layer_datas(scene_data.get_layer_datas())
 
     # Materialize the dataset.
-    logger.info("materialize dataset")
+    logger.info("materialize dataset for attribute prediction")
     apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
     materialize_pipeline_args = MaterializePipelineArgs(
         disabled_layers=[],
@@ -523,6 +531,29 @@ def get_vessel_crop_windows(
             raise ValueError(
                 f"window {window.name} does not have materialized Sentinel-1 image"
             )
+
+    # Run attribute model.
+    run_model_predict(
+        ATTRIBUTE_MODEL_CONFIG,
+        ds_path,
+        groups=[group],
+        extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+    )
+
+    # Read the results.
+    for detection, window in zip(detections, windows):
+        layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
+        features = GeojsonVectorFormat().decode_vector(
+            layer_dir, window.projection, window.bounds
+        )
+        properties = features[0].properties
+        detection.attributes = VesselAttributes(
+            length=properties["length"],
+            width=properties["width"],
+            speed=properties["sog"],
+            heading=properties["heading"],
+            vessel_type=properties["type"],
+        )
 
     return windows
 
@@ -577,7 +608,7 @@ def predict_pipeline(
     # Apply the attribute prediction model.
     # This also collects vessel crop windows.
     with time_operation(TimerOperations.RunAttributeModel):
-        crop_windows = get_vessel_crop_windows(ds_path, detections, scene_datas)
+        crop_windows = run_attribute_model(ds_path, detections, scene_datas)
 
     # Write crops and prepare the JSON data.
     with time_operation(TimerOperations.BuildPredictionsAndCrops):

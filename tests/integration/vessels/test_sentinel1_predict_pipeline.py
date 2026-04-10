@@ -20,6 +20,9 @@ from rslearn.utils.geometry import STGeometry
 from shapely.geometry import box
 
 from rslp.sentinel1_vessels.predict_pipeline import (
+    ATTRIBUTE_MODEL_CONFIG,
+    DETECT_MODEL_CONFIG,
+    SCENE_ID_DATASET_CONFIG,
     PredictionTask,
     Sentinel1Image,
     predict_pipeline,
@@ -177,13 +180,39 @@ class _FakeCopernicusSentinel1:
 # --- Helpers ---
 
 
+def _create_tiny_attribute_config(original_path: str, output_path: str) -> None:
+    """Patch the S1 vessel attribute config to use swin_t."""
+    with open(original_path) as f:
+        cfg = yaml.safe_load(f)
+
+    model_args = cfg["model"]["init_args"]
+    encoder_list = model_args["model"]["init_args"]["encoder"]
+    encoder_list[0]["init_args"]["arch"] = "swin_t"
+    encoder_list[0]["init_args"]["pretrained"] = False
+    decoders = model_args["model"]["init_args"]["decoders"]
+    for decoder_list in decoders.values():
+        for decoder in decoder_list:
+            if "PoolingDecoder" in decoder.get("class_path", ""):
+                decoder["init_args"]["in_channels"] = 768
+
+    apply_common_config_patches(cfg)
+
+    with open(output_path, "w") as f:
+        yaml.dump(cfg, f)
+
+
 def _patch_model_configs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> None:
-    """Create a tiny model config and monkeypatch the module constant."""
+    """Create tiny model configs and monkeypatch the module constants."""
     detect_cfg = str(tmp_path / "detect_config.yaml")
-    _create_tiny_detect_config("data/sentinel1_vessels/config.yaml", detect_cfg)
+    _create_tiny_detect_config(DETECT_MODEL_CONFIG, detect_cfg)
     monkeypatch.setattr(_s1_mod, "DETECT_MODEL_CONFIG", detect_cfg)
+
+    attr_cfg = str(tmp_path / "attribute_config.yaml")
+    _create_tiny_attribute_config(ATTRIBUTE_MODEL_CONFIG, attr_cfg)
+    monkeypatch.setattr(_s1_mod, "ATTRIBUTE_MODEL_CONFIG", attr_cfg)
+
     monkeypatch.setenv("RSLP_PREFIX", str(tmp_path / "rslp"))
 
 
@@ -230,7 +259,7 @@ def test_predict_pipeline_scene_id(
 
     # Point to a copy of the dataset config (so writes don't pollute the repo).
     ds_cfg = str(tmp_path / "config.json")
-    with open("data/sentinel1_vessels/config.json") as f:
+    with open(SCENE_ID_DATASET_CONFIG) as f:
         cfg = json.load(f)
     with open(ds_cfg, "w") as f:
         json.dump(cfg, f)

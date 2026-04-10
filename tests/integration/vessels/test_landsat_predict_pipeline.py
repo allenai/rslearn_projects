@@ -15,6 +15,12 @@ from rslearn.utils.geometry import STGeometry
 from shapely.geometry import box
 from upath import UPath
 
+from rslp.landsat_vessels.config import (
+    ATTRIBUTE_MODEL_CONFIG,
+    AWS_DATASET_CONFIG,
+    CLASSIFY_MODEL_CONFIG,
+    DETECT_MODEL_CONFIG,
+)
 from rslp.landsat_vessels.predict_pipeline import predict_pipeline
 from tests.integration.vessels.helpers import (
     WGS84_ITEM_BOUNDS,
@@ -130,8 +136,12 @@ def _write_scene_id_dataset_config(
     """Write a modified predict_dataset_config_aws.json with custom cache dir."""
     with open(original_config_path) as f:
         cfg = json.load(f)
-    ds = cfg["layers"]["landsat"]["data_source"]["init_args"]
-    ds["metadata_cache_dir"] = metadata_cache_dir
+    cfg["layers"]["landsat"]["data_source"]["init_args"]["metadata_cache_dir"] = (
+        metadata_cache_dir
+    )
+    cfg["layers"]["landsat_allbands"]["data_source"]["init_args"][
+        "metadata_cache_dir"
+    ] = metadata_cache_dir
     with open(output_path, "w") as f:
         json.dump(cfg, f)
 
@@ -160,19 +170,43 @@ def _create_tiny_classifier_config(original_path: str, output_path: str) -> None
         yaml.dump(cfg, f)
 
 
+def _create_tiny_attribute_config(original_path: str, output_path: str) -> None:
+    """Patch the Landsat vessel attribute config to use OlmoEarth-v1-Nano."""
+    with open(original_path) as f:
+        cfg = yaml.safe_load(f)
+
+    model_args = cfg["model"]["init_args"]
+    encoder = model_args["model"]["init_args"]["encoder"][0]
+    encoder["init_args"]["model_id"] = "OLMOEARTH_V1_NANO"
+
+    # Nano produces 128-dim embeddings vs Base's 768.
+    decoders = model_args["model"]["init_args"]["decoders"]
+    for decoder_list in decoders.values():
+        for decoder in decoder_list:
+            if "PoolingDecoder" in decoder.get("class_path", ""):
+                decoder["init_args"]["in_channels"] = 128
+
+    apply_common_config_patches(cfg)
+
+    with open(output_path, "w") as f:
+        yaml.dump(cfg, f)
+
+
 def _patch_model_configs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> None:
     """Create tiny model configs and monkeypatch the module constants."""
     detect_cfg = str(tmp_path / "detect_config.yaml")
-    create_tiny_detect_config("data/landsat_vessels/config_detector.yaml", detect_cfg)
+    create_tiny_detect_config(DETECT_MODEL_CONFIG, detect_cfg)
     monkeypatch.setattr(_landsat_mod, "DETECT_MODEL_CONFIG", detect_cfg)
 
     classify_cfg = str(tmp_path / "classify_config.yaml")
-    _create_tiny_classifier_config(
-        "data/landsat_vessels/config_classifier.yaml", classify_cfg
-    )
+    _create_tiny_classifier_config(CLASSIFY_MODEL_CONFIG, classify_cfg)
     monkeypatch.setattr(_landsat_mod, "CLASSIFY_MODEL_CONFIG", classify_cfg)
+
+    attr_cfg = str(tmp_path / "attribute_config.yaml")
+    _create_tiny_attribute_config(ATTRIBUTE_MODEL_CONFIG, attr_cfg)
+    monkeypatch.setattr(_landsat_mod, "ATTRIBUTE_MODEL_CONFIG", attr_cfg)
 
     monkeypatch.setenv("RSLP_PREFIX", str(tmp_path / "rslp"))
 
@@ -207,7 +241,7 @@ def test_predict_pipeline_scene_id(
 
     ds_cfg = str(tmp_path / "predict_dataset_config_aws.json")
     _write_scene_id_dataset_config(
-        "data/landsat_vessels/predict_dataset_config_aws.json",
+        AWS_DATASET_CONFIG,
         ds_cfg,
         metadata_cache_dir=str(cache_dir),
     )

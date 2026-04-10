@@ -17,7 +17,8 @@ The model includes of a detector and a classifier: the detector detects ship-lik
 Inference
 ---------
 
-First, download the detector and classifier checkpoints to the `RSLP_PREFIX` directory.
+First, download the detector, classifier, and attribute model checkpoints to the
+`RSLP_PREFIX` directory.
 
     cd rslearn_projects
     mkdir -p project_data/projects/landsat_vessels/data_20240924_model_20240924_imagenet_patch512_flip_03/
@@ -25,6 +26,9 @@ First, download the detector and classifier checkpoints to the `RSLP_PREFIX` dir
 
     mkdir -p project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt -O project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt
+
+    mkdir -p project_data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/best.ckpt -O project_data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in `rslp/landsat_vessels/predict_pipeline.py`. You can download the Landsat scene files, e.g. from USGS EarthExplorer or AWS, and then create a configuration file for the prediction pipeline, here is an example:
 
@@ -67,7 +71,7 @@ First, download the training dataset for detector:
 
     cd rslearn_projects
     mkdir -p project_data/datasets/landsat_vessels/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/landsat_vessels_detector.tar -0 project_data/datasets/landsat_vessels_detector.tar
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/landsat_vessels_detector.tar -O project_data/datasets/landsat_vessels_detector.tar
     tar xvf project_data/datasets/landsat_vessels_detector.tar --directory project_data/datasets/landsat_vessels/
 
 It is an rslearn dataset consisting of window folders like `windows/labels_utm/41984_2354176_f7c057a567ee40b694d0a77ea59ef81a_6359/`. Inside each window folder:
@@ -84,9 +88,78 @@ disable W&B with `--log_mode=no` but then it may be difficult to track the metri
 
 Second, download the training dataset for classifier:
 
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/landsat_vessels_classifier.tar -0 project_data/datasets/landsat_vessels_classifier.tar
-    tar xvf project_data/dataset/landsat_vessels_classifier.tar --directory project_data/datasets/landsat_vessels/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/landsat_vessels/landsat_vessels_classifier.tar -O project_data/datasets/landsat_vessels_classifier.tar
+    tar xvf project_data/datasets/landsat_vessels_classifier.tar --directory project_data/datasets/landsat_vessels/
 
 Use the command below to train the classifier.
 
     rslearn model fit --config data/landsat_vessels/config_classifier.yaml --data.init_args.path project_data/datasets/landsat_vessels/dataset_20240905/
+
+
+Docker Container with FastAPI
+-----------------------------
+
+We also have a Docker container that exposes a FastAPI interface to apply vessel
+detection on Landsat scenes. This section explains how to setup the API.
+
+### Run the Docker container
+
+The Docker container includes the model weights. Run the container:
+
+```bash
+export LANDSAT_PORT=5555
+docker run \
+    --rm -p $LANDSAT_PORT:$LANDSAT_PORT \
+    -e LANDSAT_PORT=$LANDSAT_PORT \
+    -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
+    -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
+    --shm-size=15g \
+    --gpus all \
+    ghcr.io/allenai/landsat-vessel-detection:latest
+```
+
+AWS credentials are needed if you want to process scenes by scene ID (the images are
+downloaded from AWS).
+
+### Auto Documentation
+
+This API has enabled Swagger UI (`http://<your_address>:<port_number>/docs`) and ReDoc (`http://<your_address>:<port_number>/redoc`).
+
+### Making Requests
+
+Process a scene by its Landsat scene ID. Note that crop_path and scratch_path are
+optional.
+
+```bash
+curl -X POST http://localhost:${LANDSAT_PORT}/detections -H "Content-Type: application/json" -d '{"scene_id": "LC08_L1TP_125059_20240727_20240801_02_T1"}'
+```
+
+The API will respond with the vessel detection results in JSON format.
+
+Alternatively, process the scene by providing a path to a zip file containing the
+Landsat scene:
+
+```bash
+curl -X POST http://localhost:${LANDSAT_PORT}/detections -H "Content-Type: application/json" -d '{"scene_zip_path": "/path/to/LC08_L1TP_125059_20240727_20240801_02_T1.zip"}'
+```
+
+Or by providing paths to the individual band GeoTIFFs:
+
+```bash
+curl -X POST http://localhost:${LANDSAT_PORT}/detections -H "Content-Type: application/json" -d '{"image_files": {"B2": "/path/to/B2.TIF", "B3": "/path/to/B3.TIF", "B4": "/path/to/B4.TIF", "B5": "/path/to/B5.TIF", "B6": "/path/to/B6.TIF", "B7": "/path/to/B7.TIF", "B8": "/path/to/B8.TIF"}}'
+```
+
+The paths must be accessible from inside the Docker container.
+
+
+Vessel Attribute Prediction
+---------------------------
+
+The vessel attribute prediction model predicts the vessel type, length, width, speed,
+and heading of each detected vessel. It uses a separate model configured in
+`data/landsat_vessel_attribute/config.yaml`. The predicted values are available under
+the "attributes" key of the vessel object.
+
+Attribute prediction and near-marine-infrastructure filtering (which removes detections
+within 30 m of known marine infrastructure) are always applied during `predict_pipeline`,
+both when using the CLI and the Docker API.

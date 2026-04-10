@@ -131,7 +131,7 @@ docker run \
     -v $PWD/project_data/:/project_data/ \
     --shm-size=15g \
     --gpus all \
-    ghcr.io/allenai/sentinel2-vessel-detection:sentinel2_vessels_v0.0.6
+    ghcr.io/allenai/sentinel2-vessel-detection:latest
 ```
 
 ### Auto Documentation
@@ -171,19 +171,15 @@ These bands must be provided. In this case the scene must be processed with proc
 - B12
 - B8A
 
-### Docker Container Version History
-
-- v0.0.6: enable Pytorch Lightning environment variable parsing to allow disabling progress bar via environment variable.
-- v0.0.5: add Prometheus metrics.
-- v0.0.4: fix bug predicting attributes in scenes with zero vessel detections.
-- v0.0.3: fix bug with image_files execution.
-- v0.0.2: add attribute prediction (`data_20250205_regress_00`) and use model `data_20250213_02_all_bands`.
-- v0.0.1: initial version. It uses model `data_20240213_01_add_freezing_and_fix_fpn_restore`.
-
 
 Vessel Attribute Prediction
 ---------------------------
 
 The vessel attribute prediction model predicts the vessel type, length, width, speed,
-and heading of each detected vessel. The predicted values are available under the
-"attributes" key of the JSON or GeoJSON vessel object.
+and heading of each detected vessel. It uses a separate model configured in
+`data/sentinel2_vessel_attribute/config.yaml`. The predicted values are available under
+the "attributes" key of the JSON or GeoJSON vessel object.
+
+Attribute prediction and near-marine-infrastructure filtering (which removes detections
+within 50 m of known marine infrastructure) are always applied during `predict_pipeline`,
+both when using the CLI and the Docker API.

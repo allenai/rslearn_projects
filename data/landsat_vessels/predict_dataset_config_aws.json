@@ -1,6 +1,7 @@
 {
   "layers": {
     "landsat": {
+      "alias": "landsat",
       "band_sets": [
         {
           "bands": [
@@ -126,6 +127,35 @@
               17000
             ]
           }
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
+        "init_args": {
+          "metadata_cache_dir": "cache/landsat"
+        }
+      },
+      "resampling_method": "nearest",
+      "type": "raster"
+    },
+    "landsat_allbands": {
+      "alias": "landsat",
+      "band_sets": [
+        {
+          "bands": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B8",
+            "B9",
+            "B10",
+            "B11"
+          ],
+          "dtype": "uint16"
         }
       ],
       "data_source": {

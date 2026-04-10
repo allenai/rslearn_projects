@@ -1,5 +1,5 @@
 model:
-  class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeLightningModule
+  class_path: rslp.vessel_attribute.train.VesselAttributeLightningModule
   init_args:
     model:
       class_path: rslearn.models.multitask.MultiTaskModel
@@ -82,7 +82,7 @@ data:
         layers: ["info"]
         is_target: true
     task:
-      class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeMultiTask
+      class_path: rslp.vessel_attribute.train.VesselAttributeMultiTask
       init_args:
         length_buckets: [10, 20, 30, 50, 75, 100, 150, 200]
         width_buckets: [5, 10, 20]
