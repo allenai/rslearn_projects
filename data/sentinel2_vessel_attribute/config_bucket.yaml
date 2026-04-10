@@ -183,8 +183,8 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        monitor: val_loss
-        mode: min
+        monitor: val_ship_type/accuracy
+        mode: max
 project_name: sentinel2_vessel_attribute
 run_name: data_20250205_bucket_00
 management_dir: ${RSLP_PREFIX}/projects

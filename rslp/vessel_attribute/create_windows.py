@@ -162,7 +162,8 @@ def create_windows(
         ds_path: path to write the dataset, e.g.
             gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20241212/
         workers: number of worker processes to use
-        modality: which modality, this is used for copying the dataset config.
+        modality: which modality, this is used for copying the dataset config. Currently
+            it can be sentinel2, landsat, or sentinel1.
     """
     csv_upath = UPath(csv_dir)
     ds_upath = UPath(ds_path)

@@ -43,8 +43,10 @@ Training
 --------
 
 The object detection model applies a SwinB backbone on each of three images (the target
-scene and two historical scenes), then passes the features to a feature pyramid network
-and Faster R-CNN detection head.
+scene and two historical scenes). The features from the target scene are concatenated
+with the mean-pooled features across the historical scenes. The concatenated features
+are then passed to a feature pyramid network and Faster R-CNN detection head. The
+historical scenes help to differentiate between vessels and fixed infrastructure.
 
 Use the command below to train the model:
 
