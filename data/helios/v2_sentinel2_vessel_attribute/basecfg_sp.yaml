@@ -80,4 +80,4 @@ data:
           init_args:
             mean: 0
             std: 10000
-        - class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeFlip
+        - class_path: rslp.vessel_attribute.train.VesselAttributeFlip

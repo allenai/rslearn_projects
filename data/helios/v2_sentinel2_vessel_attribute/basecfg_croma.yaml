@@ -85,7 +85,7 @@ data:
         - class_path: rslearn.models.croma.CromaNormalize
     train_config:
       transforms:
-        - class_path: rslp.sentinel2_vessel_attribute.train.VesselAttributeFlip
+        - class_path: rslp.vessel_attribute.train.VesselAttributeFlip
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
             selections:

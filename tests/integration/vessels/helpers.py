@@ -49,6 +49,8 @@ def write_synthetic_geotiff(
     data = np.random.randint(100, 5000, size=(nbands, height, width), dtype=np.uint16)
     if dtype == "uint8":
         data = (data % 256).astype(np.uint8)
+    elif dtype == "float32":
+        data = data.astype(np.float32)
     GeotiffRasterFormat().encode_raster(
         directory,
         projection,

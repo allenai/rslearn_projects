@@ -1,0 +1,25 @@
+{
+  "layers": {
+    "info": {
+      "type": "vector"
+    },
+    "output": {
+      "type": "vector"
+    },
+    "sentinel1": {
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1"
+      },
+      "type": "raster"
+    }
+  }
+}

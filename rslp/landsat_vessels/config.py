@@ -4,6 +4,7 @@ import json
 
 # Landsat config
 LANDSAT_LAYER_NAME = "landsat"
+LANDSAT_ALLBANDS_LAYER_NAME = "landsat_allbands"
 OUTPUT_LAYER_NAME = "output"
 LANDSAT_RESOLUTION = 15
 
@@ -22,6 +23,8 @@ LANDSAT_BANDS = [
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config_detector.yaml"
 CLASSIFY_MODEL_CONFIG = "data/landsat_vessels/config_classifier.yaml"
 CLASSIFY_WINDOW_SIZE = 128
+ATTRIBUTE_MODEL_CONFIG = "data/landsat_vessel_attribute/config.yaml"
+ATTRIBUTE_WINDOW_SIZE = 128
 
 # Filter config
 INFRA_THRESHOLD_KM = 0.03  # max-distance between marine infra and prediction

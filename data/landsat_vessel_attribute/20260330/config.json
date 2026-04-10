@@ -1,0 +1,38 @@
+{
+  "layers": {
+    "info": {
+      "type": "vector"
+    },
+    "landsat_allbands": {
+      "band_sets": [
+        {
+          "bands": [
+            "B1",
+            "B2",
+            "B3",
+            "B4",
+            "B5",
+            "B6",
+            "B7",
+            "B8",
+            "B9",
+            "B10",
+            "B11"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
+        "ingest": false,
+        "init_args": {
+          "metadata_cache_dir": "cache/landsat"
+        }
+      },
+      "type": "raster"
+    },
+    "output": {
+      "type": "vector"
+    }
+  }
+}

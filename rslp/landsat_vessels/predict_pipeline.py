@@ -23,11 +23,14 @@ from typing_extensions import TypedDict
 from upath import UPath
 
 from rslp.landsat_vessels.config import (
+    ATTRIBUTE_MODEL_CONFIG,
+    ATTRIBUTE_WINDOW_SIZE,
     AWS_DATASET_CONFIG,
     CLASSIFY_MODEL_CONFIG,
     CLASSIFY_WINDOW_SIZE,
     DETECT_MODEL_CONFIG,
     INFRA_THRESHOLD_KM,
+    LANDSAT_ALLBANDS_LAYER_NAME,
     LANDSAT_BANDS,
     LANDSAT_LAYER_NAME,
     LANDSAT_RESOLUTION,
@@ -47,7 +50,7 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
-from rslp.vessels import VesselDetection, VesselDetectionSource
+from rslp.vessels import VesselAttributes, VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
 
@@ -123,10 +126,17 @@ def get_vessel_detections(
 
     # Restrict to the item if set.
     if scene_data.item:
-        layer_data = WindowLayerData(
-            LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+        window.save_layer_datas(
+            {
+                LANDSAT_LAYER_NAME: WindowLayerData(
+                    LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+                ),
+                # Empty layer data so it doesn't go through ingest/materialize.
+                LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
+                    LANDSAT_ALLBANDS_LAYER_NAME, []
+                ),
+            }
         )
-        window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     logger.info("materialize dataset")
     apply_windows_args = ApplyWindowsArgs(group=group, workers=1)
@@ -224,10 +234,17 @@ def run_classifier(
         detection.metadata["crop_window"] = window
 
         if scene_data.item:
-            layer_data = WindowLayerData(
-                LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+            window.save_layer_datas(
+                {
+                    LANDSAT_LAYER_NAME: WindowLayerData(
+                        LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+                    ),
+                    # Empty layer data so it doesn't go through ingest/materialize.
+                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
+                        LANDSAT_ALLBANDS_LAYER_NAME, []
+                    ),
+                }
             )
-            window.save_layer_datas(dict(LANDSAT_LAYER_NAME=layer_data))
 
     logger.info("materialize dataset")
     apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
@@ -268,6 +285,97 @@ def run_classifier(
             good_detections.append(detection)
 
     return good_detections
+
+
+def run_attribute_model(
+    ds_path: UPath,
+    detections: list[VesselDetection],
+    scene_data: SceneData,
+) -> None:
+    """Run the attribute prediction model on filtered detections.
+
+    Args:
+        ds_path: the dataset path that will be populated with new windows to apply the
+            attribute model.
+        detections: the detections that passed the classifier.
+        scene_data: the SceneData.
+    """
+    if len(detections) == 0:
+        return
+
+    dataset = Dataset(ds_path)
+    group = "attribute_predict"
+    windows: list[Window] = []
+    for detection in detections:
+        bounds = [
+            detection.col - ATTRIBUTE_WINDOW_SIZE // 2,
+            detection.row - ATTRIBUTE_WINDOW_SIZE // 2,
+            detection.col + ATTRIBUTE_WINDOW_SIZE // 2,
+            detection.row + ATTRIBUTE_WINDOW_SIZE // 2,
+        ]
+        window = Window(
+            storage=dataset.storage,
+            group=group,
+            name=f"{detection.col}_{detection.row}",
+            projection=detection.projection,
+            bounds=bounds,
+            time_range=scene_data.time_range,
+        )
+        window.save()
+        windows.append(window)
+        detection.metadata["crop_window"] = window
+
+        if scene_data.item:
+            window.save_layer_datas(
+                {
+                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
+                        LANDSAT_ALLBANDS_LAYER_NAME, [[scene_data.item.serialize()]]
+                    ),
+                    # Empty layer data so it doesn't go through ingest/materialize.
+                    LANDSAT_LAYER_NAME: WindowLayerData(LANDSAT_LAYER_NAME, []),
+                }
+            )
+
+    logger.info("materialize dataset for attribute prediction")
+    apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
+    materialize_pipeline_args = MaterializePipelineArgs(
+        disabled_layers=[],
+        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
+        ingest_args=IngestArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+        materialize_args=MaterializeArgs(
+            ignore_errors=False, apply_windows_args=apply_windows_args
+        ),
+    )
+    materialize_dataset(ds_path, materialize_pipeline_args)
+
+    for window in windows:
+        if not window.is_layer_completed(LANDSAT_ALLBANDS_LAYER_NAME):
+            raise ValueError(
+                f"window {window.name} does not have materialized Landsat image"
+            )
+
+    run_model_predict(
+        ATTRIBUTE_MODEL_CONFIG,
+        ds_path,
+        groups=[group],
+        extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+    )
+
+    for detection, window in zip(detections, windows):
+        layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
+        features = GeojsonVectorFormat().decode_vector(
+            layer_dir, window.projection, window.bounds
+        )
+        properties = features[0].properties
+        detection.attributes = VesselAttributes(
+            length=properties["length"],
+            width=properties["width"],
+            speed=properties["sog"],
+            heading=properties["heading"],
+            vessel_type=properties["type"],
+        )
 
 
 def download_and_unzip_scene(
@@ -360,6 +468,20 @@ def setup_dataset(
         cfg["layers"][LANDSAT_LAYER_NAME]["data_source"]["init_args"][
             "raster_item_specs"
         ] = [item_spec]
+
+        allbands_item_spec: dict = {
+            "fnames": [],
+            "bands": [],
+        }
+        for band, image_path in image_files.items():
+            allbands_item_spec["fnames"].append(image_path)
+            allbands_item_spec["bands"].append([band])
+        cfg["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["data_source"]["init_args"][
+            "src_dir"
+        ] = str(UPath(next(iter(image_files.values()))).parent)
+        cfg["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["data_source"]["init_args"][
+            "raster_item_specs"
+        ] = [allbands_item_spec]
 
         with (ds_path / "config.json").open("w") as f:
             json.dump(cfg, f)
@@ -487,6 +609,9 @@ def predict_pipeline(
         detections = run_classifier(
             ds_path, detections=detections, scene_data=scene_data
         )
+
+    with time_operation(TimerOperations.RunAttributeModel):
+        run_attribute_model(ds_path, detections=detections, scene_data=scene_data)
 
     with time_operation(TimerOperations.BuildPredictionsAndCrops):
         json_data = _build_predictions_and_crops(detections, crop_path)

@@ -1,6 +1,8 @@
 """Sentinel-1 vessel prediction pipeline."""
 
 import json
+import math
+import os
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -36,9 +38,11 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
-from rslp.vessels import VesselDetection, VesselDetectionSource
+from rslp.vessels import VesselAttributes, VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
+
+NUM_DATA_LOADER_WORKERS = int(os.environ.get("RSLEARN_NUM_DATA_LOADER_WORKERS", 4))
 
 # Layer name for the Sentinel-1 image in which we want to detect vessels.
 SENTINEL1_LAYER_NAME = "sentinel1"
@@ -52,6 +56,7 @@ OUTPUT_LAYER_NAME = "output"
 SCENE_ID_DATASET_CONFIG = "data/sentinel1_vessels/config.json"
 IMAGE_FILES_DATASET_CONFIG = "data/sentinel1_vessels/config_predict_local_files.json"
 DETECT_MODEL_CONFIG = "data/sentinel1_vessels/config.yaml"
+ATTRIBUTE_MODEL_CONFIG = "data/sentinel1_vessel_attribute/config.yaml"
 
 RESOLUTION = 10
 CROP_WINDOW_SIZE = 128
@@ -218,7 +223,7 @@ def setup_dataset_with_scene_ids(
             best_hist_option: Item | None = None
             best_intersect_area = 0
             for group in result_item_groups:
-                hist_option = group[0]
+                hist_option = group.items[0]
                 hist_option_geom = hist_option.geometry.to_projection(WGS84_PROJECTION)
                 intersect_area = hist_option_geom.shp.intersection(wgs84_geom.shp).area
                 if intersect_area > best_intersect_area:
@@ -250,9 +255,9 @@ def setup_dataset_with_scene_ids(
     # file (which is set up to get Sentinel-1 images from AWS.)
     with open(SCENE_ID_DATASET_CONFIG) as f:
         ds_config = json.load(f)
-    ds_config["layers"][HISTORICAL_LAYER_NAME]["data_source"]["orbit_direction"] = (
-        orbit_direction
-    )
+    ds_config["layers"][HISTORICAL_LAYER_NAME]["data_source"]["init_args"][
+        "orbit_direction"
+    ] = orbit_direction
     with (ds_path / "config.json").open("w") as f:
         json.dump(ds_config, f)
 
@@ -272,17 +277,30 @@ def setup_dataset_with_image_files(
         a list of SceneData corresponding to the specified images.
     """
     # Write dataset configuration file.
-    # We need to override the item_specs and src_dir placeholders.
+    # We need to override the item_specs and src_dir placeholders for both the target
+    # image layer and the historical images layer.
     # The src_dir is only used to store summary.json, since we require absolute paths
     # for the actual image files and they will be set directly.
     with open(IMAGE_FILES_DATASET_CONFIG) as f:
         cfg = json.load(f)
-    item_specs = []
+
+    target_item_specs = []
+    historical_item_specs = []
     for task in tasks:
-        for image in [task.image, task.historical1, task.historical2]:
-            assert image is not None
-            # Ensure the filename is a URI so it won't be treated as a relative path.
-            item_specs.append(
+        assert task.image is not None
+        assert task.historical1 is not None
+        assert task.historical2 is not None
+        target_item_specs.append(
+            {
+                "fnames": [
+                    UPath(task.image.vv).absolute().as_uri(),
+                    UPath(task.image.vh).absolute().as_uri(),
+                ],
+                "bands": [["vv"], ["vh"]],
+            }
+        )
+        for image in [task.historical1, task.historical2]:
+            historical_item_specs.append(
                 {
                     "fnames": [
                         UPath(image.vv).absolute().as_uri(),
@@ -291,25 +309,27 @@ def setup_dataset_with_image_files(
                     "bands": [["vv"], ["vh"]],
                 }
             )
-    cfg["layers"][SENTINEL1_LAYER_NAME]["data_source"]["init_args"][
-        "raster_item_specs"
-    ] = item_specs
 
-    src_dir = ds_path / "source_dir"
-    src_dir.mkdir(parents=True)
-    cfg["layers"][SENTINEL1_LAYER_NAME]["data_source"]["init_args"]["src_dir"] = (
-        src_dir.name
-    )
+    for layer_name, item_specs, dir_name in [
+        (SENTINEL1_LAYER_NAME, target_item_specs, "source_dir"),
+        (HISTORICAL_LAYER_NAME, historical_item_specs, "historical_source_dir"),
+    ]:
+        cfg["layers"][layer_name]["data_source"]["init_args"]["raster_item_specs"] = (
+            item_specs
+        )
+        src_dir = ds_path / dir_name
+        src_dir.mkdir(parents=True)
+        cfg["layers"][layer_name]["data_source"]["init_args"]["src_dir"] = src_dir.name
 
     with (ds_path / "config.json").open("w") as f:
         json.dump(cfg, f)
 
-    # Get the projection and scene bounds for each task from the vv image.
-    # We need to do it based on the ground control points though.
+    # Get the projection and scene bounds for each task from the vv image ground
+    # control points.
     scene_datas: list[SceneData] = []
     for task in tasks:
         assert task.image is not None
-        with open_rasterio_upath_reader(task.image.vv) as raster:
+        with open_rasterio_upath_reader(UPath(task.image.vv)) as raster:
             gcps, gcp_crs = raster.gcps
             xs = [gcp.x for gcp in gcps]
             ys = [gcp.y for gcp in gcps]
@@ -318,6 +338,7 @@ def setup_dataset_with_image_files(
                 shapely.box(min(xs), min(ys), max(xs), max(ys)),
                 None,
             )
+
             wgs84_geom = src_geom.to_projection(WGS84_PROJECTION)
             dst_proj = get_utm_ups_projection(
                 wgs84_geom.shp.centroid.x,
@@ -326,11 +347,17 @@ def setup_dataset_with_image_files(
                 -RESOLUTION,
             )
             dst_geom = src_geom.to_projection(dst_proj)
+            minx, miny, maxx, maxy = dst_geom.shp.bounds
 
             scene_datas.append(
                 SceneData(
                     projection=dst_proj,
-                    bounds=dst_geom.shp.bounds,
+                    bounds=(
+                        math.floor(minx),
+                        math.floor(miny),
+                        math.ceil(maxx),
+                        math.ceil(maxy),
+                    ),
                 )
             )
 
@@ -393,7 +420,11 @@ def get_vessel_detections(
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
-        run_model_predict(DETECT_MODEL_CONFIG, ds_path)
+        run_model_predict(
+            DETECT_MODEL_CONFIG,
+            ds_path,
+            extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+        )
 
     # Read the detections.
     detections: list[VesselDetection] = []
@@ -427,28 +458,28 @@ def get_vessel_detections(
     return detections
 
 
-def get_vessel_crop_windows(
+def run_attribute_model(
     ds_path: UPath,
     detections: list[VesselDetection],
     scene_datas: list[SceneData],
 ) -> list[Window]:
-    """Create a window for each vessel to obtain a cropped image for it.
+    """Run the attribute prediction model.
 
     Args:
-        ds_path: the dataset path that will be populated with new windows.
+        ds_path: the dataset path that will be populated with new windows to apply the
+            attribute model.
         detections: the detections from the detector.
         scene_datas: the list of SceneDatas.
 
     Returns:
-        the new windows.
+        the new windows. The detections will also be updated with the predicted
+            attributes.
     """
-    # Avoid errors with materialize_dataset when there are no detections to process.
     if len(detections) == 0:
         return []
 
-    # Create windows for collecting the cropped images.
     dataset = Dataset(ds_path)
-    group = "crops"
+    group = "attribute_predict"
     windows: list[Window] = []
     for detection in detections:
         window_name = (
@@ -480,7 +511,7 @@ def get_vessel_crop_windows(
             window.save_layer_datas(scene_data.get_layer_datas())
 
     # Materialize the dataset.
-    logger.info("materialize dataset")
+    logger.info("materialize dataset for attribute prediction")
     apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
     materialize_pipeline_args = MaterializePipelineArgs(
         disabled_layers=[],
@@ -500,6 +531,29 @@ def get_vessel_crop_windows(
             raise ValueError(
                 f"window {window.name} does not have materialized Sentinel-1 image"
             )
+
+    # Run attribute model.
+    run_model_predict(
+        ATTRIBUTE_MODEL_CONFIG,
+        ds_path,
+        groups=[group],
+        extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+    )
+
+    # Read the results.
+    for detection, window in zip(detections, windows):
+        layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
+        features = GeojsonVectorFormat().decode_vector(
+            layer_dir, window.projection, window.bounds
+        )
+        properties = features[0].properties
+        detection.attributes = VesselAttributes(
+            length=properties["length"],
+            width=properties["width"],
+            speed=properties["sog"],
+            heading=properties["heading"],
+            vessel_type=properties["type"],
+        )
 
     return windows
 
@@ -554,7 +608,7 @@ def predict_pipeline(
     # Apply the attribute prediction model.
     # This also collects vessel crop windows.
     with time_operation(TimerOperations.RunAttributeModel):
-        crop_windows = get_vessel_crop_windows(ds_path, detections, scene_datas)
+        crop_windows = run_attribute_model(ds_path, detections, scene_datas)
 
     # Write crops and prepare the JSON data.
     with time_operation(TimerOperations.BuildPredictionsAndCrops):

@@ -23,7 +23,7 @@ from .ship_types import VESSEL_CATEGORIES
 
 PIXEL_SIZE = 10
 WINDOW_SIZE = 128
-DATASET_CONFIG_FNAME = "data/sentinel2_vessel_attribute/config.json"
+DATASET_CONFIG_FNAME = "data/{modality}_vessel_attribute/config.json"
 
 
 def process_row(group: str, dataset: Dataset, csv_row: dict[str, str]) -> None:
@@ -146,7 +146,13 @@ def process_row(group: str, dataset: Dataset, csv_row: dict[str, str]) -> None:
     window.mark_layer_completed("info")
 
 
-def create_windows(group: str, csv_dir: str, ds_path: str, workers: int = 32) -> None:
+def create_windows(
+    group: str,
+    csv_dir: str,
+    ds_path: str,
+    workers: int = 32,
+    modality: str = "sentinel2",
+) -> None:
     """Initialize an rslearn dataset at the specified path.
 
     Args:
@@ -156,12 +162,14 @@ def create_windows(group: str, csv_dir: str, ds_path: str, workers: int = 32) ->
         ds_path: path to write the dataset, e.g.
             gs://rslearn-eai/datasets/sentinel2_vessel_attribute/dataset_v1/20241212/
         workers: number of worker processes to use
+        modality: which modality, this is used for copying the dataset config. Currently
+            it can be sentinel2, landsat, or sentinel1.
     """
     csv_upath = UPath(csv_dir)
     ds_upath = UPath(ds_path)
 
     # Copy dataset configuration first.
-    with open(DATASET_CONFIG_FNAME, "rb") as src:
+    with open(DATASET_CONFIG_FNAME.format(modality=modality), "rb") as src:
         with (ds_upath / "config.json").open("wb") as dst:
             shutil.copyfileobj(src, dst)
 
