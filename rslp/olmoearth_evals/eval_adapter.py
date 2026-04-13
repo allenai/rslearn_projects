@@ -88,8 +88,7 @@ class EvalAdapterModel(torch.nn.Module):
         """
         super().__init__()
         model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
-        adapter_module = modules_by_model_id[model_id]
-        self.model = adapter_module.get_model(
+        self.model = modules_by_model_id[model_id].get_model(
             input_size=input_size,
             input_modalities=input_modalities,
             task_type=task_type,
