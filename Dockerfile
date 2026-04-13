@@ -23,10 +23,6 @@ RUN uv pip install --system /opt/rslearn[extra]
 COPY . /opt/rslearn_projects/
 RUN uv pip install --system /opt/rslearn_projects[dev,extra,olmoearth_pretrain]
 
-# Re-install rslearn from the checked-out branch to ensure it isn't overwritten
-# by a PyPI version pulled in as a transitive dependency of rslearn_projects.
-RUN uv pip install --system --reinstall-package rslearn /opt/rslearn[extra]
-
 # Build Satlas smooth_point_labels_viterbi.go program.
 WORKDIR /opt/rslearn_projects/rslp/satlas/scripts
 RUN go build smooth_point_labels_viterbi.go
