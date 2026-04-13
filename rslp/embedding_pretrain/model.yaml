@@ -1,0 +1,63 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_BASE
+              patch_size: 8
+              token_pooling: false
+              token_instance_pooling: true
+              use_legacy_timestamps: false
+        decoder:
+          - class_path: rslearn.train.tasks.embedding.EmbeddingHead
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/globe_land_grid
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2_q1", "sentinel2_q2", "sentinel2_q3", "sentinel2_q4"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+    task:
+      class_path: rslearn.train.tasks.embedding.EmbeddingTask
+      init_args:
+        property_name: embedding
+    batch_size: 512
+    num_workers: 32
+    predict_config:
+      transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            size: 96
+            mode: "center"
+            image_selectors: ["sentinel2_l2a"]
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+      groups:
+        - s50ix24
+trainer:
+  callbacks:
+   # The RslearnWriter will write one vector feature per window containing the
+   # pooled instance embedding. The output layer in the dataset config should be
+   # a vector layer.
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        # This references the "embeddings" vector layer that we will add to the
+        # dataset config to store the instance embeddings.
+        output_layer: embeddings
+        merger:
+          class_path: rslearn.train.prediction_writer.VectorMerger
+project_name: embedding_pretrain
+run_name: s50ix24_instance_embedding
