@@ -11,8 +11,9 @@ COPY docker_build/rslearn/pyproject.toml /opt/rslearn/pyproject.toml
 COPY docker_build/olmoearth_pretrain/pyproject.toml /opt/olmoearth_pretrain/pyproject.toml
 COPY requirements.txt /opt/rslearn_projects/requirements.txt
 COPY requirements-extra.txt /opt/rslearn_projects/requirements-extra.txt
+COPY requirements-olmocore.txt /opt/rslearn_projects/requirements-olmocore.txt
 # Using cache mount here avoids needing to re-download dependencies for later builds if the version didn't change.
-RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system /opt/rslearn[extra] /opt/olmoearth_pretrain -r /opt/rslearn_projects/requirements.txt -r /opt/rslearn_projects/requirements-extra.txt
+RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system /opt/rslearn[extra] /opt/olmoearth_pretrain -r /opt/rslearn_projects/requirements.txt -r /opt/rslearn_projects/requirements-extra.txt -r /opt/rslearn_projects/requirements-olmocore.txt
 
 # Now copy the source code and install for real.
 # If we don't change any dependencies, then only these steps need to be repeated

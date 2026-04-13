@@ -82,8 +82,10 @@ def launch(
         use_embeddings: add an EmbeddingCache wrapping the encoder. This will ensure
             the encoder is not re-applied on crops that it has already processed, and
             also the encoder will not see gradients.
-        model_config: optional dict of model configuration overrides. For example,
-            {"decoder": "singleconv"} to use a single conv decoder for segmentation.
+        model_config: optional dict of model configuration overrides passed via
+            EVAL_ADAPTER_MODEL_CONFIG env var. For example,
+            {"checkpoint_path": "/path/to/ckpt"} to load a custom checkpoint, or
+            {"use_legacy_timestamps": "true"} to enable legacy timestamps.
     """
     for model in models:
         for task in tasks:
@@ -97,7 +99,7 @@ def launch(
                 env_vars_dict["EVAL_ADAPTER_CROP_TO"] = ",".join(
                     str(x) for x in crop_to
                 )
-            if model_config is not None:
+            if model_config:
                 env_vars_dict["EVAL_ADAPTER_MODEL_CONFIG"] = json.dumps(model_config)
 
             basic_args = [
@@ -145,7 +147,9 @@ def launch(
                 ]
 
             # Build extra_args for the training script.
-            all_extra_args: list[str] = []
+            all_extra_args: list[str] = [
+                "--management_dir=${RSLP_PREFIX}/projects",
+            ]
             if use_embeddings:
                 all_extra_args.append(
                     "--model.init_args.model.init_args.use_embeddings=true"
