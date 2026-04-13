@@ -35,7 +35,6 @@ def get_model(
     task_name: str,
     task_channels: int = 1,
     task_timesteps: int = 1,
-    checkpoint_path: str | None = None,
 ) -> torch.nn.Module:
     """Get appropriate OlmoEarth model.
 
@@ -46,15 +45,17 @@ def get_model(
         task_name: the name of the task.
         task_channels: number of output channels.
         task_timesteps: number of input timesteps.
-        checkpoint_path: optional path to an OlmoEarth checkpoint directory.
-            When set, weights are loaded from this path instead of the default
-            released model for the given model ID.
     """
     model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
     model_config_env = os.environ.get("EVAL_ADAPTER_MODEL_CONFIG")
     model_config: dict[str, str] = (
         json.loads(model_config_env) if model_config_env else {}
     )
+    checkpoint_path = model_config.get("checkpoint_path")
+    use_legacy_timestamps = (
+        model_config.get("use_legacy_timestamps", "false").lower() == "true"
+    )
+
     if model_id in ["olmoearth", "olmoearth_random"]:
         olmoearth_model_id = ModelID.OLMOEARTH_V1_BASE
     elif model_id == "olmoearth_nano":
@@ -78,13 +79,13 @@ def get_model(
             return OlmoEarth(
                 checkpoint_path=checkpoint_path,
                 patch_size=4,
-                use_legacy_timestamps=False,
+                use_legacy_timestamps=use_legacy_timestamps,
             )
         return OlmoEarth(
             model_id=olmoearth_model_id,
             patch_size=4,
             random_initialization=model_id == "olmoearth_random",
-            use_legacy_timestamps=False,
+            use_legacy_timestamps=use_legacy_timestamps,
         )
 
     if task_type == "segment":

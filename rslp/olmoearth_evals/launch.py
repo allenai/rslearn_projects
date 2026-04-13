@@ -101,8 +101,13 @@ def launch(
                 env_vars_dict["EVAL_ADAPTER_CROP_TO"] = ",".join(
                     str(x) for x in crop_to
                 )
-            if model_config is not None:
-                env_vars_dict["EVAL_ADAPTER_MODEL_CONFIG"] = json.dumps(model_config)
+            effective_model_config = dict(model_config) if model_config else {}
+            if checkpoint_path is not None:
+                effective_model_config["checkpoint_path"] = checkpoint_path
+            if effective_model_config:
+                env_vars_dict["EVAL_ADAPTER_MODEL_CONFIG"] = json.dumps(
+                    effective_model_config
+                )
 
             basic_args = [
                 "python",
@@ -152,10 +157,6 @@ def launch(
             all_extra_args: list[str] = [
                 "--management_dir=${RSLP_PREFIX}/projects",
             ]
-            if checkpoint_path is not None:
-                all_extra_args.append(
-                    f"--model.init_args.model.init_args.checkpoint_path={checkpoint_path}"
-                )
             if use_embeddings:
                 all_extra_args.append(
                     "--model.init_args.model.init_args.use_embeddings=true"
