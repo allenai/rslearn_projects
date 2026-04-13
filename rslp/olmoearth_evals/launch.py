@@ -64,7 +64,6 @@ def launch(
     crop_to: PixelBounds | None = None,
     use_embeddings: bool = False,
     model_config: dict[str, str] | None = None,
-    checkpoint_path: str | None = None,
 ) -> None:
     """Launch OlmoEarth fine-tuning evaluation.
 
@@ -83,11 +82,10 @@ def launch(
         use_embeddings: add an EmbeddingCache wrapping the encoder. This will ensure
             the encoder is not re-applied on crops that it has already processed, and
             also the encoder will not see gradients.
-        model_config: optional dict of model configuration overrides. For example,
-            {"decoder": "singleconv"} to use a single conv decoder for segmentation.
-        checkpoint_path: optional path to a pretrained checkpoint directory. When set,
-            the OlmoEarth adapter will load weights from this path instead of the
-            default released model.
+        model_config: optional dict of model configuration overrides passed via
+            EVAL_ADAPTER_MODEL_CONFIG env var. For example,
+            {"checkpoint_path": "/path/to/ckpt"} to load a custom checkpoint, or
+            {"use_legacy_timestamps": "true"} to enable legacy timestamps.
     """
     for model in models:
         for task in tasks:
@@ -101,13 +99,8 @@ def launch(
                 env_vars_dict["EVAL_ADAPTER_CROP_TO"] = ",".join(
                     str(x) for x in crop_to
                 )
-            effective_model_config = dict(model_config) if model_config else {}
-            if checkpoint_path is not None:
-                effective_model_config["checkpoint_path"] = checkpoint_path
-            if effective_model_config:
-                env_vars_dict["EVAL_ADAPTER_MODEL_CONFIG"] = json.dumps(
-                    effective_model_config
-                )
+            if model_config:
+                env_vars_dict["EVAL_ADAPTER_MODEL_CONFIG"] = json.dumps(model_config)
 
             basic_args = [
                 "python",
