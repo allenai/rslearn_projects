@@ -1,0 +1,93 @@
+{
+  "dataset_root": "/weka/dfive-default/rslearn-eai/datasets/wildfire/canada_nbac",
+  "missing_layer_windows": 0,
+  "nodata_value": -9999.0,
+  "per_variable": {
+    "d2m": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "e": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "pev": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "ro": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "sp": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "ssr": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "ssrd": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "str": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419163,
+      "partially_nodata_windows": 13,
+      "valid_count": 51858327
+    },
+    "swvl1": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "swvl2": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "t2m": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "tp": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "u10": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    },
+    "v10": {
+      "fully_nodata_windows": 1148,
+      "nodata_count": 419020,
+      "partially_nodata_windows": 0,
+      "valid_count": 51858470
+    }
+  },
+  "split": "train",
+  "total_windows": 143226
+}

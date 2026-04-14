@@ -1,0 +1,18 @@
+defaults:
+  - _self_
+  - global_config
+
+start_year: 2022
+end_year: 2023
+pos_grid_path: "${paths.burned_area}/temporally_gridded_fire_samples_lc.gdb"
+grid_path: "${paths.burned_area}/grid_lc.gdb"
+neg_grid_path: "${paths.burned_area}/negative_temporal_grid_samples.gdb"
+fire_weather_path: "${paths.fwi}"
+canada_bounds_path: "${paths.canada_bounds}/lpr_000b16a_e.shp"
+region_path: "${paths.canada_bounds}/lpr_000b16a_e.shp"
+sampling_ratio: 2.
+offset: 8
+# num_bucket: 10
+bucket: [1.8648005362109643e-09, 4.568357734417491, 7.34912109375, 9.49462890625, 11.242375547557309, 13.230990848136443, 15.419921875, 19.038727013075256, 24.05224609375, 30.78076171875, 53.42168883739697]
+seed: 42
+output_path: "${paths.burned_area_input}/negative_temporal_grid_samples_hard.gdb"

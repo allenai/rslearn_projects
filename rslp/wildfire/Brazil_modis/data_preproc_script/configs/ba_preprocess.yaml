@@ -1,0 +1,46 @@
+defaults:
+  - _self_
+  - global_config
+
+# ---------- Brazil MODIS burned-area configuration ----------
+# Raw source burned-area file (column renaming is handled automatically)
+input_path: "./datasets/MCD64A1-brazil/FIREd_Brazil/fired_brazil_2015_to_2024_events/fired_brazil_2015_to_2024_events.gdb"
+
+# Column name mapping (source column names → canonical names)
+# Set these when the source file doesn't already use src_fireid / start_date / end_date.
+fire_id_col: "id"
+start_date_col: "ig_date"
+end_date_col: "last_date"
+
+# Grid: output of Step 0 (create_grid)
+grid_path: "./datasets/MCD64A1-brazil/FIREd_Brazil_preproc/grid/Brazil_3200m_adaptive.gdb"
+
+# Intermediate: filtered & exploded burned-area fire perimeters
+filtered_fires_path: "./datasets/MCD64A1-brazil/FIREd_Brazil_preproc/burned_area_preproc/filtered_exploded_fires.gdb"
+
+start_date: "2015-01-01"
+start_year: 2015
+end_year: 2024
+offset: 8
+crs: 4326
+
+# Spatially-joined & temporally-merged fire grid samples (with bounds/centroids)
+merged_fire_grid_path: "./datasets/MCD64A1-brazil/FIREd_Brazil_preproc/burned_area_preproc/merged_fire_grid_samples.gdb"
+
+# Temporally-gridded fire samples (start dates snapped to 8-day intervals)
+temporal_grid_samples_path: "./datasets/MCD64A1-brazil/FIREd_Brazil_preproc/burned_area_preproc/temporally_gridded_fire_samples.gdb"
+
+# Post-merge mapping: merged sample ID -> fire IDs, grid cell, date range
+post_merge_fire_mapping_path: "./datasets/MCD64A1-brazil/FIREd_Brazil_preproc/burned_area_preproc/post_merge_fire_sample_mapping.csv"
+
+# Pre-merge mapping: grid cell -> fire IDs (before temporal overlap merging)
+pre_merge_fire_mapping_path: "./datasets/MCD64A1-brazil/FIREd_Brazil_preproc/burned_area_preproc/pre_merge_fire_grid_mapping.csv"
+
+# Temporal-bin mapping: samples grouped into (grid_id, snapped_start_date) bins
+temporal_bin_mapping_path: "./datasets/MCD64A1-brazil/FIREd_Brazil_preproc/burned_area_preproc/temporal_bin_sample_mapping.csv"
+
+# Region splitting
+# To enable, set split_regions to true and supply region_bounds_path + region_col.
+split_regions: true
+region_bounds_path: "./datasets/MCD64A1-brazil/FIREd_Brazil_preproc/brazil_regions/brazil_admin1_simple.gdb"
+region_col: "ADM1_PT"

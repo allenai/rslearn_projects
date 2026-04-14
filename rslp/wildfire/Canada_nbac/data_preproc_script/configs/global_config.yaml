@@ -1,0 +1,32 @@
+defaults:
+  - _self_
+  - override hydra/hydra_logging: none
+  - override hydra/job_logging: none
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+paths:
+  base: "./datasets/Canada_nbac"
+  grid: "${paths.base}/grids"
+  burned_area: "${paths.base}/burned_area_preproc"
+  burned_area_input: "${paths.base}/burned_area_adapt_2023"
+  fwi: "${paths.base}/fwi"
+  canada_bounds: "${paths.base}/canada_regions"
+  landcover: "${paths.base}/landcover"
+  sampling_analysis: "${paths.base}/sampling_analysis"
+
+bounds:
+  min_x: -141.02
+  max_x: -52.62
+  min_y: 41.68
+  max_y: 83.14
+
+grid:
+  type: "adaptive"
+  step_x: 2800.0
+  step_y: 2800.0
+  crs: 4326
+  output_path: "${paths.grid}/Canada_grid_adaptive.gdb"

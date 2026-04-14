@@ -1,0 +1,27 @@
+2026-03-19 21:52:29,318 - analyze_sampling - INFO - Starting sampling analysis
+2026-03-19 21:52:29,319 - analyze_sampling - INFO - Starting FWI analysis
+2026-03-19 21:52:36,897 - analyze_sampling - INFO - No neg_path provided — skipping comparative plots
+2026-03-19 21:52:36,956 - analyze_sampling - INFO - Found 10 years to analyse: [np.int32(2015), np.int32(2016), np.int32(2017), np.int32(2018), np.int32(2019), np.int32(2020), np.int32(2021), np.int32(2022), np.int32(2023), np.int32(2024)]
+2026-03-19 21:52:36,956 - analyze_sampling - INFO - Processing year 2015
+2026-03-19 21:52:36,995 - analyze_sampling - INFO - Loading FWI from /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2015/fwi_dc_agg_2015.nc
+2026-03-19 21:56:28,806 - analyze_sampling - INFO - Processing year 2016
+2026-03-19 21:56:28,849 - analyze_sampling - INFO - Loading FWI from /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2016/fwi_dc_agg_2016.nc
+2026-03-19 21:59:45,988 - analyze_sampling - INFO - Processing year 2017
+2026-03-19 21:59:46,032 - analyze_sampling - INFO - Loading FWI from /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2017/fwi_dc_agg_2017.nc
+2026-03-19 22:03:18,729 - analyze_sampling - INFO - Processing year 2018
+2026-03-19 22:03:18,770 - analyze_sampling - INFO - Loading FWI from /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2018/fwi_dc_agg_2018.nc
+2026-03-19 22:05:47,363 - analyze_sampling - INFO - Processing year 2019
+2026-03-19 22:05:47,407 - analyze_sampling - INFO - Loading FWI from /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2019/fwi_dc_agg_2019.nc
+2026-03-19 22:09:11,453 - analyze_sampling - INFO - Processing year 2020
+2026-03-19 22:09:11,495 - analyze_sampling - INFO - Loading FWI from /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2020/fwi_dc_agg_2020.nc
+2026-03-19 22:12:42,069 - analyze_sampling - INFO - Processing year 2021
+2026-03-19 22:12:42,110 - analyze_sampling - INFO - Loading FWI from /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2021/fwi_dc_agg_2021.nc
+2026-03-19 22:15:39,505 - analyze_sampling - INFO - Processing year 2022
+2026-03-19 22:15:39,548 - analyze_sampling - INFO - Loading FWI from /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2022/fwi_dc_agg_2022.nc
+2026-03-19 22:18:39,945 - analyze_sampling - INFO - Processing year 2023
+2026-03-19 22:18:39,988 - analyze_sampling - INFO - Loading FWI from /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2023/fwi_dc_agg_2023.nc
+2026-03-19 22:21:31,384 - analyze_sampling - INFO - Processing year 2024
+2026-03-19 22:21:31,419 - analyze_sampling - INFO - Loading FWI from /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2024/fwi_dc_agg_2024.nc
+2026-03-19 22:22:36,964 - analyze_sampling - INFO - Saved FWI quantiles to /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/sampling_analysis/pos_fwi_quantiles.txt
+2026-03-19 22:22:36,964 - analyze_sampling - INFO - FWI analysis completed
+2026-03-19 22:22:37,775 - analyze_sampling - INFO - Sampling analysis completed

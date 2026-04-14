@@ -1,0 +1,28 @@
+2026-03-19 20:34:35,844 - cds_data - INFO - Downloading Copernicus data
+2026-03-19 20:34:36,757 - cds_data - INFO - Raw file already exists, skipping download: /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2015/cems-fire-historical-v1-2015.nc
+2026-03-19 20:35:48,200 - cds_data - INFO - Successfully aggregated year 2015
+2026-03-19 20:35:48,203 - cds_data - INFO - Raw file already exists, skipping download: /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2016/cems-fire-historical-v1-2016.nc
+2026-03-19 20:36:56,929 - cds_data - INFO - Successfully aggregated year 2016
+2026-03-19 20:36:56,931 - cds_data - INFO - Raw file already exists, skipping download: /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2017/cems-fire-historical-v1-2017.nc
+2026-03-19 20:38:16,010 - cds_data - INFO - Successfully aggregated year 2017
+2026-03-19 20:38:16,012 - cds_data - INFO - Downloading CDS collection cems-fire-historical-v1 for year 2018
+2026-03-19 20:51:05,037 - cds_data - INFO - Successfully downloaded /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2018/cems-fire-historical-v1-2018.nc
+2026-03-19 20:52:48,374 - cds_data - INFO - Successfully aggregated year 2018
+2026-03-19 20:52:48,377 - cds_data - INFO - Downloading CDS collection cems-fire-historical-v1 for year 2019
+2026-03-19 21:05:36,055 - cds_data - INFO - Successfully downloaded /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2019/cems-fire-historical-v1-2019.nc
+2026-03-19 21:06:45,130 - cds_data - INFO - Successfully aggregated year 2019
+2026-03-19 21:06:45,133 - cds_data - INFO - Downloading CDS collection cems-fire-historical-v1 for year 2020
+2026-03-19 21:11:34,907 - cds_data - INFO - Successfully downloaded /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2020/cems-fire-historical-v1-2020.nc
+2026-03-19 21:13:02,231 - cds_data - INFO - Successfully aggregated year 2020
+2026-03-19 21:13:02,234 - cds_data - INFO - Downloading CDS collection cems-fire-historical-v1 for year 2021
+2026-03-19 21:17:33,189 - cds_data - INFO - Successfully downloaded /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2021/cems-fire-historical-v1-2021.nc
+2026-03-19 21:19:03,348 - cds_data - INFO - Successfully aggregated year 2021
+2026-03-19 21:19:03,352 - cds_data - INFO - Downloading CDS collection cems-fire-historical-v1 for year 2022
+2026-03-19 21:27:42,855 - cds_data - INFO - Successfully downloaded /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2022/cems-fire-historical-v1-2022.nc
+2026-03-19 21:29:11,209 - cds_data - INFO - Successfully aggregated year 2022
+2026-03-19 21:29:11,213 - cds_data - INFO - Downloading CDS collection cems-fire-historical-v1 for year 2023
+2026-03-19 21:34:02,969 - cds_data - INFO - Successfully downloaded /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2023/cems-fire-historical-v1-2023.nc
+2026-03-19 21:35:47,948 - cds_data - INFO - Successfully aggregated year 2023
+2026-03-19 21:35:47,952 - cds_data - INFO - Downloading CDS collection cems-fire-historical-v1 for year 2024
+2026-03-19 21:40:34,108 - cds_data - INFO - Successfully downloaded /weka/dfive-default/hadriens/datasets/MCD64A1-brazil/FIREd_Brazil_preproc/fwi/2024/cems-fire-historical-v1-2024.nc
+2026-03-19 21:43:36,601 - cds_data - INFO - Successfully aggregated year 2024

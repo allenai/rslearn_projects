@@ -1,0 +1,31 @@
+defaults:
+  - _self_
+  - override hydra/hydra_logging: none
+  - override hydra/job_logging: none
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+paths:
+  base: "./datasets/MCD64A1-brazil/FIREd_Brazil_preproc"
+  grid: "${paths.base}/grid"
+  burned_area: "${paths.base}/burned_area_preproc"
+  fwi: "${paths.base}/fwi"
+  region_bounds: "${paths.base}/brazil_regions"
+  landcover: "${paths.base}/landcover"
+  sampling_analysis: "${paths.base}/sampling_analysis"
+
+bounds:
+  min_x: -73.99
+  max_x: -34.79
+  min_y: -33.75
+  max_y: 5.27
+
+grid:
+  type: "adaptive"
+  step_x: 3200.0
+  step_y: 3200.0
+  crs: 4326
+  output_path: "${paths.grid}/Brazil_3200m_adaptive.gdb"

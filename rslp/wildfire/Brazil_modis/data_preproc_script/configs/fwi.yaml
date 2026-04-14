@@ -1,0 +1,18 @@
+defaults:
+  - _self_
+  - global_config
+
+
+output_path: "${paths.fwi}"
+start_year: 2015
+end_year: 2024
+temp_offset: 8
+
+product_name: 'cems-fire-historical-v1'
+product_format: 'netcdf'
+product_type: 'reanalysis'
+variable: ['drought_code', 'fire_weather_index']
+version: '4_1'
+dataset: 'consolidated_dataset'
+grid: '0.25/0.25'
+agg: 'fwi_agg'

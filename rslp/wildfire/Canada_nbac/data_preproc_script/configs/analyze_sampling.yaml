@@ -1,0 +1,34 @@
+defaults:
+  - _self_
+  - global_config
+
+# ---------- Sampling distribution analysis ----------
+
+# Positive samples (output of temporal_grid_agg, step 2)
+pos_path: "${paths.burned_area}/temporally_gridded_fire_samples.gdb"
+
+# Negative samples (output of negative_sampling, step 3).
+# Leave empty ("") to run positives-only analysis (e.g. to get fwi_bins
+# before running negative sampling).  Set the path after sampling to
+# produce comparative pos-vs-neg plots.
+neg_path: "${paths.burned_area}/negative_samples_unified.gdb"
+
+# Full spatial grid (output of create_grid, step 0)
+grid_path: "${paths.grid}/Canada_grid_adaptive.gdb"
+
+# FWI data directory: expects {fwi_base_path}/{year}/fwi_dc_agg_{year}.nc
+fwi_base_path: "${paths.fwi}"
+
+# Land cover raster (GeoTIFF)
+lc_path: "${paths.landcover}/CAN_NALCMS_landcover_2020v2_30m.tif"
+
+# Output directory for plots and quantile files
+output_path: "${paths.sampling_analysis}"
+
+# Number of quantile buckets for FWI analysis
+num_bucket: 10
+
+# Which analyses to run
+run_fwi_analysis: true
+run_land_cover_analysis: true
+run_land_cover_grid: true

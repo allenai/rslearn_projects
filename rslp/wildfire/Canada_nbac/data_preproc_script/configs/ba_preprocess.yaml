@@ -1,0 +1,43 @@
+defaults:
+  - _self_
+  - global_config
+
+# ---------- Canada NBAC burned-area configuration ----------
+input_path: "${paths.burned_area_input}/input_data.gdb"
+
+# Column name mapping (NBAC source columns → canonical names)
+fire_id_col: "fire_id"
+start_date_col: "START_DATE"
+end_date_col: "END_DATE"
+
+# Grid: output of Step 0 (create_grid)
+grid_path: "${paths.grid}/Canada_grid_adaptive.gdb"
+
+# Intermediate: filtered & exploded burned-area fire perimeters
+filtered_fires_path: "${paths.burned_area}/filtered_exploded_fires.gdb"
+
+start_date: "2015-01-01"
+start_year: 2015
+end_year: 2024
+offset: 8
+crs: 4326
+
+# Spatially-joined & temporally-merged fire grid samples (with bounds/centroids)
+merged_fire_grid_path: "${paths.burned_area}/merged_fire_grid_samples.gdb"
+
+# Temporally-gridded fire samples (start dates snapped to 8-day intervals)
+temporal_grid_samples_path: "${paths.burned_area}/temporally_gridded_fire_samples.gdb"
+
+# Post-merge mapping: merged sample ID -> fire IDs, grid cell, date range
+post_merge_fire_mapping_path: "${paths.burned_area}/post_merge_fire_sample_mapping.csv"
+
+# Pre-merge mapping: grid cell -> fire IDs (before temporal overlap merging)
+pre_merge_fire_mapping_path: "${paths.burned_area}/pre_merge_fire_grid_mapping.csv"
+
+# Temporal-bin mapping: samples grouped into (grid_id, snapped_start_date) bins
+temporal_bin_mapping_path: "${paths.burned_area}/temporal_bin_sample_mapping.csv"
+
+# Region splitting
+split_regions: true
+region_bounds_path: "${paths.canada_bounds}/lpr_000b16a_e.shp"
+region_col: "PRENAME"

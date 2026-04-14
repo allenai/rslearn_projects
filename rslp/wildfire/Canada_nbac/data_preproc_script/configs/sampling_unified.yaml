@@ -1,0 +1,43 @@
+defaults:
+  - _self_
+  - global_config
+
+# ---------- Unified three-tier negative sampling ----------
+# Tier 1: FWI-uniform random
+# Tier 2: LC + month matched
+# Tier 3: LC + month + FWI-hard (with hierarchical backoff)
+
+start_year: 2015
+end_year: 2024
+offset: 8
+
+# Positive samples (output of temporal_grid_agg.py, ideally with LC assigned)
+pos_grid_path: "${paths.burned_area}/temporally_gridded_fire_samples.gdb"
+
+# Full spatial grid (with id, lc, geometry)
+grid_path: "${paths.grid}/Canada_grid_adaptive.gdb"
+
+# FWI data: expects {fwi_base_path}/{year}/fwi_dc_agg_{year}.nc
+fwi_base_path: "${paths.fwi}"
+
+# Region boundaries
+region_bounds_path: "${paths.canada_bounds}/lpr_000b16a_e.shp"
+region_col: "PRENAME"
+
+# --- Sampling parameters ---
+# Total negative-to-positive ratio (split equally among 3 tiers)
+sampling_ratio: 2.0
+
+# Tier 1: number of FWI quantile buckets for uniform sampling
+fwi_num_buckets: 10
+
+# Tier 3: fixed FWI bin edges (10 bins)
+fwi_bins: [0, 2, 4, 6, 10, 15, 20, 25, 30, 40, 100]
+
+# Tier 3: >1.0 overweights higher FWI bins to make negatives harder
+fwi_bias_factor: 1.0
+
+seed: 42
+
+# Output
+output_path: "${paths.burned_area}/negative_samples_unified.gdb"
