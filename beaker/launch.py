@@ -12,7 +12,7 @@ def launch(*, name: str, gpus: str = "1") -> None:
         "--name", name,
         "--budget", "ai2/es-platform",       # match your org / Beaker budget
         "--workspace", "ai2/earth-systems",  # or your workspace
-        "--priority", "high",
+        "--priority", "urgent",
         "--cluster", "ai2/ceres",
         "--cluster", "ai2/jupiter",
         "--weka", "dfive-default:/weka/dfive-default",
@@ -22,7 +22,7 @@ def launch(*, name: str, gpus: str = "1") -> None:
         "--gh-token-secret", "PIPERW_GITHUB_TOKEN",  # drop if installs are from local trees only
         "--env-secret", "WANDB_API_KEY=PIPERW_WANDB_TOKEN",  # or RSLEARN_WANDB / whatever you use
         "--no-python",
-        "--allow-dirty",
+        "--allow-dirty"
         "--",
         DRIVER,
     ]
