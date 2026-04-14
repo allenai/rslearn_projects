@@ -33,6 +33,20 @@
       ],
       "type": "raster"
     },
+    "baseline_apr13_output": {
+      "band_sets": [
+        {
+          "bands": ["label"],
+          "dtype": "uint8"
+        }
+      ],
+      "class_names": [
+        "no_landslide",
+        "landslide",
+        "no_data"
+      ],
+      "type": "raster"
+    },
     "post_sentinel2": {
       "band_sets": [
         {
@@ -63,7 +77,7 @@
           "sort_by": "eo:cloud_cover"
         },
         "query_config": {
-          "max_matches": 8,
+          "max_matches": 4,
           "min_matches": 1,
           "period_duration": "15d",
           "space_mode": "MOSAIC"
@@ -102,7 +116,7 @@
           "sort_by": "eo:cloud_cover"
         },
         "query_config": {
-          "max_matches": 8,
+          "max_matches": 4,
           "min_matches": 1,
           "period_duration": "15d",
           "space_mode": "MOSAIC"

@@ -68,7 +68,7 @@ data:
     batch_size: 8
     num_workers: 32
     default_config:
-      groups: ["sen12_landslides"]
+      groups: ["sen12_landslides", "osm_ski", "icimod"]
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
@@ -84,15 +84,15 @@ data:
       tags:
         split: "val"
     predict_config:
-      groups: ["sen12_landslides"]
+      groups: ["glc"]
       load_all_crops: true
       # Sliding-window inference tile size (was patch_size).
       crop_size: 32
       # Shared border between adjacent tiles: matches deprecated overlap_ratio=0.1 with crop 32 (round(32*0.1)=3).
       overlap_pixels: 3
       skip_targets: true
-      tags:
-        split: "val"
+      #tags:
+      #  split: "val"
 trainer:
   max_epochs: 100
   callbacks:
@@ -112,10 +112,22 @@ trainer:
     # The RslearnWriter is used during `model predict` to save the predicted outputs
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        output_layer: "label_raster"
+        # Predictions only: keeps ground-truth in label_raster untouched.
+        output_layer: "baseline_apr13_output"
         selector: []
+        # Same as layers.baseline_apr13_output in this dataset's config.json.
+        # jsonargparse expects LayerType / DType enum names (not config.json strings).
+        layer_config:
+          type: RASTER
+          band_sets:
+            - bands: ["label"]
+              dtype: UINT8
+          class_names:
+            - no_landslide
+            - landslide
+            - no_data
 # Here we enable automatic checkpoint management and logging to W&B.
 # Set WANDB_MODE=offline to disable online logging.
 project_name: landslides
-run_name: sen12landslides_all_positives_apr8_test
+run_name: sen12landslides_all_positives_apr13
 management_dir: ./checkpoints

@@ -210,8 +210,9 @@ def main() -> None:
     """CLI entry: rasterize vector labels to raster layers for all windows."""
     parser = argparse.ArgumentParser(
         description=(
-            "Rasterize per-window vector labels to label_raster using "
-            "rasterio.features.rasterize"
+            "Rasterize per-window vector labels to a raster layer (default "
+            "label_raster) using rasterio.features.rasterize. "
+            "Use --split and --groups to restrict which windows are processed."
         )
     )
     parser.add_argument(
@@ -265,6 +266,24 @@ def main() -> None:
         action="store_true",
         help="Use center-pixel rule instead of all_touched",
     )
+    parser.add_argument(
+        "--groups",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated window groups to load (default: all). "
+            "Example: sen12_landslides"
+        ),
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        default=None,
+        help=(
+            "Only windows whose metadata has options['split'] equal to this value "
+            "(e.g. val). Omit to process all loaded windows."
+        ),
+    )
     args = parser.parse_args()
 
     ds_path = UPath(args.ds_path)
@@ -305,7 +324,19 @@ def main() -> None:
     default_fill = 0
 
     multiprocessing.set_start_method("forkserver")
-    windows = dataset.load_windows(workers=args.workers, show_progress=True)
+    groups: list[str] | None = None
+    if args.groups:
+        groups = [s.strip() for s in args.groups.split(",") if s.strip()]
+    windows = dataset.load_windows(
+        groups=groups, workers=args.workers, show_progress=True
+    )
+
+    if args.split is not None:
+        before_split = len(windows)
+        windows = [w for w in windows if w.options.get("split") == args.split]
+        print(
+            f"Split filter {args.split!r}: {before_split} -> {len(windows)} windows"
+        )
 
     if _TEST_ONLY_WINDOW_NAMES is not None:
         before = len(windows)
