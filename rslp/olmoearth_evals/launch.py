@@ -1,6 +1,7 @@
 """Launch OlmoEarth fine-tuning evals."""
 
 import json
+import os
 import subprocess  # nosec
 
 from rslearn.utils.geometry import PixelBounds
@@ -147,8 +148,11 @@ def launch(
                 ]
 
             # Build extra_args for the training script.
+            # Expand RSLP_PREFIX here since rslearn's RslearnArgumentParser
+            # only substitutes env vars in config file content, not CLI args.
+            rslp_prefix = os.environ["RSLP_PREFIX"]
             all_extra_args: list[str] = [
-                "--management_dir=${RSLP_PREFIX}/projects",
+                f"--management_dir={rslp_prefix}/projects",
             ]
             if use_embeddings:
                 all_extra_args.append(
