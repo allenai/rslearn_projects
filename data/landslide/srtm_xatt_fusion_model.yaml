@@ -1,3 +1,11 @@
+# Landslide fine-tune: OlmoEarth on Sentinel-2 + late fusion with SRTM DEM via
+# CrossAttentionFusionExtractor (rslearn.models.xatt_fusion).
+#
+# The DEM branch uses RasterStrideEncoder (rslearn.models.raster_stride_encoder):
+# strided convs downsample to the same stride as OlmoEarth patch_size so both paths
+# share one feature-map scale (required by CrossAttentionFusionExtractor).
+#
+# Tune ``data.init_args.default_config`` SRTM Normalize mean/std for your DEM units.
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -5,34 +13,46 @@ model:
       class_path: rslearn.models.singletask.SingleTaskModel
       init_args:
         encoder:
-          # This applies the OlmoEarth encoder on the inputs.
-          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          - class_path: rslearn.models.xatt_fusion.CrossAttentionFusionExtractor
             init_args:
-              # This can be one of:
-              # - OLMOEARTH_V1_NANO
-              # - OLMOEARTH_V1_TINY
-              # - OLMOEARTH_V1_BASE
-              # - OLMOEARTH_V1_LARGE
-              model_id: OLMOEARTH_V1_BASE
-              # The patch size should be set between 1 and 8, depending on the size of
-              # the features being predicted, and the available compute (lower patch
-              # sizes are slower).
-              patch_size: 4
+              primary_path:
+                - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+                  init_args:
+                    model_id: OLMOEARTH_V1_BASE
+                    patch_size: 4
+                    use_legacy_timestamps: false
+                    token_pooling: true
+              context_paths:
+                - - class_path: rslearn.models.raster_stride_encoder.RasterStrideEncoder
+                    init_args:
+                      input_key: srtm
+                      in_channels: 1
+                      hidden_channels: 32
+                      out_channels: 128
+                      downsample_factor: 4
+              primary_output_channels: 768
+              context_output_channels: [128]
+              attention_dim: 256
+              num_memory_tokens: 4
+              num_heads: 4
+              attention_dropout: 0.1
+              residual_dropout: 0.0
+              post_fusion_mode: self_attn_ffn
+              ffn_expansion: 2.0
+              ffn_activation: swiglu
+              ffn_dropout: 0.1
+              pre_fusion_dropout: 0.1
         decoder:
-          # For the decoder, we apply UNetDecoder to upsample features to the input
-          # resolution. It isn't really a UNet since we only have features at one
-          # resolution.
           - class_path: rslearn.models.unet.UNetDecoder
             init_args:
               in_channels: [[4, 768]]
               out_channels: 2
               conv_layers_per_resolution: 2
               num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
-          # The SegmentationHead computes softmax and cross entropy loss.
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
             init_args:
-                weights: [0.05, 0.95]
-                dice_loss: true
+              weights: [0.05, 0.95]
+              dice_loss: true
     optimizer:
       class_path: rslearn.train.optimizer.AdamW
       init_args:
@@ -40,17 +60,22 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: '/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives/'
+    path: "/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives/"
     inputs:
-      # We read the four Sentinel-2 images materialized earlier.
-      # OlmoEarth expects the input to be called "sentinel2_l2a".
       sentinel2_l2a:
         data_type: "raster"
         layers: ["pre_sentinel2", "post_sentinel2"]
-        # This is the band order expected by  OlmoEarth.
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
         dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      srtm:
+        data_type: "raster"
+        layers: ["srtm"]
+        bands: ["dem"]
+        dtype: FLOAT32
+        passthrough: true
         load_all_layers: true
         load_all_item_groups: true
       targets:
@@ -74,6 +99,12 @@ data:
           init_args:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: [500.0]
+            std: [450.0]
+            selectors: ["srtm"]
+            skip_missing: true
     train_config:
       tags:
         split: "train"
@@ -86,9 +117,7 @@ data:
     predict_config:
       groups: ["sen12_landslides"]
       load_all_crops: true
-      # Sliding-window inference tile size (was patch_size).
       crop_size: 32
-      # Shared border between adjacent tiles: matches deprecated overlap_ratio=0.1 with crop 32 (round(32*0.1)=3).
       overlap_pixels: 3
       skip_targets: true
       tags:
@@ -96,27 +125,26 @@ data:
 trainer:
   max_epochs: 100
   callbacks:
-    # With management_dir set, rslearn disables Lightning's built-in checkpointing and
-    # expects ManagedBestLastCheckpoint (writes last.ckpt + best.ckpt under default_root_dir).
     - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
         monitor: val_accuracy
         mode: max
-    # We find that freezing the model for the first few epochs helps to improve the
-    # performance of the fine-tuned models.
+    # Freeze only OlmoEarth (primary path index 0); SRTM CNN + fusion + decoder train.
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
-        module_selector: ["model", "encoder", 0]
+        module_selector:
+          - model
+          - encoder
+          - 0
+          - paths
+          - 0
+          - 0
         unfreeze_at_epoch: 10
         unfreeze_lr_factor: 10
-    # The RslearnWriter is used during `model predict` to save the predicted outputs
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        # Predictions only: keeps ground-truth in label_raster untouched.
-        output_layer: "baseline_apr13_output"
+        output_layer: "srtm_xatt_fusion_apr14_output"
         selector: []
-        # Same as layers.baseline_apr13_output in this dataset's config.json.
-        # jsonargparse expects LayerType / DType enum names (not config.json strings).
         layer_config:
           type: RASTER
           band_sets:
@@ -126,8 +154,6 @@ trainer:
             - no_landslide
             - landslide
             - no_data
-# Here we enable automatic checkpoint management and logging to W&B.
-# Set WANDB_MODE=offline to disable online logging.
 project_name: landslides
-run_name: sen12landslides_all_positives_apr13
+run_name: sen12landslides_all_positives_srtm_xatt_fusion_apr14
 management_dir: ./checkpoints
