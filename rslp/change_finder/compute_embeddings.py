@@ -12,12 +12,14 @@ import h5py
 import numpy as np
 import torch
 import tqdm
-from PIL import Image
 from rslearn.dataset import Dataset
 from rslearn.models.olmoearth_pretrain.model import ModelID, OlmoEarth
 from rslearn.train.data_module import collate_fn
 from rslearn.train.dataset import DataInput, ModelDataset, SplitConfig
 from rslearn.train.model_context import ModelContext, RasterImage
+from rslearn.utils.geometry import Projection
+from rslearn.utils.raster_array import RasterArray
+from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
 
 from .train import ChangeFinderNormalize, ChangeFinderTask
@@ -110,7 +112,7 @@ def compute_embeddings(
     Args:
         ds_path: path to the rslearn dataset with sentinel2_y0..y9 layers.
         out_filename: H5 filename to write inside each window directory.
-        mask_filename: when set, also save a per-patch change heatmap PNG.
+        mask_filename: when set, also save a per-patch change heatmap GeoTIFF.
         model_id: OlmoEarth model identifier.
         patch_size: patch size for OlmoEarth.
         batch_size: number of windows to load per batch.
@@ -160,6 +162,8 @@ def compute_embeddings(
     model.to(device)
     model.eval()
 
+    raster_format = GeotiffRasterFormat()
+
     with torch.no_grad():
         for input_dicts, _target_dicts, metadatas in tqdm.tqdm(
             data_loader, desc="Computing embeddings"
@@ -194,12 +198,30 @@ def compute_embeddings(
                     spatial = np.stack(
                         [year_feats[yi][b] for yi in range(NUM_YEARS)]
                     )  # (NUM_YEARS, C, H', W')
-                    mask_img = _compute_change_mask(spatial)
-                    mask_buf = io.BytesIO()
-                    Image.fromarray(mask_img, mode="L").save(mask_buf, format="PNG")
-                    mask_path = window_root / mask_filename
-                    with mask_path.open("wb") as fp:
-                        fp.write(mask_buf.getvalue())
+                    mask = _compute_change_mask(spatial)  # (H', W')
+
+                    # Write as single-band GeoTIFF with adjusted resolution.
+                    feat_projection = Projection(
+                        crs=metadata.projection.crs,
+                        x_resolution=metadata.projection.x_resolution * patch_size,
+                        y_resolution=metadata.projection.y_resolution * patch_size,
+                    )
+                    feat_bounds = (
+                        metadata.window_bounds[0] // patch_size,
+                        metadata.window_bounds[1] // patch_size,
+                        metadata.window_bounds[0] // patch_size + mask.shape[1],
+                        metadata.window_bounds[1] // patch_size + mask.shape[0],
+                    )
+                    raster = RasterArray(
+                        chw_array=mask[np.newaxis, :, :],
+                    )
+                    raster_format.encode_raster(
+                        path=window_root,
+                        projection=feat_projection,
+                        bounds=feat_bounds,
+                        raster=raster,
+                        fname=mask_filename,
+                    )
 
 
 if __name__ == "__main__":
@@ -211,7 +233,9 @@ if __name__ == "__main__":
         "--out_filename", default="embeddings.h5", help="H5 filename per window"
     )
     parser.add_argument(
-        "--mask_filename", default=None, help="PNG filename for per-patch change mask"
+        "--mask_filename",
+        default=None,
+        help="GeoTIFF filename for per-patch change mask",
     )
     parser.add_argument(
         "--model_id", default="OlmoEarth-v1-Base", help="OlmoEarth model ID"
