@@ -1,0 +1,697 @@
+"""Create windows for landslide detection (segmentation task) - data source is ICIMOD dataset.
+
+For each landslide event, there are 2 window types:
+1. Negative window: 1 year before event, 60 day window (no_landslide label)
+2. Positive window: After event, 60 day window (landslide label)
+
+python create_icimod_landslide_windows.py \
+    --shapefile_path /weka/dfive-default/piperw/data/landslide/icimod/data/14dist_ls.shp \
+    --ds_path data/landslide/icimod_windows/ \
+    --sample_type positive \
+    --max_samples 1 \
+    --buffer_distance 20 \
+    --group predict  # optional: use "predict" to create windows in the predict group (default: icimod_landslides)
+"""
+
+import argparse
+import multiprocessing
+from datetime import datetime, timedelta, timezone
+
+import geopandas as gpd
+import pandas as pd
+import shapely
+import tqdm
+from rslearn.const import WGS84_PROJECTION
+from rslearn.dataset import Dataset, Window
+from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
+from rslearn.utils.feature import Feature
+from rslearn.utils.mp import star_imap_unordered
+from rslearn.utils.vector_format import GeojsonVectorFormat
+from shapely.strtree import STRtree
+from upath import UPath
+
+from rslp.utils.windows import calculate_bounds
+
+WINDOW_RESOLUTION = 10  # meters per pixel
+WINDOW_SIZE_PIXELS = 64
+LABEL_LAYER = "label"
+DEFAULT_BUFFER_DISTANCE = 30.0  # meters (2 pixels at 10m/pixel resolution)
+
+
+def parse_name_as_date(name: str) -> datetime | None:
+    """Parse ICIMOD Name values like '5/3/015', '5/4/15', or '4/1/2016' into datetime.
+
+    Assumes M/D/YYYY where 15 or 015 → 2015; 2016 stays 2016.
+    """
+    if not isinstance(name, str):
+        return None
+    parts = name.split("/")
+    if len(parts) != 3:
+        return None
+    month_str, day_str, year_str = parts
+    year_digits = "".join(ch for ch in year_str if ch.isdigit())
+    if not year_digits:
+        return None
+    y = int(year_digits)
+    # Already 4-digit year (e.g. 2016) → use as-is; else 2–3 digit (15, 015) → 2000 + y
+    year = y if y >= 1000 else (2000 + y)
+    try:
+        return datetime(year, int(month_str), int(day_str))
+    except ValueError:
+        return None
+
+
+class LandslideSpatialIndex:
+    """Spatial index for efficient lookup of overlapping landslides."""
+
+    def __init__(self, gdf: gpd.GeoDataFrame):
+        """Initialize spatial index from GeoDataFrame.
+
+        Args:
+            gdf: GeoDataFrame containing all landslide polygons
+        """
+        self.gdf = gdf.copy()
+        # Build spatial index using STRtree
+        self.tree = STRtree(self.gdf.geometry)
+        print(f"Built spatial index with {len(self.gdf)} landslide polygons")
+
+    def query_overlapping(
+        self,
+        window_geometry: shapely.Geometry,
+        time_range: tuple[datetime, datetime] | None = None,
+    ) -> list[dict]:
+        """Find all landslides that overlap with the given window.
+
+        Args:
+            window_geometry: Shapely geometry representing the window bounds
+            time_range: Optional tuple of (start_time, end_time) to filter by event date
+
+        Returns:
+            List of dictionaries containing landslide data for overlapping polygons
+        """
+        # Query the spatial index
+        possible_matches_idx = self.tree.query(window_geometry)
+
+        # Filter to actual intersections
+        overlapping = []
+        for idx in possible_matches_idx:
+            if self.gdf.iloc[idx].geometry.intersects(window_geometry):
+                row = self.gdf.iloc[idx]
+
+                # If time_range is provided, check if landslide event_date falls within it
+                if time_range is not None:
+                    event_date = pd.to_datetime(row.get("event_date"))
+                    if pd.isna(event_date):
+                        continue  # Skip if no valid event date
+
+                    start_time, end_time = time_range
+                    # Convert to timezone-aware if needed
+                    if event_date.tzinfo is None:
+                        event_date = event_date.replace(tzinfo=timezone.utc)
+
+                    # Check if event_date is within the time range
+                    if not (start_time <= event_date <= end_time):
+                        continue  # Skip landslides outside the time window
+
+                overlapping.append(
+                    {
+                        "id": str(
+                            row["id"]
+                        ),  # Convert to string for JSON serialization
+                        "geometry": row["geometry"],
+                        "event_type": str(row.get("event_type", "unknown")),
+                        "event_date": row.get("event_date"),
+                    }
+                )
+
+        return overlapping
+
+
+def create_window_pair(
+    row_data: dict,
+    dataset: Dataset,
+    sample_type: str,
+    spatial_index: LandslideSpatialIndex,
+    buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
+    group: str = "icimod_landslides",
+) -> None:
+    """Create pre-event and post-event windows for landslide detection.
+
+    Args:
+        row_data: dictionary containing landslide event data
+        dataset: the dataset to create the windows in
+        sample_type: "positive" creates both positive and negative windows, "negative" creates only negative windows
+        spatial_index: spatial index of all landslide polygons
+        buffer_distance: distance in meters to buffer around landslides for no_data zone
+        group: window group name in the dataset (e.g. icimod_landslides or predict)
+    """
+    sample_id = str(row_data["id"])  # Convert to string to ensure JSON serializable
+    latitude, longitude = float(row_data["latitude"]), float(row_data["longitude"])
+    event_date = row_data["event_date"]
+    event_type = str(row_data["event_type"])
+    location = str(row_data["location"])
+    geometry = row_data["geometry"]
+
+    sampling_date = (
+        pd.to_datetime(event_date).to_pydatetime().replace(tzinfo=timezone.utc)
+    )
+    event_year = int(sampling_date.year)
+
+    # Create spatial geometry centered on the landslide centroid
+    src_point = shapely.Point(longitude, latitude)
+    src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
+    dst_crs = get_utm_ups_crs(longitude, latitude)
+    dst_projection = Projection(dst_crs, WINDOW_RESOLUTION, -WINDOW_RESOLUTION)
+    dst_geometry = src_geometry.to_projection(dst_projection)
+
+    window_size = WINDOW_SIZE_PIXELS  # 64 pixels on a side
+    max_extent = window_size * WINDOW_RESOLUTION  # for logging, in meters
+    bounds = calculate_bounds(dst_geometry, window_size)
+    print(f"  Window size: {window_size} pixels (~{max_extent:.2f} m extent)")
+
+    is_val = event_year >= 2021
+    split = "val" if is_val else "train"
+
+    # Create window geometry in projected coordinates, then transform to WGS84 for spatial query
+    # bounds: (min_col, min_row, max_col, max_row) from calculate_bounds
+    min_x, min_y, max_x, max_y = bounds
+
+    # Convert pixel coordinates to projected CRS coordinates
+    proj_min_x = min_x * dst_projection.x_resolution
+    proj_min_y = min_y * dst_projection.y_resolution
+    proj_max_x = max_x * dst_projection.x_resolution
+    proj_max_y = max_y * dst_projection.y_resolution
+
+    window_geom_projected = shapely.box(proj_min_x, proj_min_y, proj_max_x, proj_max_y)
+
+    # Transform back to WGS84 for querying
+    from pyproj import Transformer
+
+    transformer = Transformer.from_crs(dst_crs, "EPSG:4326", always_xy=True)
+    window_geom_wgs84_coords = shapely.ops.transform(
+        transformer.transform, window_geom_projected
+    )
+
+    # Query for overlapping landslides with appropriate filtering
+    # Always query for negative window landslides
+    negative_start_time = sampling_date.replace(year=sampling_date.year - 1)
+    negative_end_time = negative_start_time + timedelta(days=60)
+    negative_overlapping = spatial_index.query_overlapping(
+        window_geom_wgs84_coords, time_range=(negative_start_time, negative_end_time)
+    )
+
+    # Query for positive window landslides if creating positive windows
+    if sample_type == "positive":
+        # For positive windows, include landslides from 180 days before up to the event date
+        # This captures landslides that would be visible in the post-event imagery
+        positive_start_time = sampling_date
+        positive_end_time = sampling_date + timedelta(days=60)
+        # Extended time range: 180 days before the event up to the event date
+        extended_start_time = sampling_date - timedelta(days=180)
+        positive_overlapping = spatial_index.query_overlapping(
+            window_geom_wgs84_coords,
+            time_range=(extended_start_time, positive_start_time),
+        )
+
+        # ALWAYS include the primary landslide in positive windows (the window is created for this landslide)
+        # Remove it from the list if it's already there (to avoid duplicates), then add it at the beginning
+        positive_overlapping = [
+            ls for ls in positive_overlapping if ls["id"] != sample_id
+        ]
+        primary_landslide = {
+            "id": sample_id,
+            "geometry": geometry,
+            "event_type": event_type,
+            "event_date": event_date,
+        }
+        positive_overlapping.insert(0, primary_landslide)  # Add at the beginning
+        print(
+            f"  Found {len(positive_overlapping)} spatially overlapping landslides in positive window"
+        )
+        print(
+            f"  (Including primary landslide {sample_id} and landslides from 180 days before up to {event_date})"
+        )
+
+    print(
+        f"  Found {len(negative_overlapping)} overlapping landslides in negative window"
+    )
+    if len(negative_overlapping) > 0:
+        print(
+            f"  WARNING: Negative window has {len(negative_overlapping)} landslides! Will label them."
+        )
+
+    # Create negative window (always created, or only when sample_type is "negative")
+    if sample_type == "negative" or sample_type == "positive":
+        negative_window_name = (
+            f"{sample_id}_negative_{latitude:.4f}_{longitude:.4f}_{event_year}"
+        )
+
+        print(f"Creating NEGATIVE window: {negative_window_name}")
+        print(
+            f"  Time range: {negative_start_time} to {negative_end_time} (1 year before event, 60 days)"
+        )
+        print(f"  Window size: {window_size} pixels ({max_extent:.2f}m extent)")
+
+        negative_window = Window(
+            storage=dataset.storage,
+            group=group,
+            name=negative_window_name,
+            projection=dst_projection,
+            bounds=bounds,
+            time_range=(negative_start_time, negative_end_time),
+            options={
+                "split": split,
+                "latitude": float(latitude),
+                "longitude": float(longitude),
+                "event_date": event_date.isoformat()
+                if hasattr(event_date, "isoformat")
+                else str(event_date),
+                "event_type": str(event_type),
+                "location": str(location),
+                "event_year": int(event_year),
+                "window_size": int(window_size),
+                "polygon_extent_m": float(max_extent),
+                "window_type": "negative",
+                "time_range_start": negative_start_time.isoformat(),
+                "time_range_end": negative_end_time.isoformat(),
+                "num_overlapping_landslides": int(len(negative_overlapping)),
+                "buffer_distance_m": float(buffer_distance),
+            },
+        )
+        negative_window.save()
+
+        # Create features: landslides, buffers, and background
+        negative_features = create_labeled_features(
+            negative_overlapping,
+            negative_window,
+            buffer_distance,
+            dst_crs,
+            sample_id,
+            event_type,
+            event_date,
+        )
+
+        negative_layer_dir = negative_window.get_layer_dir(LABEL_LAYER)
+        GeojsonVectorFormat().encode_vector(negative_layer_dir, negative_features)
+        negative_window.mark_layer_completed(LABEL_LAYER)
+
+    # Create positive window (only when sample_type is "positive")
+    if sample_type == "positive":
+        positive_window_name = (
+            f"{sample_id}_positive_{latitude:.4f}_{longitude:.4f}_{event_year}"
+        )
+
+        print(f"Creating POSITIVE window: {positive_window_name}")
+        print(
+            f"  Time range: {positive_start_time} to {positive_end_time} (event date + 60 days)"
+        )
+        print("  (pre_sentinel2 will query 1 year before this via config time_offset)")
+        print("  (post_sentinel2 will query during this window)")
+        print(f"  Window size: {window_size} pixels ({max_extent:.2f}m extent)")
+
+        positive_window = Window(
+            storage=dataset.storage,
+            group=group,
+            name=positive_window_name,
+            projection=dst_projection,
+            bounds=bounds,
+            time_range=(positive_start_time, positive_end_time),
+            options={
+                "split": split,
+                "latitude": float(latitude),
+                "longitude": float(longitude),
+                "event_date": event_date.isoformat()
+                if hasattr(event_date, "isoformat")
+                else str(event_date),
+                "event_type": str(event_type),
+                "location": str(location),
+                "event_year": int(event_year),
+                "window_size": int(window_size),
+                "polygon_extent_m": float(max_extent),
+                "window_type": "positive",
+                "time_range_start": positive_start_time.isoformat(),
+                "time_range_end": positive_end_time.isoformat(),
+                "num_overlapping_landslides": int(len(positive_overlapping)),
+                "buffer_distance_m": float(buffer_distance),
+            },
+        )
+        positive_window.save()
+
+        # Create features: landslides, buffers, and background
+        positive_features = create_labeled_features(
+            positive_overlapping,
+            positive_window,
+            buffer_distance,
+            dst_crs,
+            sample_id,
+            event_type,
+            event_date,
+        )
+
+        # Verify that positive window has at least one landslide feature
+        landslide_features = [
+            f for f in positive_features if f.properties.get("label") == "landslide"
+        ]
+        if len(landslide_features) == 0:
+            raise ValueError(
+                f"Positive window {positive_window_name} has no landslide features! "
+                f"This should not happen - the primary landslide should always be included. "
+                f"Found {len(positive_overlapping)} overlapping landslides."
+            )
+
+        # Encode all features to the label layer
+        positive_layer_dir = positive_window.get_layer_dir(LABEL_LAYER)
+        GeojsonVectorFormat().encode_vector(positive_layer_dir, positive_features)
+        positive_window.mark_layer_completed(LABEL_LAYER)
+
+    print(f"✓ Created window(s) for sample {sample_id}\n")
+
+
+def create_labeled_features(
+    overlapping_landslides: list[dict],
+    window: Window,
+    buffer_distance: float,
+    dst_crs: str,
+    sample_id: str,
+    event_type: str,
+    event_date: object,
+) -> list[Feature]:
+    """Create labeled features using overlapping polygons with draw-order priority.
+
+    Features are returned in draw order (background, buffer, landslide) so that
+    later features overwrite earlier ones during rendering and rasterization.
+    This avoids fragile geometry difference() operations.
+
+    Args:
+        overlapping_landslides: List of landslide dictionaries
+        window: The window object
+        buffer_distance: Buffer distance in meters
+        dst_crs: Destination CRS string
+        sample_id: Primary sample ID
+        event_type: Event type
+        event_date: Event date
+
+    Returns:
+        List of Feature objects ordered: background, buffer, landslides
+    """
+    from pyproj import Transformer
+
+    features = []
+
+    # 1. Background: entire window as no_landslide (drawn first, lowest priority)
+    features.append(
+        Feature(
+            window.get_geometry(),
+            {
+                "label": "no_landslide",
+                "event_type": event_type,
+                "event_date": str(event_date),
+            },
+        )
+    )
+
+    if len(overlapping_landslides) == 0:
+        return features
+
+    # 2. Buffer: union of buffered landslide polygons as no_data (drawn second)
+    transformer_to_proj = Transformer.from_crs("EPSG:4326", dst_crs, always_xy=True)
+    transformer_to_wgs84 = Transformer.from_crs(dst_crs, "EPSG:4326", always_xy=True)
+
+    buffer_union = None
+    for landslide in overlapping_landslides:
+        geom_proj = shapely.ops.transform(
+            transformer_to_proj.transform, landslide["geometry"]
+        )
+        geom_proj = (
+            shapely.make_valid(geom_proj) if not geom_proj.is_valid else geom_proj
+        )
+        buffer_geom = geom_proj.buffer(buffer_distance)
+
+        if buffer_union is None:
+            buffer_union = buffer_geom
+        else:
+            buffer_union = buffer_union.union(buffer_geom)
+
+    if buffer_union is not None:
+        buffer_wgs84 = shapely.ops.transform(
+            transformer_to_wgs84.transform, buffer_union
+        )
+        if not buffer_wgs84.is_empty:
+            features.append(
+                Feature(
+                    STGeometry(WGS84_PROJECTION, buffer_wgs84, None),
+                    {
+                        "label": "no_data",
+                        "buffer_distance_m": float(buffer_distance),
+                    },
+                )
+            )
+
+    # 3. Landslide polygons (drawn last, highest priority — always visible)
+    min_pixel_area = WINDOW_RESOLUTION * WINDOW_RESOLUTION  # 1 pixel in m^2
+    for landslide in overlapping_landslides:
+        raw_geom = landslide["geometry"]
+
+        # Project to UTM, fix validity, ensure it's a polygon
+        geom_proj = shapely.ops.transform(transformer_to_proj.transform, raw_geom)
+        if not geom_proj.is_valid:
+            geom_proj = shapely.make_valid(geom_proj)
+        if not geom_proj.is_valid:
+            geom_proj = geom_proj.buffer(0)
+
+        # Extract polygon parts from GeometryCollections
+        if isinstance(geom_proj, shapely.GeometryCollection) and not isinstance(
+            geom_proj, shapely.Polygon | shapely.MultiPolygon
+        ):
+            polys = [
+                g
+                for g in geom_proj.geoms
+                if isinstance(g, shapely.Polygon | shapely.MultiPolygon)
+                and not g.is_empty
+            ]
+            geom_proj = shapely.unary_union(polys) if polys else shapely.Polygon()
+
+        # If geometry has no area (Point, LineString, degenerate), buffer centroid
+        if geom_proj.is_empty or geom_proj.area < min_pixel_area:
+            centroid = shapely.ops.transform(
+                transformer_to_proj.transform,
+                raw_geom.centroid if not raw_geom.is_empty else raw_geom,
+            )
+            geom_proj = centroid.buffer(WINDOW_RESOLUTION)
+            print(
+                f"    WARNING: Landslide {landslide['id']} had no/tiny polygon area, "
+                f"buffered centroid to {WINDOW_RESOLUTION}m radius circle"
+            )
+
+        landslide_wgs84 = shapely.ops.transform(
+            transformer_to_wgs84.transform, geom_proj
+        )
+
+        if landslide_wgs84.is_empty or not landslide_wgs84.is_valid:
+            print(
+                f"    WARNING: Landslide {landslide['id']} still invalid after fix, skipping"
+            )
+            continue
+
+        features.append(
+            Feature(
+                STGeometry(WGS84_PROJECTION, landslide_wgs84, None),
+                {
+                    "label": "landslide",
+                    "landslide_id": str(landslide["id"]),
+                    "event_type": str(landslide["event_type"]),
+                    "event_date": str(landslide["event_date"]),
+                    "is_primary": bool(landslide["id"] == sample_id),
+                },
+            )
+        )
+
+    print(
+        f"    Created {len(features)} label features: "
+        f"{sum(1 for f in features if f.properties['label']=='landslide')} landslides, "
+        f"{sum(1 for f in features if f.properties['label']=='no_data')} buffer, "
+        f"{sum(1 for f in features if f.properties['label']=='no_landslide')} background"
+    )
+
+    return features
+
+
+def create_windows_from_shapefile(
+    shapefile_path: UPath,
+    ds_path: UPath,
+    sample_type: str,
+    max_samples: int | None = None,
+    buffer_distance: float = DEFAULT_BUFFER_DISTANCE,
+    group: str = "icimod_landslides",
+    min_event_date: str = "2016-07-01",
+) -> None:
+    """Create windows from ICIMOD shapefile.
+
+    Args:
+        shapefile_path: path to the 14dist_ls.shp file from ICIMOD
+        ds_path: path to the dataset
+        sample_type: "positive" or "negative", which windows to create
+        max_samples: maximum number of samples to process (None for all)
+        buffer_distance: distance in meters to buffer around landslides
+        group: dataset group to create windows in (e.g. "icimod_landslides" or "predict")
+        min_event_date: only create windows for events on or after this date (YYYY-MM-DD).
+            Default 2016-07-01 ensures both pre_sentinel2 and post_sentinel2 query in the
+            Sentinel-2 era. Use e.g. 2015-06-01 for more events (prepare may reject some).
+    """
+    gdf = gpd.read_file(shapefile_path)
+
+    # Ensure we're in WGS84 for consistent coordinate handling
+    if gdf.crs is None:
+        print("Warning: Shapefile has no CRS, assuming WGS84 (EPSG:4326)")
+        gdf.set_crs("EPSG:4326", inplace=True)
+    elif gdf.crs != "EPSG:4326":
+        print(f"Converting from {gdf.crs} to WGS84 (EPSG:4326)")
+        gdf = gdf.to_crs("EPSG:4326")
+
+    # Calculate centroids in a projected CRS to avoid geographic CRS warning
+    # Use UTM Zone 45N (EPSG:32645) which covers most of Nepal
+    gdf_projected = gdf.to_crs("EPSG:32645")
+    centroids_proj = gdf_projected.geometry.centroid
+    # Convert centroids back to WGS84 for lat/lon
+    from pyproj import Transformer
+
+    transformer = Transformer.from_crs("EPSG:32645", "EPSG:4326", always_xy=True)
+    centroids_wgs84 = centroids_proj.apply(
+        lambda geom: transformer.transform(geom.x, geom.y)
+    )
+    gdf["longitude"] = centroids_wgs84.apply(lambda coord: coord[0])
+    gdf["latitude"] = centroids_wgs84.apply(lambda coord: coord[1])
+
+    # Parse dates from the 'Name' column using the utility function
+    gdf["event_date"] = gdf["Name"].apply(parse_name_as_date)
+    gdf["event_date"] = pd.to_datetime(gdf["event_date"], errors="coerce")
+
+    # Drop rows without valid dates
+    gdf = gdf.dropna(subset=["event_date"])
+
+    print(f"Total landslide events with valid dates: {len(gdf)}")
+
+    # Filter so both pre_sentinel2 and post_sentinel2 can get data. Dataset config uses
+    # time_offset -365d for pre_sentinel2, so it queries 1 year before the window.
+    # Sentinel-2A launched 2015-06-23. event_date >= 2016-07-01 guarantees both pre and
+    # post query in S2 era; earlier dates (e.g. 2015-06-01) give more events but prepare
+    # may reject some for missing pre_sentinel2.
+    sentinel2_ready_date = pd.to_datetime(min_event_date)
+    gdf = gdf[gdf["event_date"] >= sentinel2_ready_date].copy()
+
+    print(f"Landslide events from {min_event_date} onwards: {len(gdf)}")
+
+    # Generate IDs for each landslide (ICIMOD doesn't have an id column)
+    # Use index-based IDs with prefix to ensure uniqueness
+    gdf["id"] = [f"icimod_{i}" for i in gdf.index]
+
+    # Add default values for fields that might not exist in ICIMOD
+    if "event_type" not in gdf.columns:
+        gdf["event_type"] = "unknown"
+    if "location" not in gdf.columns:
+        gdf["location"] = "nepal"  # ICIMOD dataset is for Nepal
+
+    # Build spatial index from all landslides
+    spatial_index = LandslideSpatialIndex(gdf)
+
+    if max_samples is not None and max_samples < len(gdf):
+        gdf = gdf.sample(n=max_samples, random_state=42)
+        print(f"Sampled {max_samples} events for window creation")
+
+    # Convert to list of dictionaries for processing
+    rows_data = []
+    for _, row in gdf.iterrows():
+        rows_data.append(
+            {
+                "id": str(row["id"]),  # Convert to string for JSON serialization
+                "latitude": float(row["latitude"]),
+                "longitude": float(row["longitude"]),
+                "event_date": row["event_date"],
+                "event_type": str(row.get("event_type", "unknown")),
+                "location": str(row.get("location", "nepal")),
+                "geometry": row["geometry"],
+            }
+        )
+
+    dataset = Dataset(ds_path)
+    jobs = [
+        dict(
+            row_data=row,
+            dataset=dataset,
+            sample_type=sample_type,
+            spatial_index=spatial_index,
+            buffer_distance=buffer_distance,
+            group=group,
+        )
+        for row in rows_data
+    ]
+
+    p = multiprocessing.Pool(32)
+    outputs = star_imap_unordered(p, create_window_pair, jobs)
+    for _ in tqdm.tqdm(outputs, total=len(jobs)):
+        pass
+    p.close()
+
+
+if __name__ == "__main__":
+    multiprocessing.set_start_method("forkserver")
+    parser = argparse.ArgumentParser(
+        description="Create windows for landslide detection from ICIMOD dataset"
+    )
+    parser.add_argument(
+        "--shapefile_path",
+        type=str,
+        required=True,
+        help="Path to the 14dist_ls.shp file from ICIMOD",
+    )
+    parser.add_argument(
+        "--ds_path",
+        type=str,
+        required=True,
+        help="Path to the dataset",
+    )
+    parser.add_argument(
+        "--sample_type",
+        type=str,
+        required=True,
+        help="'positive' creates both positive and negative windows, 'negative' creates only negative windows",
+    )
+    parser.add_argument(
+        "--max_samples",
+        type=int,
+        required=False,
+        default=None,
+        help="Maximum number of samples to process (default: None = all)",
+    )
+    parser.add_argument(
+        "--buffer_distance",
+        type=float,
+        required=False,
+        default=DEFAULT_BUFFER_DISTANCE,
+        help=f"Buffer distance in meters around landslides for no_data zone (default: {DEFAULT_BUFFER_DISTANCE}, ~{DEFAULT_BUFFER_DISTANCE/WINDOW_RESOLUTION:.1f} pixels at {WINDOW_RESOLUTION}m/pixel)",
+    )
+    parser.add_argument(
+        "--group",
+        type=str,
+        required=False,
+        default="icimod_landslides",
+        help="Dataset group to create windows in (default: icimod_landslides). Use 'predict' for prediction windows.",
+    )
+    parser.add_argument(
+        "--min_event_date",
+        type=str,
+        required=False,
+        default="2015-07-01",
+        help="Only events on or after this date (YYYY-MM-DD). Default 2016-07-01 gives reliable pre+post S2; use 2015-06-01 for more events (some may fail prepare).",
+    )
+    args = parser.parse_args()
+
+    create_windows_from_shapefile(
+        UPath(args.shapefile_path),
+        UPath(args.ds_path),
+        sample_type=args.sample_type,
+        max_samples=args.max_samples,
+        buffer_distance=args.buffer_distance,
+        group=args.group,
+        min_event_date=args.min_event_date,
+    )

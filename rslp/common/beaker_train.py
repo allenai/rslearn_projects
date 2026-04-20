@@ -105,13 +105,14 @@ def beaker_train(
     # Get the project and experiment ID to use based on the config or user-provided
     # override. This is used for uploading code here and then downloading it back in
     # in the Beaker job.
-    config_project_id, config_experiment_id = launcher_lib.get_project_and_experiment(
-        config_paths[0]
-    )
-    if project_id is None:
-        project_id = config_project_id
-    if experiment_id is None:
-        experiment_id = config_experiment_id
+    if project_id is None or experiment_id is None:
+        config_project_id, config_experiment_id = (
+            launcher_lib.get_project_and_experiment(config_paths[0])
+        )
+        if project_id is None:
+            project_id = config_project_id
+        if experiment_id is None:
+            experiment_id = config_experiment_id
     launcher_lib.upload_code(project_id, experiment_id)
 
     if hparams_configs_dir is not None:

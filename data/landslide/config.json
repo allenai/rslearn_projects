@@ -1,0 +1,139 @@
+{
+  "layers": {
+    "label": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "class_names": [
+        "no_landslide",
+        "landslide",
+        "no_data"
+      ],
+      "class_property_name": "label",
+      "type": "vector"
+    },
+    "label_raster": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "class_names": [
+        "no_landslide",
+        "landslide",
+        "no_data"
+      ],
+      "type": "raster"
+    },
+    "post_sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "duration": "60d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/planetary_computer",
+          "harmonize": true,
+          "sort_by": "eo:cloud_cover"
+        },
+        "query_config": {
+          "max_matches": 8,
+          "min_matches": 1,
+          "period_duration": "15d",
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "0d"
+      },
+      "type": "raster"
+    },
+    "pre_sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "duration": "60d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/planetary_computer",
+          "harmonize": true,
+          "sort_by": "eo:cloud_cover"
+        },
+        "query_config": {
+          "max_matches": 8,
+          "min_matches": 1,
+          "period_duration": "15d",
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "-365d"
+      },
+      "type": "raster"
+    },
+    "srtm": {
+      "band_sets": [
+        {
+          "bands": [
+            "dem"
+          ],
+          "dtype": "int16"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.hf_srtm.SRTM",
+        "ingest": true,
+        "init_args": {
+          "always_use_3arcsecond": false,
+          "cache_dir": "cache/srtm"
+        },
+        "query_config": {
+          "max_matches": 1,
+          "min_matches": 0,
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
+    }
+  }
+}
