@@ -25,3 +25,20 @@ python -m rslp.embedding_pretrain.compile_win_embeddings \
     --crop-size 96
     # --test-mode \
 ```
+
+
+# Convert candidate rslearn windows to olmoearth pretrain friendly windows
+```shell
+python -m rslp.embedding_pretrain.pretrain_window_creation.window_conversion_to_oepretrain \
+    --src-root "${RSLEARN_EAI_ROOT}/datasets/globe_land_grid/" \
+    --src-group s50ix24 \
+    --dst-root "${HELIOS_DATA_ROOT}/dataset_creation/candidates/" \
+    --dst-group res_10_s50ix24 \
+    --sample-id-option-key cell_id \
+    --group-name s50ix24 \
+    --selection-file-path "${RSLEARN_EAI_ROOT}/datasets/globe_land_grid/s50ix24_embeddings/_scores/selected_sample_ids_top250000.json" \
+    --current-date 2026-04-21 \
+    --workers 128 \
+    --show-progress
+  #  --dry-run
+```
