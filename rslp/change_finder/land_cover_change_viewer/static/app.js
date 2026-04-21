@@ -4,6 +4,12 @@
   const ALL = "__all__";
   const ALL_LABEL = "All";
   const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+  const ANNOTATION_FIELDS = [
+    "pre_change",
+    "change_start",
+    "change_end",
+    "post_change",
+  ];
 
   // --- State ---
   let categories = [];
@@ -27,14 +33,19 @@
   const coordText = document.getElementById("coord-text");
   const windowInfo = document.getElementById("window-info");
   const transitionInfo = document.getElementById("transition-info");
+  const pivotInfo = document.getElementById("pivot-info");
   const yearSelector = document.getElementById("year-selector");
   const sentinelGrid = document.getElementById("sentinel-grid");
   const landcoverRow = document.getElementById("landcover-row");
   const legendDiv = document.getElementById("legend");
   const polygonRow = document.getElementById("polygon-row");
   const annotForm = document.getElementById("annot-form");
-  const annotStart = document.getElementById("annot-start");
-  const annotEnd = document.getElementById("annot-end");
+  const annotInputs = {
+    pre_change: document.getElementById("annot-pre-change"),
+    change_start: document.getElementById("annot-change-start"),
+    change_end: document.getElementById("annot-change-end"),
+    post_change: document.getElementById("annot-post-change"),
+  };
   const annotStatus = document.getElementById("annot-status");
 
   // --- Helpers ---
@@ -154,6 +165,12 @@
     }
   }
 
+  function formatYearRange(years) {
+    if (!years || years.length === 0) return "—";
+    if (years.length === 1) return String(years[0]);
+    return `${years[0]}-${years[years.length - 1]}`;
+  }
+
   function renderLandcover() {
     landcoverRow.innerHTML = "";
     if (!examples.length) return;
@@ -161,20 +178,41 @@
     const ex = examples[currentIndex];
     const overlaySrc = getOverlaySrc();
 
-    for (const period of ["early", "late"]) {
+    const periods = [
+      {
+        label: `Early (${formatYearRange(ex.early_years)})`,
+        alt: "early land cover",
+        years: ex.early_years || [],
+      },
+      {
+        label: `Late (${formatYearRange(ex.late_years)})`,
+        alt: "late land cover",
+        years: ex.late_years || [],
+      },
+    ];
+
+    for (const p of periods) {
       const col = document.createElement("div");
       col.className = "lc-col";
-      col.appendChild(
-        buildImageStack(
-          `/image/landcover/${encodeURIComponent(ex.window_group)}/${encodeURIComponent(ex.window_name)}/${period}`,
-          `${period} land cover`,
-          overlaySrc,
-        )
-      );
+      if (p.years.length > 0) {
+        const qs = new URLSearchParams({ years: p.years.join(",") }).toString();
+        col.appendChild(
+          buildImageStack(
+            `/image/landcover/${encodeURIComponent(ex.window_group)}/${encodeURIComponent(ex.window_name)}?${qs}`,
+            p.alt,
+            overlaySrc,
+          )
+        );
+      } else {
+        const empty = document.createElement("div");
+        empty.className = "empty-msg";
+        empty.textContent = "No years";
+        col.appendChild(empty);
+      }
 
       const lbl = document.createElement("div");
       lbl.className = "lc-label";
-      lbl.textContent = period === "early" ? "Early (2016-2018)" : "Late (2023-2025)";
+      lbl.textContent = p.label;
       col.appendChild(lbl);
 
       landcoverRow.appendChild(col);
@@ -208,14 +246,16 @@
 
   function renderAnnotation() {
     if (!examples.length) {
-      annotStart.value = "";
-      annotEnd.value = "";
+      for (const f of ANNOTATION_FIELDS) {
+        annotInputs[f].value = "";
+      }
       clearAnnotStatus();
       return;
     }
     const ex = examples[currentIndex];
-    annotStart.value = ex.change_start_month || "";
-    annotEnd.value = ex.change_end_month || "";
+    for (const f of ANNOTATION_FIELDS) {
+      annotInputs[f].value = ex[f] || "";
+    }
     clearAnnotStatus();
   }
 
@@ -224,6 +264,7 @@
       coordText.textContent = "—";
       windowInfo.textContent = "—";
       transitionInfo.textContent = "—";
+      pivotInfo.textContent = "—";
       yearSelector.innerHTML = "";
       sentinelGrid.innerHTML = '<div class="empty-msg">No examples in this category</div>';
       landcoverRow.innerHTML = "";
@@ -238,6 +279,11 @@
     coordText.textContent = `${ex.lat.toFixed(4)}, ${ex.lon.toFixed(4)}`;
     windowInfo.textContent = `${ex.window_group} / ${ex.window_name}`;
     transitionInfo.textContent = `${ex.src_class_name} -> ${ex.dst_class_name}`;
+    if (ex.pivot_year != null) {
+      pivotInfo.textContent = `${ex.pivot_year} (early ${formatYearRange(ex.early_years)}, late ${formatYearRange(ex.late_years)})`;
+    } else {
+      pivotInfo.textContent = "—";
+    }
 
     setNavButtons();
     updateHash();
@@ -328,13 +374,14 @@
   function saveAnnotation(evt) {
     evt.preventDefault();
     if (!examples.length) return;
-    const start = annotStart.value.trim();
-    const end = annotEnd.value.trim();
-    for (const v of [start, end]) {
+    const values = {};
+    for (const f of ANNOTATION_FIELDS) {
+      const v = annotInputs[f].value.trim();
       if (v !== "" && !MONTH_RE.test(v)) {
         setAnnotStatus("Months must be YYYY-MM", "err");
         return;
       }
+      values[f] = v;
     }
     const ex = examples[currentIndex];
     setAnnotStatus("Saving...", "");
@@ -342,12 +389,8 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        window_group: ex.window_group,
-        window_name: ex.window_name,
-        src_class_id: ex.src_class_id,
-        dst_class_id: ex.dst_class_id,
-        change_start_month: start,
-        change_end_month: end,
+        feature_idx: ex.feature_idx,
+        ...values,
       }),
     })
       .then(function (r) {
@@ -361,8 +404,9 @@
           return;
         }
         examples[currentIndex] = res.body.feature;
-        annotStart.value = res.body.feature.change_start_month || "";
-        annotEnd.value = res.body.feature.change_end_month || "";
+        for (const f of ANNOTATION_FIELDS) {
+          annotInputs[f].value = res.body.feature[f] || "";
+        }
         setAnnotStatus("Saved", "ok");
       })
       .catch(function (err) {
