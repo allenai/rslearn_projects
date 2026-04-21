@@ -135,7 +135,7 @@
       "data_source": {
         "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1",
         "duration": "60d",
-        "ingest": false,
+        "ingest": true,
         "query_config": {
           "max_matches": 1,
           "min_matches": 1,
@@ -157,7 +157,7 @@
       "data_source": {
         "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1",
         "duration": "60d",
-        "ingest": false,
+        "ingest": true,
         "query_config": {
           "max_matches": 1,
           "min_matches": 1,
