@@ -115,13 +115,13 @@ data:
       tags:
         split: "val"
     predict_config:
-      groups: ["sen12_landslides"]
+      groups: ["fwn_mtli"]
       load_all_crops: true
       crop_size: 32
       overlap_pixels: 3
       skip_targets: true
-      tags:
-        split: "val"
+      #tags:
+      #  split: "val"
 trainer:
   max_epochs: 100
   callbacks:

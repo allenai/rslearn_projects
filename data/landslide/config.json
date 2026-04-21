@@ -125,6 +125,50 @@
       },
       "type": "raster"
     },
+    "post_sentinel1": {
+      "band_sets": [
+        {
+          "bands": ["vv", "vh"],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1",
+        "duration": "60d",
+        "ingest": false,
+        "query_config": {
+          "max_matches": 1,
+          "min_matches": 1,
+          "period_duration": "15d",
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "0d"
+      },
+      "resampling_method": "cubic",
+      "type": "raster"
+    },
+    "pre_sentinel1": {
+      "band_sets": [
+        {
+          "bands": ["vv", "vh"],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1",
+        "duration": "60d",
+        "ingest": false,
+        "query_config": {
+          "max_matches": 1,
+          "min_matches": 1,
+          "period_duration": "15d",
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "-365d"
+      },
+      "resampling_method": "cubic",
+      "type": "raster"
+    },
     "srtm": {
       "band_sets": [
         {
