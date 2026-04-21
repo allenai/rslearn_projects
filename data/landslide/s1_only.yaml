@@ -93,7 +93,7 @@ trainer:
         unfreeze_lr_factor: 10
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        output_layer: "baseline_apr13_output"
+        output_layer: "s1_only_apr21_output"
         selector: []
         layer_config:
           type: RASTER
