@@ -24,7 +24,7 @@ bands are:
 ```bash
 python -m rslp.change_finder.compute_land_cover_change \
     --ds_path /weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408/ \
-    --checkpoint_path /path/to/segmentation.ckpt
+    --checkpoint_path /weka/dfive-default/rslearn-eai/projects/2026_04_05_worldcover_change/olmoearth_base_s2_6mo_ws32_ps4_00/best.ckpt
 ```
 
 ### 2. Extract change polygons (`scripts/create_land_cover_change_geojson.py`)
@@ -55,6 +55,46 @@ python -m rslp.change_finder.scripts.create_land_cover_change_geojson \
 I used a separate script to randomly selected 100 from each (src, dst) pair to create
 a new GeoJSON `land_cover_change_src_dst_sel100.geojson`.
 
+```python
+import json
+import random
+from collections import defaultdict
+
+IN_PATH = "/weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408/land_cover_change_src_dst.geojson"
+OUT_PATH = "/weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408/land_cover_change_src_dst_sel100.geojson"
+PER_PAIR = 100
+
+with open(IN_PATH) as f:
+    fc = json.load(f)
+
+change_by_pair = defaultdict(list)
+no_change_by_window = {}
+for feat in fc["features"]:
+    p = feat["properties"]
+    if p["feature_type"] == "no_change":
+        no_change_by_window[(p["window_group"], p["window_name"])] = feat
+    elif p["feature_type"] == "change":
+        change_by_pair[(p["src_class_name"], p["dst_class_name"])].append(feat)
+
+selected_change = []
+for pair, feats in change_by_pair.items():
+    selected_change.extend(random.sample(feats, min(PER_PAIR, len(feats))))
+
+selected_windows = {
+    (f["properties"]["window_group"], f["properties"]["window_name"])
+    for f in selected_change
+}
+selected_no_change = [
+    no_change_by_window[wkey] for wkey in selected_windows if wkey in no_change_by_window
+]
+
+out_fc = {"type": "FeatureCollection", "features": selected_change + selected_no_change}
+with open(OUT_PATH, "w") as f:
+    json.dump(out_fc, f)
+
+print(f"Wrote {len(selected_change)} change + {len(selected_no_change)} no-change features to {OUT_PATH}")
+```
+
 ### 3. Browse & annotate (`land_cover_change_viewer/`)
 
 Flask UI for scanning through the change features, confirming the change
@@ -73,23 +113,54 @@ The UI:
 - Top bar: `From` and `To` dropdowns (each with an `All` option; default is
   `All -> All`, which shows every change feature in a deterministic but
   src/dst-interleaved order).
+- Annotation form, positioned right above the Sentinel-2 panels so the
+  imagery stays visible while labeling. The four `YYYY-MM` fields are:
+  - `pre_change`: a month where the model would still predict the source
+    category.
+  - `change_start`: the first image where the change is visible.
+  - `change_end`: the last image where the change is still visible.
+  - `post_change`: a month where the model would predict the destination
+    category.
 - Sentinel-2 panels for the selected year, plus the early and late land
   cover class maps (band 2 and band 3 of `land_cover_change.tif`).
 - `Overlay` (hotkey `a`) toggles the change + no-change masks on top of
   every tile.
-- Bottom annotation form: enter `change_start_month` and `change_end_month`
-  as `YYYY-MM` (either can be blank to clear) and press **Save**. The
-  server finds the feature by `(window_group, window_name, src_class_id,
-  dst_class_id)`, updates its properties, and rewrites the GeoJSON
-  atomically via `rslearn.utils.fsspec.open_atomic`. No-change features
-  are preserved untouched during the rewrite.
+- Press **Save** to persist the four fields. The server keys the entry
+  by its `feature_idx` (the feature's index in the source GeoJSON) and
+  writes only the annotations file, which is much faster than rewriting
+  the entire GeoJSON on every save.
+
+Annotations are stored in a sidecar JSON file next to the GeoJSON,
+defaulting to `<geojson_stem>.annotations.json` (pass `--annotations
+<path>` to override). The file is a list of dicts:
+
+```json
+[
+  {
+    "feature_idx": 12,
+    "window_group": "...",
+    "window_name": "...",
+    "src_class_name": "tree",
+    "dst_class_name": "crops",
+    "pre_change": "2017-06",
+    "change_start": "2018-04",
+    "change_end": "2019-09",
+    "post_change": "2020-08"
+  }
+]
+```
+
+On first load, if no annotations file exists yet, the server migrates
+any legacy `change_start_month`/`change_end_month` props from the
+GeoJSON into `change_start`/`change_end` (in-memory only; the GeoJSON
+itself is never rewritten).
 
 Keyboard shortcuts: `p`/`n` previous/next example, `←`/`→` previous/next
 year, `a` toggle overlay.
 
 ### Next step (not yet implemented)
 
-The annotated start/end months will drive creation of an rslearn dataset of
+The annotated months will drive creation of an rslearn dataset of
 time series intersecting the change period, used to train a supervised model
 that detects change closer to when it actually occurs (the current
 segmentation-based approach only picks up change ~3 years after it happens).

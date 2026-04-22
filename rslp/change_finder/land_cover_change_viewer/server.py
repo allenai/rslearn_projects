@@ -33,10 +33,14 @@ from shapely.geometry import mapping, shape
 from shapely.ops import transform
 from upath import UPath
 
+BASE_YEAR = 2016
 NUM_YEARS = 10
+NUM_CLASSES = 13
 METADATA_WORKERS = 64
 ALL_SENTINEL = "__all__"
 MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+PROBS_FILENAME = "land_cover_probs.tif"
+ANNOTATION_FIELDS = ("pre_change", "change_start", "change_end", "post_change")
 
 WORLDCOVER_COLORS = np.array(
     [
@@ -133,10 +137,11 @@ def _compute_window_meta(window: Window) -> tuple[tuple[str, str], dict]:
     }
 
 
-def _feature_metadata(feat: dict, window_meta: dict) -> dict:
+def _feature_metadata(feat: dict, window_meta: dict, annotation: dict | None) -> dict:
     """Build the JSON-serializable metadata payload for one feature."""
     props = feat["properties"]
-    return {
+    payload = {
+        "feature_idx": props["feature_idx"],
         "window_group": props["window_group"],
         "window_name": props["window_name"],
         "lat": window_meta["lat"],
@@ -146,25 +151,64 @@ def _feature_metadata(feat: dict, window_meta: dict) -> dict:
         "dst_class_id": props["dst_class_id"],
         "dst_class_name": props["dst_class_name"],
         "num_pixels": props["num_pixels"],
-        "change_start_month": props.get("change_start_month"),
-        "change_end_month": props.get("change_end_month"),
+        "pivot_year": props.get("pivot_year"),
+        "early_years": props.get("early_years", []),
+        "late_years": props.get("late_years", []),
         "years": window_meta["years"],
     }
+    for field in ANNOTATION_FIELDS:
+        payload[field] = annotation.get(field) if annotation else None
+    return payload
 
 
-def _feature_key(props: dict) -> tuple[str, str, int, int]:
-    return (
-        props["window_group"],
-        props["window_name"],
-        int(props["src_class_id"]),
-        int(props["dst_class_id"]),
-    )
+def _default_annotations_path(geojson_upath: UPath) -> UPath:
+    """Return ``<geojson>.annotations.json`` next to the GeoJSON."""
+    stem = geojson_upath.name
+    if stem.endswith(".geojson"):
+        stem = stem[: -len(".geojson")]
+    elif stem.endswith(".json"):
+        stem = stem[: -len(".json")]
+    return geojson_upath.parent / f"{stem}.annotations.json"
 
 
-def create_app(geojson_path: str, ds_path_str: str) -> Flask:
+def _load_annotations(annotations_path: UPath) -> dict[int, dict]:
+    """Load annotations by ``feature_idx``."""
+    if not annotations_path.exists():
+        return {}
+    with annotations_path.open() as f:
+        raw = json.load(f)
+    result: dict[int, dict] = {}
+    for entry in raw:
+        idx = int(entry["feature_idx"])
+        result[idx] = {
+            "feature_idx": idx,
+            "window_group": entry.get("window_group", ""),
+            "window_name": entry.get("window_name", ""),
+            "src_class_name": entry.get("src_class_name", ""),
+            "dst_class_name": entry.get("dst_class_name", ""),
+            **{f: entry.get(f) for f in ANNOTATION_FIELDS},
+        }
+    return result
+
+
+def _save_annotations(annotations_path: UPath, annotations: dict[int, dict]) -> None:
+    """Persist annotations as a list sorted by ``feature_idx``."""
+    data = [annotations[idx] for idx in sorted(annotations.keys())]
+    with open_atomic(annotations_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def create_app(
+    geojson_path: str, ds_path_str: str, annotations_path: str | None = None
+) -> Flask:
     """Create the Flask app backing the land cover change viewer."""
     ds_path = UPath(ds_path_str)
     geojson_upath = UPath(geojson_path)
+    annotations_upath = (
+        UPath(annotations_path)
+        if annotations_path
+        else _default_annotations_path(geojson_upath)
+    )
     dataset = Dataset(ds_path)
 
     # Figure out the band list for sentinel2 layers from the dataset config.
@@ -196,22 +240,30 @@ def create_app(geojson_path: str, ds_path_str: str) -> Flask:
     print(f"Loaded {len(all_features)} features")
 
     # Split features into "change" (navigable) and "no_change" (overlay-only,
-    # keyed by window). Features without an explicit feature_type fall back to
-    # "change" for backward compat with older GeoJSONs.
+    # keyed by window). Stamp each change feature with its original index in
+    # the GeoJSON so annotations can be keyed by a stable id independent of
+    # filtering/sorting.
     change_features: list[dict] = []
     no_change_by_window: dict[tuple[str, str], dict] = {}
-    for feat in all_features:
+    for idx, feat in enumerate(all_features):
         props = feat["properties"]
-        ftype = props.get("feature_type", "change")
+        ftype = props["feature_type"]
         wkey = (props["window_group"], props["window_name"])
         if ftype == "no_change":
             no_change_by_window[wkey] = feat
-        else:
+        elif ftype == "change":
+            props["feature_idx"] = idx
             change_features.append(feat)
+        else:
+            raise ValueError(f"got unknown feature_type {ftype}")
     print(
         f"Split into {len(change_features)} change features "
         f"and {len(no_change_by_window)} no-change features"
     )
+
+    print(f"Loading annotations from {annotations_upath}")
+    annotations: dict[int, dict] = _load_annotations(annotations_upath)
+    print(f"Loaded {len(annotations)} annotations")
 
     # Pre-compute per-window metadata only for windows referenced by change
     # features, since no-change features are never navigated to directly.
@@ -249,9 +301,6 @@ def create_app(geojson_path: str, ds_path_str: str) -> Flask:
         )
         is not None
     ]
-    # Rebuild fc["features"] so file persistence only drops orphaned change
-    # features, not the no-change features.
-    fc["features"] = change_features + list(no_change_by_window.values())
 
     # Build (src, dst) -> features index for category listings.
     pair_index: dict[tuple[str, str], list[dict]] = defaultdict(list)
@@ -270,7 +319,8 @@ def create_app(geojson_path: str, ds_path_str: str) -> Flask:
         # `_filtered_features` only ever yields features whose window metadata
         # was computed (i.e. non-None); make that assumption explicit for mypy.
         assert wmeta is not None
-        return _feature_metadata(feat, wmeta)
+        annotation = annotations.get(int(props["feature_idx"]))
+        return _feature_metadata(feat, wmeta, annotation)
 
     def _shuffle_key(feat: dict) -> str:
         """Deterministic but src/dst-agnostic order so results are interleaved."""
@@ -330,44 +380,50 @@ def create_app(geojson_path: str, ds_path_str: str) -> Flask:
         """Return the land-cover legend as a list of class/color entries."""
         return jsonify(LEGEND)
 
+    feature_by_idx: dict[int, dict] = {
+        int(feat["properties"]["feature_idx"]): feat for feat in change_features
+    }
+
     @app.route("/api/annotate", methods=["POST"])
     def api_annotate() -> Response | tuple[Response, int]:
-        """Persist ``change_start_month`` / ``change_end_month`` on one feature."""
+        """Persist annotation dates for one feature to the annotations file."""
         body = request.get_json(force=True, silent=True) or {}
         try:
-            window_group = body["window_group"]
-            window_name = body["window_name"]
-            src_class_id = int(body["src_class_id"])
-            dst_class_id = int(body["dst_class_id"])
-            start_month = body.get("change_start_month") or ""
-            end_month = body.get("change_end_month") or ""
+            feature_idx = int(body["feature_idx"])
         except (KeyError, TypeError, ValueError):
-            return jsonify({"ok": False, "error": "missing or invalid fields"}), 400
+            return jsonify(
+                {"ok": False, "error": "missing or invalid feature_idx"}
+            ), 400
 
-        for label, value in (
-            ("change_start_month", start_month),
-            ("change_end_month", end_month),
-        ):
-            if value != "" and not MONTH_RE.match(value):
-                return jsonify({"ok": False, "error": f"{label} must be YYYY-MM"}), 400
-
-        target_key = (window_group, window_name, src_class_id, dst_class_id)
+        values: dict[str, str] = {}
+        for field in ANNOTATION_FIELDS:
+            v = body.get(field) or ""
+            if v != "" and not MONTH_RE.match(v):
+                return jsonify({"ok": False, "error": f"{field} must be YYYY-MM"}), 400
+            values[field] = v
 
         with write_lock:
-            target_feat = None
-            for feat in change_features:
-                if _feature_key(feat["properties"]) == target_key:
-                    target_feat = feat
-                    break
+            target_feat = feature_by_idx.get(feature_idx)
             if target_feat is None:
                 return jsonify({"ok": False, "error": "feature not found"}), 404
 
-            target_feat["properties"]["change_start_month"] = start_month or None
-            target_feat["properties"]["change_end_month"] = end_month or None
+            all_empty = all(v == "" for v in values.values())
+            if all_empty:
+                annotations.pop(feature_idx, None)
+            else:
+                props = target_feat["properties"]
+                entry = {
+                    "feature_idx": feature_idx,
+                    "window_group": props["window_group"],
+                    "window_name": props["window_name"],
+                    "src_class_name": props["src_class_name"],
+                    "dst_class_name": props["dst_class_name"],
+                }
+                for field in ANNOTATION_FIELDS:
+                    entry[field] = values[field] or None
+                annotations[feature_idx] = entry
 
-            with open_atomic(geojson_upath, "w") as f:
-                json.dump(fc, f)
-
+            _save_annotations(annotations_upath, annotations)
             payload = _example_payload(target_feat)
 
         return jsonify({"ok": True, "feature": payload})
@@ -403,25 +459,43 @@ def create_app(geojson_path: str, ds_path_str: str) -> Flask:
             headers={"Cache-Control": "public, max-age=86400"},
         )
 
-    @app.route("/image/landcover/<window_group>/<window_name>/<period>")
-    def image_landcover(window_group: str, window_name: str, period: str) -> Response:
-        """Render the early/late dominant-class PNG for one window."""
-        if period not in ("early", "late"):
-            return Response("period must be 'early' or 'late'", status=400)
+    @app.route("/image/landcover/<window_group>/<window_name>")
+    def image_landcover(window_group: str, window_name: str) -> Response:
+        """Render the dominant-class PNG averaged over the requested years."""
+        years_arg = request.args.get("years", "")
+        try:
+            years = [int(y) for y in years_arg.split(",") if y.strip()]
+        except ValueError:
+            return Response("invalid years", status=400)
+        if not years:
+            return Response("years required", status=400)
+        year_indices = [y - BASE_YEAR for y in years]
+        if any(yi < 0 or yi >= NUM_YEARS for yi in year_indices):
+            return Response("year out of range", status=400)
 
         window = window_cache.get((window_group, window_name))
         if window is None:
             return Response("window not found", status=404)
 
         wroot = dataset.storage.get_window_root(window_group, window_name)
-        tiff_path = wroot / "land_cover_change.tif"
+        tiff_path = wroot / PROBS_FILENAME
         if not tiff_path.exists():
-            return Response("land_cover_change.tif not found", status=404)
+            return Response(f"{PROBS_FILENAME} not found", status=404)
 
-        # rasterio 1-indexed: band 2 = early dominant class, band 3 = late
-        band_idx = 2 if period == "early" else 3
+        # probs layout is year-major: band (y*NUM_CLASSES + c) for y in [0, NUM_YEARS).
+        # rasterio is 1-indexed, so offset by +1 when selecting bands.
         with rasterio.open(str(tiff_path)) as src:
-            class_map = src.read(band_idx)
+            stack = np.stack(
+                [
+                    src.read(y * NUM_CLASSES + c + 1)
+                    for y in year_indices
+                    for c in range(NUM_CLASSES)
+                ]
+            ).astype(np.float32)
+        # Shape: (len(year_indices) * NUM_CLASSES, H, W) -> mean across years
+        stack = stack.reshape(len(year_indices), NUM_CLASSES, *stack.shape[1:])
+        avg = stack.mean(axis=0)
+        class_map = np.argmax(avg, axis=0).astype(np.int64)
 
         rgb = WORLDCOVER_COLORS[class_map]
         return Response(
@@ -498,11 +572,19 @@ def main() -> None:
         help="GeoJSON from create_land_cover_change_geojson.py",
     )
     parser.add_argument("--ds-path", required=True, help="Path to rslearn dataset root")
+    parser.add_argument(
+        "--annotations",
+        default=None,
+        help=(
+            "Path to annotations JSON file. Defaults to "
+            "<geojson_stem>.annotations.json next to the GeoJSON."
+        ),
+    )
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--host", default="0.0.0.0")
     args = parser.parse_args()
 
-    app = create_app(args.geojson, args.ds_path)
+    app = create_app(args.geojson, args.ds_path, args.annotations)
     print(f"Serving on http://{args.host}:{args.port}")
     app.run(host=args.host, port=args.port, debug=False)
 

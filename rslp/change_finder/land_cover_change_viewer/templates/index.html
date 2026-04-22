@@ -49,13 +49,15 @@
   #polygon-row { padding: 4px 16px; }
   #polygon-row img { display: block; width: var(--tile-size); height: var(--tile-size); object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; background: #111; border: 1px solid #333; }
 
-  #annot-form { display: flex; align-items: center; gap: 12px; padding: 8px 16px 16px; flex-wrap: wrap; }
-  #annot-form label { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  #annot-form { display: flex; align-items: flex-end; gap: 12px; padding: 8px 16px 12px; flex-wrap: wrap; background: #13172a; border-bottom: 1px solid #333; }
+  #annot-form .field { display: flex; flex-direction: column; gap: 2px; }
+  #annot-form .field .field-label { font-size: 12px; color: #cfd8dc; font-weight: 600; }
+  #annot-form .field .field-hint { font-size: 11px; color: #8aa; }
   #annot-form input { font-size: 14px; padding: 4px 8px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; font-family: monospace; width: 110px; }
   #annot-form input:invalid { border-color: #e57373; }
-  #annot-form button { font-size: 14px; padding: 4px 12px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  #annot-form button { font-size: 14px; padding: 6px 14px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; height: 30px; }
   #annot-form button:hover { background: #1a5276; }
-  #annot-status { font-size: 13px; color: #aaa; }
+  #annot-status { font-size: 13px; color: #aaa; align-self: center; }
   #annot-status.ok { color: #81c784; }
   #annot-status.err { color: #e57373; }
 
@@ -82,7 +84,34 @@
   <span>Lat/Lon: <span class="coord" id="coord-text">—</span></span>
   <span>Window: <span id="window-info">—</span></span>
   <span>Transition: <span id="transition-info">—</span></span>
+  <span>Pivot year: <span id="pivot-info">—</span></span>
 </div>
+
+<div class="section-label">Annotation</div>
+<form id="annot-form">
+  <div class="field">
+    <span class="field-label">Pre-change</span>
+    <span class="field-hint">would predict source category</span>
+    <input id="annot-pre-change" type="text" pattern="\d{4}-(0[1-9]|1[0-2])" placeholder="2018-03">
+  </div>
+  <div class="field">
+    <span class="field-label">Change start</span>
+    <span class="field-hint">first image where change is visible</span>
+    <input id="annot-change-start" type="text" pattern="\d{4}-(0[1-9]|1[0-2])" placeholder="2019-06">
+  </div>
+  <div class="field">
+    <span class="field-label">Change end</span>
+    <span class="field-hint">last image where change is visible</span>
+    <input id="annot-change-end" type="text" pattern="\d{4}-(0[1-9]|1[0-2])" placeholder="2021-03">
+  </div>
+  <div class="field">
+    <span class="field-label">Post-change</span>
+    <span class="field-hint">would predict destination category</span>
+    <input id="annot-post-change" type="text" pattern="\d{4}-(0[1-9]|1[0-2])" placeholder="2022-08">
+  </div>
+  <button type="submit" id="btn-save">Save</button>
+  <span id="annot-status"></span>
+</form>
 
 <div class="section-label">Sentinel-2 Imagery</div>
 <div id="year-selector"></div>
@@ -94,14 +123,6 @@
 
 <div class="section-label">Change Polygon</div>
 <div id="polygon-row"></div>
-
-<div class="section-label">Annotation</div>
-<form id="annot-form">
-  <label>Start (YYYY-MM): <input id="annot-start" type="text" pattern="\d{4}-(0[1-9]|1[0-2])" placeholder="2019-06"></label>
-  <label>End (YYYY-MM): <input id="annot-end" type="text" pattern="\d{4}-(0[1-9]|1[0-2])" placeholder="2021-03"></label>
-  <button type="submit" id="btn-save">Save</button>
-  <span id="annot-status"></span>
-</form>
 
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

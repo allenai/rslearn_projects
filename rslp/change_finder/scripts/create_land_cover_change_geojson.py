@@ -1,4 +1,10 @@
-"""Create GeoJSON of land cover change events from precomputed change GeoTIFFs.
+"""Create GeoJSON of land cover change events from per-year probability GeoTIFFs.
+
+For each window, a pivot year is picked at random (deterministically seeded by
+window id) from the valid range that leaves ``num_early`` years before the
+pivot and ``num_late`` years after it.  The early window is the ``num_early``
+years immediately preceding the pivot (pivot excluded) and the late window is
+the ``num_late`` years immediately following it.
 
 For each window, iterates over all pairs of (source, destination) classes.  A
 pixel qualifies for a pair when the source class probability exceeds the
@@ -12,12 +18,16 @@ In addition, for each window, a ``"no_change"`` feature is emitted summarizing
 pixels where the model is confident in the *same* class across every early
 and late timestep.  These features are intended for visualization/label
 augmentation only (they don't carry src/dst properties).
+
+The chosen pivot year (and the resulting early/late year lists) are recorded
+on every feature so downstream viewers can render the correct time windows.
 """
 
 import argparse
 import json
 import multiprocessing
 import multiprocessing.pool
+import random
 from collections.abc import Iterable
 
 import numpy as np
@@ -35,6 +45,8 @@ from upath import UPath
 
 RASTER_FORMAT = GeotiffRasterFormat()
 
+BASE_YEAR = 2016
+NUM_YEARS = 10
 NUM_CLASSES = 13
 CLASS_NAMES = [
     "nodata",
@@ -54,24 +66,38 @@ CLASS_NAMES = [
 
 
 def _class_probs(
-    change_data: np.ndarray,
+    probs_data: np.ndarray,
     class_id: int,
-    num_early: int,
-    num_late: int,
+    early_year_indices: list[int],
+    late_year_indices: list[int],
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:
-    """Return (early_probs, late_probs) for the given class as float32 arrays."""
-    header_bands = 3
-    early_probs = []
-    for i in range(num_early):
-        band_idx = header_bands + i * NUM_CLASSES + class_id
-        early_probs.append(change_data[band_idx].astype(np.float32) / 255.0)
+    """Return (early_probs, late_probs) for the given class as float32 arrays.
 
-    late_probs = []
-    for i in range(num_late):
-        band_idx = header_bands + num_early * NUM_CLASSES + i * NUM_CLASSES + class_id
-        late_probs.append(change_data[band_idx].astype(np.float32) / 255.0)
-
+    The probs GeoTIFF is laid out year-major:
+    ``band (y * NUM_CLASSES + c) = probability of class c in year y``.
+    """
+    early_probs = [
+        probs_data[y * NUM_CLASSES + class_id].astype(np.float32) / 255.0
+        for y in early_year_indices
+    ]
+    late_probs = [
+        probs_data[y * NUM_CLASSES + class_id].astype(np.float32) / 255.0
+        for y in late_year_indices
+    ]
     return early_probs, late_probs
+
+
+def _pick_pivot_year_idx(window: Window, num_early: int, num_late: int) -> int | None:
+    """Pick a deterministic random pivot year index for this window.
+
+    Returns ``None`` if the configured early/late counts leave no valid pivot.
+    """
+    min_pivot = num_early
+    max_pivot = NUM_YEARS - 1 - num_late
+    if max_pivot < min_pivot:
+        return None
+    rng = random.Random(f"{window.group}/{window.name}")
+    return rng.randint(min_pivot, max_pivot)
 
 
 def _mask_to_wgs84_multipolygon(
@@ -125,18 +151,24 @@ def _process_window(
     num_early: int,
     num_late: int,
     min_pixels: int,
-    change_filename: str,
+    probs_filename: str,
 ) -> list[dict]:
     """Process one window, returning a list of GeoJSON feature dicts."""
     window_root = window.storage.get_window_root(window.group, window.name)
-    if not (window_root / change_filename).exists():
+    if not (window_root / probs_filename).exists():
         return []
 
-    change_raster: RasterArray = RASTER_FORMAT.decode_raster(
-        window_root, window.projection, window.bounds, fname=change_filename
+    pivot_year_idx = _pick_pivot_year_idx(window, num_early, num_late)
+    if pivot_year_idx is None:
+        return []
+    early_year_indices = list(range(pivot_year_idx - num_early, pivot_year_idx))
+    late_year_indices = list(range(pivot_year_idx + 1, pivot_year_idx + 1 + num_late))
+
+    probs_raster: RasterArray = RASTER_FORMAT.decode_raster(
+        window_root, window.projection, window.bounds, fname=probs_filename
     )
-    change_data = change_raster.get_chw_array()
-    h, w = change_data.shape[1], change_data.shape[2]
+    probs_data = probs_raster.get_chw_array()
+    h, w = probs_data.shape[1], probs_data.shape[2]
 
     # Precompute per-class "confident early" and "confident late" masks so we
     # don't recompute them for every (src, dst) pair.
@@ -144,7 +176,7 @@ def _process_window(
     late_confident: list[np.ndarray] = []
     for class_id in range(NUM_CLASSES):
         early_probs, late_probs = _class_probs(
-            change_data, class_id, num_early, num_late
+            probs_data, class_id, early_year_indices, late_year_indices
         )
         early_mask = np.ones((h, w), dtype=bool)
         for p in early_probs:
@@ -154,6 +186,14 @@ def _process_window(
             late_mask &= p > threshold
         early_confident.append(early_mask)
         late_confident.append(late_mask)
+
+    # Shared metadata recorded on every feature so downstream viewers know
+    # which years were compared for this window.
+    pivot_props = {
+        "pivot_year": BASE_YEAR + pivot_year_idx,
+        "early_years": [BASE_YEAR + y for y in early_year_indices],
+        "late_years": [BASE_YEAR + y for y in late_year_indices],
+    }
 
     features: list[dict] = []
 
@@ -186,6 +226,7 @@ def _process_window(
                         "window_group": window.group,
                         "window_name": window.name,
                         "num_pixels": num_pixels,
+                        **pivot_props,
                     },
                 }
             )
@@ -216,6 +257,7 @@ def _process_window(
                         "window_group": window.group,
                         "window_name": window.name,
                         "num_pixels": num_pixels,
+                        **pivot_props,
                     },
                 }
             )
@@ -234,7 +276,7 @@ def create_geojson(
     num_late: int = 3,
     min_pixels: int = 10,
     out_path: str = "land_cover_change.geojson",
-    change_filename: str = "land_cover_change.tif",
+    probs_filename: str = "land_cover_probs.tif",
     workers: int = 32,
 ) -> None:
     """Scan all windows and write a GeoJSON FeatureCollection of change events."""
@@ -248,7 +290,7 @@ def create_geojson(
             num_early=num_early,
             num_late=num_late,
             min_pixels=min_pixels,
-            change_filename=change_filename,
+            probs_filename=probs_filename,
         )
         for window in windows
     ]
@@ -306,9 +348,9 @@ if __name__ == "__main__":
         help="Output GeoJSON path",
     )
     parser.add_argument(
-        "--change_filename",
-        default="land_cover_change.tif",
-        help="Change GeoTIFF filename per window",
+        "--probs_filename",
+        default="land_cover_probs.tif",
+        help="Per-year probabilities GeoTIFF filename per window",
     )
     parser.add_argument("--workers", type=int, default=32)
     args = parser.parse_args()
@@ -320,6 +362,6 @@ if __name__ == "__main__":
         num_late=args.num_late,
         min_pixels=args.min_pixels,
         out_path=args.out_path,
-        change_filename=args.change_filename,
+        probs_filename=args.probs_filename,
         workers=args.workers,
     )
