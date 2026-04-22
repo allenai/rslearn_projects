@@ -5,7 +5,7 @@ from typing import Any
 
 import torch
 from rasterio.crs import CRS
-from rslearn.train.model_context import SampleMetadata
+from rslearn.train.model_context import RasterImage, SampleMetadata
 from rslearn.utils.geometry import Projection
 
 from rslp.swin_pretrain.dataset import TILE_SIZE, CollateFunction
@@ -24,15 +24,15 @@ class TestCollateFunction:
         timesteps: int = 1,
     ) -> tuple[dict, dict, SampleMetadata]:
         """Make an example to pass to CollateFunction."""
-        input_dict: dict[str, torch.Tensor] = {}
+        input_dict: dict[str, RasterImage] = {}
         for modality, num_bands in input_modalities.items():
+            # Build (C, T, H, W) RasterImage.
             image = torch.zeros(
-                (timesteps * num_bands, height, width), dtype=torch.float32
+                (num_bands, timesteps, height, width), dtype=torch.float32
             )
-            # Set each timestep to different value so tests can distinguish them.
             for timestep in range(timesteps):
-                image[timestep * num_bands : (timestep + 1) * num_bands] = timestep
-            input_dict[modality] = image
+                image[:, timestep, :, :] = timestep
+            input_dict[modality] = RasterImage(image=image)
         target_dict: dict[str, Any] = {}
         for modality in segment_targets:
             target_dict[modality] = {
@@ -85,22 +85,18 @@ class TestCollateFunction:
                 ),
             ]
             inputs, targets, _ = collate_fn(batch)
+            img0 = inputs[0]["10_sentinel2_l2a_monthly"].image  # C, T, H, W
+            img1 = inputs[1]["10_sentinel2_l2a_monthly"].image
             # Make sure all examples in the batch have the same shape.
-            assert (
-                inputs[0]["10_sentinel2_l2a_monthly"].shape
-                == inputs[1]["10_sentinel2_l2a_monthly"].shape
-            )
+            assert img0.shape == img1.shape
             assert (
                 targets[0]["10_worldcover"]["classes"].shape
                 == targets[1]["10_worldcover"]["classes"].shape
             )
             # Make sure within an example it has the same height/width.
-            assert (
-                inputs[0]["10_sentinel2_l2a_monthly"].shape[1:3]
-                == targets[0]["10_worldcover"]["classes"].shape[0:2]
-            )
+            assert img0.shape[2:4] == targets[0]["10_worldcover"]["classes"].shape[0:2]
             # Make sure it is square and a multiple of the requested patch size.
-            height, width = inputs[0]["10_sentinel2_l2a_monthly"].shape[1:3]
+            height, width = img0.shape[2:4]
             assert height == width
             assert width % patch_size == 0
             assert width >= min_size and width <= max_size
@@ -133,7 +129,7 @@ class TestCollateFunction:
                     )
                 ]
                 inputs, _, _ = collate_fn(batch)
-                width = inputs[0]["10_sentinel2_l2a_monthly"].shape[2]
+                width = inputs[0]["10_sentinel2_l2a_monthly"].image.shape[3]
                 assert width % patch_size == 0
                 widths[example_idx].add(width)
 
@@ -171,13 +167,13 @@ class TestCollateFunction:
                 )
             ]
             inputs, _, _ = collate_fn(batch)
-            image = inputs[0]["10_sentinel2_l2a_monthly"]
-            num_timesteps = image.shape[0] // 12
+            image = inputs[0]["10_sentinel2_l2a_monthly"].image  # C, T, H, W
+            num_timesteps = image.shape[1]
 
-            # Verify order of timesteps.
+            # Verify order of timesteps -- each timestep was filled with its index.
             selected_timesteps = []
             for timestep in range(num_timesteps):
-                selected_timesteps.append(image[timestep * 12, 0, 0])
+                selected_timesteps.append(image[0, timestep, 0, 0].item())
                 if len(selected_timesteps) >= 2:
                     assert selected_timesteps[-1] > selected_timesteps[-2]
 
