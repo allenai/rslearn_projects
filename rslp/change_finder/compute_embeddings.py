@@ -7,6 +7,9 @@ as an H5 file inside the window directory.
 
 import argparse
 import io
+import random
+from collections.abc import Iterator
+from typing import Any
 
 import h5py
 import numpy as np
@@ -17,6 +20,7 @@ from rslearn.models.olmoearth_pretrain.model import ModelID, OlmoEarth
 from rslearn.train.data_module import collate_fn
 from rslearn.train.dataset import DataInput, ModelDataset, SplitConfig
 from rslearn.train.model_context import ModelContext, RasterImage
+from rslearn.utils.fsspec import open_atomic
 from rslearn.utils.geometry import Projection
 from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat
@@ -39,6 +43,56 @@ OLMOEARTH_BAND_ORDER = [
     "B09",
 ]
 NUM_YEARS = 10
+
+
+class _ShuffledSkipExistingDataset(torch.utils.data.IterableDataset):
+    """Iterate windows in a random order, skipping ones with existing output.
+
+    The shuffle order is fixed at construction so every DataLoader worker on
+    one machine sees the same permutation (each worker just takes a different
+    slice of it).  Across machines the orders diverge because the seed is
+    drawn from the system RNG.
+
+    The output-file check runs just-in-time before yielding, so when machine A
+    finishes a window after machine B has started but before B gets there,
+    B will skip it rather than recomputing.
+    """
+
+    def __init__(
+        self,
+        base: ModelDataset,
+        storage: Any,
+        out_filename: str,
+        shuffle_seed: int | None = None,
+    ) -> None:
+        self.base = base
+        self.storage = storage
+        self.out_filename = out_filename
+        if shuffle_seed is None:
+            shuffle_seed = random.Random().randint(0, 2**31 - 1)
+        self.shuffle_seed = shuffle_seed
+
+    def __iter__(self) -> Iterator[Any]:
+        worker_info = torch.utils.data.get_worker_info()
+        windows = self.base.get_dataset_examples()
+        indices = list(range(len(windows)))
+        random.Random(self.shuffle_seed).shuffle(indices)
+        if worker_info is not None:
+            indices = indices[worker_info.id :: worker_info.num_workers]
+        for idx in indices:
+            window = windows[idx]
+            root = self.storage.get_window_root(window.group, window.name)
+            if (root / self.out_filename).exists():
+                continue
+            try:
+                example = self.base[idx]
+            except Exception as e:
+                print(
+                    f"[compute_embeddings] skipping window "
+                    f"{window.group}/{window.name} due to load error: {e}"
+                )
+                continue
+            yield example
 
 
 def _embed_year(
@@ -150,8 +204,18 @@ def compute_embeddings(
         workers=workers,
     )
 
+    # Wrap the dataset so each machine (a) iterates in its own random order
+    # and (b) checks the output file right before yielding, skipping any
+    # window another machine has finished in the meantime.  ``out_filename``
+    # is written last below, so its presence means the window is fully done.
+    iter_dataset = _ShuffledSkipExistingDataset(
+        base=model_dataset,
+        storage=dataset.storage,
+        out_filename=out_filename,
+    )
+
     data_loader = torch.utils.data.DataLoader(
-        dataset=model_dataset,
+        dataset=iter_dataset,
         num_workers=workers,
         collate_fn=collate_fn,
         batch_size=batch_size,
@@ -178,22 +242,13 @@ def compute_embeddings(
                 year_feats.append(feats)
 
             for b in range(cur_batch_size):
-                # Pool spatially for the H5 embeddings.
-                pooled = np.stack(
-                    [year_feats[yi][b].mean(axis=(1, 2)) for yi in range(NUM_YEARS)]
-                )  # (NUM_YEARS, C)
-
                 metadata = metadatas[b]
                 window_root = dataset.storage.get_window_root(
                     metadata.window_group, metadata.window_name
                 )
-                out_path = window_root / out_filename
-                buf = io.BytesIO()
-                with h5py.File(buf, "w") as f:
-                    f.create_dataset("embeddings", data=pooled)
-                with out_path.open("wb") as fp:
-                    fp.write(buf.getvalue())
 
+                # Write the optional mask first so that presence of the H5
+                # embeddings file reliably indicates the window is done.
                 if mask_filename:
                     spatial = np.stack(
                         [year_feats[yi][b] for yi in range(NUM_YEARS)]
@@ -222,6 +277,18 @@ def compute_embeddings(
                         raster=raster,
                         fname=mask_filename,
                     )
+
+                # Pool spatially for the H5 embeddings.
+                pooled = np.stack(
+                    [year_feats[yi][b].mean(axis=(1, 2)) for yi in range(NUM_YEARS)]
+                )  # (NUM_YEARS, C)
+
+                out_path = window_root / out_filename
+                buf = io.BytesIO()
+                with h5py.File(buf, "w") as f:
+                    f.create_dataset("embeddings", data=pooled)
+                with open_atomic(out_path, "wb") as fp:
+                    fp.write(buf.getvalue())
 
 
 if __name__ == "__main__":
