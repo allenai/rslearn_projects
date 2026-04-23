@@ -30,7 +30,6 @@ def process_row(
     group: str,
     dataset: Dataset,
     csv_row: dict[str, str],
-    train_only: bool = False,
 ) -> None:
     """Create a window from one row in the vessel CSV.
 
@@ -38,8 +37,6 @@ def process_row(
         group: the rslearn group to add the window to.
         dataset: the output rslearn dataset.
         csv_row: the row from vessel CSV.
-        train_only: if True, assign all windows to the train split instead of
-            hashing the event_id to determine train/val.
     """
 
     def get_optional_float(k: str) -> float | None:
@@ -86,11 +83,23 @@ def process_row(
     time_range = (ts - timedelta(hours=1), ts + timedelta(hours=1))
 
     # Check if train or val.
-    if train_only:
+    # We split by scene_id (the event_id without the trailing "_N" index) so that
+    # all vessels in the same satellite scene end up in the same split, and by
+    # mmsi so that the same vessel never appears in both train and val. Windows
+    # where the scene_id and mmsi hashes disagree are marked "unused" to maximize
+    # isolation of the validation set.
+    scene_id = event_id.rsplit("_", 1)[0]
+    mmsi = csv_row["mmsi"]
+    scene_hash_char = hashlib.sha256(scene_id.encode()).hexdigest()[0]
+    mmsi_hash_char = hashlib.sha256(mmsi.encode()).hexdigest()[0]
+    val_chars = set("0123")
+    train_chars = set("456789abcdef")
+    if scene_hash_char in train_chars and mmsi_hash_char in train_chars:
         split = "train"
+    elif scene_hash_char in val_chars and mmsi_hash_char in val_chars:
+        split = "val"
     else:
-        is_val = hashlib.sha256(event_id.encode()).hexdigest()[0] in ["0", "1"]
-        split = "val" if is_val else "train"
+        split = "unused"
 
     # Create the window.
     window = Window(
@@ -112,6 +121,7 @@ def process_row(
         json.dump(
             {
                 "event_id": event_id,
+                "mmsi": mmsi,
                 "length": vessel_length,
                 "width": vessel_width,
                 "cog": vessel_cog,
@@ -129,6 +139,7 @@ def process_row(
     info_dir.mkdir(parents=True, exist_ok=True)
     properties: dict[str, Any] = {
         "event_id": event_id,
+        "mmsi": mmsi,
     }
     # Extreme lengths/widths are probably incorrect.
     if vessel_length and vessel_length >= 5 and vessel_length < 460:
@@ -162,7 +173,6 @@ def create_windows(
     ds_path: str,
     workers: int = 32,
     modality: str = "sentinel2",
-    train_only: bool = False,
 ) -> None:
     """Initialize an rslearn dataset at the specified path.
 
@@ -175,8 +185,6 @@ def create_windows(
         workers: number of worker processes to use
         modality: which modality, this is used for copying the dataset config. Currently
             it can be sentinel2, landsat, or sentinel1.
-        train_only: if True, assign all windows to the train split instead of
-            hashing the event_id to determine train/val.
     """
     csv_upath = UPath(csv_dir)
     ds_upath = UPath(ds_path)
@@ -197,7 +205,6 @@ def create_windows(
                         group=group,
                         dataset=dataset,
                         csv_row=csv_row,
-                        train_only=train_only,
                     )
                 )
 
