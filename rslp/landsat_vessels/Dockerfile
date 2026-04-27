@@ -20,9 +20,9 @@ RUN mkdir -p /project_data/projects/landsat_vessels/data_20240924_model_20240924
     mkdir -p /project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/ && \
     wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt \
         -O /project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt && \
-    mkdir -p /project_data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/ && \
-    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/best.ckpt \
-        -O /project_data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/best.ckpt
+    mkdir -p /project_data/projects/2026_04_22_landsat_vessel_attribute/olmoearth_base_freeze_newdata_01/ && \
+    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_04_22_landsat_vessel_attribute/olmoearth_base_freeze_newdata_01/best.ckpt \
+        -O /project_data/projects/2026_04_22_landsat_vessel_attribute/olmoearth_base_freeze_newdata_01/best.ckpt
 ENV RSLP_PREFIX=/project_data
 
 # Run app.py when the container launches
