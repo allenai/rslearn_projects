@@ -23,7 +23,9 @@ WINDOW_SIZE = 128
 GRID_RADIUS = 15  # cells in each direction from center → 31x31 grid
 STAC_ENDPOINT = "https://planetarycomputer.microsoft.com/api/stac/v1"
 S2_COLLECTION = "sentinel-2-l2a"
-DURATION_DAYS = 120
+DURATION_DAYS = 180
+MIN_CENTER_DIST = 256  # minimum distance in pixels between window centers
+_CELL_RADIUS = MIN_CENTER_DIST // WINDOW_SIZE  # neighborhood radius in cell indices
 
 _stac_client: PlanetaryComputerStacClient | None = None
 
@@ -67,10 +69,11 @@ def _has_period_coverage(lat: float, lon: float, base_time: datetime) -> bool:
     return len(periods_found) >= num_periods
 
 
+# Only months in 2016 so that end will be before 1 April 2026
+# (with six months per year, ten years).
 BASE_MONTHS: list[datetime] = []
-for _y in range(2016, 2020):
-    for _m in range(1, 13):
-        BASE_MONTHS.append(datetime(_y, _m, 1, tzinfo=timezone.utc))
+for _m in range(1, 11):
+    BASE_MONTHS.append(datetime(2016, _m, 1, tzinfo=timezone.utc))
 
 
 def _save_window_urban(
@@ -135,8 +138,21 @@ def create_windows_urban(
     dataset = Dataset(ds_upath)
     rng = random.Random()
 
-    seen: set[tuple[int, int, int]] = set()  # (epsg, grid_x, grid_y)
+    # Build index of occupied grid cells from existing windows.
+    # Two cells are "too close" if centers are < 256 px apart (i.e. < 128 px
+    # between borders).  With WINDOW_SIZE=128 that equals a 3×3 neighborhood
+    # in cell-index space.
+    occupied: set[tuple[int, int, int]] = set()  # (epsg, cell_x, cell_y)
+    print("Loading existing windows...")
+    for w in dataset.load_windows(workers=workers, show_progress=True):
+        epsg = w.projection.crs.to_epsg()
+        if epsg is None:
+            continue
+        occupied.add((epsg, w.bounds[0] // WINDOW_SIZE, w.bounds[1] // WINDOW_SIZE))
+    print(f"Found {len(occupied)} existing cells")
+
     jobs: list[dict] = []
+    skipped = 0
 
     for lat, lon, city_name in tqdm.tqdm(CITIES, desc="Building grid"):
         projection = get_utm_ups_projection(lon, lat, PIXEL_SIZE, -PIXEL_SIZE)
@@ -154,10 +170,19 @@ def create_windows_urban(
             sample_x = center_x + rng.randint(-GRID_RADIUS, GRID_RADIUS) * WINDOW_SIZE
             sample_y = center_y + rng.randint(-GRID_RADIUS, GRID_RADIUS) * WINDOW_SIZE
 
-            key = (epsg, sample_x, sample_y)
-            if key in seen:
+            cell_x = sample_x // WINDOW_SIZE
+            cell_y = sample_y // WINDOW_SIZE
+
+            # Reject if any cell in the neighborhood is already occupied.
+            if any(
+                (epsg, cell_x + dx, cell_y + dy) in occupied
+                for dx in range(-_CELL_RADIUS + 1, _CELL_RADIUS)
+                for dy in range(-_CELL_RADIUS + 1, _CELL_RADIUS)
+            ):
+                skipped += 1
                 continue
-            seen.add(key)
+
+            occupied.add((epsg, cell_x, cell_y))
 
             name = f"{city_name}_EPSG:{epsg}_{sample_x}_{sample_y}"
             bounds = (
@@ -178,6 +203,7 @@ def create_windows_urban(
                 )
             )
 
+    print(f"Skipped {skipped} cells too close to existing/planned windows")
     print(
         f"Processing {len(jobs)} unique grid cells from {len(CITIES)} cities with {workers} workers"
     )

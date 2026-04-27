@@ -3,15 +3,18 @@
 import hashlib
 import multiprocessing
 import random
+import traceback
 from datetime import datetime, timedelta, timezone
 
 import shapely
 import tqdm
+from global_land_mask import globe
+from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.data_sources.planetary_computer import PlanetaryComputerStacClient
 from rslearn.dataset import Dataset, Window
 from rslearn.dataset.manage import retry
-from rslearn.utils.geometry import STGeometry
+from rslearn.utils.geometry import Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.mp import star_imap_unordered
 from upath import UPath
@@ -20,7 +23,9 @@ PIXEL_SIZE = 10
 WINDOW_SIZE = 128
 STAC_ENDPOINT = "https://planetarycomputer.microsoft.com/api/stac/v1"
 S2_COLLECTION = "sentinel-2-l2a"
-DURATION_DAYS = 120
+DURATION_DAYS = 180
+MIN_CENTER_DIST = 256  # minimum distance in pixels between window centers
+_CELL_RADIUS = MIN_CENTER_DIST // WINDOW_SIZE  # neighborhood radius in cell indices
 
 _stac_client: PlanetaryComputerStacClient | None = None
 
@@ -33,6 +38,29 @@ def _get_stac_client() -> PlanetaryComputerStacClient:
     return _stac_client
 
 
+def _compute_cell(
+    lat: float,
+    lon: float,
+    base_time: datetime,
+) -> tuple[int, int, int, datetime] | None:
+    """Project lat/lon to UTM, check land/coverage, return (epsg, cell_x, cell_y, base_time) or None."""
+    if not globe.is_land(lat, lon):
+        return None
+
+    if not _has_period_coverage(lat, lon, base_time):
+        return None
+
+    dst_projection = get_utm_ups_projection(lon, lat, PIXEL_SIZE, -PIXEL_SIZE)
+    epsg = dst_projection.crs.to_epsg()
+
+    src_point = shapely.Point(lon, lat)
+    src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
+    dst_geometry = src_geometry.to_projection(dst_projection)
+    cell_x = int(dst_geometry.shp.x) // WINDOW_SIZE
+    cell_y = int(dst_geometry.shp.y) // WINDOW_SIZE
+    return (epsg, cell_x, cell_y, base_time)
+
+
 def _has_period_coverage(lat: float, lon: float, base_time: datetime) -> bool:
     """Check that there is at least one Sentinel-2 item per 30-day period in the window."""
     client = _get_stac_client()
@@ -40,15 +68,20 @@ def _has_period_coverage(lat: float, lon: float, base_time: datetime) -> bool:
 
     eps = 0.01
     bbox = (lon - eps, lat - eps, lon + eps, lat + eps)
-    items = retry(
-        lambda: client.search(
-            collections=[S2_COLLECTION],
-            bbox=bbox,
-            date_time=(base_time, end_time),
-        ),
-        retry_max_attempts=5,
-        retry_backoff=timedelta(seconds=5),
-    )
+    try:
+        items = retry(
+            lambda: client.search(
+                collections=[S2_COLLECTION],
+                bbox=bbox,
+                date_time=(base_time, end_time),
+            ),
+            retry_max_attempts=5,
+            retry_backoff=timedelta(seconds=5),
+        )
+    except Exception as e:
+        traceback.print_exc()
+        print(f"Skipping lat={lat}, lon={lon}, base_time={base_time}: {e}")
+        return False
 
     period_length = 30
     num_periods = DURATION_DAYS // period_length
@@ -65,42 +98,32 @@ def _has_period_coverage(lat: float, lon: float, base_time: datetime) -> bool:
     return len(periods_found) >= num_periods
 
 
-# All first-of-month dates in [Jan 2016, Dec 2019].
+# All first-of-month dates in [Jan 2016, Oct 2016].
+# Only months in 2016 so that end will be before 1 April 2026
+# (with six months per year, ten years).
 BASE_MONTHS: list[datetime] = []
-for y in range(2016, 2020):
-    for m in range(1, 13):
-        BASE_MONTHS.append(datetime(y, m, 1, tzinfo=timezone.utc))
+for m in range(1, 11):
+    BASE_MONTHS.append(datetime(2016, m, 1, tzinfo=timezone.utc))
 
 
 def _save_window(
     dataset: Dataset,
     group: str,
-    lat: float,
-    lon: float,
+    epsg: int,
+    cell_x: int,
+    cell_y: int,
     base_time: datetime,
 ) -> None:
-    """Create and save a single window from a lat/lon sample."""
-    from global_land_mask import globe
+    """Save a single grid-cell window."""
+    projection = Projection(CRS.from_epsg(epsg), PIXEL_SIZE, -PIXEL_SIZE)
 
-    if not globe.is_land(lat, lon):
-        return
-
-    if not _has_period_coverage(lat, lon, base_time):
-        return
-
-    dst_projection = get_utm_ups_projection(lon, lat, PIXEL_SIZE, -PIXEL_SIZE)
-
-    src_point = shapely.Point(lon, lat)
-    src_geometry = STGeometry(WGS84_PROJECTION, src_point, None)
-    dst_geometry = src_geometry.to_projection(dst_projection)
-
-    grid_x = int(dst_geometry.shp.x) // WINDOW_SIZE * WINDOW_SIZE
-    grid_y = int(dst_geometry.shp.y) // WINDOW_SIZE * WINDOW_SIZE
+    grid_x = cell_x * WINDOW_SIZE
+    grid_y = cell_y * WINDOW_SIZE
     bounds = (grid_x, grid_y, grid_x + WINDOW_SIZE, grid_y + WINDOW_SIZE)
 
     time_range = (base_time, base_time + timedelta(days=DURATION_DAYS))
 
-    name = f"{lat:.4f}_{lon:.4f}"
+    name = f"EPSG:{epsg}_{cell_x}_{cell_y}"
     is_val = hashlib.sha256(name.encode()).hexdigest()[0] in ["0", "1"]
     split = "val" if is_val else "train"
 
@@ -108,7 +131,7 @@ def _save_window(
         storage=dataset.storage,
         group=group,
         name=name,
-        projection=dst_projection,
+        projection=projection,
         bounds=bounds,
         time_range=time_range,
         options=dict(split=split),
@@ -139,18 +162,70 @@ def create_windows(
     dataset = Dataset(ds_upath)
     rng = random.Random()
 
+    # Build index of occupied grid cells from existing windows.
+    # Two cells are "too close" if centers are < 256 px apart (i.e. < 128 px
+    # between borders).  With WINDOW_SIZE=128 that equals a 3×3 neighborhood
+    # in cell-index space.
+    occupied: set[tuple[int, int, int]] = set()  # (epsg, cell_x, cell_y)
+    print("Loading existing windows...")
+    for w in dataset.load_windows(workers=workers, show_progress=True):
+        epsg = w.projection.crs.to_epsg()
+        if epsg is None:
+            continue
+        occupied.add((epsg, w.bounds[0] // WINDOW_SIZE, w.bounds[1] // WINDOW_SIZE))
+    print(f"Found {len(occupied)} existing cells")
+
+    # 1) Generate random lat/lon samples.
+    samples = [
+        dict(
+            lat=rng.uniform(-60, 70),
+            lon=rng.uniform(-180, 180),
+            base_time=rng.choice(BASE_MONTHS),
+        )
+        for _ in range(num_samples)
+    ]
+
+    # 2) Compute grid cells in parallel (reprojection + land/coverage checks).
+    print(f"Computing grid cells for {len(samples)} samples with {workers} workers...")
+    p = multiprocessing.Pool(workers)
+    cell_results = list(
+        tqdm.tqdm(
+            star_imap_unordered(p, _compute_cell, samples),
+            total=len(samples),
+            desc="Computing cells",
+        )
+    )
+    p.close()
+
+    # 3) Sequentially filter by proximity to existing/planned windows.
     jobs: list[dict] = []
-    for _ in range(num_samples):
+    skipped = 0
+    for cell in cell_results:
+        if cell is None:
+            continue
+        epsg, cell_x, cell_y, base_time = cell
+        if any(
+            (epsg, cell_x + dx, cell_y + dy) in occupied
+            for dx in range(-_CELL_RADIUS + 1, _CELL_RADIUS)
+            for dy in range(-_CELL_RADIUS + 1, _CELL_RADIUS)
+        ):
+            skipped += 1
+            continue
+
+        occupied.add((epsg, cell_x, cell_y))
         jobs.append(
             dict(
                 dataset=dataset,
                 group=group,
-                lat=rng.uniform(-60, 70),
-                lon=rng.uniform(-180, 180),
-                base_time=rng.choice(BASE_MONTHS),
+                epsg=epsg,
+                cell_x=cell_x,
+                cell_y=cell_y,
+                base_time=base_time,
             )
         )
 
+    # 4) Save windows in parallel (STAC checks + write).
+    print(f"Skipped {skipped} samples too close to existing/planned windows")
     print(f"Processing {len(jobs)} samples with {workers} workers")
     p = multiprocessing.Pool(workers)
     outputs = star_imap_unordered(p, _save_window, jobs)
