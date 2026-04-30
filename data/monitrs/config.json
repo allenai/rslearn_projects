@@ -1,0 +1,46 @@
+{
+  "layers": {
+    "qa": {
+      "type": "vector"
+    },
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "duration": "730d",
+        "ingest": false,
+        "init_args": {
+          "harmonize": true,
+          "sort_by": "eo:cloud_cover"
+        },
+        "query_config": {
+          "max_matches": 16,
+          "min_matches": 1,
+          "period_duration": "45d 15h",
+          "per_period_mosaic_reverse_time_order": false,
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "-365d"
+      },
+      "type": "raster"
+    }
+  }
+}
