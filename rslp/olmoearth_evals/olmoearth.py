@@ -11,7 +11,6 @@ from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.olmoearth_pretrain.model import EMBEDDING_SIZES, ModelID, OlmoEarth
 from rslearn.models.olmoearth_pretrain.norm import OlmoEarthNormalize
 from rslearn.models.pooling_decoder import PoolingDecoder
-from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.unet import UNetDecoder
 from rslearn.models.upsample import Upsample
 from rslearn.train.tasks.classification import ClassificationHead
@@ -47,13 +46,16 @@ def get_model(
         task_timesteps: number of input timesteps.
     """
     model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
+
+    # Extract various customizable options from the model config, if provided.
     model_config_env = os.environ.get("EVAL_ADAPTER_MODEL_CONFIG")
     model_config: dict[str, str] = (
         json.loads(model_config_env) if model_config_env else {}
     )
+    decoder_type = model_config.get("decoder", "default")
     checkpoint_path = model_config.get("checkpoint_path")
     use_legacy_timestamps = (
-        model_config.get("use_legacy_timestamps", "false").lower() == "true"
+        model_config.get("use_legacy_timestamps", "true").lower() == "true"
     )
 
     if model_id in ["olmoearth", "olmoearth_random"]:
@@ -68,7 +70,6 @@ def get_model(
         raise ValueError(f"unknown olmoearth model ID {model_id}")
 
     embedding_size = EMBEDDING_SIZES[olmoearth_model_id]
-    decoder_type = model_config.get("decoder", "default")
     logger.info(
         f"olmoearth: using decoder_type={decoder_type} embedding_size={embedding_size}"
         f" checkpoint_path={checkpoint_path}"
@@ -175,29 +176,6 @@ def get_model(
         )
     else:
         raise NotImplementedError
-
-    if task_name == "forest_loss_driver":
-        return MultiTaskModel(
-            encoder=[
-                SimpleTimeSeries(
-                    encoder=_make_encoder(),
-                    image_channels=12 * 4,
-                    image_key="sentinel2_l2a",
-                    groups=[[0], [1]],
-                ),
-            ],
-            decoders=dict(
-                eval_task=[
-                    PoolingDecoder(
-                        in_channels=embedding_size * 2,
-                        out_channels=task_channels,
-                        num_conv_layers=1,
-                        num_fc_layers=1,
-                    ),
-                    ClassificationHead(),
-                ]
-            ),
-        )
 
     return MultiTaskModel(
         encoder=[_make_encoder()],
