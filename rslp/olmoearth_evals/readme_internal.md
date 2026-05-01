@@ -122,7 +122,7 @@ Slower but still reasonable tasks (less than a day):
 ```bash
 python -m rslp.main olmoearth_evals launch \
     --models='[olmoearth]' \
-    --tasks='[pastis_ts,solar_farm_ts,lfmc_ts,africa_crop_mask,canada_crops_coarse,descals,glance,lcmap_lu,us_trees,worldcover,worldcover_200_per_class]' \
+    --tasks='[pastis_ts,lfmc_ts,africa_crop_mask,canada_crops_coarse,descals,glance,lcmap_lu,us_trees,worldcover,worldcover_200_per_class]' \
     --prefix my_eval \
     --image_name favyen/rslpomp \
     --project 2026_04_30_eval
