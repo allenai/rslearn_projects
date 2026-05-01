@@ -47,6 +47,20 @@
       ],
       "type": "raster"
     },
+    "s2_s1_apr30_output": {
+      "band_sets": [
+        {
+          "bands": ["label"],
+          "dtype": "uint8"
+        }
+      ],
+      "class_names": [
+        "no_landslide",
+        "landslide",
+        "no_data"
+      ],
+      "type": "raster"
+    },
     "post_sentinel2": {
       "band_sets": [
         {
