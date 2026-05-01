@@ -90,7 +90,15 @@ class _ShuffledSkipExistingDataset(torch.utils.data.IterableDataset):
             root = self.storage.get_window_root(window.group, window.name)
             if (root / self.out_filename).exists():
                 continue
-            yield self.base[idx]
+            try:
+                example = self.base[idx]
+            except Exception as e:
+                print(
+                    f"[compute_land_cover_change] skipping window "
+                    f"{window.group}/{window.name} due to load error: {e}"
+                )
+                continue
+            yield example
 
 
 def _predict_year(

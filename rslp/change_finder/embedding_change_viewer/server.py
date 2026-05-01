@@ -107,17 +107,20 @@ def create_app(
 
     print(f"Sentinel-2 bands: {s2_bands}, RGB indices: {b04_idx},{b03_idx},{b02_idx}")
 
-    print("Loading windows...")
-    windows = dataset.load_windows(workers=64, show_progress=True)
-    window_cache: dict[tuple[str, str], Window] = {
-        (w.group, w.name): w for w in windows
-    }
-    print(f"Loaded {len(windows)} windows")
-
     print(f"Loading change list from {json_upath}")
     with json_upath.open() as f:
         raw_entries = json.load(f)
     print(f"Loaded {len(raw_entries)} entries")
+
+    # Collect unique window names from the JSON so we only load those.
+    json_names = list({entry["window_name"] for entry in raw_entries})
+
+    print(f"Loading {len(json_names)} windows referenced in JSON...")
+    windows = dataset.load_windows(names=json_names, workers=64, show_progress=True)
+    window_cache: dict[tuple[str, str], Window] = {
+        (w.group, w.name): w for w in windows
+    }
+    print(f"Loaded {len(windows)} windows")
 
     # Keep only entries whose window exists in the dataset, deduped, sorted by
     # a stable shuffled order so downstream browsing interleaves groups.
