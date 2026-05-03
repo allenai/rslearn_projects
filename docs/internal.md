@@ -48,7 +48,7 @@ checkpoint loading, see https://github.com/allenai/rslearn/blob/master/docs/Mode
 To mount WEKA in Beaker sessions, launch sessions like this:
 
 ```
-beaker session create --budget ai2/es-platform --workspace ai2/earth-systems --gpus 1 --shared-memory 256GiB --mount src=weka,ref=dfive-default,dst=/weka/dfive-default --bare --priority high
+beaker session create --budget ai2/atec-olmoearth --workspace ai2/earth-systems --gpus 1 --shared-memory 256GiB --mount src=weka,ref=dfive-default,dst=/weka/dfive-default --bare --priority high
 ```
 
 You can keep your code on WEKA or in `/data/[USERNAME]/`, the latter would only exist
