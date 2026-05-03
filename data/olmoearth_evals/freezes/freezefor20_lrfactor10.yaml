@@ -4,4 +4,4 @@ trainer:
       init_args:
         module_selector: ["model", "model", "encoder"]
         unfreeze_at_epoch: 20
-        unfreeze_lr_factor: 20
+        unfreeze_lr_factor: 10
