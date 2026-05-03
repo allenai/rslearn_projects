@@ -72,7 +72,7 @@ def get_model(
     embedding_size = EMBEDDING_SIZES[olmoearth_model_id]
     logger.info(
         f"olmoearth: using decoder_type={decoder_type} embedding_size={embedding_size}"
-        f" checkpoint_path={checkpoint_path}"
+        f" checkpoint_path={checkpoint_path} use_legacy_timestamps={use_legacy_timestamps}"
     )
 
     def _make_encoder() -> OlmoEarth:
