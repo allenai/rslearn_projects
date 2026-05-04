@@ -57,6 +57,8 @@ def get_model(
     use_legacy_timestamps = (
         model_config.get("use_legacy_timestamps", "true").lower() == "true"
     )
+    token_drop_rate = float(model_config.get("token_drop_rate", "0.0"))
+    timestep_drop_rate = float(model_config.get("timestep_drop_rate", "0.0"))
 
     if model_id in ["olmoearth", "olmoearth_random"]:
         olmoearth_model_id = ModelID.OLMOEARTH_V1_BASE
@@ -73,6 +75,7 @@ def get_model(
     logger.info(
         f"olmoearth: using decoder_type={decoder_type} embedding_size={embedding_size}"
         f" checkpoint_path={checkpoint_path} use_legacy_timestamps={use_legacy_timestamps}"
+        f" token_drop_rate={token_drop_rate} timestep_drop_rate={timestep_drop_rate}"
     )
 
     def _make_encoder() -> OlmoEarth:
@@ -81,12 +84,16 @@ def get_model(
                 checkpoint_path=checkpoint_path,
                 patch_size=4,
                 use_legacy_timestamps=use_legacy_timestamps,
+                token_drop_rate=token_drop_rate,
+                timestep_drop_rate=timestep_drop_rate,
             )
         return OlmoEarth(
             model_id=olmoearth_model_id,
             patch_size=4,
             random_initialization=model_id == "olmoearth_random",
             use_legacy_timestamps=use_legacy_timestamps,
+            token_drop_rate=token_drop_rate,
+            timestep_drop_rate=timestep_drop_rate,
         )
 
     if task_type == "segment":
