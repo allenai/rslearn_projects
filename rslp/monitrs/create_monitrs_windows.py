@@ -1,4 +1,4 @@
-"""Create rslearn windows from MONITRS total_train.json / total_test.json.
+r"""Create rslearn windows from MONITRS total_train.json / total_test.json.
 
 MONITRS is a **vision–language** benchmark: each JSON row is a multiple-choice or
 free-form question about a **short Sentinel-2 image sequence** (JPEG paths in
@@ -15,7 +15,6 @@ read labels without parsing ``info.json``. Add a matching **vector** layer name 
 ``config.json`` (no ``class_names`` required).
 
 Example:
-
 .. code-block:: bash
 
     python -m rslp.monitrs.create_monitrs_windows \\
@@ -297,6 +296,7 @@ def _build_jobs(
 
 
 def main() -> None:
+    """Create MONITRS windows for rslearn dataset."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--monitrs_root",
@@ -406,8 +406,12 @@ def main() -> None:
         parser.error("cannot combine --train_only and --test_only")
 
     monitrs_root = UPath(args.monitrs_root)
-    train_path = UPath(args.train_json) if args.train_json else monitrs_root / "total_train.json"
-    test_path = UPath(args.test_json) if args.test_json else monitrs_root / "total_test.json"
+    train_path = (
+        UPath(args.train_json) if args.train_json else monitrs_root / "total_train.json"
+    )
+    test_path = (
+        UPath(args.test_json) if args.test_json else monitrs_root / "total_test.json"
+    )
     ds_path = UPath(args.ds_path)
 
     _ensure_config(ds_path)

@@ -18,7 +18,7 @@ def _lon_lat_from_record(record: object) -> tuple[float, float] | None:
     if not isinstance(lat_lon, list) or not lat_lon:
         return None
     first = lat_lon[0]
-    if not isinstance(first, (list, tuple)) or len(first) < 2:
+    if not isinstance(first, list | tuple) or len(first) < 2:
         return None
     try:
         lat = float(first[0])
@@ -49,7 +49,9 @@ def collect_monitrs_lon_lats(
     for split in splits:
         fname = split_to_fname.get(split)
         if fname is None:
-            raise ValueError(f"unknown split {split!r}; expected one of {sorted(split_to_fname)}")
+            raise ValueError(
+                f"unknown split {split!r}; expected one of {sorted(split_to_fname)}"
+            )
         path = monitrs_dir / fname
         if not path.is_file():
             raise FileNotFoundError(f"expected MONITRS file at {path}")
@@ -67,6 +69,7 @@ def collect_monitrs_lon_lats(
 
 
 def main() -> None:
+    """Write JSON list of [lon, lat] pairs from MONITRS dataset."""
     parser = argparse.ArgumentParser(
         description=(
             "Write a JSON list of [lon, lat] pairs from MONITRS for "
@@ -107,4 +110,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
