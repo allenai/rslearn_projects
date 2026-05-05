@@ -334,9 +334,7 @@ def main() -> None:
     if args.split is not None:
         before_split = len(windows)
         windows = [w for w in windows if w.options.get("split") == args.split]
-        print(
-            f"Split filter {args.split!r}: {before_split} -> {len(windows)} windows"
-        )
+        print(f"Split filter {args.split!r}: {before_split} -> {len(windows)} windows")
 
     if _TEST_ONLY_WINDOW_NAMES is not None:
         before = len(windows)
