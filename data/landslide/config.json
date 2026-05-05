@@ -1,5 +1,21 @@
 {
   "layers": {
+    "baseline_apr13_output": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "class_names": [
+        "no_landslide",
+        "landslide",
+        "no_data"
+      ],
+      "type": "raster"
+    },
     "label": {
       "band_sets": [
         {
@@ -33,32 +49,29 @@
       ],
       "type": "raster"
     },
-    "baseline_apr13_output": {
+    "post_sentinel1": {
       "band_sets": [
         {
-          "bands": ["label"],
-          "dtype": "uint8"
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
         }
       ],
-      "class_names": [
-        "no_landslide",
-        "landslide",
-        "no_data"
-      ],
-      "type": "raster"
-    },
-    "s2_s1_apr30_output": {
-      "band_sets": [
-        {
-          "bands": ["label"],
-          "dtype": "uint8"
-        }
-      ],
-      "class_names": [
-        "no_landslide",
-        "landslide",
-        "no_data"
-      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1",
+        "duration": "60d",
+        "ingest": true,
+        "query_config": {
+          "max_matches": 1,
+          "min_matches": 1,
+          "period_duration": "15d",
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "0d"
+      },
+      "resampling_method": "cubic",
       "type": "raster"
     },
     "post_sentinel2": {
@@ -100,6 +113,31 @@
       },
       "type": "raster"
     },
+    "pre_sentinel1": {
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1",
+        "duration": "60d",
+        "ingest": true,
+        "query_config": {
+          "max_matches": 1,
+          "min_matches": 1,
+          "period_duration": "15d",
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "-365d"
+      },
+      "resampling_method": "cubic",
+      "type": "raster"
+    },
     "pre_sentinel2": {
       "band_sets": [
         {
@@ -139,48 +177,20 @@
       },
       "type": "raster"
     },
-    "post_sentinel1": {
+    "s2_s1_apr30_output": {
       "band_sets": [
         {
-          "bands": ["vv", "vh"],
-          "dtype": "float32"
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8"
         }
       ],
-      "data_source": {
-        "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1",
-        "duration": "60d",
-        "ingest": true,
-        "query_config": {
-          "max_matches": 1,
-          "min_matches": 1,
-          "period_duration": "15d",
-          "space_mode": "MOSAIC"
-        },
-        "time_offset": "0d"
-      },
-      "resampling_method": "cubic",
-      "type": "raster"
-    },
-    "pre_sentinel1": {
-      "band_sets": [
-        {
-          "bands": ["vv", "vh"],
-          "dtype": "float32"
-        }
+      "class_names": [
+        "no_landslide",
+        "landslide",
+        "no_data"
       ],
-      "data_source": {
-        "class_path": "rslearn.data_sources.aws_sentinel1.Sentinel1",
-        "duration": "60d",
-        "ingest": true,
-        "query_config": {
-          "max_matches": 1,
-          "min_matches": 1,
-          "period_duration": "15d",
-          "space_mode": "MOSAIC"
-        },
-        "time_offset": "-365d"
-      },
-      "resampling_method": "cubic",
       "type": "raster"
     },
     "srtm": {

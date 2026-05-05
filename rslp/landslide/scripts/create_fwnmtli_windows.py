@@ -1,4 +1,4 @@
-"""Create windows from the Far-Western Nepal Multi-Temporal Landslide Inventory (points).
+r"""Create windows from the Far-Western Nepal Multi-Temporal Landslide Inventory (points).
 
 The Zenodo / NIAID point inventory provides a ``Year`` field (no month or day). For each
 record we assign a nominal ``event_date`` of July 1 of that year so that negative and
@@ -15,7 +15,6 @@ calendar date** (July 1 of ``Year``) so GLC-style ``pre_sentinel2`` (e.g. ``-365
 ``365d`` in ``config.json``) queries strictly before that midnight.
 
 Example:
-
 python create_fwnmtli_windows.py \\
     --shapefile_path /weka/dfive-default/piperw/data/landslide/niaid/LandslideInventory_FarWesternNepal/LandslideInventory_FarWesternNepal_Points_Dated1992_2018.shp \\
     --ds_path data/landslide/sen12landslides/all_positives/ \\
@@ -71,6 +70,7 @@ class LandslideSpatialIndex:
     """Spatial index for catalog points intersecting a window polygon."""
 
     def __init__(self, gdf: gpd.GeoDataFrame):
+        """Initialize spatial index from a GeoDataFrame."""
         self.gdf = gdf.copy()
         self.tree = STRtree(self.gdf.geometry)
         print(f"Built spatial index with {len(self.gdf)} landslide points")
@@ -80,6 +80,7 @@ class LandslideSpatialIndex:
         window_geometry: shapely.Geometry,
         time_range: tuple[object, object] | None = None,
     ) -> list[dict]:
+        """Query landslides overlapping with window geometry."""
         possible_matches_idx = self.tree.query(window_geometry)
         overlapping: list[dict] = []
         for idx in possible_matches_idx:
@@ -362,7 +363,10 @@ def create_labeled_features(
             shapely.make_valid(geom_proj) if not geom_proj.is_valid else geom_proj
         )
         buffer_geom = geom_proj.buffer(buffer_distance)
-        buffer_union = buffer_geom if buffer_union is None else buffer_union.union(buffer_geom)
+        if buffer_union is None:
+            buffer_union = buffer_geom
+        else:
+            buffer_union = buffer_union.union(buffer_geom)
 
     if buffer_union is not None:
         buffer_wgs84 = shapely.ops.transform(

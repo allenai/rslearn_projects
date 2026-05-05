@@ -1,4 +1,4 @@
-"""Create windows for landslide detection from the Kaggle Global Landslide Catalog (GLC).
+r"""Create windows for landslide detection from the Kaggle Global Landslide Catalog (GLC).
 
 For each catalog point, windows match the Sen12 / ICIMOD setup:
 1. Negative window: 1 year before the nominal event date, 60 days (no_landslide background).
@@ -19,7 +19,6 @@ alongside other groups under ``windows/glc/``. Prepare/materialize must use that
 dataset root; layer timing and S2 period caps come from that directory's ``config.json``.
 
 Example:
-
 python create_glc_landslide_windows.py \\
     --csv_path /weka/dfive-default/piperw/data/landslide/glc/Global_Landslide_Catalog_Export_20250201.csv \\
     --ds_path data/landslide/sen12landslides/all_positives/ \\
@@ -37,7 +36,9 @@ from datetime import datetime, timedelta, timezone
 import geopandas as gpd
 import pandas as pd
 import shapely
+import shapely.ops
 import tqdm
+from pyproj import Transformer
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
 from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
@@ -76,6 +77,7 @@ class LandslideSpatialIndex:
     """Spatial index for efficient lookup of catalog points that intersect a window."""
 
     def __init__(self, gdf: gpd.GeoDataFrame):
+        """Initialize spatial index from a GeoDataFrame."""
         self.gdf = gdf.copy()
         self.tree = STRtree(self.gdf.geometry)
         print(f"Built spatial index with {len(self.gdf)} landslide points")
@@ -85,6 +87,7 @@ class LandslideSpatialIndex:
         window_geometry: shapely.Geometry,
         time_range: tuple[object, object] | None = None,
     ) -> list[dict]:
+        """Query landslides overlapping with window geometry."""
         possible_matches_idx = self.tree.query(window_geometry)
         overlapping: list[dict] = []
         for idx in possible_matches_idx:
@@ -163,8 +166,6 @@ def create_window_pair(
     proj_max_x = max_x * dst_projection.x_resolution
     proj_max_y = max_y * dst_projection.y_resolution
     window_geom_projected = shapely.box(proj_min_x, proj_min_y, proj_max_x, proj_max_y)
-
-    from pyproj import Transformer
 
     transformer = Transformer.from_crs(dst_crs, "EPSG:4326", always_xy=True)
     window_geom_wgs84_coords = shapely.ops.transform(
@@ -339,8 +340,6 @@ def create_labeled_features(
     event_date: object,
 ) -> list[Feature]:
     """Vector labels: background, optional no_data buffer union, then landslide disks."""
-    from pyproj import Transformer
-
     features: list[Feature] = [
         Feature(
             window.get_geometry(),
@@ -367,7 +366,10 @@ def create_labeled_features(
             shapely.make_valid(geom_proj) if not geom_proj.is_valid else geom_proj
         )
         buffer_geom = geom_proj.buffer(buffer_distance)
-        buffer_union = buffer_geom if buffer_union is None else buffer_union.union(buffer_geom)
+        if buffer_union is None:
+            buffer_union = buffer_geom
+        else:
+            buffer_union = buffer_union.union(buffer_geom)
 
     if buffer_union is not None:
         buffer_wgs84 = shapely.ops.transform(
@@ -464,12 +466,7 @@ def load_glc_gdf(
 
     for col in ("event_id", "event_time", "location_description", "location_accuracy"):
         if col in df.columns:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace("\r", "", regex=False)
-                .str.strip()
-            )
+            df[col] = df[col].astype(str).str.replace("\r", "", regex=False).str.strip()
 
     df = df.dropna(subset=["event_date", "latitude", "longitude"])
 
