@@ -43,12 +43,16 @@ def get_model(
     elif task_type == "detect":
         decoders = dict(
             eval_task=[
+                Fpn(
+                    in_channels=[128, 256, 512, 1024],
+                    out_channels=128,
+                ),
                 FasterRCNN(
                     downsample_factors=[4, 8, 16, 32],
                     num_channels=128,
                     num_classes=task_channels,
                     anchor_sizes=[[32], [64], [128], [256]],
-                )
+                ),
             ],
         )
     elif task_type == "classify":
@@ -78,68 +82,19 @@ def get_model(
     else:
         raise NotImplementedError
 
-    if task_name == "forest_loss_driver":
-        return MultiTaskModel(
-            encoder=[
-                SimpleTimeSeries(
-                    encoder=SimpleTimeSeries(
-                        encoder=Swin(
-                            pretrained=False,
-                            input_channels=9,
-                            output_layers=[1, 3, 5, 7],
-                        ),
-                        image_channels=9,
-                    ),
-                    image_channels=9 * 4,
-                    image_key="image",
-                    groups=[[0], [1]],
+    return MultiTaskModel(
+        encoder=[
+            SimpleTimeSeries(
+                encoder=Swin(
+                    pretrained=False,
+                    input_channels=9,
+                    output_layers=[1, 3, 5, 7],
                 ),
-            ],
-            decoders=dict(
-                eval_task=[
-                    PoolingDecoder(
-                        in_channels=1024 * 2,
-                        out_channels=task_channels,
-                        num_conv_layers=1,
-                        num_fc_layers=1,
-                    ),
-                    ClassificationHead(),
-                ]
+                image_channels=9,
             ),
-        )
-
-    if task_type == "detect":
-        return MultiTaskModel(
-            encoder=[
-                SimpleTimeSeries(
-                    encoder=Swin(
-                        pretrained=False,
-                        input_channels=9,
-                        output_layers=[1, 3, 5, 7],
-                    ),
-                    image_channels=9,
-                ),
-                Fpn(
-                    in_channels=[128, 256, 512, 1024],
-                    out_channels=128,
-                ),
-            ],
-            decoders=decoders,
-        )
-    else:
-        return MultiTaskModel(
-            encoder=[
-                SimpleTimeSeries(
-                    encoder=Swin(
-                        pretrained=False,
-                        input_channels=9,
-                        output_layers=[1, 3, 5, 7],
-                    ),
-                    image_channels=9,
-                ),
-            ],
-            decoders=decoders,
-        )
+        ],
+        decoders=decoders,
+    )
 
 
 def get_transform(
