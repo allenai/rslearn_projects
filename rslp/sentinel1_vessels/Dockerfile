@@ -17,9 +17,9 @@ ENV MARINE_INFRA_PATH=/opt/rslearn_projects/marine_infrastructure.geojson
 RUN mkdir -p /project_data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/ && \
     wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/best.ckpt \
         -O /project_data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/best.ckpt && \
-    mkdir -p /project_data/projects/sentinel1_vessel_attribute/data_20260330_swinb_01/ && \
-    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel1_vessel_attribute/data_20260330_swinb_01/best.ckpt \
-        -O /project_data/projects/sentinel1_vessel_attribute/data_20260330_swinb_01/best.ckpt
+    mkdir -p /project_data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/ && \
+    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/best.ckpt \
+        -O /project_data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/best.ckpt
 ENV RSLP_PREFIX=/project_data
 
 # Run app.py when the container launches
