@@ -112,36 +112,6 @@ def get_model(
         modalities.append("S1GRD")
         image_keys["S1GRD"] = 2
 
-    if task_name == "forest_loss_driver":
-        return MultiTaskModel(
-            encoder=[
-                SimpleTimeSeries(
-                    encoder=SimpleTimeSeries(
-                        encoder=Terramind(
-                            model_size=terramind_size,
-                            modalities=modalities,
-                            do_resizing=True,
-                        ),
-                        image_keys=image_keys,
-                    ),
-                    image_channels=12 * 4,
-                    image_key="S2L2A",
-                    groups=[[0], [1]],
-                ),
-            ],
-            decoders=dict(
-                eval_task=[
-                    PoolingDecoder(
-                        in_channels=embedding_size * 2,
-                        out_channels=task_channels,
-                        num_conv_layers=1,
-                        num_fc_layers=1,
-                    ),
-                    ClassificationHead(),
-                ]
-            ),
-        )
-
     return MultiTaskModel(
         encoder=[
             SimpleTimeSeries(
