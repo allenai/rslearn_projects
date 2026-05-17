@@ -50,15 +50,6 @@ The `metadata.json` specifies the spatial bounds and time range of the window, b
 contains an `olmoearth_evals_split` key that is used to indicate whether the window is
 used for training, validation, or testing.
 
-### Forest Loss Driver Classification
-
-The forest loss driver dataset is released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.en)
-by the Allen Institute for AI and Amazon Conservation.
-
-- Download link: https://storage.googleapis.com/ai2-olmoearth-projects-public-data/evals/partner_tasks/forest_loss_driver.tar
-
-For more details, [see the documentation in olmoearth_projects](https://github.com/allenai/olmoearth_projects/blob/main/docs/forest_loss_driver.md).
-
 ### Live Fuel Moisture Content (LFMC) Mapping
 
 The LFMC dataset is adapted by the Allen Institute for AI from
@@ -136,6 +127,20 @@ by the Allen Institute for AI.
 
 ## Running Evaluations
 
+Each run combines a task config (under `data/olmoearth_evals/tasks/`), a freeze
+config (under `data/olmoearth_evals/freezes/`), and optionally a per-model config
+(under `data/olmoearth_evals/models/`). Per-model configs only exist for models
+that need to load pretrained weights or other model-specific overrides; most
+models work with just the task and freeze configs.
+
+Available freeze configs:
+
+- `freezes/freezefor1_lrfactor1.yaml`: freeze the encoder for 1 epoch, then unfreeze.
+- `freezes/freezefor10_lrfactor10.yaml`: freeze for 10 epochs, then unfreeze with the encoder LR scaled down 10x.
+- `freezes/freezefor20_lrfactor1.yaml`: freeze for 20 epochs, then unfreeze.
+- `freezes/freezefor20_lrfactor20.yaml`: freeze for 20 epochs, then unfreeze with the encoder LR scaled down 20x.
+- `freezes/frozen.yaml`: keep the encoder frozen for the entire run.
+
 Here is an example of launching training for a given model and task:
 
 ```
@@ -146,8 +151,11 @@ tar xvf marine_infra.tar -C partner_datasets/marine_infra/
 export RSLP_PREFIX=./project_data/
 # Run training. EVAL_ADAPTER_MODEL_ID is used to indicate which model to train with.
 export EVAL_ADAPTER_MODEL_ID=olmoearth_tiny
-rslearn model fit --config data/olmoearth_evals/tasks/marine_infra_base.yaml --config data/olmoearth_evals/tasks/marine_infra_ts.yaml --config data/olmoearth_evals/models/$EVAL_ADAPTER_MODEL_ID.yaml --run_name marine_infra_ts_olmoearth_tiny --project_name olmoearth_evals --data.init_args.path=./partner_task/marine_infra/
+rslearn model fit --config data/olmoearth_evals/tasks/marine_infra_base.yaml --config data/olmoearth_evals/tasks/marine_infra_ts.yaml --config data/olmoearth_evals/freezes/freezefor20_lrfactor1.yaml --run_name marine_infra_ts_olmoearth_tiny --project_name olmoearth_evals --data.init_args.path=./partner_task/marine_infra/
 ```
+
+For models that ship a per-model config (currently `satlaspretrain`, `aef`), append
+`--config data/olmoearth_evals/models/$EVAL_ADAPTER_MODEL_ID.yaml` as well.
 
 During training, it will log the training and validation metrics to W&B, and save the
 checkpoint with the best validation metrics (along with the most recent checkpoint).
@@ -155,7 +163,7 @@ Then to evaluate on the test set using the best checkpoint on val:
 
 ```
 export EVAL_ADAPTER_MODEL_ID=olmoearth_tiny
-rslearn model test --config data/olmoearth_evals/tasks/marine_infra_base.yaml --config data/olmoearth_evals/tasks/marine_infra_ts.yaml --config data/olmoearth_evals/models/$EVAL_ADAPTER_MODEL_ID.yaml --run_name marine_infra_ts_olmoearth_tiny --project_name olmoearth_evals --data.init_args.path=./partner_task/marine_infra/ --log_mode=yes --load_checkpoint_mode=best
+rslearn model test --config data/olmoearth_evals/tasks/marine_infra_base.yaml --config data/olmoearth_evals/tasks/marine_infra_ts.yaml --config data/olmoearth_evals/freezes/freezefor20_lrfactor1.yaml --run_name marine_infra_ts_olmoearth_tiny --project_name olmoearth_evals --data.init_args.path=./partner_task/marine_infra/ --log_mode=yes --load_checkpoint_mode=best
 ```
 
 Not all models support all modalities or multi-modality.
@@ -179,8 +187,6 @@ training with Sentinel-2 time series vs Sentinel-1 + Sentinel-2 multi-modal time
 earlier ones.
 
 ```
-# Forest loss driver.
---config data/olmoearth_evals/tasks/forest_loss_driver.yaml
 # LFMC, can be S2 or S2+S1.
 --config data/olmoearth_evals/tasks/lfmc_base.yaml --config data/olmoearth_evals/tasks/lfmc_ts.yaml
 --config data/olmoearth_evals/tasks/lfmc_base.yaml --config data/olmoearth_evals/tasks/lfmc_mm.yaml

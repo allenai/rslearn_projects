@@ -1,0 +1,159 @@
+# Landslide fine-tune: OlmoEarth on Sentinel-2 + late fusion with SRTM DEM via
+# CrossAttentionFusionExtractor (rslearn.models.xatt_fusion).
+#
+# The DEM branch uses RasterStrideEncoder (rslearn.models.raster_stride_encoder):
+# strided convs downsample to the same stride as OlmoEarth patch_size so both paths
+# share one feature-map scale (required by CrossAttentionFusionExtractor).
+#
+# Tune ``data.init_args.default_config`` SRTM Normalize mean/std for your DEM units.
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.xatt_fusion.CrossAttentionFusionExtractor
+            init_args:
+              primary_path:
+                - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+                  init_args:
+                    model_id: OLMOEARTH_V1_BASE
+                    patch_size: 4
+                    use_legacy_timestamps: false
+                    token_pooling: true
+              context_paths:
+                - - class_path: rslearn.models.raster_stride_encoder.RasterStrideEncoder
+                    init_args:
+                      input_key: srtm
+                      in_channels: 1
+                      hidden_channels: 32
+                      out_channels: 128
+                      downsample_factor: 4
+              primary_output_channels: 768
+              context_output_channels: [128]
+              attention_dim: 256
+              num_memory_tokens: 4
+              num_heads: 4
+              attention_dropout: 0.1
+              residual_dropout: 0.0
+              post_fusion_mode: self_attn_ffn
+              ffn_expansion: 2.0
+              ffn_activation: swiglu
+              ffn_dropout: 0.1
+              pre_fusion_dropout: 0.1
+        decoder:
+          - class_path: rslearn.models.unet.UNetDecoder
+            init_args:
+              in_channels: [[4, 768]]
+              out_channels: 2
+              conv_layers_per_resolution: 2
+              num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+            init_args:
+              weights: [0.05, 0.95]
+              dice_loss: true
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.0001
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: "/weka/dfive-default/piperw/rslearn_projects/data/landslide/sen12landslides/all_positives/"
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["pre_sentinel2", "post_sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      srtm:
+        data_type: "raster"
+        layers: ["srtm"]
+        bands: ["dem"]
+        dtype: FLOAT32
+        passthrough: true
+        load_all_layers: true
+        load_all_item_groups: true
+      targets:
+        data_type: "raster"
+        layers: ["label_raster"]
+        bands: ["label"]
+        dtype: INT32
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.segmentation.SegmentationTask
+      init_args:
+        num_classes: 2
+        enable_miou_metric: true
+        nodata_value: 2
+    batch_size: 2
+    num_workers: 32
+    default_config:
+      groups: ["sen12_landslides", "osm_ski", "icimod"]
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslearn.train.transforms.normalize.Normalize
+          init_args:
+            mean: [500.0]
+            std: [450.0]
+            selectors: ["srtm"]
+            skip_missing: true
+    train_config:
+      tags:
+        split: "train"
+    val_config:
+      tags:
+        split: "val"
+    test_config:
+      tags:
+        split: "val"
+    predict_config:
+      groups: ["fwn_mtli"]
+      load_all_crops: true
+      crop_size: 32
+      overlap_pixels: 3
+      skip_targets: true
+      #tags:
+      #  split: "val"
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_accuracy
+        mode: max
+    # Freeze only OlmoEarth (primary path index 0); SRTM CNN + fusion + decoder train.
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector:
+          - model
+          - encoder
+          - 0
+          - paths
+          - 0
+          - 0
+        unfreeze_at_epoch: 10
+        unfreeze_lr_factor: 10
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: "srtm_xatt_fusion_apr14_output"
+        selector: []
+        layer_config:
+          type: RASTER
+          band_sets:
+            - bands: ["label"]
+              dtype: UINT8
+          class_names:
+            - no_landslide
+            - landslide
+            - no_data
+project_name: landslides
+run_name: sen12landslides_all_positives_srtm_xatt_fusion_apr14
+management_dir: ./checkpoints
