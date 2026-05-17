@@ -17,6 +17,7 @@ TASK_CONFIGS = {
     "ecosystem_aef": ["ecosystem_aef"],
     "ethiopia_crops": ["ethiopia_crops"],
     "ecosystem": ["ecosystem"],
+    "forest_loss_driver": ["forest_loss_driver"],
     "glance": ["glance"],
     "landsat_vessels": ["landsat_vessels"],
     "lcmap_lu": ["lcmap_lu"],
