@@ -111,7 +111,7 @@ Fast tasks (an hour or two):
 ```bash
 python -m rslp.main olmoearth_evals launch \
     --models='[olmoearth]' \
-    --tasks='[pastis_uni,awf_ts,nandi_ts,ecosystem]' \
+    --tasks='[pastis_uni,awf_ts,nandi_ts,ecosystem,small_sentinel2_vessel_type,small_sentinel2_vessel_length,small_mangrove_ts,small_mangrove_mm,worldcover_200_per_class,small_eurosat,surface_fuels,kenya_intercropping]' \
     --prefix my_eval \
     --image_name favyen/rslpomp \
     --project 2026_04_30_eval

@@ -125,6 +125,19 @@ def get_model(
                     SegmentationHead(),
                 ]
             )
+        elif decoder_type == "unet_with_batchnorm":
+            decoders = dict(
+                eval_task=[
+                    UNetDecoder(
+                        in_channels=[[PATCH_SIZE, embedding_size]],
+                        out_channels=task_channels,
+                        conv_layers_per_resolution=2,
+                        num_channels={4: 256, 2: 128, 1: 64},
+                        use_batch_norm=True,
+                    ),
+                    SegmentationHead(),
+                ]
+            )
         elif decoder_type == "default":
             decoders = dict(
                 eval_task=[
