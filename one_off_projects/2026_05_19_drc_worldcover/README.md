@@ -133,6 +133,9 @@ To detect loss of a different class, pass `--pre_class_index` (default 8 =
 tree). Class indices: 0=bare, 1=burnt, 2=crops, 3=fallow, 4=grassland,
 5=lichen\_moss, 6=shrub, 7=snow\_ice, 8=tree, 9=urban, 10=water, 11=wetland.
 
+Note: it may be useful to remove forest loss events after the initial GeoJSON is
+generated, most of these seem to be false positives.
+
 ## Dataset config notes
 
 - **Sentinel-2**: 12 bands, `max_matches: 4` with `period_duration: "7d"` — splits
