@@ -50,6 +50,8 @@
     // DOM refs
     const windowSelect = document.getElementById("window-select");
     const layerToggles = document.getElementById("layer-toggles");
+    const embeddingSelect = document.getElementById("embedding-select");
+    const embeddingSelectGroup = document.getElementById("embedding-select-group");
     const pointsList = document.getElementById("points-list");
     const clearBtn = document.getElementById("clear-points");
     const thresholdSlider = document.getElementById("threshold-slider");
@@ -101,10 +103,13 @@
         addLayerRadio("OpenStreetMap", { type: "tile", source: "osm" });
         addLayerRadio("Bing Maps", { type: "tile", source: "bing" });
 
-        addLayerRadio(EMBEDDING_LAYER + " (RGB)", {
-            type: "image",
-            url: `/api/image/${key}/${EMBEDDING_LAYER}?bands=0,1,2`,
-            mercatorBounds: win.mercator_bounds,
+        // Add RGB overlay for each embedding layer
+        (win.embedding_layers || []).forEach((embName) => {
+            addLayerRadio(embName + " (RGB)", {
+                type: "image",
+                url: `/api/image/${key}/${embName}?bands=0,1,2`,
+                mercatorBounds: win.mercator_bounds,
+            });
         });
 
         Object.entries(win.image_layers).forEach(([baseName, groups]) => {
@@ -117,6 +122,18 @@
                 });
             });
         });
+
+        // Populate embedding select dropdown
+        embeddingSelect.innerHTML = "";
+        (win.embedding_layers || []).forEach((embName) => {
+            const opt = document.createElement("option");
+            opt.value = embName;
+            opt.textContent = embName;
+            embeddingSelect.appendChild(opt);
+        });
+        // Show dropdown only if multiple layers available
+        embeddingSelectGroup.style.display =
+            (win.embedding_layers || []).length > 1 ? "block" : "none";
 
         // Restore previous selection if still available, otherwise default to OSM.
         const targetKey =
@@ -287,8 +304,6 @@
             if (!hasPos || !hasNeg) return;
         }
 
-        const win = WINDOWS_DATA[currentWindow];
-        similarityBounds = mercatorBoundsToLatLng(win.mercator_bounds);
         similarityMode = mode;
 
         const isProbe = mode === "linear_probe";
@@ -305,10 +320,16 @@
                 mode: mode,
                 points: points,
                 k: k,
+                layer: embeddingSelect.value || undefined,
             }),
         })
             .then((resp) => {
                 if (!resp.ok) throw new Error(resp.statusText);
+                const boundsHeader = resp.headers.get("X-Mercator-Bounds");
+                if (boundsHeader) {
+                    const parts = boundsHeader.split(",").map(Number);
+                    similarityBounds = mercatorBoundsToLatLng(parts);
+                }
                 return resp.blob();
             })
             .then((blob) => {
@@ -488,6 +509,10 @@
 
     kInput.addEventListener("change", () => {
         if (getMode() === "knn" && points.length > 0) requestSimilarity();
+    });
+
+    embeddingSelect.addEventListener("change", () => {
+        if (points.length > 0) maybeAutoRefresh();
     });
 
     // Initial state

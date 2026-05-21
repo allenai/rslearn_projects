@@ -21,6 +21,11 @@
             <div id="layer-toggles"></div>
         </div>
 
+        <div class="control-group" id="embedding-select-group">
+            <label for="embedding-select">Embedding Layer</label>
+            <select id="embedding-select"></select>
+        </div>
+
         <hr>
         <h3>Similarity</h3>
 
@@ -103,7 +108,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         const WINDOWS_DATA = {{ windows | safe }};
-        const EMBEDDING_LAYER = "{{ embedding_layer }}";
+        const EMBEDDING_LAYERS = {{ embedding_layers | safe }};
     </script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

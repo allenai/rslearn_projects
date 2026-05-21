@@ -2,6 +2,8 @@
 
 Usage:
     python -m rslp.embedding_explorer.app --dataset-path /path/to/dataset --port 5000
+    python -m rslp.embedding_explorer.app --dataset-path /path/to/dataset \
+        --embedding-layer embeddings aef --port 5000
 """
 
 import argparse
@@ -237,10 +239,10 @@ def similarity_to_png(similarity: np.ndarray, mode: str) -> bytes:
     return buf.getvalue()
 
 
-def load_dataset(dataset_path: Path, embedding_layer: str) -> dict:
+def load_dataset(dataset_path: Path, embedding_layers: list[str]) -> dict:
     """Load dataset: embeddings into memory, image layer paths stored for on-demand serving."""
     windows_dir = dataset_path / "windows"
-    dataset: dict = {"windows": {}, "embedding_layer": embedding_layer}
+    dataset: dict = {"windows": {}, "embedding_layers": embedding_layers}
 
     for group_dir in sorted(windows_dir.iterdir()):
         if not group_dir.is_dir():
@@ -260,9 +262,9 @@ def load_dataset(dataset_path: Path, embedding_layer: str) -> dict:
                 continue
 
             window_key = f"{group_dir.name}/{window_dir.name}"
-            window_info = {
+            window_info: dict = {
                 "metadata": metadata,
-                "embeddings": None,
+                "embeddings": {},
                 "image_layers": {},
                 "path": window_dir,
             }
@@ -277,31 +279,32 @@ def load_dataset(dataset_path: Path, embedding_layer: str) -> dict:
                 if tif is None:
                     continue
 
-                if base_name == embedding_layer:
+                if base_name in embedding_layers:
                     print(f"  Loading embedding: {window_key}/{layer_name}")
                     with rasterio.open(tif) as src:
                         data = src.read().astype(np.float32)
                         src_crs = str(src.crs)
                         src_transform = src.transform
                         src_shape = (src.height, src.width)
-                    window_info["embeddings"] = data
-                    window_info["embedding_crs"] = src_crs
-                    window_info["embedding_transform"] = src_transform
-                    window_info["embedding_shape"] = src_shape
                     print(f"    shape: {data.shape}")
 
-                    # Pre-compute Web Mercator transform for serving
                     print("    computing Web Mercator reprojection info...")
                     _, wm_transform, wm_shape = reproject_to_webmercator(
                         data[:1], src_crs, src_transform, src_shape
                     )
-                    window_info["wm_transform"] = wm_transform
-                    window_info["wm_shape"] = wm_shape
-                    wm_bounds = webmercator_bounds(wm_transform, wm_shape)
-                    window_info["wm_bounds"] = wm_bounds  # (left, bottom, right, top)
+                    wm_b = webmercator_bounds(wm_transform, wm_shape)
                     print(f"    Web Mercator shape: {wm_shape}")
+
+                    window_info["embeddings"][base_name] = {
+                        "data": data,
+                        "crs": src_crs,
+                        "transform": src_transform,
+                        "shape": src_shape,
+                        "wm_transform": wm_transform,
+                        "wm_shape": wm_shape,
+                        "wm_bounds": wm_b,
+                    }
                 else:
-                    # Compute WM bounds for this image layer at startup
                     with rasterio.open(tif) as src:
                         layer_crs = str(src.crs)
                         layer_transform = src.transform
@@ -330,16 +333,15 @@ def load_dataset(dataset_path: Path, embedding_layer: str) -> dict:
                         }
                     )
 
-            if window_info["embeddings"] is None:
-                print(
-                    f"  WARNING: no '{embedding_layer}' layer found in {window_key}, skipping"
-                )
+            if not window_info["embeddings"]:
+                print(f"  WARNING: no embedding layers found in {window_key}, skipping")
                 continue
 
             dataset["windows"][window_key] = window_info
             print(f"Loaded window: {window_key}")
-            print(f"  mercator bounds: {window_info['wm_bounds']}")
-            print(f"  embedding shape: {window_info['embeddings'].shape}")
+            for emb_name, emb_info in window_info["embeddings"].items():
+                print(f"  embedding '{emb_name}': shape={emb_info['data'].shape}")
+                print(f"    mercator bounds: {emb_info['wm_bounds']}")
             print(f"  image layers: {list(window_info['image_layers'].keys())}")
 
     return dataset
@@ -367,8 +369,10 @@ def reproject_single_band_to_wm(
     return dst
 
 
-def create_app(dataset_path: Path, embedding_layer: str = "embeddings") -> Flask:
+def create_app(dataset_path: Path, embedding_layers: list[str] | None = None) -> Flask:
     """Create and configure the Flask application."""
+    if embedding_layers is None:
+        embedding_layers = ["embeddings"]
     app_dir = Path(__file__).parent
     app = Flask(
         __name__,
@@ -377,17 +381,20 @@ def create_app(dataset_path: Path, embedding_layer: str = "embeddings") -> Flask
     )
 
     print(f"Loading dataset from {dataset_path}...")
-    print(f"Embedding layer: {embedding_layer}")
-    dataset = load_dataset(dataset_path, embedding_layer)
+    print(f"Embedding layers: {embedding_layers}")
+    dataset = load_dataset(dataset_path, embedding_layers)
     print(f"Loaded {len(dataset['windows'])} window(s)")
 
     @app.route("/")
     def index() -> str:
         windows_info: dict = {}
         for key, win in dataset["windows"].items():
-            wm = win["wm_bounds"]
+            # Use the first available embedding layer's bounds as the window bounds
+            first_emb = next(iter(win["embeddings"].values()))
+            wm = first_emb["wm_bounds"]
             windows_info[key] = {
                 "mercator_bounds": [wm[0], wm[1], wm[2], wm[3]],
+                "embedding_layers": list(win["embeddings"].keys()),
                 "image_layers": {
                     name: [
                         {
@@ -402,7 +409,7 @@ def create_app(dataset_path: Path, embedding_layer: str = "embeddings") -> Flask
         return render_template(
             "index.html",
             windows=json.dumps(windows_info),
-            embedding_layer=embedding_layer,
+            embedding_layers=json.dumps(embedding_layers),
         )
 
     @app.route("/api/image/<path:layer_path>")
@@ -427,14 +434,12 @@ def create_app(dataset_path: Path, embedding_layer: str = "embeddings") -> Flask
         bands = tuple(int(b) for b in bands_param.split(","))
 
         # Serve embedding RGB from memory (reproject to WM)
-        if layer_name == dataset["embedding_layer"]:
-            data = win["embeddings"]
+        if layer_name in win["embeddings"]:
+            emb = win["embeddings"][layer_name]
+            data = emb["data"]
             selected = np.stack([data[b] for b in bands])
             reprojected, wm_transform, wm_shape = reproject_to_webmercator(
-                selected,
-                win["embedding_crs"],
-                win["embedding_transform"],
-                win["embedding_shape"],
+                selected, emb["crs"], emb["transform"], emb["shape"]
             )
             png = render_rgb_png_with_alpha(reprojected, (0, 1, 2))
             left, bottom, right, top = webmercator_bounds(wm_transform, wm_shape)
@@ -486,28 +491,36 @@ def create_app(dataset_path: Path, embedding_layer: str = "embeddings") -> Flask
         """Compute similarity in native CRS, reproject result to Web Mercator.
 
         Request JSON:
-            mode: "cosine" or "knn"
+            mode: "cosine" or "knn" or "linear_probe"
             points: list of {lat, lon, label}
             k: int (for knn mode)
             window: window key
+            layer: embedding layer name (default: first available)
         """
         body = request.get_json()
         window_key = body.get("window")
         mode = body.get("mode", "cosine")
         points = body.get("points", [])
         k = body.get("k", 3)
+        layer_name = body.get("layer")
 
         win = dataset["windows"].get(window_key)
         if win is None:
             return "Window not found", 404
 
-        embeddings = win["embeddings"]
+        if not layer_name:
+            layer_name = next(iter(win["embeddings"]))
+        if layer_name not in win["embeddings"]:
+            return f"Embedding layer '{layer_name}' not found", 404
+
+        emb = win["embeddings"][layer_name]
+        embeddings = emb["data"]
+        crs = emb["crs"]
+        transform = emb["transform"]
+        shape = embeddings.shape[1:]
+
         if not points:
             return "No points provided", 400
-
-        crs = win["embedding_crs"]
-        transform = win["embedding_transform"]
-        shape = embeddings.shape[1:]
 
         if mode == "cosine":
             pos_points = [p for p in points if p.get("label") == "positive"]
@@ -549,12 +562,17 @@ def create_app(dataset_path: Path, embedding_layer: str = "embeddings") -> Flask
 
         # Reproject similarity to Web Mercator
         sim_wm = reproject_single_band_to_wm(
-            similarity, crs, transform, shape, win["wm_transform"], win["wm_shape"]
+            similarity,
+            crs,
+            transform,
+            shape,
+            emb["wm_transform"],
+            emb["wm_shape"],
         )
 
         png = similarity_to_png(sim_wm, mode)
         left, bottom, right, top = webmercator_bounds(
-            win["wm_transform"], win["wm_shape"]
+            emb["wm_transform"], emb["wm_shape"]
         )
         return Response(
             png,
@@ -574,14 +592,15 @@ def main() -> None:
     parser.add_argument("--dataset-path", type=Path, required=True)
     parser.add_argument(
         "--embedding-layer",
-        default="embeddings",
-        help="Layer name to load as embeddings (default: 'embeddings')",
+        nargs="+",
+        default=["embeddings"],
+        help="Embedding layer name(s) to load (default: 'embeddings')",
     )
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--host", default="0.0.0.0")
     args = parser.parse_args()
 
-    app = create_app(args.dataset_path, embedding_layer=args.embedding_layer)
+    app = create_app(args.dataset_path, embedding_layers=args.embedding_layer)
     app.run(host=args.host, port=args.port, debug=False)
 
 

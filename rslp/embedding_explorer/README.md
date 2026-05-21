@@ -75,14 +75,39 @@ rslearn dataset materialize --root $DATASET_PATH --workers 32 \
     --retry-max-attempts 5 --retry-backoff-seconds 5
 ```
 
-### 3. Compute embeddings
+### 2b. Materialize AEF embeddings (optional)
+
+AEF provides pre-computed 64-dimensional satellite embeddings at 10m resolution
+from [source.coop/tge-labs/aef](https://source.coop/tge-labs/aef). Use
+`config_with_aef.json` instead of `config.json`:
+
+```bash
+cp rslp/embedding_explorer/config_with_aef.json $DATASET_PATH/config.json
+rslearn dataset prepare --root $DATASET_PATH --workers 32 --enabled-layers aef
+rslearn dataset materialize --root $DATASET_PATH --workers 32 \
+    --no-use-initial-job --enabled-layers aef
+```
+
+### 3. Compute OlmoEarth embeddings (40m, default)
 
 ```bash
 rslearn model predict --config rslp/embedding_explorer/config.yaml
 ```
 
 After this finishes, each window will have a populated `layers/embeddings/`
-directory with a 768-band GeoTIFF.
+directory with a 768-band GeoTIFF at 40m/pixel (patch_size=4).
+
+### 3b. Compute OlmoEarth embeddings at 10m (optional)
+
+For a fair comparison with AEF (both at 10m), use `config_olmoearth_10m.yaml`
+which runs OlmoEarth-v1-Base with `patch_size=1` (one embedding per 10m pixel):
+
+```bash
+rslearn model predict --config rslp/embedding_explorer/config_olmoearth_10m.yaml
+```
+
+This writes to the same `embeddings` layer as the 40m config (so only run one
+or the other per dataset).
 
 ## Run the app
 
@@ -100,6 +125,19 @@ python -m rslp.embedding_explorer.app \
     --dataset-path $DATASET_PATH \
     --port 5000
 ```
+
+To load multiple embedding layers (e.g. OlmoEarth + AEF), pass them all:
+
+```bash
+python -m rslp.embedding_explorer.app \
+    --dataset-path $DATASET_PATH \
+    --embedding-layer embeddings aef \
+    --port 5000
+```
+
+When multiple layers are loaded, a dropdown appears in the sidebar to select
+which embedding is used for similarity queries. Each layer can have a different
+resolution — the overlay adapts to the selected layer's grid.
 
 Open `http://localhost:5000` and pick a window from the sidebar. Clicking on
 the map adds points; in cosine/KNN modes the overlay updates immediately, and
