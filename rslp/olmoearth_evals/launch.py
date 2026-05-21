@@ -58,6 +58,7 @@ TASK_CONFIGS = {
     "worldcover_200_per_class": ["worldcover_200_per_class"],
     "surface_fuels": ["surface_fuels"],
     "kenya_intercropping": ["kenya_intercropping"],
+    "hls_burn_scars": ["hls_burn_scars"],
 }
 
 

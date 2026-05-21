@@ -1,0 +1,65 @@
+{
+  "layers": {
+    "label_raster": {
+      "band_sets": [
+        {
+          "bands": ["label"],
+          "dtype": "int16",
+          "nodata_value": -1
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B02", "B03", "B04", "B08",
+            "B05", "B06", "B07", "B8A",
+            "B11", "B12", "B01", "B09"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "harmonize": true,
+          "sort_by": "eo:cloud_cover",
+          "query": {
+            "eo:cloud_cover": {
+              "lt": 50
+            }
+          }
+        },
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "MOSAIC"
+        },
+        "ingest": false
+      },
+      "type": "raster"
+    },
+    "landsat": {
+      "band_sets": [
+        {
+          "bands": ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11"],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.aws_landsat.LandsatOliTirs",
+        "init_args": {
+          "metadata_cache_dir": "cache/aws_landsat",
+          "sort_by": "cloud_cover"
+        },
+        "query_config": {
+          "max_matches": 1,
+          "space_mode": "MOSAIC"
+        },
+        "ingest": false
+      },
+      "type": "raster"
+    }
+  }
+}
