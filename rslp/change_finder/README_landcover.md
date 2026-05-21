@@ -158,9 +158,97 @@ itself is never rewritten).
 Keyboard shortcuts: `p`/`n` previous/next example, `←`/`→` previous/next
 year, `a` toggle overlay.
 
-### Next step (not yet implemented)
+### 4. Train per-event change detector (`land_cover_time_series_change_model/`)
 
-The annotated months will drive creation of an rslearn dataset of
-time series intersecting the change period, used to train a supervised model
-that detects change closer to when it actually occurs (the current
-segmentation-based approach only picks up change ~3 years after it happens).
+The annotated months drive creation of an rslearn dataset of time series
+intersecting the change period, used to train a supervised model that detects
+change closer to when it actually occurs (the current segmentation-based
+approach only picks up change ~3 years after it happens).
+
+Model setup:
+
+- Input: 12 quarterly Sentinel-2 mosaics (3 years).
+- Output (multi-task per pixel):
+  - `binary` — `nodata` / `no_change` / `change`
+  - `src`    — source WorldCover class at changed pixels
+  - `dst`    — destination WorldCover class at changed pixels
+
+Dataset windows are built with 20 quarterly mosaics over 5 years. At training
+time, `TimeSeriesChangeSubsample` (in
+`land_cover_time_series_change_model/transforms.py`) picks a 12-mosaic slice
+that brackets at least one side of the annotated change event. The src and dst
+targets are masked when the chosen slice doesn't bracket the corresponding
+transition, so each head is only trained on samples where its label is
+meaningful.
+
+#### Create the dataset
+
+```bash
+SRC=/weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408
+OUT=/weka/dfive-default/rslearn-eai/datasets/change_finder/ts_change_v1
+
+cp data/change_finder/land_cover_time_series_change_model/config.json "$OUT/config.json"
+
+python -m rslp.change_finder.land_cover_time_series_change_model.create_windows \
+    --polygons_geojson "$SRC/land_cover_change_src_dst_sel100.geojson" \
+    --annotations_json "$SRC/land_cover_change_src_dst_sel100.annotations.json" \
+    --src_ds_path "$SRC" \
+    --out_ds_path "$OUT"
+```
+
+This writes:
+
+- new rslearn windows (one per annotated change feature), each with the 5-year
+  time range and the four annotated months stored in `window.options`
+- pre-rasterized `label_binary`, `label_src`, `label_dst` GeoTIFFs per window
+  (with `mark_layer_completed` so rslearn skips them at materialize time)
+- a sidecar `ts_change_annotations.json` at the dataset root used by the
+  training-time multi-task wrapper to look up annotations
+
+#### Materialize the Sentinel-2 mosaics
+
+```bash
+rslearn dataset prepare     --root "$OUT" --workers 32
+rslearn dataset materialize --root "$OUT" --workers 32
+```
+
+#### Train
+
+```bash
+rslearn model fit --config data/change_finder/land_cover_time_series_change_model/config.yaml
+```
+
+#### Predict over an AOI
+
+Create a prediction dataset with 1024x1024 UTM windows at 10 m/pix. Use a
+3-year time range so rslearn materializes exactly 12 quarterly Sentinel-2
+mosaics (matching the trained input length).
+
+```bash
+PREDICT_DS=/weka/dfive-default/rslearn-eai/datasets/change_finder/ts_change_predict_<aoi>
+mkdir -p "$PREDICT_DS"
+cp data/change_finder/land_cover_time_series_change_model/config.json "$PREDICT_DS/config.json"
+
+rslearn dataset add_windows \
+    --root "$PREDICT_DS" \
+    --group predict \
+    --fname aoi.geojson \
+    --src_crs EPSG:4326 \
+    --utm --resolution 10 --grid_size 1024 \
+    --start 2022-01-01T00:00:00+00:00 \
+    --end 2025-01-01T00:00:00+00:00
+
+rslearn dataset prepare     --root "$PREDICT_DS" --workers 32
+rslearn dataset ingest      --root "$PREDICT_DS" --workers 32
+rslearn dataset materialize --root "$PREDICT_DS" --workers 32
+
+rslearn model predict --config data/change_finder/land_cover_time_series_change_model/config.yaml --data.init_args.path="$PREDICT_DS" --load_best=true
+```
+
+Output: one 29-band uint8 GeoTIFF per prediction window at
+`<window>/layers/output_change/<bandset>/geotiff.tif`. Probabilities are
+scaled 0-255. Band layout:
+
+- 0..2: binary probs (nodata / no\_change / change)
+- 3..15: src class probs (13 WorldCover classes, index 0 = nodata)
+- 16..28: dst class probs (13 WorldCover classes, same order)
