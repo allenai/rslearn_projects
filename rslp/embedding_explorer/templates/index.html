@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Embedding Similarity Explorer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div id="sidebar">
+        <h2>Embedding Explorer</h2>
+
+        <div class="control-group">
+            <label for="window-select">Window</label>
+            <select id="window-select"></select>
+        </div>
+
+        <div class="control-group">
+            <label>Overlay Layers</label>
+            <div id="layer-toggles"></div>
+        </div>
+
+        <hr>
+        <h3>Similarity</h3>
+
+        <div class="control-group">
+            <label>Mode</label>
+            <div class="radio-group">
+                <label><input type="radio" name="mode" value="cosine" checked> Cosine</label>
+                <label><input type="radio" name="mode" value="knn"> KNN</label>
+                <label><input type="radio" name="mode" value="linear_probe"> Linear Probe</label>
+            </div>
+        </div>
+
+        <div class="control-group" id="k-group">
+            <label for="k-input">K (neighbors)</label>
+            <input type="number" id="k-input" min="1" max="50" value="3">
+        </div>
+
+        <div class="control-group" id="linear-probe-group">
+            <p class="hint">Linear probe needs at least one positive and one negative point. Press Apply to (re)train.</p>
+            <button id="apply-probe" class="btn">Apply</button>
+            <div id="loading-spinner" class="spinner-row">
+                <span class="spinner"></span>
+                <span>Training linear probe...</span>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Display</label>
+            <div class="radio-group">
+                <label><input type="radio" name="display" value="gradient" checked> Gradient</label>
+                <label><input type="radio" name="display" value="threshold"> Threshold</label>
+            </div>
+        </div>
+
+        <div class="control-group" id="threshold-group">
+            <label for="threshold-slider">
+                Threshold: <span id="threshold-value">0.95</span>
+            </label>
+            <input type="range" id="threshold-slider" min="0" max="255" value="243" step="1">
+        </div>
+
+        <div class="control-group" id="threshold-color-group">
+            <label for="threshold-color">Threshold color</label>
+            <select id="threshold-color">
+                <option value="34,197,94" selected>Green</option>
+                <option value="239,68,68">Red</option>
+                <option value="234,179,8">Yellow</option>
+                <option value="59,130,246">Blue</option>
+                <option value="249,115,22">Orange</option>
+                <option value="168,85,247">Purple</option>
+                <option value="6,182,212">Cyan</option>
+                <option value="236,72,153">Magenta</option>
+                <option value="255,255,255">White</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="opacity-slider">
+                Overlay opacity: <span id="opacity-value">80%</span>
+            </label>
+            <input type="range" id="opacity-slider" min="0" max="100" value="80" step="1">
+        </div>
+
+        <div class="control-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="show-overlay" checked>
+                Show similarity overlay
+            </label>
+        </div>
+
+        <hr>
+        <h3>Points</h3>
+        <p class="hint">Click map to add points. Right-click to add negative.</p>
+        <div id="points-list"></div>
+        <button id="clear-points" class="btn">Clear All Points</button>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const WINDOWS_DATA = {{ windows | safe }};
+        const EMBEDDING_LAYER = "{{ embedding_layer }}";
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
