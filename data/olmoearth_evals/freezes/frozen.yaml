@@ -2,5 +2,4 @@ trainer:
   callbacks+:
     - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
       init_args:
-        module_selector: ["model", "model", "encoder", 0, "encoder"]
-        unfreeze_at_epoch: 20
+        module_selector: ["model", "model", "encoder"]

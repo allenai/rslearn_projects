@@ -17,7 +17,6 @@ TASK_CONFIGS = {
     "ecosystem_aef": ["ecosystem_aef"],
     "ethiopia_crops": ["ethiopia_crops"],
     "ecosystem": ["ecosystem"],
-    "forest_loss_driver": ["forest_loss_driver"],
     "glance": ["glance"],
     "landsat_vessels": ["landsat_vessels"],
     "lcmap_lu": ["lcmap_lu"],
@@ -49,6 +48,8 @@ TASK_CONFIGS = {
     "wind_turbine_uni": ["wind_turbine_base"],
     "wind_turbine_ts": ["wind_turbine_base", "wind_turbine_ts"],
     "wind_turbine_mm": ["wind_turbine_base", "wind_turbine_mm"],
+    "worldcover": ["worldcover"],
+    "worldcover_200_per_class": ["worldcover_200_per_class"],
 }
 
 
@@ -65,6 +66,8 @@ def launch(
     crop_to: PixelBounds | None = None,
     use_embeddings: bool = False,
     model_config: dict[str, str] | None = None,
+    extra_args: list[str] = [],
+    freeze: str = "freezefor20_lrfactor1",
 ) -> None:
     """Launch OlmoEarth fine-tuning evaluation.
 
@@ -85,8 +88,14 @@ def launch(
             also the encoder will not see gradients.
         model_config: optional dict of model configuration overrides passed via
             EVAL_ADAPTER_MODEL_CONFIG env var. For example,
-            {"checkpoint_path": "/path/to/ckpt"} to load a custom checkpoint, or
+            {"checkpoint_path": "/path/to/ckpt"} to load a custom checkpoint,
             {"use_legacy_timestamps": "true"} to enable legacy timestamps.
+        extra_args: extra arguments to pass to `rslearn model fit`.
+        freeze: name of a freeze config in data/olmoearth_evals/freezes/ (without
+            the .yaml extension), e.g. "freezefor20_lrfactor1" or "frozen". The
+            corresponding YAML adds a FreezeUnfreeze callback that freezes the
+            entire MultiTaskModel encoder (and optionally unfreezes after some
+            epochs).
     """
     for model in models:
         for task in tasks:
@@ -129,23 +138,18 @@ def launch(
                 for cfg_fname in TASK_CONFIGS[task]
             ]
 
-            if task == "forest_loss_driver":
-                # Need to use different config for it to work properly because the
-                # model architecture is different.
-                if model == "satlaspretrain":
-                    # For SatlasPretrain the config has not just freezing but also
-                    # restoring model.
-                    model_config_fname = "forest_loss_driver_satlaspretrain.yaml"
-                else:
-                    # Otherwise we can always freeze the same portion I think.
-                    model_config_fname = "forest_loss_driver.yaml"
-                model_config_args = [
-                    f"--config_paths+=data/olmoearth_evals/models/{model_config_fname}"
-                ]
+            freeze_config_args = [
+                f"--config_paths+=data/olmoearth_evals/freezes/{freeze}.yaml"
+            ]
+
+            # Per-model configs are optional now. They only exist for models that
+            # need to load pretrained weights (restore_config) or have other
+            # model-specific overrides.
+            model_config_path = f"data/olmoearth_evals/models/{model}.yaml"
+            if os.path.exists(model_config_path):
+                model_config_args = [f"--config_paths+={model_config_path}"]
             else:
-                model_config_args = [
-                    f"--config_paths+=data/olmoearth_evals/models/{model}.yaml"
-                ]
+                model_config_args = []
 
             # Build extra_args for the training script.
             # Expand RSLP_PREFIX here since rslearn's RslearnArgumentParser
@@ -154,6 +158,7 @@ def launch(
             all_extra_args: list[str] = [
                 f"--management_dir={rslp_prefix}/projects",
             ]
+            all_extra_args.extend(extra_args)
             if use_embeddings:
                 all_extra_args.append(
                     "--model.init_args.model.init_args.use_embeddings=true"
@@ -165,5 +170,9 @@ def launch(
                 basic_args.extend(["--extra_args", json.dumps(all_extra_args)])
 
             subprocess.check_call(
-                basic_args + cluster_args + task_config_args + model_config_args
+                basic_args
+                + cluster_args
+                + task_config_args
+                + freeze_config_args
+                + model_config_args
             )  # nosec
