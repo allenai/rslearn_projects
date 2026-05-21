@@ -90,35 +90,6 @@ def get_model(
     else:
         raise NotImplementedError
 
-    if task_name == "forest_loss_driver":
-        return MultiTaskModel(
-            encoder=[
-                SimpleTimeSeries(
-                    encoder=SimpleTimeSeries(
-                        encoder=DinoV3(
-                            # Needs to be changed if you are outside Ai2, this is Ai2-internal path.
-                            checkpoint_dir="/weka/dfive-default/helios/models/dinov3/checkpoints/",
-                        ),
-                        image_channels=3,
-                    ),
-                    image_channels=3 * 4,
-                    image_key="image",
-                    groups=[[0], [1]],
-                ),
-            ],
-            decoders=dict(
-                eval_task=[
-                    PoolingDecoder(
-                        in_channels=1024 * 2,
-                        out_channels=task_channels,
-                        num_conv_layers=1,
-                        num_fc_layers=1,
-                    ),
-                    ClassificationHead(),
-                ]
-            ),
-        )
-
     do_resizing = True
     if task_name in ["lfmc", "mangrove"]:
         # These tasks didn't work with resizing (out of GPU memory).

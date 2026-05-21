@@ -65,10 +65,10 @@ data:
         num_classes: 2
         enable_miou_metric: true
         nodata_value: 2
-    batch_size: 8
+    batch_size: 2
     num_workers: 32
     default_config:
-      groups: ["sen12_landslides"]
+      groups: ["sen12_landslides", "osm_ski", "icimod"]
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
@@ -112,10 +112,22 @@ trainer:
     # The RslearnWriter is used during `model predict` to save the predicted outputs
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        output_layer: "label_raster"
+        # Predictions only: keeps ground-truth in label_raster untouched.
+        output_layer: "baseline_apr13_output"
         selector: []
+        # Same as layers.baseline_apr13_output in this dataset's config.json.
+        # jsonargparse expects LayerType / DType enum names (not config.json strings).
+        layer_config:
+          type: RASTER
+          band_sets:
+            - bands: ["label"]
+              dtype: UINT8
+          class_names:
+            - no_landslide
+            - landslide
+            - no_data
 # Here we enable automatic checkpoint management and logging to W&B.
 # Set WANDB_MODE=offline to disable online logging.
 project_name: landslides
-run_name: sen12landslides_all_positives_apr8_test
+run_name: sen12landslides_all_positives_apr13
 management_dir: ./checkpoints
