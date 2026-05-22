@@ -242,7 +242,7 @@ rslearn dataset prepare     --root "$PREDICT_DS" --workers 32
 rslearn dataset ingest      --root "$PREDICT_DS" --workers 32
 rslearn dataset materialize --root "$PREDICT_DS" --workers 32
 
-rslearn model predict --config data/change_finder/land_cover_time_series_change_model/config.yaml --data.init_args.path="$PREDICT_DS" --load_best=true
+rslearn model predict --config data/change_finder/land_cover_time_series_change_model/config.yaml --data.init_args.path="$PREDICT_DS"
 ```
 
 Output: one 29-band uint8 GeoTIFF per prediction window at
