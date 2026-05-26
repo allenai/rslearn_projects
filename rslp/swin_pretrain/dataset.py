@@ -1,4 +1,4 @@
-"""Load rslearn-compatible data from Helios dataset folder."""
+"""Load rslearn-compatible data from OlmoEarth dataset folder."""
 
 import hashlib
 import random
@@ -38,11 +38,16 @@ class ModalityInfo:
     # This corresponds to the number of classes for categorical modalities.
     num_bands: int
 
-    # How much to divide by for normalization.
-    # Only applies when using this modality as an input.
+    # Normalization applied as: (value - norm_offset) / norm_factor.
+    # norm_factor != None signals that the modality is float-valued.
     norm_factor: float | None = None
+    norm_offset: float = 0.0
 
     is_multitemporal: bool = False
+
+    # Spatial resolution divisor relative to TILE_SIZE.
+    # 1 = full resolution (256x256), 4 = quarter resolution (64x64), etc.
+    resolution_div: int = 1
 
 
 MODALITIES = {
@@ -72,12 +77,27 @@ MODALITIES = {
         suffixes=[("_10.tif", 1)],
         num_bands=1,
     ),
+    "10_srtm": ModalityInfo(
+        suffixes=[("_10.tif", 1)],
+        num_bands=1,
+    ),
+    "10_worldcereal": ModalityInfo(
+        suffixes=[("_10.tif", 8)],
+        num_bands=1,
+    ),
+    "10_olmoearth_v1_base_embedding": ModalityInfo(
+        suffixes=[("_40.tif", 768)],
+        num_bands=768,
+        norm_factor=128.0,
+        norm_offset=128.0,
+        resolution_div=4,
+    ),
 }
 TILE_SIZE = 256
 
 
 class CollateFunction:
-    """Collate function for Helios dataset."""
+    """Collate function for OlmoEarth dataset."""
 
     def __init__(
         self,
@@ -117,6 +137,7 @@ class CollateFunction:
         inputs, targets, metadatas = collate_fn(batch)
 
         # Find minimum number of available timesteps.
+        # Input modalities are now RasterImage with shape (C, T, H, W).
         multitemporal_modalities = [
             (modality, info)
             for modality, info in MODALITIES.items()
@@ -127,7 +148,7 @@ class CollateFunction:
             for modality, info in multitemporal_modalities:
                 if modality not in input_dict:
                     continue
-                cur_timesteps = input_dict[modality].shape[0] // info.num_bands
+                cur_timesteps = input_dict[modality].image.shape[1]
                 if minimum_available_timesteps is None:
                     minimum_available_timesteps = cur_timesteps
                 else:
@@ -156,71 +177,63 @@ class CollateFunction:
             for modality, info in multitemporal_modalities:
                 if modality not in input_dict:
                     continue
-                image = input_dict[modality]
-                # Reshape so the timesteps and bands are separate.
-                cur_timesteps = image.shape[0] // MODALITIES[modality].num_bands
-                image = rearrange(
-                    image,
-                    "(t c) h w -> t c h w",
-                    t=cur_timesteps,
-                    c=MODALITIES[modality].num_bands,
-                )
-                # Subset the timesteps.
-                available_timesteps = list(range(image.shape[0]))
+                img = input_dict[modality].image  # (C, T, H, W)
+                available_timesteps = list(range(img.shape[1]))
                 if self.randomize:
-                    selected_timesteps = random.sample(
-                        available_timesteps, num_timesteps
-                    )
+                    selected = sorted(random.sample(available_timesteps, num_timesteps))
                 else:
-                    selected_timesteps = available_timesteps[0:num_timesteps]
-                image = image[sorted(selected_timesteps)]
-                # Reshape back so the timesteps and bands are stacked.
-                image = rearrange(image, "t c h w -> (t c) h w")
-                input_dict[modality] = image
+                    selected = available_timesteps[:num_timesteps]
+                input_dict[modality] = RasterImage(image=img[:, selected, :, :])
 
-            # TODO
-            input_dict["image"] = input_dict["10_sentinel2_l2a_monthly"]
+        # Spatial crop. Scale coordinates for tensors at different resolutions.
+        def _scaled_crop(
+            tensor: torch.Tensor,
+        ) -> tuple[int, int, int]:
+            scale = tensor.shape[-2] / TILE_SIZE
+            return (
+                int(crop_h_start * scale),
+                int(crop_w_start * scale),
+                int(crop_size * scale),
+            )
 
-        # Spatial crop.
         for input_dict in inputs:
             for modality in list(input_dict.keys()):
-                input_dict[modality] = input_dict[modality][
-                    :,
-                    crop_h_start : crop_h_start + crop_size,
-                    crop_w_start : crop_w_start + crop_size,
-                ]
+                value = input_dict[modality]
+                if isinstance(value, RasterImage):
+                    sh, sw, sc = _scaled_crop(value.image)
+                    input_dict[modality] = RasterImage(
+                        image=value.image[:, :, sh : sh + sc, sw : sw + sc],
+                        timestamps=value.timestamps,
+                    )
+                elif isinstance(value, torch.Tensor):
+                    sh, sw, sc = _scaled_crop(value)
+                    input_dict[modality] = value[:, sh : sh + sc, sw : sw + sc]
+                # input_dict also contains task name for each of the tasks mapping to empty dicts.
+            # Set "image" alias after cropping so it refers to the cropped version.
+            input_dict["image"] = input_dict["10_sentinel2_l2a_monthly"]
         for target_dict in targets:
             for task_name in list(target_dict.keys()):
                 for sub_name in list(target_dict[task_name].keys()):
                     image = target_dict[task_name][sub_name]
                     if isinstance(image, RasterImage):
+                        sh, sw, sc = _scaled_crop(image.image)
                         image = RasterImage(
-                            image=image.image[
-                                :,
-                                :,
-                                crop_h_start : crop_h_start + crop_size,
-                                crop_w_start : crop_w_start + crop_size,
-                            ],
+                            image=image.image[:, :, sh : sh + sc, sw : sw + sc],
                             timestamps=image.timestamps,
                         )
                     elif len(image.shape) == 2:
-                        image = image[
-                            crop_h_start : crop_h_start + crop_size,
-                            crop_w_start : crop_w_start + crop_size,
-                        ]
+                        sh, sw, sc = _scaled_crop(image)
+                        image = image[sh : sh + sc, sw : sw + sc]
                     else:
-                        image = image[
-                            :,
-                            crop_h_start : crop_h_start + crop_size,
-                            crop_w_start : crop_w_start + crop_size,
-                        ]
+                        sh, sw, sc = _scaled_crop(image)
+                        image = image[:, sh : sh + sc, sw : sw + sc]
                     target_dict[task_name][sub_name] = image
 
         return (inputs, targets, metadatas)
 
 
-class HeliosDataset(torch.utils.data.Dataset):
-    """A dataset for Helios data."""
+class OlmoEarthDataset(torch.utils.data.Dataset):
+    """A dataset for OlmoEarth data."""
 
     def __init__(
         self,
@@ -231,10 +244,10 @@ class HeliosDataset(torch.utils.data.Dataset):
         limit: int | None = None,
         skip: int = 0,
     ):
-        """Create a new HeliosDataset.
+        """Create a new OlmoEarthDataset.
 
         Args:
-            ds_path: the path to the Helios dataset folder.
+            ds_path: the path to the OlmoEarth dataset folder.
             task: the task to train on.
             input_modalities: list of modalities to input.
             target_modalities: list of modalities to use as targets.
@@ -277,6 +290,7 @@ class HeliosDataset(torch.utils.data.Dataset):
 
     def _load_modality(self, tile_name: str, modality: str) -> torch.Tensor | None:
         info = MODALITIES[modality]
+        target_size = TILE_SIZE // info.resolution_div
 
         # Get list of images across suffixes.
         # Each image is TxCxHxW for multitemporal, otherwise CxHxW.
@@ -290,21 +304,21 @@ class HeliosDataset(torch.utils.data.Dataset):
             with rasterio.open(fname) as src:
                 array = torch.from_numpy(src.read())
 
-            # Resize to TILE_SIZE.
-            if array.shape[1] < TILE_SIZE:
-                factor = TILE_SIZE // array.shape[1]
+            # Resize to target_size.
+            if array.shape[1] < target_size:
+                factor = target_size // array.shape[1]
                 if (
-                    array.shape[1] * factor != TILE_SIZE
-                    or array.shape[2] * factor != TILE_SIZE
+                    array.shape[1] * factor != target_size
+                    or array.shape[2] * factor != target_size
                 ):
                     raise ValueError(f"bad array shape {array.shape}")
                 array = torch.repeat_interleave(array, repeats=factor, dim=1)
                 array = torch.repeat_interleave(array, repeats=factor, dim=2)
-            elif array.shape[1] > TILE_SIZE:
-                factor = array.shape[1] // TILE_SIZE
+            elif array.shape[1] > target_size:
+                factor = array.shape[1] // target_size
                 if (
-                    array.shape[1] != TILE_SIZE * factor
-                    or array.shape[2] != TILE_SIZE * factor
+                    array.shape[1] != target_size * factor
+                    or array.shape[2] != target_size * factor
                 ):
                     raise ValueError(f"bad array shape {array.shape}")
                 # Use max pool since it works better for categorical modalities (to not
@@ -345,7 +359,9 @@ class HeliosDataset(torch.utils.data.Dataset):
             image = image.argmax(dim=0, keepdim=True)
 
         if info.norm_factor is not None:
-            image = (image / info.norm_factor).to(dtype=torch.float32)
+            image = ((image - info.norm_offset) / info.norm_factor).to(
+                dtype=torch.float32
+            )
         else:
             image = image.to(dtype=torch.long)
 
@@ -364,12 +380,31 @@ class HeliosDataset(torch.utils.data.Dataset):
         # TODO: sub-sample from available input modalities. Need to adjust model to
         # accept different subsets of inputs.
         for modality in self.input_modalities:
-            passthrough_inputs[modality] = self._load_modality(tile_name, modality)
+            image = self._load_modality(tile_name, modality)
+            if image is None:
+                continue
+            info = MODALITIES[modality]
+            if info.is_multitemporal:
+                # (T*C, H, W) -> (C, T, H, W)
+                image = rearrange(image, "(t c) h w -> c t h w", c=info.num_bands)
+            else:
+                # (C, H, W) -> (C, 1, H, W)
+                image = image[:, None, :, :]
+            passthrough_inputs[modality] = RasterImage(image=image)
         for modality in self.target_modalities:
             # For the targets we add one if they are present, otherwise set to zero.
             image = self._load_modality(tile_name, modality)
             if image is None:
-                image = torch.zeros((1, TILE_SIZE, TILE_SIZE), dtype=torch.long)
+                info = MODALITIES[modality]
+                tile_size = TILE_SIZE // info.resolution_div
+                if info.norm_factor is not None:
+                    image = torch.zeros(
+                        (info.num_bands, tile_size, tile_size), dtype=torch.float32
+                    )
+                else:
+                    image = torch.zeros(
+                        (info.num_bands, tile_size, tile_size), dtype=torch.long
+                    )
             else:
                 image = image + 1
             raw_inputs[modality] = RasterImage(image[:, None, :, :])
@@ -400,8 +435,8 @@ class HeliosDataset(torch.utils.data.Dataset):
         return input_dict, target_dict, sample_metadata
 
 
-class HeliosDataModule(L.LightningDataModule):
-    """Data module for Helios data."""
+class OlmoEarthDataModule(L.LightningDataModule):
+    """Data module for OlmoEarth data."""
 
     def __init__(
         self,
@@ -437,7 +472,7 @@ class HeliosDataModule(L.LightningDataModule):
         """
         # Setup training dataset only for fit command.
         if stage == "fit":
-            self.train_dataset = HeliosDataset(
+            self.train_dataset = OlmoEarthDataset(
                 ds_path=self.ds_path,
                 task=self.task,
                 input_modalities=self.input_modalities,
@@ -446,7 +481,7 @@ class HeliosDataModule(L.LightningDataModule):
             )
 
         # Setup validation dataset.
-        self.val_dataset = HeliosDataset(
+        self.val_dataset = OlmoEarthDataset(
             ds_path=self.ds_path,
             task=self.task,
             input_modalities=self.input_modalities,

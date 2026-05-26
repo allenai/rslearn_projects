@@ -1,1 +1,1 @@
-"""Components for pre-training Swin models on Helios dataset."""
+"""Components for pre-training Swin models on OlmoEarth dataset."""
