@@ -19,6 +19,7 @@ from rslearn.train.tasks.multi_task import MetricWrapper, MultiTask
 from rslearn.train.tasks.task import Task
 from rslearn.utils import Feature
 from torchmetrics import Metric, MetricCollection
+from torchmetrics.classification import BinaryAUROC
 from typing_extensions import override
 from upath import UPath
 
@@ -76,28 +77,20 @@ class TimestampAUROCMetric(Metric):
     def __init__(self) -> None:
         """Initialize with an internal BinaryAUROC metric."""
         super().__init__()
-        print("initialize timestamp auroc metric")
-        from torchmetrics.classification import BinaryAUROC
-
         self.auroc = BinaryAUROC()
 
     @override
     def update(self, preds: list[torch.Tensor], targets: list[dict[str, Any]]) -> None:
-        try:
-            all_preds: list[torch.Tensor] = []
-            all_labels: list[torch.Tensor] = []
-            for pred, target in zip(preds, targets):
-                classes = target["classes"].image[:, 0, :, :]  # (num_ts, H, W)
-                valid = target["valid"].get_hw_tensor() > 0  # (H, W)
-                valid_exp = valid.unsqueeze(0).expand_as(pred)  # (num_ts, H, W)
-                all_preds.append(pred[valid_exp])
-                all_labels.append(classes[valid_exp].long())
-            print("all_preds", all_preds)
-            print("all_labels", all_labels)
-            if all_preds:
-                self.auroc.update(torch.cat(all_preds), torch.cat(all_labels))
-        except Exception as e:
-            print("got update error", e)
+        all_preds: list[torch.Tensor] = []
+        all_labels: list[torch.Tensor] = []
+        for pred, target in zip(preds, targets):
+            classes = target["classes"].image[:, 0, :, :]  # (num_ts, H, W)
+            valid = target["valid"].get_hw_tensor() > 0  # (H, W)
+            valid_exp = valid.unsqueeze(0).expand_as(pred)  # (num_ts, H, W)
+            all_preds.append(pred[valid_exp])
+            all_labels.append(classes[valid_exp].long())
+        if all_preds:
+            self.auroc.update(torch.cat(all_preds), torch.cat(all_labels))
 
     @override
     def compute(self) -> torch.Tensor:
