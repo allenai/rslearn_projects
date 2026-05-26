@@ -1,0 +1,571 @@
+"""Prepare the LCC model dataset: windows, imagery layers, and labels.
+
+This script takes a v2 annotation JSON and creates an rslearn dataset with:
+- sentinel2_quarterly: WindowLayerData with quarterly mosaics (90-day periods)
+- sentinel2_frequent_0..3: WindowLayerData with 4 scenes each (different temporal options)
+- label_binary, label_src, label_dst: Pre-rasterized point labels
+
+The time range for each window is derived from the post_change timestamp of its
+annotations. Frequent image options can extend up to post_change + 2 years, so some
+samples have the change further in the past.
+
+Scene metadata is fetched from the OlmoEarth Datasets API. Required env vars:
+- OEDATASETS_API_URL: e.g. https://datasets.olmoearth.allenai.org
+- DATASETS_API_TOKEN: bearer token for API auth
+
+Idempotent: existing windows are skipped, so re-running after new annotations
+are added only processes and materializes the new entries.
+
+After running this script, use ``rslearn dataset materialize`` to download imagery.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+import os
+import random
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+import numpy as np
+import requests
+import shapely
+import shapely.geometry
+from rslearn.dataset import Dataset, Window
+from rslearn.dataset.manage import retry
+from rslearn.dataset.window import WindowLayerData
+from rslearn.utils.geometry import WGS84_PROJECTION, Projection, STGeometry
+from rslearn.utils.mp import make_pool_and_star_imap_unordered
+from rslearn.utils.raster_array import RasterArray
+from rslearn.utils.raster_format import GeotiffRasterFormat
+from upath import UPath
+
+COLLECTION = "sentinel-2-l2a"
+CLOUD_COVER_THRESHOLD = 50
+
+NUM_FREQUENT_OPTIONS = 4
+NUM_FREQUENT_SCENES = 4
+
+LABEL_BAND = "label"
+RASTER_FORMAT = GeotiffRasterFormat()
+
+BIN_NODATA = 0
+BIN_NO_CHANGE = 1
+BIN_CHANGE = 2
+
+CATEGORY_NAMES = [
+    "nodata",
+    "bare",
+    "burnt",
+    "crops",
+    "fallow/shifting cultivation",
+    "grassland",
+    "Lichen and moss",
+    "shrub",
+    "snow and ice",
+    "tree",
+    "urban/built-up",
+    "water",
+    "wetland (herbaceous)",
+]
+
+ANNOTATIONS_SIDECAR_FNAME = "lcc_annotations.json"
+
+WGS84_SERIALIZED = {"crs": "EPSG:4326", "x_resolution": 1, "y_resolution": 1}
+
+
+def _parse_date(s: str) -> datetime:
+    """Parse ISO date string to UTC datetime."""
+    return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+
+
+def _lonlat_to_pixel(
+    lon: float, lat: float, projection: Projection, bounds: tuple[int, ...]
+) -> tuple[int, int]:
+    """Convert lon/lat to pixel coords within bounds, using floor for snapping."""
+    st = STGeometry(WGS84_PROJECTION, shapely.Point(lon, lat), time_range=None)
+    projected = st.to_projection(projection)
+    col = math.floor(projected.shp.x) - bounds[0]
+    row = math.floor(projected.shp.y) - bounds[1]
+    return col, row
+
+
+def _category_to_id(category: str) -> int:
+    """Convert category name to class ID (1-indexed, 0 = nodata)."""
+    try:
+        return CATEGORY_NAMES.index(category)
+    except ValueError:
+        return 0
+
+
+def _search_oedatasets(
+    session: requests.Session,
+    api_url: str,
+    api_token: str,
+    geometry_geojson: dict[str, Any],
+    time_range: tuple[datetime, datetime],
+) -> list[dict[str, Any]]:
+    """Search OlmoEarth Datasets API for Sentinel-2 scenes.
+
+    Returns list of dicts with keys: id, collected_at, cloud_cover, geometry_geojson.
+    """
+    url = f"{api_url}/api/v1/items/search"
+    headers: dict[str, str] = {}
+    if api_token:
+        headers["Authorization"] = f"Bearer {api_token}"
+
+    items: list[dict[str, Any]] = []
+    offset = 0
+    limit = 1000
+
+    while True:
+        body = {
+            "collection": {"eq": COLLECTION},
+            "intersects_geometry": geometry_geojson,
+            "collected_at": {
+                "gte": time_range[0].isoformat(),
+                "lt": time_range[1].isoformat(),
+            },
+            "limit": limit,
+            "offset": offset,
+            "sort_by": "collected_at",
+            "sort_direction": "desc",
+        }
+        resp = session.post(url, json=body, headers=headers, timeout=30)
+        if not resp.ok:
+            raise requests.HTTPError(
+                f"{resp.status_code} for {url}: {resp.text}\nRequest body: {json.dumps(body, default=str)}",
+                response=resp,
+            )
+        records = resp.json()["records"]
+
+        if not records:
+            break
+
+        for item in records:
+            props = item["properties"]
+            items.append(
+                {
+                    "id": item["id"],
+                    "collected_at": _parse_date(props["collected_at"]),
+                    "cloud_cover": props.get("cloud_cover", 100),
+                    "geometry_geojson": props["geometry"],
+                }
+            )
+
+        if len(records) < limit:
+            break
+        offset += limit
+
+    return items
+
+
+def _item_to_serialized(item: dict[str, Any]) -> dict[str, Any]:
+    """Convert an API item dict to rslearn Item.serialize() format."""
+    shp = shapely.geometry.shape(item["geometry_geojson"])
+    ts = item["collected_at"].isoformat()
+    return {
+        "name": item["id"],
+        "geometry": {
+            "projection": WGS84_SERIALIZED,
+            "shp": shp.wkt,
+            "time_range": [ts, ts],
+        },
+    }
+
+
+def _build_quarterly_layer_data(
+    items: list[dict[str, Any]],
+    time_range: tuple[datetime, datetime],
+) -> WindowLayerData:
+    """Group scenes into 90-day periods and pick the best per period."""
+    period_days = 90
+    t_start = time_range[0]
+    t_end = time_range[1]
+
+    periods: list[tuple[datetime, datetime]] = []
+    cur = t_start
+    while cur < t_end:
+        period_end = min(cur + timedelta(days=period_days), t_end)
+        periods.append((cur, period_end))
+        cur = period_end
+
+    items_by_period: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for item in items:
+        dt = item["collected_at"]
+        for i, (ps, pe) in enumerate(periods):
+            if ps <= dt < pe:
+                items_by_period[i].append(item)
+                break
+
+    serialized_groups: list[list[dict]] = []
+    group_time_ranges: list[tuple[datetime, datetime] | None] = []
+    for i, (ps, pe) in enumerate(periods):
+        group_items = items_by_period.get(i, [])
+        if not group_items:
+            continue
+        best = min(group_items, key=lambda x: x["cloud_cover"])
+        serialized_groups.append([_item_to_serialized(best)])
+        group_time_ranges.append((ps, pe))
+
+    return WindowLayerData(
+        layer_name="sentinel2_quarterly",
+        serialized_item_groups=serialized_groups,
+        group_time_ranges=group_time_ranges,
+    )
+
+
+def _pick_n_most_recent_before(
+    items: list[dict[str, Any]], cutoff: datetime, n: int
+) -> list[dict[str, Any]]:
+    """Pick n most recent scenes before cutoff (items assumed sorted desc by date)."""
+    result = []
+    for item in items:
+        if item["collected_at"] <= cutoff:
+            result.append(item)
+            if len(result) >= n:
+                break
+    return result
+
+
+def _build_frequent_layer_data(
+    items: list[dict[str, Any]],
+    option_cutoff: datetime,
+    layer_name: str,
+) -> WindowLayerData | None:
+    """Build WindowLayerData for one frequent option (4 scenes before cutoff)."""
+    scenes = _pick_n_most_recent_before(items, option_cutoff, NUM_FREQUENT_SCENES)
+    if len(scenes) < NUM_FREQUENT_SCENES:
+        return None
+
+    serialized_groups = [[_item_to_serialized(s)] for s in scenes]
+    group_time_ranges = [(s["collected_at"], s["collected_at"]) for s in scenes]
+
+    return WindowLayerData(
+        layer_name=layer_name,
+        serialized_item_groups=serialized_groups,
+        group_time_ranges=group_time_ranges,
+    )
+
+
+def _compute_frequent_cutoffs(
+    first_noticeable: datetime,
+    post_change: datetime,
+    window_name: str,
+) -> list[datetime]:
+    """Compute up to 4 cutoff dates for frequent image options.
+
+    Randomness is derived from window_name so results are deterministic per window.
+    """
+    rng = random.Random(hashlib.sha256(window_name.encode()).hexdigest())
+
+    cutoffs: list[datetime] = []
+
+    # Option 0: first_noticeable + 10 days
+    cutoffs.append(first_noticeable + timedelta(days=10))
+
+    # Option 1: post_change + 10 days (only if different from first_noticeable)
+    has_option1 = (post_change - first_noticeable).days > 5
+    if has_option1:
+        cutoffs.append(post_change + timedelta(days=10))
+
+    # Remaining random options
+    random_start = first_noticeable + timedelta(days=30)
+    random_end = post_change + timedelta(days=730)
+    num_random = NUM_FREQUENT_OPTIONS - len(cutoffs)
+
+    for _ in range(num_random):
+        if random_end > random_start:
+            days_range = (random_end - random_start).days
+            random_offset = rng.randint(0, max(days_range, 1))
+            cutoffs.append(random_start + timedelta(days=random_offset))
+        else:
+            cutoffs.append(random_start)
+
+    return cutoffs[:NUM_FREQUENT_OPTIONS]
+
+
+def _write_label_layer(window: Window, layer_name: str, array_hw: np.ndarray) -> None:
+    """Write a single-band uint8 label raster and mark layer complete."""
+    raster_dir = window.get_raster_dir(layer_name, [LABEL_BAND])
+    chw = array_hw[np.newaxis, :, :].astype(np.uint8, copy=False)
+    RASTER_FORMAT.encode_raster(
+        raster_dir,
+        window.projection,
+        window.bounds,
+        RasterArray(chw_array=chw),
+    )
+    window.mark_layer_completed(layer_name)
+
+
+def _rasterize_labels(
+    window: Window,
+    entry: dict[str, Any],
+    projection: Projection,
+    bounds: tuple[int, ...],
+) -> None:
+    """Rasterize point labels into binary/src/dst layers."""
+    h = bounds[3] - bounds[1]
+    w = bounds[2] - bounds[0]
+
+    binary = np.zeros((h, w), dtype=np.uint8)
+    src_label = np.zeros((h, w), dtype=np.uint8)
+    dst_label = np.zeros((h, w), dtype=np.uint8)
+
+    for pt in entry.get("negative_points", []):
+        col, row = _lonlat_to_pixel(pt["lon"], pt["lat"], projection, bounds)
+        if 0 <= col < w and 0 <= row < h:
+            binary[row, col] = BIN_NO_CHANGE
+
+    for pt in entry.get("positive_points", []):
+        col, row = _lonlat_to_pixel(pt["lon"], pt["lat"], projection, bounds)
+        if 0 <= col < w and 0 <= row < h:
+            binary[row, col] = BIN_CHANGE
+            src_id = _category_to_id(pt.get("pre_category", ""))
+            dst_id = _category_to_id(pt.get("post_category", ""))
+            if src_id > 0:
+                src_label[row, col] = src_id
+            if dst_id > 0:
+                dst_label[row, col] = dst_id
+
+    _write_label_layer(window, "label_binary", binary)
+    _write_label_layer(window, "label_src", src_label)
+    _write_label_layer(window, "label_dst", dst_label)
+
+
+def _entry_has_complete_annotations(entry: dict[str, Any]) -> bool:
+    """Check that at least one positive point has all required fields."""
+    for pt in entry.get("positive_points", []):
+        if (
+            pt.get("pre_change")
+            and pt.get("post_change")
+            and pt.get("first_date_change_noticeable")
+            and pt.get("pre_category")
+            and pt.get("post_category")
+        ):
+            return True
+    return False
+
+
+def _get_window_wgs84_bounds(
+    projection: Projection, bounds: tuple[int, ...]
+) -> shapely.geometry.base.BaseGeometry:
+    """Get the WGS84 bounding box for the window."""
+    box = shapely.box(bounds[0], bounds[1], bounds[2], bounds[3])
+    st = STGeometry(projection, box, time_range=None)
+    wgs84 = st.to_projection(WGS84_PROJECTION)
+    return wgs84.shp
+
+
+def _process_entry(
+    entry: dict[str, Any],
+    ds_path: str,
+) -> tuple[str, dict[str, Any]]:
+    """Process one annotation entry: create window, query API, write labels.
+
+    Each call is independent (creates its own Dataset/session) so it can run
+    in a separate multiprocessing worker.
+
+    Returns (sidecar_key, sidecar_value) for the annotations sidecar.
+    """
+    api_url = os.environ["OEDATASETS_API_URL"].rstrip("/")
+    api_token = os.environ.get("DATASETS_API_TOKEN", "")
+    session = requests.Session()
+
+    dataset = Dataset(UPath(ds_path))
+
+    projection = Projection.deserialize(entry["projection"])
+    bounds = tuple(entry["bounds"])
+    window_name = entry["window_name"]
+    window_group = entry["group"]
+
+    ref_point = None
+    for pt in entry.get("positive_points", []):
+        if (
+            pt.get("pre_change")
+            and pt.get("post_change")
+            and pt.get("first_date_change_noticeable")
+        ):
+            ref_point = pt
+            break
+
+    if ref_point is None:
+        raise ValueError("No positive point with date annotations in entry")
+
+    post_change = _parse_date(ref_point["post_change"])
+    first_noticeable = _parse_date(ref_point["first_date_change_noticeable"])
+
+    cutoffs = _compute_frequent_cutoffs(first_noticeable, post_change, window_name)
+    latest_cutoff = max(cutoffs)
+
+    window_end = latest_cutoff + timedelta(days=30)
+    window_start = window_end - timedelta(days=16 * 90 + 180)
+    window_time_range = (window_start, window_end)
+
+    split_hash = hashlib.sha256(f"{window_group}/{window_name}".encode()).hexdigest()
+    split = "val" if split_hash[0] in "01" else "train"
+
+    window = Window(
+        storage=dataset.storage,
+        group=window_group,
+        name=window_name,
+        projection=projection,
+        bounds=bounds,
+        time_range=window_time_range,
+        options=dict(split=split),
+    )
+    window.save()
+
+    bounds_wgs84 = _get_window_wgs84_bounds(projection, bounds)
+    geojson = json.loads(shapely.to_geojson(bounds_wgs84))
+
+    # Query OlmoEarth Datasets API one year at a time.
+    all_items: list[dict[str, Any]] = []
+    chunk_start = window_time_range[0]
+    while chunk_start < window_time_range[1]:
+        chunk_end = min(chunk_start + timedelta(days=365), window_time_range[1])
+        chunk_range = (chunk_start, chunk_end)
+        chunk_items = retry(
+            lambda cr=chunk_range: _search_oedatasets(
+                session, api_url, api_token, geojson, cr
+            ),
+            retry_max_attempts=3,
+            retry_backoff=timedelta(seconds=30),
+        )
+        all_items.extend(chunk_items)
+        chunk_start = chunk_end
+
+    low_cloud_items = [
+        item for item in all_items if item["cloud_cover"] < CLOUD_COVER_THRESHOLD
+    ]
+    low_cloud_items.sort(key=lambda x: x["collected_at"], reverse=True)
+
+    quarterly_data = _build_quarterly_layer_data(all_items, window_time_range)
+    layer_datas = window.load_layer_datas()
+    layer_datas["sentinel2_quarterly"] = quarterly_data
+
+    for opt_idx, cutoff in enumerate(cutoffs):
+        layer_name = f"sentinel2_frequent_{opt_idx}"
+        freq_data = _build_frequent_layer_data(low_cloud_items, cutoff, layer_name)
+        if freq_data is not None:
+            layer_datas[layer_name] = freq_data
+
+    window.save_layer_datas(layer_datas)
+
+    _rasterize_labels(window, entry, projection, bounds)
+
+    positive_pixels = []
+    for pt in entry.get("positive_points", []):
+        col, row = _lonlat_to_pixel(pt["lon"], pt["lat"], projection, bounds)
+        positive_pixels.append({"col": col, "row": row})
+
+    sidecar_key = f"{window_group}/{window_name}"
+    sidecar_value = {
+        "pre_change": ref_point["pre_change"],
+        "post_change": ref_point["post_change"],
+        "first_noticeable": ref_point["first_date_change_noticeable"],
+        "positive_pixel_coords": positive_pixels,
+    }
+    return sidecar_key, sidecar_value
+
+
+def prepare(
+    *,
+    v2_json_path: str,
+    ds_path: str,
+    workers: int = 32,
+) -> None:
+    """Prepare the LCC model dataset from v2 annotation JSON.
+
+    Idempotent: windows that already exist are skipped, so re-running after new
+    annotations have been added only processes the new entries.
+
+    Args:
+        v2_json_path: Path to the v2 annotation JSON.
+        ds_path: Path to the output rslearn dataset (config.json must exist).
+        workers: Number of parallel workers (0 = sequential).
+    """
+    if "OEDATASETS_API_URL" not in os.environ:
+        raise RuntimeError("OEDATASETS_API_URL env var must be set")
+
+    with open(v2_json_path) as f:
+        entries = json.load(f)
+
+    ds_upath = UPath(ds_path)
+
+    # Load existing sidecar so we can merge new entries into it.
+    sidecar_path = ds_upath / ANNOTATIONS_SIDECAR_FNAME
+    if sidecar_path.exists():
+        with sidecar_path.open("r") as f:
+            annotations_sidecar: dict[str, dict[str, Any]] = json.load(f)
+    else:
+        annotations_sidecar = {}
+
+    # Filter to entries that need processing.
+    pending: list[dict[str, Any]] = []
+    skipped_incomplete = 0
+    skipped_existing = 0
+
+    for entry in entries:
+        if not _entry_has_complete_annotations(entry):
+            skipped_incomplete += 1
+            continue
+        window_name = entry["window_name"]
+        window_group = entry["group"]
+        window_root = Window.get_window_root(ds_upath, window_group, window_name)
+        if (window_root / "metadata.json").exists():
+            skipped_existing += 1
+            continue
+        pending.append(entry)
+
+    print(
+        f"{len(pending)} to process, "
+        f"{skipped_incomplete} incomplete, {skipped_existing} already exist"
+    )
+
+    kwargs_list = [dict(entry=entry, ds_path=ds_path) for entry in pending]
+
+    created = 0
+    with make_pool_and_star_imap_unordered(
+        workers, _process_entry, kwargs_list
+    ) as outputs:
+        for sidecar_key, sidecar_value in outputs:
+            annotations_sidecar[sidecar_key] = sidecar_value
+            created += 1
+            if created % 10 == 0:
+                print(f"  Processed {created}/{len(pending)} windows...")
+
+    # Write annotation sidecar
+    with sidecar_path.open("w") as f:
+        json.dump(annotations_sidecar, f)
+
+    print(
+        f"Created {created} windows, "
+        f"skipped {skipped_incomplete} incomplete + {skipped_existing} existing"
+    )
+    print(f"Wrote annotation sidecar to {sidecar_path}")
+
+
+def main() -> None:
+    """Prepare LCC model dataset from v2 annotation JSON."""
+    parser = argparse.ArgumentParser(
+        description="Prepare LCC model dataset from v2 annotation JSON."
+    )
+    parser.add_argument("v2_json_path", help="Path to the v2 annotation JSON.")
+    parser.add_argument("ds_path", help="Path to the rslearn dataset.")
+    parser.add_argument("--workers", type=int, default=32)
+    args = parser.parse_args()
+
+    prepare(
+        v2_json_path=args.v2_json_path,
+        ds_path=args.ds_path,
+        workers=args.workers,
+    )
+
+
+if __name__ == "__main__":
+    main()

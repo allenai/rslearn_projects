@@ -1,0 +1,58 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslp.change_finder_v2.lcc_model.model.DualPassChangeModel
+      init_args:
+        encoder:
+          class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          init_args:
+            model_id: OLMOEARTH_V1_BASE
+            patch_size: 4
+        num_classes_binary: 3
+        num_classes_src: 13
+        num_classes_dst: 13
+        num_timestamps: 20
+        embedding_dim: 768
+        patch_size: 4
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: ${PREDICT_DS}
+    inputs:
+      sentinel2_quarterly:
+        data_type: "raster"
+        layers: ["sentinel2_quarterly"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_0:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_0"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+    batch_size: 8
+    num_workers: 32
+    predict_config:
+      groups: ["predict"]
+      load_all_crops: true
+      overlap_pixels: 8
+      skip_targets: true
+      transforms:
+        - class_path: rslp.change_finder_v2.lcc_model.transforms.PredictPassBuilder
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              pass1: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+              pass2: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+trainer:
+  callbacks:
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: output_change
+        selector: []

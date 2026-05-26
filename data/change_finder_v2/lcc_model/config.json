@@ -1,0 +1,334 @@
+{
+  "layers": {
+    "label_binary": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "no_change",
+        "change"
+      ],
+      "type": "raster"
+    },
+    "label_dst": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "bare",
+        "burnt",
+        "crops",
+        "fallow/shifting cultivation",
+        "grassland",
+        "Lichen and moss",
+        "shrub",
+        "snow and ice",
+        "tree",
+        "urban/built-up",
+        "water",
+        "wetland (herbaceous)"
+      ],
+      "type": "raster"
+    },
+    "label_src": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "bare",
+        "burnt",
+        "crops",
+        "fallow/shifting cultivation",
+        "grassland",
+        "Lichen and moss",
+        "shrub",
+        "snow and ice",
+        "tree",
+        "urban/built-up",
+        "water",
+        "wetland (herbaceous)"
+      ],
+      "type": "raster"
+    },
+    "output_change": {
+      "band_sets": [
+        {
+          "bands": [
+            "binary_nodata",
+            "binary_no_change",
+            "binary_change",
+            "src_nodata",
+            "src_bare",
+            "src_burnt",
+            "src_crops",
+            "src_fallow",
+            "src_grassland",
+            "src_lichen",
+            "src_shrub",
+            "src_snow",
+            "src_tree",
+            "src_urban",
+            "src_water",
+            "src_wetland",
+            "dst_nodata",
+            "dst_bare",
+            "dst_burnt",
+            "dst_crops",
+            "dst_fallow",
+            "dst_grassland",
+            "dst_lichen",
+            "dst_shrub",
+            "dst_snow",
+            "dst_tree",
+            "dst_urban",
+            "dst_water",
+            "dst_wetland",
+            "ts_0",
+            "ts_1",
+            "ts_2",
+            "ts_3",
+            "ts_4",
+            "ts_5",
+            "ts_6",
+            "ts_7",
+            "ts_8",
+            "ts_9",
+            "ts_10",
+            "ts_11",
+            "ts_12",
+            "ts_13",
+            "ts_14",
+            "ts_15",
+            "ts_16",
+            "ts_17",
+            "ts_18",
+            "ts_19"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2_frequent_0": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "duration": "3650d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 4,
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
+    },
+    "sentinel2_frequent_1": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "duration": "3650d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 4,
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
+    },
+    "sentinel2_frequent_2": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "duration": "3650d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 4,
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
+    },
+    "sentinel2_frequent_3": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "duration": "3650d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 4,
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
+    },
+    "sentinel2_quarterly": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "duration": "3650d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 40,
+          "min_matches": 1,
+          "per_period_mosaic_reverse_time_order": false,
+          "period_duration": "90d",
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
+    }
+  }
+}
