@@ -171,6 +171,7 @@ data:
             image_keys: ["landsat"]
       tags:
         split: "train"
+      groups: ["default"]
     val_config:
       tags:
         split: "val"
@@ -199,5 +200,5 @@ trainer:
         unfreeze_at_epoch: 5
         unfreeze_lr_factor: 10
 project_name: 2026_04_22_landsat_vessel_attribute
-run_name: olmoearth_base_freeze_newdata_01
+run_name: olmoearth_base_freeze_olddata_02
 management_dir: ${RSLP_PREFIX}/projects
