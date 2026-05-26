@@ -61,14 +61,13 @@ class FrequentOptionSampler(Transform):
 
         # Collect available frequent options
         frequent_options: list[RasterImage] = []
-        for i in range(4):
+        for i in range(8):
             key = f"{FREQUENT_KEY_PREFIX}{i}"
-            if key in input_dict:
-                freq_img = input_dict.pop(key)
-                if freq_img.image.shape[1] == NUM_FREQUENT:
-                    frequent_options.append(freq_img)
-            else:
+            if key not in input_dict:
                 break
+            freq_img = input_dict.pop(key)
+            if freq_img.image.shape[1] == NUM_FREQUENT:
+                frequent_options.append(freq_img)
 
         if not frequent_options:
             raise ValueError("No valid frequent options available")

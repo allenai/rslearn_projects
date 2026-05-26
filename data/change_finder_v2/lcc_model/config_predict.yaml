@@ -14,7 +14,6 @@ model:
         num_classes_dst: 13
         num_timestamps: 20
         embedding_dim: 768
-        patch_size: 4
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
@@ -36,20 +35,47 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
+    task:
+      class_path: rslp.change_finder_v2.lcc_model.tasks.LCCMultiTask
+      init_args:
+        annotations_path: unused_in_predict_mode
+        input_mapping:
+          binary:
+            label_binary: targets
+          src:
+            label_src: targets
+          dst:
+            label_dst: targets
+        tasks:
+          binary:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 3
+              nodata_value: 0
+          src:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 13
+              nodata_value: 0
+          dst:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 13
+              nodata_value: 0
     batch_size: 8
     num_workers: 32
     predict_config:
       groups: ["predict"]
+      crop_size: 64
       load_all_crops: true
-      overlap_pixels: 8
+      overlap_pixels: 16
       skip_targets: true
       transforms:
         - class_path: rslp.change_finder_v2.lcc_model.transforms.PredictPassBuilder
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
-              pass1: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
-              pass2: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
 trainer:
   callbacks:
     - class_path: rslearn.train.prediction_writer.RslearnWriter

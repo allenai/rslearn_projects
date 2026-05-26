@@ -2,7 +2,7 @@
 
 This script takes a v2 annotation JSON and creates an rslearn dataset with:
 - sentinel2_quarterly: WindowLayerData with quarterly mosaics (90-day periods)
-- sentinel2_frequent_0..3: WindowLayerData with 4 scenes each (different temporal options)
+- sentinel2_frequent_0..7: WindowLayerData with 4 scenes each (different temporal options)
 - label_binary, label_src, label_dst: Pre-rasterized point labels
 
 The time range for each window is derived from the post_change timestamp of its
@@ -47,7 +47,7 @@ from upath import UPath
 COLLECTION = "sentinel-2-l2a"
 CLOUD_COVER_THRESHOLD = 50
 
-NUM_FREQUENT_OPTIONS = 4
+NUM_FREQUENT_OPTIONS = 8
 NUM_FREQUENT_SCENES = 4
 
 LABEL_BAND = "label"
@@ -257,7 +257,7 @@ def _compute_frequent_cutoffs(
     post_change: datetime,
     window_name: str,
 ) -> list[datetime]:
-    """Compute up to 4 cutoff dates for frequent image options.
+    """Compute cutoff dates for frequent image options.
 
     Randomness is derived from window_name so results are deterministic per window.
     """

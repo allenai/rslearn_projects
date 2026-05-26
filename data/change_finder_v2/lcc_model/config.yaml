@@ -14,11 +14,13 @@ model:
         num_classes_dst: 13
         num_timestamps: 20
         embedding_dim: 768
-        patch_size: 4
     optimizer:
-      class_path: rslearn.train.optimizer.AdamW
+      class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
       init_args:
         lr: 0.0001
+        layer_decay_rate: 0.65
+        num_layers: 12
+        encoder_prefix: "model.encoder"
     scheduler:
       class_path: rslearn.train.scheduler.PlateauScheduler
       init_args:
@@ -71,6 +73,38 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
+      sentinel2_frequent_4:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_4"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_5:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_5"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_6:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_6"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_7:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_7"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
       label_binary:
         data_type: "raster"
         layers: ["label_binary"]
@@ -110,6 +144,15 @@ data:
               class_names: ["nodata", "no_change", "change"]
               metric_kwargs:
                 average: "micro"
+              other_metrics:
+                auroc:
+                  class_path: rslearn.train.tasks.segmentation.SegmentationMetric
+                  init_args:
+                    metric:
+                      class_path: torchmetrics.classification.MulticlassAUROC
+                      init_args:
+                        num_classes: 3
+                        average: "macro"
           src:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
@@ -129,7 +172,7 @@ data:
               metric_kwargs:
                 average: "micro"
     batch_size: 4
-    num_workers: 32
+    num_workers: 8
     use_in_memory_dataset: true
     default_config:
       crop_size: 64
@@ -178,15 +221,10 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
-      init_args:
-        module_selector: ["model", "encoder"]
-        unfreeze_at_epoch: 10
-        unfreeze_lr_factor: 10
     - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
         monitor: val_loss
         mode: min
 project_name: 2026_05_25_lcc
-run_name: olmoearth_base_dual_pass_02
+run_name: olmoearth_base_dual_pass_06
 management_dir: ${RSLP_PREFIX}/projects

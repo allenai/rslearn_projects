@@ -1,12 +1,12 @@
-"""DualPassChangeModel: two OlmoEarth forward passes + simple shared decoder.
+"""DualPassChangeModel: two OlmoEarth forward passes + per-task conv decoders.
 
 Architecture:
 - Input: sentinel2_l2a with 20 timesteps (produced by FrequentOptionSampler)
 - Split into pass1 (first 10) and pass2 (last 10)
 - Shared OlmoEarth encoder processes each pass separately
 - Features concatenated along channel dim → 1536ch at 1/4 res
-- Shared 1x1 conv: 1536 → 768
-- Per-task linear heads: 768 → C*16, reshape to full resolution
+- Per-task convolutional decoder: 1536→768 1x1, 768→512 3x3, upsample 2x,
+  512→256 3x3, upsample 2x, 256→128 3x3, 128→logits 1x1 (full res)
 """
 
 from __future__ import annotations
@@ -28,13 +28,33 @@ INPUT_KEY = "sentinel2_l2a"
 NUM_PASS1 = 10
 
 
+def _make_decoder(concat_dim: int, num_classes: int) -> nn.Sequential:
+    """Build a per-task convolutional decoder.
+
+    Takes (B, concat_dim, H/4, W/4) and produces (B, num_classes, H, W).
+    """
+    return nn.Sequential(
+        nn.Conv2d(concat_dim, 768, kernel_size=1),
+        nn.ReLU(inplace=True),
+        nn.Conv2d(768, 512, kernel_size=3, padding=1),
+        nn.ReLU(inplace=True),
+        nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+        nn.Conv2d(512, 256, kernel_size=3, padding=1),
+        nn.ReLU(inplace=True),
+        nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
+        nn.Conv2d(256, 128, kernel_size=3, padding=1),
+        nn.ReLU(inplace=True),
+        nn.Conv2d(128, num_classes, kernel_size=1),
+    )
+
+
 class DualPassChangeModel(nn.Module):
-    """Two-pass encoder with shared decoder and per-task linear heads.
+    """Two-pass encoder with per-task convolutional decoders.
 
     The model expects ``sentinel2_l2a`` with 20 timesteps. It splits into
     pass1 (first 10) and pass2 (last 10), runs the shared OlmoEarth encoder
-    on each, concatenates features, applies a shared 1x1 conv, then per-task
-    linear heads that output full-resolution logits.
+    on each, concatenates features, then runs per-task conv decoders that
+    upsample from 1/4 to full resolution.
     """
 
     def __init__(
@@ -45,23 +65,19 @@ class DualPassChangeModel(nn.Module):
         num_classes_dst: int = 13,
         num_timestamps: int = 20,
         embedding_dim: int = 768,
-        patch_size: int = 4,
     ):
         """Initialize the LCC multi-task model."""
         super().__init__()
         self.encoder = encoder
-        self.patch_size = patch_size
         self.embedding_dim = embedding_dim
         self.num_timestamps = num_timestamps
 
         concat_dim = embedding_dim * 2
-        self.shared_conv = nn.Conv2d(concat_dim, embedding_dim, kernel_size=1)
 
-        ps2 = patch_size * patch_size
-        self.head_binary = nn.Linear(embedding_dim, num_classes_binary * ps2)
-        self.head_src = nn.Linear(embedding_dim, num_classes_src * ps2)
-        self.head_dst = nn.Linear(embedding_dim, num_classes_dst * ps2)
-        self.head_timestamps = nn.Linear(embedding_dim, num_timestamps * ps2)
+        self.decoder_binary = _make_decoder(concat_dim, num_classes_binary)
+        self.decoder_src = _make_decoder(concat_dim, num_classes_src)
+        self.decoder_dst = _make_decoder(concat_dim, num_classes_dst)
+        self.decoder_timestamps = _make_decoder(concat_dim, num_timestamps)
 
         self.num_classes_binary = num_classes_binary
         self.num_classes_src = num_classes_src
@@ -76,29 +92,12 @@ class DualPassChangeModel(nn.Module):
         feature_maps = self.encoder(sub_context)
         return feature_maps.feature_maps[0]
 
-    def _reshape_head_output(self, x: torch.Tensor, num_classes: int) -> torch.Tensor:
-        """Reshape linear head output from (B, H', W', C*ps^2) to (B, C, H, W).
-
-        Args:
-            x: tensor of shape (B, H', W', C * patch_size^2)
-            num_classes: number of output classes C
-
-        Returns:
-            tensor of shape (B, C, H, W) at full resolution
-        """
-        B, Hp, Wp, _ = x.shape
-        ps = self.patch_size
-        x = x.view(B, Hp, Wp, num_classes, ps, ps)
-        x = x.permute(0, 3, 1, 4, 2, 5)  # B, C, Hp, ps, Wp, ps
-        x = x.reshape(B, num_classes, Hp * ps, Wp * ps)
-        return x
-
     def forward(
         self,
         context: ModelContext,
         targets: list[dict[str, Any]] | None = None,
     ) -> ModelOutput:
-        """Forward pass with two encoder calls and per-task heads.
+        """Forward pass with two encoder calls and per-task decoders.
 
         Args:
             context: ModelContext with ``sentinel2_l2a`` RasterImage (20 timesteps).
@@ -121,30 +120,15 @@ class DualPassChangeModel(nn.Module):
         feat1 = self._run_encoder(pass1_images, context.metadatas)
         feat2 = self._run_encoder(pass2_images, context.metadatas)
 
-        # Concatenate along channel dim: (B, 1536, H', W')
+        # Concatenate along channel dim: (B, 1536, H/4, W/4)
         concat = torch.cat([feat1, feat2], dim=1)
 
-        # Shared decoder: (B, 768, H', W')
-        shared = F.relu(self.shared_conv(concat))
+        # Per-task decoders: (B, 1536, H/4, W/4) -> (B, C, H, W)
+        logits_binary = self.decoder_binary(concat)
+        logits_src = self.decoder_src(concat)
+        logits_dst = self.decoder_dst(concat)
+        logits_ts = self.decoder_timestamps(concat)
 
-        # Permute to (B, H', W', 768) for linear heads
-        shared_bhwc = shared.permute(0, 2, 3, 1)
-
-        # Per-task heads
-        logits_binary = self._reshape_head_output(
-            self.head_binary(shared_bhwc), self.num_classes_binary
-        )
-        logits_src = self._reshape_head_output(
-            self.head_src(shared_bhwc), self.num_classes_src
-        )
-        logits_dst = self._reshape_head_output(
-            self.head_dst(shared_bhwc), self.num_classes_dst
-        )
-        logits_ts = self._reshape_head_output(
-            self.head_timestamps(shared_bhwc), self.num_timestamps
-        )
-
-        # Compute losses
         losses: dict[str, torch.Tensor] = {}
         outputs: list[dict[str, Any]] = [{} for _ in context.inputs]
 

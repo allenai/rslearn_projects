@@ -240,3 +240,27 @@ Per-window output at `<window>/layers/output_change/<bandset>/geotiff.tif`:
 - `src`: 13-channel source category probabilities
 - `dst`: 13-channel destination category probabilities
 - `timestamps`: 20-channel sigmoid outputs (per-image change-period membership)
+
+#### 4. Postprocess: raster to GeoJSON
+
+Convert prediction rasters to a GeoJSON of change polygons:
+
+```bash
+python -m rslp.change_finder_v2.lcc_model.postprocess \
+    --dataset_path "$PREDICT_DS" \
+    --output changes.geojson \
+    --threshold 128 \
+    --min_pixels 10 \
+    --workers 32
+```
+
+This script:
+- Thresholds the binary change band and computes per-pixel argmax src/dst classes.
+- Finds connected components separately for each unique (src, dst) class pair,
+  so each polygon represents a single type of land cover transition.
+- Estimates a change timestamp per polygon via majority vote of per-pixel argmax
+  over the 20 timestamp probability bands, mapped to actual dates from the
+  dataset's layer metadata.
+
+Each GeoJSON feature includes: `src_class`, `dst_class`, `num_pixels`,
+`avg_change_score`, `timestamp_idx`, `timestamp_start`, `timestamp_end`.
