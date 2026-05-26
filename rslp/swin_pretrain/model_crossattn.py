@@ -1,17 +1,17 @@
-"""Model for pre-training Swin backbone on Helios dataset.
+"""Model for pre-training Swin backbone on OlmoEarth dataset.
 
 This model uses a cross-attention mechanism for temporal pooling instead of max
 pooling. Temporal pooling is needed since the Swin component is applied on each image
 in the time series.
 """
 
-from typing import Any
-
 import torch
 import torch.nn as nn
 from einops import rearrange
+from rslearn.models.component import FeatureExtractor, FeatureMaps
 from rslearn.models.swin import Swin
 from rslearn.models.unet import UNetDecoder
+from rslearn.train.model_context import ModelContext, RasterImage
 
 
 def _get_1d_sincos_pos_embed(
@@ -138,8 +138,10 @@ class CrossAttentionTemporalPool(nn.Module):
         return out
 
 
-class Model(torch.nn.Module):
+class Model(FeatureExtractor):
     """Model for pre-training."""
+
+    IMAGE_CHANNELS = 12
 
     def __init__(
         self,
@@ -156,7 +158,7 @@ class Model(torch.nn.Module):
         self.encoder = Swin(
             arch="swin_v2_b",
             pretrained=True,
-            input_channels=12,
+            input_channels=self.IMAGE_CHANNELS,
             output_layers=[1, 3, 5, 7],
         )
         encoder_channels = [128, 256, 512, 1024]
@@ -180,43 +182,48 @@ class Model(torch.nn.Module):
                 target_resolution_factor=target_resolution_factor,
             )
 
-    def forward(
-        self,
-        inputs: list[dict[str, Any]],
-    ) -> list[torch.Tensor]:
-        """Compute outputs from the wrapped module.
+    def forward(self, context: ModelContext) -> FeatureMaps:
+        """Extract features from the input images.
 
-        Inputs:
-            inputs: input dicts that must include "image" key containing the image to
-                process.
+        Args:
+            context: the model context. Input dicts must include "image" key
+                containing a RasterImage with the time series.
+
+        Returns:
+            FeatureMaps after cross-attention temporal pooling and optional UNet.
         """
-        # Apply the image encoder on each image in the time series.
-        images = torch.stack([inp["image"] for inp in inputs], dim=0)
-        image_channels = 12
-        batch_size = len(inputs)
-        assert images.shape[1] % image_channels == 0
-        n_images = images.shape[1] // image_channels
-        # Reshape images to B*T x C x H x W.
-        images = rearrange(
-            images, "b (t c) h w -> (b t) c h w", t=n_images, c=image_channels
+        # Extract the image time series and split into per-timestep images.
+        images = torch.stack(
+            [inp["image"].image for inp in context.inputs], dim=0
+        )  # B, C, T, H, W
+        batch_size = images.shape[0]
+        n_timesteps = images.shape[2]
+
+        # Reshape to (B*T) individual images, each wrapped as a single-timestep
+        # RasterImage so Swin can process them.
+        images_flat = rearrange(images, "b c t h w -> (b t) c 1 h w")
+        batched_inputs = [
+            {"image": RasterImage(image=images_flat[i])}
+            for i in range(images_flat.shape[0])
+        ]
+        encoder_feats = self.encoder(
+            ModelContext(inputs=batched_inputs, metadatas=context.metadatas)
         )
-        # Now add "image" key expected by encoder.
-        batched_inputs = [{"image": image} for image in images]
-        # Encoder provides one feature map per resolution.
-        encoder_feats = self.encoder(batched_inputs)
+        assert isinstance(encoder_feats, FeatureMaps)
+
+        # Reshape back to B, T, C, H, W per feature scale.
         all_features = [
-            rearrange(feat_map, "(b t) c h w -> b t c h w", b=batch_size, t=n_images)
-            for feat_map in encoder_feats
+            rearrange(feat_map, "(b t) c h w -> b t c h w", b=batch_size, t=n_timesteps)
+            for feat_map in encoder_feats.feature_maps
         ]
 
-        # Compute pooled features using cross attention.
+        # Cross-attention temporal pooling per scale.
         pooled_features = [
             pool(feat_map)
             for pool, feat_map in zip(self.temporal_poolers, all_features)
         ]
 
         if self.target_resolution_factor is None:
-            return pooled_features
+            return FeatureMaps(pooled_features)
 
-        hr_features = self.unet(pooled_features, None)
-        return [hr_features]
+        return self.unet(FeatureMaps(pooled_features), context)
