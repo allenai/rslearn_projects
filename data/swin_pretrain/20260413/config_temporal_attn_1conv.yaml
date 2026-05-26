@@ -1,0 +1,182 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslp.swin_pretrain.model_temporal_attn.Model
+        decoders:
+          openstreetmap:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 128
+                out_channels: 31
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          cdl:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 128
+                out_channels: 257
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          worldcover:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 128
+                out_channels: 102
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          chm:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 128
+                out_channels: 1
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
+          srtm:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 128
+                out_channels: 1
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionHead
+          worldcereal:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 128
+                out_channels: 9
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          olmoearth_embedding:
+            - class_path: rslp.swin_pretrain.embedding_prediction.SpatialPool
+              init_args:
+                output_size: 64
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 128
+                out_channels: 768
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslp.swin_pretrain.embedding_prediction.EmbeddingPredictionHead
+              init_args:
+                loss_mode: "l1"
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.00002
+data:
+  class_path: rslp.swin_pretrain.dataset.OlmoEarthDataModule
+  init_args:
+    ds_path: /weka/dfive-default/helios/dataset/osm_sampling
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          openstreetmap:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 31
+              metric_kwargs:
+                average: "micro"
+              zero_is_invalid: true
+          cdl:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 257
+              metric_kwargs:
+                average: "micro"
+              zero_is_invalid: true
+          worldcover:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 102
+              metric_kwargs:
+                average: "micro"
+              zero_is_invalid: true
+          chm:
+            class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionTask
+            init_args:
+              scale_factor: 0.1
+              metric_mode: "l1"
+              nodata_value: 0
+          srtm:
+            class_path: rslearn.train.tasks.per_pixel_regression.PerPixelRegressionTask
+            init_args:
+              scale_factor: 0.001
+              metric_mode: "l1"
+              nodata_value: 0
+          worldcereal:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 9
+              metric_kwargs:
+                average: "micro"
+              zero_is_invalid: true
+          olmoearth_embedding:
+            class_path: rslp.swin_pretrain.embedding_prediction.EmbeddingPredictionTask
+            init_args:
+              nodata_value: 0
+        input_mapping:
+          openstreetmap:
+            10_openstreetmap_raster: "targets"
+          cdl:
+            10_cdl: "targets"
+          worldcover:
+            10_worldcover: "targets"
+          chm:
+            10_wri_canopy_height_map: "targets"
+          srtm:
+            10_srtm: "targets"
+          worldcereal:
+            10_worldcereal: "targets"
+          olmoearth_embedding:
+            10_olmoearth_v1_base_embedding: "targets"
+    input_modalities:
+      - "10_sentinel2_l2a_monthly"
+    target_modalities:
+      - "10_openstreetmap_raster"
+      - "10_cdl"
+      - "10_worldcover"
+      - "10_wri_canopy_height_map"
+      - "10_srtm"
+      - "10_worldcereal"
+      - "10_olmoearth_v1_base_embedding"
+    num_val_examples: 1024
+    batch_size: 4
+    num_workers: 32
+trainer:
+  max_epochs: 500
+  callbacks:
+    - class_path: rslearn.train.callbacks.log_progress.LogProgressCallback
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_loss
+        mode: min
+project_name: 2026_04_13_swin_pretrain
+run_name: pretrain_temporal_attn_7mod_1conv_20260415a
+management_dir: ${RSLP_PREFIX}/projects
