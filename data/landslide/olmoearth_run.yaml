@@ -1,4 +1,4 @@
-config_version: "0.7.1"
+config_version: "0.8.1"
 
 data:
   temporality:
@@ -70,47 +70,8 @@ input_preprocessing:
     transforms:
       - name: sentinel1_to_decibels
       - name: olmoearth_normalize
-  train:
-    additional_transforms:
-      - name: random_flip
   predict:
-    overlap_pixels: 8
-
-labeled_data_prep:
-  annotation_type: polygon
-  sampler:
-    name: noop
-  window_preparer:
-    name: standard_raster
-    windowing_mode:
-      name: per_annotation
-      window_sizing:
-        name: buffered
-        buffer: 64
-  data_splitter:
-    name: spatial
-    grid_size: 512
-    train_prop: 0.7
-    val_prop: 0.2
-    test_prop: 0.1
-
-training:
-  max_epochs: 100
-  batch_size: 1
-  optimizer:
-    name: adamw
-    lr: 0.0001
-  scheduler:
-    name: plateau
-    factor: 0.2
-    patience: 2
-    min_lr: 0
-    cooldown: 10
-  encoder_freezing:
-    unfreeze_at_epoch: 10
-    unfreeze_lr_factor: 10
-  early_stopping:
-    patience: 15
+    overlap_pixels: 3
 
 prediction_requests:
   partitioners:
@@ -137,6 +98,6 @@ prediction_requests:
       name: combine_geotiff
 
 transpiler_context:
-  downsample_factor: 4
+  downsample_factor: 1
   checkpoint_monitor: val_accuracy
   checkpoint_mode: max
