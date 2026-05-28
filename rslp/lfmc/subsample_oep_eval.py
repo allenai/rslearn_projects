@@ -1,4 +1,4 @@
-"""Tag a spatially-balanced subset of LFMC windows with the oep_eval tag.
+"""Tag a spatially-balanced subset of LFMC windows with a configurable tag.
 
 For train: selects ~1000 windows distributed evenly across US states, operating
 at the location level. Each selected location contributes at most 1 year of
@@ -6,7 +6,7 @@ samples (the densest 365-day window), maximizing geographic coverage.
 For val/test: tags ALL windows.
 
 Usage:
-    python subsample_oep_eval.py --dataset_path /path/to/dataset --target_train 1000 --seed 42
+    python subsample_oep_eval.py --dataset_path /path/to/dataset --tag oep_eval --target_train 1000 --seed 42
 """
 
 import argparse
@@ -220,8 +220,8 @@ def select_locations_balanced(
     return selected
 
 
-def tag_windows(windows: list[dict]) -> int:
-    """Add oep_eval tag to the given windows' metadata.json files."""
+def tag_windows(windows: list[dict], tag: str) -> int:
+    """Add the given tag to the windows' metadata.json files."""
     tagged = 0
     for i, w in enumerate(windows):
         if i % 2000 == 0 and i > 0:
@@ -229,8 +229,8 @@ def tag_windows(windows: list[dict]) -> int:
         meta_path = os.path.join(w["_dir"], "metadata.json")
         with open(meta_path) as f:
             meta = json.load(f)
-        if "oep_eval" not in meta.get("options", {}):
-            meta.setdefault("options", {})["oep_eval"] = ""
+        if tag not in meta.get("options", {}):
+            meta.setdefault("options", {})[tag] = ""
             with open(meta_path, "w") as f:
                 json.dump(meta, f)
             tagged += 1
@@ -340,9 +340,10 @@ def subsample_split(
 
 
 def main() -> None:
-    """Tag a spatially-balanced oep_eval subset for LFMC datasets."""
-    parser = argparse.ArgumentParser(description="Tag oep_eval subset for LFMC")
+    """Tag a spatially-balanced subset for LFMC datasets."""
+    parser = argparse.ArgumentParser(description="Tag a subset for LFMC")
     parser.add_argument("--dataset_path", type=str, required=True)
+    parser.add_argument("--tag", type=str, default="oep_eval", help="Tag name to apply")
     parser.add_argument("--target_train", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -423,16 +424,16 @@ def main() -> None:
         return
 
     # Tag windows
-    print("\nTagging selected train samples...")
-    train_tagged = tag_windows(selected_train)
+    print(f"\nTagging selected train samples with '{args.tag}'...")
+    train_tagged = tag_windows(selected_train, args.tag)
     print(f"  Tagged {train_tagged} train samples")
 
-    print("Tagging selected val samples...")
-    val_tagged = tag_windows(selected_val)
+    print(f"Tagging selected val samples with '{args.tag}'...")
+    val_tagged = tag_windows(selected_val, args.tag)
     print(f"  Tagged {val_tagged} val samples")
 
-    print("Tagging selected test samples...")
-    test_tagged = tag_windows(selected_test)
+    print(f"Tagging selected test samples with '{args.tag}'...")
+    test_tagged = tag_windows(selected_test, args.tag)
     print(f"  Tagged {test_tagged} test samples")
 
     # Write manifest
@@ -441,13 +442,14 @@ def main() -> None:
         "val": [w["_name"] for w in selected_val],
         "test": [w["_name"] for w in selected_test],
     }
-    manifest_path = os.path.join(args.dataset_path, "oep_eval_manifest.json")
+    manifest_path = os.path.join(args.dataset_path, f"{args.tag}_manifest.json")
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     print(f"\nWrote manifest to {manifest_path}")
 
     # Write stats
     stats = {
+        "tag": args.tag,
         "seed": args.seed,
         "one_year_cap_days": 365,
         "val_max_samples_threshold": VAL_MAX_SAMPLES,
@@ -462,7 +464,7 @@ def main() -> None:
         "val": val_stats,
         "test": test_stats,
     }
-    stats_path = os.path.join(args.dataset_path, "oep_eval_stats.json")
+    stats_path = os.path.join(args.dataset_path, f"{args.tag}_stats.json")
     with open(stats_path, "w") as f:
         json.dump(stats, f, indent=2)
     print(f"Wrote stats to {stats_path}")

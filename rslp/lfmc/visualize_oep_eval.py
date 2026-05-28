@@ -1,16 +1,17 @@
-"""Visualize oep_eval subsampled locations vs all original locations on a US map.
+"""Visualize tagged subsampled locations vs all original locations on a US map.
 
 Produces a 2x2 figure:
   - Row 1: Woody dataset
   - Row 2: Herbaceous dataset
   - Left column: all original locations
-  - Right column: oep_eval-tagged subset only
+  - Right column: tagged subset only
 Points are colored by split (train=blue, val=orange, test=green).
 
 Usage:
     python visualize_oep_eval.py \
         --woody_path /path/to/woody/dataset \
         --herbaceous_path /path/to/herbaceous/dataset \
+        --tag oep_eval \
         --output oep_eval_map.png
 """
 
@@ -63,8 +64,10 @@ def load_locations(dataset_path: str) -> dict[str, list[tuple[float, float]]]:
     return dict(locations)
 
 
-def load_tagged_locations(dataset_path: str) -> dict[str, list[tuple[float, float]]]:
-    """Load unique locations that have the oep_eval tag, per split."""
+def load_tagged_locations(
+    dataset_path: str, tag: str
+) -> dict[str, list[tuple[float, float]]]:
+    """Load unique locations that have the given tag, per split."""
     windows_dir = os.path.join(dataset_path, "windows", "spatial_split")
     seen: dict[str, set[tuple]] = defaultdict(set)
     locations: dict[str, list[tuple[float, float]]] = defaultdict(list)
@@ -76,7 +79,7 @@ def load_tagged_locations(dataset_path: str) -> dict[str, list[tuple[float, floa
         with open(meta_path) as f:
             meta = json.load(f)
 
-        if "oep_eval" not in meta.get("options", {}):
+        if tag not in meta.get("options", {}):
             continue
 
         split = meta.get("options", {}).get("split", "unknown")
@@ -135,10 +138,13 @@ def plot_locations_on_ax(
 
 
 def main() -> None:
-    """Visualize oep_eval subsampled vs original locations on a US map."""
-    parser = argparse.ArgumentParser(description="Visualize oep_eval locations")
+    """Visualize tagged subsampled vs original locations on a US map."""
+    parser = argparse.ArgumentParser(description="Visualize tagged locations")
     parser.add_argument("--woody_path", type=str, required=True)
     parser.add_argument("--herbaceous_path", type=str, required=True)
+    parser.add_argument(
+        "--tag", type=str, default="oep_eval", help="Tag name to filter on"
+    )
     parser.add_argument("--states_shp", type=str, default=US_STATES_SHP)
     parser.add_argument("--output", type=str, default="oep_eval_map.png")
     args = parser.parse_args()
@@ -150,21 +156,21 @@ def main() -> None:
 
     print("Loading woody locations...")
     woody_all = load_locations(args.woody_path)
-    woody_tagged = load_tagged_locations(args.woody_path)
+    woody_tagged = load_tagged_locations(args.woody_path, args.tag)
 
     print("Loading herbaceous locations...")
     herb_all = load_locations(args.herbaceous_path)
-    herb_tagged = load_tagged_locations(args.herbaceous_path)
+    herb_tagged = load_tagged_locations(args.herbaceous_path, args.tag)
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
 
     plot_locations_on_ax(axes[0, 0], woody_all, states_gdf, "Woody — All Locations")
     plot_locations_on_ax(
-        axes[0, 1], woody_tagged, states_gdf, "Woody — oep_eval Subset"
+        axes[0, 1], woody_tagged, states_gdf, f"Woody — {args.tag} Subset"
     )
     plot_locations_on_ax(axes[1, 0], herb_all, states_gdf, "Herbaceous — All Locations")
     plot_locations_on_ax(
-        axes[1, 1], herb_tagged, states_gdf, "Herbaceous — oep_eval Subset"
+        axes[1, 1], herb_tagged, states_gdf, f"Herbaceous — {args.tag} Subset"
     )
 
     plt.tight_layout()
