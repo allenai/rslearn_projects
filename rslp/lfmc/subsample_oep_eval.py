@@ -1,4 +1,8 @@
-"""Tag a spatially-balanced subset of LFMC windows with a configurable tag.
+"""Tag a spatially-balanced subset of LFMC windows with the oep_eval tag.
+
+WARNING: This script is intended to be run exactly once per dataset. It will
+refuse to run if a manifest file (oep_eval_manifest.json) from a previous run
+is found.
 
 For train: selects ~1000 windows distributed evenly across US states, operating
 at the location level. Each selected location contributes at most 1 year of
@@ -234,8 +238,6 @@ def tag_windows(windows: list[dict], tag: str) -> int:
             with open(meta_path, "w") as f:
                 json.dump(meta, f)
             tagged += 1
-        else:
-            tagged += 1
     return tagged
 
 
@@ -357,6 +359,14 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    manifest_path = os.path.join(args.dataset_path, "oep_eval_manifest.json")
+    if os.path.exists(manifest_path):
+        raise RuntimeError(
+            f"Manifest file already exists at {manifest_path}. "
+            "This script is intended to be run exactly once per dataset. "
+            "Remove the manifest file manually if you need to re-run."
+        )
+
     print(f"Loading windows from {args.dataset_path}...")
     all_windows = load_windows(args.dataset_path)
     print(f"  Total windows: {len(all_windows)}")
@@ -442,7 +452,7 @@ def main() -> None:
         "val": [w["_name"] for w in selected_val],
         "test": [w["_name"] for w in selected_test],
     }
-    manifest_path = os.path.join(args.dataset_path, f"{args.tag}_manifest.json")
+    manifest_path = os.path.join(args.dataset_path, "oep_eval_manifest.json")
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=2)
     print(f"\nWrote manifest to {manifest_path}")
