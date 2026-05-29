@@ -2,7 +2,8 @@
 
 This script takes a v2 annotation JSON and creates an rslearn dataset with:
 - sentinel2_quarterly: WindowLayerData with quarterly mosaics (90-day periods)
-- sentinel2_frequent_0..7: WindowLayerData with 4 scenes each (different temporal options)
+- sentinel2_frequent_0..7: WindowLayerData with 4 acquisitions each (different temporal
+  options); same-overpass tiles are mosaicked into one item group per acquisition
 - label_binary, label_src, label_dst: Pre-rasterized point labels
 
 The time range for each window is derived from the post_change timestamp of its
@@ -48,7 +49,12 @@ COLLECTION = "sentinel-2-l2a"
 CLOUD_COVER_THRESHOLD = 50
 
 NUM_FREQUENT_OPTIONS = 8
-NUM_FREQUENT_SCENES = 4
+NUM_FREQUENT_GROUPS = 4
+
+# Scenes whose timestamps fall within this tolerance are treated as a single
+# acquisition (e.g. adjacent Sentinel-2 tiles from the same overpass that each only
+# cover part of the window) and mosaicked into one item group.
+FREQUENT_TS_TOLERANCE = timedelta(hours=1)
 
 LABEL_BAND = "label"
 RASTER_FORMAT = GeotiffRasterFormat()
@@ -220,17 +226,36 @@ def _build_quarterly_layer_data(
     )
 
 
-def _pick_n_most_recent_before(
-    items: list[dict[str, Any]], cutoff: datetime, n: int
-) -> list[dict[str, Any]]:
-    """Pick n most recent scenes before cutoff (items assumed sorted desc by date)."""
-    result = []
+def _group_scenes_before(
+    items: list[dict[str, Any]], cutoff: datetime, n_groups: int
+) -> list[list[dict[str, Any]]]:
+    """Pick the n_groups most recent acquisitions before cutoff.
+
+    Scenes whose timestamps fall within FREQUENT_TS_TOLERANCE of each other are
+    treated as a single acquisition and grouped together, so adjacent same-overpass
+    tiles get mosaicked into one item group (one frame covering the window) instead
+    of becoming separate partial-coverage frames. Items are assumed sorted desc by
+    date, so same-overpass scenes are contiguous and we can stop once we have
+    n_groups distinct acquisitions.
+
+    Returns a list of item groups, each a list of same-acquisition scenes.
+    """
+    groups: list[dict[str, Any]] = []  # each: {"anchor": datetime, "items": [...]}
     for item in items:
-        if item["collected_at"] <= cutoff:
-            result.append(item)
-            if len(result) >= n:
-                break
-    return result
+        if item["collected_at"] > cutoff:
+            continue
+        ts = item["collected_at"]
+        match = next(
+            (g for g in groups if abs(g["anchor"] - ts) <= FREQUENT_TS_TOLERANCE),
+            None,
+        )
+        if match is not None:
+            match["items"].append(item)
+        elif len(groups) < n_groups:
+            groups.append({"anchor": ts, "items": [item]})
+        else:
+            break
+    return [g["items"] for g in groups]
 
 
 def _build_frequent_layer_data(
@@ -238,13 +263,20 @@ def _build_frequent_layer_data(
     option_cutoff: datetime,
     layer_name: str,
 ) -> WindowLayerData | None:
-    """Build WindowLayerData for one frequent option (4 scenes before cutoff)."""
-    scenes = _pick_n_most_recent_before(items, option_cutoff, NUM_FREQUENT_SCENES)
-    if len(scenes) < NUM_FREQUENT_SCENES:
+    """Build WindowLayerData for one frequent option.
+
+    Selects the NUM_FREQUENT_GROUPS most recent acquisitions before the cutoff; each
+    becomes one item group, with same-overpass tiles (within FREQUENT_TS_TOLERANCE)
+    mosaicked together so every frame covers the window.
+    """
+    groups = _group_scenes_before(items, option_cutoff, NUM_FREQUENT_GROUPS)
+    if len(groups) < NUM_FREQUENT_GROUPS:
         return None
 
-    serialized_groups = [[_item_to_serialized(s)] for s in scenes]
-    group_time_ranges = [(s["collected_at"], s["collected_at"]) for s in scenes]
+    serialized_groups = [[_item_to_serialized(s) for s in group] for group in groups]
+    group_time_ranges = [
+        (group[0]["collected_at"], group[0]["collected_at"]) for group in groups
+    ]
 
     return WindowLayerData(
         layer_name=layer_name,
