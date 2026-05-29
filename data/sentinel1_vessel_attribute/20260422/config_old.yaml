@@ -5,15 +5,16 @@ model:
       class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          - class_path: rslearn.models.swin.Swin
             init_args:
-              model_id: OLMOEARTH_V1_BASE
-              patch_size: 4
+              pretrained: true
+              input_channels: 2
+              output_layers: [7]
         decoders:
           length:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 768
+                in_channels: 1024
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -21,7 +22,7 @@ model:
           width:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 768
+                in_channels: 1024
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -29,7 +30,7 @@ model:
           speed:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 768
+                in_channels: 1024
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -37,7 +38,7 @@ model:
           heading_x:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 768
+                in_channels: 1024
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -45,7 +46,7 @@ model:
           heading_y:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 768
+                in_channels: 1024
                 out_channels: 1
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -53,7 +54,7 @@ model:
           ship_type:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
-                in_channels: 768
+                in_channels: 1024
                 out_channels: 9
                 num_conv_layers: 1
                 num_fc_layers: 2
@@ -72,12 +73,12 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/landsat_vessel_attribute/dataset_v1/20260330/
+    path: /weka/dfive-default/rslearn-eai/datasets/sentinel1_vessel_attribute/dataset_v1/20260330/
     inputs:
-      landsat:
+      image:
         data_type: "raster"
-        layers: ["landsat_allbands"]
-        bands: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
+        layers: ["sentinel1"]
+        bands: ["vv", "vh"]
         passthrough: true
         dtype: FLOAT32
       info:
@@ -87,8 +88,8 @@ data:
     task:
       class_path: rslp.vessel_attribute.train.VesselAttributeMultiTask
       init_args:
-        image_bands: [4, 3, 2]
-        remap_values: [[0.33, 0.71], [0, 255]]
+        image_bands: [0, 0, 0]
+        remap_values: [[0, 1], [0, 255]]
         length_buckets: [10, 20, 30, 50, 75, 100, 150, 200]
         width_buckets: [5, 10, 20]
         speed_buckets: [2, 4, 8]
@@ -147,30 +148,24 @@ data:
             info: "targets"
           ship_type:
             info: "targets"
-    batch_size: 8
+    batch_size: 32
     num_workers: 32
     default_config:
       transforms:
-        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+        - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
-            band_names:
-              landsat: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
-        - class_path: rslearn.train.transforms.concatenate.Concatenate
-          init_args:
-            selections:
-              landsat: []
-            output_selector: image
+            mean: 0
+            std: 250
     train_config:
       transforms:
-        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+        - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
-            band_names:
-              landsat: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
+            mean: 0
+            std: 250
         - class_path: rslp.vessel_attribute.train.VesselAttributeFlip
-          init_args:
-            image_keys: ["landsat"]
       tags:
         split: "train"
+      groups: ["default"]
     val_config:
       tags:
         split: "val"
@@ -193,11 +188,6 @@ trainer:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
         output_layer: output
-    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
-      init_args:
-        module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 5
-        unfreeze_lr_factor: 10
-project_name: 2026_04_22_landsat_vessel_attribute
-run_name: olmoearth_base_freeze_newdata_01
+project_name: 2026_04_22_sentinel1_vessel_attribute
+run_name: swinb_olddata_02
 management_dir: ${RSLP_PREFIX}/projects

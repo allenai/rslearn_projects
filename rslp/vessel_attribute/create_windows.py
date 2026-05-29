@@ -26,7 +26,11 @@ WINDOW_SIZE = 128
 DATASET_CONFIG_FNAME = "data/{modality}_vessel_attribute/config.json"
 
 
-def process_row(group: str, dataset: Dataset, csv_row: dict[str, str]) -> None:
+def process_row(
+    group: str,
+    dataset: Dataset,
+    csv_row: dict[str, str],
+) -> None:
     """Create a window from one row in the vessel CSV.
 
     Args:
@@ -79,8 +83,23 @@ def process_row(group: str, dataset: Dataset, csv_row: dict[str, str]) -> None:
     time_range = (ts - timedelta(hours=1), ts + timedelta(hours=1))
 
     # Check if train or val.
-    is_val = hashlib.sha256(event_id.encode()).hexdigest()[0] in ["0", "1"]
-    split = "val" if is_val else "train"
+    # We split by scene_id (the event_id without the trailing "_N" index) so that
+    # all vessels in the same satellite scene end up in the same split, and by
+    # mmsi so that the same vessel never appears in both train and val. Windows
+    # where the scene_id and mmsi hashes disagree are marked "unused" to maximize
+    # isolation of the validation set.
+    scene_id = event_id.rsplit("_", 1)[0]
+    mmsi = csv_row["mmsi"]
+    scene_hash_char = hashlib.sha256(scene_id.encode()).hexdigest()[0]
+    mmsi_hash_char = hashlib.sha256(mmsi.encode()).hexdigest()[0]
+    val_chars = set("0123")
+    train_chars = set("456789abcdef")
+    if scene_hash_char in train_chars and mmsi_hash_char in train_chars:
+        split = "train"
+    elif scene_hash_char in val_chars and mmsi_hash_char in val_chars:
+        split = "val"
+    else:
+        split = "unused"
 
     # Create the window.
     window = Window(
@@ -102,6 +121,7 @@ def process_row(group: str, dataset: Dataset, csv_row: dict[str, str]) -> None:
         json.dump(
             {
                 "event_id": event_id,
+                "mmsi": mmsi,
                 "length": vessel_length,
                 "width": vessel_width,
                 "cog": vessel_cog,
@@ -119,6 +139,7 @@ def process_row(group: str, dataset: Dataset, csv_row: dict[str, str]) -> None:
     info_dir.mkdir(parents=True, exist_ok=True)
     properties: dict[str, Any] = {
         "event_id": event_id,
+        "mmsi": mmsi,
     }
     # Extreme lengths/widths are probably incorrect.
     if vessel_length and vessel_length >= 5 and vessel_length < 460:

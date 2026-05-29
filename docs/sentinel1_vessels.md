@@ -16,8 +16,8 @@ First, download the model checkpoints to the `RSLP_PREFIX` directory.
     mkdir -p project_data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/best.ckpt -O project_data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/best.ckpt
 
-    mkdir -p project_data/projects/sentinel1_vessel_attribute/data_20260330_swinb_01/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel1_vessel_attribute/data_20260330_swinb_01/best.ckpt -O project_data/projects/sentinel1_vessel_attribute/data_20260330_swinb_01/best.ckpt
+    mkdir -p project_data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/best.ckpt -O project_data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in
 `rslp/sentinel1_vessels/predict_pipeline.py`. It accepts a Sentinel-1 scene ID and

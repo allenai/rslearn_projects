@@ -27,8 +27,8 @@ First, download the detector, classifier, and attribute model checkpoints to the
     mkdir -p project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt -O project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt
 
-    mkdir -p project_data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/best.ckpt -O project_data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/best.ckpt
+    mkdir -p project_data/projects/2026_04_22_landsat_vessel_attribute/olmoearth_base_freeze_newdata_01/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_04_22_landsat_vessel_attribute/olmoearth_base_freeze_newdata_01/best.ckpt -O project_data/projects/2026_04_22_landsat_vessel_attribute/olmoearth_base_freeze_newdata_01/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in `rslp/landsat_vessels/predict_pipeline.py`. You can download the Landsat scene files, e.g. from USGS EarthExplorer or AWS, and then create a configuration file for the prediction pipeline, here is an example:
 
