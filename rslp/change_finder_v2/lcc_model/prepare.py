@@ -52,6 +52,7 @@ NUM_FREQUENT_SCENES = 4
 
 LABEL_BAND = "label"
 RASTER_FORMAT = GeotiffRasterFormat()
+WINDOW_SIZE = 128
 
 BIN_NODATA = 0
 BIN_NO_CHANGE = 1
@@ -379,7 +380,6 @@ def _process_entry(
     dataset = Dataset(UPath(ds_path))
 
     projection = Projection.deserialize(entry["projection"])
-    bounds = tuple(entry["bounds"])
     window_name = entry["window_name"]
     window_group = entry["group"]
 
@@ -395,6 +395,23 @@ def _process_entry(
 
     if ref_point is None:
         raise ValueError("No positive point with date annotations in entry")
+
+    # Center 128x128 window on the first positive point.
+    st = STGeometry(
+        WGS84_PROJECTION,
+        shapely.Point(ref_point["lon"], ref_point["lat"]),
+        time_range=None,
+    )
+    projected = st.to_projection(projection)
+    center_col = math.floor(projected.shp.x)
+    center_row = math.floor(projected.shp.y)
+    half = WINDOW_SIZE // 2
+    bounds = (
+        center_col - half,
+        center_row - half,
+        center_col + half,
+        center_row + half,
+    )
 
     post_change = _parse_date(ref_point["post_change"])
     first_noticeable = _parse_date(ref_point["first_date_change_noticeable"])
@@ -439,8 +456,13 @@ def _process_entry(
         all_items.extend(chunk_items)
         chunk_start = chunk_end
 
+    # For the frequent images, we only uses scenes that are not cloudy, except we also
+    # always count the scene that's at the first_noticeable timestamp.
     low_cloud_items = [
-        item for item in all_items if item["cloud_cover"] < CLOUD_COVER_THRESHOLD
+        item
+        for item in all_items
+        if item["cloud_cover"] < CLOUD_COVER_THRESHOLD
+        or abs((item["collected_at"] - first_noticeable).total_seconds()) < 86400
     ]
     low_cloud_items.sort(key=lambda x: x["collected_at"], reverse=True)
 

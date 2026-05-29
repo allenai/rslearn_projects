@@ -74,7 +74,11 @@ class FrequentOptionSampler(Transform):
 
         # Pick an option
         if self.deterministic:
-            opt_idx = 0
+            # Use 2 so that it's a random timestep (if we use 0 then it is the option
+            # based on the annotated first-noticeable timestamp, which would only test
+            # the hardest cases where we want to detect change immediately after it
+            # happens).
+            opt_idx = 2
         else:
             opt_idx = random.randrange(len(frequent_options))
         chosen_frequent = frequent_options[opt_idx]

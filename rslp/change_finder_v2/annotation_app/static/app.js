@@ -21,6 +21,7 @@
   const btnPtNext = document.getElementById("btn-pt-next");
   const pointInfo = document.getElementById("point-info");
   const coordText = document.getElementById("coord-text");
+  const pointCoordText = document.getElementById("point-coord-text");
   const windowInfo = document.getElementById("window-info");
   const yearSelector = document.getElementById("year-selector");
   const sentinelGrid = document.getElementById("sentinel-grid");
@@ -81,6 +82,20 @@
       btnPtPrev.disabled = selectedPointIdx <= 0;
       btnPtNext.disabled = selectedPointIdx >= n - 1;
     }
+  }
+
+  function updatePointCoord() {
+    if (!currentEntry) {
+      pointCoordText.textContent = "\u2014";
+      return;
+    }
+    var pts = currentEntry.entry.positive_points || [];
+    if (pts.length === 0 || selectedPointIdx >= pts.length) {
+      pointCoordText.textContent = "\u2014";
+      return;
+    }
+    var pt = pts[selectedPointIdx];
+    pointCoordText.textContent = pt.lat.toFixed(4) + ", " + pt.lon.toFixed(4);
   }
 
   function updateOverlayButton() {
@@ -232,6 +247,7 @@
 
     setNavButtons();
     setPointButtons();
+    updatePointCoord();
     updateHash();
     renderYearButtons();
     renderSentinel();
@@ -288,6 +304,7 @@
     selectedPointIdx = next;
     overlayVersion++;
     setPointButtons();
+    updatePointCoord();
     renderAnnotation();
     if (showOverlay) renderSentinel();
   }
