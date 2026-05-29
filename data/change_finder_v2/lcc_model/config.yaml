@@ -7,7 +7,7 @@ model:
         encoder:
           class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
           init_args:
-            model_id: OLMOEARTH_V1_BASE
+            model_id: OLMOEARTH_V1_1_BASE
             patch_size: 4
         num_classes_binary: 3
         num_classes_src: 13
