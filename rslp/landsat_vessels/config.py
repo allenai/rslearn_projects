@@ -18,6 +18,10 @@ with open(LOCAL_FILES_DATASET_CONFIG) as f:
 LANDSAT_BANDS = [
     band["bands"][0] for band in json_data["layers"][LANDSAT_LAYER_NAME]["band_sets"]
 ]
+# Full band stack required by the attribute model (landsat_allbands layer).
+LANDSAT_ALLBANDS = json_data["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["band_sets"][0][
+    "bands"
+]
 
 # Model config
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config_detector.yaml"
