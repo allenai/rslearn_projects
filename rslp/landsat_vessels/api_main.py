@@ -12,11 +12,12 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
-from rslp.landsat_vessels.predict_pipeline import FormattedPrediction, predict_pipeline
+from rslp.landsat_vessels.predict_pipeline import predict_pipeline
 from rslp.landsat_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.log_utils import get_logger
 from rslp.utils.mp import init_mp
 from rslp.utils.prometheus import setup_prom_metrics
+from rslp.vessels import VesselDetectionDict
 
 # Load environment variables from the .env file
 load_dotenv(override=True)
@@ -75,7 +76,7 @@ class LandsatResponse(BaseModel):
     """
 
     status: StatusEnum
-    predictions: list[FormattedPrediction]
+    predictions: list[VesselDetectionDict]
     error_message: str | None = None
 
 
@@ -182,7 +183,7 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
     try:
         logger.info("Processing request with input data.")
         with time_operation(TimerOperations.TotalInferenceTime):
-            json_data = predict_pipeline(
+            detections = predict_pipeline(
                 scene_id=info.scene_id,
                 scene_zip_path=info.scene_zip_path,
                 image_files=info.image_files,
@@ -192,7 +193,7 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             )
         return LandsatResponse(
             status=StatusEnum.SUCCESS,
-            predictions=json_data,
+            predictions=[d.to_dict() for d in detections],
             error_message=None,
         )
     except ValueError as e:

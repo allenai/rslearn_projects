@@ -19,7 +19,6 @@ from rslearn.utils.geometry import PixelBounds, Projection
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from rslearn.utils.vector_format import GeojsonVectorFormat
-from typing_extensions import TypedDict
 from upath import UPath
 
 from rslp.landsat_vessels.config import (
@@ -52,6 +51,12 @@ from rslp.utils.rslearn import (
 )
 from rslp.vessels import VesselAttributes, VesselDetection, VesselDetectionSource
 
+# Keys used in VesselDetection.crop_fnames for the two PNGs Landsat writes per
+# detection. "rgb" is the pan-sharpened true-color image built from B4/B3/B2 plus
+# B8 (panchromatic, 15m); "b8" is just the panchromatic band.
+LANDSAT_RGB_CROP_KEY = "rgb"
+LANDSAT_B8_CROP_KEY = "b8"
+
 logger = get_logger(__name__)
 
 NUM_DATA_LOADER_WORKERS = int(os.environ.get("RSLEARN_NUM_DATA_LOADER_WORKERS", 4))
@@ -74,16 +79,6 @@ class SceneData:
     # Optional Item -- if provided, we write the layer metadatas (items.json) in the
     # window to skip prepare step so that the correct item is always read.
     item: Item | None = None
-
-
-class FormattedPrediction(TypedDict):
-    """Formatted prediction for a single vessel detection."""
-
-    latitude: float
-    longitude: float
-    score: float
-    rgb_fname: str
-    b8_fname: str
 
 
 def get_vessel_detections(
@@ -563,7 +558,7 @@ def predict_pipeline(
     scratch_path: str | None = None,
     crop_path: str | None = None,
     geojson_path: str | None = None,
-) -> list[FormattedPrediction]:
+) -> list[VesselDetection]:
     """Run the Landsat vessel prediction pipeline.
 
     This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
@@ -614,12 +609,12 @@ def predict_pipeline(
         run_attribute_model(ds_path, detections=detections, scene_data=scene_data)
 
     with time_operation(TimerOperations.BuildPredictionsAndCrops):
-        json_data = _build_predictions_and_crops(detections, crop_path)
+        detections = _build_predictions_and_crops(detections, crop_path)
 
     if json_path:
         json_upath = UPath(json_path)
         with json_upath.open("w") as f:
-            json.dump(json_data, f)
+            json.dump([d.to_dict() for d in detections], f)
 
     if geojson_path:
         geojson_features = [d.to_feature() for d in detections]
@@ -634,57 +629,39 @@ def predict_pipeline(
                 f,
             )
 
-    return json_data
+    return detections
 
 
 def _build_predictions_and_crops(
     detections: list[VesselDetection], crop_path: str | None
-) -> list[FormattedPrediction]:
-    # Write JSON and crops.
+) -> list[VesselDetection]:
+    """Filter detections near infra and (optionally) write crop PNGs.
+
+    Crops are stored on each detection's ``crop_fnames`` dict so callers can
+    access them via the unified ``VesselDetectionDict`` shape. The two Landsat
+    visualizations live under ``LANDSAT_RGB_CROP_KEY`` and ``LANDSAT_B8_CROP_KEY``.
+    """
     if crop_path:
         crop_upath = UPath(crop_path)
         crop_upath.mkdir(parents=True, exist_ok=True)
 
-    json_data = []
+    kept: list[VesselDetection] = []
     near_infra_filter = NearInfraFilter(infra_distance_threshold=INFRA_THRESHOLD_KM)
-    infra_detections = 0
     for idx, detection in enumerate(detections):
-        # Apply near infra filter (True -> filter out, False -> keep)
         lon, lat = detection.get_lon_lat()
         if near_infra_filter.should_filter(lon, lat):
-            infra_detections += 1
             continue
 
         if crop_path:
-            crops = _write_detection_crop(detection, crop_upath, idx)
-            rgb_fname = crops.rgb_fname
-            b8_fname = crops.b8_fname
-        else:
-            rgb_fname, b8_fname = "", ""
+            _write_detection_crop(detection, crop_upath, idx)
 
-        json_data.append(
-            FormattedPrediction(
-                longitude=lon,
-                latitude=lat,
-                score=detection.score,
-                rgb_fname=str(rgb_fname),
-                b8_fname=str(b8_fname),
-            ),
-        )
-    return json_data
-
-
-@dataclass
-class DetectionCrop:
-    """Dataclass for return type from generating crops."""
-
-    rgb_fname: UPath
-    b8_fname: UPath
+        kept.append(detection)
+    return kept
 
 
 def _write_detection_crop(
     detection: VesselDetection, crop_upath: UPath, idx: int
-) -> DetectionCrop:
+) -> None:
     # Load crops from the window directory for writing output PNGs.
     # We create two PNGs:
     # - b8.png: just has B8 (panchromatic band).
@@ -737,4 +714,7 @@ def _write_detection_crop(
     with b8_fname.open("wb") as f:
         Image.fromarray(images["B8"]).save(f, format="PNG")
 
-    return DetectionCrop(rgb_fname=rgb_fname, b8_fname=b8_fname)
+    detection.crop_fnames = {
+        LANDSAT_RGB_CROP_KEY: rgb_fname,
+        LANDSAT_B8_CROP_KEY: b8_fname,
+    }
