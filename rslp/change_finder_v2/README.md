@@ -194,7 +194,7 @@ rslearn dataset add_windows \
     --group predict \
     --fname aoi.geojson \
     --src_crs EPSG:4326 \
-    --utm --resolution 10 --grid_size 128 \
+    --utm --resolution 10 --grid_size 2048 \
     --start 2025-06-01T00:00:00+00:00 \
     --end 2025-06-01T00:00:00+00:00
 ```
