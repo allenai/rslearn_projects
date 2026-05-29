@@ -35,17 +35,17 @@ The easiest way to apply the model is using the prediction pipeline in `rslp/lan
 ```json
 {
     "image_files": {
-    "B1": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B1.TIF",
-    "B2": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B2.TIF",
-    "B3": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B3.TIF",
-    "B4": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B4.TIF",
-    "B5": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B5.TIF",
-    "B6": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B6.TIF",
-    "B7": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B7.TIF",
-    "B8": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B8.TIF",
-    "B9": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B9.TIF",
-    "B10": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B10.TIF",
-    "B11": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B11.TIF"
+        "B1": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B1.TIF",
+        "B2": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B2.TIF",
+        "B3": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B3.TIF",
+        "B4": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B4.TIF",
+        "B5": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B5.TIF",
+        "B6": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B6.TIF",
+        "B7": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B7.TIF",
+        "B8": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B8.TIF",
+        "B9": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B9.TIF",
+        "B10": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B10.TIF",
+        "B11": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B11.TIF"
     },
     "scratch_path": "/home/data/scratch/",
     "geojson_path": "/home/data/vessels.geojson",
