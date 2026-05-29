@@ -12,13 +12,11 @@ LANDSAT_RESOLUTION = 15
 LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
 AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
 
-# Extract Landsat bands from local config file
+# All Landsat bands required by the prediction pipeline. The detector and classifier
+# only use a subset, but the attribute model reads the full band stack via the
+# landsat_allbands layer, so every band must be provided.
 with open(LOCAL_FILES_DATASET_CONFIG) as f:
     json_data = json.load(f)
-LANDSAT_BANDS = [
-    band["bands"][0] for band in json_data["layers"][LANDSAT_LAYER_NAME]["band_sets"]
-]
-# Full band stack required by the attribute model (landsat_allbands layer).
 LANDSAT_ALLBANDS = json_data["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["band_sets"][0][
     "bands"
 ]
