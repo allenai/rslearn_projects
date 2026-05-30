@@ -1,4 +1,4 @@
-config_version: "0.8.1"
+config_version: 0.3.0
 
 data:
   temporality:
@@ -7,7 +7,7 @@ data:
       name: repeating_interval
       period_duration_days: 15
       num_periods: 4
-    lookbehind_offset_days: 305
+    lookbehind_offset_days: 365
     lookahead_observation:
       name: repeating_interval
       period_duration_days: 15
@@ -17,7 +17,7 @@ data:
   modalities:
     sentinel2_l2a:
       space_mode: mosaic
-    sentinel1_rtc:
+    sentinel1:
       space_mode: mosaic
 
   output:
@@ -28,10 +28,10 @@ data:
         allowed_values:
           - value: 0
             label: no_landslide
-            color: [124, 67, 18, 255]
+            color: [124, 67, 18]
           - value: 1
             label: landslide
-            color: [169, 214, 146, 255]
+            color: [169, 214, 146]
         nodata_value: 2
 
 model:
@@ -46,16 +46,16 @@ model:
     segment:
       name: manual
       decoder_layers:
-        - class_path: rslearn.models.unet.UNetDecoder
-          init_args:
-            in_channels: [[4, 768]]
-            out_channels: 2
-            conv_layers_per_resolution: 2
-            num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
-        - class_path: rslearn.train.tasks.segmentation.SegmentationHead
-          init_args:
-            weights: [0.05, 0.95]
-            dice_loss: true
+          - class_path: rslearn.models.unet.UNetDecoder
+            init_args:
+              in_channels: [[4, 768]]
+              out_channels: 2
+              conv_layers_per_resolution: 2
+              num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+            init_args:
+                weights: [0.05, 0.95]
+                dice_loss: true
       task:
         class_path: rslearn.train.tasks.segmentation.SegmentationTask
         init_args:
@@ -67,9 +67,6 @@ input_preprocessing:
   default:
     input_size: 32
     input_mode: all_tiles
-    transforms:
-      - name: sentinel1_to_decibels
-      - name: olmoearth_normalize
   predict:
     overlap_pixels: 3
 
@@ -96,8 +93,3 @@ prediction_requests:
       name: combine_geotiff
     request:
       name: combine_geotiff
-
-transpiler_context:
-  downsample_factor: 1
-  checkpoint_monitor: val_accuracy
-  checkpoint_mode: max
