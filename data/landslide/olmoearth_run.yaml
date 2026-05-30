@@ -1,4 +1,4 @@
-config_version: 0.3.0
+config_version: 0.8.1
 
 data:
   temporality:
@@ -7,7 +7,7 @@ data:
       name: repeating_interval
       period_duration_days: 15
       num_periods: 4
-    lookbehind_offset_days: 365
+    lookbehind_offset_days: 305
     lookahead_observation:
       name: repeating_interval
       period_duration_days: 15
@@ -16,8 +16,6 @@ data:
 
   modalities:
     sentinel2_l2a:
-      space_mode: mosaic
-    sentinel1:
       space_mode: mosaic
 
   output:
@@ -68,7 +66,7 @@ input_preprocessing:
     input_size: 32
     input_mode: all_tiles
   predict:
-    overlap_pixels: 3
+    overlap_pixels: 8
 
 prediction_requests:
   partitioners:
