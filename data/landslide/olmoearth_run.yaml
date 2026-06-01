@@ -71,7 +71,7 @@ input_preprocessing:
     input_size: 32
     input_mode: all_tiles
   predict:
-    overlap_pixels: 3
+    overlap_pixels: 4
 
 prediction_requests:
   partitioners:
