@@ -63,6 +63,9 @@ model:
           enable_miou_metric: true
           nodata_value: 2
 
+transpiler_context:
+  downsample_factor: 4
+
 input_preprocessing:
   default:
     input_size: 32
