@@ -4,9 +4,10 @@ Architecture:
 - Input: sentinel2_l2a with 20 timesteps (produced by FrequentOptionSampler)
 - Split into pass1 (first 10) and pass2 (last 10)
 - Shared OlmoEarth encoder processes each pass separately
-- Features concatenated along channel dim → 1536ch at 1/4 res
-- Per-task convolutional decoder: 1536→768 1x1, 768→512 3x3, upsample 2x,
-  512→256 3x3, upsample 2x, 256→128 3x3, 128→logits 1x1 (full res)
+- Features concatenated along channel dim → (2*embedding_dim)ch at 1/patch_size res
+- Per-task convolutional decoder defined by configurable stages: each stage is a
+  list of (out_channels, kernel_size) convs, with a 2x upsample inserted before
+  every stage after the first and a 1x1 head producing the per-task logits.
 """
 
 from __future__ import annotations
@@ -27,25 +28,36 @@ from rslearn.train.model_context import (
 INPUT_KEY = "sentinel2_l2a"
 NUM_PASS1 = 10
 
+# A stage is a list of (out_channels, kernel_size) conv specs.
+StageSpec = list[tuple[int, int]]
 
-def _make_decoder(concat_dim: int, num_classes: int) -> nn.Sequential:
-    """Build a per-task convolutional decoder.
 
-    Takes (B, concat_dim, H/4, W/4) and produces (B, num_classes, H, W).
+def _make_decoder(
+    in_dim: int, stages: list[StageSpec], num_classes: int
+) -> nn.Sequential:
+    """Build a per-task convolutional decoder from explicit stage specs.
+
+    Each stage is a list of (out_channels, kernel_size) convs (each followed by
+    ReLU). A 2x bilinear upsample precedes every stage after the first, so the
+    output is at 2^(len(stages)-1) times the input resolution. A final 1x1 conv
+    produces num_classes channels.
+
+    Takes (B, in_dim, H, W) and produces (B, num_classes, H*2^(n-1), W*2^(n-1))
+    where n = len(stages).
     """
-    return nn.Sequential(
-        nn.Conv2d(concat_dim, 768, kernel_size=1),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(768, 512, kernel_size=3, padding=1),
-        nn.ReLU(inplace=True),
-        nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
-        nn.Conv2d(512, 256, kernel_size=3, padding=1),
-        nn.ReLU(inplace=True),
-        nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
-        nn.Conv2d(256, 128, kernel_size=3, padding=1),
-        nn.ReLU(inplace=True),
-        nn.Conv2d(128, num_classes, kernel_size=1),
-    )
+    layers: list[nn.Module] = []
+    prev = in_dim
+    for i, stage in enumerate(stages):
+        if i > 0:
+            layers.append(
+                nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+            )
+        for out_ch, k in stage:
+            layers.append(nn.Conv2d(prev, out_ch, kernel_size=k, padding=k // 2))
+            layers.append(nn.ReLU(inplace=True))
+            prev = out_ch
+    layers.append(nn.Conv2d(prev, num_classes, kernel_size=1))
+    return nn.Sequential(*layers)
 
 
 class DualPassChangeModel(nn.Module):
@@ -54,7 +66,11 @@ class DualPassChangeModel(nn.Module):
     The model expects ``sentinel2_l2a`` with 20 timesteps. It splits into
     pass1 (first 10) and pass2 (last 10), runs the shared OlmoEarth encoder
     on each, concatenates features, then runs per-task conv decoders that
-    upsample from 1/4 to full resolution.
+    upsample the 1/patch_size features back to full resolution. The decoder
+    shape (channels, conv layers, and number of upsamples) is set by
+    ``decoder_stages`` and must be configured to match the encoder: the number
+    of upsamples (``len(decoder_stages) - 1``) should equal ``log2(patch_size)``
+    and ``embedding_dim`` should match the encoder's embedding size.
     """
 
     def __init__(
@@ -65,19 +81,42 @@ class DualPassChangeModel(nn.Module):
         num_classes_dst: int = 13,
         num_timestamps: int = 20,
         embedding_dim: int = 768,
+        decoder_stages: list[StageSpec] | None = None,
     ):
-        """Initialize the LCC multi-task model."""
+        """Initialize the LCC multi-task model.
+
+        Args:
+            encoder: the shared OlmoEarth encoder.
+            num_classes_binary: number of classes for the binary change task.
+            num_classes_src: number of source land cover classes.
+            num_classes_dst: number of destination land cover classes.
+            num_timestamps: number of timestamp outputs.
+            embedding_dim: per-pass encoder embedding size. The decoder input is
+                ``2 * embedding_dim`` (the two passes concatenated). Must match the
+                encoder (e.g. 768 for BASE, 192 for TINY, 128 for NANO).
+            decoder_stages: per-task decoder definition (see ``_make_decoder``). The
+                number of 2x upsamples is ``len(decoder_stages) - 1`` and must equal
+                ``log2(encoder.patch_size)`` so outputs are full resolution. Required;
+                must be specified in the model config.
+        """
         super().__init__()
         self.encoder = encoder
         self.embedding_dim = embedding_dim
         self.num_timestamps = num_timestamps
 
+        if decoder_stages is None:
+            raise ValueError("decoder_stages must be specified")
+
         concat_dim = embedding_dim * 2
 
-        self.decoder_binary = _make_decoder(concat_dim, num_classes_binary)
-        self.decoder_src = _make_decoder(concat_dim, num_classes_src)
-        self.decoder_dst = _make_decoder(concat_dim, num_classes_dst)
-        self.decoder_timestamps = _make_decoder(concat_dim, num_timestamps)
+        self.decoder_binary = _make_decoder(
+            concat_dim, decoder_stages, num_classes_binary
+        )
+        self.decoder_src = _make_decoder(concat_dim, decoder_stages, num_classes_src)
+        self.decoder_dst = _make_decoder(concat_dim, decoder_stages, num_classes_dst)
+        self.decoder_timestamps = _make_decoder(
+            concat_dim, decoder_stages, num_timestamps
+        )
 
         self.num_classes_binary = num_classes_binary
         self.num_classes_src = num_classes_src

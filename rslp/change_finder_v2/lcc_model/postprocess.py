@@ -306,16 +306,21 @@ def _process_window_star(kwargs: dict) -> list[dict]:
     return process_window(**kwargs)
 
 
-def create_geojson(
+def collect_features(
     dataset_path: str,
-    output: str,
     threshold: int = 128,
     min_pixels: int = 10,
     workers: int = 32,
-) -> None:
-    """Scan all predict windows and write a GeoJSON FeatureCollection."""
+) -> list[dict]:
+    """Scan all predict windows and return GeoJSON feature dicts (WGS84).
+
+    Returns an empty list if the predict group has no windows.
+    """
     ds_root = UPath(dataset_path)
     predict_dir = ds_root / "windows" / "predict"
+
+    if not predict_dir.exists():
+        return []
 
     kwargs_list = [
         dict(window_dir=window_dir, threshold=threshold, min_pixels=min_pixels)
@@ -340,6 +345,24 @@ def create_geojson(
         if pool is not None:
             pool.close()
             pool.join()
+
+    return all_features
+
+
+def create_geojson(
+    dataset_path: str,
+    output: str,
+    threshold: int = 128,
+    min_pixels: int = 10,
+    workers: int = 32,
+) -> None:
+    """Scan all predict windows and write a GeoJSON FeatureCollection."""
+    all_features = collect_features(
+        dataset_path=dataset_path,
+        threshold=threshold,
+        min_pixels=min_pixels,
+        workers=workers,
+    )
 
     geojson = {
         "type": "FeatureCollection",

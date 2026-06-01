@@ -7,16 +7,16 @@ model:
         encoder:
           class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
           init_args:
-            model_id: OLMOEARTH_V1_1_BASE
+            model_id: OLMOEARTH_V1_1_TINY
             patch_size: 4
         num_classes_binary: 3
         num_classes_src: 13
         num_classes_dst: 13
         num_timestamps: 20
-        embedding_dim: 768
+        embedding_dim: 192
         decoder_stages:
-          - [[768, 1], [512, 3]]
-          - [[256, 3]]
+          - [[192, 1], [192, 3]]
+          - [[128, 3]]
           - [[128, 3]]
     optimizer:
       class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
@@ -159,8 +159,7 @@ data:
                       class_path: torchmetrics.classification.MulticlassAUROC
                       init_args:
                         num_classes: 3
-                        average: null
-                    output_key: "cls_2"
+                        average: "macro"
           src:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
@@ -229,8 +228,8 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        monitor: val_binary/auroc
-        mode: max
+        monitor: val_loss
+        mode: min
 project_name: 2026_05_25_lcc
-run_name: olmoearth_base_dual_pass_10_base_ps4
+run_name: olmoearth_base_dual_pass_10_tiny_ps4
 management_dir: ${RSLP_PREFIX}/projects

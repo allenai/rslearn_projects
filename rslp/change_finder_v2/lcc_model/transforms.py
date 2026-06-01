@@ -83,12 +83,11 @@ class FrequentOptionSampler(Transform):
             opt_idx = random.randrange(len(frequent_options))
         chosen_frequent = frequent_options[opt_idx]
 
-        # Get the earliest frequent image timestamp to determine quarterly cutoff.
+        if not chosen_frequent.timestamps:
+            raise ValueError("Frequent option must have timestamps")
+
         # Quarterly images end where frequent images begin (matching prediction semantics).
-        if chosen_frequent.timestamps:
-            earliest_freq_ts = min(ts[0] for ts in chosen_frequent.timestamps)
-        else:
-            earliest_freq_ts = post_change
+        earliest_freq_ts = min(ts[0] for ts in chosen_frequent.timestamps)
 
         # Select quarterly images with end timestamp <= earliest frequent timestamp
         valid_indices = []
@@ -108,7 +107,7 @@ class FrequentOptionSampler(Transform):
         q_ts = [quarterly.timestamps[i] for i in valid_indices]
 
         combined_img = torch.cat([q_img, chosen_frequent.image], dim=1)
-        combined_ts = q_ts + (chosen_frequent.timestamps or [])
+        combined_ts = q_ts + chosen_frequent.timestamps
         input_dict[OUTPUT_KEY] = RasterImage(image=combined_img, timestamps=combined_ts)
 
         # Compute timestamp targets: for each of 20 images, 1 if in change period.
@@ -144,6 +143,15 @@ class FrequentOptionSampler(Transform):
             "classes": ts_classes_img,
             "valid": ts_valid,
         }
+
+        # Mask dst loss when the latest frequent image is before post_change,
+        # since the model can't predict destination land cover without post-change imagery.
+        latest_freq_ts = max(ts[1] for ts in chosen_frequent.timestamps)
+        if latest_freq_ts < post_change and "dst" in target_dict:
+            dst_valid = target_dict["dst"]["valid"]
+            target_dict["dst"]["valid"] = RasterImage(
+                image=torch.zeros_like(dst_valid.image)
+            )
 
         return input_dict, target_dict
 

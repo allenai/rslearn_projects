@@ -28,7 +28,6 @@ import json
 import math
 import os
 import random
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -36,6 +35,9 @@ import numpy as np
 import requests
 import shapely
 import shapely.geometry
+from rslearn.config import QueryConfig, SpaceMode
+from rslearn.data_sources import Item
+from rslearn.data_sources.utils import match_candidate_items_to_window
 from rslearn.dataset import Dataset, Window
 from rslearn.dataset.manage import retry
 from rslearn.dataset.window import WindowLayerData
@@ -185,39 +187,53 @@ def _item_to_serialized(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+QUARTERLY_QUERY_CONFIG = QueryConfig(
+    space_mode=SpaceMode.MOSAIC,
+    max_matches=40,
+    min_matches=1,
+    period_duration=timedelta(days=90),
+    per_period_mosaic_reverse_time_order=False,
+)
+
+
 def _build_quarterly_layer_data(
     items: list[dict[str, Any]],
     time_range: tuple[datetime, datetime],
+    projection: Projection,
+    bounds: tuple[int, ...],
 ) -> WindowLayerData:
-    """Group scenes into 90-day periods and pick the best per period."""
-    period_days = 90
-    t_start = time_range[0]
-    t_end = time_range[1]
+    """Build quarterly mosaics using rslearn's match_candidate_items_to_window.
 
-    periods: list[tuple[datetime, datetime]] = []
-    cur = t_start
-    while cur < t_end:
-        period_end = min(cur + timedelta(days=period_days), t_end)
-        periods.append((cur, period_end))
-        cur = period_end
+    Matches the MOSAIC + period_duration=90d behavior used in the prediction pipeline.
+    """
+    rslearn_items = [
+        Item(
+            item["id"],
+            STGeometry(
+                WGS84_PROJECTION,
+                shapely.geometry.shape(item["geometry_geojson"]),
+                (item["collected_at"], item["collected_at"]),
+            ),
+        )
+        for item in items
+    ]
 
-    items_by_period: dict[int, list[dict[str, Any]]] = defaultdict(list)
-    for item in items:
-        dt = item["collected_at"]
-        for i, (ps, pe) in enumerate(periods):
-            if ps <= dt < pe:
-                items_by_period[i].append(item)
-                break
+    window_geom = STGeometry(
+        projection,
+        shapely.box(bounds[0], bounds[1], bounds[2], bounds[3]),
+        time_range,
+    )
 
-    serialized_groups: list[list[dict]] = []
-    group_time_ranges: list[tuple[datetime, datetime] | None] = []
-    for i, (ps, pe) in enumerate(periods):
-        group_items = items_by_period.get(i, [])
-        if not group_items:
-            continue
-        best = min(group_items, key=lambda x: x["cloud_cover"])
-        serialized_groups.append([_item_to_serialized(best)])
-        group_time_ranges.append((ps, pe))
+    matched_groups = match_candidate_items_to_window(
+        window_geom, rslearn_items, QUARTERLY_QUERY_CONFIG
+    )
+
+    serialized_groups = [
+        [gi.serialize() for gi in group.items] for group in matched_groups
+    ]
+    group_time_ranges: list[tuple[datetime, datetime] | None] = [
+        group.request_time_range for group in matched_groups
+    ]
 
     return WindowLayerData(
         layer_name="sentinel2_quarterly",
@@ -371,7 +387,12 @@ def _rasterize_labels(
 
 
 def _entry_has_complete_annotations(entry: dict[str, Any]) -> bool:
-    """Check that at least one positive point has all required fields."""
+    """Check that the entry has enough annotation info to create a training window.
+
+    Accepts entries with either:
+    - At least one fully-annotated positive point (with dates and categories), OR
+    - No positive points but at least one negative point and a time_range field.
+    """
     for pt in entry.get("positive_points", []):
         if (
             pt.get("pre_change")
@@ -381,6 +402,12 @@ def _entry_has_complete_annotations(entry: dict[str, Any]) -> bool:
             and pt.get("post_category")
         ):
             return True
+    if (
+        not entry.get("positive_points")
+        and entry.get("negative_points")
+        and entry.get("time_range")
+    ):
+        return True
     return False
 
 
@@ -426,12 +453,24 @@ def _process_entry(
             break
 
     if ref_point is None:
-        raise ValueError("No positive point with date annotations in entry")
+        if not entry.get("negative_points"):
+            raise ValueError("Entry has no positive or negative points")
+        center_point = entry["negative_points"][0]
+        tr = entry["time_range"]
+        t_start = _parse_date(tr[0])
+        t_end = _parse_date(tr[1])
+        midpoint = t_start + (t_end - t_start) / 2
+        post_change = midpoint
+        first_noticeable = midpoint
+    else:
+        center_point = ref_point
+        post_change = _parse_date(ref_point["post_change"])
+        first_noticeable = _parse_date(ref_point["first_date_change_noticeable"])
 
-    # Center 128x128 window on the first positive point.
+    # Center 128x128 window on the reference point.
     st = STGeometry(
         WGS84_PROJECTION,
-        shapely.Point(ref_point["lon"], ref_point["lat"]),
+        shapely.Point(center_point["lon"], center_point["lat"]),
         time_range=None,
     )
     projected = st.to_projection(projection)
@@ -444,9 +483,6 @@ def _process_entry(
         center_col + half,
         center_row + half,
     )
-
-    post_change = _parse_date(ref_point["post_change"])
-    first_noticeable = _parse_date(ref_point["first_date_change_noticeable"])
 
     cutoffs = _compute_frequent_cutoffs(first_noticeable, post_change, window_name)
     latest_cutoff = max(cutoffs)
@@ -498,7 +534,9 @@ def _process_entry(
     ]
     low_cloud_items.sort(key=lambda x: x["collected_at"], reverse=True)
 
-    quarterly_data = _build_quarterly_layer_data(all_items, window_time_range)
+    quarterly_data = _build_quarterly_layer_data(
+        all_items, window_time_range, projection, bounds
+    )
     layer_datas = window.load_layer_datas()
     layer_datas["sentinel2_quarterly"] = quarterly_data
 
@@ -518,12 +556,22 @@ def _process_entry(
         positive_pixels.append({"col": col, "row": row})
 
     sidecar_key = f"{window_group}/{window_name}"
-    sidecar_value = {
-        "pre_change": ref_point["pre_change"],
-        "post_change": ref_point["post_change"],
-        "first_noticeable": ref_point["first_date_change_noticeable"],
-        "positive_pixel_coords": positive_pixels,
-    }
+    if ref_point is None:
+        mid_iso = midpoint.isoformat()
+        sidecar_value = {
+            "pre_change": mid_iso,
+            "post_change": mid_iso,
+            "first_noticeable": mid_iso,
+            "positive_pixel_coords": [],
+            "is_negative_only": True,
+        }
+    else:
+        sidecar_value = {
+            "pre_change": ref_point["pre_change"],
+            "post_change": ref_point["post_change"],
+            "first_noticeable": ref_point["first_date_change_noticeable"],
+            "positive_pixel_coords": positive_pixels,
+        }
     return sidecar_key, sidecar_value
 
 

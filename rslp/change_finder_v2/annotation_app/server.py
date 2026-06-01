@@ -245,6 +245,17 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
                 lon = body["lon"]
                 lat = body["lat"]
                 point = {"lon": lon, "lat": lat}
+                existing = entry.get("positive_points", [])
+                if existing:
+                    for field in (
+                        "pre_change",
+                        "first_date_change_noticeable",
+                        "post_change",
+                        "pre_category",
+                        "post_category",
+                    ):
+                        if field in existing[0]:
+                            point[field] = existing[0][field]
                 entry.setdefault("positive_points", []).append(point)
             elif action == "add_negative":
                 lon = body["lon"]

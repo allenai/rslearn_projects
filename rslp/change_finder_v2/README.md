@@ -206,12 +206,24 @@ derive their search ranges from this single timestamp:
 - `sentinel2_frequent_0`: duration=30d → searches [T, T+30d] for the 4
   least-cloudy scenes in the month following T.
 
-Alternatively create windows from some bounding boxes:
+Alternatively create windows from bounding boxes. These examples produce exactly
+32768x32768 tiles (256 windows of 2048x2048) by providing grid-aligned UTM
+coordinates in meters directly via `--src_crs`:
 
 ```bash
-rslearn dataset add_windows --root "$PREDICT_DS" --group predict --box=-122.21,47.73,-121.78,47.46 --src_crs EPSG:4326 --utm --resolution 10 --grid_size 2048 --start 2025-01-01T00:00:00+00:00 --end 2025-01-01T00:00:00+00:00
-rslearn dataset add_windows --root "$PREDICT_DS" --group predict --box=-117.56,47.82,-117.2,47.55 --src_crs EPSG:4326 --utm --resolution 10 --grid_size 2048 --start 2025-01-01T00:00:00+00:00 --end 2025-01-01T00:00:00+00:00
-rslearn dataset add_windows --root "$PREDICT_DS" --group predict --box=120.94,24.83,121.03,24.75 --src_crs EPSG:4326 --utm --resolution 10 --grid_size 2048 --start 2025-01-01T00:00:00+00:00 --end 2025-01-01T00:00:00+00:00
+# Seattle area (UTM 10N) - 327.68 km x 327.68 km tile
+rslearn dataset add_windows --root "$PREDICT_DS" --group predict \
+    --box=368640,5099520,696320,5427200 \
+    --src_crs EPSG:32610 --crs EPSG:32610 --resolution 10 \
+    --grid_size 2048 \
+    --start 2025-01-01T00:00:00+00:00 --end 2025-01-01T00:00:00+00:00
+
+# Doha area (UTM 39N) - 327.68 km x 327.68 km tile
+rslearn dataset add_windows --root "$PREDICT_DS" --group predict \
+    --box=389120,2621440,716800,2949120 \
+    --src_crs EPSG:32639 --crs EPSG:32639 --resolution 10 \
+    --grid_size 2048 \
+    --start 2025-01-01T00:00:00+00:00 --end 2025-01-01T00:00:00+00:00
 ```
 
 #### 2. Prepare and materialize imagery
@@ -226,8 +238,7 @@ rslearn dataset materialize --root "$PREDICT_DS" --workers 128
 ```bash
 rslearn model predict \
     --config data/change_finder_v2/lcc_model/config_predict.yaml \
-    --data.init_args.path="$PREDICT_DS" \
-    --ckpt_path /path/to/best.ckpt
+    --data.init_args.path="$PREDICT_DS"
 ```
 
 The `PredictPassBuilder` transform takes the quarterly + frequent inputs and
@@ -264,3 +275,89 @@ This script:
 
 Each GeoJSON feature includes: `src_class`, `dst_class`, `num_pixels`,
 `avg_change_score`, `timestamp_idx`, `timestamp_start`, `timestamp_end`.
+
+---
+
+### Scaled Prediction (global tiled inference)
+
+To apply the LCC model at scale (e.g. globally), the world is divided into
+32768x32768 UTM tiles (10 m/pixel). Each tile, for a single reference timestamp,
+becomes one task that is written to a Beaker queue and processed by the
+`rslp.common` worker system. This is analogous to `rslp.satlas` but
+self-contained: it uses the OlmoEarth Datasets imagery source (no rtree index) and
+the LCC-specific pre/post-processing.
+
+Per-tile pipeline: create 2048x2048 windows -> materialize Sentinel-2 imagery ->
+run the model -> polygonize the `output_change` raster into a per-tile GeoJSON
+(`{EPSG}_{col}_{row}.geojson`). Optionally the merged 49-band raster is also written
+(`{EPSG}_{col}_{row}.tif`). Merging the per-tile GeoJSONs into a single layer and
+converting to vector tiles is handled separately (not yet implemented).
+
+The prediction pipeline accepts any tile size that is a multiple of 2048; only the
+job-writer fixes the tile size to 32768.
+
+#### 1. Enqueue tiles for a reference timestamp
+
+```bash
+python -m rslp.main change_finder_v2 write_jobs \
+    --timestamp 2025-06-01T00:00:00+00:00 \
+    --out_path /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_outputs_20260529/ \
+    --queue_name favyen/lcc-prediction-queue
+```
+
+Optional flags:
+- `--epsg_code 32651`: restrict to one UTM zone.
+- `--wgs84_bounds '[-122.5, 47.0, -121.5, 48.0]'`: restrict to tiles intersecting a
+  WGS84 bounding box.
+- `--batch_size 4`: tiles per worker job.
+- `--count 100`: randomly sample at most this many tiles (for testing).
+- `--write_raster true`: also write the merged 49-band raster per tile.
+
+Tiles whose outputs already exist in `out_path` are skipped, so re-running resumes.
+
+#### 2. Launch workers
+
+The model's imagery source needs the OlmoEarth Datasets credentials, passed via
+`--extra_env_vars` (the `DATASETS_API_TOKEN` secret must exist in the
+`ai2/earth-systems` Beaker workspace). Start one worker first to warm caches, then
+scale up.
+
+```bash
+python -m rslp.main common launch \
+    --image_name favyen/rslp_image \
+    --queue_name favyen/lcc-prediction-queue \
+    --num_workers 50 --gpus 1 --shared_memory 256GiB \
+    --cluster '["ai2/jupiter", "ai2/neptune", "ai2/saturn"]' \
+    --weka_mounts '[{"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}]' \
+    --extra_env_vars '[{"name":"OEDATASETS_API_URL","value":"https://datasets.olmoearth.allenai.org"},{"name":"DATASETS_API_TOKEN","secret":"LCC_DATASETS_API_TOKEN"},{"name":"GDAL_HTTP_TIMEOUT","value":"120"},{"name":"RSLP_PREFIX","value":"/weka/dfive-default/rslearn-eai"}]'
+```
+
+Each worker pulls tasks from the queue and runs the `predict_multi` workflow.
+
+#### Random 2048x2048 land tiles (diagnostic sampling)
+
+To get diverse predictions from random locations worldwide (useful for spotting
+model mispredictions and iterating on annotations), use `write_jobs_random_2048`.
+It samples random lat/lon points, snaps them to 2048-pixel-aligned UTM tiles, and
+keeps tiles where at least one corner is on land.
+
+```bash
+python -m rslp.main change_finder_v2 write_jobs_random_2048 \
+    --start_time 2025-01-01T00:00:00+00:00 \
+    --end_time 2025-06-01T00:00:00+00:00 \
+    --out_path /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_outputs_20260529/ \
+    --queue_name favyen/lcc-prediction-queue \
+    --count 500
+```
+
+Each tile gets a randomly chosen reference timestamp between `start_time` and
+`end_time`.
+
+Arguments:
+- `--start_time` / `--end_time`: range from which to uniformly sample each tile's
+  reference timestamp.
+- `--count 500`: number of land tiles to enqueue.
+- `--batch_size 4`: tiles per worker job.
+- `--write_raster true`: also write the merged 49-band raster per tile.
+
+Launch workers the same way as for scaled prediction above.

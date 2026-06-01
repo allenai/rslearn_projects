@@ -8,7 +8,7 @@ model:
           class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
           init_args:
             model_id: OLMOEARTH_V1_1_BASE
-            patch_size: 4
+            patch_size: 8
         num_classes_binary: 3
         num_classes_src: 13
         num_classes_dst: 13
@@ -18,6 +18,7 @@ model:
           - [[768, 1], [512, 3]]
           - [[256, 3]]
           - [[128, 3]]
+          - [[64, 3]]
     optimizer:
       class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
       init_args:
@@ -159,8 +160,7 @@ data:
                       class_path: torchmetrics.classification.MulticlassAUROC
                       init_args:
                         num_classes: 3
-                        average: null
-                    output_key: "cls_2"
+                        average: "macro"
           src:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
@@ -179,7 +179,7 @@ data:
               class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
               metric_kwargs:
                 average: "micro"
-    batch_size: 4
+    batch_size: 8
     num_workers: 8
     use_in_memory_dataset: true
     default_config:
@@ -229,8 +229,8 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        monitor: val_binary/auroc
-        mode: max
+        monitor: val_loss
+        mode: min
 project_name: 2026_05_25_lcc
-run_name: olmoearth_base_dual_pass_10_base_ps4
+run_name: olmoearth_base_dual_pass_10_base_ps8
 management_dir: ${RSLP_PREFIX}/projects
