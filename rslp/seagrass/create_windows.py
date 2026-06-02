@@ -350,22 +350,17 @@ def create_windows(args: argparse.Namespace) -> dict[str, int]:
     ds_path = UPath(args.ds_path)
     ds_path.mkdir(parents=True, exist_ok=True)
     source_dir = Path(args.source_dir)
-    csv_path = (
-        Path(args.csv_path)
-        if args.csv_path
-        else (
-            source_dir
-            / "training_samples"
-            / "samples_olmo_strict_grid_same_locations.csv"
-        )
-    )
-    reference_labels = (
-        Path(args.reference_labels)
-        if args.reference_labels
-        else (source_dir / "reference_manifests" / "reference_labels.json")
-    )
 
     if args.mode == "samples":
+        csv_path = (
+            Path(args.csv_path)
+            if args.csv_path
+            else (
+                source_dir
+                / "training_samples"
+                / "samples_olmo_strict_grid_same_locations.csv"
+            )
+        )
         rows = read_sample_rows(csv_path)
         if args.split_key_column not in rows[0]:
             raise ValueError(
@@ -387,6 +382,11 @@ def create_windows(args: argparse.Namespace) -> dict[str, int]:
         ]
         splits = run_window_jobs(create_sample_window, jobs, args.workers)
     else:
+        reference_labels = (
+            Path(args.reference_labels)
+            if args.reference_labels
+            else (source_dir / "reference_manifests" / "reference_labels.json")
+        )
         tiles = list(iter_reference_tiles(reference_labels))
         jobs = [
             dict(

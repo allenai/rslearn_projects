@@ -36,16 +36,43 @@
             "always_enable_tiling": true,
             "name": "geotiff"
           }
+        },
+        {
+          "bands": [
+            "B05",
+            "B06",
+            "B07",
+            "B8A",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          },
+          "zoom_offset": -1
+        },
+        {
+          "bands": [
+            "B01",
+            "B09"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "always_enable_tiling": true,
+            "name": "geotiff"
+          },
+          "zoom_offset": -2
         }
       ],
       "data_source": {
-        "class_path": "rslearn.data_sources.gcp_public_data.Sentinel2",
+        "class_path": "rslearn.data_sources.planetary_computer.Sentinel2",
         "duration": "180d",
+        "ingest": false,
         "init_args": {
           "harmonize": true,
-          "index_cache_dir": "cache/sentinel2",
-          "sort_by": "cloud_cover",
-          "use_rtree_index": false
+          "sort_by": "eo:cloud_cover"
         },
         "query_config": {
           "max_matches": 6,
