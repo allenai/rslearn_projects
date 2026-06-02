@@ -111,6 +111,10 @@ data:
       groups: ["jamaica_2025_points"]
       tags:
         split: test
+    predict_config:
+      groups: ["jamaica_2025_points"]
+      tags:
+        split: "test"
 trainer:
   max_epochs: 50
   callbacks:
