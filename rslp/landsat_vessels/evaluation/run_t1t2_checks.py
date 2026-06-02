@@ -20,10 +20,7 @@ SCENES = [
     ("LC09_L1TP_193030_20241104_20241104_02_T1", [20, 50], "Some vessels"),
 ]
 
-ALREADY_RAN = {
-    "LC09_L1TP_001090_20241103_20241103_02_T1": 11,
-    "LC09_L1TP_193021_20241104_20241104_02_T1": 48,
-}
+ALREADY_RAN: dict[str, int] = {}
 
 
 def main() -> None:

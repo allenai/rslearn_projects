@@ -51,6 +51,9 @@ data:
         enable_f1_metric: true
         skip_unknown_categories: true
         allow_invalid: true
+        prob_property: "prob"
+        positive_class: "correct"
+        positive_class_threshold: 0.85
     batch_size: 64
     num_workers: 8
     default_config:
