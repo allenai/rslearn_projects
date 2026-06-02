@@ -23,6 +23,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import tqdm
+from rasterio.crs import CRS
+from rslearn.config.dataset import StorageConfig
+from rslearn.dataset import Window
+from rslearn.utils import Projection
+from rslearn.utils.mp import star_imap_unordered
+from rslearn.utils.raster_array import RasterArray
+from rslearn.utils.raster_format import GeotiffRasterFormat
+from upath import UPath
+
 DEFAULT_SOURCE_DIR = Path("/weka/dfive-default/piperw/scripts/seagrass")
 DEFAULT_DATASET_PATH = Path("/weka/dfive-default/piperw/rslearn_projects/data/seagrass")
 
@@ -116,8 +127,6 @@ def write_info_json(
     ds_path: Any, group: str, name: str, payload: dict[str, Any]
 ) -> None:
     """Write per-window metadata alongside rslearn metadata.json."""
-    from rslearn.dataset import Window
-
     window_root = Window.get_window_root(ds_path, group, name)
     with (window_root / "info.json").open("w") as f:
         json.dump(payload, f, indent=2, sort_keys=True)
@@ -135,14 +144,6 @@ def create_sample_window(
     split_key_column: str,
 ) -> str:
     """Create one point-centered sample window with a center-pixel label."""
-    import numpy as np
-    from rasterio.crs import CRS
-    from rslearn.config.dataset import StorageConfig
-    from rslearn.dataset import Window
-    from rslearn.utils import Projection
-    from rslearn.utils.raster_array import RasterArray
-    from rslearn.utils.raster_format import GeotiffRasterFormat
-
     sample_id = str(row["sample_id"])
     label_value = int(row["mode"])
     if label_value not in LABEL_NAMES:
@@ -272,11 +273,6 @@ def create_reference_tile_window(
     split_seed: str,
 ) -> str:
     """Create one full-tile segmentation window from reference_labels.json."""
-    from rasterio.crs import CRS
-    from rslearn.config.dataset import StorageConfig
-    from rslearn.dataset import Window
-    from rslearn.utils import Projection
-
     tile_id = str(tile["tile_id"])
     grid = tile["grid"]
     projection = Projection(
@@ -339,12 +335,8 @@ def run_window_jobs(
     workers: int,
 ) -> list[str]:
     """Run window creation jobs either serially or with rslearn multiprocessing."""
-    import tqdm
-
     if workers == 1:
         return [create_fn(**job) for job in tqdm.tqdm(jobs)]
-
-    from rslearn.utils.mp import star_imap_unordered
 
     pool = multiprocessing.Pool(workers)
     outputs = star_imap_unordered(pool, create_fn, jobs)
@@ -355,8 +347,6 @@ def run_window_jobs(
 
 def create_windows(args: argparse.Namespace) -> dict[str, int]:
     """Create seagrass windows according to CLI args."""
-    from upath import UPath
-
     ds_path = UPath(args.ds_path)
     ds_path.mkdir(parents=True, exist_ok=True)
     source_dir = Path(args.source_dir)
