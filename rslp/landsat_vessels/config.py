@@ -12,17 +12,24 @@ LANDSAT_RESOLUTION = 15
 LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
 AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
 
-# Extract Landsat bands from local config file
+# Extract Landsat bands from local config file.
+# LANDSAT_BANDS covers the 7-band `landsat` layer used by the detector.
+# LANDSAT_ALL_BAND_NAMES is the full set needed by the classifier and attribute models
+# (via `landsat_allbands`), and is also used for scene zip extraction so all bands are
+# available to every pipeline stage.
 with open(LOCAL_FILES_DATASET_CONFIG) as f:
     json_data = json.load(f)
 LANDSAT_BANDS = [
     band["bands"][0] for band in json_data["layers"][LANDSAT_LAYER_NAME]["band_sets"]
 ]
+LANDSAT_ALL_BAND_NAMES = json_data["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["band_sets"][
+    0
+]["bands"]
 
 # Model config
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config_detector.yaml"
-CLASSIFY_MODEL_CONFIG = "data/landsat_vessels/config_classifier.yaml"
-CLASSIFY_WINDOW_SIZE = 128
+CLASSIFY_MODEL_CONFIG = "data/landsat_vessels/config_classifier_20260602.yaml"
+CLASSIFY_WINDOW_SIZE = 64
 ATTRIBUTE_MODEL_CONFIG = "data/landsat_vessel_attribute/config.yaml"
 ATTRIBUTE_WINDOW_SIZE = 128
 

@@ -132,6 +132,7 @@ class LandsatRequest(BaseModel):
                     "description": "Example with image_files",
                     "value": {
                         "image_files": {
+                            "B1": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B1.TIF",
                             "B2": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B2.TIF",
                             "B3": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B3.TIF",
                             "B4": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B4.TIF",
@@ -139,6 +140,9 @@ class LandsatRequest(BaseModel):
                             "B6": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B6.TIF",
                             "B7": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B7.TIF",
                             "B8": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B8.TIF",
+                            "B9": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B9.TIF",
+                            "B10": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B10.TIF",
+                            "B11": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B11.TIF",
                         },
                     },
                 },

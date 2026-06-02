@@ -150,19 +150,18 @@ def _write_scene_id_dataset_config(
 
 
 def _create_tiny_classifier_config(original_path: str, output_path: str) -> None:
-    """Patch the Landsat classifier config to use swin_t."""
+    """Patch the Landsat classifier config to use OlmoEarth-v1-Nano."""
     with open(original_path) as f:
         cfg = yaml.safe_load(f)
 
     model_args = cfg["model"]["init_args"]
-    encoder_list = model_args["model"]["init_args"]["encoder"]
-    encoder_list[0]["init_args"]["arch"] = "swin_t"
-    encoder_list[0]["init_args"]["pretrained"] = False
-    decoders = model_args["model"]["init_args"]["decoders"]
-    for decoder_list in decoders.values():
-        for decoder in decoder_list:
-            if "PoolingDecoder" in decoder.get("class_path", ""):
-                decoder["init_args"]["in_channels"] = 768
+    encoder = model_args["model"]["init_args"]["encoder"][0]
+    encoder["init_args"]["model_id"] = "OLMOEARTH_V1_NANO"
+
+    decoder_list = model_args["model"]["init_args"]["decoder"]
+    for decoder in decoder_list:
+        if "PoolingDecoder" in decoder.get("class_path", ""):
+            decoder["init_args"]["in_channels"] = 128
 
     apply_common_config_patches(cfg)
 

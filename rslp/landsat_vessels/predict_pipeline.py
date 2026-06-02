@@ -29,8 +29,8 @@ from rslp.landsat_vessels.config import (
     CLASSIFY_WINDOW_SIZE,
     DETECT_MODEL_CONFIG,
     INFRA_THRESHOLD_KM,
+    LANDSAT_ALL_BAND_NAMES,
     LANDSAT_ALLBANDS_LAYER_NAME,
-    LANDSAT_BANDS,
     LANDSAT_LAYER_NAME,
     LANDSAT_RESOLUTION,
     LOCAL_FILES_DATASET_CONFIG,
@@ -231,13 +231,12 @@ def run_classifier(
         if scene_data.item:
             window.save_layer_datas(
                 {
-                    LANDSAT_LAYER_NAME: WindowLayerData(
-                        LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
+                        LANDSAT_ALLBANDS_LAYER_NAME,
+                        [[scene_data.item.serialize()]],
                     ),
                     # Empty layer data so it doesn't go through ingest/materialize.
-                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
-                        LANDSAT_ALLBANDS_LAYER_NAME, []
-                    ),
+                    LANDSAT_LAYER_NAME: WindowLayerData(LANDSAT_LAYER_NAME, []),
                 }
             )
 
@@ -257,7 +256,7 @@ def run_classifier(
 
     # Verify that no window is unmaterialized.
     for window in windows:
-        if not window.is_layer_completed(LANDSAT_LAYER_NAME):
+        if not window.is_layer_completed(LANDSAT_ALLBANDS_LAYER_NAME):
             raise ValueError(f"window {window.name} does not have materialized Landsat")
 
     # Run classification model.
@@ -439,8 +438,7 @@ def setup_dataset(
         local_zip_path = os.path.join(zip_dir, scene_id + ".zip")
         download_and_unzip_scene(scene_zip_path, local_zip_path, zip_dir)
         image_files = {}
-        for band in LANDSAT_BANDS:
-            # TODO: have helper utility function that gets str() of UPath with protocol
+        for band in LANDSAT_ALL_BAND_NAMES:
             image_fname = str(zip_dir / scene_id / f"{scene_id}_{band}.TIF")
             if "://" not in image_fname:
                 image_fname = f"file://{image_fname}"
