@@ -20,6 +20,7 @@ from rslp.landsat_vessels.config import (
     AWS_DATASET_CONFIG,
     CLASSIFY_MODEL_CONFIG,
     DETECT_MODEL_CONFIG,
+    FEEDBACK_CLASSIFY_MODEL_CONFIG,
 )
 from rslp.landsat_vessels.predict_pipeline import predict_pipeline
 from tests.integration.vessels.helpers import (
@@ -150,19 +151,35 @@ def _write_scene_id_dataset_config(
 
 
 def _create_tiny_classifier_config(original_path: str, output_path: str) -> None:
-    """Patch the Landsat classifier config to use swin_t."""
+    """Patch the Swin-based classifier config for testing."""
     with open(original_path) as f:
         cfg = yaml.safe_load(f)
 
     model_args = cfg["model"]["init_args"]
-    encoder_list = model_args["model"]["init_args"]["encoder"]
-    encoder_list[0]["init_args"]["arch"] = "swin_t"
-    encoder_list[0]["init_args"]["pretrained"] = False
-    decoders = model_args["model"]["init_args"]["decoders"]
-    for decoder_list in decoders.values():
-        for decoder in decoder_list:
-            if "PoolingDecoder" in decoder.get("class_path", ""):
-                decoder["init_args"]["in_channels"] = 768
+    encoder = model_args["model"]["init_args"]["encoder"][0]
+    encoder["init_args"]["pretrained"] = False
+
+    apply_common_config_patches(cfg)
+
+    with open(output_path, "w") as f:
+        yaml.dump(cfg, f)
+
+
+def _create_tiny_feedback_classifier_config(
+    original_path: str, output_path: str
+) -> None:
+    """Patch the OlmoEarth feedback classifier config to use OlmoEarth-v1-Nano."""
+    with open(original_path) as f:
+        cfg = yaml.safe_load(f)
+
+    model_args = cfg["model"]["init_args"]
+    encoder = model_args["model"]["init_args"]["encoder"][0]
+    encoder["init_args"]["model_id"] = "OLMOEARTH_V1_NANO"
+
+    decoder_list = model_args["model"]["init_args"]["decoder"]
+    for decoder in decoder_list:
+        if "PoolingDecoder" in decoder.get("class_path", ""):
+            decoder["init_args"]["in_channels"] = 128
 
     apply_common_config_patches(cfg)
 
@@ -203,6 +220,14 @@ def _patch_model_configs(
     classify_cfg = str(tmp_path / "classify_config.yaml")
     _create_tiny_classifier_config(CLASSIFY_MODEL_CONFIG, classify_cfg)
     monkeypatch.setattr(_landsat_mod, "CLASSIFY_MODEL_CONFIG", classify_cfg)
+
+    feedback_classify_cfg = str(tmp_path / "feedback_classify_config.yaml")
+    _create_tiny_feedback_classifier_config(
+        FEEDBACK_CLASSIFY_MODEL_CONFIG, feedback_classify_cfg
+    )
+    monkeypatch.setattr(
+        _landsat_mod, "FEEDBACK_CLASSIFY_MODEL_CONFIG", feedback_classify_cfg
+    )
 
     attr_cfg = str(tmp_path / "attribute_config.yaml")
     _create_tiny_attribute_config(ATTRIBUTE_MODEL_CONFIG, attr_cfg)

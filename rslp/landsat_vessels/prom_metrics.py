@@ -42,6 +42,7 @@ class TimerOperations(StrEnum):
     RunModelPredict = "RunModelPredict"
     GetVesselDetections = "GetVesselDetections"
     RunClassifier = "RunClassifier"
+    RunFeedbackClassifier = "RunFeedbackClassifier"
     RunAttributeModel = "RunAttributeModel"
     BuildPredictionsAndCrops = "BuildPredictionsAndCrops"
 
