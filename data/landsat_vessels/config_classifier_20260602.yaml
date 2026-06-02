@@ -51,9 +51,6 @@ data:
         enable_f1_metric: true
         skip_unknown_categories: true
         allow_invalid: true
-        prob_property: "prob"
-        positive_class: "correct"
-        positive_class_threshold: 0.85
     batch_size: 64
     num_workers: 8
     default_config:
@@ -81,7 +78,7 @@ data:
       tags:
         split: "test"
     predict_config:
-      groups: ["classify_predict"]
+      groups: ["feedback_classify_predict"]
       skip_targets: true
 trainer:
   max_epochs: 100
