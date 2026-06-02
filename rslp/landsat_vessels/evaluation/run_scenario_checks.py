@@ -18,7 +18,8 @@ def main() -> None:
     """Run predict pipeline on all scenario-check scenes and print results."""
     init_mp()
 
-    target_df = pd.read_csv(UPath(TARGET_CSV_PATH))
+    with UPath(TARGET_CSV_PATH).open() as f:
+        target_df = pd.read_csv(f)
     print(f"Loaded {len(target_df)} scenario-check scenes\n")
 
     output_dir = Path(tempfile.mkdtemp(prefix="landsat_v2_eval_"))
