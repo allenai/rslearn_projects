@@ -272,6 +272,13 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
                 pts = entry.get("negative_points", [])
                 if point_idx is not None and 0 <= point_idx < len(pts):
                     pts.pop(point_idx)
+            elif action == "make_negative":
+                point_idx = body.get("point_idx")
+                pts = entry.get("positive_points", [])
+                if point_idx is not None and 0 <= point_idx < len(pts):
+                    pt = pts.pop(point_idx)
+                    negative_point = {"lon": pt["lon"], "lat": pt["lat"]}
+                    entry.setdefault("negative_points", []).append(negative_point)
             else:
                 return jsonify({"ok": False, "error": "unknown action"}), 400
             _save_entries()

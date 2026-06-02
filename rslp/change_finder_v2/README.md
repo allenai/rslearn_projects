@@ -329,7 +329,7 @@ python -m rslp.main common launch \
     --num_workers 50 --gpus 1 --shared_memory 256GiB \
     --cluster '["ai2/jupiter", "ai2/neptune", "ai2/saturn"]' \
     --weka_mounts '[{"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}]' \
-    --extra_env_vars '[{"name":"OEDATASETS_API_URL","value":"https://datasets.olmoearth.allenai.org"},{"name":"DATASETS_API_TOKEN","secret":"LCC_DATASETS_API_TOKEN"},{"name":"GDAL_HTTP_TIMEOUT","value":"120"},{"name":"RSLP_PREFIX","value":"/weka/dfive-default/rslearn-eai"}]'
+    --extra_env_vars '[{"name":"OEDATASETS_API_URL","value":"https://datasets.olmoearth.allenai.org"},{"name":"DATASETS_API_TOKEN","secret":"LCC_DATASETS_API_TOKEN"},{"name":"RSLP_PREFIX","value":"/weka/dfive-default/rslearn-eai"}]'
 ```
 
 Each worker pulls tasks from the queue and runs the `predict_multi` workflow.

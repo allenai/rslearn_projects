@@ -19,6 +19,7 @@
   const navInfo = document.getElementById("nav-info");
   const btnPtPrev = document.getElementById("btn-pt-prev");
   const btnPtNext = document.getElementById("btn-pt-next");
+  const btnPtMakeNegative = document.getElementById("btn-pt-make-negative");
   const pointInfo = document.getElementById("point-info");
   const coordText = document.getElementById("coord-text");
   const pointCoordText = document.getElementById("point-coord-text");
@@ -66,6 +67,7 @@
       pointInfo.textContent = "0 / 0";
       btnPtPrev.disabled = true;
       btnPtNext.disabled = true;
+      btnPtMakeNegative.disabled = true;
       return;
     }
     var pts = currentEntry.entry.positive_points || [];
@@ -75,12 +77,14 @@
       selectedPointIdx = 0;
       btnPtPrev.disabled = true;
       btnPtNext.disabled = true;
+      btnPtMakeNegative.disabled = true;
     } else {
       if (selectedPointIdx >= n) selectedPointIdx = n - 1;
       if (selectedPointIdx < 0) selectedPointIdx = 0;
       pointInfo.textContent = (selectedPointIdx + 1) + " / " + n;
       btnPtPrev.disabled = selectedPointIdx <= 0;
       btnPtNext.disabled = selectedPointIdx >= n - 1;
+      btnPtMakeNegative.disabled = false;
     }
   }
 
@@ -380,6 +384,21 @@
     });
   }
 
+  function makeSelectedNegative() {
+    if (!currentEntry) return;
+    var pts = currentEntry.entry.positive_points || [];
+    if (pts.length === 0 || selectedPointIdx >= pts.length) return;
+    postJSON("/api/update_points", {
+      entry_idx: currentIndex,
+      action: "make_negative",
+      point_idx: selectedPointIdx,
+    }).then(function (res) {
+      if (res.ok) {
+        loadEntry(currentIndex, true);
+      }
+    });
+  }
+
   // --- Annotation save ---
   function saveAnnotation(evt) {
     evt.preventDefault();
@@ -432,6 +451,7 @@
   btnNext.addEventListener("click", function () { changeEntry(1); });
   btnPtPrev.addEventListener("click", function () { changePoint(-1); });
   btnPtNext.addEventListener("click", function () { changePoint(1); });
+  btnPtMakeNegative.addEventListener("click", makeSelectedNegative);
   annotForm.addEventListener("submit", saveAnnotation);
 
   document.addEventListener("keydown", function (e) {
