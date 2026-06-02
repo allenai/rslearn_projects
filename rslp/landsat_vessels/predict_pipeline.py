@@ -83,6 +83,16 @@ class SceneData:
     item: Item | None = None
 
 
+@dataclass
+class PipelineResult:
+    """Result of the prediction pipeline with per-stage detection counts."""
+
+    detections: list[VesselDetection]
+    detector_count: int = 0
+    classifier_count: int = 0
+    feedback_classifier_count: int = 0
+
+
 def get_vessel_detections(
     ds_path: UPath,
     scene_data: SceneData,
@@ -651,7 +661,7 @@ def predict_pipeline(
     scratch_path: str | None = None,
     crop_path: str | None = None,
     geojson_path: str | None = None,
-) -> list[VesselDetection]:
+) -> PipelineResult:
     """Run the Landsat vessel prediction pipeline.
 
     This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
@@ -693,14 +703,22 @@ def predict_pipeline(
     # Run pipeline.
     with time_operation(TimerOperations.GetVesselDetections):
         detections = get_vessel_detections(ds_path, scene_data)
+    detector_count = len(detections)
+    logger.info("detector candidates: %d", detector_count)
+
     with time_operation(TimerOperations.RunClassifier):
         detections = run_classifier(
             ds_path, detections=detections, scene_data=scene_data
         )
+    classifier_count = len(detections)
+    logger.info("after classifier: %d", classifier_count)
+
     with time_operation(TimerOperations.RunFeedbackClassifier):
         detections = run_feedback_classifier(
             ds_path, detections=detections, scene_data=scene_data
         )
+    feedback_classifier_count = len(detections)
+    logger.info("after feedback classifier: %d", feedback_classifier_count)
 
     with time_operation(TimerOperations.RunAttributeModel):
         run_attribute_model(ds_path, detections=detections, scene_data=scene_data)
@@ -726,7 +744,12 @@ def predict_pipeline(
                 f,
             )
 
-    return detections
+    return PipelineResult(
+        detections=detections,
+        detector_count=detector_count,
+        classifier_count=classifier_count,
+        feedback_classifier_count=feedback_classifier_count,
+    )
 
 
 def _build_predictions_and_crops(

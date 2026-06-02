@@ -20,7 +20,7 @@ SCENES = [
     ("LC09_L1TP_193030_20241104_20241104_02_T1", [20, 50], "Some vessels"),
 ]
 
-ALREADY_RAN: dict[str, int] = {}
+ALREADY_RAN: dict[str, tuple[int, int, int]] = {}
 
 
 def main() -> None:
@@ -30,42 +30,52 @@ def main() -> None:
     results = []
     for scene_id, (low, high), desc in SCENES:
         if scene_id in ALREADY_RAN:
-            count = ALREADY_RAN[scene_id]
-            print(f"[CACHED] {scene_id}: {count} detections")
+            det, cls, fb = ALREADY_RAN[scene_id]
+            print(f"[CACHED] {scene_id}: detector={det} classifier={cls} feedback={fb}")
         else:
             scratch = f"/tmp/eval_{scene_id}"
             json_path = f"/tmp/eval_{scene_id}.json"
             print(f"[RUNNING] {scene_id} ({desc})...")
             try:
-                detections = predict_pipeline(
+                result = predict_pipeline(
                     scene_id=scene_id,
                     scratch_path=scratch,
                 )
-                count = len(detections)
+                det = result.detector_count
+                cls = result.classifier_count
+                fb = result.feedback_classifier_count
                 with open(json_path, "w") as f:
-                    json.dump([d.to_dict() for d in detections], f)
+                    json.dump([d.to_dict() for d in result.detections], f)
             except Exception as e:
                 print(f"  ERROR: {e}\n")
-                results.append((scene_id, desc, low, high, -1, "ERROR"))
+                results.append((scene_id, desc, low, high, -1, -1, -1, "ERROR"))
                 continue
             finally:
                 shutil.rmtree(scratch, ignore_errors=True)
 
-        passed = low <= count <= high
+        passed = low <= fb <= high
         status = "PASS" if passed else "FAIL"
-        results.append((scene_id, desc, low, high, count, status))
-        print(f"  {status}: {count} detections (expected [{low}, {high}])\n")
+        results.append((scene_id, desc, low, high, det, cls, fb, status))
+        print(
+            f"  {status}: detector={det} classifier={cls} feedback={fb} "
+            f"(expected [{low}, {high}])\n"
+        )
 
-    print("=" * 70)
-    print(f"{'Scene':<55} {'Expected':>10} {'Actual':>7} {'Result':>7}")
-    print("-" * 70)
-    for scene_id, desc, low, high, count, status in results:
-        print(f"{scene_id:<55} [{low},{high}]{count:>7} {status:>7}")
+    print("=" * 115)
+    print(
+        f"{'Scene':<55} {'Expected':>10}"
+        f" {'Detector':>10} {'Classifier':>12} {'Feedback':>10} {'Result':>8}"
+    )
+    print("-" * 115)
+    for scene_id, desc, low, high, det, cls, fb, status in results:
+        print(
+            f"{scene_id:<55} [{low},{high}]" f"{det:>10}{cls:>12}{fb:>10} {status:>8}"
+        )
 
     passes = sum(1 for *_, s in results if s == "PASS")
     fails = sum(1 for *_, s in results if s == "FAIL")
     errors = sum(1 for *_, s in results if s == "ERROR")
-    print("-" * 70)
+    print("-" * 115)
     print(f"Pass: {passes}, Fail: {fails}, Error: {errors}")
 
 

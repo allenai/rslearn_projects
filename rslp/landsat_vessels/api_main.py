@@ -187,7 +187,7 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
     try:
         logger.info("Processing request with input data.")
         with time_operation(TimerOperations.TotalInferenceTime):
-            detections = predict_pipeline(
+            result = predict_pipeline(
                 scene_id=info.scene_id,
                 scene_zip_path=info.scene_zip_path,
                 image_files=info.image_files,
@@ -197,7 +197,7 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
             )
         return LandsatResponse(
             status=StatusEnum.SUCCESS,
-            predictions=[d.to_dict() for d in detections],
+            predictions=[d.to_dict() for d in result.detections],
             error_message=None,
         )
     except ValueError as e:
