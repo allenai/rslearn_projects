@@ -1,4 +1,4 @@
-"""Run the predict pipeline on all T1/T2 scenario-check scenes."""
+"""Smoke test: run the predict pipeline on T1/T2 scenario-check scenes."""
 
 import json
 import shutil
