@@ -38,7 +38,7 @@ model:
       remap_prefixes:
         - ["backbone.backbone.backbone.", "encoder.0.encoder.model."]
 data:
-  class_path: rslearn.train.data_module.RslearnDataModule
+  class_path: rslp.utils.lazy_all_crops.LazyAllCropsDataModule
   init_args:
     path: /weka/dfive-default/rslearn-eai/datasets/sentinel1_vessels/dataset_v1/20250521/
     inputs:
