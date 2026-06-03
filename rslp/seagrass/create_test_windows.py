@@ -123,17 +123,6 @@ def rasterize_polygon(
     return raster[np.newaxis, :, :]
 
 
-def write_info_json(
-    ds_path: Any, group: str, name: str, payload: dict[str, Any]
-) -> None:
-    """Write per-window metadata alongside rslearn metadata.json."""
-    from rslearn.dataset import Window
-
-    window_root = Window.get_window_root(ds_path, group, name)
-    with (window_root / "info.json").open("w") as f:
-        json.dump(payload, f, indent=2, sort_keys=True)
-
-
 def create_polygon_window(
     feature: dict[str, Any],
     feature_index: int,
@@ -172,6 +161,24 @@ def create_polygon_window(
     )
     centroid = utm_geom.centroid
 
+    # Persist all polygon metadata on the window itself (rslearn metadata.json)
+    # rather than a separate auxiliary info.json file.
+    options = {
+        "split": "test",
+        "feature_index": feature_index,
+        "class_name": class_name,
+        "label": label_value,
+        "label_name": LABEL_NAMES[label_value],
+        "utm_epsg": epsg,
+        "utm_bbox": list(utm_bbox),
+        "pixel_bounds": list(bounds),
+        "padding_pixels": padding_pixels,
+        "negative_class": negative_class,
+        "all_touched": all_touched,
+        "centroid_utm": [centroid.x, centroid.y],
+        "properties": properties,
+    }
+
     window = Window(
         storage=StorageConfig()
         .instantiate_window_storage_factory()
@@ -181,14 +188,7 @@ def create_polygon_window(
         projection=projection,
         bounds=bounds,
         time_range=time_range,
-        options={
-            "split": "test",
-            "feature_index": feature_index,
-            "label": label_value,
-            "label_name": LABEL_NAMES[label_value],
-            "class_name": class_name,
-            "utm_epsg": epsg,
-        },
+        options=options,
     )
     window.save()
 
@@ -203,22 +203,6 @@ def create_polygon_window(
         RasterArray(chw_array=raster),
     )
     window.mark_layer_completed(LABEL_LAYER)
-
-    info = {
-        "feature_index": feature_index,
-        "class_name": class_name,
-        "label": label_value,
-        "label_name": LABEL_NAMES[label_value],
-        "utm_epsg": epsg,
-        "utm_bbox": list(utm_bbox),
-        "pixel_bounds": list(bounds),
-        "padding_pixels": padding_pixels,
-        "negative_class": negative_class,
-        "all_touched": all_touched,
-        "centroid_utm": [centroid.x, centroid.y],
-        "properties": properties,
-    }
-    write_info_json(ds_path, group, window_name, info)
     return "test"
 
 

@@ -7,8 +7,9 @@ The local seagrass bundle has two useful geospatial views:
 
 This script can create either view as rslearn windows. Sample windows include a
 single-pixel ``label_raster`` at the center of each patch. Reference-tile windows
-record the tile geometry and label-raster manifest metadata in ``info.json`` so
-the downstream dataset config/materialization can decide how to ingest rasters.
+record the tile geometry and label-raster manifest metadata. Per-window metadata
+(sample/tile attributes, split assignment, label-raster manifest details) is stored
+in the window ``options`` so it persists in the rslearn ``metadata.json``.
 """
 
 from __future__ import annotations
@@ -123,15 +124,6 @@ def to_jsonable(value: Any) -> Any:
     return value
 
 
-def write_info_json(
-    ds_path: Any, group: str, name: str, payload: dict[str, Any]
-) -> None:
-    """Write per-window metadata alongside rslearn metadata.json."""
-    window_root = Window.get_window_root(ds_path, group, name)
-    with (window_root / "info.json").open("w") as f:
-        json.dump(payload, f, indent=2, sort_keys=True)
-
-
 def create_sample_window(
     row: dict[str, str],
     ds_path: Any,
@@ -167,6 +159,21 @@ def create_sample_window(
         datetime(year, 12, 31, tzinfo=timezone.utc),
     )
 
+    # Persist all sample metadata on the window itself (rslearn metadata.json)
+    # rather than a separate auxiliary info.json file.
+    options = {column: to_jsonable(value) for column, value in row.items()}
+    options.update(
+        {
+            "split": split,
+            "label": label_value,
+            "label_name": LABEL_NAMES[label_value],
+            "latitude": lat,
+            "longitude": lon,
+            "split_key": split_key,
+            "split_seed": split_seed,
+        }
+    )
+
     window = Window(
         storage=StorageConfig()
         .instantiate_window_storage_factory()
@@ -176,15 +183,7 @@ def create_sample_window(
         projection=projection,
         bounds=bounds,
         time_range=time_range,
-        options={
-            "split": split,
-            "sample_id": sample_id,
-            "label": label_value,
-            "label_name": LABEL_NAMES[label_value],
-            "tile_id": str(row["tile_id"]),
-            "latitude": lat,
-            "longitude": lon,
-        },
+        options=options,
     )
     window.save()
 
@@ -198,11 +197,6 @@ def create_sample_window(
         RasterArray(chw_array=raster),
     )
     window.mark_layer_completed(LABEL_LAYER)
-
-    info = {column: to_jsonable(value) for column, value in row.items()}
-    info["split_key"] = split_key
-    info["split_seed"] = split_seed
-    write_info_json(ds_path, group, window_name, info)
     return split
 
 
@@ -297,18 +291,6 @@ def create_reference_tile_window(
         options={
             "split": split,
             "tile_id": tile_id,
-            "source_tile": tile.get("source_tile"),
-            "label_gcs_prefix": tile.get("gcs_prefix"),
-        },
-    )
-    window.save()
-
-    write_info_json(
-        ds_path,
-        group,
-        window.name,
-        {
-            "tile_id": tile_id,
             "split_seed": split_seed,
             "source_tile": tile.get("source_tile"),
             "label_gcs_prefix": tile.get("gcs_prefix"),
@@ -318,6 +300,7 @@ def create_reference_tile_window(
             "grid": grid,
         },
     )
+    window.save()
     return split
 
 
