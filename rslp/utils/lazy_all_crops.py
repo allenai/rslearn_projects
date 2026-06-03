@@ -1,19 +1,15 @@
-"""Lazy (non-caching) all-crops dataset + data module for memory-safe prediction.
+"""Memory-efficient all-crops dataset + data module for prediction.
 
-rslearn's default ``load_all_crops`` prediction path wraps a ``ModelDataset`` in
-``IterableAllCropsDataset``, which reads the *entire* window into memory once and
-then slices each crop out of that in-memory array. For a full Sentinel-1 GRD scene
-the window is one ~25000x16700 px, 6-channel float32 array (~10 GB raw, ~28 GB after
-transform copies), which OOM-kills the worker on the first batch fetch.
+``LazyAllCropsDataset`` runs sliding-window prediction over large windows while
+keeping peak memory to a single crop. It is map-style (enumerates every crop and
+exposes ``__len__``/``__getitem__``, like
+``rslearn.train.in_memory_dataset.InMemoryAllCropsDataset``), but reads each crop's
+pixel bounds directly from disk in ``__getitem__`` rather than holding the whole
+window in memory. Peak memory is therefore one crop (~6 MB at 512x512x6 float32)
+regardless of window size, which matters for large scenes such as full Sentinel-1
+GRD products, where a single window can span ~25000x16700 px x 6 channels.
 
-``LazyAllCropsDataset`` mirrors ``rslearn.train.in_memory_dataset.InMemoryAllCropsDataset``
-(map-style: enumerates every sliding-window crop, exposes ``__len__``/``__getitem__``)
-but does NOT cache the window. Each ``__getitem__`` reads only the requested crop's
-pixel bounds from disk via rslearn's ``read_data_input``, so peak memory is one crop
-(~6 MB at 512x512x6 float32) instead of the whole scene.
-
-This lives in rslearn_projects (rather than modifying rslearn core) and reuses only
-importable, public rslearn helpers. It is wired in via the model config's
+It reuses public rslearn helpers and is selected via the model config's
 ``data.class_path`` -> ``LazyAllCropsDataModule``.
 """
 
@@ -21,7 +17,6 @@ import random
 from typing import Any
 
 import torch
-
 from rslearn.dataset import Window
 from rslearn.log_utils import get_logger
 from rslearn.train.all_crops_dataset import (
@@ -94,9 +89,8 @@ class LazyAllCropsDataset(torch.utils.data.Dataset):
         window = self.windows[window_id]
         rng = random.Random(window_id if self.dataset.fix_crop_pick else None)
 
-        # Read ONLY the crop bounds for each input. This is the key difference
-        # from the default path: read_data_input issues a windowed read of the
-        # crop bbox rather than the full window.
+        # Read each input over just this crop's bounds. read_data_input issues a
+        # windowed read of the crop bbox, so no full-window array is allocated.
         raw_inputs: dict[str, Any] = {}
         passthrough_inputs: dict[str, Any] = {}
         for name, data_input in self.inputs.items():
