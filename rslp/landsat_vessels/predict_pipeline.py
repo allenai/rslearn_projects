@@ -29,8 +29,8 @@ from rslp.landsat_vessels.config import (
     CLASSIFY_WINDOW_SIZE,
     DETECT_MODEL_CONFIG,
     INFRA_THRESHOLD_KM,
+    LANDSAT_ALLBANDS,
     LANDSAT_ALLBANDS_LAYER_NAME,
-    LANDSAT_BANDS,
     LANDSAT_LAYER_NAME,
     LANDSAT_RESOLUTION,
     LOCAL_FILES_DATASET_CONFIG,
@@ -439,7 +439,7 @@ def setup_dataset(
         local_zip_path = os.path.join(zip_dir, scene_id + ".zip")
         download_and_unzip_scene(scene_zip_path, local_zip_path, zip_dir)
         image_files = {}
-        for band in LANDSAT_BANDS:
+        for band in LANDSAT_ALLBANDS:
             # TODO: have helper utility function that gets str() of UPath with protocol
             image_fname = str(zip_dir / scene_id / f"{scene_id}_{band}.TIF")
             if "://" not in image_fname:
@@ -447,6 +447,13 @@ def setup_dataset(
             image_files[band] = image_fname
 
     if image_files:
+        # The attribute model reads the full band stack (landsat_allbands layer), so
+        # require all bands to be provided rather than silently materializing zeros for
+        # any that are missing.
+        missing_bands = [band for band in LANDSAT_ALLBANDS if band not in image_files]
+        if missing_bands:
+            raise ValueError(f"image_files is missing required bands {missing_bands}")
+
         # Setup the dataset configuration file with the provided image files.
         with open(LOCAL_FILES_DATASET_CONFIG) as f:
             cfg = json.load(f)
