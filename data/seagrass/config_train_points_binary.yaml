@@ -73,9 +73,13 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      # Train on all 40k point windows. For a non-leaky validation metric, change this
-      # to tags: {split: train}; the val/test configs below already use split tags.
+      # Hold out the `val` split for a clean (non-leaky) point validation metric:
+      # train only on split=train (original train windows plus the former `test`
+      # windows, which are folded into train). The separate polygon group is the
+      # real held-out test set.
       groups: ["jamaica_2025_points"]
+      tags:
+        split: train
       transforms:
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
@@ -93,14 +97,10 @@ data:
       groups: ["jamaica_2025_points"]
       tags:
         split: val
-    test_config:
-      groups: ["jamaica_2025_points"]
-      tags:
-        split: test
     predict_config:
       groups: ["jamaica_2025_points"]
       tags:
-        split: "test"
+        split: "val"
 trainer:
   max_epochs: 50
   callbacks:

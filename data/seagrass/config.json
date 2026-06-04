@@ -29,32 +29,13 @@
             "B02",
             "B03",
             "B04",
-            "B08"
-          ],
-          "dtype": "uint16",
-          "format": {
-            "always_enable_tiling": true,
-            "name": "geotiff"
-          }
-        },
-        {
-          "bands": [
+            "B08",
             "B05",
             "B06",
             "B07",
             "B8A",
             "B11",
-            "B12"
-          ],
-          "dtype": "uint16",
-          "format": {
-            "always_enable_tiling": true,
-            "name": "geotiff"
-          },
-          "zoom_offset": -1
-        },
-        {
-          "bands": [
+            "B12",
             "B01",
             "B09"
           ],
@@ -62,8 +43,7 @@
           "format": {
             "always_enable_tiling": true,
             "name": "geotiff"
-          },
-          "zoom_offset": -2
+          }
         }
       ],
       "data_source": {

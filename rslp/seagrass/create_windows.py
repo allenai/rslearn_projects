@@ -153,6 +153,12 @@ def create_sample_window(
 
     split_key = str(row[split_key_column])
     split = assign_split(split_key, val_fraction, test_fraction, split_seed)
+    # The points dataset uses only train/val: hold out `val` for a clean validation
+    # metric and fold the `test` bucket into `train`. The polygon windows in the
+    # separate test group serve as the held-out test set. Keeping test_fraction
+    # leaves the `val` bucket unchanged from prior runs.
+    if split == "test":
+        split = "train"
     window_name = f"sample_{sample_id}"
     time_range = (
         datetime(year, 1, 1, tzinfo=timezone.utc),
