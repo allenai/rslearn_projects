@@ -49,17 +49,25 @@ def _get_cog_url(tile_id: str, year: int) -> str:
     return f"{S3_BASE_URL}/{tile_id}_{year}.tif"
 
 
-def _read_cog(url: str) -> tuple[np.ndarray, dict[str, Any]]:
-    """Read a single-band COG from an HTTP URL, returning (2D array, rasterio profile)."""
-    with rasterio.open(url) as src:
-        arr = src.read(1)
-        profile = {
-            "crs": src.crs,
-            "transform": src.transform,
-            "height": src.height,
-            "width": src.width,
-        }
-    return arr, profile
+def _read_cog(url: str) -> tuple[np.ndarray, dict[str, Any]] | None:
+    """Read a single-band COG from an HTTP URL.
+
+    Returns (2D array, rasterio profile), or None if the file doesn't exist (404).
+    """
+    try:
+        with rasterio.open(url) as src:
+            arr = src.read(1)
+            profile = {
+                "crs": src.crs,
+                "transform": src.transform,
+                "height": src.height,
+                "width": src.width,
+            }
+        return arr, profile
+    except rasterio.errors.RasterioIOError as e:
+        if "404" in str(e):
+            return None
+        raise
 
 
 def _get_output_path(out_path: str, tile_id: str) -> UPath:
@@ -87,21 +95,44 @@ def build_stack(
 
     logger.info("processing tile %s", tile_id)
 
-    # Read the first year to get spatial metadata
-    first_url = _get_cog_url(tile_id, YEARS[0])
-    first_arr, profile = _read_cog(first_url)
-    height, width = first_arr.shape
-    logger.info("tile %s: %dx%d, CRS=%s", tile_id, width, height, profile["crs"])
+    # Read all available years, skipping any that return 404.
+    profile: dict[str, Any] | None = None
+    year_arrays: dict[int, np.ndarray] = {}
 
-    # Stack all years
+    for year in YEARS:
+        url = _get_cog_url(tile_id, year)
+        result = _read_cog(url)
+        if result is None:
+            logger.warning("tile %s year %d: not found (404), skipping", tile_id, year)
+            continue
+        arr, prof = result
+        year_arrays[year] = arr
+        if profile is None:
+            profile = prof
+        logger.info(
+            "tile %s: read %d (%d/%d)", tile_id, year, len(year_arrays), NUM_YEARS
+        )
+
+    if not year_arrays or profile is None:
+        logger.warning("tile %s: no data for any year, skipping", tile_id)
+        return
+
+    height, width = next(iter(year_arrays.values())).shape
+    logger.info(
+        "tile %s: %dx%d, CRS=%s, %d/%d years",
+        tile_id,
+        width,
+        height,
+        profile["crs"],
+        len(year_arrays),
+        NUM_YEARS,
+    )
+
+    # Stack all years (missing years remain 0 = nodata)
     stack = np.zeros((NUM_YEARS, height, width), dtype=np.uint8)
-    stack[0] = first_arr
-
-    for i in range(1, NUM_YEARS):
-        url = _get_cog_url(tile_id, YEARS[i])
-        arr, _ = _read_cog(url)
-        stack[i] = arr
-        logger.info("read %d/%d: %d", i + 1, NUM_YEARS, YEARS[i])
+    for i, year in enumerate(YEARS):
+        if year in year_arrays:
+            stack[i] = year_arrays[year]
 
     # Write output
     out_dir = UPath(out_path)
