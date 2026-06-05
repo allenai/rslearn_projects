@@ -1,9 +1,8 @@
 """Enumerate ESRI land cover tiles and write Beaker jobs to build stacked GeoTIFFs.
 
-Queries the Planetary Computer STAC API for all tiles in the
-``io-lulc-annual-v02`` collection (one year is sufficient to discover the full
-tile set), filters to tiles that don't yet have outputs, batches them, and writes
-jobs to a Beaker queue for processing by ``build_stacks``.
+Discovers all available S2 tile IDs by listing the public S3 bucket for a
+single year, filters to tiles that don't yet have outputs, batches them, and
+writes jobs to a Beaker queue for processing by ``build_stacks``.
 
 Usage::
 
@@ -17,47 +16,67 @@ from __future__ import annotations
 import json
 import logging
 import random
-from datetime import datetime, timezone
+import re
 
-from rslearn.data_sources.planetary_computer import PlanetaryComputerStacClient
+import requests
 from upath import UPath
 
 import rslp.common.worker
 
-from .build_stacks import COLLECTION, STAC_ENDPOINT, _get_output_path
+from .build_stacks import _get_output_path
 
 logger = logging.getLogger(__name__)
 
-# Query a single recent year to discover all tile IDs.
+S3_BUCKET = "io-10m-annual-lulc"
+S3_LIST_URL = f"https://{S3_BUCKET}.s3.us-west-2.amazonaws.com"
+
+# Use a single year to discover all tile IDs.
 DISCOVERY_YEAR = 2023
 
+# Matches filenames like "10T_2023.tif" and extracts the tile ID.
+_TILE_RE = re.compile(rf"^(.+)_{DISCOVERY_YEAR}\.tif$")
 
-def _discover_tile_ids(
-    client: PlanetaryComputerStacClient,
-) -> list[str]:
-    """Get all tile IDs from the STAC collection by querying one year.
 
-    Uses datetime filtering which is standard STAC (no query/CQL2 needed).
+def _discover_tile_ids() -> list[str]:
+    """List the S3 bucket to discover all tile IDs for one year.
+
+    Uses the S3 XML list API (no auth needed for public buckets).
 
     Returns a sorted list of unique tile ID strings.
     """
     logger.info(
-        "discovering tile IDs from collection %s (year %d)", COLLECTION, DISCOVERY_YEAR
+        "discovering tile IDs from s3://%s (year %d)", S3_BUCKET, DISCOVERY_YEAR
     )
-    items = client.search(
-        collections=[COLLECTION],
-        date_time=(
-            datetime(DISCOVERY_YEAR, 1, 1, tzinfo=timezone.utc),
-            datetime(DISCOVERY_YEAR, 12, 31, tzinfo=timezone.utc),
-        ),
-    )
-    logger.info("STAC returned %d items for year %d", len(items), DISCOVERY_YEAR)
 
     tile_ids: set[str] = set()
-    for item in items:
-        parts = item.id.rsplit("-", 1)
-        if len(parts) == 2:
-            tile_ids.add(parts[0])
+    marker: str | None = None
+
+    while True:
+        params: dict[str, str] = {"max-keys": "1000"}
+        if marker is not None:
+            params["marker"] = marker
+
+        resp = requests.get(S3_LIST_URL, params=params, timeout=30)
+        resp.raise_for_status()
+        body = resp.text
+
+        # Parse keys from the XML response (avoid adding lxml dependency).
+        keys = re.findall(r"<Key>([^<]+)</Key>", body)
+        if not keys:
+            break
+
+        for key in keys:
+            m = _TILE_RE.match(key)
+            if m:
+                tile_ids.add(m.group(1))
+
+        # S3 truncation indicator
+        if "<IsTruncated>true</IsTruncated>" in body:
+            marker = keys[-1]
+        else:
+            break
+
+    logger.info("discovered %d tile IDs", len(tile_ids))
     return sorted(tile_ids)
 
 
@@ -76,9 +95,7 @@ def write_jobs(
         batch_size: number of tiles per worker job.
         count: if set, randomly sample this many tiles (for testing).
     """
-    client = PlanetaryComputerStacClient(STAC_ENDPOINT)
-    all_tile_ids = _discover_tile_ids(client)
-    logger.info("discovered %d tile IDs", len(all_tile_ids))
+    all_tile_ids = _discover_tile_ids()
 
     # Filter out tiles that already have outputs.
     out_upath = UPath(out_path)

@@ -1,11 +1,11 @@
-"""Build stacked ESRI land cover GeoTIFFs from Planetary Computer COGs.
+"""Build stacked ESRI land cover GeoTIFFs from AWS S3 COGs.
 
-For each Sentinel-2 grid tile, reads 9 annual ESRI land cover COGs (2017-2025)
-from the Planetary Computer ``io-lulc-annual-v02`` collection and writes a single
-9-band uint8 GeoTIFF where band index corresponds to year.
+For each Sentinel-2 grid tile, reads annual ESRI land cover COGs (2017-2024)
+from the public S3 bucket ``s3://io-10m-annual-lulc`` and writes a single
+8-band uint8 GeoTIFF where band index corresponds to year.
 
 Band layout:
-  0 = 2017, 1 = 2018, ..., 8 = 2025
+  0 = 2017, 1 = 2018, ..., 7 = 2024
 
 ESRI class values (uint8):
   0 = No Data, 1 = Water, 2 = Trees, 4 = Flooded Vegetation,
@@ -34,74 +34,31 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import planetary_computer
 import rasterio
-from rslearn.data_sources.planetary_computer import PlanetaryComputerStacClient
-from rslearn.utils.stac import StacItem
 from upath import UPath
 
 logger = logging.getLogger(__name__)
 
-STAC_ENDPOINT = "https://planetarycomputer.microsoft.com/api/stac/v1"
-COLLECTION = "io-lulc-annual-v02"
-YEARS = list(range(2017, 2026))
+S3_BASE_URL = "https://s3.us-west-2.amazonaws.com/io-10m-annual-lulc"
+YEARS = list(range(2017, 2025))
 NUM_YEARS = len(YEARS)
 
 
-def _get_stac_client() -> PlanetaryComputerStacClient:
-    """Create a Planetary Computer STAC client."""
-    return PlanetaryComputerStacClient(STAC_ENDPOINT)
+def _get_cog_url(tile_id: str, year: int) -> str:
+    """Get the S3 HTTP URL for an ESRI land cover COG."""
+    return f"{S3_BASE_URL}/{tile_id}_{year}.tif"
 
 
-def _get_items_for_tile(
-    client: PlanetaryComputerStacClient,
-    tile_id: str,
-) -> dict[int, StacItem]:
-    """Query STAC for all years of a given S2 tile.
-
-    Uses direct item ID lookups (``{tile_id}-{year}``) which is reliable
-    across all STAC implementations without needing query/CQL2 extensions.
-
-    Returns a dict mapping year -> StacItem.
-    """
-    expected_ids = [f"{tile_id}-{year}" for year in YEARS]
-    items = client.search(
-        collections=[COLLECTION],
-        ids=expected_ids,
-    )
-
-    year_to_item: dict[int, StacItem] = {}
-    for item in items:
-        parts = item.id.rsplit("-", 1)
-        if len(parts) == 2 and parts[1].isdigit():
-            year = int(parts[1])
-            if year in YEARS:
-                year_to_item[year] = item
-    return year_to_item
-
-
-def _read_cog(item: StacItem) -> tuple[np.ndarray, dict[str, Any]]:
-    """Read a single-band COG from a STAC item, returning (2D array, rasterio profile)."""
-    asset = item.assets
-    if asset is None:
-        raise ValueError(f"Item {item.id} has no assets")
-
-    # The main data asset key is "data" in io-lulc-annual-v02
-    asset_key = "data"
-    if asset_key not in asset:
-        available = list(asset.keys())
-        raise ValueError(
-            f"Item {item.id} missing '{asset_key}' asset (available: {available})"
-        )
-
-    signed_url = planetary_computer.sign(asset[asset_key].href)
-    with rasterio.open(signed_url) as src:
+def _read_cog(url: str) -> tuple[np.ndarray, dict[str, Any]]:
+    """Read a single-band COG from an HTTP URL, returning (2D array, rasterio profile)."""
+    with rasterio.open(url) as src:
         arr = src.read(1)
-        profile = dict(src.profile)
-        profile["transform"] = src.transform
-        profile["crs"] = src.crs
-        profile["height"] = src.height
-        profile["width"] = src.width
+        profile = {
+            "crs": src.crs,
+            "transform": src.transform,
+            "height": src.height,
+            "width": src.width,
+        }
     return arr, profile
 
 
@@ -116,8 +73,8 @@ def build_stack(
 ) -> None:
     """Build a stacked land cover GeoTIFF for a single S2 tile.
 
-    Reads 9 annual ESRI land cover COGs (2017-2025) and writes a single
-    9-band uint8 GeoTIFF.
+    Reads 8 annual ESRI land cover COGs (2017-2024) from S3 and writes a
+    single 8-band uint8 GeoTIFF.
 
     Args:
         tile_id: Sentinel-2 grid tile ID (e.g. "10T").
@@ -128,35 +85,23 @@ def build_stack(
         logger.info("output %s already exists, skipping", out_file)
         return
 
-    client = _get_stac_client()
-    year_to_item = _get_items_for_tile(client, tile_id)
+    logger.info("processing tile %s", tile_id)
 
-    if not year_to_item:
-        logger.warning("no STAC items found for tile %s, skipping", tile_id)
-        return
-
-    missing_years = [y for y in YEARS if y not in year_to_item]
-    if missing_years:
-        logger.warning(
-            "tile %s missing years %s — will fill with nodata", tile_id, missing_years
-        )
-
-    # Read the first available year to get spatial metadata
-    first_year = min(year_to_item.keys())
-    first_arr, profile = _read_cog(year_to_item[first_year])
+    # Read the first year to get spatial metadata
+    first_url = _get_cog_url(tile_id, YEARS[0])
+    first_arr, profile = _read_cog(first_url)
     height, width = first_arr.shape
+    logger.info("tile %s: %dx%d, CRS=%s", tile_id, width, height, profile["crs"])
 
     # Stack all years
     stack = np.zeros((NUM_YEARS, height, width), dtype=np.uint8)
-    for i, year in enumerate(YEARS):
-        if year in year_to_item:
-            if year == first_year:
-                stack[i] = first_arr
-            else:
-                arr, _ = _read_cog(year_to_item[year])
-                stack[i] = arr
-            logger.debug("read year %d for tile %s", year, tile_id)
-        # else: remains 0 (nodata)
+    stack[0] = first_arr
+
+    for i in range(1, NUM_YEARS):
+        url = _get_cog_url(tile_id, YEARS[i])
+        arr, _ = _read_cog(url)
+        stack[i] = arr
+        logger.info("read %d/%d: %d", i + 1, NUM_YEARS, YEARS[i])
 
     # Write output
     out_dir = UPath(out_path)
