@@ -1,9 +1,9 @@
 """Training transform: select frequent option, subset quarterly, build sentinel2_l2a.
 
 This transform runs after the task injects annotation metadata. It:
-1. Randomly picks one of the available frequent image options (0-3)
-2. Determines the latest frequent image timestamp
-3. Selects 16 quarterly images ending at/before that timestamp
+1. Randomly picks one of the available frequent image options
+2. Determines when that option's four 15-day periods begin
+3. Selects 16 quarterly images ending before the frequent block
 4. Concatenates 16 quarterly + 4 frequent = 20 images into a single
    ``sentinel2_l2a`` RasterImage so OlmoEarthNormalize works normally
 5. Computes per-image timestamp binary targets
@@ -159,9 +159,9 @@ class FrequentOptionSampler(Transform):
 class PredictPassBuilder(Transform):
     """Build sentinel2_l2a for prediction (no annotation, single frequent layer).
 
-    At prediction time there is only one sentinel2_frequent layer (not 4 options)
-    and no annotation sidecar. This transform takes the last 16 quarterly images,
-    concatenates 16 quarterly + 4 frequent = 20 into ``sentinel2_l2a``.
+    At prediction time there is one sentinel2_frequent layer with four 15-day
+    periods and no annotation sidecar. This transform takes the last 16 quarterly
+    images, concatenates 16 quarterly + 4 frequent = 20 into ``sentinel2_l2a``.
     """
 
     def __init__(self) -> None:
@@ -177,6 +177,11 @@ class PredictPassBuilder(Transform):
             raise ValueError("sentinel2_quarterly must have timestamps")
 
         frequent: RasterImage = input_dict.pop(f"{FREQUENT_KEY_PREFIX}0")
+        if frequent.image.shape[1] != NUM_FREQUENT:
+            raise ValueError(
+                f"Expected prediction frequent layer to have {NUM_FREQUENT} "
+                f"timesteps, got {frequent.image.shape[1]}"
+            )
 
         T = quarterly.image.shape[1]
         start = max(0, T - NUM_QUARTERLY)
