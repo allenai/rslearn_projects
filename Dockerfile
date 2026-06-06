@@ -1,7 +1,7 @@
 FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime@sha256:7db0e1bf4b1ac274ea09cf6358ab516f8a5c7d3d0e02311bed445f7e236a5d80
 
 RUN apt update
-RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
+RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget gcc
 
 # Install Go (used for Satlas smooth_point_labels_viterbi.go).
 RUN wget https://go.dev/dl/go1.22.12.linux-amd64.tar.gz
