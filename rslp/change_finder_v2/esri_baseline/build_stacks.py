@@ -29,12 +29,14 @@ from __future__ import annotations
 
 import json
 import logging
+import signal
 import tempfile
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import rasterio
+import rasterio.env
 from upath import UPath
 
 logger = logging.getLogger(__name__)
@@ -43,31 +45,59 @@ S3_BASE_URL = "https://s3.us-west-2.amazonaws.com/io-10m-annual-lulc"
 YEARS = list(range(2017, 2025))
 NUM_YEARS = len(YEARS)
 
+COG_READ_TIMEOUT = 600  # seconds per COG read before giving up
+
+GDAL_HTTP_OPTS = {
+    "GDAL_HTTP_TIMEOUT": "120",
+    "GDAL_HTTP_CONNECTTIMEOUT": "30",
+    "GDAL_HTTP_MAX_RETRY": "3",
+    "GDAL_HTTP_RETRY_DELAY": "5",
+    "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif",
+}
+
 
 def _get_cog_url(tile_id: str, year: int) -> str:
     """Get the S3 HTTP URL for an ESRI land cover COG."""
     return f"{S3_BASE_URL}/{tile_id}_{year}.tif"
 
 
+class _ReadTimeout(Exception):
+    pass
+
+
+def _timeout_handler(signum: int, frame: Any) -> None:
+    raise _ReadTimeout(f"COG read timed out after {COG_READ_TIMEOUT}s")
+
+
 def _read_cog(url: str) -> tuple[np.ndarray, dict[str, Any]] | None:
     """Read a single-band COG from an HTTP URL.
 
-    Returns (2D array, rasterio profile), or None if the file doesn't exist (404).
+    Returns (2D array, rasterio profile), or None if the file doesn't exist
+    (404) or the read times out.
     """
+    prev_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(COG_READ_TIMEOUT)
     try:
-        with rasterio.open(url) as src:
-            arr = src.read(1)
-            profile = {
-                "crs": src.crs,
-                "transform": src.transform,
-                "height": src.height,
-                "width": src.width,
-            }
+        with rasterio.env.Env(**GDAL_HTTP_OPTS):
+            with rasterio.open(url) as src:
+                arr = src.read(1)
+                profile = {
+                    "crs": src.crs,
+                    "transform": src.transform,
+                    "height": src.height,
+                    "width": src.width,
+                }
         return arr, profile
     except rasterio.errors.RasterioIOError as e:
         if "404" in str(e):
             return None
         raise
+    except _ReadTimeout:
+        logger.error("timed out reading %s", url)
+        return None
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, prev_handler)
 
 
 def _get_output_path(out_path: str, tile_id: str) -> UPath:
