@@ -30,6 +30,10 @@ reference configs sit next to this README:
   Planetary Computer + an `embeddings` layer).
 - [config.yaml](config.yaml) — model config that runs OlmoEarth and writes
   outputs into the `embeddings` layer via `RslearnWriter`.
+- [config_with_presto.json](config_with_presto.json) — dataset config that also
+  declares a 128-dimensional `presto` embedding layer.
+- [config_presto.yaml](config_presto.yaml) — model config that runs Presto and
+  writes outputs into the `presto` layer via `RslearnWriter`.
 
 For a fuller treatment of these configs (Sentinel-1 / Landsat layers, model
 sizes, etc.) see
@@ -109,6 +113,26 @@ rslearn model predict --config rslp/embedding_explorer/config_olmoearth_10m.yaml
 This writes to the same `embeddings` layer as the 40m config (so only run one
 or the other per dataset).
 
+### 3c. Compute Presto embeddings (optional)
+
+Presto is supported in rslearn as `rslearn.models.presto.Presto`. Use
+`config_with_presto.json` instead of `config.json` when creating the dataset,
+then materialize Sentinel-2 as above and run:
+
+```bash
+rslearn model predict --config rslp/embedding_explorer/config_presto.yaml
+```
+
+This writes 128-dimensional embeddings at 10m/pixel to the `presto` layer. The
+provided config uses Sentinel-2 only, matching the default explorer dataset.
+Presto can also consume Sentinel-1 when the dataset has a compatible `s1` input.
+The first run may need to download or otherwise populate the Presto checkpoint
+cache used by `rslearn.models.presto.Presto`.
+
+Tessera is not currently available as an rslearn model config in this project.
+There is a Tessera eval wrapper in `olmoearth_pretrain`, but it has not been
+adapted to rslearn's `FeatureExtractor` interface for `rslearn model predict`.
+
 ## Run the app
 
 The app needs Flask and scikit-learn (neither are pulled in by `rslp`'s base
@@ -138,6 +162,15 @@ python -m rslp.embedding_explorer.app \
 When multiple layers are loaded, a dropdown appears in the sidebar to select
 which embedding is used for similarity queries. Each layer can have a different
 resolution — the overlay adapts to the selected layer's grid.
+
+For example, to compare OlmoEarth and Presto:
+
+```bash
+python -m rslp.embedding_explorer.app \
+    --dataset-path $DATASET_PATH \
+    --embedding-layer embeddings presto \
+    --port 5000
+```
 
 Open `http://localhost:5000` and pick a window from the sidebar. Clicking on
 the map adds points; in cosine/KNN modes the overlay updates immediately, and
