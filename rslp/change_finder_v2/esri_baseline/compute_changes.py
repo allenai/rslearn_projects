@@ -236,3 +236,33 @@ def compute_all_changes(
             )
         except Exception:
             logger.exception("failed to process tile %s", tile_id)
+
+
+def compute_changes_batch(
+    stack_path: str,
+    transitions_path: str,
+    change_count_path: str,
+    tile_ids: str,
+) -> None:
+    """Compute transitions for a batch of tiles (Beaker worker entry point).
+
+    Args:
+        stack_path: directory containing stacked GeoTIFFs.
+        transitions_path: directory to write transition rasters.
+        change_count_path: directory to write change count rasters.
+        tile_ids: JSON-encoded list of tile ID strings.
+    """
+    import json
+
+    ids = json.loads(tile_ids)
+    logger.info("processing %d tiles", len(ids))
+    for tile_id in ids:
+        try:
+            compute_changes(
+                tile_id=tile_id,
+                stack_path=stack_path,
+                transitions_path=transitions_path,
+                change_count_path=change_count_path,
+            )
+        except Exception:
+            logger.exception("failed to process tile %s", tile_id)
