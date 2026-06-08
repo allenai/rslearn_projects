@@ -25,8 +25,10 @@ entries only need the point and a long-enough `time_range`.
 
 The dataset config requests up to 84 Sentinel-2 mosaics using 30-day periods.
 Training randomly crops a five-year, 60-frame subsequence. Inference always uses
-the middle 60-frame crop. Windows with fewer than 60 prepared frames cannot be
-used.
+the middle 60-frame crop. If fewer than 60 frames are prepared, the transform
+repeats the final real frame and continues the 30-day timestamp cadence until the
+model input reaches 60 frames. Labels that fall in this padded tail are marked
+invalid for loss/metrics.
 
 ## 1. Create the Dataset
 
@@ -97,15 +99,15 @@ Predictions are written to the `output_timestamps` vector layer. Each feature
 contains monotonic-decoded `pre_idx`/`pre_date`, `first_idx`/`first_date`, and
 `post_idx`/`post_date` properties, plus probability arrays for review.
 
-## 5. Merge Predictions Into New JSON Files
+## 5. Merge Predictions Into A New JSON File
 
-Write updated copies of one or more inference annotation JSONs:
+Write an updated copy of one inference annotation JSON:
 
 ```bash
 python -m rslp.change_finder_v2.annotation_timestamp_helper.merge_predictions \
     --dataset-path "$DS" \
     --json inference_needs_timestamps.json \
-    --output-dir updated_annotations/
+    --output-json inference_with_predicted_timestamps.json
 ```
 
 For each inference point, the merge script:
@@ -113,4 +115,5 @@ For each inference point, the merge script:
 - reads the decoded timestamp date properties from `output_timestamps`
 - overwrites the three timestamp fields in the output JSON copy
 
-The source JSON files are not modified.
+The source JSON file is not modified. Run the command once per inference JSON if
+you created windows from multiple inference files.

@@ -53,5 +53,5 @@ trainer:
       init_args:
         output_layer: output_timestamps
 project_name: 2026_06_change_finder_v2_timestamp_helper
-run_name: olmoearth_base_center_token_temporal_attention
+run_name: olmoearth_base_center_token_temporal_attention_01
 management_dir: ${RSLP_PREFIX}/projects

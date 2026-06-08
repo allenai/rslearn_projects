@@ -1,6 +1,6 @@
 """Prepare the LCC model dataset: windows, imagery layers, and labels.
 
-This script takes a v2 annotation JSON and creates an rslearn dataset with:
+This script takes one or more v2 annotation JSONs and creates an rslearn dataset with:
 - sentinel2_quarterly: WindowLayerData with quarterly mosaics (90-day periods)
 - sentinel2_frequent_0..7: WindowLayerData with four 15-day periods each; the
   least-cloudy mosaic is selected within each period
@@ -562,25 +562,27 @@ def _process_entry(
 
 def prepare(
     *,
-    v2_json_path: str,
+    v2_json_paths: list[str],
     ds_path: str,
     workers: int = 32,
 ) -> None:
-    """Prepare the LCC model dataset from v2 annotation JSON.
+    """Prepare the LCC model dataset from v2 annotation JSONs.
 
     Idempotent: windows that already exist are skipped, so re-running after new
     annotations have been added only processes the new entries.
 
     Args:
-        v2_json_path: Path to the v2 annotation JSON.
+        v2_json_paths: Paths to the v2 annotation JSONs.
         ds_path: Path to the output rslearn dataset (config.json must exist).
         workers: Number of parallel workers (0 = sequential).
     """
     if "OEDATASETS_API_URL" not in os.environ:
         raise RuntimeError("OEDATASETS_API_URL env var must be set")
 
-    with open(v2_json_path) as f:
-        entries = json.load(f)
+    entries = []
+    for v2_json_path in v2_json_paths:
+        with open(v2_json_path) as f:
+            entries.extend(json.load(f))
 
     ds_upath = UPath(ds_path)
 
@@ -596,6 +598,8 @@ def prepare(
     pending: list[dict[str, Any]] = []
     skipped_incomplete = 0
     skipped_existing = 0
+    skipped_duplicate_input = 0
+    seen_window_keys: set[tuple[str, str]] = set()
 
     for entry in entries:
         if not _entry_has_complete_annotations(entry):
@@ -603,6 +607,11 @@ def prepare(
             continue
         window_name = entry["window_name"]
         window_group = entry["group"]
+        window_key = (window_group, window_name)
+        if window_key in seen_window_keys:
+            skipped_duplicate_input += 1
+            continue
+        seen_window_keys.add(window_key)
         window_root = Window.get_window_root(ds_upath, window_group, window_name)
         if (window_root / "metadata.json").exists():
             skipped_existing += 1
@@ -611,7 +620,8 @@ def prepare(
 
     print(
         f"{len(pending)} to process, "
-        f"{skipped_incomplete} incomplete, {skipped_existing} already exist"
+        f"{skipped_incomplete} incomplete, {skipped_existing} already exist, "
+        f"{skipped_duplicate_input} duplicate inputs"
     )
 
     kwargs_list = [dict(entry=entry, ds_path=ds_path) for entry in pending]
@@ -632,23 +642,33 @@ def prepare(
 
     print(
         f"Created {created} windows, "
-        f"skipped {skipped_incomplete} incomplete + {skipped_existing} existing"
+        f"skipped {skipped_incomplete} incomplete + {skipped_existing} existing "
+        f"+ {skipped_duplicate_input} duplicate inputs"
     )
     print(f"Wrote annotation sidecar to {sidecar_path}")
 
 
 def main() -> None:
-    """Prepare LCC model dataset from v2 annotation JSON."""
+    """Prepare LCC model dataset from v2 annotation JSONs."""
     parser = argparse.ArgumentParser(
-        description="Prepare LCC model dataset from v2 annotation JSON."
+        description="Prepare LCC model dataset from v2 annotation JSONs."
     )
-    parser.add_argument("v2_json_path", help="Path to the v2 annotation JSON.")
-    parser.add_argument("ds_path", help="Path to the rslearn dataset.")
+    parser.add_argument(
+        "--v2-json-paths",
+        nargs="+",
+        required=True,
+        help="Path(s) to v2 annotation JSONs.",
+    )
+    parser.add_argument(
+        "--ds-path",
+        required=True,
+        help="Path to the rslearn dataset.",
+    )
     parser.add_argument("--workers", type=int, default=32)
     args = parser.parse_args()
 
     prepare(
-        v2_json_path=args.v2_json_path,
+        v2_json_paths=args.v2_json_paths,
         ds_path=args.ds_path,
         workers=args.workers,
     )

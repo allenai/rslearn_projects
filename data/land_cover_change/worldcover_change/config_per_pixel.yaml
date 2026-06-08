@@ -2,7 +2,7 @@ model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     model:
-      class_path: rslp.change_finder.per_pixel.PerPixelModelWrapper
+      class_path: rslp.change_finder.per_pixel_land_cover.PerPixelModelWrapper
       init_args:
         model:
           class_path: rslearn.models.singletask.SingleTaskModel
@@ -84,6 +84,11 @@ data:
         - class_path: rslearn.train.transforms.flip.Flip
           init_args:
             image_selectors: ["sentinel2_l2a", "target/classes", "target/valid"]
+        - class_path: rslearn.train.transforms.random_time_dropping.RandomTimeDropping
+          init_args:
+            selectors: ["sentinel2_l2a"]
+            drop_ratio: 0.5
+            min_keep: 6
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
@@ -117,5 +122,5 @@ trainer:
         monitor: val_accuracy
         mode: max
 project_name: 2026_04_05_worldcover_change
-run_name: olmoearth_base_s2_center10_per_pixel_ps1_00
+run_name: olmoearth_base_s2_center10_per_pixel_ps1_01
 management_dir: ${RSLP_PREFIX}/projects

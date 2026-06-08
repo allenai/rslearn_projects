@@ -123,7 +123,8 @@ export DATASETS_API_TOKEN=<your-token>
 
 #### Training Dataset Preparation
 
-The prepare script creates the training dataset from the v2 annotation JSON.
+The prepare script creates the training dataset from one or more v2 annotation
+JSONs.
 It queries the OlmoEarth Datasets API for both quarterly and frequent imagery,
 then rslearn materialize downloads the pixels.
 
@@ -131,7 +132,9 @@ then rslearn materialize downloads the pixels.
 OUT=/path/to/lcc_model_dataset/
 mkdir -p "$OUT"
 cp data/change_finder_v2/lcc_model/config.json "$OUT/config.json"
-python -m rslp.change_finder_v2.lcc_model.prepare annotations.json "$OUT"
+python -m rslp.change_finder_v2.lcc_model.prepare \
+    --v2-json-paths annotations_a.json annotations_b.json \
+    --ds-path "$OUT"
 rslearn dataset materialize --root "$OUT" --workers 128
 ```
 
@@ -144,6 +147,7 @@ The prepare script:
 - Only processes entries with fully annotated positive points (all of pre_change,
   post_change, first_date_change_noticeable, pre_category, post_category present).
 - Skips windows that already exist in the dataset.
+- Skips duplicate `group`/`window_name` entries across the provided JSON inputs.
 - Creates 8 frequent-image options per window. Each option is four 15-day
   periods with one least-cloudy mosaic per period; options vary where the
   annotation dates fall within the frequent stack, including random later

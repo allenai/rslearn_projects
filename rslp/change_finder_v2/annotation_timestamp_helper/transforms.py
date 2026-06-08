@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import torch
@@ -54,11 +54,8 @@ class TemporalCropFiveYears(Transform):
         """Crop imagery and make labels crop-relative."""
         image: RasterImage = input_dict.pop(self.input_key)
         num_frames = image.image.shape[1]
-        if num_frames < NUM_CROP_MONTHS:
-            raise ValueError(
-                f"{self.input_key} must have at least {NUM_CROP_MONTHS} timesteps, "
-                f"got {num_frames}"
-            )
+        if num_frames == 0:
+            raise ValueError(f"{self.input_key} must have at least one timestep")
         if image.timestamps is None:
             raise ValueError(f"{self.input_key} must have timestamps")
 
@@ -67,6 +64,22 @@ class TemporalCropFiveYears(Transform):
         sorted_image = image.image[:, order, :, :]
         sorted_timestamps = [image.timestamps[idx] for idx in order]
         sorted_centers = [centers[idx] for idx in order]
+        real_num_frames = num_frames
+
+        if num_frames < NUM_CROP_MONTHS:
+            num_pad = NUM_CROP_MONTHS - num_frames
+            last_frame = sorted_image[:, -1:, :, :].repeat(1, num_pad, 1, 1)
+            sorted_image = torch.cat([sorted_image, last_frame], dim=1)
+
+            period = timedelta(days=30)
+            last_start, last_end = sorted_timestamps[-1]
+            for pad_idx in range(num_pad):
+                offset = period * (pad_idx + 1)
+                start = last_start + offset
+                end = last_end + offset
+                sorted_timestamps.append((start, end))
+                sorted_centers.append(start + (end - start) / 2)
+            num_frames = NUM_CROP_MONTHS
 
         max_start = num_frames - NUM_CROP_MONTHS
         if self.deterministic:
@@ -80,6 +93,8 @@ class TemporalCropFiveYears(Transform):
         crop_end = crop_start + NUM_CROP_MONTHS
         cropped_timestamps = sorted_timestamps[crop_start:crop_end]
         cropped_centers = sorted_centers[crop_start:crop_end]
+        real_crop_end = min(crop_end, real_num_frames)
+        real_cropped_timestamps = sorted_timestamps[crop_start:real_crop_end]
         input_dict[self.output_key] = RasterImage(
             image=sorted_image[:, crop_start:crop_end, :, :],
             timestamps=cropped_timestamps,
@@ -95,8 +110,10 @@ class TemporalCropFiveYears(Transform):
                 range(NUM_CROP_MONTHS),
                 key=lambda idx: abs(cropped_centers[idx] - target_date),
             )
-            in_crop = (
-                cropped_timestamps[0][0] <= target_date <= cropped_timestamps[-1][1]
+            in_crop = bool(real_cropped_timestamps) and (
+                real_cropped_timestamps[0][0]
+                <= target_date
+                <= real_cropped_timestamps[-1][1]
             )
             valid = target_dict[key]["valid"] * float(in_crop)
             target_dict[head] = {

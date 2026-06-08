@@ -40,7 +40,6 @@
         },
         "query_config": {
           "max_matches": 84,
-          "min_matches": 60,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
         }

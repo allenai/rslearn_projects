@@ -42,11 +42,13 @@ def _decode_monotonic(
 
 
 class TimestampAccuracy(Metric):
-    """Accuracy over all valid timestamp heads."""
+    """Accuracy over valid timestamp heads, optionally with tolerance."""
 
-    def __init__(self) -> None:
+    def __init__(self, head: str | None = None, tolerance: int = 0) -> None:
         """Initialize metric counters."""
         super().__init__()
+        self.head = head
+        self.tolerance = tolerance
         self.add_state(
             "correct", default=torch.tensor(0, dtype=torch.long), dist_reduce_fx="sum"
         )
@@ -58,8 +60,9 @@ class TimestampAccuracy(Metric):
         self, preds: list[dict[str, torch.Tensor]], targets: list[dict[str, Any]]
     ) -> None:
         """Accumulate correct predictions."""
+        heads = (self.head,) if self.head is not None else TIMESTAMP_HEADS
         for pred, target in zip(preds, targets):
-            for head in TIMESTAMP_HEADS:
+            for head in heads:
                 if head not in target:
                     continue
                 valid = target[head]["valid"] > 0
@@ -67,7 +70,7 @@ class TimestampAccuracy(Metric):
                     continue
                 cls = target[head]["class"]
                 pred_cls = pred[head].argmax()
-                self.correct += (pred_cls == cls).long()
+                self.correct += ((pred_cls - cls).abs() <= self.tolerance).long()
                 self.total += 1
 
     def compute(self) -> torch.Tensor:
@@ -172,4 +175,17 @@ class TimestampHelperTask(Task):
 
     def get_metrics(self) -> MetricCollection:
         """Get timestamp metrics."""
-        return MetricCollection({"accuracy": TimestampAccuracy()})
+        metrics: dict[str, Metric] = {
+            "accuracy": TimestampAccuracy(),
+            "accuracy_off_by_1": TimestampAccuracy(tolerance=1),
+            "accuracy_off_by_2": TimestampAccuracy(tolerance=2),
+        }
+        for head in TIMESTAMP_HEADS:
+            metrics[f"{head}_accuracy"] = TimestampAccuracy(head=head)
+            metrics[f"{head}_accuracy_off_by_1"] = TimestampAccuracy(
+                head=head, tolerance=1
+            )
+            metrics[f"{head}_accuracy_off_by_2"] = TimestampAccuracy(
+                head=head, tolerance=2
+            )
+        return MetricCollection(metrics, compute_groups=False)

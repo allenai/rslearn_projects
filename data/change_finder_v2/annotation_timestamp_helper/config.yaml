@@ -32,7 +32,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/annotation_timestamp_helper/
+    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/annotation_timestamp_helper_20260606/
     inputs:
       sentinel2_monthly:
         data_type: "raster"
@@ -97,5 +97,5 @@ trainer:
         monitor: val_accuracy
         mode: max
 project_name: 2026_06_change_finder_v2_timestamp_helper
-run_name: olmoearth_base_center_token_temporal_attention
+run_name: olmoearth_base_center_token_temporal_attention_04
 management_dir: ${RSLP_PREFIX}/projects
