@@ -691,5 +691,7 @@ def _build_predictions_and_crops(
                 with crop_fnames[band_name].open("wb") as f:
                     Image.fromarray(band_image).save(f, format="PNG")
 
+            detection.crop_fnames = crop_fnames
+
         detections_by_task[task_idx].append(detection)
     return detections_by_task
