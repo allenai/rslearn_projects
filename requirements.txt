@@ -1,8 +1,6 @@
-jsonargparse[signatures]
 prometheus-client>=0.21.1
 python-dotenv>=1.0
 PyYAML>=6
 rslearn>=0.1.9
 s3fs>=2025.2.0
-torchmetrics[detection]
 wandb>=0.21
