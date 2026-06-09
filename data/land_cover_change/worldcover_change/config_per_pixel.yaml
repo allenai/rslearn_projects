@@ -2,7 +2,7 @@ model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     model:
-      class_path: rslp.change_finder.per_pixel_land_cover.PerPixelModelWrapper
+      class_path: rslp.change_finder_v2.per_pixel_land_cover.train.PerPixelModelWrapper
       init_args:
         model:
           class_path: rslearn.models.singletask.SingleTaskModel
