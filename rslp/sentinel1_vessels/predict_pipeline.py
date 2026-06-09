@@ -50,6 +50,9 @@ SENTINEL1_LAYER_NAME = "sentinel1"
 # Layer names for historical Sentinel-1 images.
 HISTORICAL_LAYER_NAME = "sentinel1_historical"
 
+# Number of historical item groups the detector consumes (image_1 and image_2).
+HISTORICAL_GROUP_COUNT = 2
+
 # Name of layer containing the output.
 OUTPUT_LAYER_NAME = "output"
 
@@ -412,11 +415,20 @@ def get_vessel_detections(
     )
     with time_operation(TimerOperations.MaterializeDataset):
         materialize_dataset(ds_path, materialize_pipeline_args)
+    # Verify the target image and both historical images were materialized for each
+    # window before running prediction.
     for window in windows:
         if not window.is_layer_completed(SENTINEL1_LAYER_NAME):
             raise ValueError(
                 f"window {window.name} does not have Sentinel-1 layer completed"
             )
+        for group_idx in range(HISTORICAL_GROUP_COUNT):
+            if not window.is_layer_completed(HISTORICAL_LAYER_NAME, group_idx):
+                raise ValueError(
+                    f"window {window.name} is missing historical input image_{group_idx + 1} "
+                    f"({HISTORICAL_LAYER_NAME} group {group_idx}); the detector requires "
+                    f"{HISTORICAL_GROUP_COUNT} historical scenes covering the target"
+                )
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
