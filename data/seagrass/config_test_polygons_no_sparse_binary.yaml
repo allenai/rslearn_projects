@@ -1,0 +1,88 @@
+# Test the binary seagrass checkpoint on the DENSE-ONLY reference polygons.
+# Sibling of config_test_polygons_binary.yaml; differs only in the test group
+# (jamaica_2025_test_polygons_no_sparse) and the label mapping. The point
+# training data has no sparse-seagrass samples, so we evaluate strictly on dense
+# seagrass to match what the model was trained to predict.
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_BASE
+              patch_size: 4
+        decoder:
+          - class_path: rslearn.models.unet.UNetDecoder
+            init_args:
+              in_channels: [[4, 768]]
+              out_channels: 2
+              num_channels: {2: 256, 1: 128}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/piperw/rslearn_projects/data/seagrass
+    inputs:
+      sentinel2_l2a:
+        data_type: raster
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+      targets:
+        data_type: raster
+        layers: ["label_raster"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+    task:
+      class_path: rslearn.train.tasks.segmentation.SegmentationTask
+      init_args:
+        # Dense-only test set: the no_sparse group contains only dense-seagrass
+        # polygons (label_raster values are 2=dense inside, 255=ignore outside).
+        # Map dense (2) -> positive class 1, matching the trained model's output
+        # space (background vs dense_seagrass). No sparse (1) windows are present.
+        num_classes: 2
+        class_id_mapping: {0: 0, 2: 1, 255: 255}
+        nodata_value: 255
+        metric_kwargs:
+          average: micro
+        enable_f1_metric: true
+        class_names: ["background", "dense_seagrass"]
+    batch_size: 32
+    num_workers: 16
+    init_workers: 32
+    default_config:
+      crop_size: 64
+      load_all_crops: true
+      overlap_pixels: 0
+      groups: ["jamaica_2025_test_polygons_no_sparse"]
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2_l2a: []
+            output_selector: image
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    test_config:
+      groups: ["jamaica_2025_test_polygons_no_sparse"]
+trainer:
+  accelerator: gpu
+  devices: 1
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: epoch
+project_name: seagrass
+run_name: seagrass_points_binary_no_sparse_test
+management_dir: /weka/dfive-default/piperw/rslearn_projects/projects
+# This is a pure-eval config: don't auto-resolve a checkpoint from the run dir
+# (which is empty). With required=no, project management finds no checkpoint,
+# does not error, and the checkpoint passed via `--ckpt_path` on the CLI is used.
+load_checkpoint_required: "no"
