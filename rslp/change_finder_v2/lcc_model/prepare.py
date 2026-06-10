@@ -1,14 +1,14 @@
 """Prepare the LCC model dataset: windows, imagery layers, and labels.
 
-This script takes a v2 annotation JSON and creates an rslearn dataset with:
+This script takes one or more v2 annotation JSONs and creates an rslearn dataset with:
 - sentinel2_quarterly: WindowLayerData with quarterly mosaics (90-day periods)
-- sentinel2_frequent_0..7: WindowLayerData with 4 acquisitions each (different temporal
-  options); same-overpass tiles are mosaicked into one item group per acquisition
+- sentinel2_frequent_0..7: WindowLayerData with four 15-day periods each; the
+  least-cloudy mosaic is selected within each period
 - label_binary, label_src, label_dst: Pre-rasterized point labels
 
-The time range for each window is derived from the post_change timestamp of its
-annotations. Frequent image options can extend up to post_change + 2 years, so some
-samples have the change further in the past.
+The time range for each window covers all annotation-derived frequent blocks and
+enough preceding quarterly history. Frequent image options can extend up to
+post_change + 2 years, so some samples have the change further in the past.
 
 Scene metadata is fetched from the OlmoEarth Datasets API. Required env vars:
 - OEDATASETS_API_URL: e.g. https://datasets.olmoearth.allenai.org
@@ -48,15 +48,13 @@ from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
 
 COLLECTION = "sentinel-2-l2a"
-CLOUD_COVER_THRESHOLD = 50
 
 NUM_FREQUENT_OPTIONS = 8
-NUM_FREQUENT_GROUPS = 4
-
-# Scenes whose timestamps fall within this tolerance are treated as a single
-# acquisition (e.g. adjacent Sentinel-2 tiles from the same overpass that each only
-# cover part of the window) and mosaicked into one item group.
-FREQUENT_TS_TOLERANCE = timedelta(hours=1)
+NUM_FREQUENT_PERIODS = 4
+FREQUENT_PERIOD_DAYS = 15
+FREQUENT_PERIOD = timedelta(days=FREQUENT_PERIOD_DAYS)
+FREQUENT_BLOCK_DURATION = NUM_FREQUENT_PERIODS * FREQUENT_PERIOD
+FREQUENT_LAST_PERIOD_OFFSET = (NUM_FREQUENT_PERIODS - 1) * FREQUENT_PERIOD
 
 LABEL_BAND = "label"
 RASTER_FORMAT = GeotiffRasterFormat()
@@ -83,8 +81,6 @@ CATEGORY_NAMES = [
 ]
 
 ANNOTATIONS_SIDECAR_FNAME = "lcc_annotations.json"
-
-WGS84_SERIALIZED = {"crs": "EPSG:4326", "x_resolution": 1, "y_resolution": 1}
 
 
 def _parse_date(s: str) -> datetime:
@@ -157,11 +153,14 @@ def _search_oedatasets(
 
         for item in records:
             props = item["properties"]
+            cloud_cover = props.get("cloud_cover")
+            if cloud_cover is None:
+                cloud_cover = 100
             items.append(
                 {
                     "id": item["id"],
                     "collected_at": _parse_date(props["collected_at"]),
-                    "cloud_cover": props.get("cloud_cover", 100),
+                    "cloud_cover": cloud_cover,
                     "geometry_geojson": props["geometry"],
                 }
             )
@@ -173,25 +172,19 @@ def _search_oedatasets(
     return items
 
 
-def _item_to_serialized(item: dict[str, Any]) -> dict[str, Any]:
-    """Convert an API item dict to rslearn Item.serialize() format."""
-    shp = shapely.geometry.shape(item["geometry_geojson"])
-    ts = item["collected_at"].isoformat()
-    return {
-        "name": item["id"],
-        "geometry": {
-            "projection": WGS84_SERIALIZED,
-            "shp": shp.wkt,
-            "time_range": [ts, ts],
-        },
-    }
-
-
 QUARTERLY_QUERY_CONFIG = QueryConfig(
     space_mode=SpaceMode.MOSAIC,
     max_matches=40,
     min_matches=1,
     period_duration=timedelta(days=90),
+    per_period_mosaic_reverse_time_order=False,
+)
+
+FREQUENT_QUERY_CONFIG = QueryConfig(
+    space_mode=SpaceMode.MOSAIC,
+    max_matches=NUM_FREQUENT_PERIODS,
+    min_matches=NUM_FREQUENT_PERIODS,
+    period_duration=FREQUENT_PERIOD,
     per_period_mosaic_reverse_time_order=False,
 )
 
@@ -242,57 +235,47 @@ def _build_quarterly_layer_data(
     )
 
 
-def _group_scenes_before(
-    items: list[dict[str, Any]], cutoff: datetime, n_groups: int
-) -> list[list[dict[str, Any]]]:
-    """Pick the n_groups most recent acquisitions before cutoff.
-
-    Scenes whose timestamps fall within FREQUENT_TS_TOLERANCE of each other are
-    treated as a single acquisition and grouped together, so adjacent same-overpass
-    tiles get mosaicked into one item group (one frame covering the window) instead
-    of becoming separate partial-coverage frames. Items are assumed sorted desc by
-    date, so same-overpass scenes are contiguous and we can stop once we have
-    n_groups distinct acquisitions.
-
-    Returns a list of item groups, each a list of same-acquisition scenes.
-    """
-    groups: list[dict[str, Any]] = []  # each: {"anchor": datetime, "items": [...]}
-    for item in items:
-        if item["collected_at"] > cutoff:
-            continue
-        ts = item["collected_at"]
-        match = next(
-            (g for g in groups if abs(g["anchor"] - ts) <= FREQUENT_TS_TOLERANCE),
-            None,
-        )
-        if match is not None:
-            match["items"].append(item)
-        elif len(groups) < n_groups:
-            groups.append({"anchor": ts, "items": [item]})
-        else:
-            break
-    return [g["items"] for g in groups]
-
-
 def _build_frequent_layer_data(
     items: list[dict[str, Any]],
-    option_cutoff: datetime,
+    block_start: datetime,
+    projection: Projection,
+    bounds: tuple[int, ...],
     layer_name: str,
 ) -> WindowLayerData | None:
     """Build WindowLayerData for one frequent option.
 
-    Selects the NUM_FREQUENT_GROUPS most recent acquisitions before the cutoff; each
-    becomes one item group, with same-overpass tiles (within FREQUENT_TS_TOLERANCE)
-    mosaicked together so every frame covers the window.
+    Selects one least-cloudy mosaic in each of four 15-day periods. Items must be
+    sorted by cloud cover ascending so the MOSAIC matcher sees the clearest
+    candidates first within each period.
     """
-    groups = _group_scenes_before(items, option_cutoff, NUM_FREQUENT_GROUPS)
-    if len(groups) < NUM_FREQUENT_GROUPS:
+    rslearn_items = [
+        Item(
+            item["id"],
+            STGeometry(
+                WGS84_PROJECTION,
+                shapely.geometry.shape(item["geometry_geojson"]),
+                (item["collected_at"], item["collected_at"]),
+            ),
+        )
+        for item in items
+    ]
+
+    window_geom = STGeometry(
+        projection,
+        shapely.box(bounds[0], bounds[1], bounds[2], bounds[3]),
+        (block_start, block_start + FREQUENT_BLOCK_DURATION),
+    )
+
+    matched_groups = match_candidate_items_to_window(
+        window_geom, rslearn_items, FREQUENT_QUERY_CONFIG
+    )
+    if len(matched_groups) < NUM_FREQUENT_PERIODS:
         return None
 
-    serialized_groups = [[_item_to_serialized(s) for s in group] for group in groups]
-    group_time_ranges = [
-        (group[0]["collected_at"], group[0]["collected_at"]) for group in groups
+    serialized_groups = [
+        [gi.serialize() for gi in group.items] for group in matched_groups
     ]
+    group_time_ranges = [group.request_time_range for group in matched_groups]
 
     return WindowLayerData(
         layer_name=layer_name,
@@ -301,41 +284,46 @@ def _build_frequent_layer_data(
     )
 
 
-def _compute_frequent_cutoffs(
+def _compute_frequent_block_starts(
     first_noticeable: datetime,
     post_change: datetime,
     window_name: str,
 ) -> list[datetime]:
-    """Compute cutoff dates for frequent image options.
+    """Compute 60-day frequent-image block starts for training options.
 
     Randomness is derived from window_name so results are deterministic per window.
     """
     rng = random.Random(hashlib.sha256(window_name.encode()).hexdigest())
 
-    cutoffs: list[datetime] = []
+    block_starts: list[datetime] = []
 
-    # Option 0: first_noticeable + 10 days
-    cutoffs.append(first_noticeable + timedelta(days=10))
+    # Option 0: first_noticeable starts the last 15-day frequent period.
+    block_starts.append(first_noticeable - FREQUENT_LAST_PERIOD_OFFSET)
 
-    # Option 1: post_change + 10 days (only if different from first_noticeable)
+    # Option 1: first_noticeable starts one of the first three periods.
+    notice_period_idx = rng.randrange(NUM_FREQUENT_PERIODS - 1)
+    block_starts.append(first_noticeable - notice_period_idx * FREQUENT_PERIOD)
+
+    # Option 2: post_change starts the last period, if it is meaningfully different.
     has_option1 = (post_change - first_noticeable).days > 5
     if has_option1:
-        cutoffs.append(post_change + timedelta(days=10))
+        block_starts.append(post_change - FREQUENT_LAST_PERIOD_OFFSET)
 
-    # Remaining random options
-    random_start = first_noticeable + timedelta(days=30)
+    # Remaining random options: sample the last-period start, then derive block start.
+    random_start = first_noticeable + timedelta(days=60)
     random_end = post_change + timedelta(days=730)
-    num_random = NUM_FREQUENT_OPTIONS - len(cutoffs)
+    num_random = NUM_FREQUENT_OPTIONS - len(block_starts)
 
     for _ in range(num_random):
         if random_end > random_start:
             days_range = (random_end - random_start).days
             random_offset = rng.randint(0, max(days_range, 1))
-            cutoffs.append(random_start + timedelta(days=random_offset))
+            last_period_start = random_start + timedelta(days=random_offset)
         else:
-            cutoffs.append(random_start)
+            last_period_start = random_start
+        block_starts.append(last_period_start - FREQUENT_LAST_PERIOD_OFFSET)
 
-    return cutoffs[:NUM_FREQUENT_OPTIONS]
+    return block_starts[:NUM_FREQUENT_OPTIONS]
 
 
 def _write_label_layer(window: Window, layer_name: str, array_hw: np.ndarray) -> None:
@@ -484,11 +472,12 @@ def _process_entry(
         center_row + half,
     )
 
-    cutoffs = _compute_frequent_cutoffs(first_noticeable, post_change, window_name)
-    latest_cutoff = max(cutoffs)
+    block_starts = _compute_frequent_block_starts(
+        first_noticeable, post_change, window_name
+    )
 
-    window_end = latest_cutoff + timedelta(days=30)
-    window_start = window_end - timedelta(days=16 * 90 + 180)
+    window_end = max(start + FREQUENT_BLOCK_DURATION for start in block_starts)
+    window_start = min(start - timedelta(days=16 * 90) for start in block_starts)
     window_time_range = (window_start, window_end)
 
     split_hash = hashlib.sha256(f"{window_group}/{window_name}".encode()).hexdigest()
@@ -524,15 +513,7 @@ def _process_entry(
         all_items.extend(chunk_items)
         chunk_start = chunk_end
 
-    # For the frequent images, we only uses scenes that are not cloudy, except we also
-    # always count the scene that's at the first_noticeable timestamp.
-    low_cloud_items = [
-        item
-        for item in all_items
-        if item["cloud_cover"] < CLOUD_COVER_THRESHOLD
-        or abs((item["collected_at"] - first_noticeable).total_seconds()) < 86400
-    ]
-    low_cloud_items.sort(key=lambda x: x["collected_at"], reverse=True)
+    least_cloudy_items = sorted(all_items, key=lambda x: x["cloud_cover"])
 
     quarterly_data = _build_quarterly_layer_data(
         all_items, window_time_range, projection, bounds
@@ -540,11 +521,15 @@ def _process_entry(
     layer_datas = window.load_layer_datas()
     layer_datas["sentinel2_quarterly"] = quarterly_data
 
-    for opt_idx, cutoff in enumerate(cutoffs):
-        layer_name = f"sentinel2_frequent_{opt_idx}"
-        freq_data = _build_frequent_layer_data(low_cloud_items, cutoff, layer_name)
+    frequent_idx = 0
+    for block_start in block_starts:
+        layer_name = f"sentinel2_frequent_{frequent_idx}"
+        freq_data = _build_frequent_layer_data(
+            least_cloudy_items, block_start, projection, bounds, layer_name
+        )
         if freq_data is not None:
             layer_datas[layer_name] = freq_data
+            frequent_idx += 1
 
     window.save_layer_datas(layer_datas)
 
@@ -577,25 +562,27 @@ def _process_entry(
 
 def prepare(
     *,
-    v2_json_path: str,
+    v2_json_paths: list[str],
     ds_path: str,
     workers: int = 32,
 ) -> None:
-    """Prepare the LCC model dataset from v2 annotation JSON.
+    """Prepare the LCC model dataset from v2 annotation JSONs.
 
     Idempotent: windows that already exist are skipped, so re-running after new
     annotations have been added only processes the new entries.
 
     Args:
-        v2_json_path: Path to the v2 annotation JSON.
+        v2_json_paths: Paths to the v2 annotation JSONs.
         ds_path: Path to the output rslearn dataset (config.json must exist).
         workers: Number of parallel workers (0 = sequential).
     """
     if "OEDATASETS_API_URL" not in os.environ:
         raise RuntimeError("OEDATASETS_API_URL env var must be set")
 
-    with open(v2_json_path) as f:
-        entries = json.load(f)
+    entries = []
+    for v2_json_path in v2_json_paths:
+        with open(v2_json_path) as f:
+            entries.extend(json.load(f))
 
     ds_upath = UPath(ds_path)
 
@@ -611,6 +598,8 @@ def prepare(
     pending: list[dict[str, Any]] = []
     skipped_incomplete = 0
     skipped_existing = 0
+    skipped_duplicate_input = 0
+    seen_window_keys: set[tuple[str, str]] = set()
 
     for entry in entries:
         if not _entry_has_complete_annotations(entry):
@@ -618,6 +607,11 @@ def prepare(
             continue
         window_name = entry["window_name"]
         window_group = entry["group"]
+        window_key = (window_group, window_name)
+        if window_key in seen_window_keys:
+            skipped_duplicate_input += 1
+            continue
+        seen_window_keys.add(window_key)
         window_root = Window.get_window_root(ds_upath, window_group, window_name)
         if (window_root / "metadata.json").exists():
             skipped_existing += 1
@@ -626,7 +620,8 @@ def prepare(
 
     print(
         f"{len(pending)} to process, "
-        f"{skipped_incomplete} incomplete, {skipped_existing} already exist"
+        f"{skipped_incomplete} incomplete, {skipped_existing} already exist, "
+        f"{skipped_duplicate_input} duplicate inputs"
     )
 
     kwargs_list = [dict(entry=entry, ds_path=ds_path) for entry in pending]
@@ -647,23 +642,33 @@ def prepare(
 
     print(
         f"Created {created} windows, "
-        f"skipped {skipped_incomplete} incomplete + {skipped_existing} existing"
+        f"skipped {skipped_incomplete} incomplete + {skipped_existing} existing "
+        f"+ {skipped_duplicate_input} duplicate inputs"
     )
     print(f"Wrote annotation sidecar to {sidecar_path}")
 
 
 def main() -> None:
-    """Prepare LCC model dataset from v2 annotation JSON."""
+    """Prepare LCC model dataset from v2 annotation JSONs."""
     parser = argparse.ArgumentParser(
-        description="Prepare LCC model dataset from v2 annotation JSON."
+        description="Prepare LCC model dataset from v2 annotation JSONs."
     )
-    parser.add_argument("v2_json_path", help="Path to the v2 annotation JSON.")
-    parser.add_argument("ds_path", help="Path to the rslearn dataset.")
+    parser.add_argument(
+        "--v2-json-paths",
+        nargs="+",
+        required=True,
+        help="Path(s) to v2 annotation JSONs.",
+    )
+    parser.add_argument(
+        "--ds-path",
+        required=True,
+        help="Path to the rslearn dataset.",
+    )
     parser.add_argument("--workers", type=int, default=32)
     args = parser.parse_args()
 
     prepare(
-        v2_json_path=args.v2_json_path,
+        v2_json_paths=args.v2_json_paths,
         ds_path=args.ds_path,
         workers=args.workers,
     )

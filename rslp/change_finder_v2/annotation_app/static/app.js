@@ -1,6 +1,23 @@
 (function () {
   "use strict";
 
+  // Land cover categories for the pre/post change dropdowns. These mirror the
+  // WorldCover change class names (see data/land_cover_change/worldcover_change/).
+  const CATEGORIES = [
+    "bare",
+    "burnt",
+    "crops",
+    "fallow/shifting cultivation",
+    "grassland",
+    "Lichen and moss",
+    "shrub",
+    "snow and ice",
+    "tree",
+    "urban/built-up",
+    "water",
+    "wetland (herbaceous)",
+  ];
+
   // --- State ---
   let entriesList = [];
   let currentEntry = null;
@@ -36,6 +53,32 @@
     pre_category: document.getElementById("annot-pre-category"),
     post_category: document.getElementById("annot-post-category"),
   };
+
+  function populateCategorySelect(select, categories) {
+    select.innerHTML = "";
+    var blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "\u2014";
+    select.appendChild(blank);
+    for (var i = 0; i < categories.length; i++) {
+      var opt = document.createElement("option");
+      opt.value = categories[i];
+      opt.textContent = categories[i];
+      select.appendChild(opt);
+    }
+  }
+
+  function setCategorySelect(select, value) {
+    value = value || "";
+    // Preserve values not in the predefined list so they aren't silently lost.
+    if (value && !Array.prototype.some.call(select.options, function (o) { return o.value === value; })) {
+      var opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = value + " (legacy)";
+      select.appendChild(opt);
+    }
+    select.value = value;
+  }
 
   // --- Helpers ---
   function updateHash() {
@@ -226,8 +269,8 @@
     annotInputs.pre_change.value = pt.pre_change || "";
     annotInputs.first_date_change_noticeable.value = pt.first_date_change_noticeable || "";
     annotInputs.post_change.value = pt.post_change || "";
-    annotInputs.pre_category.value = pt.pre_category || "";
-    annotInputs.post_category.value = pt.post_category || "";
+    setCategorySelect(annotInputs.pre_category, pt.pre_category);
+    setCategorySelect(annotInputs.post_category, pt.post_category);
     annotStatus.textContent = "";
   }
 
@@ -476,6 +519,8 @@
 
   // --- Init ---
   function init() {
+    populateCategorySelect(annotInputs.pre_category, CATEGORIES);
+    populateCategorySelect(annotInputs.post_category, CATEGORIES);
     fetchJSON("/api/entries").then(function (data) {
       entriesList = data;
       entryCount.textContent = data.length + " entries";

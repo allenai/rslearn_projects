@@ -123,7 +123,8 @@ export DATASETS_API_TOKEN=<your-token>
 
 #### Training Dataset Preparation
 
-The prepare script creates the training dataset from the v2 annotation JSON.
+The prepare script creates the training dataset from one or more v2 annotation
+JSONs.
 It queries the OlmoEarth Datasets API for both quarterly and frequent imagery,
 then rslearn materialize downloads the pixels.
 
@@ -131,7 +132,9 @@ then rslearn materialize downloads the pixels.
 OUT=/path/to/lcc_model_dataset/
 mkdir -p "$OUT"
 cp data/change_finder_v2/lcc_model/config.json "$OUT/config.json"
-python -m rslp.change_finder_v2.lcc_model.prepare annotations.json "$OUT"
+python -m rslp.change_finder_v2.lcc_model.prepare \
+    --v2-json-paths annotations_a.json annotations_b.json \
+    --ds-path "$OUT"
 rslearn dataset materialize --root "$OUT" --workers 128
 ```
 
@@ -144,9 +147,11 @@ The prepare script:
 - Only processes entries with fully annotated positive points (all of pre_change,
   post_change, first_date_change_noticeable, pre_category, post_category present).
 - Skips windows that already exist in the dataset.
-- Creates 4 frequent-image options per window with varying temporal endpoints
-  (up to post_change + 2 years), so some training samples have the change
-  further in the past relative to the most recent imagery.
+- Skips duplicate `group`/`window_name` entries across the provided JSON inputs.
+- Creates 8 frequent-image options per window. Each option is four 15-day
+  periods with one least-cloudy mosaic per period; options vary where the
+  annotation dates fall within the frequent stack, including random later
+  post-change contexts up to post_change + 2 years.
 - Window time_range is derived from the annotations (no fixed 10-year range).
 - Rasterizes point labels into label_binary/label_src/label_dst layers.
 - Writes `lcc_annotations.json` sidecar for training-time annotation injection
@@ -162,10 +167,10 @@ Training details:
 - Encoder frozen for 10 epochs, then unfrozen with 10x lower LR (effective
   encoder LR = 1e-5 vs decoder 1e-4).
 - Optimizer: AdamW lr=1e-4 with ReduceLROnPlateau (factor=0.2, patience=2).
-- At each training step, one of 4 frequent-image options is randomly sampled.
-  The 16 quarterly images preceding that option's endpoint are selected, then
-  split 10/6 across the two encoder passes.
-- Val/test uses option 0 deterministically.
+- At each training step, one of 8 frequent-image options is randomly sampled.
+  The 16 quarterly images preceding that option's 60-day frequent block are
+  selected, then split 10/6 across the two encoder passes.
+- Val/test uses option 2 deterministically.
 - Augmentation: random horizontal/vertical flips.
 - crop_size: 64, batch_size: 8, 100 epochs max.
 
@@ -175,9 +180,10 @@ Training details:
 
 For prediction, a separate dataset config handles imagery via rslearn's
 standard prepare/materialize pipeline (using OlmoEarth Datasets). The user
-creates windows with a single point-in-time timestamp — quarterly images are
-fetched for the 4 years preceding it, and the 4 least-cloudy scenes from the
-30 days following it are used as frequent images.
+creates windows with a single point-in-time timestamp. Set this timestamp to 60
+days before the current/reference time you want to evaluate. Quarterly images are
+fetched before it, and the frequent stack covers the next 60 days as four 15-day
+periods with one least-cloudy mosaic per period.
 
 #### 1. Create windows
 
@@ -186,25 +192,26 @@ PREDICT_DS=/path/to/predict_dataset/
 mkdir -p "$PREDICT_DS"
 cp data/change_finder_v2/lcc_model/config_predict.json "$PREDICT_DS/config.json"
 
-# Create windows over an AOI. The time range is a single point in time:
-# the reference timestamp from which quarterly looks back and frequent looks forward.
-# Example: detect changes visible as of 2025-06-01
+# Create windows over an AOI. The time range is a single point in time: T.
+# Set T to current/reference time minus 60 days. The frequent stack covers
+# [T, T+60d], so changes in the last 15 days are in the fourth frequent period.
+# Example: to evaluate current/reference time 2025-06-01, use T=2025-04-02.
 rslearn dataset add_windows \
     --root "$PREDICT_DS" \
     --group predict \
     --fname aoi.geojson \
     --src_crs EPSG:4326 \
     --utm --resolution 10 --grid_size 2048 \
-    --start 2025-06-01T00:00:00+00:00 \
-    --end 2025-06-01T00:00:00+00:00
+    --start 2025-04-02T00:00:00+00:00 \
+    --end 2025-04-02T00:00:00+00:00
 ```
 
 The `config_predict.json` layers use `time_offset` and `duration` so both layers
 derive their search ranges from this single timestamp:
-- `sentinel2_quarterly`: time_offset=-1440d, duration=1440d → searches
-  [T-1440d, T] for 16 quarterly mosaics (4 years back).
-- `sentinel2_frequent_0`: duration=30d → searches [T, T+30d] for the 4
-  least-cloudy scenes in the month following T.
+- `sentinel2_quarterly`: time_offset=-1800d, duration=1800d → searches
+  [T-1800d, T] for quarterly mosaics; prediction uses the last 16.
+- `sentinel2_frequent_0`: duration=60d, period_duration=15d → searches
+  [T, T+60d] and returns one least-cloudy mosaic for each 15-day period.
 
 Alternatively create windows from bounding boxes. These examples produce exactly
 32768x32768 tiles (256 windows of 2048x2048) by providing grid-aligned UTM

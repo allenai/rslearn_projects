@@ -231,6 +231,6 @@ trainer:
       init_args:
         monitor: val_binary/auroc
         mode: max
-project_name: 2026_05_25_lcc
+project_name: 2026_06_08_lcc
 run_name: olmoearth_base_dual_pass_10_base_ps4
 management_dir: ${RSLP_PREFIX}/projects

@@ -81,7 +81,7 @@
       ],
       "data_source": {
         "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
-        "duration": "30d",
+        "duration": "60d",
         "ingest": false,
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
@@ -94,7 +94,9 @@
         },
         "query_config": {
           "max_matches": 4,
-          "min_matches": 1,
+          "min_matches": 4,
+          "per_period_mosaic_reverse_time_order": false,
+          "period_duration": "15d",
           "space_mode": "MOSAIC"
         }
       },
