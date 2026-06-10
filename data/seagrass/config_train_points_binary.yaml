@@ -97,12 +97,20 @@ data:
       groups: ["jamaica_2025_points"]
       tags:
         split: val
+    # `rslearn model test` -> dense-only reference polygons (separate group).
+    test_config:
+      groups: ["jamaica_2025_test_polygons_no_sparse"]
+      load_all_crops: true
+      overlap_pixels: 0
+    # `rslearn model predict` -> same held-out polygons.
     predict_config:
-      groups: ["jamaica_2025_points"]
-      tags:
-        split: "val"
+      groups: ["jamaica_2025_test_polygons_no_sparse"]
+      load_all_crops: true
+      overlap_pixels: 0
 trainer:
   max_epochs: 50
+  accelerator: gpu
+  devices: 1
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -114,3 +122,6 @@ trainer:
 project_name: seagrass
 run_name: olmoearth_base_points_binary_all40k
 management_dir: /weka/dfive-default/piperw/rslearn_projects/projects
+# For `model test`/`model predict`: use the checkpoint passed via --ckpt_path
+# instead of auto-resolving one from the run dir.
+load_checkpoint_required: "no"

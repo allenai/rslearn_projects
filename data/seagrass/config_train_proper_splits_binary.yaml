@@ -100,12 +100,24 @@ data:
       groups: ["jamaica_2025_proper_splits"]
       tags:
         split: val
+    # `rslearn model test`  -> evaluates the held-out test polygons (split=test)
+    test_config:
+      groups: ["jamaica_2025_proper_splits"]
+      tags:
+        split: test
+      load_all_crops: true
+      overlap_pixels: 0
+    # `rslearn model predict` -> also runs on the held-out test polygons
     predict_config:
       groups: ["jamaica_2025_proper_splits"]
       tags:
-        split: "val"
+        split: test
+      load_all_crops: true
+      overlap_pixels: 0
 trainer:
   max_epochs: 50
+  accelerator: gpu
+  devices: 1
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -117,3 +129,7 @@ trainer:
 project_name: seagrass
 run_name: olmoearth_base_proper_splits_binary
 management_dir: /weka/dfive-default/piperw/rslearn_projects/projects
+# For `model test`/`model predict`: don't auto-resolve a checkpoint from the run
+# dir; use the one passed via --ckpt_path. (Harmless for fit, where required=no
+# is already the default.)
+load_checkpoint_required: "no"
