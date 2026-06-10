@@ -24,6 +24,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import pyproj
 import rasterio
 from rasterio.transform import rowcol
 from upath import UPath
@@ -76,19 +77,38 @@ MERGED_FIELDS = [
 ]
 
 
+_WGS84 = pyproj.CRS("EPSG:4326")
+_transformer_cache: dict[str, pyproj.Transformer] = {}
+
+
+def _get_transformer(tile_crs: rasterio.crs.CRS) -> pyproj.Transformer:
+    """Get or create a WGS84 → tile CRS transformer (cached)."""
+    key = str(tile_crs)
+    if key not in _transformer_cache:
+        _transformer_cache[key] = pyproj.Transformer.from_crs(
+            _WGS84, pyproj.CRS(tile_crs.to_epsg()), always_xy=True
+        )
+    return _transformer_cache[key]
+
+
 def _find_tile_for_point(
     lon: float,
     lat: float,
     tile_datasets: dict[str, rasterio.DatasetReader],
-) -> tuple[str, rasterio.DatasetReader] | None:
-    """Find which open ESRI tile dataset contains the given lon/lat."""
+) -> tuple[str, rasterio.DatasetReader, int, int] | None:
+    """Find which open ESRI tile dataset contains the given lon/lat.
+
+    Returns (tile_id, dataset, row, col) or None.
+    """
     for tile_id, ds in tile_datasets.items():
         try:
-            r, c = rowcol(ds.transform, lon, lat)
-        except (ValueError, TypeError):
+            transformer = _get_transformer(ds.crs)
+            x, y = transformer.transform(lon, lat)
+            r, c = rowcol(ds.transform, x, y)
+        except (ValueError, TypeError, pyproj.exceptions.ProjError):
             continue
         if 0 <= r < ds.height and 0 <= c < ds.width:
-            return tile_id, ds
+            return tile_id, ds, int(r), int(c)
     return None
 
 
@@ -156,8 +176,7 @@ def correlate_esri(
             merged.append(out)
             continue
 
-        tile_id, ds = result
-        r, c = rowcol(ds.transform, lon, lat)
+        tile_id, ds, r, c = result
 
         src_val = int(
             ds.read(src_band, window=rasterio.windows.Window(c, r, 1, 1))[0, 0]
