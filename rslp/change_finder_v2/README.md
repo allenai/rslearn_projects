@@ -54,8 +54,8 @@ python -m rslp.change_finder_v2.annotation_app.create_windows \
     /path/to/dataset/
 
 # 2. Materialize Sentinel-2 imagery
-rslearn dataset prepare     --root /path/to/dataset/ --workers 32
-rslearn dataset materialize --root /path/to/dataset/ --workers 32
+rslearn dataset prepare --root /path/to/dataset/ --workers 32 --retry-max-attempts 5 --retry-backoff-seconds 5
+rslearn dataset materialize --root /path/to/dataset/ --workers 128 --retry-max-attempts 5 --retry-backoff-seconds 5
 
 # 3. Launch the annotation app
 python -m rslp.change_finder_v2.annotation_app.server \

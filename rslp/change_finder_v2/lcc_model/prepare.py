@@ -374,6 +374,34 @@ def _rasterize_labels(
     _write_label_layer(window, "label_dst", dst_label)
 
 
+def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
+    """Validate date ordering of fully-annotated positive points.
+
+    Expected ordering is pre_change < first_observable <= post_change, where
+    first_observable is the first_date_change_noticeable field. Raises ValueError
+    on any positive point that violates this.
+    """
+    for pt in entry.get("positive_points", []):
+        if not (
+            pt.get("pre_change")
+            and pt.get("post_change")
+            and pt.get("first_date_change_noticeable")
+        ):
+            continue
+        pre_change = _parse_date(pt["pre_change"])
+        post_change = _parse_date(pt["post_change"])
+        first_observable = _parse_date(pt["first_date_change_noticeable"])
+        if pre_change >= first_observable or first_observable > post_change:
+            raise ValueError(
+                f"Invalid date ordering for positive point in window "
+                f"{entry.get('group')}/{entry.get('window_name')}: "
+                f"expected pre_change < first_observable <= post_change, got "
+                f"pre_change={pt['pre_change']}, "
+                f"first_observable={pt['first_date_change_noticeable']}, "
+                f"post_change={pt['post_change']}"
+            )
+
+
 def _entry_has_complete_annotations(entry: dict[str, Any]) -> bool:
     """Check that the entry has enough annotation info to create a training window.
 
@@ -602,6 +630,7 @@ def prepare(
     seen_window_keys: set[tuple[str, str]] = set()
 
     for entry in entries:
+        _validate_positive_point_dates(entry)
         if not _entry_has_complete_annotations(entry):
             skipped_incomplete += 1
             continue

@@ -106,6 +106,8 @@ python -m rslp.change_finder_v2.evaluation.correlate_predictions \
 Writes `eval_merged.csv` (ground truth + predicted columns + `change_prob` +
 `has_prediction`) and prints:
 - binary change accuracy / precision / recall (positive = changed),
+- a binary change precision/recall/F1 curve, sweeping `change_prob` thresholds
+  `[0.5, 0.6, 0.7, 0.8, 0.9, 0.95]`,
 - src/dst category accuracy over points that are "changed" in both GT and prediction.
 
 Windows with no `output_change` raster (e.g. missing imagery) are reported and

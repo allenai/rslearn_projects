@@ -48,8 +48,18 @@ even though the model had achieved 80% precision @ >0.5 threshold in the test se
 
 ## Phase 3: Annotate more random outputs
 
-Phase 3 is ongoing and it is like phase 2 but focused on China since there is a high
-rate of land cover change there.
+Phase 3 uses `rslp.change_finder_v2.scripts.annotation_phase3.write_jobs_random_2048_china`
+to compute model outputs on random 2048x2048 tiles in China since there is a high rate
+of change there (including diverse changes like renewable energy deployment and
+re-development).
+
+Otherwise it is similar to Phase 2. We intended to compute the outputs using a new model
+trained with the Phase 2 data, but it was accidentally trained on the older dataset. So
+there are probably more false positives than there would have been if Phase 2 had been
+incorporated.
+
+We end up with 237 points. After annotation, there are 64 labeled positive and 172
+labeled negative (with one skipped).
 
 ## Phase 4: Annotate based on per-pixel land cover
 

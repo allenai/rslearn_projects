@@ -82,6 +82,7 @@ class DualPassChangeModel(nn.Module):
         num_timestamps: int = 20,
         embedding_dim: int = 768,
         decoder_stages: list[StageSpec] | None = None,
+        binary_loss_weight: float = 1.0,
     ):
         """Initialize the LCC multi-task model.
 
@@ -98,11 +99,14 @@ class DualPassChangeModel(nn.Module):
                 number of 2x upsamples is ``len(decoder_stages) - 1`` and must equal
                 ``log2(encoder.patch_size)`` so outputs are full resolution. Required;
                 must be specified in the model config.
+            binary_loss_weight: multiplier applied to the binary change loss before
+                it is summed with the other task losses.
         """
         super().__init__()
         self.encoder = encoder
         self.embedding_dim = embedding_dim
         self.num_timestamps = num_timestamps
+        self.binary_loss_weight = binary_loss_weight
 
         if decoder_stages is None:
             raise ValueError("decoder_stages must be specified")
@@ -172,7 +176,9 @@ class DualPassChangeModel(nn.Module):
         outputs: list[dict[str, Any]] = [{} for _ in context.inputs]
 
         if targets is not None:
-            losses["binary_cls"] = self._balanced_binary_loss(logits_binary, targets)
+            losses["binary_cls"] = self.binary_loss_weight * self._balanced_binary_loss(
+                logits_binary, targets
+            )
             losses["src_cls"] = self._seg_loss(logits_src, targets, "src")
             losses["dst_cls"] = self._seg_loss(logits_dst, targets, "dst")
             losses["timestamps_bce"] = self._timestamp_loss(logits_ts, targets)
@@ -212,10 +218,14 @@ class DualPassChangeModel(nn.Module):
         logits: torch.Tensor,
         targets: list[dict[str, Any]],
     ) -> torch.Tensor:
-        """Balanced binary loss: equal weight to positive and negative points.
+        """Balanced binary loss with per-sample balancing.
 
-        When both change and no-change points are present in a batch, the loss
-        from each group contributes 50/50 regardless of count imbalance.
+        For each sample, the loss is the mean over its change points plus the
+        mean over its no-change points (each group divided by its own point
+        count). If a sample only has one of the two groups, its loss is just the
+        mean over that group. Every sample with any valid points contributes
+        equally to the final loss (mean over such samples), regardless of how
+        many points it has.
         """
         labels = torch.stack(
             [t["binary"]["classes"].get_hw_tensor() for t in targets], dim=0
@@ -227,17 +237,25 @@ class DualPassChangeModel(nn.Module):
         if not valid.any():
             return torch.tensor(0.0, device=logits.device, requires_grad=True)
 
-        loss = F.cross_entropy(logits, labels, reduction="none")
+        loss = F.cross_entropy(logits, labels, reduction="none")  # (B, H, W)
 
-        change_mask = valid & (labels == 2)
-        nochange_mask = valid & (labels == 1)
+        change_mask = (valid & (labels == 2)).flatten(1).float()  # (B, H*W)
+        nochange_mask = (valid & (labels == 1)).flatten(1).float()
+        loss_flat = loss.flatten(1)  # (B, H*W)
 
-        if change_mask.any() and nochange_mask.any():
-            pos_loss = (loss * change_mask).sum() / change_mask.sum()
-            neg_loss = (loss * nochange_mask).sum() / nochange_mask.sum()
-            return (pos_loss + neg_loss) / 2
-        else:
-            return (loss * valid).sum() / valid.sum()
+        pos_count = change_mask.sum(dim=1)  # (B,)
+        neg_count = nochange_mask.sum(dim=1)
+        has_pos = pos_count > 0
+        has_neg = neg_count > 0
+
+        pos_mean = (loss_flat * change_mask).sum(dim=1) / pos_count.clamp(min=1)
+        neg_mean = (loss_flat * nochange_mask).sum(dim=1) / neg_count.clamp(min=1)
+
+        # Per-sample loss: sum of whichever group means are present. Where a
+        # group is absent its mean is zeroed out so it does not contribute.
+        sample_loss = pos_mean * has_pos + neg_mean * has_neg  # (B,)
+        has_any = has_pos | has_neg
+        return sample_loss[has_any].mean()
 
     def _timestamp_loss(
         self,

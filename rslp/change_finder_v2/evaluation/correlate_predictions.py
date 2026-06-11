@@ -35,6 +35,8 @@ from rslp.change_finder_v2.lcc_model.postprocess import (
 
 PREDICTION_GROUP = "predict"
 
+PR_THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
+
 MERGED_FIELDS = [
     "row_index",
     "lon",
@@ -171,6 +173,8 @@ def _print_metrics(merged: list[dict[str, Any]], output: Path) -> None:
     print(f"  recall   : {recall:.3f}")
     print(f"  TP={tp} FP={fp} FN={fn} TN={tn}")
 
+    _print_pr_curve(scored)
+
     # Category accuracy where both GT and prediction are "changed".
     both_changed = [r for r in scored if r["has_changed"] and r["predicted_changed"]]
     if both_changed:
@@ -186,6 +190,43 @@ def _print_metrics(merged: list[dict[str, Any]], output: Path) -> None:
         print(f"  dst: {dst_correct / n:.3f}  ({dst_correct}/{n})")
     else:
         print("\nNo points where both GT and prediction are 'changed'.")
+
+
+def _print_pr_curve(
+    scored: list[dict[str, Any]], thresholds: list[float] = PR_THRESHOLDS
+) -> None:
+    """Print a precision/recall/F1 table for the binary change task.
+
+    A point is predicted "changed" when its change_prob >= threshold, so this
+    re-thresholds the raw change probability rather than using the argmax-based
+    predicted_changed.
+    """
+    print("\nBinary change PR curve (positive = changed):")
+    print("  thresh  precision  recall      F1   TP  FP  FN  TN")
+    for threshold in thresholds:
+        tp = sum(
+            1 for r in scored if r["has_changed"] and r["change_prob"] >= threshold
+        )
+        fp = sum(
+            1 for r in scored if not r["has_changed"] and r["change_prob"] >= threshold
+        )
+        fn = sum(1 for r in scored if r["has_changed"] and r["change_prob"] < threshold)
+        tn = sum(
+            1 for r in scored if not r["has_changed"] and r["change_prob"] < threshold
+        )
+
+        precision = tp / (tp + fp) if (tp + fp) else float("nan")
+        recall = tp / (tp + fn) if (tp + fn) else float("nan")
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if (precision + recall)
+            else float("nan")
+        )
+
+        print(
+            f"  {threshold:.2f}      {precision:.3f}     {recall:.3f}   {f1:.3f}  "
+            f"{tp:>3} {fp:>3} {fn:>3} {tn:>3}"
+        )
 
 
 def main() -> None:

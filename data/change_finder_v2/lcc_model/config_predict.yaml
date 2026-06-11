@@ -87,5 +87,5 @@ trainer:
         output_layer: output_change
         selector: []
 project_name: 2026_06_08_lcc
-run_name: olmoearth_base_dual_pass_10_base_ps4
+run_name: olmoearth_base_ps4_fix_dataset_path
 management_dir: ${RSLP_PREFIX}/projects

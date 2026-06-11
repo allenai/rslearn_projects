@@ -227,13 +227,24 @@ def _score_crop(
     probs: torch.Tensor,
     row_start: int,
     col_start: int,
+    src_threshold: float,
+    dst_threshold: float,
 ) -> _BestChange | None:
-    """Find the best change score in a centered crop.
+    """Find the best class decline in a centered crop.
+
+    A change is any class whose probability stays above src_threshold across all
+    pre years (min over time) and drops below dst_threshold across all post years
+    (max over time). Among such (class, pixel) candidates the one with the
+    largest margin (pre_min - post_max) is returned.
 
     Args:
         probs: tensor shaped NUM_YEARS x NUM_CLASSES x H x W.
         row_start: row offset of the crop in the source window.
         col_start: column offset of the crop in the source window.
+        src_threshold: minimum pre-period probability (min over time) of the
+            declining class.
+        dst_threshold: maximum post-period probability (max over time) of the
+            declining class.
     """
     best: _BestChange | None = None
     best_score = float("-inf")
@@ -244,32 +255,32 @@ def _score_crop(
     for pivot_idx in range(min_pivot, max_pivot + 1):
         pre = valid_classes[pivot_idx - NUM_CONTEXT_YEARS : pivot_idx]
         post = valid_classes[pivot_idx + 1 : pivot_idx + 1 + NUM_CONTEXT_YEARS]
-        scores = pre.max(dim=0).values - post.min(dim=0).values
+        pre_min = pre.min(dim=0).values
+        post_max = post.max(dim=0).values
+        mask = (pre_min > src_threshold) & (post_max < dst_threshold)
+        scores = torch.where(
+            mask, pre_min - post_max, torch.full_like(pre_min, float("-inf"))
+        )
         crop_best_score = float(scores.max().item())
         if crop_best_score <= best_score:
             continue
 
         _, crop_height, crop_width = scores.shape
         flat_idx = int(scores.argmax().item())
+        class_idx = flat_idx // (crop_height * crop_width)
         remainder = flat_idx % (crop_height * crop_width)
         local_row = remainder // crop_width
         local_col = remainder % crop_width
         row = row_start + local_row
         col = col_start + local_col
 
-        pre_avg = probs[
-            pivot_idx - NUM_CONTEXT_YEARS : pivot_idx,
-            1:,
-            local_row,
-            local_col,
-        ].mean(dim=0)
         post_avg = probs[
             pivot_idx + 1 : pivot_idx + 1 + NUM_CONTEXT_YEARS,
             1:,
             local_row,
             local_col,
         ].mean(dim=0)
-        src_class_id = int(pre_avg.argmax().item()) + 1
+        src_class_id = class_idx + 1
         dst_class_id = int(post_avg.argmax().item()) + 1
 
         best_score = crop_best_score
@@ -291,6 +302,8 @@ def _find_best_change(
     metadata: SampleMetadata,
     center_crop_size: int,
     device: str,
+    src_threshold: float,
+    dst_threshold: float,
 ) -> _BestChange | None:
     """Scan one window and return its best per-pixel land-cover decline."""
     first_raster: RasterImage = input_dict["sentinel2_y0"]
@@ -313,7 +326,7 @@ def _find_best_change(
         for year_idx in range(NUM_YEARS)
     ]
     probs = torch.stack(year_probs, dim=0)
-    return _score_crop(probs, row_start, col_start)
+    return _score_crop(probs, row_start, col_start, src_threshold, dst_threshold)
 
 
 def _pixel_to_lonlat(
@@ -375,7 +388,8 @@ def apply_per_pixel_land_cover(
     ds_path: str,
     checkpoint_path: str,
     output_dir: str,
-    threshold: float = 0.2,
+    src_threshold: float = 0.75,
+    dst_threshold: float = 0.25,
     batch_size: int = 1,
     device: str = "cuda",
     workers: int = 4,
@@ -399,7 +413,7 @@ def apply_per_pixel_land_cover(
     model = _load_model(checkpoint_path, device)
 
     written = 0
-    skipped_below_threshold = 0
+    skipped_no_change = 0
     with torch.no_grad():
         for input_dicts, _target_dicts, metadatas in tqdm.tqdm(
             data_loader, desc="Finding per-pixel land-cover changes"
@@ -417,9 +431,11 @@ def apply_per_pixel_land_cover(
                     metadata=metadata,
                     center_crop_size=center_crop_size,
                     device=device,
+                    src_threshold=src_threshold,
+                    dst_threshold=dst_threshold,
                 )
-                if best is None or best.score <= threshold:
-                    skipped_below_threshold += 1
+                if best is None:
+                    skipped_no_change += 1
                     continue
 
                 out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -429,7 +445,7 @@ def apply_per_pixel_land_cover(
 
     print(
         f"Wrote {written} V2 annotation JSON files; "
-        f"skipped {skipped_below_threshold} below threshold"
+        f"skipped {skipped_no_change} with no qualifying change"
     )
 
 
@@ -449,7 +465,8 @@ def main() -> None:
         required=True,
         help="Directory for per-window V2 JSON list files",
     )
-    parser.add_argument("--threshold", type=float, default=0.2)
+    parser.add_argument("--src_threshold", type=float, default=0.75)
+    parser.add_argument("--dst_threshold", type=float, default=0.25)
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--workers", type=int, default=4)
@@ -461,7 +478,8 @@ def main() -> None:
         ds_path=args.ds_path,
         checkpoint_path=args.checkpoint_path,
         output_dir=args.output_dir,
-        threshold=args.threshold,
+        src_threshold=args.src_threshold,
+        dst_threshold=args.dst_threshold,
         batch_size=args.batch_size,
         device=args.device,
         workers=args.workers,

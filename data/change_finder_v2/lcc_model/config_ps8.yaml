@@ -19,6 +19,7 @@ model:
           - [[256, 3]]
           - [[128, 3]]
           - [[64, 3]]
+        binary_loss_weight: 100.0
     optimizer:
       class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
       init_args:
