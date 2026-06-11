@@ -38,7 +38,7 @@ model:
       remap_prefixes:
         - ["backbone.backbone.backbone.", "encoder.0.encoder.model."]
 data:
-  class_path: rslearn.train.data_module.RslearnDataModule
+  class_path: rslp.utils.lazy_all_crops.LazyAllCropsDataModule
   init_args:
     # Read each all-crops prediction crop from disk on demand rather than loading
     # the whole window into memory, so prediction memory stays bounded on large
