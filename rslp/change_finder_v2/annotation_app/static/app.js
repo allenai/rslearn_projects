@@ -142,7 +142,7 @@
       return;
     }
     var pt = pts[selectedPointIdx];
-    pointCoordText.textContent = pt.lat.toFixed(4) + ", " + pt.lon.toFixed(4);
+    pointCoordText.textContent = pt.lat.toFixed(5) + ", " + pt.lon.toFixed(5);
   }
 
   function updateOverlayButton() {
@@ -288,7 +288,7 @@
 
     var meta = currentEntry.meta;
     coordText.textContent = meta.lat != null
-      ? meta.lat.toFixed(4) + ", " + meta.lon.toFixed(4)
+      ? meta.lat.toFixed(5) + ", " + meta.lon.toFixed(5)
       : "\u2014";
     windowInfo.textContent = currentEntry.entry.group + " / " + currentEntry.entry.window_name;
 

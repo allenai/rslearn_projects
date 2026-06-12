@@ -18,8 +18,10 @@ from rslearn.train.model_context import RasterImage, SampleMetadata
 from rslearn.train.tasks.multi_task import MetricWrapper, MultiTask
 from rslearn.train.tasks.task import Task
 from rslearn.utils import Feature
+from sklearn.metrics import roc_auc_score
 from torchmetrics import Metric, MetricCollection
 from torchmetrics.classification import BinaryAUROC
+from torchmetrics.utilities import dim_zero_cat
 from typing_extensions import override
 from upath import UPath
 
@@ -95,6 +97,113 @@ class TimestampAUROCMetric(Metric):
     @override
     def compute(self) -> torch.Tensor:
         return self.auroc.compute()
+
+
+class BalancedBinaryMetric(Metric):
+    """Sample-wise balanced accuracy or AUROC for the binary change task.
+
+    Each valid point is weighted by ``1 / (count of points of its own class
+    within that sample)``, so that every sample contributes equally regardless
+    of how many points it has. This prevents samples with many (auto-annotated)
+    negatives from dominating samples with few (strong) negatives, mirroring the
+    per-sample balancing in DualPassChangeModel._balanced_binary_loss.
+
+    Binary labels follow the segmentation convention: class 1 = no_change
+    (negative), class 2 = change (positive); class 0 / invalid points are
+    ignored. The AUROC score is the softmax probability of the change class.
+
+    Returns a single scalar. Instantiate once per ``metric`` ("accuracy" or
+    "auroc") so the metric name (and therefore the logged key, e.g.
+    ``val_binary/auroc``) comes from the config key rather than a dict.
+    """
+
+    def __init__(self, metric: str = "auroc") -> None:
+        """Initialize accumulators for the requested balanced metric.
+
+        Args:
+            metric: which metric to compute, "accuracy" or "auroc".
+        """
+        super().__init__()
+        if metric not in ("accuracy", "auroc"):
+            raise ValueError(f"metric must be 'accuracy' or 'auroc', got {metric!r}")
+        self.metric_name = metric
+        if metric == "accuracy":
+            self.add_state(
+                "weighted_correct",
+                default=torch.tensor(0.0, dtype=torch.float64),
+                dist_reduce_fx="sum",
+            )
+            self.add_state(
+                "weighted_total",
+                default=torch.tensor(0.0, dtype=torch.float64),
+                dist_reduce_fx="sum",
+            )
+        else:
+            self.add_state("scores", default=[], dist_reduce_fx="cat")
+            self.add_state("bin_labels", default=[], dist_reduce_fx="cat")
+            self.add_state("weights", default=[], dist_reduce_fx="cat")
+
+    @override
+    def update(self, preds: list[torch.Tensor], targets: list[dict[str, Any]]) -> None:
+        for pred, target in zip(preds, targets):
+            label = target["classes"].get_hw_tensor().long()  # (H, W)
+            valid = target["valid"].get_hw_tensor() > 0  # (H, W)
+
+            neg = valid & (label == 1)
+            pos = valid & (label == 2)
+            neg_count = neg.sum()
+            pos_count = pos.sum()
+
+            weight = torch.zeros_like(label, dtype=torch.float64)
+            if neg_count > 0:
+                weight[neg] = 1.0 / neg_count.double()
+            if pos_count > 0:
+                weight[pos] = 1.0 / pos_count.double()
+
+            # Only the two binary classes (1, 2) carry weight; everything else
+            # stays at zero so it does not contribute.
+            point_mask = neg | pos
+            if not point_mask.any():
+                continue
+
+            if self.metric_name == "accuracy":
+                pred_cls = pred.argmax(dim=0)  # (H, W)
+                correct = (pred_cls == label) & point_mask
+                self.weighted_correct += (weight * correct).sum().double()
+                self.weighted_total += weight.sum().double()
+            else:
+                # Keep accumulated tensors on the metric's device so that DDP
+                # all_gather works (NCCL cannot gather CPU tensors); move to CPU
+                # only at compute() time for sklearn.
+                change_prob = pred[2]  # (H, W) softmax prob of change class
+                self.scores.append(change_prob[point_mask].detach())
+                self.bin_labels.append(pos[point_mask].detach().long())
+                self.weights.append(weight[point_mask].detach())
+
+    @override
+    def compute(self) -> torch.Tensor:
+        if self.metric_name == "accuracy":
+            if self.weighted_total > 0:
+                return (self.weighted_correct / self.weighted_total).float()
+            return torch.tensor(0.0)
+
+        # After DDP sync the "cat" list states become a single tensor, so use
+        # dim_zero_cat to handle both the list (pre-sync) and tensor cases.
+        has_scores = (
+            len(self.scores) > 0
+            if isinstance(self.scores, list)
+            else self.scores.numel() > 0
+        )
+        if not has_scores:
+            return torch.tensor(float("nan"))
+
+        scores = dim_zero_cat(self.scores).cpu().numpy()
+        labels = dim_zero_cat(self.bin_labels).cpu().numpy()
+        weights = dim_zero_cat(self.weights).cpu().numpy()
+        # roc_auc_score requires both classes to be present.
+        if labels.min() == labels.max():
+            return torch.tensor(float("nan"))
+        return torch.tensor(float(roc_auc_score(labels, scores, sample_weight=weights)))
 
 
 class LCCMultiTask(MultiTask):

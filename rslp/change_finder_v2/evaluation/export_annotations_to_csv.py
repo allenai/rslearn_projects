@@ -11,6 +11,10 @@ Columns: lon, lat, src_year, dst_year, has_changed, src_category, dst_category.
 
 Positive points missing any of pre_change/post_change/pre_category/post_category are
 skipped (and counted), mirroring prepare._entry_has_complete_annotations.
+
+Points within --min-distance-m meters of an already-kept point are dropped (greedy),
+so the exported set has no two points closer than that threshold. Positive points are
+processed first, so a positive is kept over a nearby negative.
 """
 
 from __future__ import annotations
@@ -18,9 +22,14 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# Minimum allowed distance (meters) between any two exported points. Points
+# closer than this to an already-kept point are dropped.
+DEFAULT_MIN_DISTANCE_M = 50.0
 
 CSV_FIELDS = [
     "lon",
@@ -36,6 +45,45 @@ CSV_FIELDS = [
 def _year_of(date_str: str) -> int:
     """Parse an ISO date string and return its year."""
     return datetime.fromisoformat(date_str).year
+
+
+def _haversine_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    """Great-circle distance in meters between two lon/lat points."""
+    earth_radius_m = 6371000.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    )
+    return 2 * earth_radius_m * math.asin(math.sqrt(a))
+
+
+def _dedupe_by_distance(
+    rows: list[dict[str, Any]],
+    min_distance_m: float,
+    kept: list[dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """Greedily drop rows within min_distance_m of an already-kept row.
+
+    Returns (kept_rows, num_dropped). Rows are processed in input order, so the
+    first point in any close cluster is the one kept. An existing `kept` list can
+    be passed to dedup against (and extend); it is mutated in place.
+    """
+    if kept is None:
+        kept = []
+    dropped = 0
+    for row in rows:
+        too_close = any(
+            _haversine_m(row["lon"], row["lat"], k["lon"], k["lat"]) < min_distance_m
+            for k in kept
+        )
+        if too_close:
+            dropped += 1
+            continue
+        kept.append(row)
+    return kept, dropped
 
 
 def _positive_row(pt: dict[str, Any]) -> dict[str, Any] | None:
@@ -77,9 +125,15 @@ def export_rows(
     v2_json_paths: list[Path],
     negative_src_year: int = 2019,
     negative_dst_year: int = 2021,
-) -> tuple[list[dict[str, Any]], int]:
-    """Load v2 JSONs and return (rows, num_skipped_incomplete_positives)."""
-    rows: list[dict[str, Any]] = []
+    min_distance_m: float = DEFAULT_MIN_DISTANCE_M,
+) -> tuple[list[dict[str, Any]], int, int]:
+    """Load v2 JSONs and return (rows, num_skipped_incomplete, num_dropped_close).
+
+    Points within min_distance_m of an already-kept point are dropped. Positives
+    are processed first so they win over nearby negatives.
+    """
+    positive_rows: list[dict[str, Any]] = []
+    negative_rows: list[dict[str, Any]] = []
     skipped_incomplete = 0
 
     for json_path in v2_json_paths:
@@ -91,11 +145,15 @@ def export_rows(
                 if row is None:
                     skipped_incomplete += 1
                     continue
-                rows.append(row)
+                positive_rows.append(row)
             for pt in entry.get("negative_points", []):
-                rows.append(_negative_row(pt, negative_src_year, negative_dst_year))
+                negative_rows.append(
+                    _negative_row(pt, negative_src_year, negative_dst_year)
+                )
 
-    return rows, skipped_incomplete
+    kept, dropped_close = _dedupe_by_distance(positive_rows, min_distance_m)
+    kept, dropped_neg = _dedupe_by_distance(negative_rows, min_distance_m, kept)
+    return kept, skipped_incomplete, dropped_close + dropped_neg
 
 
 def main() -> None:
@@ -130,12 +188,22 @@ def main() -> None:
         default=2021,
         help="dst_year assigned to negative (no-change) points. Default: 2021.",
     )
+    parser.add_argument(
+        "--min-distance-m",
+        type=float,
+        default=DEFAULT_MIN_DISTANCE_M,
+        help=(
+            "Drop points within this many meters of an already-kept point. "
+            f"Default: {DEFAULT_MIN_DISTANCE_M:g}."
+        ),
+    )
     args = parser.parse_args()
 
-    rows, skipped_incomplete = export_rows(
+    rows, skipped_incomplete, dropped_close = export_rows(
         v2_json_paths=args.v2_json_paths,
         negative_src_year=args.negative_src_year,
         negative_dst_year=args.negative_dst_year,
+        min_distance_m=args.min_distance_m,
     )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +216,8 @@ def main() -> None:
     print(
         f"Wrote {len(rows)} rows to {args.output} "
         f"({num_changed} changed, {len(rows) - num_changed} no-change); "
-        f"skipped {skipped_incomplete} incomplete positive points"
+        f"skipped {skipped_incomplete} incomplete positive points; "
+        f"dropped {dropped_close} points within {args.min_distance_m:g} m of another"
     )
 
 

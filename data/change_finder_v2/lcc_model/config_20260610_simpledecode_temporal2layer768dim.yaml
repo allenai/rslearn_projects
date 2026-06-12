@@ -2,24 +2,25 @@ model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     model:
-      class_path: rslp.change_finder_v2.lcc_model.model.DualPassChangeModel
+      class_path: rslp.change_finder_v2.lcc_model.model_20260610.TemporalChangeModel
       init_args:
         encoder:
           class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
           init_args:
             model_id: OLMOEARTH_V1_1_BASE
-            patch_size: 8
+            patch_size: 4
+            token_pooling: false
+            use_legacy_timestamps: false
         num_classes_binary: 3
         num_classes_src: 13
         num_classes_dst: 13
-        num_timestamps: 20
+        num_timesteps: 12
         embedding_dim: 768
-        decoder_stages:
-          - [[768, 1], [512, 3]]
-          - [[256, 3]]
-          - [[128, 3]]
-          - [[64, 3]]
-        binary_loss_weight: 100.0
+        simple_decoder: true
+        temporal_depth: 2
+        temporal_heads: 8
+        dim_feedforward: 768
+        binary_loss_weight: 2.0
     optimizer:
       class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
       init_args:
@@ -31,13 +32,13 @@ model:
       class_path: rslearn.train.scheduler.PlateauScheduler
       init_args:
         factor: 0.2
-        patience: 2
+        patience: 10
         min_lr: 0
         cooldown: 10
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260529/
+    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260611/
     inputs:
       sentinel2_quarterly:
         data_type: "raster"
@@ -130,9 +131,9 @@ data:
         is_target: true
         dtype: INT32
     task:
-      class_path: rslp.change_finder_v2.lcc_model.tasks.LCCMultiTask
+      class_path: rslp.change_finder_v2.lcc_model.tasks_20260610.LCCMultiTaskV2
       init_args:
-        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260529/lcc_annotations.json
+        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260611/lcc_annotations.json
         input_mapping:
           binary:
             label_binary: targets
@@ -181,13 +182,13 @@ data:
               class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
               metric_kwargs:
                 average: "micro"
-    batch_size: 8
+    batch_size: 4
     num_workers: 8
     use_in_memory_dataset: true
     default_config:
       crop_size: 64
       transforms:
-        - class_path: rslp.change_finder_v2.lcc_model.transforms.FrequentOptionSampler
+        - class_path: rslp.change_finder_v2.lcc_model.transforms_20260610.SemiAnnualOptionSampler
           init_args:
             deterministic: true
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
@@ -196,7 +197,7 @@ data:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
       transforms:
-        - class_path: rslp.change_finder_v2.lcc_model.transforms.FrequentOptionSampler
+        - class_path: rslp.change_finder_v2.lcc_model.transforms_20260610.SemiAnnualOptionSampler
           init_args:
             deterministic: false
         - class_path: rslearn.train.transforms.flip.Flip
@@ -209,7 +210,8 @@ data:
               - "target/src/valid"
               - "target/dst/classes"
               - "target/dst/valid"
-              - "target/timestamps/classes"
+              - "target/timestamps/start"
+              - "target/timestamps/end"
               - "target/timestamps/valid"
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
@@ -231,8 +233,8 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        monitor: val_loss
-        mode: min
-project_name: 2026_05_25_lcc
-run_name: olmoearth_base_dual_pass_10_base_ps8
+        monitor: val_binary/auroc
+        mode: max
+project_name: 2026_06_12_lcc
+run_name: temporal_12step_20260610_simpledecode_temporal2layer768dim
 management_dir: ${RSLP_PREFIX}/projects
