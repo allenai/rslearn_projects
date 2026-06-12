@@ -1,5 +1,6 @@
 """Adapter for evaluation tasks."""
 
+import importlib
 import os
 from typing import Any
 
@@ -21,9 +22,13 @@ import rslp.olmoearth_evals.olmoearth as olmoearth
 import rslp.olmoearth_evals.olmoearth_swin_base as olmoearth_swin_base
 import rslp.olmoearth_evals.panopticon as panopticon
 import rslp.olmoearth_evals.presto as presto
-import rslp.olmoearth_evals.prithvi as prithvi
 import rslp.olmoearth_evals.satlaspretrain as satlaspretrain
-import rslp.olmoearth_evals.terramind as terramind
+
+_LAZY_MODULE_IDS = {
+    "prithvi": "rslp.olmoearth_evals.prithvi",
+    "terramind": "rslp.olmoearth_evals.terramind",
+    "terramind_large": "rslp.olmoearth_evals.terramind",
+}
 
 modules_by_model_id = {
     "anysat": anysat,
@@ -41,12 +46,21 @@ modules_by_model_id = {
     "olmoearth_swin_base_temporal_attention": olmoearth_swin_base,
     "panopticon": panopticon,
     "presto": presto,
-    "prithvi": prithvi,
     "satlaspretrain": satlaspretrain,
-    "terramind": terramind,
-    "terramind_large": terramind,
     "aef": aef,
 }
+
+
+def _get_module(model_id: str) -> Any:
+    """Get the module for a model ID, importing lazily if needed."""
+    if model_id in modules_by_model_id:
+        return modules_by_model_id[model_id]
+    if model_id in _LAZY_MODULE_IDS:
+        mod = importlib.import_module(_LAZY_MODULE_IDS[model_id])
+        modules_by_model_id[model_id] = mod
+        return mod
+    raise KeyError(f"Unknown model_id: {model_id}")
+
 
 # Task key used in MultiTask for eval configs; target rasters live under target/<key>/...
 EVAL_TASK_KEY = "eval_task"
@@ -91,7 +105,7 @@ class EvalAdapterModel(torch.nn.Module):
         """
         super().__init__()
         model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
-        self.model = modules_by_model_id[model_id].get_model(
+        self.model = _get_module(model_id).get_model(
             input_size=input_size,
             input_modalities=input_modalities,
             task_type=task_type,
@@ -155,7 +169,7 @@ class EvalAdapterNormalize(Transform):
         """
         super().__init__()
         model_id = os.environ["EVAL_ADAPTER_MODEL_ID"]
-        self.transform = modules_by_model_id[model_id].get_transform(
+        self.transform = _get_module(model_id).get_transform(
             input_size=input_size,
             input_modalities=input_modalities,
             task_type=task_type,
