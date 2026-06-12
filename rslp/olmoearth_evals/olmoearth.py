@@ -11,6 +11,7 @@ from rslearn.models.multitask import MultiTaskModel
 from rslearn.models.olmoearth_pretrain.model import EMBEDDING_SIZES, ModelID, OlmoEarth
 from rslearn.models.olmoearth_pretrain.norm import OlmoEarthNormalize
 from rslearn.models.pooling_decoder import PoolingDecoder
+from rslearn.models.reshape_feature_maps import ReshapeFeatureMaps
 from rslearn.models.unet import UNetDecoder
 from rslearn.models.upsample import Upsample
 from rslearn.train.tasks.classification import ClassificationHead
@@ -25,6 +26,11 @@ from rslp.nandi.train import SegmentationPoolingDecoder
 from .constants import LANDSAT_BANDS, SENTINEL1_BANDS, SENTINEL2_BANDS
 
 logger = get_logger(__name__)
+
+# Patch size used by the OlmoEarth encoder. Encoder output is downsampled by
+# this factor, so decoders must upsample/reshape by the same factor to recover
+# pixel resolution.
+PATCH_SIZE = 4
 
 
 def get_model(
@@ -79,12 +85,12 @@ def get_model(
         if checkpoint_path is not None:
             return OlmoEarth(
                 checkpoint_path=checkpoint_path,
-                patch_size=4,
+                patch_size=PATCH_SIZE,
                 use_legacy_timestamps=use_legacy_timestamps,
             )
         return OlmoEarth(
             model_id=olmoearth_model_id,
-            patch_size=4,
+            patch_size=PATCH_SIZE,
             random_initialization=model_id == "olmoearth_random",
             use_legacy_timestamps=use_legacy_timestamps,
         )
@@ -93,7 +99,7 @@ def get_model(
         if decoder_type == "singleconv":
             decoders = dict(
                 eval_task=[
-                    Upsample(scale_factor=4),
+                    Upsample(scale_factor=PATCH_SIZE),
                     Conv(
                         in_channels=embedding_size,
                         out_channels=task_channels,
@@ -103,11 +109,40 @@ def get_model(
                     SegmentationHead(),
                 ]
             )
-        else:
+        elif decoder_type == "singleconv_reshape":
+            # Mirrors olmoearth_pretrain's per-patch linear probe: project each
+            # patch embedding to (task_channels * PATCH_SIZE * PATCH_SIZE) logits,
+            # then depth-to-space reshape up to pixel resolution.
+            decoders = dict(
+                eval_task=[
+                    Conv(
+                        in_channels=embedding_size,
+                        out_channels=task_channels * PATCH_SIZE * PATCH_SIZE,
+                        kernel_size=1,
+                        activation=torch.nn.Identity(),
+                    ),
+                    ReshapeFeatureMaps(upscale_factor=PATCH_SIZE),
+                    SegmentationHead(),
+                ]
+            )
+        elif decoder_type == "unet_with_batchnorm":
             decoders = dict(
                 eval_task=[
                     UNetDecoder(
-                        in_channels=[[4, embedding_size]],
+                        in_channels=[[PATCH_SIZE, embedding_size]],
+                        out_channels=task_channels,
+                        conv_layers_per_resolution=2,
+                        num_channels={4: 256, 2: 128, 1: 64},
+                        use_batch_norm=True,
+                    ),
+                    SegmentationHead(),
+                ]
+            )
+        elif decoder_type == "default":
+            decoders = dict(
+                eval_task=[
+                    UNetDecoder(
+                        in_channels=[[PATCH_SIZE, embedding_size]],
                         out_channels=task_channels,
                         conv_layers_per_resolution=1,
                         num_channels={4: 512, 2: 256, 1: 128},
@@ -115,29 +150,49 @@ def get_model(
                     SegmentationHead(),
                 ]
             )
+        else:
+            raise ValueError(f"invalid decoder type {decoder_type}")
     elif task_type == "segment_small":
-        decoders = dict(
-            eval_task=[
-                SegmentationPoolingDecoder(
-                    in_channels=embedding_size,
-                    out_channels=task_channels,
-                ),
-                SegmentationHead(),
-            ]
-        )
+        if decoder_type == "default":
+            decoders = dict(
+                eval_task=[
+                    SegmentationPoolingDecoder(
+                        in_channels=embedding_size,
+                        out_channels=task_channels,
+                    ),
+                    SegmentationHead(),
+                ]
+            )
+        else:
+            raise ValueError(f"invalid decoder type {decoder_type}")
     elif task_type == "detect":
-        decoders = dict(
-            eval_task=[
-                FasterRCNN(
-                    downsample_factors=[4],
-                    num_channels=embedding_size,
-                    num_classes=task_channels,
-                    anchor_sizes=[[32]],
-                )
-            ]
-        )
+        if decoder_type == "default":
+            decoders = dict(
+                eval_task=[
+                    FasterRCNN(
+                        downsample_factors=[PATCH_SIZE],
+                        num_channels=embedding_size,
+                        num_classes=task_channels,
+                        anchor_sizes=[[32]],
+                    )
+                ]
+            )
+        else:
+            raise ValueError(f"invalid decoder type {decoder_type}")
     elif task_type == "classify":
-        if task_name == "nandi":
+        if decoder_type == "default":
+            decoders = dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=embedding_size,
+                        out_channels=task_channels,
+                        num_conv_layers=1,
+                        num_fc_layers=1,
+                    ),
+                    ClassificationHead(),
+                ]
+            )
+        elif decoder_type == "center":
             decoders = dict(
                 eval_task=[
                     FeatureCenterCrop(
@@ -150,7 +205,24 @@ def get_model(
                     ClassificationHead(),
                 ]
             )
+        elif decoder_type in ("singleconv", "singleconv_reshape"):
+            # Linear-probe analog for classification: global max pool over the
+            # patch grid followed by a single linear layer. singleconv_reshape
+            # produces the same decoder since there is no spatial output to
+            # reshape up to.
+            decoders = dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=embedding_size,
+                        out_channels=task_channels,
+                    ),
+                    ClassificationHead(),
+                ]
+            )
         else:
+            raise ValueError(f"invalid decoder type {decoder_type}")
+    elif task_type == "regress":
+        if decoder_type == "default":
             decoders = dict(
                 eval_task=[
                     PoolingDecoder(
@@ -159,21 +231,38 @@ def get_model(
                         num_conv_layers=1,
                         num_fc_layers=1,
                     ),
-                    ClassificationHead(),
+                    RegressionHead(),
                 ]
             )
-    elif task_type == "regress":
-        decoders = dict(
-            eval_task=[
-                PoolingDecoder(
-                    in_channels=embedding_size,
-                    out_channels=task_channels,
-                    num_conv_layers=1,
-                    num_fc_layers=1,
-                ),
-                RegressionHead(),
-            ]
-        )
+        elif decoder_type == "center":
+            decoders = dict(
+                eval_task=[
+                    FeatureCenterCrop(
+                        sizes=[[1, 1]],
+                    ),
+                    PoolingDecoder(
+                        in_channels=embedding_size,
+                        out_channels=task_channels,
+                    ),
+                    RegressionHead(),
+                ]
+            )
+        elif decoder_type in ("singleconv", "singleconv_reshape"):
+            # Linear-probe analog for regression: global max pool over the
+            # patch grid followed by a single linear layer. singleconv_reshape
+            # produces the same decoder since there is no spatial output to
+            # reshape up to.
+            decoders = dict(
+                eval_task=[
+                    PoolingDecoder(
+                        in_channels=embedding_size,
+                        out_channels=task_channels,
+                    ),
+                    RegressionHead(),
+                ]
+            )
+        else:
+            raise ValueError(f"invalid decoder type {decoder_type}")
     else:
         raise NotImplementedError
 
