@@ -1,0 +1,147 @@
+model:
+  class_path: rslp.change_finder.train.ChangeFinderLightningModule
+  init_args:
+    model:
+      class_path: rslp.change_finder.train.ChangeFinderModel
+      init_args:
+        encoder:
+          class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          init_args:
+            model_id: OLMOEARTH_V1_BASE
+            patch_size: 4
+            use_legacy_timestamps: false
+        in_channels: 768
+        num_fc_layers: 2
+        fc_channels: 512
+        loss_mode: margin
+    task:
+      class_path: rslp.change_finder.train.ChangeFinderTask
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.0001
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/dataset_20260403/
+    inputs:
+      sentinel2_y0:
+        data_type: "raster"
+        layers: ["sentinel2_y0"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      sentinel2_y1:
+        data_type: "raster"
+        layers: ["sentinel2_y1"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      sentinel2_y2:
+        data_type: "raster"
+        layers: ["sentinel2_y2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      sentinel2_y3:
+        data_type: "raster"
+        layers: ["sentinel2_y3"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      sentinel2_y4:
+        data_type: "raster"
+        layers: ["sentinel2_y4"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      sentinel2_y5:
+        data_type: "raster"
+        layers: ["sentinel2_y5"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      sentinel2_y6:
+        data_type: "raster"
+        layers: ["sentinel2_y6"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+    task:
+      class_path: rslp.change_finder.train.ChangeFinderTask
+    batch_size: 8
+    num_workers: 32
+    init_workers: 128
+    default_config:
+      transforms:
+        - class_path: rslp.change_finder.train.ChangeFinderNormalize
+          init_args:
+            modality_names: ["sentinel2_y0", "sentinel2_y1", "sentinel2_y2", "sentinel2_y3", "sentinel2_y4", "sentinel2_y5", "sentinel2_y6"]
+            band_names: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslp.change_finder.train.ChangeFinderGapTransform
+          init_args:
+            gap: 2
+    train_config:
+      crop_size: 64
+      tags:
+        split: train
+      transforms:
+        - class_path: rslp.change_finder.train.ChangeFinderNormalize
+          init_args:
+            modality_names: ["sentinel2_y0", "sentinel2_y1", "sentinel2_y2", "sentinel2_y3", "sentinel2_y4", "sentinel2_y5", "sentinel2_y6"]
+            band_names: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslp.change_finder.train.ChangeFinderGapTransform
+          init_args:
+            gap: 2
+      sampler:
+        class_path: rslearn.train.dataset.RandomSamplerFactory
+        init_args:
+          replacement: true
+          num_samples: 16384
+    val_config:
+      crop_size: 64
+      tags:
+        split: val
+    test_config:
+      crop_size: 64
+      tags:
+        split: val
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_loss
+        mode: min
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder"]
+        unfreeze_at_epoch: 10
+        unfreeze_lr_factor: 10
+project_name: change_finder_phase00_20260403
+run_name: gap2_margin
+management_dir: ${RSLP_PREFIX}/projects
