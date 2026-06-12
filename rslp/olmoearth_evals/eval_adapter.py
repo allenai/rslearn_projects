@@ -12,42 +12,32 @@ from rslearn.train.transforms.crop import Crop
 from rslearn.train.transforms.pad import Pad
 from rslearn.train.transforms.transform import Transform
 
-import rslp.olmoearth_evals.aef as aef
-import rslp.olmoearth_evals.anysat as anysat
-import rslp.olmoearth_evals.clay as clay
-import rslp.olmoearth_evals.croma as croma
-import rslp.olmoearth_evals.dinov3 as dinov3
-import rslp.olmoearth_evals.galileo as galileo
 import rslp.olmoearth_evals.olmoearth as olmoearth
-import rslp.olmoearth_evals.olmoearth_swin_base as olmoearth_swin_base
-import rslp.olmoearth_evals.panopticon as panopticon
-import rslp.olmoearth_evals.presto as presto
-import rslp.olmoearth_evals.satlaspretrain as satlaspretrain
 
 _LAZY_MODULE_IDS = {
+    "aef": "rslp.olmoearth_evals.aef",
+    "anysat": "rslp.olmoearth_evals.anysat",
+    "clay": "rslp.olmoearth_evals.clay",
+    "croma": "rslp.olmoearth_evals.croma",
+    "croma_large": "rslp.olmoearth_evals.croma",
+    "dinov3": "rslp.olmoearth_evals.dinov3",
+    "galileo": "rslp.olmoearth_evals.galileo",
+    "olmoearth_swin_base": "rslp.olmoearth_evals.olmoearth_swin_base",
+    "olmoearth_swin_base_temporal_attention": "rslp.olmoearth_evals.olmoearth_swin_base",
+    "panopticon": "rslp.olmoearth_evals.panopticon",
+    "presto": "rslp.olmoearth_evals.presto",
     "prithvi": "rslp.olmoearth_evals.prithvi",
+    "satlaspretrain": "rslp.olmoearth_evals.satlaspretrain",
     "terramind": "rslp.olmoearth_evals.terramind",
     "terramind_large": "rslp.olmoearth_evals.terramind",
 }
 
 modules_by_model_id = {
-    "anysat": anysat,
-    "clay": clay,
-    "croma": croma,
-    "croma_large": croma,
-    "dinov3": dinov3,
-    "galileo": galileo,
     "olmoearth": olmoearth,
     "olmoearth_nano": olmoearth,
     "olmoearth_tiny": olmoearth,
     "olmoearth_large": olmoearth,
     "olmoearth_random": olmoearth,
-    "olmoearth_swin_base": olmoearth_swin_base,
-    "olmoearth_swin_base_temporal_attention": olmoearth_swin_base,
-    "panopticon": panopticon,
-    "presto": presto,
-    "satlaspretrain": satlaspretrain,
-    "aef": aef,
 }
 
 
