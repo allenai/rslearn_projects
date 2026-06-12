@@ -2,8 +2,9 @@
 # split jamaica_2025_proper_splits group.
 #   train = point windows whose location is NOT inside any test polygon
 #   val   = point windows overlapping a test polygon (acknowledged leak vs test)
-#   test  = dense polygons in held-out spatial cells (see config_test_proper_splits_binary.yaml)
-# Training is point-only: the non-test ("unused") polygon windows are not selected.
+#   test  = dense polygons in held-out spatial cells (this config's test_config below)
+# Train uses point windows plus non-test dense polygon masks (split=train); only
+# polygons that overlap a test polygon are held out as "unused".
 # Sibling of config_train_points_binary.yaml; only the group + run_name differ.
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
