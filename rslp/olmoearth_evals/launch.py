@@ -16,6 +16,7 @@ TASK_CONFIGS = {
     "descals": ["descals"],
     "ecosystem_aef": ["ecosystem_aef"],
     "ethiopia_crops": ["ethiopia_crops"],
+    "forest_loss_driver": ["forest_loss_driver"],
     "ecosystem": ["ecosystem"],
     "glance": ["glance"],
     "landsat_vessels": ["landsat_vessels"],
