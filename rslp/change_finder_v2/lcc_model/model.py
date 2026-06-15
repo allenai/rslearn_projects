@@ -27,6 +27,9 @@ from rslearn.train.model_context import (
 
 INPUT_KEY = "sentinel2_l2a"
 NUM_PASS1 = 10
+DEBUG_PRINT_FALSE_NEGATIVES = True
+DEBUG_FALSE_NEGATIVE_THRESHOLD = 0.5
+DEBUG_FALSE_NEGATIVE_SAMPLE_LIMIT = 20
 
 # A stage is a list of (out_channels, kernel_size) conv specs.
 StageSpec = list[tuple[int, int]]
@@ -191,7 +194,64 @@ class DualPassChangeModel(nn.Module):
                 "timestamps": torch.sigmoid(logits_ts[i]),
             }
 
+        if DEBUG_PRINT_FALSE_NEGATIVES and targets is not None and not self.training:
+            self._debug_print_binary_false_negatives(context, targets, outputs)
+
         return ModelOutput(outputs=outputs, loss_dict=losses)
+
+    def _debug_print_binary_false_negatives(
+        self,
+        context: ModelContext,
+        targets: list[dict[str, Any]],
+        outputs: list[dict[str, Any]],
+    ) -> None:
+        """Print windows with positive change pixels missed at the debug threshold."""
+        for output, target, metadata in zip(
+            outputs, targets, context.metadatas, strict=True
+        ):
+            labels = target["binary"]["classes"].get_hw_tensor().long()
+            valid = target["binary"]["valid"].get_hw_tensor() > 0
+            change_prob = output["binary"][2]
+
+            positive = valid & (labels == 2)
+            false_negative = positive & (change_prob < DEBUG_FALSE_NEGATIVE_THRESHOLD)
+            num_false_negative = int(false_negative.sum().item())
+            if num_false_negative == 0:
+                continue
+
+            num_positive = int(positive.sum().item())
+            sample_pixels = (
+                false_negative.nonzero(as_tuple=False)[
+                    :DEBUG_FALSE_NEGATIVE_SAMPLE_LIMIT
+                ]
+                .detach()
+                .cpu()
+            )
+            change_prob_cpu = change_prob.detach().cpu()
+            crop_x0, crop_y0, _, _ = metadata.crop_bounds
+            sample_entries = []
+            for row, col in sample_pixels.tolist():
+                sample_entries.append(
+                    {
+                        "row": row,
+                        "col": col,
+                        "window_x": crop_x0 + col,
+                        "window_y": crop_y0 + row,
+                        "prob": round(float(change_prob_cpu[row, col]), 4),
+                    }
+                )
+
+            print(
+                "[LCC false negative debug] "
+                f"window={metadata.window_group}/{metadata.window_name} "
+                f"crop={metadata.crop_idx + 1}/{metadata.num_crops_in_window} "
+                f"crop_bounds={metadata.crop_bounds} "
+                f"positive_pixels={num_positive} "
+                f"false_negative_pixels={num_false_negative} "
+                f"threshold={DEBUG_FALSE_NEGATIVE_THRESHOLD} "
+                f"sample_pixels={sample_entries}",
+                flush=True,
+            )
 
     def _seg_loss(
         self,

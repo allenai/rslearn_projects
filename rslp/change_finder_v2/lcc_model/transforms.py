@@ -64,7 +64,7 @@ class FrequentOptionSampler(Transform):
         for i in range(8):
             key = f"{FREQUENT_KEY_PREFIX}{i}"
             if key not in input_dict:
-                break
+                continue
             freq_img = input_dict.pop(key)
             if freq_img.image.shape[1] == NUM_FREQUENT:
                 frequent_options.append(freq_img)
@@ -78,7 +78,7 @@ class FrequentOptionSampler(Transform):
             # based on the annotated first-noticeable timestamp, which would only test
             # the hardest cases where we want to detect change immediately after it
             # happens).
-            opt_idx = 2
+            opt_idx = 2 if len(frequent_options) > 2 else 0
         else:
             opt_idx = random.randrange(len(frequent_options))
         chosen_frequent = frequent_options[opt_idx]

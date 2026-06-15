@@ -139,7 +139,7 @@ class SemiAnnualOptionSampler(Transform):
         for i in range(8):
             key = f"{FREQUENT_KEY_PREFIX}{i}"
             if key not in input_dict:
-                break
+                continue
             freq_img = input_dict.pop(key)
             if freq_img.image.shape[1] == NUM_RECENT:
                 frequent_options.append(freq_img)

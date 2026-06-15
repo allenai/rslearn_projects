@@ -24,7 +24,8 @@ one 128x128 spatial window:
       "first_date_change_noticeable": "2020-04-27",
       "post_change": "2020-07-15",
       "pre_category": "tree",
-      "post_category": "urban/built-up"
+      "post_category": "urban/built-up",
+      "fine_change_category": "new_building"
     }
   ],
   "negative_points": [
@@ -38,10 +39,20 @@ one 128x128 spatial window:
 - `time_range`: metadata indicating when negative points are valid (not used
   for imagery fetching).
 - Dates may be blank/missing if not yet annotated.
+- `fine_change_category` is optional point metadata for a more specific change
+  type. It is saved in the annotation JSON, but it is not required for training
+  or exported by the evaluation CSV exporter.
 
 Categories: nodata, bare, burnt, crops, fallow/shifting cultivation, grassland,
 Lichen and moss, shrub, snow and ice, tree, urban/built-up, water,
 wetland (herbaceous).
+
+Fine change categories: new_solar_farm, new_wind_turbine, new_power_tower,
+new_building, new_road, resurfaced_road, repainted_roof,
+tree_crops_harvested, tree_crops_growth_gradual, wetland_loss,
+new_crop_field, deforestation, wildfire, mining, removed_building,
+removed_road, site_clearing, crop_temporary_building_erected,
+new_aquafarm, new_offshore_infrastructure.
 
 ### Running the Annotation App
 
@@ -71,7 +82,8 @@ The UI:
 - Click existing points to remove them.
 - Iterate through positive points with the point navigator at the top.
 - Edit annotation fields (pre_change, first_date_change_noticeable, post_change,
-  pre_category, post_category) for the selected positive point.
+  pre_category, post_category, optional fine_change_category) for the selected
+  positive point.
 - Click timestamps below images to copy them to clipboard.
 - Navigation: Prev/Next buttons to move between entries. URL hash tracks position.
 

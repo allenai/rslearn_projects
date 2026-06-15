@@ -18,6 +18,29 @@
     "wetland (herbaceous)",
   ];
 
+  const FINE_CHANGE_CATEGORIES = [
+    "new_solar_farm",
+    "new_wind_turbine",
+    "new_power_tower",
+    "new_building",
+    "new_road",
+    "resurfaced_road",
+    "repainted_roof",
+    "tree_crops_harvested",
+    "tree_crops_growth_gradual",
+    "wetland_loss",
+    "new_crop_field",
+    "deforestation",
+    "wildfire",
+    "mining",
+    "removed_building",
+    "removed_road",
+    "site_clearing",
+    "crop_temporary_building_erected",
+    "new_aquafarm",
+    "new_offshore_infrastructure",
+  ];
+
   // --- State ---
   let entriesList = [];
   let currentEntry = null;
@@ -52,6 +75,7 @@
     post_change: document.getElementById("annot-post-change"),
     pre_category: document.getElementById("annot-pre-category"),
     post_category: document.getElementById("annot-post-category"),
+    fine_change_category: document.getElementById("annot-fine-change-category"),
   };
 
   function populateCategorySelect(select, categories) {
@@ -271,6 +295,7 @@
     annotInputs.post_change.value = pt.post_change || "";
     setCategorySelect(annotInputs.pre_category, pt.pre_category);
     setCategorySelect(annotInputs.post_category, pt.post_category);
+    setCategorySelect(annotInputs.fine_change_category, pt.fine_change_category);
     annotStatus.textContent = "";
   }
 
@@ -462,6 +487,7 @@
       post_change: annotInputs.post_change.value.trim(),
       pre_category: annotInputs.pre_category.value.trim(),
       post_category: annotInputs.post_category.value.trim(),
+      fine_change_category: annotInputs.fine_change_category.value.trim(),
     }).then(function (res) {
       if (res.ok) {
         currentEntry.entry = res.entry;
@@ -521,6 +547,7 @@
   function init() {
     populateCategorySelect(annotInputs.pre_category, CATEGORIES);
     populateCategorySelect(annotInputs.post_category, CATEGORIES);
+    populateCategorySelect(annotInputs.fine_change_category, FINE_CHANGE_CATEGORIES);
     fetchJSON("/api/entries").then(function (data) {
       entriesList = data;
       entryCount.textContent = data.length + " entries";

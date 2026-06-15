@@ -21,7 +21,8 @@ Usage::
 
     python -m rslp.change_finder_v2.scripts.annotation_phase2.create_v2_annotations \
         --input_dir /path/to/write_raster_outputs/ \
-        --output v2_annotations.json
+        --output v2_annotations.json \
+        --group phase2
 """
 
 from __future__ import annotations
@@ -58,7 +59,6 @@ DEFAULT_THRESHOLD = 128
 DEFAULT_WINDOW_SIZE = 128
 # Number of years on either side of the change date for the entry time_range.
 TIME_RANGE_YEARS = 3
-DEFAULT_GROUP = "annotation_phase2"
 
 
 def _shift_years(dt: datetime, years: int) -> datetime:
@@ -128,9 +128,9 @@ def _resolve_dates(
 
 def process_tile(
     tif_path_str: str,
+    group: str,
     threshold: int,
     window_size: int,
-    group: str,
     seed: int,
 ) -> dict | None:
     """Process one prediction raster and return a v2 annotation entry, or None."""
@@ -178,10 +178,7 @@ def process_tile(
     time_range: list[str] | None = None
     if dates is not None:
         pre_change = datetime.fromisoformat(dates[0]).date().isoformat()
-        post_change = datetime.fromisoformat(dates[1]).date().isoformat()
         point["pre_change"] = pre_change
-        point["first_date_change_noticeable"] = pre_change
-        point["post_change"] = post_change
 
         change_date = datetime.fromisoformat(dates[0])
         time_range = [
@@ -214,9 +211,9 @@ def process_tile(
 def create_annotations(
     input_dir: str,
     output: str,
+    group: str,
     threshold: int = DEFAULT_THRESHOLD,
     window_size: int = DEFAULT_WINDOW_SIZE,
-    group: str = DEFAULT_GROUP,
     seed: int = 0,
     workers: int = 32,
 ) -> None:
@@ -228,9 +225,9 @@ def create_annotations(
     kwargs_list = [
         dict(
             tif_path_str=p,
+            group=group,
             threshold=threshold,
             window_size=window_size,
-            group=group,
             seed=seed,
         )
         for p in tif_paths
@@ -278,8 +275,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--group",
-        default=DEFAULT_GROUP,
-        help=f"Window group name. Default '{DEFAULT_GROUP}'.",
+        required=True,
+        help="Window group name.",
     )
     parser.add_argument(
         "--seed",
@@ -293,9 +290,9 @@ def main() -> None:
     create_annotations(
         input_dir=args.input_dir,
         output=args.output,
+        group=args.group,
         threshold=args.threshold,
         window_size=args.window_size,
-        group=args.group,
         seed=args.seed,
         workers=args.workers,
     )

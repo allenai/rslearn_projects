@@ -86,6 +86,6 @@ trainer:
       init_args:
         output_layer: output_change
         selector: []
-project_name: 2026_06_08_lcc
-run_name: olmoearth_base_ps4_fix_dataset_path
+project_name: 2026_06_14_lcc
+run_name: olmoearth_base_ps4_01
 management_dir: ${RSLP_PREFIX}/projects

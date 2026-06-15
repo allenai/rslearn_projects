@@ -55,6 +55,9 @@ data:
         class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
         metric_kwargs:
           average: "micro"
+        # Prediction-time only: write per-class softmax probabilities (13 channels)
+        # instead of an argmax class map. Has no effect on training/val/test.
+        output_probs: true
     batch_size: 16
     num_workers: 32
     default_config:
@@ -89,6 +92,19 @@ data:
       groups: ["20260109"]
       tags:
         split: "val"
+    # Prediction-time only: used by `rslearn model predict` over an eval dataset
+    # (override --data.init_args.path). The eval windows live in group "predict"
+    # and have no targets, so skip them. crop_size matches the eval window size.
+    predict_config:
+      groups: ["predict"]
+      crop_size: 64
+      load_all_crops: true
+      skip_targets: true
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
 trainer:
   max_epochs: 100
   callbacks:
@@ -104,6 +120,12 @@ trainer:
       init_args:
         monitor: val_accuracy
         mode: max
+    # Prediction-time only (BasePredictionWriter): writes the 13-channel land-cover
+    # probability raster to the "output" layer. Only fires during `predict`.
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: output
+        selector: []
 project_name: 2026_04_05_worldcover_change
 run_name: olmoearth_base_s2_6mo_ws32_ps4_00
 management_dir: ${RSLP_PREFIX}/projects

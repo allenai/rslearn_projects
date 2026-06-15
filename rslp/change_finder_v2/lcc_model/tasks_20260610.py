@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
 import torch
+from rslearn.train.model_context import SampleMetadata
 from rslearn.train.tasks.multi_task import MetricWrapper
 from torchmetrics import Metric, MetricCollection
 from typing_extensions import override
@@ -63,6 +66,41 @@ class TimestampBoundaryAccuracy(Metric):
 
 class LCCMultiTaskV2(LCCMultiTask):
     """MultiTask with start/end timestamp accuracy metrics."""
+
+    @override
+    def process_output(
+        self, raw_output: Any, metadata: SampleMetadata
+    ) -> npt.NDArray[np.uint8]:
+        """Stack per-task probabilities into the base 49-band uint8 CHW array.
+
+        The 20260611 model emits start/end timestamp distributions (two softmaxes
+        over the T timesteps) rather than the base model's single 20-channel
+        membership map. To stay compatible with the base ``output_change`` layer
+        (49 bands) and downstream tooling, the start/end distributions are collapsed
+        back into a per-timestep "in change window" membership:
+
+            membership[t] = P(start <= t) * P(end >= t)
+                          = cumsum(start)[t] * reverse_cumsum(end)[t]
+
+        Band layout (identical to LCCMultiTask.process_output):
+        0..2   = binary (softmax probs)
+        3..15  = src (softmax probs)
+        16..28 = dst (softmax probs)
+        29..48 = timestamp membership (reconstructed, T=20)
+        """
+        parts: list[torch.Tensor] = []
+        for task_name in ("binary", "src", "dst"):
+            probs = raw_output[task_name].float()
+            parts.append((probs * 255).clamp(0, 255).to(torch.uint8))
+
+        timestamps = raw_output["timestamps"]
+        start_cdf = timestamps["start"].float().cumsum(dim=0)  # P(start <= t)
+        end_rev = timestamps["end"].float().flip(0).cumsum(dim=0).flip(0)  # P(end >= t)
+        membership = (start_cdf * end_rev).clamp(0, 1)
+        parts.append((membership * 255).clamp(0, 255).to(torch.uint8))
+
+        stacked = torch.cat(parts, dim=0)
+        return stacked.cpu().numpy()
 
     def get_metrics(self) -> MetricCollection:
         """Get binary/src/dst metrics plus start/end timestamp accuracy."""

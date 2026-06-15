@@ -2,7 +2,7 @@ model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     model:
-      class_path: rslp.change_finder_v2.lcc_model.model_20260610.TemporalChangeModel
+      class_path: rslp.change_finder_v2.lcc_model.model_20260611.DualPassTemporalChangeModel
       init_args:
         encoder:
           class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
@@ -14,21 +14,18 @@ model:
         num_classes_binary: 3
         num_classes_src: 13
         num_classes_dst: 13
-        num_timesteps: 12
+        num_timesteps: 20
+        num_pass1: 10
         embedding_dim: 768
-        temporal_dim: 256
         simple_decoder: true
-        temporal_depth: 2
+        temporal_depth: 1
         temporal_heads: 8
-        dim_feedforward: 1024
+        dim_feedforward: 768
         binary_loss_weight: 2.0
     optimizer:
-      class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
+      class_path: rslearn.train.optimizer.AdamW
       init_args:
         lr: 0.0001
-        layer_decay_rate: 0.65
-        num_layers: 12
-        encoder_prefix: "model.encoder"
     scheduler:
       class_path: rslearn.train.scheduler.PlateauScheduler
       init_args:
@@ -196,7 +193,7 @@ data:
     default_config:
       crop_size: 64
       transforms:
-        - class_path: rslp.change_finder_v2.lcc_model.transforms_20260610.SemiAnnualOptionSampler
+        - class_path: rslp.change_finder_v2.lcc_model.transforms_20260611.FrequentOptionSamplerV2
           init_args:
             deterministic: true
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
@@ -205,7 +202,7 @@ data:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
       transforms:
-        - class_path: rslp.change_finder_v2.lcc_model.transforms_20260610.SemiAnnualOptionSampler
+        - class_path: rslp.change_finder_v2.lcc_model.transforms_20260611.FrequentOptionSamplerV2
           init_args:
             deterministic: false
         - class_path: rslearn.train.transforms.flip.Flip
@@ -239,10 +236,13 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder"]
     - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
         monitor: val_binary/auroc
         mode: max
 project_name: 2026_06_14_lcc
-run_name: temporal_12step_20260610_simpledecode_temporal2layer256dim
+run_name: simpledecode_dualpass_temporal1layer_ff768_frozen_01
 management_dir: ${RSLP_PREFIX}/projects
