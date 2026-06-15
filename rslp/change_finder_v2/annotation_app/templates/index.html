@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Change Finder V2 Annotation</title>
+<style>
+  :root { --tile-size: 384px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; }
+
+  #top-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #16213e; border-bottom: 1px solid #333; flex-wrap: wrap; }
+  #top-bar button { font-size: 14px; padding: 4px 8px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  #top-bar button:hover { background: #1a5276; }
+  #top-bar button.active { background: #1565c0; border-color: #64b5f6; }
+  #top-bar button:disabled { opacity: 0.4; cursor: default; }
+
+  #nav-bar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #16213e; border-bottom: 1px solid #333; }
+  #nav-bar button { font-size: 14px; padding: 4px 12px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  #nav-bar button:hover { background: #1a5276; }
+  #nav-bar button:disabled { opacity: 0.4; cursor: default; }
+  #nav-info { font-size: 14px; }
+
+  #point-bar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #13172a; border-bottom: 1px solid #333; }
+  #point-bar button { font-size: 13px; padding: 3px 10px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  #point-bar button:hover { background: #1a5276; }
+  #point-bar button:disabled { opacity: 0.4; cursor: default; }
+  #point-info { font-size: 13px; }
+
+  #info-bar { padding: 8px 16px; font-size: 13px; background: #1a1a2e; border-bottom: 1px solid #333; display: flex; gap: 24px; flex-wrap: wrap; }
+  #info-bar .coord { font-family: monospace; user-select: all; background: #0f3460; padding: 2px 6px; border-radius: 3px; }
+
+  .section-label { padding: 8px 16px 4px; font-size: 13px; font-weight: 600; color: #90caf9; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  #annot-form { display: flex; align-items: flex-end; gap: 12px; padding: 8px 16px 12px; flex-wrap: wrap; background: #13172a; border-bottom: 1px solid #333; }
+  #annot-form .field { display: flex; flex-direction: column; gap: 2px; }
+  #annot-form .field .field-label { font-size: 12px; color: #cfd8dc; font-weight: 600; }
+  #annot-form input { font-size: 14px; padding: 4px 8px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; font-family: monospace; width: 130px; }
+  #annot-form select { font-size: 14px; padding: 4px 8px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; width: 180px; height: 30px; }
+  #annot-fine-change-category { width: 280px; }
+  #annot-form button { font-size: 14px; padding: 6px 14px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; height: 30px; }
+  #annot-form button:hover { background: #1a5276; }
+  #annot-status { font-size: 13px; color: #aaa; align-self: center; }
+  #annot-status.ok { color: #81c784; }
+  #annot-status.err { color: #e57373; }
+
+  #year-selector { display: flex; gap: 4px; padding: 4px 16px; flex-wrap: wrap; }
+  #year-selector button { font-size: 13px; padding: 3px 10px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  #year-selector button.active { background: #1565c0; border-color: #64b5f6; }
+
+  #sentinel-grid { display: grid; grid-template-columns: repeat(6, var(--tile-size)); gap: 4px; padding: 4px 16px; overflow-x: auto; }
+  .s2-col { text-align: center; }
+  .image-stack { position: relative; width: var(--tile-size); height: var(--tile-size); background: #111; border: 1px solid #333; overflow: hidden; }
+  .image-stack img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .image-stack .overlay-image { position: absolute; inset: 0; cursor: crosshair; }
+  .s2-col .s2-date { font-size: 11px; color: #aaa; margin-top: 2px; }
+
+  .empty-msg { color: #888; font-style: italic; padding: 16px; }
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <button id="btn-overlay">Overlay: off (a)</button>
+  <span id="entry-count" style="font-size:13px; color:#aaa;"></span>
+</div>
+
+<div id="nav-bar">
+  <button id="btn-prev">&larr; Prev (p)</button>
+  <span id="nav-info">Loading...</span>
+  <button id="btn-next">Next (n) &rarr;</button>
+</div>
+
+<div id="point-bar">
+  <span style="font-size:13px; color:#90caf9; font-weight:600;">Positive Points:</span>
+  <button id="btn-pt-prev">&larr;</button>
+  <span id="point-info">0 / 0</span>
+  <button id="btn-pt-next">&rarr;</button>
+  <button id="btn-pt-make-negative">Make Negative</button>
+</div>
+
+<div id="info-bar">
+  <span>Lat/Lon: <span class="coord" id="coord-text">&mdash;</span></span>
+  <span>Point Lat/Lon: <span class="coord" id="point-coord-text">&mdash;</span></span>
+  <span>Window: <span id="window-info">&mdash;</span></span>
+</div>
+
+<div class="section-label">Annotation (selected point)</div>
+<form id="annot-form">
+  <div class="field">
+    <span class="field-label">Pre-change</span>
+    <input id="annot-pre-change" type="text" placeholder="2018-03-15">
+  </div>
+  <div class="field">
+    <span class="field-label">First noticeable</span>
+    <input id="annot-first-noticeable" type="text" placeholder="2019-06-01">
+  </div>
+  <div class="field">
+    <span class="field-label">Post-change</span>
+    <input id="annot-post-change" type="text" placeholder="2020-01-15">
+  </div>
+  <div class="field">
+    <span class="field-label">Pre-category</span>
+    <select id="annot-pre-category"></select>
+  </div>
+  <div class="field">
+    <span class="field-label">Post-category</span>
+    <select id="annot-post-category"></select>
+  </div>
+  <div class="field">
+    <span class="field-label">Fine category</span>
+    <select id="annot-fine-change-category"></select>
+  </div>
+  <button type="submit" id="btn-save">Save</button>
+  <span id="annot-status"></span>
+</form>
+
+<div class="section-label">Sentinel-2 Imagery</div>
+<div id="year-selector"></div>
+<div id="sentinel-grid"></div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
