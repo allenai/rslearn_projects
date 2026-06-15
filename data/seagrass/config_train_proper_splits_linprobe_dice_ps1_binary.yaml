@@ -1,0 +1,163 @@
+# PATCH_SIZE=1 LINEAR-PROBE + DICE/WEIGHTED-CE variant: like the dice linear probe but
+# the OlmoEarth encoder tokenizes at patch_size 1 -> full-resolution 768-d features, so
+# the 1x1 conv head outputs pixel-level logits directly (no upsample). ~16x more spatial
+# tokens than patch_size 4 (heavier / higher memory).
+#
+# LINEAR-PROBE + DICE/WEIGHTED-CE variant: frozen OlmoEarth backbone (FreezeUnfreeze,
+# unfreeze_at_epoch null) with a minimal 1x1-conv head (+ bilinear upsample). Adds dice
+# loss (macro-balanced across classes) and class-weighted CE (upweight the rare
+# background class) to counter the ~170:1 dense:background pixel imbalance that made
+# the CE-only probe collapse to predicting "dense everywhere".
+#
+# Train the binary (background vs dense_seagrass) seagrass model on the spatially
+# split jamaica_2025_proper_splits group.
+#   train = point windows whose location is NOT inside any test polygon
+#   val   = point windows overlapping a test polygon (acknowledged leak vs test)
+#   test  = dense polygons in held-out spatial cells (this config's test_config below)
+# Train uses point windows plus non-test dense polygon masks (split=train); only
+# polygons that overlap a test polygon are held out as "unused".
+# Sibling of config_train_points_binary.yaml; only the group + run_name differ.
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_BASE
+              patch_size: 1
+        decoder:
+          # Linear probe: 1x1 conv (768 -> 2, no activation) on the frozen 1/4-res
+          # patch features at FULL resolution (patch_size 1), so no upsample is
+          # needed. Only this conv is trainable (encoder frozen via FreezeUnfreeze).
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 768
+              out_channels: 2
+              kernel_size: 1
+              activation:
+                class_path: torch.nn.Identity
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+            init_args:
+              dice_loss: true
+              # CE weights [no_seagrass(0), dense_seagrass(1)]: upweight the rare
+              # background class so the probe is penalized for ignoring it.
+              weights: [10.0, 1.0]
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.0001
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/piperw/rslearn_projects/data/seagrass
+    inputs:
+      sentinel2_l2a:
+        data_type: raster
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+      targets:
+        data_type: raster
+        layers: ["label_raster"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+    task:
+      class_path: rslearn.train.tasks.segmentation.SegmentationTask
+      init_args:
+        # Binary point supervision: background=0, dense seagrass=1.
+        num_classes: 2
+        class_id_mapping: {0: 0, 2: 1, 255: 255}
+        nodata_value: 255
+        metric_kwargs:
+          average: micro
+        enable_f1_metric: true
+        class_names: ["background", "dense_seagrass"]
+    batch_size: 32
+    num_workers: 16
+    init_workers: 32
+    default_config:
+      crop_size: 64
+      groups: ["jamaica_2025_proper_splits"]
+      transforms:
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2_l2a: []
+            output_selector: image
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    train_config:
+      # split=train: point windows spatially disjoint from the test polygons.
+      groups: ["jamaica_2025_proper_splits"]
+      tags:
+        split: train
+      transforms:
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: ["sentinel2_l2a", "target/classes", "target/valid"]
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              sentinel2_l2a: []
+            output_selector: image
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    val_config:
+      groups: ["jamaica_2025_proper_splits"]
+      tags:
+        split: val
+    # `rslearn model test`  -> evaluates the held-out test polygons (split=test)
+    test_config:
+      groups: ["jamaica_2025_proper_splits"]
+      tags:
+        split: test
+      load_all_crops: true
+      overlap_pixels: 0
+    # `rslearn model predict` -> also runs on the held-out test polygons
+    predict_config:
+      groups: ["jamaica_2025_proper_splits"]
+      tags:
+        split: test
+      load_all_crops: true
+      overlap_pixels: 0
+trainer:
+  max_epochs: 50
+  accelerator: gpu
+  devices: 1
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: epoch
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_accuracy
+        mode: max
+    # Freeze the OlmoEarth encoder (model.encoder[0]) for the entire run; train only
+    # the decoder + head. unfreeze_at_epoch: null => never unfreeze.
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: null
+project_name: seagrass
+run_name: olmoearth_base_proper_splits_linprobe_dice_ps1_binary
+management_dir: /weka/dfive-default/piperw/rslearn_projects/projects
+# For `model test`/`model predict`: don't auto-resolve a checkpoint from the run
+# dir; use the one passed via --ckpt_path. (Harmless for fit, where required=no
+# is already the default.)
+load_checkpoint_required: "no"
