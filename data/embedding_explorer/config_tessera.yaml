@@ -1,0 +1,74 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.tessera.tessera.Tessera
+            init_args:
+              checkpoint_path: ${TESSERA_CHECKPOINT_PATH}
+              pixel_batch_size: 1024
+        decoder:
+          - class_path: rslearn.train.tasks.embedding.EmbeddingHead
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: ${DATASET_PATH}
+    inputs:
+      s2:
+        data_type: "raster"
+        layers: ["sentinel2_l2a"]
+        bands: ["B04", "B02", "B03", "B08", "B8A", "B05", "B06", "B07", "B11", "B12"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      s1_ascending:
+        data_type: "raster"
+        layers: ["sentinel1_ascending"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      s1_descending:
+        data_type: "raster"
+        layers: ["sentinel1_descending"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+    task:
+      class_path: rslearn.train.tasks.embedding.EmbeddingTask
+    batch_size: 1
+    num_workers: 32
+    predict_config:
+      transforms:
+        - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
+          init_args:
+            selectors: ["s1_ascending", "s1_descending"]
+        - class_path: rslearn.models.tessera.tessera.TesseraNormalize
+          init_args:
+            data_source: mpc
+      load_all_crops: true
+      crop_size: 16
+      overlap_pixels: 0
+trainer:
+  callbacks:
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: embeddings_tessera
+        layer_config:
+          type: RASTER
+          band_sets:
+            - dtype: FLOAT32
+              num_bands: 128
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            overlap_pixels: 0
+            downsample_factor: 1

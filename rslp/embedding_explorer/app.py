@@ -3,7 +3,7 @@
 Usage:
     python -m rslp.embedding_explorer.app --dataset-path /path/to/dataset --port 5000
     python -m rslp.embedding_explorer.app --dataset-path /path/to/dataset \
-        --embedding-layer embeddings aef --port 5000
+        --embedding-layer embeddings_olmoearth_v1_base_ps4_ws64 aef --port 5000
 """
 
 import argparse
@@ -22,6 +22,7 @@ from rasterio.enums import Resampling
 from sklearn.linear_model import LogisticRegression
 
 EPSG_3857 = "EPSG:3857"
+DEFAULT_EMBEDDING_LAYERS = ["embeddings_olmoearth_v1_base_ps4_ws64"]
 
 
 def find_geotiff(layer_dir: Path) -> Path | None:
@@ -372,7 +373,7 @@ def reproject_single_band_to_wm(
 def create_app(dataset_path: Path, embedding_layers: list[str] | None = None) -> Flask:
     """Create and configure the Flask application."""
     if embedding_layers is None:
-        embedding_layers = ["embeddings"]
+        embedding_layers = DEFAULT_EMBEDDING_LAYERS
     app_dir = Path(__file__).parent
     app = Flask(
         __name__,
@@ -593,8 +594,11 @@ def main() -> None:
     parser.add_argument(
         "--embedding-layer",
         nargs="+",
-        default=["embeddings"],
-        help="Embedding layer name(s) to load (default: 'embeddings')",
+        default=DEFAULT_EMBEDDING_LAYERS,
+        help=(
+            "Embedding layer name(s) to load "
+            f"(default: {', '.join(DEFAULT_EMBEDDING_LAYERS)})"
+        ),
     )
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--host", default="0.0.0.0")

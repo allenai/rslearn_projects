@@ -8,7 +8,7 @@ model:
           - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
               model_id: OLMOEARTH_V1_BASE
-              patch_size: 4
+              patch_size: 1
         decoder:
           - class_path: rslearn.train.tasks.embedding.EmbeddingHead
     optimizer:
@@ -20,11 +20,12 @@ data:
     inputs:
       sentinel2_l2a:
         data_type: "raster"
-        layers: ["sentinel2_l2a", "sentinel2_l2a.1", "sentinel2_l2a.2", "sentinel2_l2a.3"]
+        layers: ["sentinel2_l2a"]
         bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
         passthrough: true
         dtype: FLOAT32
         load_all_layers: true
+        load_all_item_groups: true
     task:
       class_path: rslearn.train.tasks.embedding.EmbeddingTask
     batch_size: 8
@@ -36,15 +37,20 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
       load_all_crops: true
-      crop_size: 64
-      overlap_pixels: 32
+      crop_size: 16
+      overlap_pixels: 8
 trainer:
   callbacks:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
-        output_layer: embeddings
+        output_layer: embeddings_olmoearth_v1_base_ps1_ws16
+        layer_config:
+          type: RASTER
+          band_sets:
+            - dtype: FLOAT32
+              num_bands: 768
         merger:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
             overlap_pixels: 8
-            downsample_factor: 4
+            downsample_factor: 1
