@@ -177,7 +177,7 @@ cache used by `rslearn.models.presto.Presto`.
 
 ### 3e. Compute Tessera embeddings (optional)
 
-Tessera is supported in rslearn as `rslearn.models.tessera.tessera.Tessera`. Use
+Tessera is supported in rslearn as `rslearn.models.tessera.Tessera`. Use
 `config_with_tessera.json` instead of `config.json` when creating the dataset.
 Tessera uses Sentinel-2 plus separate ascending and descending Sentinel-1 RTC
 time series, so materialize all three source layers:
@@ -201,7 +201,7 @@ export TESSERA_CHECKPOINT_PATH=/path/to/tessera_v1_1_mpc_encoder.pt
 rslearn model predict --config data/embedding_explorer/config_tessera.yaml
 ```
 
-This writes 128-dimensional Tessera embeddings at 10m/pixel to the
+This writes 192-dimensional Tessera embeddings at 10m/pixel to the
 `embeddings_tessera` layer. The provided config converts the OlmoEarth Datasets
 Sentinel-1 RTC layers to standard dB with `Sentinel1ToDecibels`, then applies
 `TesseraNormalize(data_source="mpc")` before the model runs. If your Sentinel-1

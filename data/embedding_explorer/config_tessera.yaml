@@ -5,7 +5,7 @@ model:
       class_path: rslearn.models.singletask.SingleTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.tessera.tessera.Tessera
+          - class_path: rslearn.models.tessera.Tessera
             init_args:
               checkpoint_path: ${TESSERA_CHECKPOINT_PATH}
               pixel_batch_size: 1024
@@ -51,7 +51,7 @@ data:
         - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
           init_args:
             selectors: ["s1_ascending", "s1_descending"]
-        - class_path: rslearn.models.tessera.tessera.TesseraNormalize
+        - class_path: rslearn.models.tessera.TesseraNormalize
           init_args:
             data_source: mpc
       load_all_crops: true
@@ -66,7 +66,7 @@ trainer:
           type: RASTER
           band_sets:
             - dtype: FLOAT32
-              num_bands: 128
+              num_bands: 192
         merger:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
