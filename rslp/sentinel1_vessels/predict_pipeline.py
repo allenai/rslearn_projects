@@ -490,20 +490,33 @@ def get_vessel_detections(
     )
     with time_operation(TimerOperations.MaterializeDataset):
         materialize_dataset(ds_path, materialize_pipeline_args)
-    # Verify the target image and both historical images were materialized for each
-    # window before running prediction.
-    for window in windows:
-        if not window.is_layer_completed(SENTINEL1_LAYER_NAME):
+
+    # Keep only tiles that have the target and both historical images materialized. A
+    # scene's bounds form a rectangle around its slanted SAR swath, so tiles over the
+    # nodata margin (or outside the historicals' overlap) never materialize; drop those
+    # tiles, deleting their window so the detector does not read missing layers.
+    complete_windows: list[Window] = []
+    complete_scene_idxs: list[int] = []
+    for window, scene_idx in zip(windows, window_scene_idxs):
+        has_all_layers = window.is_layer_completed(SENTINEL1_LAYER_NAME) and all(
+            window.is_layer_completed(HISTORICAL_LAYER_NAME, group_idx)
+            for group_idx in range(HISTORICAL_GROUP_COUNT)
+        )
+        if has_all_layers:
+            complete_windows.append(window)
+            complete_scene_idxs.append(scene_idx)
+        else:
+            window.window_root.fs.rm(window.window_root.path, recursive=True)
+    windows = complete_windows
+    window_scene_idxs = complete_scene_idxs
+
+    materialized_scene_idxs = set(window_scene_idxs)
+    for scene_idx in range(len(scene_datas)):
+        if scene_idx not in materialized_scene_idxs:
             raise ValueError(
-                f"window {window.name} does not have Sentinel-1 layer completed"
+                f"scene {scene_idx} has no fully-materialized tiles; the detector requires "
+                f"the target and {HISTORICAL_GROUP_COUNT} historical scenes covering it"
             )
-        for group_idx in range(HISTORICAL_GROUP_COUNT):
-            if not window.is_layer_completed(HISTORICAL_LAYER_NAME, group_idx):
-                raise ValueError(
-                    f"window {window.name} is missing historical input image_{group_idx + 1} "
-                    f"({HISTORICAL_LAYER_NAME} group {group_idx}); the detector requires "
-                    f"{HISTORICAL_GROUP_COUNT} historical scenes covering the target"
-                )
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
