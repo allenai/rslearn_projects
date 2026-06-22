@@ -4,6 +4,7 @@ import json
 import math
 import os
 import tempfile
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -29,6 +30,7 @@ from upath import UPath
 from rslp.log_utils import get_logger
 from rslp.sentinel1_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.filter import NearInfraFilter
+from rslp.utils.nms import distance_nms
 from rslp.utils.rslearn import (
     ApplyWindowsArgs,
     IngestArgs,
@@ -65,6 +67,15 @@ RESOLUTION = 10
 CROP_WINDOW_SIZE = 128
 # Band order as configured in dataset.
 BAND_NAMES = ["vv", "vh"]
+
+# Side length in pixels of the tiles each scene is split into for detection. Each tile is
+# materialized and run through the detector independently, so peak memory scales with the
+# tile size rather than the full scene.
+DETECTOR_TILE_SIZE = 2048
+
+# Detections in different tiles whose centers are within this many pixels are treated as
+# the same vessel. Matches the detector's within-tile NMS distance threshold.
+SEAM_NMS_DISTANCE_THRESHOLD = 10
 
 # Factor to multiply by when converting bands to 8-bit image.
 NORM_FACTOR = 1.0
@@ -367,6 +378,63 @@ def setup_dataset_with_image_files(
     return scene_datas
 
 
+def _tile_bounds(bounds: PixelBounds, tile_size: int) -> list[PixelBounds]:
+    """Split pixel bounds into a grid of tiles at most ``tile_size`` on each side.
+
+    Args:
+        bounds: the (minx, miny, maxx, maxy) pixel bounds to split.
+        tile_size: maximum side length, in pixels, of each tile.
+
+    Returns:
+        the tile bounds covering ``bounds`` without overlap.
+    """
+    minx, miny, maxx, maxy = bounds
+    tiles: list[PixelBounds] = []
+    for tile_miny in range(miny, maxy, tile_size):
+        for tile_minx in range(minx, maxx, tile_size):
+            tiles.append(
+                (
+                    tile_minx,
+                    tile_miny,
+                    min(tile_minx + tile_size, maxx),
+                    min(tile_miny + tile_size, maxy),
+                )
+            )
+    return tiles
+
+
+def _merge_tile_detections(
+    detections: list[VesselDetection],
+) -> list[VesselDetection]:
+    """Suppress detections duplicated across tiles of the same scene.
+
+    Detections are grouped by scene (``metadata["task_idx"]``) and reduced with distance
+    NMS over their projection-pixel centers, keeping the higher-scoring detection of any
+    pair whose centers fall within ``SEAM_NMS_DISTANCE_THRESHOLD``.
+
+    Args:
+        detections: detections from all tiles, each tagged with its scene index in
+            ``metadata["task_idx"]``.
+
+    Returns:
+        the detections that survive cross-tile suppression.
+    """
+    detections_by_scene: dict[int, list[VesselDetection]] = defaultdict(list)
+    for detection in detections:
+        detections_by_scene[detection.metadata["task_idx"]].append(detection)
+
+    merged: list[VesselDetection] = []
+    for scene_detections in detections_by_scene.values():
+        if len(scene_detections) <= 1:
+            merged.extend(scene_detections)
+            continue
+        centers = np.array([[d.col, d.row] for d in scene_detections], dtype=float)
+        scores = np.array([d.score for d in scene_detections], dtype=float)
+        keep_indices = distance_nms(centers, scores, SEAM_NMS_DISTANCE_THRESHOLD)
+        merged.extend(scene_detections[i] for i in keep_indices)
+    return merged
+
+
 def get_vessel_detections(
     ds_path: UPath,
     scene_datas: list[SceneData],
@@ -381,24 +449,31 @@ def get_vessel_detections(
             detector.
         scene_datas: the SceneDatas to apply the detector on.
     """
-    # Create a window for each SceneData.
+    # Split each scene into a grid of tile windows. Each tile is materialized and run
+    # through the detector independently, so peak memory scales with the tile size rather
+    # than the full scene.
     dataset = Dataset(ds_path)
     windows: list[Window] = []
+    window_scene_idxs: list[int] = []
     group = "detector_predict"
     for scene_idx, scene_data in enumerate(scene_datas):
-        window = Window(
-            storage=dataset.storage,
-            group=group,
-            name=str(scene_idx),
-            projection=scene_data.projection,
-            bounds=scene_data.bounds,
-            time_range=scene_data.time_range,
-        )
-        window.save()
-        windows.append(window)
+        for tile_idx, tile_bounds in enumerate(
+            _tile_bounds(scene_data.bounds, DETECTOR_TILE_SIZE)
+        ):
+            window = Window(
+                storage=dataset.storage,
+                group=group,
+                name=f"{scene_idx}_{tile_idx}",
+                projection=scene_data.projection,
+                bounds=tile_bounds,
+                time_range=scene_data.time_range,
+            )
+            window.save()
+            windows.append(window)
+            window_scene_idxs.append(scene_idx)
 
-        if scene_data.layer_to_item_groups is not None:
-            window.save_layer_datas(scene_data.get_layer_datas())
+            if scene_data.layer_to_item_groups is not None:
+                window.save_layer_datas(scene_data.get_layer_datas())
 
     # Materialize the windows.
     logger.info("Materialize dataset for Sentinel-1 Vessel Detection")
@@ -438,9 +513,10 @@ def get_vessel_detections(
             extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
         )
 
-    # Read the detections.
+    # Read the detections from each tile, tagging each with the scene it belongs to.
     detections: list[VesselDetection] = []
-    for task_idx, (window, scene_data) in enumerate(zip(windows, scene_datas)):
+    for window, scene_idx in zip(windows, window_scene_idxs):
+        scene_data = scene_datas[scene_idx]
         layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
         features = GeojsonVectorFormat().decode_vector(
             layer_dir, window.projection, window.bounds
@@ -455,9 +531,9 @@ def get_vessel_detections(
                 row=int(geometry.shp.centroid.y),
                 projection=geometry.projection,
                 score=score,
-                # We use this metadata to keep track of which window/scene each
-                # detection came from.
-                metadata={"task_idx": task_idx},
+                # We use this metadata to keep track of which scene each detection
+                # came from.
+                metadata={"task_idx": scene_idx},
             )
 
             if scene_data.layer_to_item_groups is not None:
@@ -467,7 +543,7 @@ def get_vessel_detections(
 
             detections.append(detection)
 
-    return detections
+    return _merge_tile_detections(detections)
 
 
 def run_attribute_model(
