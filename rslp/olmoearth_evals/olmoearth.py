@@ -69,7 +69,10 @@ def get_model(
     else:
         raise ValueError(f"unknown olmoearth model ID {model_id}")
 
-    embedding_size = EMBEDDING_SIZES[olmoearth_model_id]
+    if "embedding_size" in model_config:
+        embedding_size = int(model_config["embedding_size"])
+    else:
+        embedding_size = EMBEDDING_SIZES[olmoearth_model_id]
     logger.info(
         f"olmoearth: using decoder_type={decoder_type} embedding_size={embedding_size}"
         f" checkpoint_path={checkpoint_path} use_legacy_timestamps={use_legacy_timestamps}"
