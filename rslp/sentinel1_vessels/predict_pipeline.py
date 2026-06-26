@@ -680,21 +680,24 @@ def _build_predictions_and_crops(
             crop_upath = UPath(task.crop_path)
             crop_upath.mkdir(parents=True, exist_ok=True)
 
-            # Get vv and vh crops.
+            # Get vv and vh crops. Each band is stored as a separate raster in the
+            # dataset, so read them one at a time.
             crop_fnames = {}
-            raster_dir = crop_window.get_raster_dir(
-                SENTINEL1_LAYER_NAME,
-                BAND_NAMES,
-            )
-            image = (
-                GeotiffRasterFormat()
-                .decode_raster(raster_dir, crop_window.projection, crop_window.bounds)
-                .get_chw_array()
-            )
-            for band_idx, band_name in enumerate(BAND_NAMES):
-                band_image = np.clip(
-                    image[band_idx, :, :] * NORM_FACTOR, 0, 255
-                ).astype(np.uint8)
+            for band_name in BAND_NAMES:
+                raster_dir = crop_window.get_raster_dir(
+                    SENTINEL1_LAYER_NAME,
+                    [band_name],
+                )
+                image = (
+                    GeotiffRasterFormat()
+                    .decode_raster(
+                        raster_dir, crop_window.projection, crop_window.bounds
+                    )
+                    .get_chw_array()
+                )
+                band_image = np.clip(image[0, :, :] * NORM_FACTOR, 0, 255).astype(
+                    np.uint8
+                )
 
                 # And save it under the specified crop path.
                 crop_fnames[band_name] = (
