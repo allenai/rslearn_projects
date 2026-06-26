@@ -1,3 +1,11 @@
+# Train the binary (background vs dense_seagrass) seagrass model on the spatially
+# split jamaica_2025_proper_splits group.
+#   train = point windows whose location is NOT inside any test polygon
+#   val   = point windows overlapping a test polygon (acknowledged leak vs test)
+#   test  = dense polygons in held-out spatial cells (this config's test_config below)
+# Train uses point windows plus non-test dense polygon masks (split=train); only
+# polygons that overlap a test polygon are held out as "unused".
+# Sibling of config_train_points_binary.yaml; only the group + run_name differ.
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -48,7 +56,6 @@ data:
       class_path: rslearn.train.tasks.segmentation.SegmentationTask
       init_args:
         # Binary point supervision: background=0, dense seagrass=1.
-        # Sparse seagrass (source label 1) is not present in the 40k point labels.
         num_classes: 2
         class_id_mapping: {0: 0, 2: 1, 255: 255}
         nodata_value: 255
@@ -61,7 +68,7 @@ data:
     init_workers: 32
     default_config:
       crop_size: 64
-      groups: ["jamaica_2025_points"]
+      groups: ["jamaica_2025_proper_splits"]
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
@@ -73,11 +80,8 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      # Hold out the `val` split for a clean (non-leaky) point validation metric:
-      # train only on split=train (original train windows plus the former `test`
-      # windows, which are folded into train). The separate polygon group is the
-      # real held-out test set.
-      groups: ["jamaica_2025_points"]
+      # split=train: point windows spatially disjoint from the test polygons.
+      groups: ["jamaica_2025_proper_splits"]
       tags:
         split: train
       transforms:
@@ -94,17 +98,21 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     val_config:
-      groups: ["jamaica_2025_points"]
+      groups: ["jamaica_2025_proper_splits"]
       tags:
         split: val
-    # `rslearn model test` -> dense-only reference polygons (separate group).
+    # `rslearn model test`  -> evaluates the held-out test polygons (split=test)
     test_config:
-      groups: ["jamaica_2025_test_polygons_no_sparse"]
+      groups: ["jamaica_2025_proper_splits"]
+      tags:
+        split: test
       load_all_crops: true
       overlap_pixels: 0
-    # `rslearn model predict` -> same held-out polygons.
+    # `rslearn model predict` -> also runs on the held-out test polygons
     predict_config:
-      groups: ["jamaica_2025_test_polygons_no_sparse"]
+      groups: ["jamaica_2025_proper_splits"]
+      tags:
+        split: test
       load_all_crops: true
       overlap_pixels: 0
 trainer:
@@ -120,8 +128,9 @@ trainer:
         monitor: val_accuracy
         mode: max
 project_name: seagrass
-run_name: olmoearth_base_points_binary_all40k
+run_name: olmoearth_base_proper_splits_binary
 management_dir: /weka/dfive-default/piperw/rslearn_projects/projects
-# For `model test`/`model predict`: use the checkpoint passed via --ckpt_path
-# instead of auto-resolving one from the run dir.
+# For `model test`/`model predict`: don't auto-resolve a checkpoint from the run
+# dir; use the one passed via --ckpt_path. (Harmless for fit, where required=no
+# is already the default.)
 load_checkpoint_required: "no"

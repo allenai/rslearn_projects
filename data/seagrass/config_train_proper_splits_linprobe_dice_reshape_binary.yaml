@@ -1,3 +1,22 @@
+# RESHAPE LINEAR-PROBE + DICE/WEIGHTED-CE variant: like the dice linear probe, but
+# recovers pixel resolution via sub-pixel reshape (Conv -> PixelShuffle) instead of
+# bilinear upsampling -- a single linear layer predicts all patch_size^2 pixels per
+# patch directly. patch_size stays 4.
+#
+# LINEAR-PROBE + DICE/WEIGHTED-CE variant: frozen OlmoEarth backbone (FreezeUnfreeze,
+# unfreeze_at_epoch null) with a minimal 1x1-conv head (+ bilinear upsample). Adds dice
+# loss (macro-balanced across classes) and class-weighted CE (upweight the rare
+# background class) to counter the ~170:1 dense:background pixel imbalance that made
+# the CE-only probe collapse to predicting "dense everywhere".
+#
+# Train the binary (background vs dense_seagrass) seagrass model on the spatially
+# split jamaica_2025_proper_splits group.
+#   train = point windows whose location is NOT inside any test polygon
+#   val   = point windows overlapping a test polygon (acknowledged leak vs test)
+#   test  = dense polygons in held-out spatial cells (this config's test_config below)
+# Train uses point windows plus non-test dense polygon masks (split=train); only
+# polygons that overlap a test polygon are held out as "unused".
+# Sibling of config_train_points_binary.yaml; only the group + run_name differ.
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -10,12 +29,27 @@ model:
               model_id: OLMOEARTH_V1_BASE
               patch_size: 4
         decoder:
-          - class_path: rslearn.models.unet.UNetDecoder
+          # Linear probe (reshape/sub-pixel): 1x1 conv maps each frozen 1/4-res patch
+          # feature (768) to num_classes * patch_size^2 = 2 * 4^2 = 32 channels, no
+          # activation; PixelShuffle(4) then reshapes those into the patch's 4x4 block
+          # of pixel logits -> full 64x64 resolution. A single linear layer predicts
+          # every pixel directly (vs bilinearly upsampling a coarse prediction).
+          - class_path: rslearn.models.conv.Conv
             init_args:
-              in_channels: [[4, 768]]
-              out_channels: 2
-              num_channels: {2: 256, 1: 128}
+              in_channels: 768
+              out_channels: 32
+              kernel_size: 1
+              activation:
+                class_path: torch.nn.Identity
+          - class_path: rslearn.models.pixel_shuffle.PixelShuffle
+            init_args:
+              upscale_factor: 4
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+            init_args:
+              dice_loss: true
+              # CE weights [no_seagrass(0), dense_seagrass(1)]: upweight the rare
+              # background class so the probe is penalized for ignoring it.
+              weights: [10.0, 1.0]
     optimizer:
       class_path: rslearn.train.optimizer.AdamW
       init_args:
@@ -48,7 +82,6 @@ data:
       class_path: rslearn.train.tasks.segmentation.SegmentationTask
       init_args:
         # Binary point supervision: background=0, dense seagrass=1.
-        # Sparse seagrass (source label 1) is not present in the 40k point labels.
         num_classes: 2
         class_id_mapping: {0: 0, 2: 1, 255: 255}
         nodata_value: 255
@@ -61,7 +94,7 @@ data:
     init_workers: 32
     default_config:
       crop_size: 64
-      groups: ["jamaica_2025_points"]
+      groups: ["jamaica_2025_proper_splits"]
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
@@ -73,11 +106,8 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      # Hold out the `val` split for a clean (non-leaky) point validation metric:
-      # train only on split=train (original train windows plus the former `test`
-      # windows, which are folded into train). The separate polygon group is the
-      # real held-out test set.
-      groups: ["jamaica_2025_points"]
+      # split=train: point windows spatially disjoint from the test polygons.
+      groups: ["jamaica_2025_proper_splits"]
       tags:
         split: train
       transforms:
@@ -94,17 +124,21 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     val_config:
-      groups: ["jamaica_2025_points"]
+      groups: ["jamaica_2025_proper_splits"]
       tags:
         split: val
-    # `rslearn model test` -> dense-only reference polygons (separate group).
+    # `rslearn model test`  -> evaluates the held-out test polygons (split=test)
     test_config:
-      groups: ["jamaica_2025_test_polygons_no_sparse"]
+      groups: ["jamaica_2025_proper_splits"]
+      tags:
+        split: test
       load_all_crops: true
       overlap_pixels: 0
-    # `rslearn model predict` -> same held-out polygons.
+    # `rslearn model predict` -> also runs on the held-out test polygons
     predict_config:
-      groups: ["jamaica_2025_test_polygons_no_sparse"]
+      groups: ["jamaica_2025_proper_splits"]
+      tags:
+        split: test
       load_all_crops: true
       overlap_pixels: 0
 trainer:
@@ -119,9 +153,16 @@ trainer:
       init_args:
         monitor: val_accuracy
         mode: max
+    # Freeze the OlmoEarth encoder (model.encoder[0]) for the entire run; train only
+    # the decoder + head. unfreeze_at_epoch: null => never unfreeze.
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: null
 project_name: seagrass
-run_name: olmoearth_base_points_binary_all40k
+run_name: olmoearth_base_proper_splits_linprobe_dice_reshape_binary
 management_dir: /weka/dfive-default/piperw/rslearn_projects/projects
-# For `model test`/`model predict`: use the checkpoint passed via --ckpt_path
-# instead of auto-resolving one from the run dir.
+# For `model test`/`model predict`: don't auto-resolve a checkpoint from the run
+# dir; use the one passed via --ckpt_path. (Harmless for fit, where required=no
+# is already the default.)
 load_checkpoint_required: "no"

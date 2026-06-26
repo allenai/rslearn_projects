@@ -1,3 +1,8 @@
+# LEAKY-SPLIT LINEAR PROBE (reshape / pixel-shuffle head): frozen OlmoEarth backbone
+# with a 1x1 conv -> PixelShuffle head (a single linear layer predicts all patch_size^2
+# pixels per patch directly, instead of bilinearly upsampling a coarse prediction).
+# Trained on the ORIGINAL leaky points split (jamaica_2025_points_leaky), evaluated on
+# the dense-only held-out polygons. Plain CE (point training is class-balanced).
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -10,11 +15,19 @@ model:
               model_id: OLMOEARTH_V1_BASE
               patch_size: 4
         decoder:
-          - class_path: rslearn.models.unet.UNetDecoder
+          # Reshape linear probe: 1x1 conv maps each frozen 1/4-res patch feature
+          # (768) to num_classes * patch_size^2 = 2 * 4^2 = 32 channels (no activation);
+          # PixelShuffle(4) reshapes those into the patch's 4x4 block of pixel logits.
+          - class_path: rslearn.models.conv.Conv
             init_args:
-              in_channels: [[4, 768]]
-              out_channels: 2
-              num_channels: {2: 256, 1: 128}
+              in_channels: 768
+              out_channels: 32
+              kernel_size: 1
+              activation:
+                class_path: torch.nn.Identity
+          - class_path: rslearn.models.pixel_shuffle.PixelShuffle
+            init_args:
+              upscale_factor: 4
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
     optimizer:
       class_path: rslearn.train.optimizer.AdamW
@@ -47,8 +60,6 @@ data:
     task:
       class_path: rslearn.train.tasks.segmentation.SegmentationTask
       init_args:
-        # Binary point supervision: background=0, dense seagrass=1.
-        # Sparse seagrass (source label 1) is not present in the 40k point labels.
         num_classes: 2
         class_id_mapping: {0: 0, 2: 1, 255: 255}
         nodata_value: 255
@@ -61,7 +72,7 @@ data:
     init_workers: 32
     default_config:
       crop_size: 64
-      groups: ["jamaica_2025_points"]
+      groups: ["jamaica_2025_points_leaky"]
       transforms:
         - class_path: rslearn.train.transforms.concatenate.Concatenate
           init_args:
@@ -73,11 +84,7 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      # Hold out the `val` split for a clean (non-leaky) point validation metric:
-      # train only on split=train (original train windows plus the former `test`
-      # windows, which are folded into train). The separate polygon group is the
-      # real held-out test set.
-      groups: ["jamaica_2025_points"]
+      groups: ["jamaica_2025_points_leaky"]
       tags:
         split: train
       transforms:
@@ -94,15 +101,13 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     val_config:
-      groups: ["jamaica_2025_points"]
+      groups: ["jamaica_2025_points_leaky"]
       tags:
         split: val
-    # `rslearn model test` -> dense-only reference polygons (separate group).
     test_config:
       groups: ["jamaica_2025_test_polygons_no_sparse"]
       load_all_crops: true
       overlap_pixels: 0
-    # `rslearn model predict` -> same held-out polygons.
     predict_config:
       groups: ["jamaica_2025_test_polygons_no_sparse"]
       load_all_crops: true
@@ -119,9 +124,11 @@ trainer:
       init_args:
         monitor: val_accuracy
         mode: max
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: null
 project_name: seagrass
-run_name: olmoearth_base_points_binary_all40k
+run_name: olmoearth_base_points_leaky_linprobe_reshape_binary
 management_dir: /weka/dfive-default/piperw/rslearn_projects/projects
-# For `model test`/`model predict`: use the checkpoint passed via --ckpt_path
-# instead of auto-resolving one from the run dir.
 load_checkpoint_required: "no"
