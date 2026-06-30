@@ -30,3 +30,25 @@ Subdirectories are shuffled before being handed back, so launching the warmer on
 several hosts at once traverses the tree in different orders and avoids all hosts
 hammering the same files simultaneously — each run still eventually reads
 everything.
+
+## Run on Beaker
+
+Use the common `beaker_launcher` workflow to run this on a Beaker host that mounts
+the weka tier. Build a Beaker image that includes `rslearn_projects` per the
+instructions in `rslp/olmoearth_pretrain/README.md`, then assume the image (e.g.
+`YOUR_BEAKER_IMAGE`) is available.
+
+The warmer just reads files, so no GPU is needed. Mount the weka bucket and point
+`--command` at this script (the repo is the image's working directory):
+
+```bash
+python -m rslp.main common beaker_launcher \
+    --image YOUR_BEAKER_IMAGE \
+    --clusters '["ai2/jupiter"]' \
+    --weka_mounts+='{"bucket_name": "dfive-default", "mount_path": "/weka/dfive-default"}' \
+    --command '["python", "one_off_projects/2026_06_24_weka_hdd_to_ssd/warm_files.py", "--root", "/weka/dfive-default/some/dataset", "--workers", "128"]'
+```
+
+Because subdirectories are shuffled, you can launch this on several hosts at once
+(re-run the command, optionally pinning a host with `--hostname` instead of
+`--clusters`) to warm the tree faster without all hosts hammering the same files.

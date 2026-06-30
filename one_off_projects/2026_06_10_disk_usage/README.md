@@ -40,6 +40,30 @@ frontier is written atomically to `<output>.ckpt`. If that file exists at
 startup the scan resumes and appends to the JSONL (duplicates are harmless;
 `collapse.py` dedups by path). The checkpoint is removed on clean completion.
 
+### Run the scan on Beaker
+
+The scan is the only slow, filesystem-bound stage, so it's the part worth running
+on a Beaker host that mounts weka directly. Use the common `beaker_launcher`
+workflow. Build a Beaker image that includes `rslearn_projects` per the
+instructions in `rslp/olmoearth_pretrain/README.md`, then assume the image (e.g.
+`YOUR_BEAKER_IMAGE`) is available.
+
+No GPU is needed. Mount the weka bucket and write the JSONL (and its checkpoint)
+to the mount so the output survives the job, then point `--command` at the scan
+script (the repo is the image's working directory):
+
+```bash
+python -m rslp.main common beaker_launcher \
+    --image YOUR_BEAKER_IMAGE \
+    --clusters '["ai2/jupiter"]' \
+    --weka_mounts+='{"bucket_name": "dfive-default", "mount_path": "/weka/dfive-default"}' \
+    --command '["python", "one_off_projects/2026_06_10_disk_usage/disk_usage.py", "--root", "/weka/dfive-default", "--output", "/weka/dfive-default/tmp/disk_usage.jsonl", "--workers", "64"]'
+```
+
+Since the JSONL lands on weka, the checkpoint does too, so a preempted job resumes
+from `<output>.ckpt` on its next run. Afterwards run the cheap `collapse.py` and
+`app.py` stages locally against the produced JSONL.
+
 ## 2. Collapse into a bounded tree
 
 ```bash
