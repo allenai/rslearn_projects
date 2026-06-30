@@ -206,11 +206,11 @@ def detect_changes(
     # Load pre-period windows keyed by spatial location, one list per key.
     pre_by_key: dict[str, list[Window]] = {}
     for group in pre_groups:
-        windows = dataset.load_windows(groups=[group], workers=128, show_progress=True)
+        windows = dataset.load_windows(groups=[group], workers=workers, show_progress=True)
         for w in windows:
             pre_by_key.setdefault(_spatial_key(w.name), []).append(w)
 
-    post_windows = dataset.load_windows(groups=[post_group], workers=128, show_progress=True)
+    post_windows = dataset.load_windows(groups=[post_group], workers=workers, show_progress=True)
 
     kwargs_list = []
     for post_w in post_windows:
