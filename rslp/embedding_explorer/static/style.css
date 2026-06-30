@@ -1,0 +1,228 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#sidebar {
+    width: 320px;
+    min-width: 320px;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 16px;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    border-right: 1px solid #333;
+}
+
+#sidebar h2 {
+    margin-bottom: 16px;
+    font-size: 18px;
+    color: #fff;
+}
+
+#sidebar h3 {
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #ccc;
+}
+
+#sidebar hr {
+    border: none;
+    border-top: 1px solid #333;
+    margin: 12px 0;
+}
+
+#map {
+    flex: 1;
+    height: 100vh;
+}
+
+.control-group {
+    margin-bottom: 12px;
+}
+
+.control-group > label {
+    display: block;
+    font-size: 12px;
+    color: #aaa;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+select, input[type="number"] {
+    width: 100%;
+    padding: 6px 8px;
+    background: #16213e;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+select:focus, input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+input[type="range"] {
+    width: 100%;
+    margin-top: 4px;
+}
+
+.radio-group {
+    display: flex;
+    gap: 12px;
+}
+
+.radio-group label {
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.layer-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    font-size: 12px;
+}
+
+.layer-toggle label {
+    cursor: pointer;
+    word-break: break-all;
+}
+
+.checkbox-label {
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.hint {
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 8px;
+}
+
+#points-list {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 8px;
+}
+
+.point-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    font-size: 12px;
+    border-bottom: 1px solid #222;
+}
+
+.point-label {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    text-align: center;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.point-label.positive {
+    background: #22c55e;
+    color: #fff;
+}
+
+.point-label.negative {
+    background: #ef4444;
+    color: #fff;
+}
+
+.point-coords {
+    flex: 1;
+    color: #999;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.point-toggle, .point-delete {
+    background: none;
+    border: 1px solid #555;
+    color: #ccc;
+    padding: 2px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.point-toggle:hover, .point-delete:hover {
+    background: #333;
+    color: #fff;
+}
+
+.btn {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    background: #16213e;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.btn:hover {
+    background: #1a3a5c;
+    border-color: #667eea;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn:disabled:hover {
+    background: #16213e;
+    border-color: #444;
+}
+
+.spinner-row {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #ccc;
+}
+
+.spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #444;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes spinner-rotate {
+    to {
+        transform: rotate(360deg);
+    }
+}

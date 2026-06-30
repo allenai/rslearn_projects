@@ -5,6 +5,7 @@ wandb/
 rslp/__pycache__/
 **__pycache__
 **/.DS_Store
+*.pyc
 
 repos/
 project_data
