@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Disk Usage</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <header>
+      <h1>Disk Usage</h1>
+      <div class="meta">
+        <span id="input-path" class="path"></span>
+        <span id="total-size" class="total"></span>
+        <span id="collapse-note" class="detail"></span>
+        <button id="refresh">Refresh</button>
+      </div>
+    </header>
+    <main>
+      <div id="status" class="status"></div>
+      <div id="tree" class="tree"></div>
+    </main>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>
