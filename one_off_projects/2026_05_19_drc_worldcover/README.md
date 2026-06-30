@@ -111,7 +111,9 @@ probability outputs to find locations where tree/forest cover was confidently
 lost. For each pixel the **minimum** tree probability across all pre-period
 months must exceed `--pre_threshold` (0.75), and the May probability must fall
 below `--post_threshold` (0.25). The pre-period confident mask is eroded by
-`--erode_pixels` (default 1) to exclude boundary artifacts at forest edges.
+`--erode_pixels` (default 1) to exclude boundary artifacts at forest edges
+(it will apply this many iterations of binary erosion on the mask, so e.g.
+single pixel lines will be eroded entirely).
 
 Windows are matched across groups by their spatial bounds prefix.
 
