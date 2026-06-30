@@ -55,6 +55,9 @@ HISTORICAL_GROUP_COUNT = 1
 
 # Time offset (relative to the target scene) used to search for the historical image.
 # We search for the best-overlapping scene within the 30-day window starting here.
+# Note that for training we just picked arbitrary historical images in the 60-day period
+# starting 90 days before the scene time, while here we are picking one historical image
+# in the 30-day period starting 60 days before the scene time.
 HISTORICAL_TIME_OFFSET = timedelta(days=-60)
 
 # Name of layer containing the output.
