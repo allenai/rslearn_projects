@@ -14,7 +14,7 @@ model:
                   input_channels: 2
                   output_layers: [1, 3, 5, 7]
               image_channels: 2
-              groups: [[0], [1]]
+              groups: [[0], [1, 2]]
           - class_path: rslearn.models.fpn.Fpn
             init_args:
               in_channels: [256, 512, 1024, 2048]
@@ -58,6 +58,12 @@ data:
         bands: ["vv", "vh"]
         passthrough: true
         dtype: FLOAT32
+      image_2:
+        data_type: "raster"
+        layers: ["sentinel1_historical.1"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
       mask:
         data_type: "raster"
         layers: ["mask"]
@@ -74,7 +80,7 @@ data:
       init_args:
         tasks:
           detect:
-            class_path: rslearn.train.tasks.detection.DetectionTask
+            class_path: rslp.sentinel1_vessels.train.Sentinel1VesselDetectionTask
             init_args:
               property_name: "category"
               classes: ["unknown", "vessel"]
@@ -103,6 +109,7 @@ data:
             selections:
               image_0: []
               image_1: []
+              image_2: []
             output_selector: image
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
@@ -118,6 +125,7 @@ data:
             selections:
               image_0: []
               image_1: []
+              image_2: []
             output_selector: image
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
@@ -173,6 +181,7 @@ data:
             selections:
               image_0: []
               image_1: []
+              image_2: []
             output_selector: image
         - class_path: rslearn.train.transforms.normalize.Normalize
           init_args:
@@ -210,5 +219,5 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 project_name: 20260626_num_historical
-run_name: data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist
+run_name: data_20250521_model_20250530_satlaspretrain_unfreeze4_13_2hist
 management_dir: ${RSLP_PREFIX}/projects
