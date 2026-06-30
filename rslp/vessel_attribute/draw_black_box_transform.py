@@ -33,7 +33,6 @@ class DrawBlackBox(Transform):
         self.box_size = box_size
         self.image_selectors = image_selectors
         self.fill_value = fill_value
-        self.box_selectors: list[str] = []
 
     def sample_state(self) -> dict[str, Any]:
         """Randomly decide how to transform the input.
@@ -55,6 +54,11 @@ class DrawBlackBox(Transform):
         """
         height = image.image.shape[-2]
         width = image.image.shape[-1]
+        if self.box_size > height or self.box_size > width:
+            raise ValueError(
+                f"box_size {self.box_size} exceeds image dimensions "
+                f"(height={height}, width={width})"
+            )
         row_start = height // 2 - self.box_size // 2
         col_start = width // 2 - self.box_size // 2
         image.image[
