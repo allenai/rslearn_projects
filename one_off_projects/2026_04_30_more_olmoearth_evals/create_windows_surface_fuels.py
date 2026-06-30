@@ -9,7 +9,6 @@ Reads /tmp/surface_fuels.csv, creates 64x64 windows at 10m in UTM with:
 
 import csv
 import hashlib
-import json
 import multiprocessing as mp
 from datetime import datetime, timezone
 from pathlib import Path
