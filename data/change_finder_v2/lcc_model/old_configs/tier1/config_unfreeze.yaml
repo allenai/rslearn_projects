@@ -1,0 +1,249 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslp.change_finder_v2.lcc_model.model.DualPassChangeModel
+      init_args:
+        encoder:
+          class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          init_args:
+            model_id: OLMOEARTH_V1_1_BASE
+            patch_size: 4
+        num_classes_binary: 3
+        num_classes_src: 13
+        num_classes_dst: 13
+        num_timestamps: 20
+        embedding_dim: 768
+        decoder_stages:
+          - [[768, 1], [512, 3]]
+          - [[256, 3]]
+          - [[128, 3]]
+        binary_loss_weight: 100.0
+    optimizer:
+      class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
+      init_args:
+        lr: 0.0001
+        layer_decay_rate: 0.65
+        num_layers: 12
+        encoder_prefix: "model.encoder"
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 5
+        min_lr: 0
+        cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260616/
+    inputs:
+      sentinel2_quarterly:
+        data_type: "raster"
+        layers: ["sentinel2_quarterly"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_0:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_0"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_1:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_1"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_2:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_3:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_3"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_4:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_4"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_5:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_5"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_6:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_6"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_7:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_7"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      label_binary:
+        data_type: "raster"
+        layers: ["label_binary"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+      label_src:
+        data_type: "raster"
+        layers: ["label_src"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+      label_dst:
+        data_type: "raster"
+        layers: ["label_dst"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+    task:
+      class_path: rslp.change_finder_v2.lcc_model.tasks.LCCMultiTask
+      init_args:
+        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260616/lcc_annotations.json
+        input_mapping:
+          binary:
+            label_binary: targets
+          src:
+            label_src: targets
+          dst:
+            label_dst: targets
+        tasks:
+          binary:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 3
+              nodata_value: 0
+              enable_confusion_matrix: true
+              enable_f1_metric: true
+              report_metric_per_class: true
+              f1_metric_thresholds: [[0.5], [0.6], [0.7], [0.8], [0.9], [0.95], [0.98], [0.99]]
+              class_names: ["nodata", "no_change", "change"]
+              enable_accuracy_metric: false
+              metric_kwargs:
+                average: "micro"
+              other_metrics:
+                accuracy:
+                  class_path: rslp.change_finder_v2.lcc_model.tasks.BalancedBinaryMetric
+                  init_args:
+                    metric: accuracy
+                auroc:
+                  class_path: rslp.change_finder_v2.lcc_model.tasks.BalancedBinaryMetric
+                  init_args:
+                    metric: auroc
+          src:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 13
+              nodata_value: 0
+              enable_confusion_matrix: true
+              class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
+              metric_kwargs:
+                average: "micro"
+          dst:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 13
+              nodata_value: 0
+              enable_confusion_matrix: true
+              class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
+              metric_kwargs:
+                average: "micro"
+    batch_size: 4
+    num_workers: 16
+    use_in_memory_dataset: false
+    default_config:
+      crop_size: 64
+      transforms:
+        - class_path: rslp.change_finder_v2.lcc_model.transforms.FrequentOptionSampler
+          init_args:
+            deterministic: true
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    train_config:
+      transforms:
+        - class_path: rslp.change_finder_v2.lcc_model.transforms.FrequentOptionSampler
+          init_args:
+            deterministic: false
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors:
+              - "sentinel2_l2a"
+              - "target/binary/classes"
+              - "target/binary/valid"
+              - "target/src/classes"
+              - "target/src/valid"
+              - "target/dst/classes"
+              - "target/dst/valid"
+              - "target/timestamps/classes"
+              - "target/timestamps/valid"
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+      tags:
+        split: "train"
+    val_config:
+      tags:
+        split: "val"
+    test_config:
+      tags:
+        split: "val"
+trainer:
+  max_epochs: 200
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder"]
+        unfreeze_at_epoch: 20
+        unfreeze_lr_factor: 10
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_binary/auroc
+        mode: max
+project_name: 2026_06_16_lcc
+run_name: olmoearth_base_ps4_unfreeze20
+management_dir: ${RSLP_PREFIX}/projects
