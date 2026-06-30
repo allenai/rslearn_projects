@@ -28,7 +28,12 @@
       "band_sets": [
         {
           "bands": [
-            "vv",
+            "vv"
+          ],
+          "dtype": "float32"
+        },
+        {
+          "bands": [
             "vh"
           ],
           "dtype": "float32"
@@ -45,7 +50,12 @@
       "band_sets": [
         {
           "bands": [
-            "vv",
+            "vv"
+          ],
+          "dtype": "float32"
+        },
+        {
+          "bands": [
             "vh"
           ],
           "dtype": "float32"
