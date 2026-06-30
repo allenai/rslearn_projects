@@ -97,8 +97,8 @@ async function load() {
   treeEl.innerHTML = "";
   try {
     const resp = await fetch("/api/tree");
+    if (!resp.ok) throw new Error(resp.statusText);
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || resp.statusText);
     document.getElementById("input-path").textContent = data.input;
     document.getElementById("total-size").textContent = `Total: ${humanBytes(data.tree.size)}`;
     const depthNote = data.max_depth !== undefined ? `, max depth ${data.max_depth}` : "";

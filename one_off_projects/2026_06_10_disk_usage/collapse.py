@@ -72,7 +72,6 @@ def load_nodes(input_path: str, max_depth: int) -> dict[str, dict]:
             continue
         node["direct_bytes"] += extra
         node["direct_file_count"] += deep_files[p]
-        node["absorbed"] = True
 
     return nodes
 

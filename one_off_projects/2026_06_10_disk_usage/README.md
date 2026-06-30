@@ -9,7 +9,7 @@ of directories and very high fan-out.
 2. `collapse.py` — single streaming pass that folds the JSONL into a bounded
    nested tree JSON.
 3. `app.py` — tiny Flask app that serves the collapsed tree as an interactive,
-   zoomable treemap in the browser.
+   expandable tree list (like ncdu) in the browser.
 
 Stages are decoupled on purpose: the scan is the only slow/filesystem-bound part,
 so you run it once and then re-collapse / re-view with different thresholds
@@ -71,4 +71,4 @@ python one_off_projects/2026_06_10_disk_usage/app.py \
 ```
 
 The JSON is loaded once at startup and served verbatim from memory, so page
-loads are cheap. Open http://127.0.0.1:5000 to explore the treemap.
+loads are cheap. Open http://127.0.0.1:5000 to explore the tree.
