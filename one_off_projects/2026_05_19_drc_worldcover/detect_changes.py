@@ -23,8 +23,8 @@ import multiprocessing
 
 import numpy as np
 import rasterio.features
-import rasterio.transform
 import shapely
+import shapely.affinity
 import shapely.geometry
 import tqdm
 from rslearn.dataset import Dataset
@@ -133,14 +133,15 @@ def _process_windows(
     pre_probs_mean = np.mean(pre_probs_list, axis=0)
 
     # Build a filtered label array containing only large-enough CCs, then
-    # vectorize each CC into a polygon.
+    # vectorize each CC into a polygon. Shapes are produced in local pixel
+    # coords; the offset to projection coords is applied later only to the
+    # shapes that pass the checks.
     filtered = np.where(np.isin(labels, good_labels), labels, 0).astype(np.int32)
-    pixel_transform = rasterio.transform.Affine(1, 0, bounds[0], 0, 1, bounds[1])
 
     # Map label -> list of shapely polygons (rasterio may emit multiple shapes
     # per label value if the CC has holes or complex topology).
     label_polys: dict[int, list[shapely.Geometry]] = {}
-    for geom, value in rasterio.features.shapes(filtered, transform=pixel_transform):
+    for geom, value in rasterio.features.shapes(filtered):
         value = int(value)
         if value == 0:
             continue
@@ -156,14 +157,18 @@ def _process_windows(
         if merged.is_empty:
             continue
 
-        geom_wgs84 = STGeometry(projection, merged, time_range=None).to_projection(
+        # Get center in relative pixel coordinates. We use the centroid to get the most
+        # likely pre and post classes.
+        centroid = merged.centroid
+        cx = max(0, min(int(round(centroid.x)), post_probs.shape[2] - 1))
+        cy = max(0, min(int(round(centroid.y)), post_probs.shape[1] - 1))
+
+        # Transform to absolute pixel coordinates by adding the window bounds, so we can
+        # turn it into an STGeometry for re-projection to WGS84.
+        shifted = shapely.affinity.translate(merged, xoff=bounds[0], yoff=bounds[1])
+        geom_wgs84 = STGeometry(projection, shifted, time_range=None).to_projection(
             WGS84_PROJECTION
         )
-
-        centroid = merged.centroid
-        cy, cx = int(round(centroid.y - bounds[1])), int(round(centroid.x - bounds[0]))
-        cy = max(0, min(cy, post_probs.shape[1] - 1))
-        cx = max(0, min(cx, post_probs.shape[2] - 1))
 
         pre_category = CLASS_NAMES[int(pre_probs_mean[:, cy, cx].argmax())]
         post_category = CLASS_NAMES[int(post_probs[:, cy, cx].argmax())]
