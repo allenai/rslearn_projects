@@ -1,0 +1,4 @@
+# No-op freeze config: encoder is fully trainable from epoch 0 and the
+# optimizer/scheduler from the base task config are used unchanged.
+# An empty file parses as None and breaks jsonargparse, so use {}.
+{}

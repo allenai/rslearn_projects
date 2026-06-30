@@ -17,7 +17,9 @@ TASK_CONFIGS = {
     "ecosystem_aef": ["ecosystem_aef"],
     "ethiopia_crops": ["ethiopia_crops"],
     "ecosystem": ["ecosystem"],
+    "forest_loss_driver": ["forest_loss_driver"],
     "glance": ["glance"],
+    "small_eurosat": ["small_eurosat"],
     "landsat_vessels": ["landsat_vessels"],
     "lcmap_lu": ["lcmap_lu"],
     "lfmc_aef": ["lfmc_aef"],
@@ -27,6 +29,8 @@ TASK_CONFIGS = {
     "mangrove_uni": ["mangrove_base"],
     "mangrove_ts": ["mangrove_base", "mangrove_ts"],
     "mangrove_mm": ["mangrove_base", "mangrove_mm"],
+    "small_mangrove_ts": ["small_mangrove_base"],
+    "small_mangrove_mm": ["small_mangrove_base", "small_mangrove_mm"],
     "marine_infra_uni": ["marine_infra_base"],
     "marine_infra_ts": ["marine_infra_base", "marine_infra_ts"],
     "marine_infra_mm": ["marine_infra_base", "marine_infra_mm"],
@@ -40,6 +44,8 @@ TASK_CONFIGS = {
     "sentinel2_vessel_length": ["sentinel2_vessel_length"],
     "sentinel2_vessel_type": ["sentinel2_vessel_type"],
     "sentinel2_vessels": ["sentinel2_vessels"],
+    "small_sentinel2_vessel_length": ["small_sentinel2_vessel_length"],
+    "small_sentinel2_vessel_type": ["small_sentinel2_vessel_type"],
     "solar_farm_aef": ["solar_farm_aef"],
     "solar_farm_uni": ["solar_farm_base"],
     "solar_farm_ts": ["solar_farm_base", "solar_farm_ts"],
@@ -50,6 +56,9 @@ TASK_CONFIGS = {
     "wind_turbine_mm": ["wind_turbine_base", "wind_turbine_mm"],
     "worldcover": ["worldcover"],
     "worldcover_200_per_class": ["worldcover_200_per_class"],
+    "surface_fuels": ["surface_fuels"],
+    "kenya_intercropping": ["kenya_intercropping"],
+    "hls_burn_scars": ["hls_burn_scars"],
 }
 
 
