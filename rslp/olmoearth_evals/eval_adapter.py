@@ -18,7 +18,6 @@ import rslp.olmoearth_evals.croma as croma
 import rslp.olmoearth_evals.dinov3 as dinov3
 import rslp.olmoearth_evals.galileo as galileo
 import rslp.olmoearth_evals.olmoearth as olmoearth
-import rslp.olmoearth_evals.olmoearth_swin_base as olmoearth_swin_base
 import rslp.olmoearth_evals.panopticon as panopticon
 import rslp.olmoearth_evals.presto as presto
 import rslp.olmoearth_evals.prithvi as prithvi
@@ -47,8 +46,17 @@ modules_by_model_id = {
     "olmoearth_tiny": olmoearth,
     "olmoearth_large": olmoearth,
     "olmoearth_random": olmoearth,
-    "olmoearth_swin_base": olmoearth_swin_base,
-    "olmoearth_swin_base_temporal_attention": olmoearth_swin_base,
+    "olmoearth_v1_nano": olmoearth,
+    "olmoearth_v1_tiny": olmoearth,
+    "olmoearth_v1_base": olmoearth,
+    "olmoearth_v1_large": olmoearth,
+    "olmoearth_v1_1_nano": olmoearth,
+    "olmoearth_v1_1_tiny": olmoearth,
+    "olmoearth_v1_1_base": olmoearth,
+    "olmoearth_v1_2_nano": olmoearth,
+    "olmoearth_v1_2_tiny": olmoearth,
+    "olmoearth_v1_2_small": olmoearth,
+    "olmoearth_v1_2_base": olmoearth,
     "panopticon": panopticon,
     "presto": presto,
     "prithvi": prithvi,
