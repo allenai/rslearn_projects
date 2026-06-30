@@ -43,6 +43,7 @@ def beaker_train(
     priority: str = "high",
     retries: int = 0,
     extra_env_vars: dict[str, str] = {},
+    extra_env_secrets: dict[str, str] = {},
 ) -> None:
     """Launch training for the specified config on Beaker.
 
@@ -69,6 +70,9 @@ def beaker_train(
         priority: the priority to assign to the Beaker job.
         retries: how many times to retry the Beaker job.
         extra_env_vars: additional environment variables to set in the Beaker job.
+        extra_env_secrets: additional environment variables to set in the Beaker job
+            from Beaker secrets, mapping environment variable name to the name of the
+            Beaker secret (in the target workspace) to read its value from.
     """
     # Normalize the config_path / config_paths option to always get a config_paths list
     # (so if config_path is set, make a one-element list from it).
@@ -147,6 +151,14 @@ def beaker_train(
                     BeakerEnvVar(
                         name=env_name,
                         value=env_value,
+                    )
+                )
+
+            for env_name, secret_name in extra_env_secrets.items():
+                env_vars.append(
+                    BeakerEnvVar(
+                        name=env_name,
+                        secret=secret_name,
                     )
                 )
 

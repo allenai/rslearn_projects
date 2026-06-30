@@ -12,6 +12,7 @@ import tqdm
 from beaker import (
     Beaker,
     BeakerConstraints,
+    BeakerEnvVar,
     BeakerExperimentSpec,
     BeakerJobPriority,
     BeakerTaskResources,
@@ -133,6 +134,7 @@ def launch_workers(
     shared_memory: str | None = None,
     priority: BeakerJobPriority = BeakerJobPriority.low,
     weka_mounts: list[WekaMount] = [],
+    extra_env_vars: list[dict] = [],
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -145,10 +147,15 @@ def launch_workers(
         shared_memory: shared memory string like "256GiB".
         priority: priority to assign the Beaker jobs.
         weka_mounts: list of weka mounts for Beaker job.
+        extra_env_vars: additional environment variables to set on each worker, beyond
+            the base env vars. Each entry is a dict passed to BeakerEnvVar, e.g.
+            {"name": "FOO", "value": "bar"} or {"name": "FOO", "secret": "MY_SECRET"}.
     """
+    extra_beaker_env_vars = [BeakerEnvVar(**ev) for ev in extra_env_vars]
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         for _ in tqdm.tqdm(range(num_workers)):
             env_vars = get_base_env_vars(use_weka_prefix=False)
+            env_vars += extra_beaker_env_vars
 
             datasets = [create_gcp_credentials_mount()]
             datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
