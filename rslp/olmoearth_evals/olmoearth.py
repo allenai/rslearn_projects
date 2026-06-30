@@ -264,7 +264,7 @@ def get_model(
         else:
             raise ValueError(f"invalid decoder type {decoder_type}")
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f"unknown task_type {task_type}")
 
     return MultiTaskModel(
         encoder=[_make_encoder()],
