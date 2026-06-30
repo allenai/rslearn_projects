@@ -58,7 +58,7 @@
           "orbit_direction": "ASCENDING"
         },
         "query_config": {
-          "max_matches": 2
+          "max_matches": 1
         },
         "time_offset": "-90d"
       },

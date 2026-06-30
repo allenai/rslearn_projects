@@ -90,13 +90,11 @@ class Sentinel1Request(BaseModel):
 
     Attributes:
         scene_id: scene ID to process. The scene will be downloaded from AWS
-            (credentials are required). One of scene ID or
-            image/historical1/historical2 must be set.
+            (credentials are required). One of scene ID or image/historical1 must be
+            set.
         image: the vv and vh filename for the image to detect vessels in.
-        historical1: the vv and vh filename for the first historical image. It must
-            have the same orbit direction as the target image.
-        historical2: the vv and vh filename for the second historical image. It must
-            have the same orbit direction as the target image.
+        historical1: the vv and vh filename for the historical image. It must have the
+            same orbit direction as the target image.
         crop_path: Optional; Path to save the cropped images.
         scratch_path: Optional; Scratch path to save the rslearn dataset.
     """
@@ -104,7 +102,6 @@ class Sentinel1Request(BaseModel):
     scene_id: str | None = None
     image: Sentinel1Image | None = None
     historical1: Sentinel1Image | None = None
-    historical2: Sentinel1Image | None = None
     crop_path: str | None = None
     scratch_path: str | None = None
 
@@ -136,10 +133,6 @@ class Sentinel1Request(BaseModel):
                         "historical1": {
                             "vh": "/path/to/h1_vh.tif",
                             "vv": "/path/to/h1_vv.tif",
-                        },
-                        "historical2": {
-                            "vh": "/path/to/h2_vh.tif",
-                            "vv": "/path/to/h2_vv.tif",
                         },
                     },
                 },
@@ -175,13 +168,11 @@ async def get_detections(
     Returns:
         Sentinel1Response: Response object with status and predictions.
     """
-    if not info.scene_id and not (info.image and info.historical1 and info.historical2):
-        logger.error(
-            "Invalid request: Missing scene_id or image/historical1/historical2."
-        )
+    if not info.scene_id and not (info.image and info.historical1):
+        logger.error("Invalid request: Missing scene_id or image/historical1.")
         raise HTTPException(
             status_code=400,
-            detail="scene_id or image/historical1/historical2 must be specified.",
+            detail="scene_id or image/historical1 must be specified.",
         )
 
     # Get a scratch path to use.
@@ -196,7 +187,6 @@ async def get_detections(
         scene_id=info.scene_id,
         image=info.image,
         historical1=info.historical1,
-        historical2=info.historical2,
         crop_path=info.crop_path,
     )
 

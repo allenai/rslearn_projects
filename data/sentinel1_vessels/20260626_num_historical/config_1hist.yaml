@@ -74,7 +74,7 @@ data:
       init_args:
         tasks:
           detect:
-            class_path: rslearn.train.tasks.detection.DetectionTask
+            class_path: rslp.sentinel1_vessels.train.Sentinel1VesselDetectionTask
             init_args:
               property_name: "category"
               classes: ["unknown", "vessel"]
