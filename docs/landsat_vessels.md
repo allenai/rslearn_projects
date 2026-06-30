@@ -27,27 +27,35 @@ First, download the detector, classifier, and attribute model checkpoints to the
     mkdir -p project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt -O project_data/projects/rslearn-landsat-recheck/phase123_20240919_01_copy/best.ckpt
 
-    mkdir -p project_data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/best.ckpt -O project_data/projects/landsat_vessel_attribute/data_20260330_olmoearth_base_freeze_01/best.ckpt
+    mkdir -p project_data/projects/2026_04_22_landsat_vessel_attribute/olmoearth_base_freeze_newdata_01/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_04_22_landsat_vessel_attribute/olmoearth_base_freeze_newdata_01/best.ckpt -O project_data/projects/2026_04_22_landsat_vessel_attribute/olmoearth_base_freeze_newdata_01/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in `rslp/landsat_vessels/predict_pipeline.py`. You can download the Landsat scene files, e.g. from USGS EarthExplorer or AWS, and then create a configuration file for the prediction pipeline, here is an example:
 
 ```json
 {
     "image_files": {
-    "B2": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B2.TIF",
-    "B3": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B3.TIF",
-    "B4": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B4.TIF",
-    "B5": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B5.TIF",
-    "B6": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B6.TIF",
-    "B7": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B7.TIF",
-    "B8": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B8.TIF",
+        "B1": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B1.TIF",
+        "B2": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B2.TIF",
+        "B3": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B3.TIF",
+        "B4": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B4.TIF",
+        "B5": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B5.TIF",
+        "B6": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B6.TIF",
+        "B7": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B7.TIF",
+        "B8": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B8.TIF",
+        "B9": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B9.TIF",
+        "B10": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B10.TIF",
+        "B11": "/home/data/LC08_L1TP_125059_20240727_20240801_02_T1_B11.TIF"
     },
     "scratch_path": "/home/data/scratch/",
     "geojson_path": "/home/data/vessels.geojson",
     "crop_path": "/home/data/crops/"
 }
 ```
+
+All bands `B1` through `B11` must be provided. The detector and classifier only use
+`B2`-`B8`, but the vessel attribute model (which always runs) uses the full band stack,
+so omitting any band will cause the pipeline to error.
 
 This specifies the arguments to
 `rslp.landsat_vessels.predict_pipeline.predict_pipeline` via `jsonargparse`.
@@ -146,7 +154,7 @@ curl -X POST http://localhost:${LANDSAT_PORT}/detections -H "Content-Type: appli
 Or by providing paths to the individual band GeoTIFFs:
 
 ```bash
-curl -X POST http://localhost:${LANDSAT_PORT}/detections -H "Content-Type: application/json" -d '{"image_files": {"B2": "/path/to/B2.TIF", "B3": "/path/to/B3.TIF", "B4": "/path/to/B4.TIF", "B5": "/path/to/B5.TIF", "B6": "/path/to/B6.TIF", "B7": "/path/to/B7.TIF", "B8": "/path/to/B8.TIF"}}'
+curl -X POST http://localhost:${LANDSAT_PORT}/detections -H "Content-Type: application/json" -d '{"image_files": {"B1": "/path/to/B1.TIF", "B2": "/path/to/B2.TIF", "B3": "/path/to/B3.TIF", "B4": "/path/to/B4.TIF", "B5": "/path/to/B5.TIF", "B6": "/path/to/B6.TIF", "B7": "/path/to/B7.TIF", "B8": "/path/to/B8.TIF", "B9": "/path/to/B9.TIF", "B10": "/path/to/B10.TIF", "B11": "/path/to/B11.TIF"}}'
 ```
 
 The paths must be accessible from inside the Docker container.

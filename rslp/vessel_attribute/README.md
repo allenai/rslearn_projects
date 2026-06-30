@@ -36,3 +36,26 @@ The dataset and model configs are in per-modality folders:
 - data/sentinel2_vessel_attribute/
 - data/landsat_vessel_attribute/
 - data/sentinel1_vessel_attribute/
+
+
+Evaluation
+----------
+
+There are a few scripts in `scripts/` that rely on a prediction CSV. First output the
+predictions like this:
+
+```python
+rslearn model predict --config data/landsat_vessel_attribute/20260422/config_new.yaml --data.init_args.predict_config.groups='["default", "20260421"]' --data.init_args.predict_config.tags='{"split": "val"}'
+```
+
+Then create the prediction CSV:
+
+```python
+python -m rslp.vessel_attribute.scripts.predictions_to_csv --ds_path /weka/dfive-default/rslearn-eai/datasets/landsat_vessel_attribute/dataset_v1/20260330/ --output /weka/dfive-default/rslearn-eai/datasets/landsat_vessel_attribute/dataset_v1/20260330/output.csv
+```
+
+The CSV can then be used for analytics, e.g. computing confusion matrix per length bucket:
+
+```python
+python -m rslp.vessel_attribute.scripts.confusion_by_length --csv /weka/dfive-default/rslearn-eai/datasets/landsat_vessel_attribute/dataset_v1/20260330/output.csv
+```
