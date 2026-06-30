@@ -17,8 +17,19 @@ TASK_CONFIGS = {
     "ecosystem_aef": ["ecosystem_aef"],
     "ethiopia_crops": ["ethiopia_crops"],
     "ecosystem": ["ecosystem"],
+    "forest_loss_driver": ["forest_loss_driver"],
     "glance": ["glance"],
+    "small_eurosat": ["small_eurosat"],
+    "forest_loss_driver_prepost": ["forest_loss_driver_prepost"],
     "landsat_vessels": ["landsat_vessels"],
+    "lcc_deforestation": ["lcc_deforestation"],
+    "lcc_deforestation_3mo": ["lcc_deforestation_3mo"],
+    "lcc_deforestation_4mo": ["lcc_deforestation_4mo"],
+    "lcc_deforestation_6mo": ["lcc_deforestation_6mo"],
+    "lcc_urban_expansion": ["lcc_urban_expansion"],
+    "lcc_urban_expansion_3mo": ["lcc_urban_expansion_3mo"],
+    "lcc_urban_expansion_4mo": ["lcc_urban_expansion_4mo"],
+    "lcc_urban_expansion_6mo": ["lcc_urban_expansion_6mo"],
     "lcmap_lu": ["lcmap_lu"],
     "lfmc_aef": ["lfmc_aef"],
     "lfmc_uni": ["lfmc_base"],
@@ -27,6 +38,8 @@ TASK_CONFIGS = {
     "mangrove_uni": ["mangrove_base"],
     "mangrove_ts": ["mangrove_base", "mangrove_ts"],
     "mangrove_mm": ["mangrove_base", "mangrove_mm"],
+    "small_mangrove_ts": ["small_mangrove_base"],
+    "small_mangrove_mm": ["small_mangrove_base", "small_mangrove_mm"],
     "marine_infra_uni": ["marine_infra_base"],
     "marine_infra_ts": ["marine_infra_base", "marine_infra_ts"],
     "marine_infra_mm": ["marine_infra_base", "marine_infra_mm"],
@@ -40,6 +53,8 @@ TASK_CONFIGS = {
     "sentinel2_vessel_length": ["sentinel2_vessel_length"],
     "sentinel2_vessel_type": ["sentinel2_vessel_type"],
     "sentinel2_vessels": ["sentinel2_vessels"],
+    "small_sentinel2_vessel_length": ["small_sentinel2_vessel_length"],
+    "small_sentinel2_vessel_type": ["small_sentinel2_vessel_type"],
     "solar_farm_aef": ["solar_farm_aef"],
     "solar_farm_uni": ["solar_farm_base"],
     "solar_farm_ts": ["solar_farm_base", "solar_farm_ts"],
@@ -50,6 +65,9 @@ TASK_CONFIGS = {
     "wind_turbine_mm": ["wind_turbine_base", "wind_turbine_mm"],
     "worldcover": ["worldcover"],
     "worldcover_200_per_class": ["worldcover_200_per_class"],
+    "surface_fuels": ["surface_fuels"],
+    "kenya_intercropping": ["kenya_intercropping"],
+    "hls_burn_scars": ["hls_burn_scars"],
 }
 
 
@@ -67,6 +85,7 @@ def launch(
     use_embeddings: bool = False,
     model_config: dict[str, str] | None = None,
     extra_args: list[str] = [],
+    extra_env_secrets: dict[str, str] = {},
     freeze: str = "freezefor20_lrfactor1",
 ) -> None:
     """Launch OlmoEarth fine-tuning evaluation.
@@ -91,6 +110,9 @@ def launch(
             {"checkpoint_path": "/path/to/ckpt"} to load a custom checkpoint,
             {"use_legacy_timestamps": "true"} to enable legacy timestamps.
         extra_args: extra arguments to pass to `rslearn model fit`.
+        extra_env_secrets: additional environment variables to set in each Beaker job
+            from Beaker secrets, mapping environment variable name to the name of the
+            Beaker secret (in the target workspace), e.g. {"HF_TOKEN": "HF_TOKEN"}.
         freeze: name of a freeze config in data/olmoearth_evals/freezes/ (without
             the .yaml extension), e.g. "freezefor20_lrfactor1" or "frozen". The
             corresponding YAML adds a FreezeUnfreeze callback that freezes the
@@ -130,6 +152,10 @@ def launch(
                 "--extra_env_vars",
                 json.dumps(env_vars_dict),
             ]
+            if extra_env_secrets:
+                basic_args.extend(
+                    ["--extra_env_secrets", json.dumps(extra_env_secrets)]
+                )
 
             cluster_args = [f"--cluster+={cluster}" for cluster in clusters]
 

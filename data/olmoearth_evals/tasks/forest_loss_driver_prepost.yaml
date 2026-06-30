@@ -4,12 +4,16 @@ model:
     model:
       class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterModel
       init_args:
-        input_size: 32
+        # "Old-style" pre/post forest loss driver: the OlmoEarth encoder is applied
+        # separately to the 4 pre-change images and the 4 post-change images, and the
+        # two embeddings are combined (concat by default, or diff via the model
+        # config "combine" option) before a center-feature classification head.
+        input_size: 64
         input_modalities: ["sentinel2"]
-        task_type: "classify"
-        task_name: "awf"
-        task_channels: 9
-        task_timesteps: 12
+        task_type: "change_classify"
+        task_name: "forest_loss_driver"
+        task_channels: 10
+        task_timesteps: 8
     optimizer:
       class_path: rslearn.train.optimizer.AdamW
       init_args:
@@ -24,14 +28,16 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/crop/awf_2023/
+    path: /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/
     inputs:
       sentinel2:
         data_type: "raster"
-        layers: ["sentinel2", "sentinel2.1", "sentinel2.2", "sentinel2.3", "sentinel2.4", "sentinel2.5", "sentinel2.6", "sentinel2.7", "sentinel2.8", "sentinel2.9", "sentinel2.10", "sentinel2.11"]
+        # All 4 pre-change images first, then all 4 post-change images. The
+        # change_classify model splits the time series in half (first half = pre,
+        # second half = post), so this ordering is significant.
+        layers: ["pre_sentinel2", "pre_sentinel2.1", "pre_sentinel2.2", "pre_sentinel2.3", "post_sentinel2", "post_sentinel2.1", "post_sentinel2.2", "post_sentinel2.3"]
         bands: ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B11", "B12"]
         passthrough: true
-        dtype: FLOAT32
         load_all_layers: true
       label:
         data_type: "vector"
@@ -42,45 +48,46 @@ data:
       init_args:
         tasks:
           eval_task:
-            class_path: rslearn.train.tasks.classification.ClassificationTask
+            class_path: rslp.forest_loss_driver.train.ForestLossTask
             init_args:
-              property_name: "lulc"
-              classes: ["Agriculture/Settlement", "Grassland/barren", "Herbaceous wetland", "Lava forest", "Montane forest", "Open water", "Shrubland/Savanna", "Urban/dense development", "Woodland forest (>40% canopy)"]
+              property_name: "new_label"
+              classes: ["agriculture", "mining", "airstrip", "road", "logging", "burned", "landslide", "hurricane", "river", "none"]
+              allow_invalid: true
               metric_kwargs:
                 average: "micro"
+              prob_property: "probs"
         input_mapping:
           eval_task:
             label: "targets"
-    batch_size: 8
+    batch_size: 16
     num_workers: 32
-    use_in_memory_dataset: true
     default_config:
       transforms:
         - class_path: rslearn.train.transforms.pad.Pad
           init_args:
             mode: "center"
-            size: 32
+            size: 64
             image_selectors: ["sentinel2"]
         - class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterNormalize
           init_args:
-            input_size: 32
+            input_size: 64
             input_modalities: ["sentinel2"]
-            task_type: "classify"
-            task_name: "awf"
-            task_channels: 9
-            task_timesteps: 12
-      groups: ["20250822"]
+            task_type: "change_classify"
+            task_name: "forest_loss_driver"
+            task_channels: 10
+            task_timesteps: 8
+      groups: ["peru_interesting", "peru3", "peru3_flagged_in_peru", "nadia2", "nadia3", "brazil_interesting", "20250428_brazil_phase1", "20250428_colombia_phase1"]
     train_config:
       tags:
-        helios_split: "train"
+        split: train
     val_config:
       tags:
-        helios_split: "val"
+        split: val
     test_config:
       tags:
-        helios_split: "test"
+        split: val
 trainer:
-  max_epochs: 100
+  max_epochs: 50
   callbacks:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
@@ -89,3 +96,6 @@ trainer:
       init_args:
         monitor: val_eval_task/accuracy
         mode: max
+project_name: placeholder
+run_name: placeholder
+management_dir: ${RSLP_PREFIX}/projects
