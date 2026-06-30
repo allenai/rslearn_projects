@@ -138,8 +138,10 @@ To detect loss of a different class, pass `--pre_class_index` (default 8 =
 tree). Class indices: 0=bare, 1=burnt, 2=crops, 3=fallow, 4=grassland,
 5=lichen\_moss, 6=shrub, 7=snow\_ice, 8=tree, 9=urban, 10=water, 11=wetland.
 
-Note: it may be useful to remove forest loss events after the initial GeoJSON is
-generated, most of these seem to be false positives.
+Note: I think there were certain transitions like forest->shrub that had a
+high rate of false positives, so it may be useful to remove these events after
+the initial GeoJSON is generated, but I can't remember exactly which transitions
+I manually removed for this project.
 
 ## Dataset config notes
 
