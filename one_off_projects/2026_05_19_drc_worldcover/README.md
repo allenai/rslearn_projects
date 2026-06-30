@@ -72,6 +72,9 @@ Training uses the worldcover finetuning dataset at
 rslearn model fit --config one_off_projects/2026_05_19_drc_worldcover/worldcover_4ts.yaml
 ```
 
+The model uses patch size 2 so it can find pretty fine-grained changes. Due to the small
+patch size, it also uses input size 16x16.
+
 ### 4. Run inference
 
 `worldcover_4ts.yaml` is configured for inference on this dataset. Sliding-window
