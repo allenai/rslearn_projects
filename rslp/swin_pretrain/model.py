@@ -1,14 +1,13 @@
-"""Model for pre-training Swin backbone on Helios dataset."""
+"""Model for pre-training Swin backbone on OlmoEarth dataset."""
 
-from typing import Any
-
-import torch
+from rslearn.models.component import FeatureExtractor, FeatureMaps
 from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.swin import Swin
 from rslearn.models.unet import UNetDecoder
+from rslearn.train.model_context import ModelContext
 
 
-class Model(torch.nn.Module):
+class Model(FeatureExtractor):
     """Model for pre-training."""
 
     def __init__(
@@ -37,19 +36,16 @@ class Model(torch.nn.Module):
                 target_resolution_factor=target_resolution_factor,
             )
 
-    def forward(
-        self,
-        inputs: list[dict[str, Any]],
-    ) -> list[torch.Tensor]:
-        """Compute outputs from the wrapped module.
+    def forward(self, context: ModelContext) -> FeatureMaps:
+        """Extract features from the input images.
 
-        Inputs:
-            inputs: input dicts that must include "image" key containing the image to
-                process.
+        Args:
+            context: the model context. Input dicts must include "image" key.
+
+        Returns:
+            FeatureMaps from the backbone, optionally passed through UNet decoder.
         """
-        features = self.backbone(inputs)
+        features = self.backbone(context)
         if self.target_resolution_factor is None:
             return features
-
-        hr_features = self.unet(features, None)
-        return [hr_features]
+        return self.unet(features, context)

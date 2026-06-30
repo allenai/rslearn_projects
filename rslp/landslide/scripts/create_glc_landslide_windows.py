@@ -36,16 +36,13 @@ from datetime import datetime, timedelta, timezone
 import geopandas as gpd
 import pandas as pd
 import shapely
-import shapely.ops
 import tqdm
-from pyproj import Transformer
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
-from rslearn.utils import Projection, STGeometry, get_utm_ups_crs
+from rslearn.utils import GridIndex, Projection, STGeometry, get_utm_ups_crs
 from rslearn.utils.feature import Feature
 from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.vector_format import GeojsonVectorFormat
-from shapely.strtree import STRtree
 from upath import UPath
 
 from rslp.utils.windows import calculate_bounds
@@ -78,9 +75,17 @@ class LandslideSpatialIndex:
 
     def __init__(self, gdf: gpd.GeoDataFrame):
         """Initialize spatial index from a GeoDataFrame."""
-        self.gdf = gdf.copy()
-        self.tree = STRtree(self.gdf.geometry)
-        print(f"Built spatial index with {len(self.gdf)} landslide points")
+        # 1-degree cells (~100 km); windows are ~0.006° wide so each query touches ≤4 cells.
+        self.index: GridIndex = GridIndex(size=1.0)
+        for _, row in gdf.iterrows():
+            item = {
+                "id": str(row["id"]),
+                "geometry": row["geometry"],
+                "event_type": str(row.get("event_type", "unknown")),
+                "event_date": row.get("event_date"),
+            }
+            self.index.insert(row["geometry"].bounds, item)
+        print(f"Built spatial index with {len(gdf)} landslide points")
 
     def query_overlapping(
         self,
@@ -88,41 +93,32 @@ class LandslideSpatialIndex:
         time_range: tuple[object, object] | None = None,
     ) -> list[dict]:
         """Query landslides overlapping with window geometry."""
-        possible_matches_idx = self.tree.query(window_geometry)
         overlapping: list[dict] = []
-        for idx in possible_matches_idx:
-            if self.gdf.iloc[idx].geometry.intersects(window_geometry):
-                row = self.gdf.iloc[idx]
-                if time_range is not None:
-                    event_date = pd.to_datetime(row.get("event_date"), errors="coerce")
-                    if pd.isna(event_date):
-                        continue
-                    event_date = pd.Timestamp(event_date)
-                    if event_date.tzinfo is None:
-                        event_date = event_date.tz_localize("UTC")
-                    else:
-                        event_date = event_date.tz_convert("UTC")
-                    start_time, end_time = time_range
-                    start_ts = pd.Timestamp(start_time)
-                    end_ts = pd.Timestamp(end_time)
-                    if start_ts.tzinfo is None:
-                        start_ts = start_ts.tz_localize("UTC")
-                    else:
-                        start_ts = start_ts.tz_convert("UTC")
-                    if end_ts.tzinfo is None:
-                        end_ts = end_ts.tz_localize("UTC")
-                    else:
-                        end_ts = end_ts.tz_convert("UTC")
-                    if not (start_ts <= event_date <= end_ts):
-                        continue
-                overlapping.append(
-                    {
-                        "id": str(row["id"]),
-                        "geometry": row["geometry"],
-                        "event_type": str(row.get("event_type", "unknown")),
-                        "event_date": row.get("event_date"),
-                    }
-                )
+        for item in self.index.query(window_geometry.bounds):
+            if not item["geometry"].intersects(window_geometry):
+                continue
+            if time_range is not None:
+                event_date = pd.to_datetime(item["event_date"], errors="coerce")
+                if pd.isna(event_date):
+                    continue
+                event_date = pd.Timestamp(event_date)
+                if event_date.tzinfo is None:
+                    event_date = event_date.tz_localize("UTC")
+                else:
+                    event_date = event_date.tz_convert("UTC")
+                start_ts = pd.Timestamp(time_range[0])
+                end_ts = pd.Timestamp(time_range[1])
+                if start_ts.tzinfo is None:
+                    start_ts = start_ts.tz_localize("UTC")
+                else:
+                    start_ts = start_ts.tz_convert("UTC")
+                if end_ts.tzinfo is None:
+                    end_ts = end_ts.tz_localize("UTC")
+                else:
+                    end_ts = end_ts.tz_convert("UTC")
+                if not (start_ts <= event_date <= end_ts):
+                    continue
+            overlapping.append(item)
         return overlapping
 
 
@@ -161,15 +157,10 @@ def create_window_pair(
     split = "val" if event_year >= 2021 else "train"
 
     min_x, min_y, max_x, max_y = bounds
-    proj_min_x = min_x * dst_projection.x_resolution
-    proj_min_y = min_y * dst_projection.y_resolution
-    proj_max_x = max_x * dst_projection.x_resolution
-    proj_max_y = max_y * dst_projection.y_resolution
-    window_geom_projected = shapely.box(proj_min_x, proj_min_y, proj_max_x, proj_max_y)
-
-    transformer = Transformer.from_crs(dst_crs, "EPSG:4326", always_xy=True)
-    window_geom_wgs84_coords = shapely.ops.transform(
-        transformer.transform, window_geom_projected
+    window_geom_wgs84_coords = (
+        STGeometry(dst_projection, shapely.box(min_x, min_y, max_x, max_y), None)
+        .to_projection(WGS84_PROJECTION)
+        .shp
     )
 
     negative_start_time = sampling_date.replace(year=sampling_date.year - 1)
@@ -253,7 +244,7 @@ def create_window_pair(
             negative_overlapping,
             negative_window,
             buffer_distance,
-            dst_crs,
+            dst_projection,
             sample_id,
             event_type,
             event_date,
@@ -309,7 +300,7 @@ def create_window_pair(
             positive_overlapping,
             positive_window,
             buffer_distance,
-            dst_crs,
+            dst_projection,
             sample_id,
             event_type,
             event_date,
@@ -334,7 +325,7 @@ def create_labeled_features(
     overlapping_landslides: list[dict],
     window: Window,
     buffer_distance: float,
-    dst_crs: str,
+    dst_projection: Projection,
     sample_id: str,
     event_type: str,
     event_date: object,
@@ -354,26 +345,30 @@ def create_labeled_features(
     if len(overlapping_landslides) == 0:
         return features
 
-    transformer_to_proj = Transformer.from_crs("EPSG:4326", dst_crs, always_xy=True)
-    transformer_to_wgs84 = Transformer.from_crs(dst_crs, "EPSG:4326", always_xy=True)
+    # buffer_distance is in metres; convert to pixel units for use with STGeometry coords
+    buffer_px = buffer_distance / abs(dst_projection.x_resolution)
 
     buffer_union = None
     for landslide in overlapping_landslides:
-        geom_proj = shapely.ops.transform(
-            transformer_to_proj.transform, landslide["geometry"]
+        geom_proj = (
+            STGeometry(WGS84_PROJECTION, landslide["geometry"], None)
+            .to_projection(dst_projection)
+            .shp
         )
         geom_proj = (
             shapely.make_valid(geom_proj) if not geom_proj.is_valid else geom_proj
         )
-        buffer_geom = geom_proj.buffer(buffer_distance)
+        buffer_geom = geom_proj.buffer(buffer_px)
         if buffer_union is None:
             buffer_union = buffer_geom
         else:
             buffer_union = buffer_union.union(buffer_geom)
 
     if buffer_union is not None:
-        buffer_wgs84 = shapely.ops.transform(
-            transformer_to_wgs84.transform, buffer_union
+        buffer_wgs84 = (
+            STGeometry(dst_projection, buffer_union, None)
+            .to_projection(WGS84_PROJECTION)
+            .shp
         )
         if not buffer_wgs84.is_empty:
             features.append(
@@ -386,10 +381,15 @@ def create_labeled_features(
                 )
             )
 
-    min_pixel_area = WINDOW_RESOLUTION * WINDOW_RESOLUTION
+    # 1 pixel^2 in pixel-coordinate space (equivalent to WINDOW_RESOLUTION^2 m^2)
+    min_pixel_area = 1
     for landslide in overlapping_landslides:
         raw_geom = landslide["geometry"]
-        geom_proj = shapely.ops.transform(transformer_to_proj.transform, raw_geom)
+        geom_proj = (
+            STGeometry(WGS84_PROJECTION, raw_geom, None)
+            .to_projection(dst_projection)
+            .shp
+        )
         if not geom_proj.is_valid:
             geom_proj = shapely.make_valid(geom_proj)
         if not geom_proj.is_valid:
@@ -407,18 +407,22 @@ def create_labeled_features(
             geom_proj = shapely.unary_union(polys) if polys else shapely.Polygon()
 
         if geom_proj.is_empty or geom_proj.area < min_pixel_area:
-            centroid = shapely.ops.transform(
-                transformer_to_proj.transform,
-                raw_geom.centroid if not raw_geom.is_empty else raw_geom,
+            centroid_wgs84 = raw_geom.centroid if not raw_geom.is_empty else raw_geom
+            centroid = (
+                STGeometry(WGS84_PROJECTION, centroid_wgs84, None)
+                .to_projection(dst_projection)
+                .shp
             )
-            geom_proj = centroid.buffer(WINDOW_RESOLUTION)
+            geom_proj = centroid.buffer(1)  # 1 pixel radius = WINDOW_RESOLUTION metres
             print(
                 f"    WARNING: Landslide {landslide['id']} had no/tiny polygon area; "
                 f"buffered centroid to {WINDOW_RESOLUTION} m radius"
             )
 
-        landslide_wgs84 = shapely.ops.transform(
-            transformer_to_wgs84.transform, geom_proj
+        landslide_wgs84 = (
+            STGeometry(dst_projection, geom_proj, None)
+            .to_projection(WGS84_PROJECTION)
+            .shp
         )
         if landslide_wgs84.is_empty or not landslide_wgs84.is_valid:
             print(

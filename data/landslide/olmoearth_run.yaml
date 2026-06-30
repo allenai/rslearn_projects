@@ -1,4 +1,4 @@
-config_version: 0.3.0
+config_version: "0.7.1"
 
 data:
   temporality:
@@ -17,6 +17,8 @@ data:
   modalities:
     sentinel2_l2a:
       space_mode: mosaic
+    sentinel1_rtc:
+      space_mode: mosaic
 
   output:
     data_type: raster
@@ -26,10 +28,10 @@ data:
         allowed_values:
           - value: 0
             label: no_landslide
-            color: [124, 67, 18]
+            color: [124, 67, 18, 255]
           - value: 1
             label: landslide
-            color: [169, 214, 146]
+            color: [169, 214, 146, 255]
         nodata_value: 2
 
 model:
@@ -44,16 +46,16 @@ model:
     segment:
       name: manual
       decoder_layers:
-          - class_path: rslearn.models.unet.UNetDecoder
-            init_args:
-              in_channels: [[4, 768]]
-              out_channels: 2
-              conv_layers_per_resolution: 2
-              num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
-          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
-            init_args:
-                weights: [0.05, 0.95]
-                dice_loss: true
+        - class_path: rslearn.models.unet.UNetDecoder
+          init_args:
+            in_channels: [[4, 768]]
+            out_channels: 2
+            conv_layers_per_resolution: 2
+            num_channels: {8: 512, 4: 512, 2: 256, 1: 128}
+        - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          init_args:
+            weights: [0.05, 0.95]
+            dice_loss: true
       task:
         class_path: rslearn.train.tasks.segmentation.SegmentationTask
         init_args:
@@ -65,8 +67,50 @@ input_preprocessing:
   default:
     input_size: 32
     input_mode: all_tiles
+    transforms:
+      - name: sentinel1_to_decibels
+      - name: olmoearth_normalize
+  train:
+    additional_transforms:
+      - name: random_flip
   predict:
     overlap_pixels: 8
+
+labeled_data_prep:
+  annotation_type: polygon
+  sampler:
+    name: noop
+  window_preparer:
+    name: standard_raster
+    windowing_mode:
+      name: per_annotation
+      window_sizing:
+        name: buffered
+        buffer: 64
+  data_splitter:
+    name: spatial
+    grid_size: 512
+    train_prop: 0.7
+    val_prop: 0.2
+    test_prop: 0.1
+
+training:
+  max_epochs: 100
+  batch_size: 1
+  optimizer:
+    name: adamw
+    lr: 0.0001
+  scheduler:
+    name: plateau
+    factor: 0.2
+    patience: 2
+    min_lr: 0
+    cooldown: 10
+  encoder_freezing:
+    unfreeze_at_epoch: 10
+    unfreeze_lr_factor: 10
+  early_stopping:
+    patience: 15
 
 prediction_requests:
   partitioners:
@@ -91,3 +135,8 @@ prediction_requests:
       name: combine_geotiff
     request:
       name: combine_geotiff
+
+transpiler_context:
+  downsample_factor: 4
+  checkpoint_monitor: val_accuracy
+  checkpoint_mode: max

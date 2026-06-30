@@ -50,6 +50,9 @@ SENTINEL1_LAYER_NAME = "sentinel1"
 # Layer names for historical Sentinel-1 images.
 HISTORICAL_LAYER_NAME = "sentinel1_historical"
 
+# Number of historical item groups the detector consumes (image_1 and image_2).
+HISTORICAL_GROUP_COUNT = 2
+
 # Name of layer containing the output.
 OUTPUT_LAYER_NAME = "output"
 
@@ -412,11 +415,20 @@ def get_vessel_detections(
     )
     with time_operation(TimerOperations.MaterializeDataset):
         materialize_dataset(ds_path, materialize_pipeline_args)
+    # Verify the target image and both historical images were materialized for each
+    # window before running prediction.
     for window in windows:
         if not window.is_layer_completed(SENTINEL1_LAYER_NAME):
             raise ValueError(
                 f"window {window.name} does not have Sentinel-1 layer completed"
             )
+        for group_idx in range(HISTORICAL_GROUP_COUNT):
+            if not window.is_layer_completed(HISTORICAL_LAYER_NAME, group_idx):
+                raise ValueError(
+                    f"window {window.name} is missing historical input image_{group_idx + 1} "
+                    f"({HISTORICAL_LAYER_NAME} group {group_idx}); the detector requires "
+                    f"{HISTORICAL_GROUP_COUNT} historical scenes covering the target"
+                )
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
@@ -668,21 +680,24 @@ def _build_predictions_and_crops(
             crop_upath = UPath(task.crop_path)
             crop_upath.mkdir(parents=True, exist_ok=True)
 
-            # Get vv and vh crops.
+            # Get vv and vh crops. Each band is stored as a separate raster in the
+            # dataset, so read them one at a time.
             crop_fnames = {}
-            raster_dir = crop_window.get_raster_dir(
-                SENTINEL1_LAYER_NAME,
-                BAND_NAMES,
-            )
-            image = (
-                GeotiffRasterFormat()
-                .decode_raster(raster_dir, crop_window.projection, crop_window.bounds)
-                .get_chw_array()
-            )
-            for band_idx, band_name in enumerate(BAND_NAMES):
-                band_image = np.clip(
-                    image[band_idx, :, :] * NORM_FACTOR, 0, 255
-                ).astype(np.uint8)
+            for band_name in BAND_NAMES:
+                raster_dir = crop_window.get_raster_dir(
+                    SENTINEL1_LAYER_NAME,
+                    [band_name],
+                )
+                image = (
+                    GeotiffRasterFormat()
+                    .decode_raster(
+                        raster_dir, crop_window.projection, crop_window.bounds
+                    )
+                    .get_chw_array()
+                )
+                band_image = np.clip(image[0, :, :] * NORM_FACTOR, 0, 255).astype(
+                    np.uint8
+                )
 
                 # And save it under the specified crop path.
                 crop_fnames[band_name] = (
@@ -690,6 +705,8 @@ def _build_predictions_and_crops(
                 )
                 with crop_fnames[band_name].open("wb") as f:
                     Image.fromarray(band_image).save(f, format="PNG")
+
+            detection.crop_fnames = crop_fnames
 
         detections_by_task[task_idx].append(detection)
     return detections_by_task
