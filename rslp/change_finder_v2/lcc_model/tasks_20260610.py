@@ -121,6 +121,12 @@ class LCCMultiTaskV2(LCCMultiTask):
                 "timestamps/end_within1": MetricWrapper(
                     "timestamps", TimestampBoundaryAccuracy("end", tolerance=1)
                 ),
+                "timestamps/start_within2": MetricWrapper(
+                    "timestamps", TimestampBoundaryAccuracy("start", tolerance=2)
+                ),
+                "timestamps/end_within2": MetricWrapper(
+                    "timestamps", TimestampBoundaryAccuracy("end", tolerance=2)
+                ),
             }
         )
         return metrics

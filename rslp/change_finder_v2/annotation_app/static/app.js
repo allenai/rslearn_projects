@@ -41,6 +41,33 @@
     "new_offshore_infrastructure",
   ];
 
+  // New three-group change categories. Pick one pre and/or one post, OR one same.
+  const PRE_CHANGE_CATEGORIES = [
+    "deforestation",
+    "urban_erosion",
+    "wetland_loss",
+    "water_contract",
+    "removed_crop_structure",
+  ];
+
+  const POST_CHANGE_CATEGORIES = [
+    "vegetation_growth",
+    "new_building",
+    "new_road",
+    "new_infrastructure",
+    "new_crop_field",
+    "new_aquafarm",
+    "site_clearing",
+    "water_expand",
+    "mining",
+    "new_crop_structure",
+  ];
+
+  const SAME_CHANGE_CATEGORIES = [
+    "agricultural_activity",
+    "wildfire",
+  ];
+
   // --- State ---
   let entriesList = [];
   let currentEntry = null;
@@ -48,11 +75,13 @@
   let selectedYear = null;
   let selectedPointIdx = 0;
   let showOverlay = false;
+  let brighten = false;
   let isSaving = false;
   let overlayVersion = Date.now();
 
   // --- DOM refs ---
   const btnOverlay = document.getElementById("btn-overlay");
+  const btnBright = document.getElementById("btn-bright");
   const entryCount = document.getElementById("entry-count");
   const btnPrev = document.getElementById("btn-prev");
   const btnNext = document.getElementById("btn-next");
@@ -75,6 +104,9 @@
     post_change: document.getElementById("annot-post-change"),
     pre_category: document.getElementById("annot-pre-category"),
     post_category: document.getElementById("annot-post-category"),
+    pre_change_category: document.getElementById("annot-pre-change-category"),
+    post_change_category: document.getElementById("annot-post-change-category"),
+    same_change_category: document.getElementById("annot-same-change-category"),
     fine_change_category: document.getElementById("annot-fine-change-category"),
   };
 
@@ -174,6 +206,11 @@
     btnOverlay.classList.toggle("active", showOverlay);
   }
 
+  function updateBrightButton() {
+    btnBright.textContent = brighten ? "Brightness \u00f715: on (b)" : "Brightness \u00f715: off (b)";
+    btnBright.classList.toggle("active", brighten);
+  }
+
   function getOverlaySrc() {
     var url = "/image/points_overlay/" + currentIndex;
     var pts = (currentEntry && currentEntry.entry.positive_points) || [];
@@ -258,7 +295,7 @@
       col.className = "s2-col";
       col.appendChild(
         buildImageStack(
-          "/image/sentinel2/" + encodeURIComponent(entry.group) + "/" + encodeURIComponent(entry.window_name) + "/" + grp.group_idx,
+          "/image/sentinel2/" + encodeURIComponent(entry.group) + "/" + encodeURIComponent(entry.window_name) + "/" + grp.group_idx + (brighten ? "?bright=1" : ""),
           "S2 " + selectedYear + " g" + grp.group_idx
         )
       );
@@ -295,7 +332,15 @@
     annotInputs.post_change.value = pt.post_change || "";
     setCategorySelect(annotInputs.pre_category, pt.pre_category);
     setCategorySelect(annotInputs.post_category, pt.post_category);
+    setCategorySelect(annotInputs.pre_change_category, pt.pre_change_category);
+    setCategorySelect(annotInputs.post_change_category, pt.post_change_category);
+    setCategorySelect(annotInputs.same_change_category, pt.same_change_category);
     setCategorySelect(annotInputs.fine_change_category, pt.fine_change_category);
+    // Only show the legacy fine-category dropdown when the point already has a value.
+    var fineField = document.getElementById("fine-change-category-field");
+    if (fineField) {
+      fineField.style.display = pt.fine_change_category ? "" : "none";
+    }
     annotStatus.textContent = "";
   }
 
@@ -487,6 +532,9 @@
       post_change: annotInputs.post_change.value.trim(),
       pre_category: annotInputs.pre_category.value.trim(),
       post_category: annotInputs.post_category.value.trim(),
+      pre_change_category: annotInputs.pre_change_category.value.trim(),
+      post_change_category: annotInputs.post_change_category.value.trim(),
+      same_change_category: annotInputs.same_change_category.value.trim(),
       fine_change_category: annotInputs.fine_change_category.value.trim(),
     }).then(function (res) {
       if (res.ok) {
@@ -514,8 +562,16 @@
     renderSentinel();
   }
 
+  // --- Toggle brightness ---
+  function toggleBright() {
+    brighten = !brighten;
+    updateBrightButton();
+    renderSentinel();
+  }
+
   // --- Events ---
   btnOverlay.addEventListener("click", toggleOverlay);
+  btnBright.addEventListener("click", toggleBright);
   btnPrev.addEventListener("click", function () { changeEntry(-1); });
   btnNext.addEventListener("click", function () { changeEntry(1); });
   btnPtPrev.addEventListener("click", function () { changePoint(-1); });
@@ -540,6 +596,9 @@
     } else if (e.key === "a" || e.key === "A") {
       toggleOverlay();
       e.preventDefault();
+    } else if (e.key === "b" || e.key === "B") {
+      toggleBright();
+      e.preventDefault();
     }
   });
 
@@ -547,6 +606,9 @@
   function init() {
     populateCategorySelect(annotInputs.pre_category, CATEGORIES);
     populateCategorySelect(annotInputs.post_category, CATEGORIES);
+    populateCategorySelect(annotInputs.pre_change_category, PRE_CHANGE_CATEGORIES);
+    populateCategorySelect(annotInputs.post_change_category, POST_CHANGE_CATEGORIES);
+    populateCategorySelect(annotInputs.same_change_category, SAME_CHANGE_CATEGORIES);
     populateCategorySelect(annotInputs.fine_change_category, FINE_CHANGE_CATEGORIES);
     fetchJSON("/api/entries").then(function (data) {
       entriesList = data;

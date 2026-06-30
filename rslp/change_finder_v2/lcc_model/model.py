@@ -25,11 +25,13 @@ from rslearn.train.model_context import (
     SampleMetadata,
 )
 
+from .sliding_window import SlidingWindowEvalMixin
+
 INPUT_KEY = "sentinel2_l2a"
 NUM_PASS1 = 10
-DEBUG_PRINT_FALSE_NEGATIVES = True
-DEBUG_FALSE_NEGATIVE_THRESHOLD = 0.5
-DEBUG_FALSE_NEGATIVE_SAMPLE_LIMIT = 20
+DEBUG_PRINT_BINARY_CHANGE_ERRORS = False
+DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_POSITIVE = 0.9
+DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_NEGATIVE = 0.5
 
 # A stage is a list of (out_channels, kernel_size) conv specs.
 StageSpec = list[tuple[int, int]]
@@ -63,7 +65,7 @@ def _make_decoder(
     return nn.Sequential(*layers)
 
 
-class DualPassChangeModel(nn.Module):
+class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
     """Two-pass encoder with per-task convolutional decoders.
 
     The model expects ``sentinel2_l2a`` with 20 timesteps. It splits into
@@ -86,6 +88,10 @@ class DualPassChangeModel(nn.Module):
         embedding_dim: int = 768,
         decoder_stages: list[StageSpec] | None = None,
         binary_loss_weight: float = 1.0,
+        num_passes: int = 2,
+        num_pass1: int = NUM_PASS1,
+        eval_crop_size: int | None = None,
+        eval_overlap: int = 0,
     ):
         """Initialize the LCC multi-task model.
 
@@ -104,17 +110,35 @@ class DualPassChangeModel(nn.Module):
                 must be specified in the model config.
             binary_loss_weight: multiplier applied to the binary change loss before
                 it is summed with the other task losses.
+            num_passes: number of encoder passes (1 or 2). With 1, all images are
+                encoded in a single pass and the decoder input is ``embedding_dim``.
+                With 2, the stack is split at ``num_pass1`` into a historical and a
+                recent pass whose features are concatenated (``2 * embedding_dim``).
+            num_pass1: number of leading images in pass1 (only used when
+                ``num_passes == 2``); the remaining images form pass2.
+            eval_crop_size: if set, in eval mode the model tiles inputs larger
+                than this size into overlapping ``eval_crop_size`` crops, runs
+                each through the normal forward, and stitches the predictions
+                back together (see ``SlidingWindowEvalMixin``). Used to evaluate
+                every config over an identical window for comparable metrics.
+            eval_overlap: pixels shared between adjacent sliding-window tiles.
         """
         super().__init__()
+        if num_passes not in (1, 2):
+            raise ValueError(f"num_passes must be 1 or 2, got {num_passes}")
+        self.eval_crop_size = eval_crop_size
+        self.eval_overlap = eval_overlap
         self.encoder = encoder
         self.embedding_dim = embedding_dim
         self.num_timestamps = num_timestamps
         self.binary_loss_weight = binary_loss_weight
+        self.num_passes = num_passes
+        self.num_pass1 = num_pass1
 
         if decoder_stages is None:
             raise ValueError("decoder_stages must be specified")
 
-        concat_dim = embedding_dim * 2
+        concat_dim = embedding_dim * num_passes
 
         self.decoder_binary = _make_decoder(
             concat_dim, decoder_stages, num_classes_binary
@@ -138,7 +162,19 @@ class DualPassChangeModel(nn.Module):
         feature_maps = self.encoder(sub_context)
         return feature_maps.feature_maps[0]
 
-    def forward(
+    def _combine_features(
+        self, feat1: torch.Tensor, feat2: torch.Tensor
+    ) -> torch.Tensor:
+        """Combine the two encoder-pass features into the decoder input.
+
+        Default concatenates along the channel dim, giving ``2 * embedding_dim``
+        channels. Subclasses may override to change the decoder input (e.g. add a
+        difference channel group or apply cross-pass attention); the decoders must
+        be built with a matching input dimension.
+        """
+        return torch.cat([feat1, feat2], dim=1)
+
+    def _forward_core(
         self,
         context: ModelContext,
         targets: list[dict[str, Any]] | None = None,
@@ -152,22 +188,36 @@ class DualPassChangeModel(nn.Module):
         Returns:
             ModelOutput with per-task outputs and losses.
         """
-        pass1_images: list[RasterImage] = []
-        pass2_images: list[RasterImage] = []
-        for inp in context.inputs:
-            combined: RasterImage = inp[INPUT_KEY]
-            p1_img = combined.image[:, :NUM_PASS1, :, :]
-            p2_img = combined.image[:, NUM_PASS1:, :, :]
-            p1_ts = combined.timestamps[:NUM_PASS1] if combined.timestamps else None
-            p2_ts = combined.timestamps[NUM_PASS1:] if combined.timestamps else None
-            pass1_images.append(RasterImage(image=p1_img, timestamps=p1_ts))
-            pass2_images.append(RasterImage(image=p2_img, timestamps=p2_ts))
+        if self.num_passes == 1:
+            full_images: list[RasterImage] = [inp[INPUT_KEY] for inp in context.inputs]
+            concat = self._run_encoder(full_images, context.metadatas)
+        else:
+            pass1_images: list[RasterImage] = []
+            pass2_images: list[RasterImage] = []
+            for inp in context.inputs:
+                combined: RasterImage = inp[INPUT_KEY]
+                p1_img = combined.image[:, : self.num_pass1, :, :]
+                p2_img = combined.image[:, self.num_pass1 :, :, :]
+                p1_ts = (
+                    combined.timestamps[: self.num_pass1]
+                    if combined.timestamps
+                    else None
+                )
+                p2_ts = (
+                    combined.timestamps[self.num_pass1 :]
+                    if combined.timestamps
+                    else None
+                )
+                pass1_images.append(RasterImage(image=p1_img, timestamps=p1_ts))
+                pass2_images.append(RasterImage(image=p2_img, timestamps=p2_ts))
 
-        feat1 = self._run_encoder(pass1_images, context.metadatas)
-        feat2 = self._run_encoder(pass2_images, context.metadatas)
+            feat1 = self._run_encoder(pass1_images, context.metadatas)
+            feat2 = self._run_encoder(pass2_images, context.metadatas)
 
-        # Concatenate along channel dim: (B, 1536, H/4, W/4)
-        concat = torch.cat([feat1, feat2], dim=1)
+            # Combine the two passes into the decoder input. Default concatenates
+            # along the channel dim: (B, 2*embedding_dim, H/4, W/4). Subclasses may
+            # override.
+            concat = self._combine_features(feat1, feat2)
 
         # Per-task decoders: (B, 1536, H/4, W/4) -> (B, C, H, W)
         logits_binary = self.decoder_binary(concat)
@@ -194,62 +244,87 @@ class DualPassChangeModel(nn.Module):
                 "timestamps": torch.sigmoid(logits_ts[i]),
             }
 
-        if DEBUG_PRINT_FALSE_NEGATIVES and targets is not None and not self.training:
-            self._debug_print_binary_false_negatives(context, targets, outputs)
+        if (
+            DEBUG_PRINT_BINARY_CHANGE_ERRORS
+            and targets is not None
+            and not self.training
+        ):
+            self._debug_print_binary_change_errors(context, targets, outputs)
 
         return ModelOutput(outputs=outputs, loss_dict=losses)
 
-    def _debug_print_binary_false_negatives(
+    def _debug_print_binary_change_errors(
         self,
         context: ModelContext,
         targets: list[dict[str, Any]],
         outputs: list[dict[str, Any]],
     ) -> None:
-        """Print windows with positive change pixels missed at the debug threshold."""
+        """Print windows with binary change mistakes at the debug threshold."""
         for output, target, metadata in zip(
             outputs, targets, context.metadatas, strict=True
         ):
             labels = target["binary"]["classes"].get_hw_tensor().long()
             valid = target["binary"]["valid"].get_hw_tensor() > 0
-            change_prob = output["binary"][2]
+            binary_probs = output["binary"]
+            change_prob = binary_probs[2]
 
             positive = valid & (labels == 2)
-            false_negative = positive & (change_prob < DEBUG_FALSE_NEGATIVE_THRESHOLD)
+            negative = valid & (labels == 1)
+            false_negative = positive & ~(change_prob >= DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_NEGATIVE)
+            false_positive = negative & (change_prob >= DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_POSITIVE)
+
             num_false_negative = int(false_negative.sum().item())
-            if num_false_negative == 0:
+            num_false_positive = int(false_positive.sum().item())
+            if num_false_negative == 0 and num_false_positive == 0:
                 continue
 
             num_positive = int(positive.sum().item())
-            sample_pixels = (
-                false_negative.nonzero(as_tuple=False)[
-                    :DEBUG_FALSE_NEGATIVE_SAMPLE_LIMIT
-                ]
-                .detach()
-                .cpu()
-            )
-            change_prob_cpu = change_prob.detach().cpu()
+            num_negative = int(negative.sum().item())
+            binary_probs_cpu = binary_probs.detach().cpu()
             crop_x0, crop_y0, _, _ = metadata.crop_bounds
-            sample_entries = []
-            for row, col in sample_pixels.tolist():
-                sample_entries.append(
-                    {
-                        "row": row,
-                        "col": col,
-                        "window_x": crop_x0 + col,
-                        "window_y": crop_y0 + row,
-                        "prob": round(float(change_prob_cpu[row, col]), 4),
-                    }
+
+            def sample_error_pixel(mask: torch.Tensor) -> dict[str, Any] | None:
+                error_pixels = mask.nonzero(as_tuple=False)
+                if error_pixels.shape[0] == 0:
+                    return None
+                sample_idx = int(
+                    torch.randint(
+                        error_pixels.shape[0],
+                        (1,),
+                        device=error_pixels.device,
+                    ).item()
                 )
+                row, col = error_pixels[sample_idx].detach().cpu().tolist()
+                row = int(row)
+                col = int(col)
+                return {
+                    "row": row,
+                    "col": col,
+                    "window_x": crop_x0 + col,
+                    "window_y": crop_y0 + row,
+                    "change_prob": round(float(binary_probs_cpu[2, row, col]), 6),
+                    "binary_probs": [
+                        round(float(prob), 6)
+                        for prob in binary_probs_cpu[:, row, col].tolist()
+                    ],
+                }
+
+            sample_false_negative = sample_error_pixel(false_negative)
+            sample_false_positive = sample_error_pixel(false_positive)
 
             print(
-                "[LCC false negative debug] "
+                "[LCC binary error debug] "
                 f"window={metadata.window_group}/{metadata.window_name} "
                 f"crop={metadata.crop_idx + 1}/{metadata.num_crops_in_window} "
                 f"crop_bounds={metadata.crop_bounds} "
                 f"positive_pixels={num_positive} "
+                f"negative_pixels={num_negative} "
                 f"false_negative_pixels={num_false_negative} "
-                f"threshold={DEBUG_FALSE_NEGATIVE_THRESHOLD} "
-                f"sample_pixels={sample_entries}",
+                f"false_positive_pixels={num_false_positive} "
+                f"threshold_fp={DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_POSITIVE} "
+                f"threshold_fp={DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_NEGATIVE} "
+                f"sample_false_negative={sample_false_negative} "
+                f"sample_false_positive={sample_false_positive}",
                 flush=True,
             )
 

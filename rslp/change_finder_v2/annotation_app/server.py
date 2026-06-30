@@ -254,6 +254,9 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
                         "pre_category",
                         "post_category",
                         "fine_change_category",
+                        "pre_change_category",
+                        "post_change_category",
+                        "same_change_category",
                     ):
                         if field in existing[0]:
                             point[field] = existing[0][field]
@@ -308,6 +311,9 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
                 "pre_category",
                 "post_category",
                 "fine_change_category",
+                "pre_change_category",
+                "post_change_category",
+                "same_change_category",
             ):
                 val = body.get(field)
                 if val is not None:
@@ -355,9 +361,10 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
         with rasterio.open(str(tiff_path)) as src:
             bands = src.read()
 
-        r = np.clip(bands[b04_idx].astype(np.float32) / 10, 0, 255).astype(np.uint8)
-        g = np.clip(bands[b03_idx].astype(np.float32) / 10, 0, 255).astype(np.uint8)
-        b = np.clip(bands[b02_idx].astype(np.float32) / 10, 0, 255).astype(np.uint8)
+        divisor = 15.0 if request.args.get("bright") else 10.0
+        r = np.clip(bands[b04_idx].astype(np.float32) / divisor, 0, 255).astype(np.uint8)
+        g = np.clip(bands[b03_idx].astype(np.float32) / divisor, 0, 255).astype(np.uint8)
+        b = np.clip(bands[b02_idx].astype(np.float32) / divisor, 0, 255).astype(np.uint8)
         rgb = np.stack([r, g, b], axis=-1)
 
         return Response(

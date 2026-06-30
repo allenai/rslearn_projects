@@ -35,7 +35,7 @@ import numpy as np
 import requests
 import shapely
 import shapely.geometry
-from rslearn.config import QueryConfig, SpaceMode
+from rslearn.config import LayerConfig, QueryConfig, SpaceMode
 from rslearn.data_sources import Item
 from rslearn.data_sources.utils import match_candidate_items_to_window
 from rslearn.dataset import Dataset, Window
@@ -44,7 +44,6 @@ from rslearn.dataset.window import WindowLayerData
 from rslearn.utils.geometry import WGS84_PROJECTION, Projection, STGeometry
 from rslearn.utils.mp import make_pool_and_star_imap_unordered
 from rslearn.utils.raster_array import RasterArray
-from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
 
 COLLECTION = "sentinel-2-l2a"
@@ -56,8 +55,10 @@ FREQUENT_PERIOD = timedelta(days=FREQUENT_PERIOD_DAYS)
 FREQUENT_BLOCK_DURATION = NUM_FREQUENT_PERIODS * FREQUENT_PERIOD
 FREQUENT_LAST_PERIOD_OFFSET = (NUM_FREQUENT_PERIODS - 1) * FREQUENT_PERIOD
 
-LABEL_BAND = "label"
-RASTER_FORMAT = GeotiffRasterFormat()
+# Annotation was done using imagery up to this date, so no frequent option should
+# sample imagery after it (otherwise it could contain unannotated changes).
+IMAGE_CUTOFF = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
 WINDOW_SIZE = 128
 
 BIN_NODATA = 0
@@ -323,24 +324,37 @@ def _compute_frequent_block_starts(
             last_period_start = random_start
         block_starts.append(last_period_start - FREQUENT_LAST_PERIOD_OFFSET)
 
+    # Cap every option so its 60-day frequent block ends on/before IMAGE_CUTOFF;
+    # clamping the start is equivalent to clamping the block end.
+    max_block_start = IMAGE_CUTOFF - FREQUENT_BLOCK_DURATION
+    block_starts = [min(bs, max_block_start) for bs in block_starts]
+
     return block_starts[:NUM_FREQUENT_OPTIONS]
 
 
-def _write_label_layer(window: Window, layer_name: str, array_hw: np.ndarray) -> None:
+def _write_label_layer(
+    window: Window,
+    layer_name: str,
+    layer_config: LayerConfig,
+    array_hw: np.ndarray,
+) -> None:
     """Write a single-band uint8 label raster and mark layer complete."""
-    raster_dir = window.get_raster_dir(layer_name, [LABEL_BAND])
+    band_set = layer_config.band_sets[0]
     chw = array_hw[np.newaxis, :, :].astype(np.uint8, copy=False)
-    RASTER_FORMAT.encode_raster(
-        raster_dir,
-        window.projection,
-        window.bounds,
-        RasterArray(chw_array=chw),
-    )
+    with window.data.open_layer_writer(layer_name) as writer:
+        writer.write_raster(
+            band_set.bands,
+            band_set.instantiate_raster_format(),
+            window.projection,
+            window.bounds,
+            RasterArray(chw_array=chw),
+        )
     window.mark_layer_completed(layer_name)
 
 
 def _rasterize_labels(
     window: Window,
+    layers: dict[str, LayerConfig],
     entry: dict[str, Any],
     projection: Projection,
     bounds: tuple[int, ...],
@@ -369,9 +383,9 @@ def _rasterize_labels(
             if dst_id > 0:
                 dst_label[row, col] = dst_id
 
-    _write_label_layer(window, "label_binary", binary)
-    _write_label_layer(window, "label_src", src_label)
-    _write_label_layer(window, "label_dst", dst_label)
+    _write_label_layer(window, "label_binary", layers["label_binary"], binary)
+    _write_label_layer(window, "label_src", layers["label_src"], src_label)
+    _write_label_layer(window, "label_dst", layers["label_dst"], dst_label)
 
 
 def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
@@ -519,6 +533,7 @@ def _process_entry(
         bounds=bounds,
         time_range=window_time_range,
         options=dict(split=split),
+        data_factory=dataset.window_data_storage_factory,
     )
     window.save()
 
@@ -561,7 +576,7 @@ def _process_entry(
 
     window.save_layer_datas(layer_datas)
 
-    _rasterize_labels(window, entry, projection, bounds)
+    _rasterize_labels(window, dataset.layers, entry, projection, bounds)
 
     positive_pixels = []
     for pt in entry.get("positive_points", []):

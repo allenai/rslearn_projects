@@ -14,10 +14,11 @@ The model splits the 20-image tensor back into two encoder passes.
 from __future__ import annotations
 
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 from rslearn.train.model_context import RasterImage
 from rslearn.train.transforms.transform import Transform
 
@@ -33,14 +34,47 @@ NUM_FREQUENT = 4
 class FrequentOptionSampler(Transform):
     """Pick a frequent option, subset quarterly images, and build sentinel2_l2a."""
 
-    def __init__(self, deterministic: bool = False) -> None:
+    def __init__(
+        self,
+        deterministic: bool = False,
+        num_quarterly: int = NUM_QUARTERLY,
+        num_frequent: int = NUM_FREQUENT,
+        option_index: int | None = None,
+        quarterly_anchor: str = "recent",
+    ) -> None:
         """Initialize the transform.
 
         Args:
-            deterministic: if True, always pick option 0 (for val/test).
+            deterministic: if True, always pick option 2 (for val/test). Ignored
+                when ``option_index`` is set.
+            num_quarterly: number of quarterly (historical) images to use.
+            num_frequent: number of frequent (recent) periods to keep, taking the
+                most recent ones (e.g. 1 for a single recent mosaic). Must be in
+                ``[1, NUM_FREQUENT]``.
+            option_index: if set, deterministically select
+                ``sentinel2_frequent_{option_index}`` instead of using the
+                random / option-2 logic (used by the temporal-input ablations).
+            quarterly_anchor: how to choose the quarterly images. ``"recent"`` (the
+                default) takes the most recent ``num_quarterly`` ending before the
+                frequent block. ``"one_year_before"`` instead picks the
+                ``num_quarterly`` images whose centers are nearest one year before
+                the frequent block (used for the bitemporal ablation).
         """
         super().__init__()
+        if not 1 <= num_frequent <= NUM_FREQUENT:
+            raise ValueError(
+                f"num_frequent must be in [1, {NUM_FREQUENT}], got {num_frequent}"
+            )
+        if quarterly_anchor not in ("recent", "one_year_before"):
+            raise ValueError(
+                "quarterly_anchor must be 'recent' or 'one_year_before', got "
+                f"{quarterly_anchor!r}"
+            )
         self.deterministic = deterministic
+        self.num_quarterly = num_quarterly
+        self.num_frequent = num_frequent
+        self.option_index = option_index
+        self.quarterly_anchor = quarterly_anchor
 
     def forward(
         self, input_dict: dict[str, Any], target_dict: dict[str, Any]
@@ -59,49 +93,80 @@ class FrequentOptionSampler(Transform):
         if quarterly.timestamps is None:
             raise ValueError("sentinel2_quarterly must have timestamps")
 
-        # Collect available frequent options
-        frequent_options: list[RasterImage] = []
+        # Collect available frequent options, keyed by their layer index.
+        options_by_idx: dict[int, RasterImage] = {}
         for i in range(8):
             key = f"{FREQUENT_KEY_PREFIX}{i}"
             if key not in input_dict:
                 continue
             freq_img = input_dict.pop(key)
             if freq_img.image.shape[1] == NUM_FREQUENT:
-                frequent_options.append(freq_img)
+                options_by_idx[i] = freq_img
 
-        if not frequent_options:
+        if not options_by_idx:
             raise ValueError("No valid frequent options available")
 
-        # Pick an option
-        if self.deterministic:
-            # Use 2 so that it's a random timestep (if we use 0 then it is the option
-            # based on the annotated first-noticeable timestamp, which would only test
-            # the hardest cases where we want to detect change immediately after it
-            # happens).
-            opt_idx = 2 if len(frequent_options) > 2 else 0
+        # Pick an option.
+        if self.option_index is not None:
+            # Select a specific frequent layer (used by the ablations). If the
+            # requested option was not materialized for this window (e.g. the change
+            # is close to IMAGE_CUTOFF so later blocks don't exist), fall back to the
+            # latest available option at or before the requested index.
+            if self.option_index in options_by_idx:
+                chosen_idx = self.option_index
+            else:
+                earlier = [i for i in options_by_idx if i <= self.option_index]
+                chosen_idx = max(earlier) if earlier else max(options_by_idx)
+            chosen_frequent = options_by_idx[chosen_idx]
         else:
-            opt_idx = random.randrange(len(frequent_options))
-        chosen_frequent = frequent_options[opt_idx]
+            frequent_options = [options_by_idx[i] for i in sorted(options_by_idx)]
+            if self.deterministic:
+                # Use 2 so that it's a random timestep (if we use 0 then it is the
+                # option based on the annotated first-noticeable timestamp, which
+                # would only test the hardest cases where we want to detect change
+                # immediately after it happens).
+                opt_idx = 2 if len(frequent_options) > 2 else 0
+            else:
+                opt_idx = random.randrange(len(frequent_options))
+            chosen_frequent = frequent_options[opt_idx]
 
         if not chosen_frequent.timestamps:
             raise ValueError("Frequent option must have timestamps")
 
-        # Quarterly images end where frequent images begin (matching prediction semantics).
+        # Optionally keep only the most recent ``num_frequent`` periods (e.g. a
+        # single recent mosaic for the bitemporal ablation).
+        if self.num_frequent < chosen_frequent.image.shape[1]:
+            chosen_frequent = RasterImage(
+                image=chosen_frequent.image[:, -self.num_frequent :, :, :],
+                timestamps=chosen_frequent.timestamps[-self.num_frequent :],
+            )
+
+        # Determine which quarterly (historical) images to use.
         earliest_freq_ts = min(ts[0] for ts in chosen_frequent.timestamps)
-
-        # Select quarterly images with end timestamp <= earliest frequent timestamp
-        valid_indices = []
-        for i, ts in enumerate(quarterly.timestamps):
-            if ts[1] <= earliest_freq_ts:
-                valid_indices.append(i)
-
-        # Take the 16 most recent; pad with earliest if insufficient
-        if len(valid_indices) > NUM_QUARTERLY:
-            valid_indices = valid_indices[-NUM_QUARTERLY:]
-        elif len(valid_indices) < NUM_QUARTERLY:
-            deficit = NUM_QUARTERLY - len(valid_indices)
-            pad_idx = valid_indices[0] if valid_indices else 0
-            valid_indices = [pad_idx] * deficit + valid_indices
+        if self.quarterly_anchor == "one_year_before":
+            # Pick the ``num_quarterly`` quarterly images whose centers are closest
+            # to one year before the frequent block (bitemporal historical image).
+            target_time = earliest_freq_ts - timedelta(days=365)
+            q_centers = [ts[0] + (ts[1] - ts[0]) / 2 for ts in quarterly.timestamps]
+            nearest = sorted(
+                range(len(q_centers)),
+                key=lambda i: abs((q_centers[i] - target_time).total_seconds()),
+            )
+            valid_indices = sorted(nearest[: self.num_quarterly])
+        else:
+            # Quarterly images end where frequent images begin (prediction semantics).
+            valid_indices = [
+                i
+                for i, ts in enumerate(quarterly.timestamps)
+                if ts[1] <= earliest_freq_ts
+            ]
+            # Take the most recent ``num_quarterly``; pad with earliest if short.
+            if len(valid_indices) > self.num_quarterly:
+                valid_indices = valid_indices[-self.num_quarterly :]
+            elif len(valid_indices) < self.num_quarterly:
+                deficit = self.num_quarterly - len(valid_indices)
+                pad_idx = valid_indices[0] if valid_indices else 0
+                valid_indices = [pad_idx] * deficit + valid_indices
 
         q_img = quarterly.image[:, valid_indices, :, :]
         q_ts = [quarterly.timestamps[i] for i in valid_indices]
@@ -198,4 +263,64 @@ class PredictPassBuilder(Transform):
         combined_ts = q_ts + (frequent.timestamps or [])
         input_dict[OUTPUT_KEY] = RasterImage(image=combined_img, timestamps=combined_ts)
 
+        return input_dict, target_dict
+
+
+class BufferPointLabels(Transform):
+    """Dilate sparse point labels to a square buffer (train-time augmentation).
+
+    The LCC dataset stores single-pixel point labels: each task's ``valid`` mask is
+    True only at clicked pixels (``label != nodata=0``), so binary/src/dst supervision
+    is extremely sparse. This transform expands every labeled pixel to a
+    ``buffer_size`` x ``buffer_size`` neighborhood, under a local-homogeneity
+    assumption, to densify training supervision. Apply it to ``train_config`` only so
+    val/test keep their original sparse labels.
+
+    Class 0 is "unlabeled/nodata" for every task (binary uses 1=no_change, 2=change;
+    src/dst use 1..12), so the dilation encodes labels as their class id and treats 0
+    as empty. Overlaps are resolved ring-by-ring with a max over class id, so nearer
+    labels win and (for binary) change (2) beats no_change (1).
+    """
+
+    def __init__(
+        self,
+        buffer_size: int = 3,
+        task_keys: list[str] = ["binary", "src", "dst"],
+    ) -> None:
+        """Initialize the transform.
+
+        Args:
+            buffer_size: side length of the square buffer; must be a positive odd
+                int (3 means a single 3x3 ring around each point).
+            task_keys: which target tasks to buffer.
+        """
+        super().__init__()
+        if buffer_size < 1 or buffer_size % 2 == 0:
+            raise ValueError(f"buffer_size must be a positive odd int, got {buffer_size}")
+        self.radius = buffer_size // 2
+        self.task_keys = task_keys
+
+    def forward(
+        self, input_dict: dict[str, Any], target_dict: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Buffer the point labels of each configured task in target_dict."""
+        for key in self.task_keys:
+            if key not in target_dict:
+                continue
+            tgt = target_dict[key]
+            cls = tgt["classes"].get_hw_tensor().long()  # (H, W)
+            valid = tgt["valid"].get_hw_tensor() > 0  # (H, W)
+
+            # Encode labels as class id at valid pixels, 0 elsewhere (0 = unlabeled).
+            enc = torch.where(valid, cls, torch.zeros_like(cls)).float()[None, None]
+            for _ in range(self.radius):
+                pooled = F.max_pool2d(enc, kernel_size=3, stride=1, padding=1)
+                # Only fill currently-unlabeled pixels so nearer labels win, and a
+                # higher class id (e.g. change over no_change) wins ties.
+                newly = (enc == 0) & (pooled > 0)
+                enc = torch.where(newly, pooled, enc)
+
+            out = enc[0, 0].long()
+            tgt["classes"] = RasterImage(out[None, None, :, :])
+            tgt["valid"] = RasterImage((out > 0).float()[None, None, :, :])
         return input_dict, target_dict

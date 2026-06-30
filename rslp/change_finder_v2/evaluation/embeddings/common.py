@@ -92,16 +92,23 @@ def write_merged_csv(rows: list[dict[str, Any]], output: Path) -> None:
         writer.writerows(rows)
 
 
-def _find_embeddings_geotiff(window_dir: UPath) -> UPath | None:
+def _find_embeddings_geotiff(
+    window_dir: UPath, layer: str = EMBEDDINGS_LAYER
+) -> UPath | None:
     """Find the embeddings geotiff under a window directory, if materialized."""
-    matches = list(window_dir.glob(f"layers/{EMBEDDINGS_LAYER}/*/geotiff.tif"))
+    matches = list(window_dir.glob(f"layers/{layer}/*/geotiff.tif"))
     if not matches:
         return None
     return matches[0]
 
 
 def read_embedding_at_point(
-    ds_upath: UPath, group: str, window_name: str, lon: float, lat: float
+    ds_upath: UPath,
+    group: str,
+    window_name: str,
+    lon: float,
+    lat: float,
+    layer: str = EMBEDDINGS_LAYER,
 ) -> np.ndarray | None:
     """Read the embedding vector at a lon/lat for one prediction window.
 
@@ -114,7 +121,7 @@ def read_embedding_at_point(
     treated as missing).
     """
     window_dir = ds_upath / "windows" / group / window_name
-    tif_path = _find_embeddings_geotiff(window_dir)
+    tif_path = _find_embeddings_geotiff(window_dir, layer)
     if tif_path is None:
         return None
 

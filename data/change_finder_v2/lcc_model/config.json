@@ -6,7 +6,10 @@
           "bands": [
             "label"
           ],
-          "dtype": "uint8"
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "class_names": [
@@ -22,7 +25,10 @@
           "bands": [
             "label"
           ],
-          "dtype": "uint8"
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "class_names": [
@@ -48,7 +54,10 @@
           "bands": [
             "label"
           ],
-          "dtype": "uint8"
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "class_names": [
@@ -122,7 +131,10 @@
             "ts_18",
             "ts_19"
           ],
-          "dtype": "uint8"
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "type": "raster"
@@ -144,7 +156,10 @@
             "B11",
             "B12"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "data_source": {
@@ -184,7 +199,10 @@
             "B11",
             "B12"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "data_source": {
@@ -224,7 +242,10 @@
             "B11",
             "B12"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "data_source": {
@@ -264,7 +285,10 @@
             "B11",
             "B12"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "data_source": {
@@ -304,7 +328,10 @@
             "B11",
             "B12"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "data_source": {
@@ -344,7 +371,10 @@
             "B11",
             "B12"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "data_source": {
@@ -384,7 +414,10 @@
             "B11",
             "B12"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "data_source": {
@@ -424,7 +457,10 @@
             "B11",
             "B12"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "data_source": {
@@ -464,7 +500,10 @@
             "B11",
             "B12"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
         }
       ],
       "data_source": {
@@ -490,5 +529,8 @@
       },
       "type": "raster"
     }
+  },
+  "window_data_storage": {
+    "class_path": "rslearn.dataset.window_data_storage.per_layer.PerLayerStorageFactory"
   }
 }

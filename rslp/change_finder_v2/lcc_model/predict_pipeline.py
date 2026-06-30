@@ -45,7 +45,9 @@ from .postprocess import OUTPUT_BANDS, OUTPUT_LAYER, collect_features
 logger = get_logger(__name__)
 
 DATASET_CONFIG_FNAME = "data/change_finder_v2/lcc_model/config_predict.json"
-MODEL_CONFIG_FNAME = "data/change_finder_v2/lcc_model/config_predict.yaml"
+MODEL_CONFIG_FNAME = (
+    "data/change_finder_v2/lcc_model/config_pass20_v1_2_predict.yaml"
+)
 
 # Per-window size. The tile size (passed via bounds) must be a multiple of this.
 PATCH_SIZE = 2048

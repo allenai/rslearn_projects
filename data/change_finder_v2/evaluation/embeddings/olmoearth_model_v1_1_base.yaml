@@ -1,0 +1,71 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_1_BASE
+              patch_size: 4
+        decoder:
+          # EmbeddingHead works with EmbeddingTask below to save the encoder embeddings.
+          - class_path: rslearn.train.tasks.embedding.EmbeddingHead
+    # The optimizer is not used during predict but must be passed.
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: ${EMBED_DS}
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        # Band order expected by OlmoEarth.
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+    task:
+      # Dummy task that just writes the encoder feature map during `model predict`.
+      class_path: rslearn.train.tasks.embedding.EmbeddingTask
+    batch_size: 8
+    num_workers: 32
+    predict_config:
+      # Embed both the eval windows (group "predict") and, when present, the labeled
+      # training windows (group "train") in a single `model predict` run. A missing
+      # group simply contributes no windows.
+      groups: ["predict", "train"]
+      skip_targets: true
+      load_all_crops: true
+      crop_size: 64
+      overlap_pixels: 32
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+trainer:
+  callbacks:
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: embeddings_v1_1_base
+        # Defined inline so embeddings_v1_1_base does not need to appear in the dataset
+        # config.json, letting each model variant write to its own embeddings layer.
+        # jsonargparse expects LayerType / DType enum names (not config.json strings).
+        layer_config:
+          type: RASTER
+          band_sets:
+            - num_bands: 768
+              dtype: FLOAT32
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            # patch_size 4 with 64px input crop yields a 16x16 output; overlap_pixels 32
+            # at input resolution is 8 at output resolution, so remove 4 from each side.
+            overlap_pixels: 8
+            # Output is 1/patch_size relative to window (input) resolution.
+            downsample_factor: 4

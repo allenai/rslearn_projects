@@ -163,7 +163,9 @@ The prepare script:
 - Creates 8 frequent-image options per window. Each option is four 15-day
   periods with one least-cloudy mosaic per period; options vary where the
   annotation dates fall within the frequent stack, including random later
-  post-change contexts up to post_change + 2 years.
+  post-change contexts up to post_change + 2 years. Every option is capped so
+  its 60-day frequent block ends on/before 2026-01-01 (the annotation cutoff),
+  so no imagery after that date is sampled.
 - Window time_range is derived from the annotations (no fixed 10-year range).
 - Rasterizes point labels into label_binary/label_src/label_dst layers.
 - Writes `lcc_annotations.json` sidecar for training-time annotation injection

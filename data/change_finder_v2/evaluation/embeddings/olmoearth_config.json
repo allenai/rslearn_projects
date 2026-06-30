@@ -9,6 +9,15 @@
       ],
       "type": "raster"
     },
+    "embeddings_tiny": {
+      "band_sets": [
+        {
+          "dtype": "float32",
+          "num_bands": 192
+        }
+      ],
+      "type": "raster"
+    },
     "sentinel2": {
       "band_sets": [
         {

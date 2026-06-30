@@ -246,8 +246,9 @@ The `embeddings/` subpackage evaluates pretrained embeddings as change detectors
 Neither source classifies land cover, so change is scored from the per-point embedding at
 `src_year` vs `dst_year`, in two modes:
 - `cosine` (unsupervised): `change_score = 1 - cosine_similarity(e_src, e_dst)`.
-- `linear_probe` (supervised): a logistic-regression probe fit on labeled training points
-  (feature = `|e_src - e_dst|`), `change_score = predicted P(change)`.
+- `linear_probe` (supervised): a logistic-regression probe fit on labeled training points,
+  `change_score = predicted P(change)`. The feature is selectable via `--feature-mode`:
+  `absdiff` (default, `|e_src - e_dst|`) or `concat` (`[e_src, e_dst]`).
 
 Both write the shared standardized CSV (the `src_category`/`dst_category`/`predicted_changed`
 columns stay blank for cosine, since embeddings give no class).
@@ -285,8 +286,7 @@ OlmoEarth (materialize Sentinel-2, then run the embedding model over both groups
 ```bash
 rslearn dataset prepare     --root "$EMBED_DS" --workers 32
 rslearn dataset materialize --root "$EMBED_DS" --workers 128
-EMBED_DS="$EMBED_DS" rslearn model predict \
-    --config data/change_finder_v2/evaluation/embeddings/olmoearth_model.yaml
+EMBED_DS="$EMBED_DS" rslearn model predict --config data/change_finder_v2/evaluation/embeddings/olmoearth_model.yaml
 ```
 
 The model config's `predict_config.groups` is `["predict", "train"]`, so a single predict
@@ -306,11 +306,59 @@ Linear probe (supervised; fits on `train`, scores `predict`):
 ```bash
 python -m rslp.change_finder_v2.evaluation.embeddings.linear_probe \
     --csv eval.csv --train-csv train.csv --ds-path "$EMBED_DS" \
-    --output eval_alphaearth_probe.csv
+    --feature-mode absdiff --output eval_alphaearth_probe.csv
 ```
+
+`--feature-mode` is `absdiff` (default, `|e_src - e_dst|`) or `concat` (`[e_src, e_dst]`).
 
 Both write the shared standardized change CSV, which the metric script
 (`rslp.change_finder_v2.evaluation.metrics`) consumes directly. Points whose `src_year` or
 `dst_year` lack an embedding (e.g. AlphaEarth outside 2018-2024, or missing imagery) are
 reported and have `has_prediction=False`; for the linear probe such points are also
 dropped from the training fit.
+
+---
+
+## ESRI/IO baseline
+
+The `esri_io/` subpackage is a baseline that scores change directly from the **ESRI 10 m
+Annual Land Cover** map (by Impact Observatory) — it does **not** run a model and does not
+build an rslearn dataset. The maps are pre-downloaded as one GeoTIFF per MGRS grid zone
+(e.g. `01C_lc_stack.tif`) under
+`/weka/dfive-default/rslearn-eai/datasets/esri_lc_stacks/`, each in its own UTM CRS with
+one `uint8` band per year (2017-2024). Because that path is on WEKA, run this on the
+cluster / a Beaker session.
+
+```mermaid
+flowchart LR
+  gt["eval CSV (ground truth)"] -->|esri_io.predict_change| csv["standardized change CSV"]
+  csv -->|metrics| out["AUROC + accuracy + PR-curve CSV"]
+```
+
+`predict_change.py` builds a spatial index over the tiles (each tile's WGS84 bounding box,
+cached to `--index-path`), then for each eval point considers every tile whose bbox contains
+it (grid zones overlap) and uses the first where both the `src_year` and `dst_year` classes
+are valid (not nodata / clouds). Per point:
+
+- `pred_src_category` / `pred_dst_category`: the ESRI class for src / dst year, mapped to the
+  annotation category vocabulary (`1→water, 2→tree, 4→wetland (herbaceous), 5→crops,
+  7→urban/built-up, 8→bare, 9→snow and ice, 11→grassland`). ESRI has no burnt / fallow /
+  Lichen and moss / shrub classes, so those category comparisons won't match.
+- `predicted_changed`: `class_src != class_dst`.
+- `change_score` (binary, in {0.0, 1.0}): `1.0` if the class changed else `0.0`. ESRI gives a
+  hard class label (no probability), so this is a hard-decision baseline and the PR curve is
+  effectively a single operating point.
+
+```bash
+python -m rslp.change_finder_v2.evaluation.esri_io.predict_change \
+    --csv eval.csv \
+    --data-dir /weka/dfive-default/rslearn-eai/datasets/esri_lc_stacks \
+    --index-path esri_tile_index.json \
+    --output eval_esri_io.csv
+
+python -m rslp.change_finder_v2.evaluation.metrics \
+    --csv eval_esri_io.csv --output eval_esri_io_pr_curve.csv
+```
+
+Points with no covering tile, an out-of-range year, or nodata/clouds at the point are
+reported and have `has_prediction=False`.

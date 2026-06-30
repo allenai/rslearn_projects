@@ -15,15 +15,21 @@ alongside the WorldCover and linear-probe outputs.
 from __future__ import annotations
 
 import argparse
+import multiprocessing
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import tqdm
 from upath import UPath
 
 from rslp.change_finder_v2.evaluation.embeddings.common import (
+    EMBEDDINGS_LAYER,
     PREDICTION_GROUP,
+    TRAIN_GROUP,
+    PointRow,
     base_row,
     load_points,
     read_embedding_at_point,
@@ -45,38 +51,98 @@ METHODS: dict[str, Callable[[np.ndarray, np.ndarray], float]] = {
 }
 DEFAULT_METHOD = "cosine"
 
+# Map each prediction group to the window-name prefix used when the dataset was created
+# (see create_prediction_dataset_from_csv.py).
+GROUP_NAME_PREFIXES: dict[str, str] = {
+    PREDICTION_GROUP: "eval_",
+    TRAIN_GROUP: "train_",
+}
+
+DEFAULT_WORKERS = 64
+
+
+def _score_point(
+    point: PointRow,
+    ds_path: str,
+    group: str,
+    name_prefix: str,
+    method: str,
+    pre_layer: str,
+    post_layer: str,
+) -> dict[str, Any]:
+    """Read src/dst embeddings for one point and build its merged-CSV row.
+
+    Runs in a worker process, so it takes plain picklable args and reconstructs the
+    UPath and score function locally.
+    """
+    score_fn = METHODS[method]
+    ds_upath = UPath(ds_path)
+    out = base_row(point)
+    e_src = read_embedding_at_point(
+        ds_upath,
+        group,
+        f"{name_prefix}{point.row_index:06d}_src",
+        point.lon,
+        point.lat,
+        pre_layer,
+    )
+    e_dst = read_embedding_at_point(
+        ds_upath,
+        group,
+        f"{name_prefix}{point.row_index:06d}_dst",
+        point.lon,
+        point.lat,
+        post_layer,
+    )
+    if e_src is not None and e_dst is not None:
+        out["change_score"] = round(score_fn(e_src, e_dst), 6)
+        out["has_prediction"] = True
+    return out
+
 
 def predict_change(
-    csv_path: Path, ds_path: str, output: Path, method: str
+    csv_path: Path,
+    ds_path: str,
+    output: Path,
+    method: str,
+    group: str = PREDICTION_GROUP,
+    pre_layer: str = EMBEDDINGS_LAYER,
+    post_layer: str = EMBEDDINGS_LAYER,
+    workers: int = DEFAULT_WORKERS,
 ) -> list[dict[str, Any]]:
     """Score each eval point by embedding distance and write the merged CSV."""
     if method not in METHODS:
         raise ValueError(f"unknown method {method!r}; choices: {sorted(METHODS)}")
-    score_fn = METHODS[method]
-    ds_upath = UPath(ds_path)
+    if group not in GROUP_NAME_PREFIXES:
+        raise ValueError(
+            f"unknown group {group!r}; choices: {sorted(GROUP_NAME_PREFIXES)}"
+        )
+    name_prefix = GROUP_NAME_PREFIXES[group]
 
     points = load_points(csv_path)
-    merged: list[dict[str, Any]] = []
-    for point in points:
-        out = base_row(point)
-        e_src = read_embedding_at_point(
-            ds_upath,
-            PREDICTION_GROUP,
-            f"eval_{point.row_index:06d}_src",
-            point.lon,
-            point.lat,
-        )
-        e_dst = read_embedding_at_point(
-            ds_upath,
-            PREDICTION_GROUP,
-            f"eval_{point.row_index:06d}_dst",
-            point.lon,
-            point.lat,
-        )
-        if e_src is not None and e_dst is not None:
-            out["change_score"] = round(score_fn(e_src, e_dst), 6)
-            out["has_prediction"] = True
-        merged.append(out)
+    worker = partial(
+        _score_point,
+        ds_path=ds_path,
+        group=group,
+        name_prefix=name_prefix,
+        method=method,
+        pre_layer=pre_layer,
+        post_layer=post_layer,
+    )
+    if workers > 1:
+        with multiprocessing.Pool(workers) as pool:
+            merged = list(
+                tqdm.tqdm(
+                    pool.imap(worker, points),
+                    total=len(points),
+                    desc="Scoring points",
+                )
+            )
+    else:
+        merged = [
+            worker(point)
+            for point in tqdm.tqdm(points, desc="Scoring points")
+        ]
 
     write_merged_csv(merged, output)
 
@@ -117,6 +183,32 @@ def main() -> None:
         choices=sorted(METHODS),
         help=f"Distance method. Default: {DEFAULT_METHOD}.",
     )
+    parser.add_argument(
+        "--group",
+        default=PREDICTION_GROUP,
+        choices=sorted(GROUP_NAME_PREFIXES),
+        help=(
+            "Prediction dataset group to score. Use "
+            f"{TRAIN_GROUP!r} to evaluate on the training points. "
+            f"Default: {PREDICTION_GROUP}."
+        ),
+    )
+    parser.add_argument(
+        "--pre_layer",
+        default=EMBEDDINGS_LAYER,
+        help=f"Embeddings raster layer name for the pre (src) window. Default: {EMBEDDINGS_LAYER}.",
+    )
+    parser.add_argument(
+        "--post_layer",
+        default=EMBEDDINGS_LAYER,
+        help=f"Embeddings raster layer name for the post (dst) window. Default: {EMBEDDINGS_LAYER}.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_WORKERS,
+        help=f"Number of worker processes for reading embeddings. Default: {DEFAULT_WORKERS}.",
+    )
     args = parser.parse_args()
 
     predict_change(
@@ -124,6 +216,10 @@ def main() -> None:
         ds_path=args.ds_path,
         output=args.output,
         method=args.method,
+        group=args.group,
+        pre_layer=args.pre_layer,
+        post_layer=args.post_layer,
+        workers=args.workers,
     )
 
 

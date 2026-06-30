@@ -28,6 +28,7 @@ from rslearn.models.olmoearth_pretrain.model import OlmoEarth
 from rslearn.train.model_context import ModelContext, ModelOutput
 
 from .model import StageSpec, _make_decoder
+from .sliding_window import SlidingWindowEvalMixin
 
 
 def _make_simple_decoder(
@@ -43,7 +44,7 @@ def _make_simple_decoder(
     )
 
 
-class TemporalChangeModel(nn.Module):
+class TemporalChangeModel(SlidingWindowEvalMixin, nn.Module):
     """Single-pass temporal change model with start/end timestamp prediction."""
 
     def __init__(
@@ -61,6 +62,8 @@ class TemporalChangeModel(nn.Module):
         temporal_heads: int = 8,
         dim_feedforward: int = 2048,
         binary_loss_weight: float = 2.0,
+        eval_crop_size: int | None = None,
+        eval_overlap: int = 0,
     ):
         """Initialize the temporal LCC model.
 
@@ -86,8 +89,16 @@ class TemporalChangeModel(nn.Module):
             dim_feedforward: hidden size of the temporal transformer FFN (PyTorch
                 default is 2048, independent of ``temporal_dim``).
             binary_loss_weight: multiplier applied to the binary change loss.
+            eval_crop_size: if set, in eval mode the model tiles inputs larger
+                than this size into overlapping ``eval_crop_size`` crops, runs
+                each through the normal forward, and stitches the predictions
+                back together (see ``SlidingWindowEvalMixin``). Used to evaluate
+                every config over an identical window for comparable metrics.
+            eval_overlap: pixels shared between adjacent sliding-window tiles.
         """
         super().__init__()
+        self.eval_crop_size = eval_crop_size
+        self.eval_overlap = eval_overlap
         self.encoder = encoder
         self.embedding_dim = embedding_dim
         self.temporal_dim = temporal_dim if temporal_dim is not None else embedding_dim
@@ -156,7 +167,24 @@ class TemporalChangeModel(nn.Module):
         feature = token_feature_maps.feature_maps[0]  # (B, C, H, W, T)
         return feature
 
-    def forward(
+    def _add_temporal_pos(self, x: torch.Tensor) -> torch.Tensor:
+        """Optionally add temporal positional encoding to the token sequence.
+
+        ``x`` is ``(b*h*w, T, temporal_dim)`` after the input projection. The
+        default is a no-op; subclasses may add a positional embedding over the T
+        chronological tokens.
+        """
+        return x
+
+    def _pool_time(self, x: torch.Tensor) -> torch.Tensor:
+        """Aggregate the per-timestep features over time for the seg heads.
+
+        ``x`` is ``(B, C, H, W, T)``. The default is a mean over time; subclasses
+        may use a learned pooling instead.
+        """
+        return x.mean(dim=-1)
+
+    def _forward_core(
         self,
         context: ModelContext,
         targets: list[dict[str, Any]] | None = None,
@@ -176,11 +204,12 @@ class TemporalChangeModel(nn.Module):
         # Temporal transformer over the T tokens at each spatial location.
         x = feature.permute(0, 2, 3, 4, 1).reshape(b * h * w, t, c)
         x = self.input_proj(x)  # (b*h*w, T, temporal_dim)
+        x = self._add_temporal_pos(x)
         x = self.temporal_encoder(x)
         x = x.reshape(b, h, w, t, self.temporal_dim).permute(0, 4, 1, 2, 3)
 
-        # Segmentation aggregation: mean over time.
-        seg_feat = x.mean(dim=-1)  # (B, C, H, W)
+        # Segmentation aggregation over time (mean by default).
+        seg_feat = self._pool_time(x)  # (B, C, H, W)
 
         logits_binary = self.decoder_binary(seg_feat)
         logits_src = self.decoder_src(seg_feat)
