@@ -1,0 +1,193 @@
+# LEAVE-ONE-ISLAND-OUT (held out: mallorca) LINEAR PROBE on Baleares points.
+# Frozen OlmoEarth backbone (FreezeUnfreeze, never unfreezes) + 1x1-conv head
+# (768->2) + 4x bilinear upsample. Matches the collaborators' frozen-embedding
+# protocol far more closely than full finetune. Dice loss + neutral CE weights
+# [1.0, 1.0] on the head.
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+        - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          init_args:
+            model_id: OLMOEARTH_V1_BASE
+            patch_size: 4
+        decoder:
+        - class_path: rslearn.models.conv.Conv
+          init_args:
+            in_channels: 768
+            out_channels: 2
+            kernel_size: 1
+            activation:
+              class_path: torch.nn.Identity
+        - class_path: rslearn.models.upsample.Upsample
+          init_args:
+            scale_factor: 4
+            mode: bilinear
+        - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          init_args:
+            dice_loss: true
+            weights:
+            - 1.0
+            - 1.0
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.0001
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/piperw/rslearn_projects/data/seagrass
+    inputs:
+      sentinel2_l2a:
+        data_type: raster
+        layers:
+        - sentinel2
+        bands:
+        - B02
+        - B03
+        - B04
+        - B08
+        - B05
+        - B06
+        - B07
+        - B8A
+        - B11
+        - B12
+        - B01
+        - B09
+        passthrough: true
+        dtype: FLOAT32
+      targets:
+        data_type: raster
+        layers:
+        - label_raster
+        bands:
+        - label
+        is_target: true
+        dtype: INT32
+    task:
+      class_path: rslearn.train.tasks.segmentation.SegmentationTask
+      init_args:
+        num_classes: 2
+        class_id_mapping:
+          0: 0
+          2: 1
+          255: 255
+        nodata_value: 255
+        metric_kwargs:
+          average: micro
+        enable_f1_metric: true
+        report_metric_per_class: true
+        class_names:
+        - background
+        - dense_seagrass
+    batch_size: 32
+    num_workers: 16
+    init_workers: 32
+    default_config:
+      crop_size: 64
+      groups:
+      - baleares_2025
+      transforms:
+      - class_path: rslearn.train.transforms.concatenate.Concatenate
+        init_args:
+          selections:
+            sentinel2_l2a: []
+          output_selector: image
+      - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+        init_args:
+          band_names:
+            sentinel2_l2a:
+            - B02
+            - B03
+            - B04
+            - B08
+            - B05
+            - B06
+            - B07
+            - B8A
+            - B11
+            - B12
+            - B01
+            - B09
+    train_config:
+      groups:
+      - baleares_2025
+      tags:
+        fold_mallorca: train
+      transforms:
+      - class_path: rslearn.train.transforms.flip.Flip
+        init_args:
+          image_selectors:
+          - sentinel2_l2a
+          - target/classes
+          - target/valid
+      - class_path: rslearn.train.transforms.concatenate.Concatenate
+        init_args:
+          selections:
+            sentinel2_l2a: []
+          output_selector: image
+      - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+        init_args:
+          band_names:
+            sentinel2_l2a:
+            - B02
+            - B03
+            - B04
+            - B08
+            - B05
+            - B06
+            - B07
+            - B8A
+            - B11
+            - B12
+            - B01
+            - B09
+    val_config:
+      groups:
+      - baleares_2025
+      tags:
+        fold_mallorca: val
+    test_config:
+      groups:
+      - baleares_2025
+      tags:
+        fold_mallorca: test
+    predict_config:
+      groups:
+      - baleares_2025
+      tags:
+        fold_mallorca: test
+trainer:
+  max_epochs: 50
+  accelerator: gpu
+  devices: 1
+  callbacks:
+  - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    init_args:
+      logging_interval: epoch
+  - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+    init_args:
+      monitor: val_accuracy
+      mode: max
+  - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+    init_args:
+      module_selector:
+      - model
+      - encoder
+      - 0
+      unfreeze_at_epoch: null
+project_name: seagrass
+run_name: olmoearth_base_baleares_fold_mallorca_linprobe_dice_binary
+management_dir: /weka/dfive-default/piperw/rslearn_projects/projects
+load_checkpoint_required: 'no'
