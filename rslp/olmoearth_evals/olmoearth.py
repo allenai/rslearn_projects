@@ -388,7 +388,7 @@ def get_model(
             decoders=dict(eval_task=decoder_modules),
         )
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f"unknown task_type {task_type}")
 
     return MultiTaskModel(
         encoder=[_make_encoder()],

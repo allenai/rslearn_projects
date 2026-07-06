@@ -5,12 +5,13 @@ Reads 512x512 (30m) burn scar masks from the HLS dataset, upsamples to
 tiles, and writes each tile as an rslearn window with a label_raster layer.
 
 Windows are discarded if the mask is entirely -1 (all nodata).
-Time range is set to a 72-hour window around the acquisition date from
+Time range is set to a 48-hour window around the acquisition date from
 the filename.
 """
 
 import multiprocessing as mp
 import re
+import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -124,7 +125,6 @@ def process_mask(args: tuple[Path, str, str]) -> None:
 def main() -> None:
     DST.mkdir(parents=True, exist_ok=True)
 
-    import shutil
     config_src = Path(__file__).parent / "hls_burn_scars_config.json"
     shutil.copyfile(config_src, DST / "config.json")
 

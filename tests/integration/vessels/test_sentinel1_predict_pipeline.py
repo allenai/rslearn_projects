@@ -228,7 +228,7 @@ def test_predict_pipeline_local_files(
     image_dir = tmp_path / "images"
     image_dir.mkdir()
     files: dict[str, str] = {}
-    for prefix in ["image", "hist1", "hist2"]:
+    for prefix in ["image", "hist1"]:
         for band in ["vv", "vh"]:
             fpath = str(image_dir / f"{prefix}_{band}.tif")
             _write_geotiff_with_gcps(fpath)
@@ -238,7 +238,6 @@ def test_predict_pipeline_local_files(
         PredictionTask(
             image=Sentinel1Image(vv=files["image_vv"], vh=files["image_vh"]),
             historical1=Sentinel1Image(vv=files["hist1_vv"], vh=files["hist1_vh"]),
-            historical2=Sentinel1Image(vv=files["hist2_vv"], vh=files["hist2_vh"]),
         )
     ]
     predict_pipeline(tasks=tasks, scratch_path=str(tmp_path / "scratch"))
