@@ -21,17 +21,24 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "3650d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 200,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
-        },
-        "sort_by": "eo:cloud_cover"
+        }
       },
       "type": "raster"
     }

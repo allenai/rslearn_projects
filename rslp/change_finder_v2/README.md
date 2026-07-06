@@ -147,7 +147,7 @@ cp data/change_finder_v2/lcc_model/config.json "$OUT/config.json"
 python -m rslp.change_finder_v2.lcc_model.prepare \
     --v2-json-paths annotations_a.json annotations_b.json \
     --ds-path "$OUT"
-rslearn dataset materialize --root "$OUT" --workers 128
+rslearn dataset materialize --root "$OUT" --workers 128 --retry-backoff-seconds 5 --retry-max-attempts 5 --no-use-initial-job
 ```
 
 The prepare script is **idempotent**: windows that already exist are skipped, so

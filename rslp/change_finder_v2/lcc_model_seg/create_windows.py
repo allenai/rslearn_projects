@@ -88,6 +88,7 @@ TRANSITION_MAP: dict[tuple[str, str], int] = {
     # construction/mining
     ("crops", "bare"): 4,
     ("grassland", "bare"): 4,
+    ("shrub", "bare"): 4,
     # from water
     ("water", "bare"): 5,
     ("water", "grassland"): 5,
@@ -100,6 +101,7 @@ TRANSITION_MAP: dict[tuple[str, str], int] = {
     ("urban/built-up", "crops"): 7,
     ("urban/built-up", "bare"): 7,
     ("urban/built-up", "grassland"): 7,
+    ("urban/built-up", "tree"): 7,
     # new crop field
     ("bare", "crops"): 8,
     ("grassland", "crops"): 8,

@@ -44,7 +44,7 @@ from rslearn.train.tasks.multi_task import MetricWrapper, MultiTask
 from rslearn.train.tasks.task import Task
 from rslearn.train.transforms.transform import Transform
 from rslearn.utils import Feature
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import average_precision_score, roc_auc_score
 from torchmetrics import Metric, MetricCollection
 from torchmetrics.utilities import dim_zero_cat
 from typing_extensions import override
@@ -330,7 +330,7 @@ class SinglePassPredictBuilder(Transform):
 
 
 class BalancedBinaryMetric(Metric):
-    """Sample-wise balanced accuracy or AUROC for the binary change task.
+    """Sample-wise balanced accuracy, AUROC, or PRAUC for the binary change task.
 
     Each valid point is weighted by ``1 / (count of points of its own class
     within that sample)``, so that every sample contributes equally regardless
@@ -340,18 +340,20 @@ class BalancedBinaryMetric(Metric):
 
     Binary labels follow the segmentation convention: class 1 = no_change
     (negative), class 2 = change (positive); class 0 / invalid points are
-    ignored. The AUROC score is the softmax probability of the change class.
+    ignored. The AUROC/PRAUC score is the softmax probability of the change class.
     """
 
     def __init__(self, metric: str = "auroc") -> None:
         """Initialize accumulators for the requested balanced metric.
 
         Args:
-            metric: which metric to compute, "accuracy" or "auroc".
+            metric: which metric to compute, "accuracy", "auroc", or "prauc".
         """
         super().__init__()
-        if metric not in ("accuracy", "auroc"):
-            raise ValueError(f"metric must be 'accuracy' or 'auroc', got {metric!r}")
+        if metric not in ("accuracy", "auroc", "prauc"):
+            raise ValueError(
+                f"metric must be 'accuracy', 'auroc', or 'prauc', got {metric!r}"
+            )
         self.metric_name = metric
         if metric == "accuracy":
             self.add_state(
@@ -426,9 +428,13 @@ class BalancedBinaryMetric(Metric):
         scores = dim_zero_cat(self.scores).cpu().numpy()
         labels = dim_zero_cat(self.bin_labels).cpu().numpy()
         weights = dim_zero_cat(self.weights).cpu().numpy()
-        # roc_auc_score requires both classes to be present.
+        # roc_auc_score/average_precision_score require both classes to be present.
         if labels.min() == labels.max():
             return torch.tensor(float("nan"))
+        if self.metric_name == "prauc":
+            return torch.tensor(
+                float(average_precision_score(labels, scores, sample_weight=weights))
+            )
         return torch.tensor(float(roc_auc_score(labels, scores, sample_weight=weights)))
 
 

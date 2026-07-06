@@ -240,6 +240,8 @@ def create_annotations(
             if entry is not None:
                 entries.append(entry)
 
+    random.shuffle(entries)
+
     out_path = UPath(output)
     with out_path.open("w") as f:
         json.dump(entries, f, indent=2)

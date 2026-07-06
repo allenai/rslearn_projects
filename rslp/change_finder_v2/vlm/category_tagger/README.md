@@ -90,6 +90,16 @@ v2 annotation JSON
        --output categories.json
    ```
 
+   Alternatively, run Claude via the Anthropic API instead of Gemini. This reuses the
+   same imagery sampling and prompt; set `ANTHROPIC_API_KEY` (or pass `--api-key`) and
+   keep `--workers` low to respect per-key rate limits (defaults to 8):
+
+   ```bash
+   ANTHROPIC_API_KEY=... python -m rslp.change_finder_v2.vlm.category_tagger.run_anthropic \
+       --points points.json \
+       --output categories.json
+   ```
+
 4. (Evaluation only) Score the predictions against the ground truth:
 
    ```bash
@@ -122,12 +132,17 @@ v2 annotation JSON
   your `config.json` uses different names.
 - The Gemini client uses Vertex AI (`--project`, `--location`, `--model`), defaulting
   to `earthsystem-dev-c3po` / `global` / `gemini-2.5-pro`.
+- The Anthropic client (`run_anthropic.py`) reads the API key from `ANTHROPIC_API_KEY`
+  (or `--api-key`) and defaults to `--model claude-opus-4-8`. Structured output is
+  forced via a single tool, so it produces the same `CategorySet` JSON as Gemini.
 
 ## Files
 
 - `add_points.py` — read a v2 annotation file, create image-database windows, write a `PointSet` (`all` or `evaluation` mode).
 - `run_gemini.py` — gather imagery per point, prompt Gemini, write a `CategorySet`.
+- `run_anthropic.py` — same as `run_gemini.py` but uses the Anthropic API (Claude).
 - `compute_accuracy.py` — score a `CategorySet` against ground truth (exact + mostly-right accuracy).
 - `schema.py` — `PointRecord`, `PointSet`, `CategoryPrediction`, `CategorySet`.
 - `prompt.py` — category definitions, image captioning (`label_image`), and prompt text (`build_category_prompt`).
 - `gemini.py` — `GeminiCategorizer`, the Vertex AI structured-output client.
+- `anthropic.py` — `AnthropicCategorizer`, the Anthropic structured-output client (tool-use).

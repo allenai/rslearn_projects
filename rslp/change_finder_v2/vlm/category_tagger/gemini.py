@@ -46,6 +46,7 @@ class GeminiCategorizer:
         project: str = "earthsystem-dev-c3po",
         location: str = "global",
         model: str = "gemini-2.5-pro",
+        thinking_level: str | None = None,
     ) -> None:
         """Create the categorizer.
 
@@ -53,6 +54,10 @@ class GeminiCategorizer:
             project: the Google Cloud project for Vertex AI.
             location: the Vertex AI location (e.g. "global").
             model: the Gemini model name.
+            thinking_level: thinking level for Gemini 3.x models ("high" or "low").
+                When None, the model default is used. This maps to the 3.x
+                ``thinking_level`` field (the 2.5 ``thinking_budget`` token-count
+                control has a different structure), so leave it unset for 2.5 models.
         """
         import os
 
@@ -60,6 +65,11 @@ class GeminiCategorizer:
         # which may not have the API enabled.
         os.environ.setdefault("GOOGLE_CLOUD_QUOTA_PROJECT", project)
         self.model = model
+        self._thinking_config = (
+            types.ThinkingConfig(thinking_level=thinking_level)
+            if thinking_level is not None
+            else None
+        )
         self._client = genai.Client(vertexai=True, project=project, location=location)
         self._schema = types.Schema(
             type=types.Type.OBJECT,
@@ -128,6 +138,7 @@ class GeminiCategorizer:
                 temperature=0.0,
                 response_mime_type="application/json",
                 response_schema=self._schema,
+                thinking_config=self._thinking_config,
             ),
         )
 

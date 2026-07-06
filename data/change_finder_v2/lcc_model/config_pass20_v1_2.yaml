@@ -38,7 +38,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260629/
+    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260701/
     inputs:
       sentinel2_quarterly:
         data_type: "raster"
@@ -140,7 +140,7 @@ data:
     task:
       class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassMultiTask
       init_args:
-        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260629/lcc_annotations.json
+        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260701/lcc_annotations.json
         input_mapping:
           binary:
             label_binary: targets
@@ -171,6 +171,10 @@ data:
                   class_path: rslp.change_finder_v2.lcc_model.model_singlepass.BalancedBinaryMetric
                   init_args:
                     metric: auroc
+                prauc:
+                  class_path: rslp.change_finder_v2.lcc_model.model_singlepass.BalancedBinaryMetric
+                  init_args:
+                    metric: prauc
           src:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
@@ -242,6 +246,6 @@ trainer:
       init_args:
         monitor: val_binary/auroc
         mode: max
-project_name: 2026_06_29_lcc
+project_name: 2026_07_01_lcc
 run_name: pass20_v1_2_00
 management_dir: ${RSLP_PREFIX}/projects

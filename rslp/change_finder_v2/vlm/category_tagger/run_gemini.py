@@ -38,6 +38,13 @@ _N_PERIODS = 4
 # Max aerial (Esri) images kept per segment.
 _MAX_ESRI_PER_SEGMENT = 4
 
+# Center crop (native pixels) shown zoomed in the right panel, and center-point circle
+# radius, per layer. Sentinel-2 chips are 64x64; high-res Esri rasters are 512x512.
+_S2_CROP_SIZE = 16
+_S2_CIRCLE_RADIUS = 4
+_HIGHRES_CROP_SIZE = 32
+_HIGHRES_CIRCLE_RADIUS = 16
+
 
 def _center_clarity(chw_array: npt.NDArray) -> float:
     """Heuristic clarity of the image CENTER in [0, 1] (higher = clearer ground view).
@@ -64,9 +71,7 @@ def _layer_images(
 ) -> list[AvailableImage]:
     """Images for one layer that have a time range."""
     return [
-        im
-        for im in images
-        if im.layer_name == layer_name and im.time_range is not None
+        im for im in images if im.layer_name == layer_name and im.time_range is not None
     ]
 
 
@@ -97,9 +102,7 @@ def _least_cloudy_in_period(
     )
 
 
-def _spread_sample(
-    images_sorted: list[AvailableImage], k: int
-) -> list[AvailableImage]:
+def _spread_sample(images_sorted: list[AvailableImage], k: int) -> list[AvailableImage]:
     """Keep up to ``k`` images, maximally spread in time (farthest-point sampling).
 
     Seeds with the earliest and latest, then greedily adds the image with the largest
@@ -178,18 +181,28 @@ def _build_image_refs(
 
     Samples imagery relative to the change dates (before / between / after).
     """
-    selected = _select_s2(
-        images, s2_layer, pre_change, post_change
-    ) + _select_esri(images, highres_layer, pre_change, post_change)
+    selected = _select_s2(images, s2_layer, pre_change, post_change) + _select_esri(
+        images, highres_layer, pre_change, post_change
+    )
     selected.sort(key=lambda im: im.time_range[0])
 
     refs: list[ImageRef] = []
     dates: list[str] = []
     for image in selected:
         capture = image.time_range[0].date().isoformat()
-        kind = "Sentinel-2" if image.layer_name == s2_layer else "Aerial (high-res)"
+        if image.layer_name == s2_layer:
+            kind = "Sentinel-2"
+            crop_size, circle_radius = _S2_CROP_SIZE, _S2_CIRCLE_RADIUS
+        else:
+            kind = "Aerial (high-res)"
+            crop_size, circle_radius = _HIGHRES_CROP_SIZE, _HIGHRES_CIRCLE_RADIUS
         caption = f"{kind} {capture}"
-        refs.append(ImageRef(label=caption, png_bytes=label_image(image.array, caption)))
+        refs.append(
+            ImageRef(
+                label=caption,
+                png_bytes=label_image(image.array, caption, crop_size, circle_radius),
+            )
+        )
         dates.append(caption)
     return refs, dates
 
@@ -221,9 +234,7 @@ def _categorize_point(
         images, s2_layer, highres_layer, pre_change, post_change
     )
     if not refs:
-        logger.warning(
-            "no materialized images for %s; skipping", record.window_name
-        )
+        logger.warning("no materialized images for %s; skipping", record.window_name)
         return CategoryPrediction(
             record=record,
             pre_change_category=None,
@@ -271,13 +282,25 @@ def main(args: list[str] | None = None) -> None:
         default=None,
         help="Override the image database path stored in the point set.",
     )
-    parser.add_argument("--s2-layer", default="sentinel2", help="Sentinel-2 layer name.")
+    parser.add_argument(
+        "--s2-layer", default="sentinel2", help="Sentinel-2 layer name."
+    )
     parser.add_argument(
         "--highres-layer", default="esri", help="High-resolution layer name."
     )
     parser.add_argument("--project", default="earthsystem-dev-c3po")
     parser.add_argument("--location", default="global")
     parser.add_argument("--model", default="gemini-2.5-pro")
+    parser.add_argument(
+        "--thinking-level",
+        default=None,
+        choices=["low", "high"],
+        help=(
+            "Thinking level for Gemini 3.x models (e.g. 'high' or 'low'). "
+            "Leave unset to use the model default. Only set this for 3.x models; "
+            "the 2.5 thinking control has a different structure."
+        ),
+    )
     parser.add_argument(
         "--limit", type=int, default=None, help="Only process the first N points."
     )
@@ -298,7 +321,10 @@ def main(args: list[str] | None = None) -> None:
         records = records[: parsed.limit]
 
     categorizer = GeminiCategorizer(
-        project=parsed.project, location=parsed.location, model=parsed.model
+        project=parsed.project,
+        location=parsed.location,
+        model=parsed.model,
+        thinking_level=parsed.thinking_level,
     )
 
     def categorize_one(record: PointRecord) -> CategoryPrediction:

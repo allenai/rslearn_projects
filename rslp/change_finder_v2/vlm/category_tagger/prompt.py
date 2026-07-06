@@ -74,15 +74,19 @@ POST_CATEGORIES: dict[str, str] = {
         "coastal area becoming fish or shrimp ponds. A new lake or reservoir is "
         "new_infrastructure, not this."
     ),
-    "site_clearing": (
-        "A site that has been cleared (e.g. gravel or dirt surfacing) but where "
-        "nothing has been constructed, even by the post-change date."
-    ),
     "water_expand": (
         "A body of water growing or appearing, e.g. a newly flooded area, a "
         "shifted/newly formed river path, or rising lake/reservoir levels."
     ),
     "mining": "A new or expanding mine, quarry, or other extraction site.",
+    "site_clearing": (
+        "A LAST-RESORT category for an area that has been cleared (e.g. gravel or "
+        "dirt surfacing) but where nothing has been constructed by the post-change "
+        "date. Only use this if the change does not fit mining, new_road, "
+        "new_building, or any other category above. If the cleared/bare area is an "
+        "extraction site, a road, the footprint of a building, or any other "
+        "identifiable development, use that category instead."
+    ),
 }
 
 # Same-class changes: the land cover class stays the same with some variation.
@@ -125,8 +129,8 @@ POST_BY_DEST: dict[str, list[str]] = {
     "water": ["mining", "new_infrastructure", "water_expand", "new_aquafarm"],
     "tree": ["vegetation_growth"],
     "wetland (herbaceous)": ["vegetation_growth"],
-    "bare": ["site_clearing", "new_infrastructure", "water_expand", "mining"],
-    "grassland": ["site_clearing", "new_infrastructure"],
+    "bare": ["mining", "new_infrastructure", "water_expand", "site_clearing"],
+    "grassland": ["new_infrastructure", "site_clearing"],
     "crops": ["new_crop_field"],
 }
 
@@ -157,14 +161,15 @@ def _suggested_categories(
 
     return pre, post, same
 
+
 _LABEL_STRIP_HEIGHT = 22
 _MIN_DISPLAY_WIDTH = 256
+# Black divider between the context and zoom panels.
+_PANEL_GAP = 4
 
-# Hollow box drawn around the center of each image so the model knows which location to
-# judge. The base window is ~640 m across, so 0.34 -> a ~215 m box on the point of
-# interest.
-_BOX_FRAC = 0.34
-_BOX_COLOR = (255, 0, 255)  # magenta, rare in natural imagery
+# Magenta (rare in natural imagery) marks where the model should look: a hollow box
+# around the center crop region and a circle on the exact point of interest.
+_BOX_COLOR = (255, 0, 255)
 _BOX_WIDTH = 2
 
 
@@ -179,48 +184,88 @@ class ImageRef:
 def _get_font() -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     """Return a legible font, falling back to PIL's default if needed."""
     try:
-        return ImageFont.truetype(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14
-        )
+        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
     except OSError:
         return ImageFont.load_default()
 
 
-def label_image(chw_array: npt.NDArray, caption: str) -> bytes:
-    """Render a CHW uint8 RGB array to PNG with a caption strip beneath it.
+def label_image(
+    chw_array: npt.NDArray,
+    caption: str,
+    crop_size: int,
+    circle_radius: int,
+) -> bytes:
+    """Render a CHW uint8 RGB array to a captioned two-panel PNG.
 
-    A hollow magenta box is drawn around the center of the frame to mark the point of
-    interest. Small images (e.g. 64x64 Sentinel-2 chips) are upscaled with
-    nearest-neighbor so the caption text stays readable relative to the image.
+    The LEFT panel shows the full frame for context, with a hollow magenta box around
+    the center crop region and a magenta circle on the exact point of interest. The
+    RIGHT panel is just that center crop region, upscaled with nearest-neighbor so the
+    point of interest fills the panel (no annotations). A caption strip is drawn beneath
+    both panels.
+
+    The box, circle, and crop are sized in NATIVE image pixels, so their on-screen size
+    depends on how much each panel is upscaled.
 
     Args:
         chw_array: the image as a (C, H, W) array; the first three bands are used.
         caption: text drawn under the image (e.g. the image type and capture date).
+        crop_size: side length (native pixels) of the center crop shown in the right
+            panel, and of the box drawn on the left panel.
+        circle_radius: radius (native pixels) of the center circle on the left panel.
 
     Returns:
-        PNG-encoded bytes of the captioned image.
+        PNG-encoded bytes of the captioned two-panel image.
     """
     hwc = np.transpose(np.asarray(chw_array), (1, 2, 0))
     hwc = np.clip(hwc[:, :, :3], 0, 255).astype(np.uint8)
-    image = Image.fromarray(hwc, "RGB")
+    base = Image.fromarray(hwc, "RGB")
+    cx, cy = base.width / 2.0, base.height / 2.0
+    half = crop_size / 2.0
 
-    if image.width < _MIN_DISPLAY_WIDTH:
-        scale = max(1, _MIN_DISPLAY_WIDTH // image.width)
-        image = image.resize(
-            (image.width * scale, image.height * scale), Image.NEAREST
+    # Right panel: the center crop, taken before any annotations are drawn.
+    left, top = int(round(cx - half)), int(round(cy - half))
+    zoom = base.crop((left, top, left + crop_size, top + crop_size))
+
+    # Upscale the context panel to a legible size first, then draw the box and circle on
+    # it so the line width stays thin (in display pixels) regardless of the upscale.
+    context = base.copy()
+    scale = 1
+    if context.width < _MIN_DISPLAY_WIDTH:
+        scale = max(1, _MIN_DISPLAY_WIDTH // context.width)
+        context = context.resize(
+            (context.width * scale, context.height * scale), Image.NEAREST
         )
+    draw = ImageDraw.Draw(context)
+    draw.rectangle(
+        [
+            (cx - half) * scale,
+            (cy - half) * scale,
+            (cx + half) * scale,
+            (cy + half) * scale,
+        ],
+        outline=_BOX_COLOR,
+        width=_BOX_WIDTH,
+    )
+    draw.ellipse(
+        [
+            (cx - circle_radius) * scale,
+            (cy - circle_radius) * scale,
+            (cx + circle_radius) * scale,
+            (cy + circle_radius) * scale,
+        ],
+        outline=_BOX_COLOR,
+        width=_BOX_WIDTH,
+    )
 
-    draw = ImageDraw.Draw(image)
-    w, hgt = image.width, image.height
-    bw, bh = w * _BOX_FRAC, hgt * _BOX_FRAC
-    x0, y0 = (w - bw) / 2.0, (hgt - bh) / 2.0
-    x1, y1 = (w + bw) / 2.0, (hgt + bh) / 2.0
-    draw.rectangle([x0, y0, x1, y1], outline=_BOX_COLOR, width=_BOX_WIDTH)
+    panel_h = context.height
+    zoom = zoom.resize((panel_h, panel_h), Image.NEAREST)
 
-    out = Image.new("RGB", (image.width, image.height + _LABEL_STRIP_HEIGHT), (0, 0, 0))
-    out.paste(image, (0, 0))
+    combined_w = context.width + _PANEL_GAP + zoom.width
+    out = Image.new("RGB", (combined_w, panel_h + _LABEL_STRIP_HEIGHT), (0, 0, 0))
+    out.paste(context, (0, 0))
+    out.paste(zoom, (context.width + _PANEL_GAP, 0))
     od = ImageDraw.Draw(out)
-    od.text((4, image.height + 4), caption, fill=(255, 255, 255), font=_get_font())
+    od.text((4, panel_h + 4), caption, fill=(255, 255, 255), font=_get_font())
 
     buf = io.BytesIO()
     out.save(buf, format="PNG")
@@ -254,24 +299,33 @@ def build_category_prompt(
         "You are analyzing a short time series of satellite and aerial imagery to "
         "categorize a land-cover change that occurred at a single location.",
         "",
-        "You are given images of the SAME small area (about 640 m across), all centered "
-        "on the exact point of interest. Every image has a MAGENTA BOX drawn around its "
-        "center marking the location of interest; categorize the change inside or "
-        "immediately around that box, and ignore changes elsewhere in the frame. The "
-        "imagery spans roughly two years before the change through two years after it: "
-        "Sentinel-2 satellite images (10 m resolution, the least cloudy available) and, "
-        "when available, high-resolution aerial images. Each image is captioned beneath "
-        "it with its type and capture date. The images are provided in chronological "
-        "order.",
+        "You are given images of the SAME small area, all centered on the exact point of "
+        "interest, in chronological order. EACH image has two panels side by side: the "
+        "LEFT panel shows the wider context, with a MAGENTA BOX around the location of "
+        "interest and a MAGENTA CIRCLE marking its exact center; the RIGHT panel is that "
+        "same boxed region zoomed in. Judge the change at the marked point (inside the "
+        "box/circle), using the zoomed-in right panel for detail and the left panel for "
+        "context.",
+        "",
+        "IMPORTANT: The wider context (left panel) often contains large, eye-catching "
+        "features OUTSIDE the magenta box -- big buildings, building complexes, parking "
+        "lots, or other developments. These are DISTRACTORS, not the change you are "
+        "categorizing. The actual change at the marked point is frequently smaller or "
+        "subtler (e.g. a single road, a cleared strip, or one structure). Categorize "
+        "ONLY what changes inside/around the magenta box and circle, and ignore "
+        "everything outside it no matter how prominent it is.",
+        "",
+        "The imagery spans roughly two years before the change through two years after "
+        "it: Sentinel-2 satellite images (10 m resolution, the least cloudy available) "
+        "and, when available, high-resolution aerial images. Each image is captioned "
+        "beneath it with its type and capture date.",
         "",
         "A change-detection model flagged this point as having a long-term change.",
     ]
 
     details = []
     if pre_change:
-        details.append(
-            f"the area is still in its pre-change state as of {pre_change}"
-        )
+        details.append(f"the area is still in its pre-change state as of {pre_change}")
     if first_observable:
         details.append(f"the change first becomes visible around {first_observable}")
     if post_change:
@@ -341,9 +395,10 @@ def build_category_prompt(
         "- Leave a field null when no category in that group applies.",
         flag_rule,
         "",
-        "Focus on the CENTER of each image and compare across the years. The "
-        "high-resolution aerial images are sharper, but their capture dates may be far "
-        "from the change date; when that is the case, rely more on the Sentinel-2 "
+        "Focus on the marked point (the magenta box/circle, shown zoomed in the right "
+        "panel) and compare across the years; ignore prominent features outside the box. "
+        "The high-resolution aerial images are sharper, but their capture dates may be "
+        "far from the change date; when that is the case, rely more on the Sentinel-2 "
         "images, which are usually closer in time.",
         "",
         "Provide your answer as the following fields:",

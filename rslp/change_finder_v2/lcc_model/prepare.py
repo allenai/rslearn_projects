@@ -1,7 +1,8 @@
 """Prepare the LCC model dataset: windows, imagery layers, and labels.
 
 This script takes one or more v2 annotation JSONs and creates an rslearn dataset with:
-- sentinel2_quarterly: WindowLayerData with quarterly mosaics (90-day periods)
+- sentinel2_quarterly: WindowLayerData with quarterly mosaics (90-day periods);
+  the least-cloudy mosaic is selected within each period
 - sentinel2_frequent_0..7: WindowLayerData with four 15-day periods each; the
   least-cloudy mosaic is selected within each period
 - label_binary, label_src, label_dst: Pre-rasterized point labels
@@ -199,6 +200,8 @@ def _build_quarterly_layer_data(
     """Build quarterly mosaics using rslearn's match_candidate_items_to_window.
 
     Matches the MOSAIC + period_duration=90d behavior used in the prediction pipeline.
+    Items must be sorted by cloud cover ascending so the MOSAIC matcher sees the
+    clearest candidates first within each period.
     """
     rslearn_items = [
         Item(
@@ -454,11 +457,19 @@ def _get_window_wgs84_bounds(
 def _process_entry(
     entry: dict[str, Any],
     ds_path: str,
+    gap_days: int = 0,
 ) -> tuple[str, dict[str, Any]]:
     """Process one annotation entry: create window, query API, write labels.
 
     Each call is independent (creates its own Dataset/session) so it can run
     in a separate multiprocessing worker.
+
+    Args:
+        entry: the annotation entry to process.
+        ds_path: path to the output rslearn dataset.
+        gap_days: add this many days to first_noticeable and post_change, so the
+            frequent options start later and the model predicts change through
+            post_change + gap.
 
     Returns (sidecar_key, sidecar_value) for the annotations sidecar.
     """
@@ -471,6 +482,8 @@ def _process_entry(
     projection = Projection.deserialize(entry["projection"])
     window_name = entry["window_name"]
     window_group = entry["group"]
+
+    gap = timedelta(days=gap_days)
 
     ref_point = None
     for pt in entry.get("positive_points", []):
@@ -490,12 +503,12 @@ def _process_entry(
         t_start = _parse_date(tr[0])
         t_end = _parse_date(tr[1])
         midpoint = t_start + (t_end - t_start) / 2
-        post_change = midpoint
-        first_noticeable = midpoint
+        post_change = midpoint + gap
+        first_noticeable = midpoint + gap
     else:
         center_point = ref_point
-        post_change = _parse_date(ref_point["post_change"])
-        first_noticeable = _parse_date(ref_point["first_date_change_noticeable"])
+        post_change = _parse_date(ref_point["post_change"]) + gap
+        first_noticeable = _parse_date(ref_point["first_date_change_noticeable"]) + gap
 
     # Center 128x128 window on the reference point.
     st = STGeometry(
@@ -559,7 +572,7 @@ def _process_entry(
     least_cloudy_items = sorted(all_items, key=lambda x: x["cloud_cover"])
 
     quarterly_data = _build_quarterly_layer_data(
-        all_items, window_time_range, projection, bounds
+        least_cloudy_items, window_time_range, projection, bounds
     )
     layer_datas = window.load_layer_datas()
     layer_datas["sentinel2_quarterly"] = quarterly_data
@@ -585,19 +598,18 @@ def _process_entry(
 
     sidecar_key = f"{window_group}/{window_name}"
     if ref_point is None:
-        mid_iso = midpoint.isoformat()
         sidecar_value = {
-            "pre_change": mid_iso,
-            "post_change": mid_iso,
-            "first_noticeable": mid_iso,
+            "pre_change": midpoint.isoformat(),
+            "post_change": post_change.isoformat(),
+            "first_noticeable": first_noticeable.isoformat(),
             "positive_pixel_coords": [],
             "is_negative_only": True,
         }
     else:
         sidecar_value = {
             "pre_change": ref_point["pre_change"],
-            "post_change": ref_point["post_change"],
-            "first_noticeable": ref_point["first_date_change_noticeable"],
+            "post_change": post_change.isoformat(),
+            "first_noticeable": first_noticeable.isoformat(),
             "positive_pixel_coords": positive_pixels,
         }
     return sidecar_key, sidecar_value
@@ -608,6 +620,7 @@ def prepare(
     v2_json_paths: list[str],
     ds_path: str,
     workers: int = 32,
+    gap_days: int = 0,
 ) -> None:
     """Prepare the LCC model dataset from v2 annotation JSONs.
 
@@ -618,6 +631,8 @@ def prepare(
         v2_json_paths: Paths to the v2 annotation JSONs.
         ds_path: Path to the output rslearn dataset (config.json must exist).
         workers: Number of parallel workers (0 = sequential).
+        gap_days: add this many days to first_noticeable and post_change for
+            every window, shifting the frequent options later.
     """
     if "OEDATASETS_API_URL" not in os.environ:
         raise RuntimeError("OEDATASETS_API_URL env var must be set")
@@ -668,7 +683,9 @@ def prepare(
         f"{skipped_duplicate_input} duplicate inputs"
     )
 
-    kwargs_list = [dict(entry=entry, ds_path=ds_path) for entry in pending]
+    kwargs_list = [
+        dict(entry=entry, ds_path=ds_path, gap_days=gap_days) for entry in pending
+    ]
 
     created = 0
     with make_pool_and_star_imap_unordered(
@@ -709,12 +726,19 @@ def main() -> None:
         help="Path to the rslearn dataset.",
     )
     parser.add_argument("--workers", type=int, default=32)
+    parser.add_argument(
+        "--gap_days",
+        type=int,
+        default=0,
+        help="Add this many days to first_noticeable and post_change.",
+    )
     args = parser.parse_args()
 
     prepare(
         v2_json_paths=args.v2_json_paths,
         ds_path=args.ds_path,
         workers=args.workers,
+        gap_days=args.gap_days,
     )
 
 

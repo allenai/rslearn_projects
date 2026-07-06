@@ -89,6 +89,6 @@ trainer:
       init_args:
         output_layer: output_change
         selector: []
-project_name: 2026_06_29_lcc
+project_name: 2026_07_01_lcc
 run_name: pass20_v1_2_00
 management_dir: ${RSLP_PREFIX}/projects
