@@ -76,7 +76,7 @@ def launch(
     use_embeddings: bool = False,
     model_config: dict[str, str] | None = None,
     extra_args: list[str] = [],
-    extra_env_secrets: dict[str, str] = {},
+    extra_env_secrets: dict[str, str] | None = None,
     freeze: str = "freezefor20_lrfactor1",
 ) -> None:
     """Launch OlmoEarth fine-tuning evaluation.

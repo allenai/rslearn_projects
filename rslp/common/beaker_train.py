@@ -43,7 +43,7 @@ def beaker_train(
     priority: str = "high",
     retries: int = 0,
     extra_env_vars: dict[str, str] = {},
-    extra_env_secrets: dict[str, str] = {},
+    extra_env_secrets: dict[str, str] | None = None,
 ) -> None:
     """Launch training for the specified config on Beaker.
 
@@ -76,6 +76,8 @@ def beaker_train(
     """
     # Normalize the config_path / config_paths option to always get a config_paths list
     # (so if config_path is set, make a one-element list from it).
+    if extra_env_secrets is None:
+        extra_env_secrets = {}
     if (config_path is None and config_paths is None) or (
         config_path is not None and config_paths is not None
     ):
