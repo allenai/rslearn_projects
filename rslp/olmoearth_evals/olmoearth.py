@@ -35,6 +35,14 @@ logger = get_logger(__name__)
 # pixel resolution.
 PATCH_SIZE = 4
 
+# Maps the input_modalities names to the image keys produced by get_transform
+# (the output_selector values of the SelectBands transforms below).
+MODALITY_TO_IMAGE_KEY = {
+    "sentinel2": "sentinel2_l2a",
+    "landsat": "landsat",
+    "sentinel1": "sentinel1",
+}
+
 
 class ChannelDiff(IntermediateComponent):
     """Replace concatenated pre/post features with their difference (post - pre).
@@ -315,6 +323,17 @@ def get_model(
                 "change_classify requires an even task_timesteps (pre + post), "
                 f"got {task_timesteps}"
             )
+        unknown_modalities = [
+            modality
+            for modality in input_modalities
+            if modality not in MODALITY_TO_IMAGE_KEY
+        ]
+        if unknown_modalities:
+            raise ValueError(
+                f"change_classify got unsupported modalities {unknown_modalities}, "
+                f"expected a subset of {list(MODALITY_TO_IMAGE_KEY)}"
+            )
+        image_keys = [MODALITY_TO_IMAGE_KEY[m] for m in input_modalities]
         timesteps_per_group = task_timesteps // 2
         encoder_modules: list[torch.nn.Module] = [
             SimpleTimeSeries(
@@ -322,7 +341,7 @@ def get_model(
                 num_timesteps_per_forward_pass=timesteps_per_group,
                 op="max",
                 groups=[[0], [1]],
-                image_key="sentinel2_l2a",
+                image_keys=image_keys,
             )
         ]
         center_crop = FeatureCenterCrop(sizes=[[1, 1]])
