@@ -50,8 +50,15 @@ SENTINEL1_LAYER_NAME = "sentinel1"
 # Layer names for historical Sentinel-1 images.
 HISTORICAL_LAYER_NAME = "sentinel1_historical"
 
-# Number of historical item groups the detector consumes (image_1 and image_2).
-HISTORICAL_GROUP_COUNT = 2
+# Number of historical item groups the detector consumes (image_1).
+HISTORICAL_GROUP_COUNT = 1
+
+# Time offset (relative to the target scene) used to search for the historical image.
+# We search for the best-overlapping scene within the 30-day window starting here.
+# Note that for training we just picked arbitrary historical images in the 60-day period
+# starting 90 days before the scene time, while here we are picking one historical image
+# in the 30-day period starting 60 days before the scene time.
+HISTORICAL_TIME_OFFSET = timedelta(days=-60)
 
 # Name of layer containing the output.
 OUTPUT_LAYER_NAME = "output"
@@ -92,10 +99,9 @@ class PredictionTask:
     """A task to predict vessels in one Sentinel-1 scene.
 
     Args:
-        scene_id: the Sentinel-1 scene ID. One of scene_id or image/historical1/historical2 must be set.
+        scene_id: the Sentinel-1 scene ID. One of scene_id or image/historical1 must be set.
         image: the Sentinel1Image to detect vessels in.
-        historical1: the Sentinel1Image to use as first historical image.
-        historical2: the Sentinel1Image to use as second historical image.
+        historical1: the Sentinel1Image to use as the historical image.
         json_path: optional path to write the JSON of vessel detections.
         crop_path: optional path to write the vessel crop images.
         geojson_path: optional path to write GeoJSON of detections.
@@ -104,7 +110,6 @@ class PredictionTask:
     scene_id: str | None = None
     image: Sentinel1Image | None = None
     historical1: Sentinel1Image | None = None
-    historical2: Sentinel1Image | None = None
     json_path: str | None = None
     crop_path: str | None = None
     geojson_path: str | None = None
@@ -200,9 +205,7 @@ def setup_dataset_with_scene_ids(
         # because it will find too many images in mosaic mode, or not the best
         # overlapping image in intersect/contain mode.
         historical_layer_item_groups: list[list[Item]] = []
-        for hist_group_idx, hist_time_offset in enumerate(
-            [timedelta(days=-60), timedelta(days=-90)]
-        ):
+        for hist_group_idx, hist_time_offset in enumerate([HISTORICAL_TIME_OFFSET]):
             hist_time_range = (
                 wgs84_geom.time_range[0] + hist_time_offset,
                 wgs84_geom.time_range[0] + hist_time_offset + timedelta(days=30),
@@ -274,7 +277,7 @@ def setup_dataset_with_image_files(
 
     Args:
         ds_path: the dataset path to write to.
-        tasks: the list of prediction tasks that have image/historical1/historical2 set.
+        tasks: the list of prediction tasks that have image/historical1 set.
 
     Returns:
         a list of SceneData corresponding to the specified images.
@@ -292,7 +295,6 @@ def setup_dataset_with_image_files(
     for task in tasks:
         assert task.image is not None
         assert task.historical1 is not None
-        assert task.historical2 is not None
         target_item_specs.append(
             {
                 "fnames": [
@@ -302,16 +304,15 @@ def setup_dataset_with_image_files(
                 "bands": [["vv"], ["vh"]],
             }
         )
-        for image in [task.historical1, task.historical2]:
-            historical_item_specs.append(
-                {
-                    "fnames": [
-                        UPath(image.vv).absolute().as_uri(),
-                        UPath(image.vh).absolute().as_uri(),
-                    ],
-                    "bands": [["vv"], ["vh"]],
-                }
-            )
+        historical_item_specs.append(
+            {
+                "fnames": [
+                    UPath(task.historical1.vv).absolute().as_uri(),
+                    UPath(task.historical1.vh).absolute().as_uri(),
+                ],
+                "bands": [["vv"], ["vh"]],
+            }
+        )
 
     for layer_name, item_specs, dir_name in [
         (SENTINEL1_LAYER_NAME, target_item_specs, "source_dir"),

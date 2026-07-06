@@ -9,8 +9,8 @@ Reads /tmp/monocrop_intercrop.csv, creates 64x64 windows at 10m in UTM with:
 
 import csv
 import hashlib
-import json
 import multiprocessing as mp
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -115,7 +115,6 @@ def main() -> None:
 
     # Copy config.json
     config_src = Path(__file__).parent / "kenya_intercropping_config.json"
-    import shutil
     shutil.copyfile(config_src, DST / "config.json")
 
     rows = []

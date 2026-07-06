@@ -2,9 +2,9 @@ Sentinel-1 Vessel Detection
 ---------------------------
 
 The Sentinel-1 vessel detection model detects ships in Sentinel-1 IW GRDH scenes using
-SAR imagery (VV and VH polarisations). It uses the target scene along with two
-historical images (from approximately 60 and 90 days prior) to help distinguish vessels
-from fixed infrastructure.
+SAR imagery (VV and VH polarisations). It uses the target scene along with one
+historical image (from approximately 60 days prior) to help distinguish vessels from
+fixed infrastructure.
 
 
 Inference
@@ -13,8 +13,8 @@ Inference
 First, download the model checkpoints to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
-    mkdir -p project_data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/best.ckpt -O project_data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/best.ckpt
+    mkdir -p project_data/projects/20260626_num_historical/data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/20260626_num_historical/data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist/best.ckpt -O project_data/projects/20260626_num_historical/data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist/best.ckpt
 
     mkdir -p project_data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/best.ckpt -O project_data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/best.ckpt
@@ -33,20 +33,20 @@ Then, `out.geojson` will contain a GeoJSON of detected ships while `output_crops
 contain corresponding VV and VH crops centered around those ships.
 
 Alternatively, you can provide local GeoTIFF file paths for the target and historical
-images instead of a scene ID. Each image requires VV and VH band files. The historical
-images must have the same orbit direction as the target image.
+image instead of a scene ID. Each image requires VV and VH band files. The historical
+image must have the same orbit direction as the target image.
 
-    python -m rslp.main sentinel1_vessels predict --tasks '[{"image": {"vv": "/path/to/target_vv.tif", "vh": "/path/to/target_vh.tif"}, "historical1": {"vv": "/path/to/h1_vv.tif", "vh": "/path/to/h1_vh.tif"}, "historical2": {"vv": "/path/to/h2_vv.tif", "vh": "/path/to/h2_vh.tif"}, "geojson_path": "out.geojson"}]' --scratch_path scratch_dir/
+    python -m rslp.main sentinel1_vessels predict --tasks '[{"image": {"vv": "/path/to/target_vv.tif", "vh": "/path/to/target_vh.tif"}, "historical1": {"vv": "/path/to/h1_vv.tif", "vh": "/path/to/h1_vh.tif"}, "geojson_path": "out.geojson"}]' --scratch_path scratch_dir/
 
 
 Training
 --------
 
-The object detection model applies a SwinB backbone on each of three images (the target
-scene and two historical scenes). The features from the target scene are concatenated
-with the mean-pooled features across the historical scenes. The concatenated features
-are then passed to a feature pyramid network and Faster R-CNN detection head. The
-historical scenes help to differentiate between vessels and fixed infrastructure.
+The object detection model applies a SwinB backbone on each of two images (the target
+scene and one historical scene). The features from the target scene are concatenated
+with the features from the historical scene. The concatenated features are then passed
+to a feature pyramid network and Faster R-CNN detection head. The historical scene helps
+to differentiate between vessels and fixed infrastructure.
 
 Use the command below to train the model:
 
@@ -94,14 +94,13 @@ curl -X POST http://localhost:${SENTINEL1_PORT}/detections -H "Content-Type: app
 The API will respond with the vessel detection results in JSON format.
 
 Alternatively, process the scene by providing paths to VV/VH GeoTIFFs for the target
-and two historical images. The paths must be accessible from inside the Docker
+and one historical image. The paths must be accessible from inside the Docker
 container.
 
 ```bash
 curl -X POST http://localhost:${SENTINEL1_PORT}/detections -H "Content-Type: application/json" -d '{
     "image": {"vv": "/path/to/target_vv.tif", "vh": "/path/to/target_vh.tif"},
-    "historical1": {"vv": "/path/to/h1_vv.tif", "vh": "/path/to/h1_vh.tif"},
-    "historical2": {"vv": "/path/to/h2_vv.tif", "vh": "/path/to/h2_vh.tif"}
+    "historical1": {"vv": "/path/to/h1_vv.tif", "vh": "/path/to/h1_vh.tif"}
 }'
 ```
 

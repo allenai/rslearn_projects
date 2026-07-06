@@ -13,9 +13,9 @@ so we can train on them much more efficiently.
   configs already point at the new path.
 - `convert_vessel_attribute.py`: builds a small subset of the
   `sentinel2_vessel_attribute` dataset. Only windows with both `type` and
-  `length` are kept. Train split is sampled as the union of 500 per vessel type
-  and 500 per length bucket ([0,50), [50,75), …, [225,250), [250,+inf)); val
-  and test are copied in full. All sentinel2 images are center-cropped from
+  `length` are kept. We sample the union of 500 per vessel type and 500 per
+  length bucket ([0,50), [50,75), …, [225,250), [250,+inf)), then split into
+  50% train, 25% val, 25% test. All sentinel2 images are center-cropped from
   128x128 to 64x64. Output goes to
   `olmoearth_evals/small_sentinel2_vessel_attribute/`. Task configs:
   `data/olmoearth_evals/tasks/small_sentinel2_vessel_{type,length}.yaml`.
