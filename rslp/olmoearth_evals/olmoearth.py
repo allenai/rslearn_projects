@@ -4,6 +4,7 @@ import json
 import os
 
 import torch
+from rslearn.models.component import FeatureMaps, IntermediateComponent
 from rslearn.models.conv import Conv
 from rslearn.models.faster_rcnn import FasterRCNN
 from rslearn.models.feature_center_crop import FeatureCenterCrop
@@ -12,8 +13,10 @@ from rslearn.models.olmoearth_pretrain.model import EMBEDDING_SIZES, ModelID, Ol
 from rslearn.models.olmoearth_pretrain.norm import OlmoEarthNormalize
 from rslearn.models.pooling_decoder import PoolingDecoder
 from rslearn.models.reshape_feature_maps import ReshapeFeatureMaps
+from rslearn.models.simple_time_series import SimpleTimeSeries
 from rslearn.models.unet import UNetDecoder
 from rslearn.models.upsample import Upsample
+from rslearn.train.model_context import ModelContext
 from rslearn.train.tasks.classification import ClassificationHead
 from rslearn.train.tasks.regression import RegressionHead
 from rslearn.train.tasks.segmentation import SegmentationHead
@@ -31,6 +34,42 @@ logger = get_logger(__name__)
 # this factor, so decoders must upsample/reshape by the same factor to recover
 # pixel resolution.
 PATCH_SIZE = 4
+
+# Maps the input_modalities names to the image keys produced by get_transform
+# (the output_selector values of the SelectBands transforms below).
+MODALITY_TO_IMAGE_KEY = {
+    "sentinel2": "sentinel2_l2a",
+    "landsat": "landsat",
+    "sentinel1": "sentinel1",
+}
+
+
+class ChannelDiff(IntermediateComponent):
+    """Replace concatenated pre/post features with their difference (post - pre).
+
+    The input feature maps are assumed to have their channels formed by
+    concatenating the pre-change features (first half) and post-change features
+    (second half) along the channel dimension, as produced by a ``SimpleTimeSeries``
+    with two groups. This component splits each feature map in half along the
+    channels and returns ``post - pre`` (signed difference, not the absolute value),
+    halving the channel count.
+    """
+
+    def forward(self, intermediates: FeatureMaps, context: ModelContext) -> FeatureMaps:
+        """Compute the signed pre/post difference for each feature map."""
+        if not isinstance(intermediates, FeatureMaps):
+            raise ValueError("input to ChannelDiff must be FeatureMaps")
+        new_features = []
+        for feat in intermediates.feature_maps:
+            if feat.shape[1] % 2 != 0:
+                raise ValueError(
+                    "ChannelDiff expects an even number of channels (pre + post)"
+                )
+            half = feat.shape[1] // 2
+            pre = feat[:, :half]
+            post = feat[:, half:]
+            new_features.append(post - pre)
+        return FeatureMaps(new_features)
 
 
 def get_model(
@@ -73,7 +112,10 @@ def get_model(
     elif model_id == "olmoearth_large":
         olmoearth_model_id = ModelID.OLMOEARTH_V1_LARGE
     else:
-        raise ValueError(f"unknown olmoearth model ID {model_id}")
+        # Parse other model IDs (e.g. olmoearth_v1_1_nano,
+        # olmoearth_v1_2_base) directly from the matching ModelID enum member
+        # name. Raises KeyError if there is no such member.
+        olmoearth_model_id = ModelID[model_id.upper()]
 
     embedding_size = EMBEDDING_SIZES[olmoearth_model_id]
     logger.info(
@@ -263,6 +305,88 @@ def get_model(
             )
         else:
             raise ValueError(f"invalid decoder type {decoder_type}")
+    elif task_type == "change_classify":
+        # Pre/post change classification. The input is an image time series whose
+        # first half is the pre-change time range and second half is the post-change
+        # time range (e.g. 4 pre + 4 post images for forest loss, or 12 monthly
+        # mosaics of the pre year + 12 of the post year for the LCC tasks). The
+        # OlmoEarth encoder is applied separately to the pre and post groups (each
+        # group is processed in a single forward pass to produce one embedding), and
+        # the two embeddings are combined per the "combine" model config option:
+        #   - "concat" (default): concatenate -> 2*embedding_size channels.
+        #   - "diff": post - pre (signed) -> embedding_size channels.
+        # We always use the center feature only (no spatial pooling) via
+        # FeatureCenterCrop to a 1x1 feature map.
+        combine_mode = model_config.get("combine", "concat")
+        if task_timesteps % 2 != 0:
+            raise ValueError(
+                "change_classify requires an even task_timesteps (pre + post), "
+                f"got {task_timesteps}"
+            )
+        unknown_modalities = [
+            modality
+            for modality in input_modalities
+            if modality not in MODALITY_TO_IMAGE_KEY
+        ]
+        if unknown_modalities:
+            raise ValueError(
+                f"change_classify got unsupported modalities {unknown_modalities}, "
+                f"expected a subset of {list(MODALITY_TO_IMAGE_KEY)}"
+            )
+        image_keys = [MODALITY_TO_IMAGE_KEY[m] for m in input_modalities]
+        timesteps_per_group = task_timesteps // 2
+        encoder_modules: list[torch.nn.Module] = [
+            SimpleTimeSeries(
+                encoder=_make_encoder(),
+                num_timesteps_per_forward_pass=timesteps_per_group,
+                op="max",
+                groups=[[0], [1]],
+                image_keys=image_keys,
+            )
+        ]
+        center_crop = FeatureCenterCrop(sizes=[[1, 1]])
+
+        # decoder_type controls the depth of the classification head applied to the
+        # combined center feature:
+        #   - "default": one conv layer + one fc layer before the output layer.
+        #   - "singleconv": linear-probe analog with just the output layer (no conv
+        #     or fc layers), mirroring the "classify" task's singleconv decoder.
+        if decoder_type == "default":
+            pooling_kwargs = dict(num_conv_layers=1, num_fc_layers=1)
+        elif decoder_type == "singleconv":
+            pooling_kwargs = dict()
+        else:
+            raise ValueError(f"invalid decoder type {decoder_type}")
+
+        # in_channels depends on how the pre/post embeddings are combined: concat
+        # doubles the channels, diff (post - pre) keeps the embedding size.
+        if combine_mode == "concat":
+            decoder_modules: list[torch.nn.Module] = [
+                center_crop,
+                PoolingDecoder(
+                    in_channels=2 * embedding_size,
+                    out_channels=task_channels,
+                    **pooling_kwargs,
+                ),
+                ClassificationHead(),
+            ]
+        elif combine_mode == "diff":
+            decoder_modules = [
+                center_crop,
+                ChannelDiff(),
+                PoolingDecoder(
+                    in_channels=embedding_size,
+                    out_channels=task_channels,
+                    **pooling_kwargs,
+                ),
+                ClassificationHead(),
+            ]
+        else:
+            raise ValueError(f"unknown combine mode {combine_mode}")
+        return MultiTaskModel(
+            encoder=encoder_modules,
+            decoders=dict(eval_task=decoder_modules),
+        )
     else:
         raise NotImplementedError(f"unknown task_type {task_type}")
 
