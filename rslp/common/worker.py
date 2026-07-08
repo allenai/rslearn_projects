@@ -134,7 +134,8 @@ def launch_workers(
     shared_memory: str | None = None,
     priority: BeakerJobPriority = BeakerJobPriority.low,
     weka_mounts: list[WekaMount] = [],
-    extra_env_vars: list[dict] = [],
+    extra_env_vars: dict[str, str] | None = None,
+    extra_env_secrets: dict[str, str] | None = None,
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -148,10 +149,23 @@ def launch_workers(
         priority: priority to assign the Beaker jobs.
         weka_mounts: list of weka mounts for Beaker job.
         extra_env_vars: additional environment variables to set on each worker, beyond
-            the base env vars. Each entry is a dict passed to BeakerEnvVar, e.g.
-            {"name": "FOO", "value": "bar"} or {"name": "FOO", "secret": "MY_SECRET"}.
+            the base env vars, mapping environment variable name to its plain value.
+        extra_env_secrets: additional environment variables to set on each worker from
+            Beaker secrets, mapping environment variable name to the name of the Beaker
+            secret (in the target workspace) to read its value from.
     """
-    extra_beaker_env_vars = [BeakerEnvVar(**ev) for ev in extra_env_vars]
+    if extra_env_vars is None:
+        extra_env_vars = {}
+    if extra_env_secrets is None:
+        extra_env_secrets = {}
+    extra_beaker_env_vars = [
+        BeakerEnvVar(name=env_name, value=env_value)
+        for env_name, env_value in extra_env_vars.items()
+    ]
+    extra_beaker_env_vars += [
+        BeakerEnvVar(name=env_name, secret=secret_name)
+        for env_name, secret_name in extra_env_secrets.items()
+    ]
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         for _ in tqdm.tqdm(range(num_workers)):
             env_vars = get_base_env_vars(use_weka_prefix=False)

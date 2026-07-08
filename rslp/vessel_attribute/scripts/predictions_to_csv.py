@@ -66,13 +66,21 @@ if __name__ == "__main__":
     )
     parser.add_argument("--ds_path", type=str, required=True, help="Dataset root path")
     parser.add_argument("--output", type=str, required=True, help="Output CSV path")
+    parser.add_argument(
+        "--group",
+        type=str,
+        default=None,
+        help="Only use windows in this group (default: all groups)",
+    )
     args = parser.parse_args()
 
     ds_path = UPath(args.ds_path)
     windows_root = ds_path / "windows"
-    window_dirs = [
-        child for group_dir in windows_root.iterdir() for child in group_dir.iterdir()
-    ]
+    if args.group is not None:
+        group_dirs = [windows_root / args.group]
+    else:
+        group_dirs = list(windows_root.iterdir())
+    window_dirs = [child for group_dir in group_dirs for child in group_dir.iterdir()]
     print(f"Found {len(window_dirs)} windows")
 
     p = multiprocessing.Pool(32)
