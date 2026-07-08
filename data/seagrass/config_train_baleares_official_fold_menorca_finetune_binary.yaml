@@ -1,7 +1,8 @@
-# LEAVE-ONE-ISLAND-OUT (held out: pitiusas) FULL FINETUNE + DICE LOSS on
-# Baleares points. Same as the plain finetune config but the SegmentationHead
-# adds a batch-level dice (soft-F1) term to fight the per-fold class collapse.
-# Neutral CE weights [1.0, 1.0]; dice carries the anti-collapse pressure.
+# OFFICIAL leave-one-island-group-out (held out: menorca) FULL FINETUNE on the
+# collaborator-provided Baleares splits (group baleares_official_2025). Train on the other two
+# island groups' points (fold_menorca=train), validate on a 10% slice
+# (fold_menorca=val), test on the held-out group's points (fold_menorca=test).
+# Binary background(0) vs dense_seagrass(2->1).
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -24,11 +25,6 @@ model:
               2: 256
               1: 128
         - class_path: rslearn.train.tasks.segmentation.SegmentationHead
-          init_args:
-            dice_loss: true
-            weights:
-            - 1.0
-            - 1.0
     optimizer:
       class_path: rslearn.train.optimizer.AdamW
       init_args:
@@ -94,7 +90,7 @@ data:
     default_config:
       crop_size: 64
       groups:
-      - baleares_2025
+      - baleares_official_2025
       transforms:
       - class_path: rslearn.train.transforms.concatenate.Concatenate
         init_args:
@@ -119,9 +115,9 @@ data:
             - B09
     train_config:
       groups:
-      - baleares_2025
+      - baleares_official_2025
       tags:
-        fold_pitiusas: train
+        fold_menorca: train
       transforms:
       - class_path: rslearn.train.transforms.flip.Flip
         init_args:
@@ -152,19 +148,19 @@ data:
             - B09
     val_config:
       groups:
-      - baleares_2025
+      - baleares_official_2025
       tags:
-        fold_pitiusas: val
+        fold_menorca: val
     test_config:
       groups:
-      - baleares_2025
+      - baleares_official_2025
       tags:
-        fold_pitiusas: test
+        fold_menorca: test
     predict_config:
       groups:
-      - baleares_2025
+      - baleares_official_2025
       tags:
-        fold_pitiusas: test
+        fold_menorca: test
 trainer:
   max_epochs: 50
   accelerator: gpu
@@ -178,6 +174,6 @@ trainer:
       monitor: val_accuracy
       mode: max
 project_name: seagrass
-run_name: olmoearth_base_baleares_fold_pitiusas_finetune_dice_binary
+run_name: olmoearth_base_baleares_official_fold_menorca_finetune_binary
 management_dir: /weka/dfive-default/piperw/rslearn_projects/projects
 load_checkpoint_required: 'no'
