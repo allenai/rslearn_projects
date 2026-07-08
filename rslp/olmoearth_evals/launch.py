@@ -76,6 +76,7 @@ def launch(
     use_embeddings: bool = False,
     model_config: dict[str, str] | None = None,
     extra_args: list[str] = [],
+    extra_env_secrets: dict[str, str] | None = None,
     freeze: str = "freezefor20_lrfactor1",
 ) -> None:
     """Launch OlmoEarth fine-tuning evaluation.
@@ -100,6 +101,9 @@ def launch(
             {"checkpoint_path": "/path/to/ckpt"} to load a custom checkpoint,
             {"use_legacy_timestamps": "true"} to enable legacy timestamps.
         extra_args: extra arguments to pass to `rslearn model fit`.
+        extra_env_secrets: additional environment variables to set in each Beaker job
+            from Beaker secrets, mapping environment variable name to the name of the
+            Beaker secret (in the target workspace), e.g. {"HF_TOKEN": "HF_TOKEN"}.
         freeze: name of a freeze config in data/olmoearth_evals/freezes/ (without
             the .yaml extension), e.g. "freezefor20_lrfactor1" or "frozen". The
             corresponding YAML adds a FreezeUnfreeze callback that freezes the
@@ -139,6 +143,10 @@ def launch(
                 "--extra_env_vars",
                 json.dumps(env_vars_dict),
             ]
+            if extra_env_secrets:
+                basic_args.extend(
+                    ["--extra_env_secrets", json.dumps(extra_env_secrets)]
+                )
 
             cluster_args = [f"--cluster+={cluster}" for cluster in clusters]
 
