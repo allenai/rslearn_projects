@@ -1,0 +1,14 @@
+# Large / regenerable data artifacts — NOT for git (metropole.gpkg alone is >5 GB,
+# over GitHub's 100 MB limit). Regenerate with `python download_rpg.py --year 2019`.
+data/rpg/
+data/raw/
+data/tensors*/
+
+# Scratch rslearn datasets (windows + materialized S2) — regenerate via the pipeline.
+*_ds/
+
+__pycache__/
+*.pyc
+
+# Kept in git (small, useful): *.py, config.json, README.md,
+# pastis_rpg_class_map.json, data/rpg_culture_codes.csv, and the example *.png outputs.
