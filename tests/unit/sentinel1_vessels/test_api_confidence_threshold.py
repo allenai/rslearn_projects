@@ -73,3 +73,18 @@ def test_floor_threshold_keeps_everything(_fake_pipeline: None) -> None:
         0.72,
         0.95,
     ]
+
+
+def test_env_default_applies_without_request_threshold(
+    _fake_pipeline: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(api_main, "DEFAULT_CONFIDENCE_THRESHOLD", 0.7)
+    assert _scores({"scene_id": SCENE_ID}) == [0.72, 0.95]
+
+
+def test_request_threshold_overrides_env_default(
+    _fake_pipeline: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(api_main, "DEFAULT_CONFIDENCE_THRESHOLD", 0.9)
+    # Request cutoff is looser than the env default, so it wins and more is returned.
+    assert _scores({"scene_id": SCENE_ID, "confidence_threshold": 0.6}) == [0.72, 0.95]

@@ -30,6 +30,14 @@ load_dotenv()
 SENTINEL1_HOST = os.getenv("SENTINEL1_HOST", "0.0.0.0")
 SENTINEL1_PORT = int(os.getenv("SENTINEL1_PORT", 5555))
 
+# Default detection score cutoff, applied unless a request supplies its own
+# confidence_threshold. The model decodes down to its 0.5 floor; this drops detections
+# below the cutoff. Unset => no default filtering (all decoded detections returned).
+_env_score_threshold = os.getenv("SENTINEL1_SCORE_THRESHOLD")
+DEFAULT_CONFIDENCE_THRESHOLD = (
+    float(_env_score_threshold) if _env_score_threshold else None
+)
+
 # Set up the logger
 logger = get_logger(__name__)
 
@@ -98,7 +106,8 @@ class Sentinel1Request(BaseModel):
         crop_path: Optional; Path to save the cropped images.
         scratch_path: Optional; Scratch path to save the rslearn dataset.
         confidence_threshold: Optional; drop detections scoring below this value.
-            If unset, all decoded detections above the model's 0.5 floor are returned.
+            Overrides the SENTINEL1_SCORE_THRESHOLD env default when set; if neither is
+            set, all decoded detections above the model's 0.5 floor are returned.
     """
 
     scene_id: str | None = None
@@ -200,10 +209,13 @@ async def get_detections(
                 tasks=[task],
                 scratch_path=scratch_path,
             )[0]
-        if info.confidence_threshold is not None:
-            vessel_detections = [
-                d for d in vessel_detections if d.score >= info.confidence_threshold
-            ]
+        threshold = (
+            info.confidence_threshold
+            if info.confidence_threshold is not None
+            else DEFAULT_CONFIDENCE_THRESHOLD
+        )
+        if threshold is not None:
+            vessel_detections = [d for d in vessel_detections if d.score >= threshold]
         return Sentinel1Response(
             status=StatusEnum.SUCCESS,
             predictions=[detection.to_dict() for detection in vessel_detections],
