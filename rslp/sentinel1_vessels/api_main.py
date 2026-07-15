@@ -97,6 +97,9 @@ class Sentinel1Request(BaseModel):
             same orbit direction as the target image.
         crop_path: Optional; Path to save the cropped images.
         scratch_path: Optional; Scratch path to save the rslearn dataset.
+        confidence_threshold: Optional; drop detections scoring below this value. The
+            model decodes down to its configured floor (0.5), so callers pick the
+            operating point per request. If unset, all decoded detections are returned.
     """
 
     scene_id: str | None = None
@@ -104,6 +107,7 @@ class Sentinel1Request(BaseModel):
     historical1: Sentinel1Image | None = None
     crop_path: str | None = None
     scratch_path: str | None = None
+    confidence_threshold: float | None = None
 
     class Config:
         """Configuration for the Sentinel1Request model."""
@@ -197,6 +201,10 @@ async def get_detections(
                 tasks=[task],
                 scratch_path=scratch_path,
             )[0]
+        if info.confidence_threshold is not None:
+            vessel_detections = [
+                d for d in vessel_detections if d.score >= info.confidence_threshold
+            ]
         return Sentinel1Response(
             status=StatusEnum.SUCCESS,
             predictions=[detection.to_dict() for detection in vessel_detections],
