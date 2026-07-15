@@ -28,8 +28,6 @@ from rslp.landsat_vessels.config import (
     CLASSIFY_MODEL_CONFIG,
     CLASSIFY_WINDOW_SIZE,
     DETECT_MODEL_CONFIG,
-    FEEDBACK_CLASSIFY_MODEL_CONFIG,
-    FEEDBACK_CLASSIFY_WINDOW_SIZE,
     INFRA_THRESHOLD_KM,
     LANDSAT_ALL_BAND_NAMES,
     LANDSAT_ALLBANDS_LAYER_NAME,
@@ -90,7 +88,6 @@ class PipelineResult:
     detections: list[VesselDetection]
     detector_count: int = 0
     classifier_count: int = 0
-    feedback_classifier_count: int = 0
 
 
 def get_vessel_detections(
@@ -281,98 +278,6 @@ def run_classifier(
     )
 
     # Read the results.
-    good_detections = []
-    for detection, window in zip(detections, windows):
-        layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
-        features = GeojsonVectorFormat().decode_vector(
-            layer_dir, window.projection, window.bounds
-        )
-        category = features[0].properties["label"]
-        if category == "correct":
-            good_detections.append(detection)
-
-    return good_detections
-
-
-def run_feedback_classifier(
-    ds_path: UPath,
-    detections: list[VesselDetection],
-    scene_data: SceneData,
-) -> list[VesselDetection]:
-    """Run the OlmoEarth feedback classifier as a second filtering pass.
-
-    This model was trained on user feedback from the first classifier's outputs,
-    so it filters false positives that the Swin classifier let through.
-
-    Args:
-        ds_path: the dataset path that will be populated with new windows to apply the
-            feedback classifier.
-        detections: the detections that passed the first classifier.
-        scene_data: the SceneData.
-
-    Returns:
-        the subset of detections that pass the feedback classifier.
-    """
-    if len(detections) == 0:
-        return []
-
-    dataset = Dataset(ds_path)
-    group = "feedback_classify_predict"
-    windows: list[Window] = []
-    for detection in detections:
-        bounds = [
-            detection.col - FEEDBACK_CLASSIFY_WINDOW_SIZE // 2,
-            detection.row - FEEDBACK_CLASSIFY_WINDOW_SIZE // 2,
-            detection.col + FEEDBACK_CLASSIFY_WINDOW_SIZE // 2,
-            detection.row + FEEDBACK_CLASSIFY_WINDOW_SIZE // 2,
-        ]
-        window = Window(
-            storage=dataset.storage,
-            group=group,
-            name=f"{detection.col}_{detection.row}",
-            projection=detection.projection,
-            bounds=bounds,
-            time_range=scene_data.time_range,
-        )
-        window.save()
-        windows.append(window)
-
-        if scene_data.item:
-            window.save_layer_datas(
-                {
-                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
-                        LANDSAT_ALLBANDS_LAYER_NAME,
-                        [[scene_data.item.serialize()]],
-                    ),
-                    LANDSAT_LAYER_NAME: WindowLayerData(LANDSAT_LAYER_NAME, []),
-                }
-            )
-
-    logger.info("materialize dataset for feedback classifier")
-    apply_windows_args = ApplyWindowsArgs(group=group, workers=32)
-    materialize_pipeline_args = MaterializePipelineArgs(
-        disabled_layers=[],
-        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
-        ingest_args=IngestArgs(
-            ignore_errors=False, apply_windows_args=apply_windows_args
-        ),
-        materialize_args=MaterializeArgs(
-            ignore_errors=False, apply_windows_args=apply_windows_args
-        ),
-    )
-    materialize_dataset(ds_path, materialize_pipeline_args)
-
-    for window in windows:
-        if not window.is_layer_completed(LANDSAT_ALLBANDS_LAYER_NAME):
-            raise ValueError(f"window {window.name} does not have materialized Landsat")
-
-    run_model_predict(
-        FEEDBACK_CLASSIFY_MODEL_CONFIG,
-        ds_path,
-        groups=[group],
-        extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
-    )
-
     good_detections = []
     for detection, window in zip(detections, windows):
         layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
@@ -713,13 +618,6 @@ def predict_pipeline(
     classifier_count = len(detections)
     logger.info("after classifier: %d", classifier_count)
 
-    with time_operation(TimerOperations.RunFeedbackClassifier):
-        detections = run_feedback_classifier(
-            ds_path, detections=detections, scene_data=scene_data
-        )
-    feedback_classifier_count = len(detections)
-    logger.info("after feedback classifier: %d", feedback_classifier_count)
-
     with time_operation(TimerOperations.RunAttributeModel):
         run_attribute_model(ds_path, detections=detections, scene_data=scene_data)
 
@@ -748,7 +646,6 @@ def predict_pipeline(
         detections=detections,
         detector_count=detector_count,
         classifier_count=classifier_count,
-        feedback_classifier_count=feedback_classifier_count,
     )
 
 
