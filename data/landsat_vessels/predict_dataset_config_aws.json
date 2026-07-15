@@ -150,7 +150,6 @@
         }
       ],
       "data_source": {
-        "max_time_delta": "1d",
         "metadata_cache_dir": "cache/landsat",
         "name": "rslearn.data_sources.aws_landsat.LandsatOliTirs"
       },
