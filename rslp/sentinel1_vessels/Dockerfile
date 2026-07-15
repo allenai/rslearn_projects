@@ -4,6 +4,8 @@ FROM base-image:latest
 # Environment variables
 ENV PYTHONPATH="/opt/rslearn_projects:${PYTHONPATH}"
 ENV SENTINEL1_PORT=5555
+# Default detection score cutoff; a request's confidence_threshold overrides it.
+ENV SENTINEL1_SCORE_THRESHOLD=0.7
 
 # Make port 5555 available to the world outside this container
 EXPOSE $SENTINEL1_PORT
