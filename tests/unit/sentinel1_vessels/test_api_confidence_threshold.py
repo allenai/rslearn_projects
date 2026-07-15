@@ -42,7 +42,9 @@ class _FakeDetection:
 @pytest.fixture
 def _fake_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     detections = [_FakeDetection(0.55), _FakeDetection(0.72), _FakeDetection(0.95)]
-    monkeypatch.setattr(api_main, "predict_pipeline", lambda tasks, scratch_path: [detections])
+    monkeypatch.setattr(
+        api_main, "predict_pipeline", lambda tasks, scratch_path: [detections]
+    )
 
 
 def _scores(payload: dict) -> list[float]:
@@ -66,4 +68,8 @@ def test_threshold_is_inclusive(_fake_pipeline: None) -> None:
 
 
 def test_floor_threshold_keeps_everything(_fake_pipeline: None) -> None:
-    assert _scores({"scene_id": SCENE_ID, "confidence_threshold": 0.5}) == [0.55, 0.72, 0.95]
+    assert _scores({"scene_id": SCENE_ID, "confidence_threshold": 0.5}) == [
+        0.55,
+        0.72,
+        0.95,
+    ]
