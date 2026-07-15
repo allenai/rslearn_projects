@@ -591,6 +591,7 @@ def run_attribute_model(
 def predict_pipeline(
     tasks: list[PredictionTask],
     scratch_path: str | None = None,
+    confidence_threshold: float | None = None,
 ) -> list[list[VesselDetection]]:
     """Run the Sentinel-1 vessel prediction pipeline.
 
@@ -602,6 +603,8 @@ def predict_pipeline(
         tasks: prediction tasks to execute. They must all specify scene IDs or all
             specify image files to process.
         scratch_path: directory to use to store temporary dataset.
+        confidence_threshold: if set, drop detections scoring below this before the
+            attribute model runs, so we neither attribute nor crop them.
 
     Returns:
         list of vessel detections for each task.
@@ -634,6 +637,11 @@ def predict_pipeline(
     # Apply the vessel detection model.
     with time_operation(TimerOperations.GetVesselDetections):
         detections = get_vessel_detections(ds_path, scene_datas)
+
+    # Drop low-confidence detections up front so we don't run the attribute model on
+    # them or write their crops to disk.
+    if confidence_threshold is not None:
+        detections = [d for d in detections if d.score >= confidence_threshold]
 
     # Apply the attribute prediction model.
     # This also collects vessel crop windows.

@@ -204,18 +204,17 @@ async def get_detections(
 
     try:
         logger.info("Processing request with input data.")
-        with time_operation(TimerOperations.TotalInferenceTime):
-            vessel_detections = predict_pipeline(
-                tasks=[task],
-                scratch_path=scratch_path,
-            )[0]
         threshold = (
             info.confidence_threshold
             if info.confidence_threshold is not None
             else DEFAULT_CONFIDENCE_THRESHOLD
         )
-        if threshold is not None:
-            vessel_detections = [d for d in vessel_detections if d.score >= threshold]
+        with time_operation(TimerOperations.TotalInferenceTime):
+            vessel_detections = predict_pipeline(
+                tasks=[task],
+                scratch_path=scratch_path,
+                confidence_threshold=threshold,
+            )[0]
         return Sentinel1Response(
             status=StatusEnum.SUCCESS,
             predictions=[detection.to_dict() for detection in vessel_detections],
