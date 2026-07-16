@@ -35,7 +35,7 @@ data:
     inputs:
       landsat:
         data_type: "raster"
-        layers: ["landsat_allbands"]
+        layers: ["landsat"]
         bands: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
         passthrough: true
         dtype: FLOAT32
