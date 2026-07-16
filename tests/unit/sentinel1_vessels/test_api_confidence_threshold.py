@@ -1,8 +1,8 @@
 """Unit tests for how the Sentinel-1 API resolves the confidence threshold.
 
 The API picks the effective cutoff (request value, else SENTINEL1_SCORE_THRESHOLD env
-default) and hands it to predict_pipeline, which does the filtering before the attribute
-model runs. predict_pipeline is mocked here to capture the threshold it receives.
+default, else none) and hands it to predict_pipeline, which overrides the detector's
+score threshold. predict_pipeline is mocked here to capture the threshold it receives.
 """
 
 import pytest

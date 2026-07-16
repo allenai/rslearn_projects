@@ -97,9 +97,9 @@ class Sentinel1Request(BaseModel):
             same orbit direction as the target image.
         crop_path: Optional; Path to save the cropped images.
         scratch_path: Optional; Scratch path to save the rslearn dataset.
-        confidence_threshold: Optional; drop detections scoring below this value.
-            Overrides the SENTINEL1_SCORE_THRESHOLD env default when set; if neither is
-            set, all decoded detections above the model's 0.5 floor are returned.
+        confidence_threshold: Optional; override the detector's score threshold for this
+            request. Takes precedence over the SENTINEL1_SCORE_THRESHOLD env default; if
+            neither is set, the threshold baked into the model config is used.
     """
 
     scene_id: str | None = None
