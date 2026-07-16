@@ -4,8 +4,6 @@ FROM base-image:latest
 # Environment variables
 ENV PYTHONPATH="/opt/rslearn_projects:${PYTHONPATH}"
 ENV SENTINEL1_PORT=5555
-# Set SENTINEL1_SCORE_THRESHOLD at deploy time to override the detector's default score
-# threshold (from data/sentinel1_vessels/config.yaml) without rebuilding the image.
 
 # Make port 5555 available to the world outside this container
 EXPOSE $SENTINEL1_PORT

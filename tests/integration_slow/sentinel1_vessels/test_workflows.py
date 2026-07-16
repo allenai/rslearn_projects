@@ -24,6 +24,7 @@ def test_predict_pipeline_scene_with_vessels(tmp_path: pathlib.Path) -> None:
 
     predict_pipeline(
         tasks=[task],
+        score_threshold=0.5,
         scratch_path=str(scratch_path),
     )
 

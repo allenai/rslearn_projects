@@ -1,8 +1,9 @@
-"""Unit tests for how the Sentinel-1 API resolves the confidence threshold.
+"""Unit tests for how the Sentinel-1 API resolves the detector score threshold.
 
-The API picks the effective cutoff (request value, else SENTINEL1_SCORE_THRESHOLD env
-default, else none) and hands it to predict_pipeline, which overrides the detector's
-score threshold. predict_pipeline is mocked here to capture the threshold it receives.
+The API uses the request's score_threshold when provided, otherwise the
+SENTINEL1_SCORE_THRESHOLD module default (from the env var, 0.7 if unset), and hands
+that to predict_pipeline, which overrides the detector's score threshold. predict_pipeline
+is mocked here to capture the value it receives.
 """
 
 import pytest
@@ -19,8 +20,8 @@ SCENE_ID = "S1A_IW_GRDH_1SDV_20241001T003924_20241001T003949_055902_06D56E_11E3.
 def captured(monkeypatch: pytest.MonkeyPatch) -> dict:
     seen: dict = {}
 
-    def fake_pipeline(tasks, scratch_path, confidence_threshold):  # noqa: ANN001
-        seen["threshold"] = confidence_threshold
+    def fake_pipeline(tasks, score_threshold, scratch_path):  # noqa: ANN001
+        seen["threshold"] = score_threshold
         return [[]]
 
     monkeypatch.setattr(api_main, "predict_pipeline", fake_pipeline)
@@ -33,30 +34,31 @@ def _call(payload: dict) -> None:
     assert resp.json()["status"] == "success"
 
 
-def test_no_request_no_env_passes_none(
-    captured: dict, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.delenv("SENTINEL1_SCORE_THRESHOLD", raising=False)
+def test_default_used_without_request(captured: dict) -> None:
     _call({"scene_id": SCENE_ID})
-    assert captured["threshold"] is None
+    assert captured["threshold"] == api_main.SENTINEL1_SCORE_THRESHOLD
 
 
-def test_request_threshold_passed_through(captured: dict) -> None:
-    _call({"scene_id": SCENE_ID, "confidence_threshold": 0.7})
-    assert captured["threshold"] == 0.7
-
-
-def test_env_default_used_without_request(
+def test_default_is_configurable(
     captured: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("SENTINEL1_SCORE_THRESHOLD", "0.7")
+    monkeypatch.setattr(api_main, "SENTINEL1_SCORE_THRESHOLD", 0.5)
     _call({"scene_id": SCENE_ID})
-    assert captured["threshold"] == 0.7
+    assert captured["threshold"] == 0.5
 
 
-def test_request_overrides_env_default(
+def test_request_overrides_default(
     captured: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("SENTINEL1_SCORE_THRESHOLD", "0.9")
-    _call({"scene_id": SCENE_ID, "confidence_threshold": 0.6})
+    monkeypatch.setattr(api_main, "SENTINEL1_SCORE_THRESHOLD", 0.9)
+    _call({"scene_id": SCENE_ID, "score_threshold": 0.6})
     assert captured["threshold"] == 0.6
+
+
+def test_zero_request_is_not_swallowed(
+    captured: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 0.0 is a real request value, not "unset" -- it must win over the default.
+    monkeypatch.setattr(api_main, "SENTINEL1_SCORE_THRESHOLD", 0.7)
+    _call({"scene_id": SCENE_ID, "score_threshold": 0.0})
+    assert captured["threshold"] == 0.0

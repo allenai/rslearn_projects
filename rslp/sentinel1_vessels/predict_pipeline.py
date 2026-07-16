@@ -371,7 +371,7 @@ def setup_dataset_with_image_files(
 def get_vessel_detections(
     ds_path: UPath,
     scene_datas: list[SceneData],
-    score_threshold: float | None = None,
+    score_threshold: float,
 ) -> list[VesselDetection]:
     """Apply the vessel detector.
 
@@ -382,8 +382,8 @@ def get_vessel_detections(
         ds_path: the dataset path that will be populated with a new window to apply the
             detector.
         scene_datas: the SceneDatas to apply the detector on.
-        score_threshold: if set, override the detector's configured score threshold for
-            this run, so callers can raise or lower the cutoff without editing the config.
+        score_threshold: override the detector's configured score threshold for this
+            run, so callers can raise or lower the cutoff without editing the config.
     """
     # Create a window for each SceneData.
     dataset = Dataset(ds_path)
@@ -436,12 +436,12 @@ def get_vessel_detections(
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
-        extra_args = ["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)]
-        if score_threshold is not None:
-            extra_args += [
-                "--data.init_args.task.init_args.tasks.detect.init_args.score_threshold",
-                str(score_threshold),
-            ]
+        extra_args = [
+            "--data.init_args.num_workers",
+            str(NUM_DATA_LOADER_WORKERS),
+            "--data.init_args.task.init_args.tasks.detect.init_args.score_threshold",
+            str(score_threshold),
+        ]
         run_model_predict(DETECT_MODEL_CONFIG, ds_path, extra_args=extra_args)
 
     # Read the detections.
@@ -594,8 +594,8 @@ def run_attribute_model(
 
 def predict_pipeline(
     tasks: list[PredictionTask],
+    score_threshold: float,
     scratch_path: str | None = None,
-    confidence_threshold: float | None = None,
 ) -> list[list[VesselDetection]]:
     """Run the Sentinel-1 vessel prediction pipeline.
 
@@ -606,9 +606,9 @@ def predict_pipeline(
     Args:
         tasks: prediction tasks to execute. They must all specify scene IDs or all
             specify image files to process.
+        score_threshold: override the detector's score threshold for this run,
+            replacing the value baked into the model config.
         scratch_path: directory to use to store temporary dataset.
-        confidence_threshold: if set, override the detector's score threshold for this
-            run. Unset uses the threshold baked into the model config.
 
     Returns:
         list of vessel detections for each task.
@@ -641,7 +641,7 @@ def predict_pipeline(
     # Apply the vessel detection model.
     with time_operation(TimerOperations.GetVesselDetections):
         detections = get_vessel_detections(
-            ds_path, scene_datas, score_threshold=confidence_threshold
+            ds_path, scene_datas, score_threshold=score_threshold
         )
 
     # Apply the attribute prediction model.
