@@ -33,8 +33,10 @@ def _call(payload: dict) -> None:
     assert resp.json()["status"] == "success"
 
 
-def test_no_request_no_env_passes_none(captured: dict) -> None:
-    # SENTINEL1_SCORE_THRESHOLD is unset in the test env, so the default is None.
+def test_no_request_no_env_passes_none(
+    captured: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("SENTINEL1_SCORE_THRESHOLD", raising=False)
     _call({"scene_id": SCENE_ID})
     assert captured["threshold"] is None
 
@@ -47,7 +49,7 @@ def test_request_threshold_passed_through(captured: dict) -> None:
 def test_env_default_used_without_request(
     captured: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(api_main, "DEFAULT_CONFIDENCE_THRESHOLD", 0.7)
+    monkeypatch.setenv("SENTINEL1_SCORE_THRESHOLD", "0.7")
     _call({"scene_id": SCENE_ID})
     assert captured["threshold"] == 0.7
 
@@ -55,6 +57,6 @@ def test_env_default_used_without_request(
 def test_request_overrides_env_default(
     captured: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(api_main, "DEFAULT_CONFIDENCE_THRESHOLD", 0.9)
+    monkeypatch.setenv("SENTINEL1_SCORE_THRESHOLD", "0.9")
     _call({"scene_id": SCENE_ID, "confidence_threshold": 0.6})
     assert captured["threshold"] == 0.6

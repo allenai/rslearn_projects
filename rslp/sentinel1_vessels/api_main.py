@@ -30,14 +30,6 @@ load_dotenv()
 SENTINEL1_HOST = os.getenv("SENTINEL1_HOST", "0.0.0.0")
 SENTINEL1_PORT = int(os.getenv("SENTINEL1_PORT", 5555))
 
-# Default detection score cutoff, applied unless a request supplies its own
-# confidence_threshold. The model decodes down to its 0.5 floor; this drops detections
-# below the cutoff. Unset => no default filtering (all decoded detections returned).
-_env_score_threshold = os.getenv("SENTINEL1_SCORE_THRESHOLD")
-DEFAULT_CONFIDENCE_THRESHOLD = (
-    float(_env_score_threshold) if _env_score_threshold else None
-)
-
 # Set up the logger
 logger = get_logger(__name__)
 
@@ -204,11 +196,15 @@ async def get_detections(
 
     try:
         logger.info("Processing request with input data.")
-        threshold = (
-            info.confidence_threshold
-            if info.confidence_threshold is not None
-            else DEFAULT_CONFIDENCE_THRESHOLD
-        )
+        # Effective cutoff: request value, else the SENTINEL1_SCORE_THRESHOLD env default,
+        # else none (return all decoded detections).
+        env_threshold = os.getenv("SENTINEL1_SCORE_THRESHOLD")
+        if info.confidence_threshold is not None:
+            threshold = info.confidence_threshold
+        elif env_threshold:
+            threshold = float(env_threshold)
+        else:
+            threshold = None
         with time_operation(TimerOperations.TotalInferenceTime):
             vessel_detections = predict_pipeline(
                 tasks=[task],
