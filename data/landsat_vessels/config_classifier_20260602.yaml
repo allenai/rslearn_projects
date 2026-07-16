@@ -51,6 +51,9 @@ data:
         enable_f1_metric: true
         skip_unknown_categories: true
         allow_invalid: true
+        prob_property: "prob"
+        positive_class: "correct"
+        positive_class_threshold: 0.85
     batch_size: 64
     num_workers: 8
     default_config:
@@ -61,8 +64,8 @@ data:
             band_names:
               landsat: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
     train_config:
-      # tags:
-      #  split: ["train", "val", "test"]
+      tags:
+       split: ["train"]
       transforms:
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:

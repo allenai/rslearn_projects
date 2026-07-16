@@ -240,13 +240,12 @@ def run_classifier(
         if scene_data.item:
             window.save_layer_datas(
                 {
-                    LANDSAT_LAYER_NAME: WindowLayerData(
-                        LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
+                        LANDSAT_ALLBANDS_LAYER_NAME,
+                        [[scene_data.item.serialize()]],
                     ),
                     # Empty layer data so it doesn't go through ingest/materialize.
-                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
-                        LANDSAT_ALLBANDS_LAYER_NAME, []
-                    ),
+                    LANDSAT_LAYER_NAME: WindowLayerData(LANDSAT_LAYER_NAME, []),
                 }
             )
 
@@ -266,7 +265,7 @@ def run_classifier(
 
     # Verify that no window is unmaterialized.
     for window in windows:
-        if not window.is_layer_completed(LANDSAT_LAYER_NAME):
+        if not window.is_layer_completed(LANDSAT_ALLBANDS_LAYER_NAME):
             raise ValueError(f"window {window.name} does not have materialized Landsat")
 
     # Run classification model.
