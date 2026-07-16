@@ -150,13 +150,18 @@ def _write_scene_id_dataset_config(
 
 
 def _create_tiny_classifier_config(original_path: str, output_path: str) -> None:
-    """Patch the Swin-based classifier config for testing."""
+    """Patch the OlmoEarth-based classifier config to use OlmoEarth-v1-Nano."""
     with open(original_path) as f:
         cfg = yaml.safe_load(f)
 
     model_args = cfg["model"]["init_args"]
     encoder = model_args["model"]["init_args"]["encoder"][0]
-    encoder["init_args"]["pretrained"] = False
+    encoder["init_args"]["model_id"] = "OLMOEARTH_V1_NANO"
+
+    # Nano produces 128-dim embeddings vs Base's 768.
+    for decoder in model_args["model"]["init_args"]["decoder"]:
+        if "PoolingDecoder" in decoder.get("class_path", ""):
+            decoder["init_args"]["in_channels"] = 128
 
     apply_common_config_patches(cfg)
 
