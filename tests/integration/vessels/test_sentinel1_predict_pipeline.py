@@ -240,7 +240,9 @@ def test_predict_pipeline_local_files(
             historical1=Sentinel1Image(vv=files["hist1_vv"], vh=files["hist1_vh"]),
         )
     ]
-    predict_pipeline(tasks=tasks, scratch_path=str(tmp_path / "scratch"))
+    predict_pipeline(
+        tasks=tasks, score_threshold=0.5, scratch_path=str(tmp_path / "scratch")
+    )
 
 
 def test_predict_pipeline_scene_id(
@@ -270,5 +272,6 @@ def test_predict_pipeline_scene_id(
 
     predict_pipeline(
         tasks=[PredictionTask(scene_id=FAKE_S1_SCENE_ID)],
+        score_threshold=0.5,
         scratch_path=str(tmp_path / "scratch"),
     )

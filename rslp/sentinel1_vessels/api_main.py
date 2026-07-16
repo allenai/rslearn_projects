@@ -29,6 +29,7 @@ load_dotenv()
 # Configurable host and port, overridable via environment variables
 SENTINEL1_HOST = os.getenv("SENTINEL1_HOST", "0.0.0.0")
 SENTINEL1_PORT = int(os.getenv("SENTINEL1_PORT", 5555))
+SENTINEL1_SCORE_THRESHOLD = float(os.getenv("SENTINEL1_SCORE_THRESHOLD", "0.7"))
 
 # Set up the logger
 logger = get_logger(__name__)
@@ -97,6 +98,8 @@ class Sentinel1Request(BaseModel):
             same orbit direction as the target image.
         crop_path: Optional; Path to save the cropped images.
         scratch_path: Optional; Scratch path to save the rslearn dataset.
+        score_threshold: Optional; override the detector's score threshold for this
+            request. Defaults to the SENTINEL1_SCORE_THRESHOLD env var (0.7 if unset).
     """
 
     scene_id: str | None = None
@@ -104,6 +107,7 @@ class Sentinel1Request(BaseModel):
     historical1: Sentinel1Image | None = None
     crop_path: str | None = None
     scratch_path: str | None = None
+    score_threshold: float | None = None
 
     class Config:
         """Configuration for the Sentinel1Request model."""
@@ -192,9 +196,15 @@ async def get_detections(
 
     try:
         logger.info("Processing request with input data.")
+        threshold = (
+            info.score_threshold
+            if info.score_threshold is not None
+            else SENTINEL1_SCORE_THRESHOLD
+        )
         with time_operation(TimerOperations.TotalInferenceTime):
             vessel_detections = predict_pipeline(
                 tasks=[task],
+                score_threshold=threshold,
                 scratch_path=scratch_path,
             )[0]
         return Sentinel1Response(

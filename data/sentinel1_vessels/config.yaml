@@ -82,7 +82,9 @@ data:
               remap_values: [[0, 1], [0, 255]]
               image_bands: [1, 1, 1]
               exclude_by_center: true
-              score_threshold: 0.9
+
+              # Overridden in S1 Predict Pipeline
+              score_threshold: 0.7
               enable_map_metric: true
               enable_f1_metric: true
               enable_precision_recall: true
