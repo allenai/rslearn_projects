@@ -541,16 +541,15 @@ def run_attribute_model(
     # Drop detections whose crop window could not be materialized -- e.g. a detection so
     # close to the scene edge that its crop runs off the imagery. Without a materialized
     # crop there is neither an attribute prediction nor a crop image to produce, so the
-    # detection cannot be reported. Delete the unusable windows so the attribute model
-    # does not run on them, and keep detections/windows index-aligned.
+    # detection cannot be reported. The attribute model already skips windows without a
+    # completed layer; we just filter them out here (keeping detections/windows aligned)
+    # and return early if none remain, to avoid an empty dataloader.
     kept_detections: list[VesselDetection] = []
     kept_windows: list[Window] = []
     for detection, window in zip(detections, windows):
         if window.is_layer_completed(SENTINEL1_LAYER_NAME):
             kept_detections.append(detection)
             kept_windows.append(window)
-        else:
-            window.window_root.fs.rm(window.window_root.path, recursive=True)
     if len(kept_windows) < len(windows):
         logger.warning(
             f"Dropped {len(windows) - len(kept_windows)} detection(s) whose crop window "
