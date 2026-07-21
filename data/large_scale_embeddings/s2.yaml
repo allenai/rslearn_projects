@@ -1,0 +1,70 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              checkpoint_path: /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000
+              # patch_size 1 yields one 128-dimensional embedding per 10 m pixel.
+              patch_size: 1
+              embedding_size: 128
+              # Normalize raw Sentinel-2 values inside the encoder.
+              normalize: true
+              autocast_dtype: bfloat16
+              # Use the actual mosaic timestamps (from the materialized layer
+              # metadata) rather than dummy monthly timestamps. This also pads
+              # samples with differing numbers of mosaics so they can be batched
+              # together.
+              use_legacy_timestamps: false
+        decoder:
+          # L2-normalizes each pixel's embedding and quantizes it to int8 using the
+          # AlphaEarth-style power scheme (-128 is reserved for nodata).
+          - class_path: rslp.large_scale_embeddings.model.QuantizedEmbeddingHead
+            init_args:
+              l2_normalize: true
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    # Overridden by the prediction pipeline via --data.init_args.path.
+    path: placeholder
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2_l2a"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+    task:
+      # Inference-only task: no targets/loss; writes the head's int8 output.
+      class_path: rslearn.train.tasks.embedding.EmbeddingTask
+    # Crops are tiny (16x16) so a large batch size is needed for throughput. Tune
+    # per GPU along with num_workers.
+    batch_size: 64
+    num_workers: 16
+    default_config:
+      # The model must operate on 16x16 crops; anything bigger fails with the 12
+      # monthly inputs at patch_size=1 due to GPU memory constraints.
+      crop_size: 16
+    predict_config:
+      load_all_crops: true
+      # Overlap adjacent crops to mitigate embedding seams at crop boundaries; the
+      # RasterMerger below trims half the overlap from each crop when merging.
+      overlap_pixels: 8
+      skip_targets: true
+trainer:
+  callbacks:
+    # Writes the int8 128-band embedding raster to the "output" layer.
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: output
+        selector: []
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            downsample_factor: 1
+            overlap_pixels: 8

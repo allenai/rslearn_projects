@@ -1,0 +1,86 @@
+{
+  "layers": {
+    "output": {
+      "band_sets": [
+        {
+          "dtype": "int8",
+          "num_bands": 128
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel1": {
+      "band_sets": [
+        {
+          "bands": [
+            "vv",
+            "vh"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel1_rtc.Sentinel1RTC",
+        "duration": "365d",
+        "ingest": false,
+        "init_args": {
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 12,
+          "min_matches": 1,
+          "period_duration": "30d",
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "0d"
+      },
+      "type": "raster"
+    },
+    "sentinel2_l2a": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "duration": "365d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 12,
+          "min_matches": 1,
+          "period_duration": "30d",
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "0d"
+      },
+      "type": "raster"
+    }
+  }
+}
