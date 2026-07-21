@@ -88,13 +88,28 @@ class _ShuffledSkipExistingDataset(torch.utils.data.IterableDataset):
     def __iter__(self) -> Iterator[Any]:
         worker_info = torch.utils.data.get_worker_info()
         windows = self.base.get_dataset_examples()
-        indices = list(range(len(windows)))
+
+        # List existing outputs upfront so we only iterate over missing windows.
+        existing: set[tuple[str, str]] = set()
+        if self.output_dir.exists():
+            for path in self.output_dir.glob("*/*.json"):
+                existing.add((path.parent.name, path.name.removesuffix(".json")))
+
+        indices = [
+            idx
+            for idx, window in enumerate(windows)
+            if (window.group, window.name) not in existing
+        ]
         random.Random(self.shuffle_seed).shuffle(indices)
         if worker_info is not None:
             indices = indices[worker_info.id :: worker_info.num_workers]
 
+        print(f"got {len(indices)} indices to iterate over")
+
         for idx in indices:
             window = windows[idx]
+            print(window.group, window.name)
+            # Re-check in case another process wrote the output concurrently.
             if _get_output_path(self.output_dir, window.group, window.name).exists():
                 continue
             try:
@@ -148,7 +163,9 @@ def _load_model(checkpoint_path: str, device: str) -> torch.nn.Module:
     return model
 
 
-def _build_model_dataset(ds_path: str, workers: int) -> tuple[Dataset, ModelDataset]:
+def _build_model_dataset(
+    ds_path: str, workers: int, group: str | None = None
+) -> tuple[Dataset, ModelDataset]:
     """Create an rslearn ModelDataset for the ten-year Sentinel-2 inputs."""
     dataset = Dataset(UPath(ds_path))
     modality_names = [f"sentinel2_y{i}" for i in range(NUM_YEARS)]
@@ -173,7 +190,10 @@ def _build_model_dataset(ds_path: str, workers: int) -> tuple[Dataset, ModelData
         dataset=dataset,
         inputs=inputs_config,
         task=ChangeFinderTask(),
-        split_config=SplitConfig(transforms=[normalizer]),
+        split_config=SplitConfig(
+            transforms=[normalizer],
+            groups=[group] if group is not None else None,
+        ),
         workers=workers,
     )
     return dataset, model_dataset
@@ -230,12 +250,12 @@ def _score_crop(
     src_threshold: float,
     dst_threshold: float,
 ) -> _BestChange | None:
-    """Find the best class decline in a centered crop.
+    """Find a random qualifying class decline in a centered crop.
 
     A change is any class whose probability stays above src_threshold across all
     pre years (min over time) and drops below dst_threshold across all post years
-    (max over time). Among such (class, pixel) candidates the one with the
-    largest margin (pre_min - post_max) is returned.
+    (max over time). Pivot years are visited in random order, and the first pivot
+    year with any qualifying (class, pixel) yields a randomly chosen one of them.
 
     Args:
         probs: tensor shaped NUM_YEARS x NUM_CLASSES x H x W.
@@ -246,31 +266,26 @@ def _score_crop(
         dst_threshold: maximum post-period probability (max over time) of the
             declining class.
     """
-    best: _BestChange | None = None
-    best_score = float("-inf")
     valid_classes = probs[:, 1:, :, :]
 
     min_pivot = NUM_CONTEXT_YEARS
     max_pivot = NUM_YEARS - 1 - NUM_CONTEXT_YEARS
-    for pivot_idx in range(min_pivot, max_pivot + 1):
+    pivot_indices = list(range(min_pivot, max_pivot + 1))
+    random.shuffle(pivot_indices)
+    for pivot_idx in pivot_indices:
         pre = valid_classes[pivot_idx - NUM_CONTEXT_YEARS : pivot_idx]
         post = valid_classes[pivot_idx + 1 : pivot_idx + 1 + NUM_CONTEXT_YEARS]
         pre_min = pre.min(dim=0).values
         post_max = post.max(dim=0).values
         mask = (pre_min > src_threshold) & (post_max < dst_threshold)
-        scores = torch.where(
-            mask, pre_min - post_max, torch.full_like(pre_min, float("-inf"))
-        )
-        crop_best_score = float(scores.max().item())
-        if crop_best_score <= best_score:
+        candidates = torch.nonzero(mask, as_tuple=False)
+        if candidates.shape[0] == 0:
             continue
 
-        _, crop_height, crop_width = scores.shape
-        flat_idx = int(scores.argmax().item())
-        class_idx = flat_idx // (crop_height * crop_width)
-        remainder = flat_idx % (crop_height * crop_width)
-        local_row = remainder // crop_width
-        local_col = remainder % crop_width
+        choice = candidates[random.randrange(candidates.shape[0])]
+        class_idx = int(choice[0].item())
+        local_row = int(choice[1].item())
+        local_col = int(choice[2].item())
         row = row_start + local_row
         col = col_start + local_col
 
@@ -282,10 +297,10 @@ def _score_crop(
         ].mean(dim=0)
         src_class_id = class_idx + 1
         dst_class_id = int(post_avg.argmax().item()) + 1
+        score = float((pre_min - post_max)[class_idx, local_row, local_col].item())
 
-        best_score = crop_best_score
-        best = _BestChange(
-            score=crop_best_score,
+        return _BestChange(
+            score=score,
             row=row,
             col=col,
             pivot_year_idx=pivot_idx,
@@ -293,7 +308,7 @@ def _score_crop(
             dst_class_id=dst_class_id,
         )
 
-    return best
+    return None
 
 
 def _find_best_change(
@@ -395,21 +410,26 @@ def apply_per_pixel_land_cover(
     workers: int = 4,
     center_crop_size: int = 64,
     seed: int | None = None,
+    group: str | None = None,
 ) -> None:
     """Apply per-pixel land-cover change scoring to a ten-year dataset."""
     output_root = UPath(output_dir)
-    _dataset, model_dataset = _build_model_dataset(ds_path, workers)
+    print("Building the ModelDataset")
+    _dataset, model_dataset = _build_model_dataset(ds_path, workers, group)
+    print("Building the shuffled skip dataset wrapper")
     iter_dataset = _ShuffledSkipExistingDataset(
         base=model_dataset,
         output_dir=output_root,
         shuffle_seed=seed,
     )
+    print("Building the data loader")
     data_loader = torch.utils.data.DataLoader(
         dataset=iter_dataset,
         num_workers=workers,
         collate_fn=collate_fn,
         batch_size=batch_size,
     )
+    print("Building the model")
     model = _load_model(checkpoint_path, device)
 
     written = 0
@@ -434,14 +454,17 @@ def apply_per_pixel_land_cover(
                     src_threshold=src_threshold,
                     dst_threshold=dst_threshold,
                 )
-                if best is None:
-                    skipped_no_change += 1
-                    continue
 
                 out_path.parent.mkdir(parents=True, exist_ok=True)
+                if best is None:
+                    skipped_no_change += 1
+                    entry: list[dict[str, Any]] = []
+                else:
+                    entry = _build_v2_entry(metadata, best)
+                    written += 1
+
                 with open_atomic(out_path, "w") as f:
-                    json.dump(_build_v2_entry(metadata, best), f, indent=2)
-                written += 1
+                    json.dump(entry, f, indent=2)
 
     print(
         f"Wrote {written} V2 annotation JSON files; "
@@ -472,6 +495,11 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--center_crop_size", type=int, default=64)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument(
+        "--group",
+        default=None,
+        help="Only process windows in this dataset group",
+    )
     args = parser.parse_args()
 
     apply_per_pixel_land_cover(
@@ -485,6 +513,7 @@ def main() -> None:
         workers=args.workers,
         center_crop_size=args.center_crop_size,
         seed=args.seed,
+        group=args.group,
     )
 
 

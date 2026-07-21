@@ -25,6 +25,7 @@ from torchmetrics.utilities import dim_zero_cat
 from typing_extensions import override
 from upath import UPath
 
+from .timestamp_output import membership_day_bands
 from .transforms import ANNOTATION_KEY
 
 OUTPUT_TASK_ORDER = ("binary", "src", "dst", "timestamps")
@@ -281,20 +282,45 @@ class LCCMultiTask(MultiTask):
 
     def process_output(
         self, raw_output: Any, metadata: SampleMetadata
-    ) -> npt.NDArray[np.uint8]:
-        """Stack per-task probabilities into a single 49-band uint8 CHW array.
+    ) -> npt.NDArray[np.uint16]:
+        """Stack per-task outputs into a single 56-band uint16 CHW array.
+
+        The two timestamp bands hold the predicted pre-change and post-change
+        dates as integer days since ``TIMESTAMP_EPOCH``: the earliest and latest
+        timesteps whose per-timestep membership exceeds 0.5, mapped to real dates
+        via ``raw_output["timestep_days"]``. Probability bands are stored as 0..255
+        within the uint16 raster.
 
         Band layout:
         0..2 = binary (softmax probs)
         3..15 = src (softmax probs)
         16..28 = dst (softmax probs)
-        29..48 = timestamp (sigmoid probs)
+        29 = ts_pre_days (days since epoch)
+        30 = ts_post_days (days since epoch)
+        31..37 = pre_change (softmax probs)
+        38..49 = post_change (softmax probs)
+        50..55 = same_change (softmax probs)
         """
-        parts: list[torch.Tensor] = []
+        parts: list[npt.NDArray[np.uint16]] = []
         for task_name in ("binary", "src", "dst"):
             probs = raw_output[task_name].float()
-            parts.append((probs * 255).clamp(0, 255).to(torch.uint8))
-        ts_probs = raw_output["timestamps"].float()
-        parts.append((ts_probs * 255).clamp(0, 255).to(torch.uint8))
-        stacked = torch.cat(parts, dim=0)
-        return stacked.cpu().numpy()
+            parts.append(
+                (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
+            )
+
+        membership = raw_output["timestamps"].float()
+        timestep_days = raw_output.get("timestep_days")
+        if timestep_days is not None:
+            day_bands = membership_day_bands(membership, timestep_days)
+            parts.append(day_bands.cpu().numpy().astype(np.uint16))
+        else:
+            h, w = membership.shape[-2:]
+            parts.append(np.zeros((2, h, w), dtype=np.uint16))
+
+        for task_name in ("pre_change", "post_change", "same_change"):
+            probs = raw_output[task_name].float()
+            parts.append(
+                (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
+            )
+
+        return np.concatenate(parts, axis=0)

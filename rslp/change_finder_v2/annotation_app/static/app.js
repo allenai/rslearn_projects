@@ -66,6 +66,8 @@
   const SAME_CHANGE_CATEGORIES = [
     "agricultural_activity",
     "wildfire",
+    "ice_motion",
+    "flooding",
   ];
 
   // --- State ---
@@ -98,6 +100,7 @@
   const annotForm = document.getElementById("annot-form");
   const annotStatus = document.getElementById("annot-status");
   const btnSave = document.getElementById("btn-save");
+  const btnApplyAll = document.getElementById("btn-apply-all");
   const annotInputs = {
     pre_change: document.getElementById("annot-pre-change"),
     first_date_change_noticeable: document.getElementById("annot-first-noticeable"),
@@ -514,19 +517,36 @@
 
   // --- Annotation save ---
   function saveAnnotation(evt) {
-    evt.preventDefault();
+    if (evt) evt.preventDefault();
+    applyAnnotation(false);
+  }
+
+  function applyAnnotationToAll() {
+    if (!currentEntry) return;
+    var pts = currentEntry.entry.positive_points || [];
+    if (pts.length > 1) {
+      if (!window.confirm("Apply this metadata to all " + pts.length + " positive points?")) {
+        return;
+      }
+    }
+    applyAnnotation(true);
+  }
+
+  function applyAnnotation(applyAll) {
     if (!currentEntry) return;
     var pts = currentEntry.entry.positive_points || [];
     if (pts.length === 0 || selectedPointIdx >= pts.length) return;
 
     isSaving = true;
     btnSave.disabled = true;
-    annotStatus.textContent = "Saving...";
+    btnApplyAll.disabled = true;
+    annotStatus.textContent = applyAll ? "Applying to all..." : "Saving...";
     annotStatus.className = "";
 
     postJSON("/api/update_annotation", {
       entry_idx: currentIndex,
       point_idx: selectedPointIdx,
+      apply_all: applyAll,
       pre_change: annotInputs.pre_change.value.trim(),
       first_date_change_noticeable: annotInputs.first_date_change_noticeable.value.trim(),
       post_change: annotInputs.post_change.value.trim(),
@@ -540,7 +560,7 @@
       if (res.ok) {
         currentEntry.entry = res.entry;
         renderAnnotation();
-        annotStatus.textContent = "Saved";
+        annotStatus.textContent = applyAll ? "Applied to all" : "Saved";
         annotStatus.className = "ok";
       } else {
         annotStatus.textContent = "Error: " + (res.error || "save failed");
@@ -552,6 +572,7 @@
     }).finally(function () {
       isSaving = false;
       btnSave.disabled = false;
+      btnApplyAll.disabled = false;
     });
   }
 
@@ -578,6 +599,7 @@
   btnPtNext.addEventListener("click", function () { changePoint(1); });
   btnPtMakeNegative.addEventListener("click", makeSelectedNegative);
   annotForm.addEventListener("submit", saveAnnotation);
+  btnApplyAll.addEventListener("click", applyAnnotationToAll);
 
   document.addEventListener("keydown", function (e) {
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;

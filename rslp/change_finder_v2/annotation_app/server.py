@@ -297,30 +297,33 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
         if idx is None or idx < 0 or idx >= len(entries):
             return jsonify({"ok": False, "error": "invalid entry_idx"}), 400
 
+        apply_all = bool(body.get("apply_all"))
+
         with write_lock:
             entry = entries[idx]
             pts = entry.get("positive_points", [])
             if point_idx is None or point_idx < 0 or point_idx >= len(pts):
                 return jsonify({"ok": False, "error": "invalid point_idx"}), 400
 
-            point = pts[point_idx]
-            for field in (
-                "pre_change",
-                "first_date_change_noticeable",
-                "post_change",
-                "pre_category",
-                "post_category",
-                "fine_change_category",
-                "pre_change_category",
-                "post_change_category",
-                "same_change_category",
-            ):
-                val = body.get(field)
-                if val is not None:
-                    if val == "":
-                        point.pop(field, None)
-                    else:
-                        point[field] = val
+            target_points = pts if apply_all else [pts[point_idx]]
+            for point in target_points:
+                for field in (
+                    "pre_change",
+                    "first_date_change_noticeable",
+                    "post_change",
+                    "pre_category",
+                    "post_category",
+                    "fine_change_category",
+                    "pre_change_category",
+                    "post_change_category",
+                    "same_change_category",
+                ):
+                    val = body.get(field)
+                    if val is not None:
+                        if val == "":
+                            point.pop(field, None)
+                        else:
+                            point[field] = val
 
             _save_entries()
 
@@ -362,9 +365,15 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
             bands = src.read()
 
         divisor = 15.0 if request.args.get("bright") else 10.0
-        r = np.clip(bands[b04_idx].astype(np.float32) / divisor, 0, 255).astype(np.uint8)
-        g = np.clip(bands[b03_idx].astype(np.float32) / divisor, 0, 255).astype(np.uint8)
-        b = np.clip(bands[b02_idx].astype(np.float32) / divisor, 0, 255).astype(np.uint8)
+        r = np.clip(bands[b04_idx].astype(np.float32) / divisor, 0, 255).astype(
+            np.uint8
+        )
+        g = np.clip(bands[b03_idx].astype(np.float32) / divisor, 0, 255).astype(
+            np.uint8
+        )
+        b = np.clip(bands[b02_idx].astype(np.float32) / divisor, 0, 255).astype(
+            np.uint8
+        )
         rgb = np.stack([r, g, b], axis=-1)
 
         return Response(

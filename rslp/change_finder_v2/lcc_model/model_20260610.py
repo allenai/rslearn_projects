@@ -25,10 +25,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from rslearn.models.olmoearth_pretrain.model import OlmoEarth
-from rslearn.train.model_context import ModelContext, ModelOutput
+from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 
-from .model import StageSpec, _make_decoder
+from .model import INPUT_KEY, StageSpec, _make_decoder
 from .sliding_window import SlidingWindowEvalMixin
+from .timestamp_encoding import timestamps_to_days
 
 
 def _make_simple_decoder(
@@ -53,6 +54,9 @@ class TemporalChangeModel(SlidingWindowEvalMixin, nn.Module):
         num_classes_binary: int = 3,
         num_classes_src: int = 13,
         num_classes_dst: int = 13,
+        num_classes_pre_change: int = 7,
+        num_classes_post_change: int = 12,
+        num_classes_same_change: int = 6,
         num_timesteps: int = 12,
         embedding_dim: int = 768,
         temporal_dim: int | None = None,
@@ -134,6 +138,15 @@ class TemporalChangeModel(SlidingWindowEvalMixin, nn.Module):
             self.decoder_dst = _make_simple_decoder(
                 self.temporal_dim, num_classes_dst, patch_size
             )
+            self.decoder_pre_change = _make_simple_decoder(
+                self.temporal_dim, num_classes_pre_change, patch_size
+            )
+            self.decoder_post_change = _make_simple_decoder(
+                self.temporal_dim, num_classes_post_change, patch_size
+            )
+            self.decoder_same_change = _make_simple_decoder(
+                self.temporal_dim, num_classes_same_change, patch_size
+            )
         else:
             if decoder_stages is None:
                 raise ValueError(
@@ -148,6 +161,15 @@ class TemporalChangeModel(SlidingWindowEvalMixin, nn.Module):
             self.decoder_dst = _make_decoder(
                 self.temporal_dim, decoder_stages, num_classes_dst
             )
+            self.decoder_pre_change = _make_decoder(
+                self.temporal_dim, decoder_stages, num_classes_pre_change
+            )
+            self.decoder_post_change = _make_decoder(
+                self.temporal_dim, decoder_stages, num_classes_post_change
+            )
+            self.decoder_same_change = _make_decoder(
+                self.temporal_dim, decoder_stages, num_classes_same_change
+            )
 
         # Per-token timestamp heads producing one logit per timestep.
         self.start_head = nn.Linear(self.temporal_dim, 1)
@@ -156,6 +178,9 @@ class TemporalChangeModel(SlidingWindowEvalMixin, nn.Module):
         self.num_classes_binary = num_classes_binary
         self.num_classes_src = num_classes_src
         self.num_classes_dst = num_classes_dst
+        self.num_classes_pre_change = num_classes_pre_change
+        self.num_classes_post_change = num_classes_post_change
+        self.num_classes_same_change = num_classes_same_change
 
     def _per_timestep_features(self, context: ModelContext) -> torch.Tensor:
         """Run the encoder and return per-timestep features (B, C, H, W, T).
@@ -214,6 +239,11 @@ class TemporalChangeModel(SlidingWindowEvalMixin, nn.Module):
         logits_binary = self.decoder_binary(seg_feat)
         logits_src = self.decoder_src(seg_feat)
         logits_dst = self.decoder_dst(seg_feat)
+        change_logits = {
+            "pre_change": self.decoder_pre_change(seg_feat),
+            "post_change": self.decoder_post_change(seg_feat),
+            "same_change": self.decoder_same_change(seg_feat),
+        }
 
         # Per-token timestamp logits over T, upsampled to full resolution.
         xt = x.permute(0, 2, 3, 4, 1)  # (B, H, W, T, C)
@@ -234,20 +264,34 @@ class TemporalChangeModel(SlidingWindowEvalMixin, nn.Module):
             )
             losses["src_cls"] = self._seg_loss(logits_src, targets, "src")
             losses["dst_cls"] = self._seg_loss(logits_dst, targets, "dst")
+            for name, logits_cat in change_logits.items():
+                if name in targets[0]:
+                    losses[f"{name}_cls"] = self._seg_loss(logits_cat, targets, name)
             losses["start_ce"] = self._timestamp_ce(start_logits, targets, "start")
             losses["end_ce"] = self._timestamp_ce(end_logits, targets, "end")
 
         outputs: list[dict[str, Any]] = []
         for i in range(len(context.inputs)):
+            ts_image = context.inputs[i].get(INPUT_KEY)
+            timestep_days = (
+                timestamps_to_days(ts_image.timestamps)
+                if isinstance(ts_image, RasterImage) and ts_image.timestamps is not None
+                else None
+            )
             outputs.append(
                 {
                     "binary": F.softmax(logits_binary[i], dim=0),
                     "src": F.softmax(logits_src[i], dim=0),
                     "dst": F.softmax(logits_dst[i], dim=0),
+                    **{
+                        name: F.softmax(change_logits[name][i], dim=0)
+                        for name in change_logits
+                    },
                     "timestamps": {
                         "start": F.softmax(start_logits[i], dim=0),
                         "end": F.softmax(end_logits[i], dim=0),
                     },
+                    "timestep_days": timestep_days,
                 }
             )
 

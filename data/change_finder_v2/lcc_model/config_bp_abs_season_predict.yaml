@@ -2,7 +2,7 @@ model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     model:
-      class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassChangeModel
+      class_path: rslp.change_finder_v2.lcc_model.model_fable_20260710.FableChangeModel
       init_args:
         encoder:
           class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
@@ -24,6 +24,9 @@ model:
           - [[256, 3]]
           - [[128, 3]]
         binary_loss_weight: 2.0
+        binary_mode: breakpoint
+        contrast: abs
+        season_embed: true
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
@@ -113,6 +116,6 @@ trainer:
       init_args:
         output_layer: output_change
         selector: []
-project_name: 2026_07_01_lcc
-run_name: pass20_v1_2_00
+project_name: 2026_07_10_lcc_fable
+run_name: bp_abs_season
 management_dir: ${RSLP_PREFIX}/projects

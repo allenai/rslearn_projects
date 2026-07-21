@@ -50,6 +50,9 @@ from torchmetrics.utilities import dim_zero_cat
 from typing_extensions import override
 from upath import UPath
 
+from .timestamp_encoding import timestamps_to_days
+from .timestamp_output import start_end_day_bands
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -62,6 +65,10 @@ OUTPUT_KEY = "sentinel2_l2a"
 
 NUM_QUARTERLY = 16
 NUM_FREQUENT = 4
+
+# Change-category heads (predicted per positive point, "none"-aware). These mirror
+# the src/dst segmentation heads and are trained/masked independently.
+CHANGE_CATEGORY_TASKS = ("pre_change", "post_change", "same_change")
 
 # Spacing used for the fake timestamps assigned to padding (duplicated) images.
 QUARTERLY_PERIOD = timedelta(days=90)
@@ -550,37 +557,50 @@ class SinglePassMultiTask(MultiTask):
 
     def process_output(
         self, raw_output: Any, metadata: SampleMetadata
-    ) -> npt.NDArray[np.uint8]:
-        """Stack per-task probabilities into a 49-band uint8 CHW array.
+    ) -> npt.NDArray[np.uint16]:
+        """Stack per-task outputs into a 56-band uint16 CHW array.
 
-        The model emits start/end timestamp distributions (two softmaxes over the
-        T timesteps) rather than a per-image membership map. To stay compatible
-        with the 49-band output layout and downstream tooling, the start/end
-        distributions are collapsed back into a per-timestep "in change window"
-        membership:
-
-            membership[t] = P(start <= t) * P(end >= t)
-                          = cumsum(start)[t] * reverse_cumsum(end)[t]
+        The two timestamp bands hold the predicted pre-change and post-change
+        dates as integer days since ``TIMESTAMP_EPOCH``, derived from the per-pixel
+        argmax of the start/end distributions over the input timesteps (mapped to
+        real dates via ``raw_output["timestep_days"]``). Probability bands are
+        stored as 0..255 within the uint16 raster.
 
         Band layout:
         0..2   = binary (softmax probs)
         3..15  = src (softmax probs)
         16..28 = dst (softmax probs)
-        29..48 = timestamp membership (reconstructed, T=20)
+        29     = ts_pre_days (days since epoch)
+        30     = ts_post_days (days since epoch)
+        31..37 = pre_change (softmax probs)
+        38..49 = post_change (softmax probs)
+        50..55 = same_change (softmax probs)
         """
-        parts: list[torch.Tensor] = []
+        parts: list[npt.NDArray[np.uint16]] = []
         for task_name in ("binary", "src", "dst"):
             probs = raw_output[task_name].float()
-            parts.append((probs * 255).clamp(0, 255).to(torch.uint8))
+            parts.append(
+                (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
+            )
 
         timestamps = raw_output["timestamps"]
-        start_cdf = timestamps["start"].float().cumsum(dim=0)  # P(start <= t)
-        end_rev = timestamps["end"].float().flip(0).cumsum(dim=0).flip(0)  # P(end >= t)
-        membership = (start_cdf * end_rev).clamp(0, 1)
-        parts.append((membership * 255).clamp(0, 255).to(torch.uint8))
+        timestep_days = raw_output.get("timestep_days")
+        if timestep_days is not None:
+            day_bands = start_end_day_bands(
+                timestamps["start"], timestamps["end"], timestep_days
+            )
+            parts.append(day_bands.cpu().numpy().astype(np.uint16))
+        else:
+            h, w = timestamps["start"].shape[-2:]
+            parts.append(np.zeros((2, h, w), dtype=np.uint16))
 
-        stacked = torch.cat(parts, dim=0)
-        return stacked.cpu().numpy()
+        for task_name in CHANGE_CATEGORY_TASKS:
+            probs = raw_output[task_name].float()
+            parts.append(
+                (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
+            )
+
+        return np.concatenate(parts, axis=0)
 
     def get_metrics(self) -> MetricCollection:
         """Get binary/src/dst metrics plus start/end timestamp accuracy."""
@@ -624,9 +644,11 @@ class SinglePassChangeModel(nn.Module):
     preserved, giving ``(B, C, H, W, T)`` features. There is no temporal
     transformer and no temporal positional encoding:
 
-    - binary/src/dst: the per-timestep tokens are mean-pooled over time and run
-      through per-task conv decoders that upsample the 1/patch_size features back
-      to full resolution.
+    - binary/src/dst: the per-timestep tokens are aggregated over time
+      (``temporal_aggregation``) and run through per-task conv decoders that
+      upsample the 1/patch_size features back to full resolution. The default
+      ``"mean"`` mean-pools over time; ``"diff"`` uses the last-minus-first
+      timestep embedding (post minus pre) to emphasize change.
     - start/end: a per-token linear head produces one logit per timestep,
       upsampled to full resolution, trained with cross-entropy over the T
       timesteps at change pixels.
@@ -638,10 +660,14 @@ class SinglePassChangeModel(nn.Module):
         num_classes_binary: int = 3,
         num_classes_src: int = 13,
         num_classes_dst: int = 13,
+        num_classes_pre_change: int = 7,
+        num_classes_post_change: int = 12,
+        num_classes_same_change: int = 6,
         num_timesteps: int = 20,
         embedding_dim: int = 768,
         decoder_stages: list[StageSpec] | None = None,
         binary_loss_weight: float = 2.0,
+        temporal_aggregation: str = "mean",
     ):
         """Initialize the single-pass LCC model.
 
@@ -651,19 +677,35 @@ class SinglePassChangeModel(nn.Module):
             num_classes_binary: number of classes for the binary change task.
             num_classes_src: number of source land cover classes.
             num_classes_dst: number of destination land cover classes.
+            num_classes_pre_change: number of pre_change_category classes
+                (including nodata and "none").
+            num_classes_post_change: number of post_change_category classes
+                (including nodata and "none").
+            num_classes_same_change: number of same_change_category classes
+                (including nodata and "none").
             num_timesteps: expected number of input timesteps (e.g. 20).
             embedding_dim: per-token encoder embedding size (768 for BASE). This
-                is the decoder input dim (a single pass, mean-pooled over time).
+                is the decoder input dim (a single pass, aggregated over time).
             decoder_stages: per-task conv decoder definition (see _make_decoder).
                 The number of 2x upsamples (len - 1) must equal log2(patch_size)
                 so outputs are full resolution. Required.
             binary_loss_weight: multiplier applied to the binary change loss.
+            temporal_aggregation: how the per-timestep tokens are collapsed into
+                the segmentation feature. ``"mean"`` mean-pools over time;
+                ``"diff"`` uses the last-minus-first timestep embedding.
         """
         super().__init__()
         self.encoder = encoder
         self.embedding_dim = embedding_dim
         self.num_timesteps = num_timesteps
         self.binary_loss_weight = binary_loss_weight
+
+        if temporal_aggregation not in ("mean", "diff"):
+            raise ValueError(
+                "temporal_aggregation must be 'mean' or 'diff', got "
+                f"{temporal_aggregation!r}"
+            )
+        self.temporal_aggregation = temporal_aggregation
 
         if decoder_stages is None:
             raise ValueError("decoder_stages must be specified")
@@ -675,6 +717,18 @@ class SinglePassChangeModel(nn.Module):
         self.decoder_src = _make_decoder(embedding_dim, decoder_stages, num_classes_src)
         self.decoder_dst = _make_decoder(embedding_dim, decoder_stages, num_classes_dst)
 
+        # Change-category decoders (pre/post/same), consuming the same aggregated
+        # feature as src/dst.
+        self.decoder_pre_change = _make_decoder(
+            embedding_dim, decoder_stages, num_classes_pre_change
+        )
+        self.decoder_post_change = _make_decoder(
+            embedding_dim, decoder_stages, num_classes_post_change
+        )
+        self.decoder_same_change = _make_decoder(
+            embedding_dim, decoder_stages, num_classes_same_change
+        )
+
         # Per-token timestamp heads producing one logit per timestep.
         self.start_head = nn.Linear(embedding_dim, 1)
         self.end_head = nn.Linear(embedding_dim, 1)
@@ -682,13 +736,16 @@ class SinglePassChangeModel(nn.Module):
         self.num_classes_binary = num_classes_binary
         self.num_classes_src = num_classes_src
         self.num_classes_dst = num_classes_dst
+        self.num_classes_pre_change = num_classes_pre_change
+        self.num_classes_post_change = num_classes_post_change
+        self.num_classes_same_change = num_classes_same_change
 
     def forward(
         self,
         context: ModelContext,
         targets: list[dict[str, Any]] | None = None,
     ) -> ModelOutput:
-        """Single forward pass with mean-pool decoders and start/end heads.
+        """Single forward pass with aggregated-time decoders and start/end heads.
 
         Args:
             context: ModelContext with ``sentinel2_l2a`` RasterImage (num_timesteps).
@@ -702,11 +759,15 @@ class SinglePassChangeModel(nn.Module):
         token_feature_maps = self.encoder(context)
         feature = token_feature_maps.feature_maps[0]  # (B, C, H, W, T)
 
-        # Segmentation: mean-pool over time, then per-task decoders.
-        seg_feat = feature.mean(dim=-1)  # (B, C, H, W)
+        # Segmentation: aggregate over time, then per-task decoders.
+        if self.temporal_aggregation == "diff":
+            seg_feat = feature[..., -1] - feature[..., 0]  # (B, C, H, W)
+        else:
+            seg_feat = feature.mean(dim=-1)  # (B, C, H, W)
         logits_binary = self.decoder_binary(seg_feat)
         logits_src = self.decoder_src(seg_feat)
         logits_dst = self.decoder_dst(seg_feat)
+        change_logits = self._change_category_logits(seg_feat)
 
         # Per-token timestamp logits over T, upsampled to full resolution.
         xt = feature.permute(0, 2, 3, 4, 1)  # (B, H, W, T, C)
@@ -727,24 +788,70 @@ class SinglePassChangeModel(nn.Module):
             )
             losses["src_cls"] = self._seg_loss(logits_src, targets, "src")
             losses["dst_cls"] = self._seg_loss(logits_dst, targets, "dst")
+            self._add_change_category_losses(change_logits, targets, losses)
             losses["start_ce"] = self._timestamp_ce(start_logits, targets, "start")
             losses["end_ce"] = self._timestamp_ce(end_logits, targets, "end")
 
         outputs: list[dict[str, Any]] = []
         for i in range(len(context.inputs)):
+            ts_image = context.inputs[i].get(INPUT_KEY)
+            timestep_days = (
+                timestamps_to_days(ts_image.timestamps)
+                if isinstance(ts_image, RasterImage) and ts_image.timestamps is not None
+                else None
+            )
             outputs.append(
                 {
                     "binary": F.softmax(logits_binary[i], dim=0),
                     "src": F.softmax(logits_src[i], dim=0),
                     "dst": F.softmax(logits_dst[i], dim=0),
+                    **{
+                        name: F.softmax(change_logits[name][i], dim=0)
+                        for name in change_logits
+                    },
                     "timestamps": {
                         "start": F.softmax(start_logits[i], dim=0),
                         "end": F.softmax(end_logits[i], dim=0),
                     },
+                    "timestep_days": timestep_days,
                 }
             )
 
         return ModelOutput(outputs=outputs, loss_dict=losses)
+
+    def _change_category_logits(self, feat: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Run the pre/post/same change-category decoders on ``feat``.
+
+        Args:
+            feat: aggregated segmentation feature (B, C, H, W), same as src/dst.
+
+        Returns:
+            Map from change-category task name to logits (B, num_classes, H', W').
+        """
+        return {
+            "pre_change": self.decoder_pre_change(feat),
+            "post_change": self.decoder_post_change(feat),
+            "same_change": self.decoder_same_change(feat),
+        }
+
+    def _add_change_category_losses(
+        self,
+        change_logits: dict[str, torch.Tensor],
+        targets: list[dict[str, Any]] | None,
+        losses: dict[str, torch.Tensor],
+    ) -> None:
+        """Add masked cross-entropy losses for any configured change-category head.
+
+        Each head is optional: a loss is only added when the corresponding target
+        is present (so configs without these tasks are unaffected). Per-pixel
+        masking (via the label rasters) already encodes the "train only when at
+        least one field is set" rule.
+        """
+        if targets is None:
+            return
+        for name, logits in change_logits.items():
+            if name in targets[0]:
+                losses[f"{name}_cls"] = self._seg_loss(logits, targets, name)
 
     def _seg_loss(
         self,

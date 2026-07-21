@@ -6,6 +6,8 @@ This script takes one or more v2 annotation JSONs and creates an rslearn dataset
 - sentinel2_frequent_0..7: WindowLayerData with four 15-day periods each; the
   least-cloudy mosaic is selected within each period
 - label_binary, label_src, label_dst: Pre-rasterized point labels
+- label_pre_change, label_post_change, label_same_change: Pre-rasterized point
+  labels for the pre/post/same change-category heads (class 1 = "none")
 
 The time range for each window covers all annotation-derived frequent blocks and
 enough preceding quarterly history. Frequent image options can extend up to
@@ -82,6 +84,52 @@ CATEGORY_NAMES = [
     "wetland (herbaceous)",
 ]
 
+# Change-category names for the pre/post/same_change_category annotation fields.
+# Class layout is [nodata, none, <options...>]: class 0 = nodata (masked, no point
+# or none of the three fields set); class 1 = "none" (this field unset but a
+# sibling field is set); classes >= 2 = the annotated options. Option lists mirror
+# the annotation app (annotation_app/static/app.js).
+PRE_CHANGE_CATEGORY_NAMES = [
+    "nodata",
+    "none",
+    "deforestation",
+    "urban_erosion",
+    "wetland_loss",
+    "water_contract",
+    "removed_crop_structure",
+]
+
+POST_CHANGE_CATEGORY_NAMES = [
+    "nodata",
+    "none",
+    "vegetation_growth",
+    "new_building",
+    "new_road",
+    "new_infrastructure",
+    "new_crop_field",
+    "new_aquafarm",
+    "site_clearing",
+    "water_expand",
+    "mining",
+    "new_crop_structure",
+]
+
+SAME_CHANGE_CATEGORY_NAMES = [
+    "nodata",
+    "none",
+    "agricultural_activity",
+    "wildfire",
+    "ice_motion",
+    "flooding",
+]
+
+# Maps positive-point annotation field -> (label layer name, class-name list).
+CHANGE_CATEGORY_FIELDS = {
+    "pre_change_category": ("label_pre_change", PRE_CHANGE_CATEGORY_NAMES),
+    "post_change_category": ("label_post_change", POST_CHANGE_CATEGORY_NAMES),
+    "same_change_category": ("label_same_change", SAME_CHANGE_CATEGORY_NAMES),
+}
+
 ANNOTATIONS_SIDECAR_FNAME = "lcc_annotations.json"
 
 
@@ -105,6 +153,20 @@ def _category_to_id(category: str) -> int:
     """Convert category name to class ID (1-indexed, 0 = nodata)."""
     try:
         return CATEGORY_NAMES.index(category)
+    except ValueError:
+        return 0
+
+
+def _change_category_to_id(value: str, class_names: list[str]) -> int:
+    """Convert a change-category value to a class ID within ``class_names``.
+
+    Returns 0 (nodata) for empty/unknown values. A set-but-recognized value maps
+    to its index in ``class_names`` (>= 2, since class 1 is "none").
+    """
+    if not value:
+        return 0
+    try:
+        return class_names.index(value)
     except ValueError:
         return 0
 
@@ -369,6 +431,13 @@ def _rasterize_labels(
     binary = np.zeros((h, w), dtype=np.uint8)
     src_label = np.zeros((h, w), dtype=np.uint8)
     dst_label = np.zeros((h, w), dtype=np.uint8)
+    # One label raster per change-category field (pre/post/same). Class 0 = nodata
+    # (masked); at a positive point with at least one change-category field set,
+    # every field's raster is written (unset fields become class 1 = "none").
+    change_labels = {
+        layer_name: np.zeros((h, w), dtype=np.uint8)
+        for layer_name, _ in CHANGE_CATEGORY_FIELDS.values()
+    }
 
     for pt in entry.get("negative_points", []):
         col, row = _lonlat_to_pixel(pt["lon"], pt["lat"], projection, bounds)
@@ -386,9 +455,22 @@ def _rasterize_labels(
             if dst_id > 0:
                 dst_label[row, col] = dst_id
 
+            # Only train the change-category heads when at least one of the three
+            # fields is set; otherwise leave nodata (masked) for all three.
+            change_ids = {
+                layer_name: _change_category_to_id(pt.get(field, ""), class_names)
+                for field, (layer_name, class_names) in CHANGE_CATEGORY_FIELDS.items()
+            }
+            if any(cid > 0 for cid in change_ids.values()):
+                for layer_name, cid in change_ids.items():
+                    # Unset (cid == 0) but a sibling is set -> class 1 ("none").
+                    change_labels[layer_name][row, col] = cid if cid > 0 else 1
+
     _write_label_layer(window, "label_binary", layers["label_binary"], binary)
     _write_label_layer(window, "label_src", layers["label_src"], src_label)
     _write_label_layer(window, "label_dst", layers["label_dst"], dst_label)
+    for layer_name, array_hw in change_labels.items():
+        _write_label_layer(window, layer_name, layers[layer_name], array_hw)
 
 
 def _validate_positive_point_dates(entry: dict[str, Any]) -> None:

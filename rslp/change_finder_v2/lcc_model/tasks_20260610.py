@@ -18,6 +18,7 @@ from torchmetrics import Metric, MetricCollection
 from typing_extensions import override
 
 from .tasks import LCCMultiTask
+from .timestamp_output import start_end_day_bands
 
 
 class TimestampBoundaryAccuracy(Metric):
@@ -70,37 +71,50 @@ class LCCMultiTaskV2(LCCMultiTask):
     @override
     def process_output(
         self, raw_output: Any, metadata: SampleMetadata
-    ) -> npt.NDArray[np.uint8]:
-        """Stack per-task probabilities into the base 49-band uint8 CHW array.
+    ) -> npt.NDArray[np.uint16]:
+        """Stack per-task outputs into a 56-band uint16 CHW array.
 
-        The 20260611 model emits start/end timestamp distributions (two softmaxes
-        over the T timesteps) rather than the base model's single 20-channel
-        membership map. To stay compatible with the base ``output_change`` layer
-        (49 bands) and downstream tooling, the start/end distributions are collapsed
-        back into a per-timestep "in change window" membership:
+        The two timestamp bands hold the predicted pre-change and post-change
+        dates as integer days since ``TIMESTAMP_EPOCH``, from the per-pixel argmax
+        of the start/end distributions over the input timesteps (mapped to real
+        dates via ``raw_output["timestep_days"]``). Probability bands are stored as
+        0..255 within the uint16 raster.
 
-            membership[t] = P(start <= t) * P(end >= t)
-                          = cumsum(start)[t] * reverse_cumsum(end)[t]
-
-        Band layout (identical to LCCMultiTask.process_output):
+        Band layout:
         0..2   = binary (softmax probs)
         3..15  = src (softmax probs)
         16..28 = dst (softmax probs)
-        29..48 = timestamp membership (reconstructed, T=20)
+        29     = ts_pre_days (days since epoch)
+        30     = ts_post_days (days since epoch)
+        31..37 = pre_change (softmax probs)
+        38..49 = post_change (softmax probs)
+        50..55 = same_change (softmax probs)
         """
-        parts: list[torch.Tensor] = []
+        parts: list[npt.NDArray[np.uint16]] = []
         for task_name in ("binary", "src", "dst"):
             probs = raw_output[task_name].float()
-            parts.append((probs * 255).clamp(0, 255).to(torch.uint8))
+            parts.append(
+                (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
+            )
 
         timestamps = raw_output["timestamps"]
-        start_cdf = timestamps["start"].float().cumsum(dim=0)  # P(start <= t)
-        end_rev = timestamps["end"].float().flip(0).cumsum(dim=0).flip(0)  # P(end >= t)
-        membership = (start_cdf * end_rev).clamp(0, 1)
-        parts.append((membership * 255).clamp(0, 255).to(torch.uint8))
+        timestep_days = raw_output.get("timestep_days")
+        if timestep_days is not None:
+            day_bands = start_end_day_bands(
+                timestamps["start"], timestamps["end"], timestep_days
+            )
+            parts.append(day_bands.cpu().numpy().astype(np.uint16))
+        else:
+            h, w = timestamps["start"].shape[-2:]
+            parts.append(np.zeros((2, h, w), dtype=np.uint16))
 
-        stacked = torch.cat(parts, dim=0)
-        return stacked.cpu().numpy()
+        for task_name in ("pre_change", "post_change", "same_change"):
+            probs = raw_output[task_name].float()
+            parts.append(
+                (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
+            )
+
+        return np.concatenate(parts, axis=0)
 
     def get_metrics(self) -> MetricCollection:
         """Get binary/src/dst metrics plus start/end timestamp accuracy."""

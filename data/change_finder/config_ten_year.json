@@ -22,17 +22,30 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "180d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 6,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
-        },
-        "sort_by": "eo:cloud_cover"
+        }
       },
       "type": "raster"
     },
@@ -58,17 +71,30 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "180d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 6,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
         },
-        "sort_by": "eo:cloud_cover",
         "time_offset": "365d"
       },
       "type": "raster"
@@ -95,17 +121,30 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "180d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 6,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
         },
-        "sort_by": "eo:cloud_cover",
         "time_offset": "730d"
       },
       "type": "raster"
@@ -132,17 +171,30 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "180d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 6,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
         },
-        "sort_by": "eo:cloud_cover",
         "time_offset": "1095d"
       },
       "type": "raster"
@@ -169,17 +221,30 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "180d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 6,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
         },
-        "sort_by": "eo:cloud_cover",
         "time_offset": "1460d"
       },
       "type": "raster"
@@ -206,17 +271,30 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "180d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 6,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
         },
-        "sort_by": "eo:cloud_cover",
         "time_offset": "1825d"
       },
       "type": "raster"
@@ -243,17 +321,30 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "180d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 6,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
         },
-        "sort_by": "eo:cloud_cover",
         "time_offset": "2190d"
       },
       "type": "raster"
@@ -280,17 +371,30 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "180d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 6,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
         },
-        "sort_by": "eo:cloud_cover",
         "time_offset": "2555d"
       },
       "type": "raster"
@@ -317,17 +421,30 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "180d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 6,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
         },
-        "sort_by": "eo:cloud_cover",
         "time_offset": "2920d"
       },
       "type": "raster"
@@ -354,17 +471,30 @@
         }
       ],
       "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
         "duration": "180d",
-        "harmonize": true,
         "ingest": false,
-        "name": "rslearn.data_sources.planetary_computer.Sentinel2",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
         "query_config": {
           "max_matches": 6,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "30d",
           "space_mode": "MOSAIC"
         },
-        "sort_by": "eo:cloud_cover",
         "time_offset": "3285d"
       },
       "type": "raster"

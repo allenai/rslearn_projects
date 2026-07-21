@@ -48,10 +48,10 @@ from rslp.change_finder_v2.lcc_model.postprocess import (
     DST_BAND_OFFSET,
     LC_CLASS_NAMES,
     NUM_LC_CLASSES,
-    NUM_TIMESTAMPS,
     SRC_BAND_OFFSET,
-    TS_BAND_OFFSET,
+    TS_PRE_DAYS_BAND,
 )
+from rslp.change_finder_v2.lcc_model.timestamp_encoding import days_to_date
 
 # Binary change probability threshold on the 0-255 uint8 scale (>= 0.5).
 DEFAULT_THRESHOLD = 128
@@ -75,55 +75,6 @@ def _pixel_to_lonlat(px: int, py: int, projection: object) -> tuple[float, float
     pt = shapely.geometry.Point(px + 0.5, py + 0.5)
     wgs84_pt = STGeometry(projection, pt, None).to_projection(WGS84_PROJECTION).shp
     return float(wgs84_pt.x), float(wgs84_pt.y)
-
-
-def _load_timestamp_map(
-    geojson_path: UPath,
-) -> dict[int, tuple[str, str]]:
-    """Load the timestep-index -> (start, end) date map from the sibling GeoJSON.
-
-    Returns:
-        a dict mapping a timestamp index to (timestamp_start, timestamp_end) ISO
-        strings, built from the GeoJSON features.
-    """
-    idx_to_dates: dict[int, tuple[str, str]] = {}
-    if not geojson_path.exists():
-        return idx_to_dates
-
-    with geojson_path.open("r") as f:
-        fc = json.load(f)
-    features = fc.get("features", [])
-
-    for feat in features:
-        props = feat.get("properties", {})
-        ts_idx = props.get("timestamp_idx")
-        ts_start = props.get("timestamp_start")
-        ts_end = props.get("timestamp_end")
-        if ts_idx is None or ts_start is None or ts_end is None:
-            continue
-        idx_to_dates.setdefault(int(ts_idx), (ts_start, ts_end))
-
-    return idx_to_dates
-
-
-def _resolve_dates(
-    ts_idx: int,
-    idx_to_dates: dict[int, tuple[str, str]],
-) -> tuple[str, str] | None:
-    """Resolve (start, end) ISO dates for the pixel's timestep.
-
-    Tries an exact timestamp-index match in the GeoJSON, then falls back to the
-    nearest available index.
-    """
-    if ts_idx in idx_to_dates:
-        return idx_to_dates[ts_idx]
-
-    # Fallback: the nearest available timestamp index.
-    if idx_to_dates:
-        nearest = min(idx_to_dates.keys(), key=lambda k: abs(k - ts_idx))
-        return idx_to_dates[nearest]
-
-    return None
 
 
 def process_tile(
@@ -153,20 +104,17 @@ def process_tile(
 
     src_probs = arr[SRC_BAND_OFFSET : SRC_BAND_OFFSET + NUM_LC_CLASSES, row, col]
     dst_probs = arr[DST_BAND_OFFSET : DST_BAND_OFFSET + NUM_LC_CLASSES, row, col]
-    ts_probs = arr[TS_BAND_OFFSET : TS_BAND_OFFSET + NUM_TIMESTAMPS, row, col]
 
     # Skip class 0 (nodata) by taking argmax over classes 1..12 and adding 1.
     src_idx = int(src_probs[1:].argmax()) + 1
     dst_idx = int(dst_probs[1:].argmax()) + 1
-    ts_idx = int(ts_probs.argmax())
+
+    # Predicted pre-change date, decoded from the day-encoded timestamp band.
+    pre_change_date = days_to_date(int(arr[TS_PRE_DAYS_BAND, row, col]))
 
     px = bounds[0] + col
     py = bounds[1] + row
     lon, lat = _pixel_to_lonlat(px, py, projection)
-
-    geojson_path = tif_path.parent / (tif_path.stem + ".geojson")
-    idx_to_dates = _load_timestamp_map(geojson_path)
-    dates = _resolve_dates(ts_idx, idx_to_dates)
 
     point: dict = {
         "lon": lon,
@@ -176,15 +124,11 @@ def process_tile(
     }
 
     time_range: list[str] | None = None
-    if dates is not None:
-        pre_change = datetime.fromisoformat(dates[0]).date().isoformat()
-        point["pre_change"] = pre_change
-
-        change_date = datetime.fromisoformat(dates[0])
-        time_range = [
-            _shift_years(change_date, -TIME_RANGE_YEARS).date().isoformat(),
-            _shift_years(change_date, TIME_RANGE_YEARS).date().isoformat(),
-        ]
+    point["pre_change"] = pre_change_date.date().isoformat()
+    time_range = [
+        _shift_years(pre_change_date, -TIME_RANGE_YEARS).date().isoformat(),
+        _shift_years(pre_change_date, TIME_RANGE_YEARS).date().isoformat(),
+    ]
 
     half = window_size // 2
     entry_bounds = [

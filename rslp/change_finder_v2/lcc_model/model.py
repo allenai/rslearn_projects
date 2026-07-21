@@ -26,6 +26,7 @@ from rslearn.train.model_context import (
 )
 
 from .sliding_window import SlidingWindowEvalMixin
+from .timestamp_encoding import timestamps_to_days
 
 INPUT_KEY = "sentinel2_l2a"
 NUM_PASS1 = 10
@@ -84,6 +85,9 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
         num_classes_binary: int = 3,
         num_classes_src: int = 13,
         num_classes_dst: int = 13,
+        num_classes_pre_change: int = 7,
+        num_classes_post_change: int = 12,
+        num_classes_same_change: int = 6,
         num_timestamps: int = 20,
         embedding_dim: int = 768,
         decoder_stages: list[StageSpec] | None = None,
@@ -145,6 +149,15 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
         )
         self.decoder_src = _make_decoder(concat_dim, decoder_stages, num_classes_src)
         self.decoder_dst = _make_decoder(concat_dim, decoder_stages, num_classes_dst)
+        self.decoder_pre_change = _make_decoder(
+            concat_dim, decoder_stages, num_classes_pre_change
+        )
+        self.decoder_post_change = _make_decoder(
+            concat_dim, decoder_stages, num_classes_post_change
+        )
+        self.decoder_same_change = _make_decoder(
+            concat_dim, decoder_stages, num_classes_same_change
+        )
         self.decoder_timestamps = _make_decoder(
             concat_dim, decoder_stages, num_timestamps
         )
@@ -152,6 +165,9 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
         self.num_classes_binary = num_classes_binary
         self.num_classes_src = num_classes_src
         self.num_classes_dst = num_classes_dst
+        self.num_classes_pre_change = num_classes_pre_change
+        self.num_classes_post_change = num_classes_post_change
+        self.num_classes_same_change = num_classes_same_change
 
     def _run_encoder(
         self, raster_images: list[RasterImage], metadatas: list[SampleMetadata]
@@ -223,6 +239,11 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
         logits_binary = self.decoder_binary(concat)
         logits_src = self.decoder_src(concat)
         logits_dst = self.decoder_dst(concat)
+        change_logits = {
+            "pre_change": self.decoder_pre_change(concat),
+            "post_change": self.decoder_post_change(concat),
+            "same_change": self.decoder_same_change(concat),
+        }
         logits_ts = self.decoder_timestamps(concat)
 
         losses: dict[str, torch.Tensor] = {}
@@ -234,14 +255,28 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
             )
             losses["src_cls"] = self._seg_loss(logits_src, targets, "src")
             losses["dst_cls"] = self._seg_loss(logits_dst, targets, "dst")
+            for name, logits_cat in change_logits.items():
+                if name in targets[0]:
+                    losses[f"{name}_cls"] = self._seg_loss(logits_cat, targets, name)
             losses["timestamps_bce"] = self._timestamp_loss(logits_ts, targets)
 
         for i in range(len(context.inputs)):
+            ts_image = context.inputs[i].get(INPUT_KEY)
+            timestep_days = (
+                timestamps_to_days(ts_image.timestamps)
+                if isinstance(ts_image, RasterImage) and ts_image.timestamps is not None
+                else None
+            )
             outputs[i] = {
                 "binary": F.softmax(logits_binary[i], dim=0),
                 "src": F.softmax(logits_src[i], dim=0),
                 "dst": F.softmax(logits_dst[i], dim=0),
+                **{
+                    name: F.softmax(change_logits[name][i], dim=0)
+                    for name in change_logits
+                },
                 "timestamps": torch.sigmoid(logits_ts[i]),
+                "timestep_days": timestep_days,
             }
 
         if (
@@ -270,8 +305,12 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
 
             positive = valid & (labels == 2)
             negative = valid & (labels == 1)
-            false_negative = positive & ~(change_prob >= DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_NEGATIVE)
-            false_positive = negative & (change_prob >= DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_POSITIVE)
+            false_negative = positive & ~(
+                change_prob >= DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_NEGATIVE
+            )
+            false_positive = negative & (
+                change_prob >= DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_POSITIVE
+            )
 
             num_false_negative = int(false_negative.sum().item())
             num_false_positive = int(false_positive.sum().item())

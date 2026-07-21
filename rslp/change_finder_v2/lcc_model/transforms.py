@@ -209,14 +209,17 @@ class FrequentOptionSampler(Transform):
             "valid": ts_valid,
         }
 
-        # Mask dst loss when the latest frequent image is before post_change,
-        # since the model can't predict destination land cover without post-change imagery.
+        # Mask dst and post_change loss when the latest frequent image is before
+        # post_change, since the model can't predict the destination land cover or
+        # the post-change category without post-change imagery.
         latest_freq_ts = max(ts[1] for ts in chosen_frequent.timestamps)
-        if latest_freq_ts < post_change and "dst" in target_dict:
-            dst_valid = target_dict["dst"]["valid"]
-            target_dict["dst"]["valid"] = RasterImage(
-                image=torch.zeros_like(dst_valid.image)
-            )
+        if latest_freq_ts < post_change:
+            for key in ("dst", "post_change"):
+                if key in target_dict:
+                    valid = target_dict[key]["valid"]
+                    target_dict[key]["valid"] = RasterImage(
+                        image=torch.zeros_like(valid.image)
+                    )
 
         return input_dict, target_dict
 
@@ -296,7 +299,9 @@ class BufferPointLabels(Transform):
         """
         super().__init__()
         if buffer_size < 1 or buffer_size % 2 == 0:
-            raise ValueError(f"buffer_size must be a positive odd int, got {buffer_size}")
+            raise ValueError(
+                f"buffer_size must be a positive odd int, got {buffer_size}"
+            )
         self.radius = buffer_size // 2
         self.task_keys = task_keys
 

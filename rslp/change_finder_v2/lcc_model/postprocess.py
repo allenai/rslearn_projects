@@ -25,7 +25,6 @@ import json
 import multiprocessing
 import multiprocessing.pool
 from collections.abc import Iterable
-from datetime import datetime
 
 import numpy as np
 import rasterio
@@ -37,19 +36,22 @@ import shapely.ops
 import tqdm
 from rslearn.utils.geometry import WGS84_PROJECTION, STGeometry
 from rslearn.utils.raster_format import (
-    GeotiffRasterFormat,
     get_bandset_dirname,
     get_raster_projection_and_bounds,
 )
 from scipy import ndimage
 from upath import UPath
 
+from .timestamp_encoding import days_to_date
+
 BINARY_CHANGE_BAND = 2
 SRC_BAND_OFFSET = 3
 DST_BAND_OFFSET = 16
-TS_BAND_OFFSET = 29
+# The timestamp section is two bands holding the predicted pre/post change dates
+# encoded as integer days since TIMESTAMP_EPOCH (see timestamp_encoding.py).
+TS_PRE_DAYS_BAND = 29
+TS_POST_DAYS_BAND = 30
 NUM_LC_CLASSES = 13
-NUM_TIMESTAMPS = 20
 
 LC_CLASS_NAMES = [
     "nodata",
@@ -67,6 +69,40 @@ LC_CLASS_NAMES = [
     "wetland (herbaceous)",
 ]
 
+# Change-category output bands, in the same order as the model output and the
+# output_change layer in config.json (class layout [nodata, none, <options...>]).
+PRE_CHANGE_BANDS = [
+    "pre_change_nodata",
+    "pre_change_none",
+    "pre_change_deforestation",
+    "pre_change_urban_erosion",
+    "pre_change_wetland_loss",
+    "pre_change_water_contract",
+    "pre_change_removed_crop_structure",
+]
+POST_CHANGE_BANDS = [
+    "post_change_nodata",
+    "post_change_none",
+    "post_change_vegetation_growth",
+    "post_change_new_building",
+    "post_change_new_road",
+    "post_change_new_infrastructure",
+    "post_change_new_crop_field",
+    "post_change_new_aquafarm",
+    "post_change_site_clearing",
+    "post_change_water_expand",
+    "post_change_mining",
+    "post_change_new_crop_structure",
+]
+SAME_CHANGE_BANDS = [
+    "same_change_nodata",
+    "same_change_none",
+    "same_change_agricultural_activity",
+    "same_change_wildfire",
+    "same_change_ice_motion",
+    "same_change_flooding",
+]
+
 OUTPUT_LAYER = "output_change"
 OUTPUT_BANDS = [
     "binary_nodata",
@@ -80,27 +116,12 @@ OUTPUT_BANDS = [
         f"dst_{LC_CLASS_NAMES[i].split('/')[0].split(' ')[0].lower()}"
         for i in range(NUM_LC_CLASSES)
     ),
-    *(f"ts_{i}" for i in range(NUM_TIMESTAMPS)),
+    "ts_pre_days",
+    "ts_post_days",
+    *PRE_CHANGE_BANDS,
+    *POST_CHANGE_BANDS,
+    *SAME_CHANGE_BANDS,
 ]
-
-SENTINEL2_BANDS = [
-    "B01",
-    "B02",
-    "B03",
-    "B04",
-    "B05",
-    "B06",
-    "B07",
-    "B08",
-    "B8A",
-    "B09",
-    "B11",
-    "B12",
-]
-SENTINEL2_BANDSET_DIR = get_bandset_dirname(SENTINEL2_BANDS)
-
-NUM_QUARTERLY = 16
-NUM_FREQUENT = 4
 
 
 def _get_geotiff_path(window_dir: UPath) -> UPath | None:
@@ -112,79 +133,25 @@ def _get_geotiff_path(window_dir: UPath) -> UPath | None:
     return None
 
 
-def _load_timestamps(window_dir: UPath) -> list[tuple[datetime, datetime]] | None:
-    """Load the 20 timestamps (16 quarterly + 4 frequent) for a window.
-
-    Reads metadata.json sidecars from the per-item-group layer directories,
-    replicating the ordering that PredictPassBuilder uses: last 16 quarterly
-    timestamps followed by 4 frequent timestamps.
-
-    Returns None if timestamps cannot be determined.
-    """
-    quarterly_ts: list[tuple[datetime, datetime]] = []
-    group_idx = 0
-    while True:
-        folder = (
-            "sentinel2_quarterly"
-            if group_idx == 0
-            else f"sentinel2_quarterly.{group_idx}"
-        )
-        meta_dir = window_dir / "layers" / folder / SENTINEL2_BANDSET_DIR
-        meta = GeotiffRasterFormat.decode_metadata(meta_dir)
-        if meta is None:
-            break
-        if meta.timestamps:
-            quarterly_ts.extend(meta.timestamps)
-        group_idx += 1
-
-    frequent_ts: list[tuple[datetime, datetime]] = []
-    group_idx = 0
-    while True:
-        folder = (
-            "sentinel2_frequent_0"
-            if group_idx == 0
-            else f"sentinel2_frequent_0.{group_idx}"
-        )
-        meta_dir = window_dir / "layers" / folder / SENTINEL2_BANDSET_DIR
-        meta = GeotiffRasterFormat.decode_metadata(meta_dir)
-        if meta is None:
-            break
-        if meta.timestamps:
-            frequent_ts.extend(meta.timestamps)
-        group_idx += 1
-
-    if not quarterly_ts and not frequent_ts:
-        return None
-
-    # Take last NUM_QUARTERLY quarterlies (pad if needed), then all frequent.
-    if len(quarterly_ts) > NUM_QUARTERLY:
-        quarterly_ts = quarterly_ts[-NUM_QUARTERLY:]
-    elif len(quarterly_ts) < NUM_QUARTERLY:
-        pad = quarterly_ts[0] if quarterly_ts else (datetime.min, datetime.min)
-        quarterly_ts = [pad] * (NUM_QUARTERLY - len(quarterly_ts)) + quarterly_ts
-
-    return quarterly_ts + frequent_ts
-
-
 def _component_to_feature(
     comp_mask: np.ndarray,
     change_score: np.ndarray,
-    ts_probs: np.ndarray,
+    pre_days: np.ndarray,
+    post_days: np.ndarray,
     src_id: int,
     dst_id: int,
     projection: object,
     bounds: tuple[int, int, int, int],
-    timestamps: list[tuple[datetime, datetime]] | None,
 ) -> dict | None:
     """Vectorize a single connected component and build a GeoJSON feature dict."""
     num_pixels = int(comp_mask.sum())
     avg_score = float(change_score[comp_mask].mean())
     col0, row0 = bounds[0], bounds[1]
 
-    # Timestamp: per-pixel argmax then majority vote.
-    pixel_ts_indices = ts_probs[:, comp_mask].argmax(axis=0)  # (num_pixels,)
-    counts = np.bincount(pixel_ts_indices, minlength=NUM_TIMESTAMPS)
-    ts_idx = int(counts.argmax())
+    # Change dates: median over the component of the per-pixel pre/post day bands
+    # (days since TIMESTAMP_EPOCH), converted back to real dates.
+    pre_day = int(np.median(pre_days[comp_mask]))
+    post_day = int(np.median(post_days[comp_mask]))
 
     shapes = list(
         rasterio.features.shapes(
@@ -215,13 +182,11 @@ def _component_to_feature(
         "src_class_idx": src_id,
         "dst_class": LC_CLASS_NAMES[dst_id],
         "dst_class_idx": dst_id,
-        "timestamp_idx": ts_idx,
+        "pre_change_days": pre_day,
+        "post_change_days": post_day,
+        "pre_change_date": days_to_date(pre_day).isoformat(),
+        "post_change_date": days_to_date(post_day).isoformat(),
     }
-
-    if timestamps and ts_idx < len(timestamps):
-        ts_start, ts_end = timestamps[ts_idx]
-        props["timestamp_start"] = ts_start.isoformat()
-        props["timestamp_end"] = ts_end.isoformat()
 
     return {
         "type": "Feature",
@@ -251,14 +216,13 @@ def process_window(
 
     src_probs = arr[SRC_BAND_OFFSET : SRC_BAND_OFFSET + NUM_LC_CLASSES]
     dst_probs = arr[DST_BAND_OFFSET : DST_BAND_OFFSET + NUM_LC_CLASSES]
-    ts_probs = arr[TS_BAND_OFFSET : TS_BAND_OFFSET + NUM_TIMESTAMPS]
+    pre_days = arr[TS_PRE_DAYS_BAND]
+    post_days = arr[TS_POST_DAYS_BAND]
 
     # Per-pixel argmax class (skip class 0 = nodata by taking argmax over 1..12
     # and adding 1).
     src_class = src_probs[1:].argmax(axis=0) + 1  # (H, W)
     dst_class = dst_probs[1:].argmax(axis=0) + 1  # (H, W)
-
-    timestamps = _load_timestamps(window_dir)
 
     features: list[dict] = []
 
@@ -289,12 +253,12 @@ def process_window(
             feat = _component_to_feature(
                 comp_mask,
                 change_score,
-                ts_probs,
+                pre_days,
+                post_days,
                 s_id,
                 d_id,
                 projection,
                 bounds,
-                timestamps,
             )
             if feat is not None:
                 features.append(feat)

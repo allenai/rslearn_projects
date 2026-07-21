@@ -48,6 +48,79 @@
       ],
       "type": "raster"
     },
+    "label_post_change": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "none",
+        "vegetation_growth",
+        "new_building",
+        "new_road",
+        "new_infrastructure",
+        "new_crop_field",
+        "new_aquafarm",
+        "site_clearing",
+        "water_expand",
+        "mining",
+        "new_crop_structure"
+      ],
+      "type": "raster"
+    },
+    "label_pre_change": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "none",
+        "deforestation",
+        "urban_erosion",
+        "wetland_loss",
+        "water_contract",
+        "removed_crop_structure"
+      ],
+      "type": "raster"
+    },
+    "label_same_change": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "none",
+        "agricultural_activity",
+        "wildfire",
+        "ice_motion",
+        "flooding"
+      ],
+      "type": "raster"
+    },
     "label_src": {
       "band_sets": [
         {
@@ -110,28 +183,35 @@
             "dst_urban",
             "dst_water",
             "dst_wetland",
-            "ts_0",
-            "ts_1",
-            "ts_2",
-            "ts_3",
-            "ts_4",
-            "ts_5",
-            "ts_6",
-            "ts_7",
-            "ts_8",
-            "ts_9",
-            "ts_10",
-            "ts_11",
-            "ts_12",
-            "ts_13",
-            "ts_14",
-            "ts_15",
-            "ts_16",
-            "ts_17",
-            "ts_18",
-            "ts_19"
+            "ts_pre_days",
+            "ts_post_days",
+            "pre_change_nodata",
+            "pre_change_none",
+            "pre_change_deforestation",
+            "pre_change_urban_erosion",
+            "pre_change_wetland_loss",
+            "pre_change_water_contract",
+            "pre_change_removed_crop_structure",
+            "post_change_nodata",
+            "post_change_none",
+            "post_change_vegetation_growth",
+            "post_change_new_building",
+            "post_change_new_road",
+            "post_change_new_infrastructure",
+            "post_change_new_crop_field",
+            "post_change_new_aquafarm",
+            "post_change_site_clearing",
+            "post_change_water_expand",
+            "post_change_mining",
+            "post_change_new_crop_structure",
+            "same_change_nodata",
+            "same_change_none",
+            "same_change_agricultural_activity",
+            "same_change_wildfire",
+            "same_change_ice_motion",
+            "same_change_flooding"
           ],
-          "dtype": "uint8",
+          "dtype": "uint16",
           "format": {
             "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
           }
@@ -169,6 +249,12 @@
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
           "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
@@ -212,6 +298,12 @@
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
           "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
@@ -255,6 +347,12 @@
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
           "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
@@ -298,6 +396,12 @@
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
           "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
@@ -341,6 +445,12 @@
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
           "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
@@ -384,6 +494,12 @@
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
           "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
@@ -427,6 +543,12 @@
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
           "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
@@ -470,6 +592,12 @@
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
           "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
@@ -513,6 +641,12 @@
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
           "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"

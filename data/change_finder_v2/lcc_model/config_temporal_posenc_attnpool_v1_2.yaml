@@ -14,6 +14,9 @@ model:
         num_classes_binary: 3
         num_classes_src: 13
         num_classes_dst: 13
+        num_classes_pre_change: 7
+        num_classes_post_change: 12
+        num_classes_same_change: 6
         num_timesteps: 20
         num_pass1: 10
         embedding_dim: 768
@@ -140,6 +143,24 @@ data:
         bands: ["label"]
         is_target: true
         dtype: INT32
+      label_pre_change:
+        data_type: "raster"
+        layers: ["label_pre_change"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+      label_post_change:
+        data_type: "raster"
+        layers: ["label_post_change"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+      label_same_change:
+        data_type: "raster"
+        layers: ["label_same_change"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
     task:
       class_path: rslp.change_finder_v2.lcc_model.tasks_20260610.LCCMultiTaskV2
       init_args:
@@ -151,6 +172,12 @@ data:
             label_src: targets
           dst:
             label_dst: targets
+          pre_change:
+            label_pre_change: targets
+          post_change:
+            label_post_change: targets
+          same_change:
+            label_same_change: targets
         tasks:
           binary:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
@@ -192,6 +219,33 @@ data:
               class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
               metric_kwargs:
                 average: "micro"
+          pre_change:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 7
+              nodata_value: 0
+              enable_confusion_matrix: true
+              class_names: ["nodata", "none", "deforestation", "urban_erosion", "wetland_loss", "water_contract", "removed_crop_structure"]
+              metric_kwargs:
+                average: "micro"
+          post_change:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 12
+              nodata_value: 0
+              enable_confusion_matrix: true
+              class_names: ["nodata", "none", "vegetation_growth", "new_building", "new_road", "new_infrastructure", "new_crop_field", "new_aquafarm", "site_clearing", "water_expand", "mining", "new_crop_structure"]
+              metric_kwargs:
+                average: "micro"
+          same_change:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 6
+              nodata_value: 0
+              enable_confusion_matrix: true
+              class_names: ["nodata", "none", "agricultural_activity", "wildfire", "ice_motion", "flooding"]
+              metric_kwargs:
+                average: "micro"
     batch_size: 4
     num_workers: 16
     use_in_memory_dataset: false
@@ -220,6 +274,12 @@ data:
               - "target/src/valid"
               - "target/dst/classes"
               - "target/dst/valid"
+              - "target/pre_change/classes"
+              - "target/pre_change/valid"
+              - "target/post_change/classes"
+              - "target/post_change/valid"
+              - "target/same_change/classes"
+              - "target/same_change/valid"
               - "target/timestamps/start"
               - "target/timestamps/end"
               - "target/timestamps/valid"

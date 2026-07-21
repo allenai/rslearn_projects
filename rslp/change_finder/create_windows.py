@@ -2,16 +2,17 @@
 
 import hashlib
 import multiprocessing
+import os
 import random
 import traceback
 from datetime import datetime, timedelta, timezone
 
+import requests
 import shapely
 import tqdm
 from global_land_mask import globe
 from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
-from rslearn.data_sources.planetary_computer import PlanetaryComputerStacClient
 from rslearn.dataset import Dataset, Window
 from rslearn.dataset.manage import retry
 from rslearn.utils.geometry import Projection, STGeometry
@@ -21,21 +22,38 @@ from upath import UPath
 
 PIXEL_SIZE = 10
 WINDOW_SIZE = 128
-STAC_ENDPOINT = "https://planetarycomputer.microsoft.com/api/stac/v1"
 S2_COLLECTION = "sentinel-2-l2a"
 DURATION_DAYS = 180
 MIN_CENTER_DIST = 256  # minimum distance in pixels between window centers
 _CELL_RADIUS = MIN_CENTER_DIST // WINDOW_SIZE  # neighborhood radius in cell indices
 
-_stac_client: PlanetaryComputerStacClient | None = None
+# Coverage checks query the olmoearth_datasets service rather than Planetary
+# Computer directly. The following environment variables are assumed to be set:
+#   OEDATASETS_API_URL: base URL of the service.
+#   DATASETS_API_TOKEN: bearer token for authenticating to the service.
+_session: requests.Session | None = None
 
 
-def _get_stac_client() -> PlanetaryComputerStacClient:
-    """Lazily create a per-process STAC client."""
-    global _stac_client
-    if _stac_client is None:
-        _stac_client = PlanetaryComputerStacClient(STAC_ENDPOINT)
-    return _stac_client
+def _get_session() -> requests.Session:
+    """Lazily create a per-process requests session for the datasets service."""
+    global _session
+    if _session is None:
+        session = requests.Session()
+        token = os.environ["DATASETS_API_TOKEN"]
+        session.headers.update(
+            {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            }
+        )
+        _session = session
+    return _session
+
+
+def _search_url() -> str:
+    """Return the olmoearth_datasets item search endpoint URL."""
+    base_url = os.environ["OEDATASETS_API_URL"].rstrip("/")
+    return f"{base_url}/api/v1/items/search"
 
 
 def _compute_cell(
@@ -62,19 +80,47 @@ def _compute_cell(
 
 
 def _has_period_coverage(lat: float, lon: float, base_time: datetime) -> bool:
-    """Check that there is at least one Sentinel-2 item per 30-day period in the window."""
-    client = _get_stac_client()
+    """Check that there is at least one Sentinel-2 item per 30-day period in the window.
+
+    Queries the olmoearth_datasets service instead of Planetary Computer directly.
+    """
     end_time = base_time + timedelta(days=DURATION_DAYS)
 
     eps = 0.01
-    bbox = (lon - eps, lat - eps, lon + eps, lat + eps)
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [lon - eps, lat - eps],
+                [lon + eps, lat - eps],
+                [lon + eps, lat + eps],
+                [lon - eps, lat + eps],
+                [lon - eps, lat - eps],
+            ]
+        ],
+    }
+    payload = {
+        "collection": {"eq": S2_COLLECTION},
+        "intersects_geometry": geometry,
+        "collected_at": {"gte": base_time.isoformat(), "lt": end_time.isoformat()},
+        "limit": 1000,
+        "offset": 0,
+        "sort_by": "collected_at",
+        "sort_direction": "asc",
+        "sign_urls": False,
+    }
+
+    session = _get_session()
+    url = _search_url()
+
+    def _do_search() -> requests.Response:
+        response = session.post(url, json=payload, timeout=30)
+        response.raise_for_status()
+        return response
+
     try:
-        items = retry(
-            lambda: client.search(
-                collections=[S2_COLLECTION],
-                bbox=bbox,
-                date_time=(base_time, end_time),
-            ),
+        response = retry(
+            _do_search,
             retry_max_attempts=5,
             retry_backoff=timedelta(seconds=5),
         )
@@ -83,14 +129,17 @@ def _has_period_coverage(lat: float, lon: float, base_time: datetime) -> bool:
         print(f"Skipping lat={lat}, lon={lon}, base_time={base_time}: {e}")
         return False
 
+    records = response.json()["records"]
+
     period_length = 30
     num_periods = DURATION_DAYS // period_length
 
     periods_found: set[int] = set()
-    for item in items:
-        if item.time_range is None:
+    for record in records:
+        collected_at = record["properties"].get("collected_at")
+        if collected_at is None:
             continue
-        ts = item.time_range[0]
+        ts = datetime.fromisoformat(collected_at.replace("Z", "+00:00"))
         offset_days = (ts - base_time).total_seconds() / 86400
         if 0 <= offset_days < DURATION_DAYS:
             periods_found.add(int(offset_days) // period_length)

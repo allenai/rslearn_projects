@@ -3,7 +3,7 @@
 This applies the land cover change model over a tile (one part of a UTM zone) by
 creating PATCH_SIZE windows, materializing Sentinel-2 imagery from the OlmoEarth
 Datasets source, running the model, and polygonizing the resulting change raster
-into a per-tile GeoJSON. Optionally the merged 49-band raster is also written.
+into a per-tile GeoJSON. Optionally the merged output_change raster is also written.
 
 Unlike the satlas pipeline, there is no rtree index: the OlmoEarth Datasets source
 queries its API per window, and all imagery is derived from a single reference
@@ -45,9 +45,7 @@ from .postprocess import OUTPUT_BANDS, OUTPUT_LAYER, collect_features
 logger = get_logger(__name__)
 
 DATASET_CONFIG_FNAME = "data/change_finder_v2/lcc_model/config_predict.json"
-MODEL_CONFIG_FNAME = (
-    "data/change_finder_v2/lcc_model/config_pass20_v1_2_predict.yaml"
-)
+MODEL_CONFIG_FNAME = "data/change_finder_v2/lcc_model/config_pass20_v1_2_predict.yaml"
 
 # Per-window size. The tile size (passed via bounds) must be a multiple of this.
 PATCH_SIZE = 2048
@@ -113,7 +111,7 @@ def merge_and_upload_raster(
     windows: list[Window],
     out_fname: UPath,
 ) -> None:
-    """Mosaic each window's 49-band output_change raster into a tile-level GeoTIFF.
+    """Mosaic each window's output_change raster into a tile-level GeoTIFF.
 
     Windows without a prediction (missing input imagery) are left as zeros.
 
@@ -126,7 +124,7 @@ def merge_and_upload_raster(
     num_bands = len(OUTPUT_BANDS)
     height = bounds[3] - bounds[1]
     width = bounds[2] - bounds[0]
-    prediction = np.zeros((num_bands, height, width), dtype=np.uint8)
+    prediction = np.zeros((num_bands, height, width), dtype=np.uint16)
 
     for window in windows:
         if window.projection != projection:
@@ -182,7 +180,7 @@ def predict_pipeline(
         out_path: directory to write the outputs (per-tile GeoJSON, optionally a
             per-tile GeoTIFF named based on the bounds).
         scratch_path: where to store the temporary rslearn dataset.
-        write_raster: also write the merged 49-band raster GeoTIFF.
+        write_raster: also write the merged output_change raster GeoTIFF.
         threshold: binary change probability threshold (0-255) for polygonization.
         min_pixels: minimum connected-component size for polygonization.
         workers: parallel workers for polygonization.
@@ -275,7 +273,7 @@ def predict_pipeline(
         json.dump(fc, f)
     logger.info("wrote %d features to %s", len(features), out_fname)
 
-    # Optionally also write the merged 49-band raster.
+    # Optionally also write the merged output_change raster.
     if write_raster:
         merge_and_upload_raster(
             projection, bounds, list(tile_to_window.values()), raster_fname
@@ -330,7 +328,7 @@ def predict_multi(
         tasks: JSON-encoded list of serialized PredictTaskArgs dicts (see
             PredictTaskArgs.serialize). Passed as a plain string and parsed here to
             avoid jsonargparse re-parsing the nested timestamp/bounds values.
-        write_raster: also write the merged 49-band raster GeoTIFF per tile.
+        write_raster: also write the merged output_change raster GeoTIFF per tile.
         threshold: binary change probability threshold (0-255) for polygonization.
     """
     os.makedirs(scratch_path, exist_ok=True)
