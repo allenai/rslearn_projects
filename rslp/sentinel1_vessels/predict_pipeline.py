@@ -76,11 +76,8 @@ BAND_NAMES = ["vv", "vh"]
 # Factor to multiply by when converting bands to 8-bit image.
 NORM_FACTOR = 1.0
 
-# Default distance threshold for the near marine infrastructure filter in km.
-# 0.2 km = 200 m. Chosen by cross-referencing Sentinel-1 detections against the
-# marine infrastructure map: detections that sit on a mapped structure form a
-# population that is exhausted by ~200 m, with a clear gap before the next
-# population begins. Overridable per request via the API.
+# Distance threshold for near marine infrastructure filter in km.
+# 0.2 km = 200 m
 INFRA_DISTANCE_THRESHOLD = 0.2
 
 
@@ -614,8 +611,7 @@ def predict_pipeline(
             replacing the value baked into the model config.
         scratch_path: directory to use to store temporary dataset.
         infra_distance_km: distance threshold in km for the near marine
-            infrastructure filter. Detections within this distance of a mapped
-            structure are discarded.
+            infrastructure filter.
 
     Returns:
         list of vessel detections for each task.

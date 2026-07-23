@@ -2,8 +2,7 @@
 
 The API uses the request's infra_distance_km when provided, otherwise the
 SENTINEL1_INFRA_DISTANCE_KM module default (from the env var, 0.2 if unset), and hands
-that to predict_pipeline, which passes it to the near marine infrastructure filter.
-predict_pipeline is mocked here to capture the value it receives.
+that to predict_pipeline. predict_pipeline is mocked here to capture the value.
 """
 
 import pytest
@@ -45,7 +44,6 @@ def test_default_used_without_request(captured: dict) -> None:
 
 
 def test_default_is_200m() -> None:
-    # The operating default for Sentinel-1 is 200 m.
     assert api_main.SENTINEL1_INFRA_DISTANCE_KM == 0.2
 
 
@@ -68,7 +66,7 @@ def test_request_overrides_default(
 def test_zero_request_is_not_swallowed(
     captured: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # 0.0 is a real request value (filter disabled), not "unset" -- it must win.
+    # 0.0 is a real request value, not "unset" -- it must win over the default.
     monkeypatch.setattr(api_main, "SENTINEL1_INFRA_DISTANCE_KM", 0.2)
     _call({"scene_id": SCENE_ID, "infra_distance_km": 0.0})
     assert captured["infra_distance_km"] == 0.0
