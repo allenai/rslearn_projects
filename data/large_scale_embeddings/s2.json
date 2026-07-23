@@ -4,6 +4,14 @@
       "band_sets": [
         {
           "dtype": "int8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
+            "init_args": {
+              "geotiff_options": {
+                "compress": "none"
+              }
+            }
+          },
           "num_bands": 128
         }
       ],
@@ -42,8 +50,7 @@
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
-          },
-          "timeout": "0:0:10"
+          }
         },
         "query_config": {
           "max_matches": 12,

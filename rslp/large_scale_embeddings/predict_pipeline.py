@@ -19,6 +19,7 @@ embeddings, so each variant must use its own out_path and completed_path.
 """
 
 import json
+import multiprocessing
 import shutil
 import tempfile
 from datetime import datetime, timedelta
@@ -29,6 +30,7 @@ from rasterio.enums import Resampling
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
+from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.raster_array import RasterArray, RasterMetadata
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from shapely import box as shapely_box
@@ -96,22 +98,26 @@ MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
     # Use initial job for prepare since it involves caching steps that should only be
     # performed once.
     prepare_args=PrepareArgs(
+        retry_max_attempts=10,
+        retry_backoff=timedelta(seconds=10),
         apply_windows_args=ApplyWindowsArgs(
             group=PREDICTION_GROUP, workers=32, use_initial_job=True
-        )
+        ),
     ),
     # The OlmoEarth Datasets source sets ingest=false, so this step is a no-op, but we
     # keep it for parity with the standard materialize pipeline.
     ingest_args=IngestArgs(
         ignore_errors=False,
+        retry_max_attempts=10,
+        retry_backoff=timedelta(seconds=10),
         apply_windows_args=ApplyWindowsArgs(
             group=PREDICTION_GROUP, workers=32, use_initial_job=False
         ),
     ),
     materialize_args=MaterializeArgs(
         ignore_errors=False,
-        retry_max_attempts=3,
-        retry_backoff=timedelta(seconds=5),
+        retry_max_attempts=10,
+        retry_backoff=timedelta(seconds=10),
         apply_windows_args=ApplyWindowsArgs(
             group=PREDICTION_GROUP, workers=128, use_initial_job=False
         ),
@@ -185,7 +191,7 @@ def _upload_window_output(
     """Upload one window's embedding raster to the output path.
 
     Reads the int8 embedding raster from the scratch dataset, sets pixels where all
-    Sentinel-2 mosaics are empty to NODATA_VALUE, and writes a tiled+compressed
+    Sentinel-2 mosaics are empty to NODATA_VALUE, and writes a tiled (uncompressed)
     GeoTIFF to the output path.
 
     Args:
@@ -219,7 +225,7 @@ def _upload_window_output(
     raster_format = GeotiffRasterFormat(
         always_enable_tiling=True,
         block_size=512,
-        geotiff_options={"compress": "zstd"},
+        geotiff_options={"compress": "none"},
     )
     raster_format.encode_raster(
         out_fname.parent,
@@ -233,6 +239,32 @@ def _upload_window_output(
     )
 
 
+def _upload_window_by_name(
+    ds_path: UPath,
+    window_name: str,
+    out_path: str,
+) -> None:
+    """Load one window from the scratch dataset and upload its embedding raster.
+
+    This is the multiprocessing worker for the upload step; the window is reloaded by
+    name so that only picklable arguments cross the process boundary.
+
+    Args:
+        ds_path: the scratch dataset path.
+        window_name: the name of the window to upload.
+        out_path: the output directory.
+    """
+    dataset = Dataset(ds_path)
+    windows = dataset.load_windows(groups=[PREDICTION_GROUP], names=[window_name])
+    if len(windows) != 1:
+        raise ValueError(
+            f"expected one window named {window_name} but got {len(windows)}"
+        )
+    window = windows[0]
+    out_fname = get_output_fname(out_path, window.projection, window.bounds)
+    _upload_window_output(window, window.projection, out_fname)
+
+
 def predict_pipeline(
     inputs: EmbeddingInputs,
     projection_json: str,
@@ -241,6 +273,7 @@ def predict_pipeline(
     out_path: str,
     completed_path: str,
     scratch_path: str | None = None,
+    upload_workers: int = 16,
 ) -> None:
     """Compute quantized OlmoEarth embeddings over one tile.
 
@@ -258,6 +291,8 @@ def predict_pipeline(
         scratch_path: optional directory to store the scratch rslearn dataset in
             directly, and keep it afterward (useful for debugging). By default, a
             temporary directory is used and deleted when the tile is done.
+        upload_workers: number of worker processes for uploading the per-crop
+            embedding GeoTIFFs.
     """
     projection = Projection.deserialize(json.loads(projection_json))
 
@@ -276,6 +311,7 @@ def predict_pipeline(
                 out_path=out_path,
                 marker_fname=marker_fname,
                 ds_path=UPath(tmp_dir) / "dataset",
+                upload_workers=upload_workers,
             )
     else:
         _process_tile(
@@ -286,6 +322,7 @@ def predict_pipeline(
             out_path=out_path,
             marker_fname=marker_fname,
             ds_path=UPath(scratch_path),
+            upload_workers=upload_workers,
         )
 
 
@@ -297,6 +334,7 @@ def _process_tile(
     out_path: str,
     marker_fname: UPath,
     ds_path: UPath,
+    upload_workers: int,
 ) -> None:
     """Process one tile using the given scratch dataset path.
 
@@ -310,6 +348,8 @@ def _process_tile(
         out_path: directory to write one embedding GeoTIFF per PATCH_SIZE crop.
         marker_fname: the per-tile completion marker filename to write.
         ds_path: where to create the temporary rslearn dataset.
+        upload_workers: number of worker processes for uploading the per-crop
+            embedding GeoTIFFs.
     """
     # Initialize an rslearn dataset in scratch from the predict dataset config.
     dataset_config_fname = DATASET_CONFIG_FNAME.format(inputs=inputs.value)
@@ -340,6 +380,7 @@ def _process_tile(
             projection=projection,
             bounds=crop_bounds,
             time_range=time_range,
+            data_factory=dataset.window_data_storage_factory,
         )
         window.save()
         windows.append(window)
@@ -365,7 +406,11 @@ def _process_tile(
         else:
             run_model_predict(model_config_fname, ds_path)
 
-        # Upload each window's embedding raster.
+        # Upload each window's embedding raster. The uploads are handled by a pool
+        # of worker processes since converting and uploading the rasters is slow. We
+        # use the forkserver context because the CUDA context initialized by
+        # run_model_predict above cannot be safely forked.
+        upload_kwargs: list[dict] = []
         for window in windows:
             crop_offset = [window.bounds[0], window.bounds[1]]
             if not window.is_layer_completed(OUTPUT_LAYER):
@@ -373,9 +418,20 @@ def _process_tile(
                 # made for this window.
                 skipped_no_data.append(crop_offset)
                 continue
-            out_fname = get_output_fname(out_path, projection, window.bounds)
-            _upload_window_output(window, projection, out_fname)
+            upload_kwargs.append(
+                dict(ds_path=ds_path, window_name=window.name, out_path=out_path)
+            )
             written.append(crop_offset)
+        if len(upload_kwargs) > 0:
+            pool = multiprocessing.get_context("forkserver").Pool(upload_workers)
+            try:
+                for _ in star_imap_unordered(
+                    pool, _upload_window_by_name, upload_kwargs
+                ):
+                    pass
+            finally:
+                pool.close()
+                pool.join()
         logger.info(
             "wrote %d crops (%d skipped due to missing data)",
             len(written),

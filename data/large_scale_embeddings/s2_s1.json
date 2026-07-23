@@ -4,6 +4,14 @@
       "band_sets": [
         {
           "dtype": "int8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
+            "init_args": {
+              "geotiff_options": {
+                "compress": "none"
+              }
+            }
+          },
           "num_bands": 128
         }
       ],
@@ -23,9 +31,7 @@
         "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel1_rtc.Sentinel1RTC",
         "duration": "365d",
         "ingest": false,
-        "init_args": {
-          "timeout": "0:0:10"
-        },
+        "init_args": {},
         "query_config": {
           "max_matches": 12,
           "min_matches": 1,
@@ -69,8 +75,7 @@
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
-          },
-          "timeout": "0:0:10"
+          }
         },
         "query_config": {
           "max_matches": 12,

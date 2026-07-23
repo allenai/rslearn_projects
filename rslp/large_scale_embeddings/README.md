@@ -31,7 +31,8 @@ one unit of work (one queue job). The prediction pipeline for a tile creates
 2048x2048-pixel windows in a scratch rslearn dataset, materializes the input mosaics,
 runs the model, and uploads one GeoTIFF per window to `out_path`, named
 `{crs}_{x}_{y}.tif` (x/y are the pixel offsets of the window in the UTM projection at
-10 m/pixel). GeoTIFFs are ZSTD-compressed and tiled with 512x512 blocks, with nodata
+10 m/pixel). GeoTIFFs are uncompressed (the int8 embeddings are high-entropy, so
+compression only slows down writes) and tiled with 512x512 blocks, with nodata
 value -128.
 
 To limit duplicated work where UTM zones overlap, tiles and windows are skipped unless
