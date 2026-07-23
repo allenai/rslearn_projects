@@ -61,6 +61,8 @@
     "water_expand",
     "mining",
     "new_crop_structure",
+    "selective_logging",
+    "landslide",
   ];
 
   const SAME_CHANGE_CATEGORIES = [

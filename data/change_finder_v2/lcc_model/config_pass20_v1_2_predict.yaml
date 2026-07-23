@@ -15,7 +15,7 @@ model:
         num_classes_src: 13
         num_classes_dst: 13
         num_classes_pre_change: 7
-        num_classes_post_change: 12
+        num_classes_post_change: 14
         num_classes_same_change: 6
         num_timesteps: 20
         embedding_dim: 768
@@ -86,7 +86,7 @@ data:
           post_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 12
+              num_classes: 14
               nodata_value: 0
           same_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
@@ -113,6 +113,6 @@ trainer:
       init_args:
         output_layer: output_change
         selector: []
-project_name: 2026_07_01_lcc
+project_name: 2026_07_23_lcc
 run_name: pass20_v1_2_00
 management_dir: ${RSLP_PREFIX}/projects

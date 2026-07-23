@@ -112,6 +112,8 @@ POST_CHANGE_CATEGORY_NAMES = [
     "water_expand",
     "mining",
     "new_crop_structure",
+    "selective_logging",
+    "landslide",
 ]
 
 SAME_CHANGE_CATEGORY_NAMES = [

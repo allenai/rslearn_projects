@@ -15,7 +15,7 @@ model:
         num_classes_src: 13
         num_classes_dst: 13
         num_classes_pre_change: 7
-        num_classes_post_change: 12
+        num_classes_post_change: 14
         num_classes_same_change: 6
         num_timesteps: 20
         embedding_dim: 768
@@ -47,7 +47,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260701/
+    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260722/
     inputs:
       sentinel2_quarterly:
         data_type: raster
@@ -296,7 +296,7 @@ data:
     task:
       class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassMultiTask
       init_args:
-        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260701/lcc_annotations.json
+        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260722/lcc_annotations.json
         input_mapping:
           binary:
             label_binary: targets
@@ -420,7 +420,7 @@ data:
           post_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 12
+              num_classes: 14
               nodata_value: 0
               enable_confusion_matrix: true
               class_names:
@@ -436,6 +436,8 @@ data:
               - water_expand
               - mining
               - new_crop_structure
+              - selective_logging
+              - landslide
               metric_kwargs:
                 average: micro
           same_change:
@@ -536,6 +538,6 @@ trainer:
     init_args:
       monitor: val_binary/auroc
       mode: max
-project_name: 2026_07_10_lcc_fable
+project_name: 2026_07_23_lcc
 run_name: bp_abs_season
 management_dir: ${RSLP_PREFIX}/projects

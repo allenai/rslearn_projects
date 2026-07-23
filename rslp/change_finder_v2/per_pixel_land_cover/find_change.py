@@ -249,6 +249,8 @@ def _score_crop(
     col_start: int,
     src_threshold: float,
     dst_threshold: float,
+    src_class_idx: int | None = None,
+    dst_class_idx: int | None = None,
 ) -> _BestChange | None:
     """Find a random qualifying class decline in a centered crop.
 
@@ -265,6 +267,11 @@ def _score_crop(
             declining class.
         dst_threshold: maximum post-period probability (max over time) of the
             declining class.
+        src_class_idx: if set, only consider this class (index into the class
+            dimension excluding nodata) as the declining class.
+        dst_class_idx: if set, only consider pixels whose post-period argmax
+            class (index into the class dimension excluding nodata) is this
+            class.
     """
     valid_classes = probs[:, 1:, :, :]
 
@@ -278,6 +285,13 @@ def _score_crop(
         pre_min = pre.min(dim=0).values
         post_max = post.max(dim=0).values
         mask = (pre_min > src_threshold) & (post_max < dst_threshold)
+        if src_class_idx is not None:
+            class_filter = torch.zeros_like(mask)
+            class_filter[src_class_idx] = True
+            mask &= class_filter
+        if dst_class_idx is not None:
+            post_argmax = post.mean(dim=0).argmax(dim=0)
+            mask &= (post_argmax == dst_class_idx).unsqueeze(0)
         candidates = torch.nonzero(mask, as_tuple=False)
         if candidates.shape[0] == 0:
             continue
@@ -319,6 +333,8 @@ def _find_best_change(
     device: str,
     src_threshold: float,
     dst_threshold: float,
+    src_class_idx: int | None = None,
+    dst_class_idx: int | None = None,
 ) -> _BestChange | None:
     """Scan one window and return its best per-pixel land-cover decline."""
     first_raster: RasterImage = input_dict["sentinel2_y0"]
@@ -341,7 +357,15 @@ def _find_best_change(
         for year_idx in range(NUM_YEARS)
     ]
     probs = torch.stack(year_probs, dim=0)
-    return _score_crop(probs, row_start, col_start, src_threshold, dst_threshold)
+    return _score_crop(
+        probs,
+        row_start,
+        col_start,
+        src_threshold,
+        dst_threshold,
+        src_class_idx=src_class_idx,
+        dst_class_idx=dst_class_idx,
+    )
 
 
 def _pixel_to_lonlat(
@@ -399,6 +423,17 @@ def _build_v2_entry(
     ]
 
 
+def _category_to_class_idx(category: str | None, arg_name: str) -> int | None:
+    """Convert a category name to an index into the class dim excluding nodata."""
+    if category is None:
+        return None
+    if category not in CLASS_NAMES or category == "nodata":
+        raise ValueError(
+            f"invalid {arg_name} {category!r}; must be one of {CLASS_NAMES[1:]}"
+        )
+    return CLASS_NAMES.index(category) - 1
+
+
 def apply_per_pixel_land_cover(
     ds_path: str,
     checkpoint_path: str,
@@ -411,8 +446,12 @@ def apply_per_pixel_land_cover(
     center_crop_size: int = 64,
     seed: int | None = None,
     group: str | None = None,
+    src_category: str | None = None,
+    dst_category: str | None = None,
 ) -> None:
     """Apply per-pixel land-cover change scoring to a ten-year dataset."""
+    src_class_idx = _category_to_class_idx(src_category, "src_category")
+    dst_class_idx = _category_to_class_idx(dst_category, "dst_category")
     output_root = UPath(output_dir)
     print("Building the ModelDataset")
     _dataset, model_dataset = _build_model_dataset(ds_path, workers, group)
@@ -453,6 +492,8 @@ def apply_per_pixel_land_cover(
                     device=device,
                     src_threshold=src_threshold,
                     dst_threshold=dst_threshold,
+                    src_class_idx=src_class_idx,
+                    dst_class_idx=dst_class_idx,
                 )
 
                 out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -500,6 +541,16 @@ def main() -> None:
         default=None,
         help="Only process windows in this dataset group",
     )
+    parser.add_argument(
+        "--src_category",
+        default=None,
+        help="Only consider this class name as the declining (source) class",
+    )
+    parser.add_argument(
+        "--dst_category",
+        default=None,
+        help="Only consider pixels whose post-period argmax class is this class name",
+    )
     args = parser.parse_args()
 
     apply_per_pixel_land_cover(
@@ -514,6 +565,8 @@ def main() -> None:
         center_crop_size=args.center_crop_size,
         seed=args.seed,
         group=args.group,
+        src_category=args.src_category,
+        dst_category=args.dst_category,
     )
 
 

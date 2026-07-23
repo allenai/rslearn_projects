@@ -93,6 +93,8 @@ POST_CHANGE_BANDS = [
     "post_change_water_expand",
     "post_change_mining",
     "post_change_new_crop_structure",
+    "post_change_selective_logging",
+    "post_change_landslide",
 ]
 SAME_CHANGE_BANDS = [
     "same_change_nodata",
