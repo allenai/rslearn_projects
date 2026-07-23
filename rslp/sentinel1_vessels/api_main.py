@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from rslp.log_utils import get_logger
 from rslp.sentinel1_vessels.predict_pipeline import (
+    INFRA_DISTANCE_THRESHOLD,
     PredictionTask,
     Sentinel1Image,
     predict_pipeline,
@@ -30,6 +31,9 @@ load_dotenv()
 SENTINEL1_HOST = os.getenv("SENTINEL1_HOST", "0.0.0.0")
 SENTINEL1_PORT = int(os.getenv("SENTINEL1_PORT", 5555))
 SENTINEL1_SCORE_THRESHOLD = float(os.getenv("SENTINEL1_SCORE_THRESHOLD", "0.7"))
+SENTINEL1_INFRA_DISTANCE_KM = float(
+    os.getenv("SENTINEL1_INFRA_DISTANCE_KM", str(INFRA_DISTANCE_THRESHOLD))
+)
 
 # Set up the logger
 logger = get_logger(__name__)
@@ -100,6 +104,10 @@ class Sentinel1Request(BaseModel):
         scratch_path: Optional; Scratch path to save the rslearn dataset.
         score_threshold: Optional; override the detector's score threshold for this
             request. Defaults to the SENTINEL1_SCORE_THRESHOLD env var (0.7 if unset).
+        infra_distance_km: Optional; override the near marine infrastructure filter
+            distance (in km) for this request. Detections within this distance of a
+            mapped structure are discarded. Defaults to the
+            SENTINEL1_INFRA_DISTANCE_KM env var (0.2 if unset).
     """
 
     scene_id: str | None = None
@@ -108,6 +116,7 @@ class Sentinel1Request(BaseModel):
     crop_path: str | None = None
     scratch_path: str | None = None
     score_threshold: float | None = None
+    infra_distance_km: float | None = None
 
     class Config:
         """Configuration for the Sentinel1Request model."""
@@ -201,11 +210,17 @@ async def get_detections(
             if info.score_threshold is not None
             else SENTINEL1_SCORE_THRESHOLD
         )
+        infra_distance_km = (
+            info.infra_distance_km
+            if info.infra_distance_km is not None
+            else SENTINEL1_INFRA_DISTANCE_KM
+        )
         with time_operation(TimerOperations.TotalInferenceTime):
             vessel_detections = predict_pipeline(
                 tasks=[task],
                 score_threshold=threshold,
                 scratch_path=scratch_path,
+                infra_distance_km=infra_distance_km,
             )[0]
         return Sentinel1Response(
             status=StatusEnum.SUCCESS,

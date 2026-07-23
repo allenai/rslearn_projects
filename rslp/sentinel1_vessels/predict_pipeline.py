@@ -76,9 +76,12 @@ BAND_NAMES = ["vv", "vh"]
 # Factor to multiply by when converting bands to 8-bit image.
 NORM_FACTOR = 1.0
 
-# Distance threshold for near marine infrastructure filter in km.
-# 0.05 km = 50 m
-INFRA_DISTANCE_THRESHOLD = 0.05
+# Default distance threshold for the near marine infrastructure filter in km.
+# 0.2 km = 200 m. Chosen by cross-referencing Sentinel-1 detections against the
+# marine infrastructure map: detections that sit on a mapped structure form a
+# population that is exhausted by ~200 m, with a clear gap before the next
+# population begins. Overridable per request via the API.
+INFRA_DISTANCE_THRESHOLD = 0.2
 
 
 @dataclass
@@ -596,6 +599,7 @@ def predict_pipeline(
     tasks: list[PredictionTask],
     score_threshold: float,
     scratch_path: str | None = None,
+    infra_distance_km: float = INFRA_DISTANCE_THRESHOLD,
 ) -> list[list[VesselDetection]]:
     """Run the Sentinel-1 vessel prediction pipeline.
 
@@ -609,6 +613,9 @@ def predict_pipeline(
         score_threshold: override the detector's score threshold for this run,
             replacing the value baked into the model config.
         scratch_path: directory to use to store temporary dataset.
+        infra_distance_km: distance threshold in km for the near marine
+            infrastructure filter. Detections within this distance of a mapped
+            structure are discarded.
 
     Returns:
         list of vessel detections for each task.
@@ -652,7 +659,7 @@ def predict_pipeline(
     # Write crops and prepare the JSON data.
     with time_operation(TimerOperations.BuildPredictionsAndCrops):
         detections_by_task = _build_predictions_and_crops(
-            detections, crop_windows, tasks
+            detections, crop_windows, tasks, infra_distance_km
         )
 
     for task_idx in range(0, len(tasks)):
@@ -687,12 +694,11 @@ def _build_predictions_and_crops(
     detections: list[VesselDetection],
     crop_windows: list[Window],
     tasks: list[PredictionTask],
+    infra_distance_km: float = INFRA_DISTANCE_THRESHOLD,
 ) -> list[list[VesselDetection]]:
     detections_by_task: list[list[VesselDetection]] = [[] for _ in tasks]
 
-    near_infra_filter = NearInfraFilter(
-        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
-    )
+    near_infra_filter = NearInfraFilter(infra_distance_threshold=infra_distance_km)
     for detection, crop_window in zip(detections, crop_windows):
         # Apply near infra filter (True -> filter out, False -> keep)
         lon, lat = detection.get_lon_lat()

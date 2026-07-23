@@ -20,7 +20,12 @@ SCENE_ID = "S1A_IW_GRDH_1SDV_20241001T003924_20241001T003949_055902_06D56E_11E3.
 def captured(monkeypatch: pytest.MonkeyPatch) -> dict:
     seen: dict = {}
 
-    def fake_pipeline(tasks: list, score_threshold: float, scratch_path: str) -> list:
+    def fake_pipeline(
+        tasks: list,
+        score_threshold: float,
+        scratch_path: str,
+        infra_distance_km: float,
+    ) -> list:
         seen["threshold"] = score_threshold
         return [[]]
 
