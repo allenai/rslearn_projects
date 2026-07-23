@@ -7,7 +7,9 @@ model:
         encoder:
           - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
-              checkpoint_path: /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000
+              # The OlmoEarth checkpoint to compute embeddings with, e.g.
+              # /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000
+              checkpoint_path: ${CHECKPOINT_PATH}
               # patch_size 1 yields one 128-dimensional embedding per 10 m pixel.
               patch_size: 1
               embedding_size: 128
@@ -23,10 +25,11 @@ model:
               # samples with differing numbers of mosaics so they can be batched
               # together.
               use_legacy_timestamps: false
-              # Compile the encoder transformer blocks (the register bottleneck
-              # stays eager). Inference uses fixed 16x16 crops so recompilations
-              # are limited to the few distinct batch/timestep shapes.
-              compile_model: true
+              # Whether to compile the encoder transformer blocks (the register
+              # bottleneck stays eager). Inference uses fixed WINDOW_SIZE crops so
+              # recompilations are limited to the few distinct batch/timestep
+              # shapes.
+              compile_model: ${COMPILE_MODEL}
         decoder:
           # L2-normalizes each pixel's embedding and quantizes it to int8 using the
           # AlphaEarth-style power scheme (-128 is reserved for nodata).
@@ -50,19 +53,20 @@ data:
     task:
       # Inference-only task: no targets/loss; writes the head's int8 output.
       class_path: rslearn.train.tasks.embedding.EmbeddingTask
-    # Crops are tiny (16x16) so a large batch size is needed for throughput. Tune
-    # per GPU along with num_workers.
+    # Crops are tiny (e.g. 16x16) so a large batch size is needed for throughput.
+    # Tune per GPU along with num_workers.
     batch_size: 256
     num_workers: 16
     default_config:
-      # The model must operate on 16x16 crops; anything bigger fails with the 12
-      # monthly inputs at patch_size=1 due to GPU memory constraints.
-      crop_size: 16
+      # The size of the crops the model operates on, e.g. 16 (much bigger fails
+      # with the 12 monthly inputs at patch_size=1 due to GPU memory constraints).
+      crop_size: ${WINDOW_SIZE}
     predict_config:
       load_all_crops: true
       # Overlap adjacent crops to mitigate embedding seams at crop boundaries; the
       # RasterMerger below trims half the overlap from each crop when merging.
-      overlap_pixels: 4
+      # Must match the RasterMerger overlap_pixels.
+      overlap_pixels: ${OVERLAP_SIZE}
       skip_targets: true
 trainer:
   callbacks:
@@ -75,4 +79,5 @@ trainer:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
             downsample_factor: 1
-            overlap_pixels: 4
+            # Must match the predict_config overlap_pixels.
+            overlap_pixels: ${OVERLAP_SIZE}

@@ -19,8 +19,19 @@ and so must be written to different output paths:
 
 The configuration files are in `data/large_scale_embeddings/`: `s2.json`/`s2_s1.json`
 are the rslearn dataset configs (imagery comes from the OlmoEarth Datasets sources)
-and `s2.yaml`/`s2_s1.yaml` are the model configs (which reference the OlmoEarth
-checkpoint on WEKA).
+and `s2.yaml`/`s2_s1.yaml` are the model configs.
+
+The model configs require several environment variables (substituted via `${VAR}`
+before parsing; there are no defaults, so all of them must be set):
+
+- `CHECKPOINT_PATH`: the OlmoEarth checkpoint to compute embeddings with, e.g.
+  `/weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000`.
+- `WINDOW_SIZE`: the size of the crops the model operates on, e.g. `16` (much
+  bigger fails with the 12 monthly inputs at patch_size=1 due to GPU memory
+  constraints).
+- `OVERLAP_SIZE`: overlap in pixels between adjacent crops, to mitigate embedding
+  seams at crop boundaries, e.g. `4`.
+- `COMPILE_MODEL`: whether to compile the encoder transformer blocks, e.g. `true`.
 
 
 How It Works
@@ -55,6 +66,10 @@ Running One Tile Locally
 This requires a GPU and access to the OlmoEarth checkpoint (e.g. run on a machine with
 WEKA mounted). From the rslearn_projects root:
 
+    export CHECKPOINT_PATH=/weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000
+    export WINDOW_SIZE=16
+    export OVERLAP_SIZE=4
+    export COMPILE_MODEL=true
     python -m rslp.main large_scale_embeddings predict \
         --inputs S2 \
         --projection_json '{"crs": "EPSG:32610", "x_resolution": 10, "y_resolution": -10}' \
@@ -102,7 +117,8 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
 3. Launch workers on Beaker (WEKA must be mounted for the checkpoint). The
    OlmoEarth Datasets data source needs `OEDATASETS_API_URL` (plain env var) and
    `DATASETS_API_TOKEN` (bearer token, read from the `LCC_DATASETS_API_TOKEN`
-   Beaker secret which must exist in the `ai2/earth-systems` workspace):
+   Beaker secret which must exist in the `ai2/earth-systems` workspace), and the
+   model config env vars described above are passed the same way:
 
         python -m rslp.main common launch \
             --image_name favyen/rslpomp20260721b \
@@ -112,7 +128,7 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
             --priority urgent \
             --cluster '["ai2/jupiter","ai2/ceres"]' \
             --weka_mounts+='{"bucket_name": "dfive-default", "mount_path": "/weka/dfive-default"}' \
-            --extra_env_vars '{"OEDATASETS_API_URL": "https://datasets.olmoearth.allenai.org"}' \
+            --extra_env_vars '{"OEDATASETS_API_URL": "https://datasets.olmoearth.allenai.org", "CHECKPOINT_PATH": "/weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000", "WINDOW_SIZE": "16", "OVERLAP_SIZE": "4", "COMPILE_MODEL": "true"}' \
             --extra_env_secrets '{"DATASETS_API_TOKEN": "LCC_DATASETS_API_TOKEN"}'
 
 Progress can be monitored by counting marker files in `completed_path`. To retry
