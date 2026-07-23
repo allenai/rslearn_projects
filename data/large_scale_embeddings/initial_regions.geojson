@@ -1,0 +1,179 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -124.8,
+              45.5
+            ],
+            [
+              -116.9,
+              45.5
+            ],
+            [
+              -116.9,
+              49.0
+            ],
+            [
+              -124.8,
+              49.0
+            ],
+            [
+              -124.8,
+              45.5
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "name": "washington"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -116.05,
+              44.35
+            ],
+            [
+              -104.04,
+              44.35
+            ],
+            [
+              -104.04,
+              49.0
+            ],
+            [
+              -116.05,
+              49.0
+            ],
+            [
+              -116.05,
+              44.35
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "name": "montana"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              22.1,
+              44.3
+            ],
+            [
+              40.2,
+              44.3
+            ],
+            [
+              40.2,
+              52.4
+            ],
+            [
+              22.1,
+              52.4
+            ],
+            [
+              22.1,
+              44.3
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "name": "ukraine"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              97.3,
+              20.4
+            ],
+            [
+              97.3,
+              14.5
+            ],
+            [
+              98.0,
+              14.5
+            ],
+            [
+              98.0,
+              5.6
+            ],
+            [
+              102.5,
+              5.6
+            ],
+            [
+              102.5,
+              14.5
+            ],
+            [
+              105.6,
+              14.5
+            ],
+            [
+              105.6,
+              20.4
+            ],
+            [
+              97.3,
+              20.4
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "name": "thailand"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -45.0,
+          72.0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "name": "greenland_point"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          110.5,
+          -66.28
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "name": "antarctica_coast_point"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}
