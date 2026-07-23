@@ -1,0 +1,171 @@
+{
+  "layers": {
+    "output_change": {
+      "band_sets": [
+        {
+          "bands": [
+            "binary_nodata",
+            "binary_no_change",
+            "binary_change",
+            "src_nodata",
+            "src_bare",
+            "src_burnt",
+            "src_crops",
+            "src_fallow",
+            "src_grassland",
+            "src_lichen",
+            "src_shrub",
+            "src_snow",
+            "src_tree",
+            "src_urban",
+            "src_water",
+            "src_wetland",
+            "dst_nodata",
+            "dst_bare",
+            "dst_burnt",
+            "dst_crops",
+            "dst_fallow",
+            "dst_grassland",
+            "dst_lichen",
+            "dst_shrub",
+            "dst_snow",
+            "dst_tree",
+            "dst_urban",
+            "dst_water",
+            "dst_wetland",
+            "ts_pre_days",
+            "ts_post_days",
+            "pre_change_nodata",
+            "pre_change_none",
+            "pre_change_deforestation",
+            "pre_change_urban_erosion",
+            "pre_change_wetland_loss",
+            "pre_change_water_contract",
+            "pre_change_removed_crop_structure",
+            "post_change_nodata",
+            "post_change_none",
+            "post_change_vegetation_growth",
+            "post_change_new_building",
+            "post_change_new_road",
+            "post_change_new_infrastructure",
+            "post_change_new_crop_field",
+            "post_change_new_aquafarm",
+            "post_change_site_clearing",
+            "post_change_water_expand",
+            "post_change_mining",
+            "post_change_new_crop_structure",
+            "post_change_selective_logging",
+            "post_change_landslide",
+            "same_change_nodata",
+            "same_change_none",
+            "same_change_agricultural_activity",
+            "same_change_wildfire",
+            "same_change_ice_motion",
+            "same_change_flooding"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2_frequent_0": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "duration": "60d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 4,
+          "min_matches": 4,
+          "per_period_mosaic_reverse_time_order": false,
+          "period_duration": "15d",
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
+    },
+    "sentinel2_quarterly": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "duration": "1800d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
+          "provider_priority": [
+            "PLANETARY_COMPUTER"
+          ],
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 20,
+          "min_matches": 16,
+          "per_period_mosaic_reverse_time_order": false,
+          "period_duration": "90d",
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "-1800d"
+      },
+      "type": "raster"
+    }
+  }
+}

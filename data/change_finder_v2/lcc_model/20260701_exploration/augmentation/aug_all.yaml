@@ -1,0 +1,52 @@
+model:
+  init_args:
+    model:
+      class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassChangeModel
+      init_args:
+        encoder:
+          class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          init_args:
+            model_id: OLMOEARTH_V1_2_BASE
+            patch_size: 4
+            token_pooling: false
+            use_legacy_timestamps: false
+            token_drop_rate: 0.3
+        num_classes_binary: 3
+        num_classes_src: 13
+        num_classes_dst: 13
+        num_timesteps: 20
+        embedding_dim: 768
+        decoder_stages:
+          - [[768, 3]]
+          - [[256, 3]]
+          - [[128, 3]]
+        binary_loss_weight: 2.0
+data:
+  init_args:
+    train_config:
+      transforms:
+        - class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassSampler
+          init_args:
+            deterministic: false
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors:
+              - "sentinel2_l2a"
+              - "target/binary/classes"
+              - "target/binary/valid"
+              - "target/src/classes"
+              - "target/src/valid"
+              - "target/dst/classes"
+              - "target/dst/valid"
+              - "target/timestamps/start"
+              - "target/timestamps/end"
+              - "target/timestamps/valid"
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        - class_path: rslearn.train.transforms.gaussian_noise.GaussianNoise
+          init_args:
+            std: 0.1
+            selectors: ["sentinel2_l2a"]
+run_name: aug_all
