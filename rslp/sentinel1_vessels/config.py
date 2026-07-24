@@ -21,7 +21,7 @@ SENTINEL1_SCORE_THRESHOLD = float(os.getenv("SENTINEL1_SCORE_THRESHOLD", "0.7"))
 
 # Distance threshold for the near marine infrastructure filter in km
 # (0.2 km = 200 m if unset).
-INFRA_DISTANCE_THRESHOLD = float(os.getenv("SENTINEL1_INFRA_DISTANCE_KM", "0.2"))
+INFRA_DISTANCE_THRESHOLD_KM = float(os.getenv("SENTINEL1_INFRA_DISTANCE_KM", "0.2"))
 
 # Number of workers the rslearn data loader uses during prediction.
 NUM_DATA_LOADER_WORKERS = int(os.environ.get("RSLEARN_NUM_DATA_LOADER_WORKERS", 4))

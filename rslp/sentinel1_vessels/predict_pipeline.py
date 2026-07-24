@@ -27,7 +27,7 @@ from upath import UPath
 
 from rslp.log_utils import get_logger
 from rslp.sentinel1_vessels.config import (
-    INFRA_DISTANCE_THRESHOLD,
+    INFRA_DISTANCE_THRESHOLD_KM,
     NUM_DATA_LOADER_WORKERS,
 )
 from rslp.sentinel1_vessels.prom_metrics import TimerOperations, time_operation
@@ -688,7 +688,7 @@ def _build_predictions_and_crops(
     detections_by_task: list[list[VesselDetection]] = [[] for _ in tasks]
 
     near_infra_filter = NearInfraFilter(
-        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
+        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD_KM
     )
     for detection, crop_window in zip(detections, crop_windows):
         # Apply near infra filter (True -> filter out, False -> keep)
