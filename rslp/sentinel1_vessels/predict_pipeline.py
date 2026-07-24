@@ -2,7 +2,6 @@
 
 import json
 import math
-import os
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -27,6 +26,10 @@ from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
+from rslp.sentinel1_vessels.config import (
+    INFRA_DISTANCE_THRESHOLD,
+    NUM_DATA_LOADER_WORKERS,
+)
 from rslp.sentinel1_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import (
@@ -41,8 +44,6 @@ from rslp.utils.rslearn import (
 from rslp.vessels import VesselAttributes, VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
-
-NUM_DATA_LOADER_WORKERS = int(os.environ.get("RSLEARN_NUM_DATA_LOADER_WORKERS", 4))
 
 # Layer name for the Sentinel-1 image in which we want to detect vessels.
 SENTINEL1_LAYER_NAME = "sentinel1"
@@ -75,10 +76,6 @@ BAND_NAMES = ["vv", "vh"]
 
 # Factor to multiply by when converting bands to 8-bit image.
 NORM_FACTOR = 1.0
-
-# Distance threshold for near marine infrastructure filter in km.
-# 0.2 km = 200 m
-INFRA_DISTANCE_THRESHOLD = 0.2
 
 
 @dataclass
@@ -596,7 +593,6 @@ def predict_pipeline(
     tasks: list[PredictionTask],
     score_threshold: float,
     scratch_path: str | None = None,
-    infra_distance_km: float = INFRA_DISTANCE_THRESHOLD,
 ) -> list[list[VesselDetection]]:
     """Run the Sentinel-1 vessel prediction pipeline.
 
@@ -610,8 +606,6 @@ def predict_pipeline(
         score_threshold: override the detector's score threshold for this run,
             replacing the value baked into the model config.
         scratch_path: directory to use to store temporary dataset.
-        infra_distance_km: distance threshold in km for the near marine
-            infrastructure filter.
 
     Returns:
         list of vessel detections for each task.
@@ -655,7 +649,7 @@ def predict_pipeline(
     # Write crops and prepare the JSON data.
     with time_operation(TimerOperations.BuildPredictionsAndCrops):
         detections_by_task = _build_predictions_and_crops(
-            detections, crop_windows, tasks, infra_distance_km
+            detections, crop_windows, tasks
         )
 
     for task_idx in range(0, len(tasks)):
@@ -690,11 +684,12 @@ def _build_predictions_and_crops(
     detections: list[VesselDetection],
     crop_windows: list[Window],
     tasks: list[PredictionTask],
-    infra_distance_km: float = INFRA_DISTANCE_THRESHOLD,
 ) -> list[list[VesselDetection]]:
     detections_by_task: list[list[VesselDetection]] = [[] for _ in tasks]
 
-    near_infra_filter = NearInfraFilter(infra_distance_threshold=infra_distance_km)
+    near_infra_filter = NearInfraFilter(
+        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
+    )
     for detection, crop_window in zip(detections, crop_windows):
         # Apply near infra filter (True -> filter out, False -> keep)
         lon, lat = detection.get_lon_lat()

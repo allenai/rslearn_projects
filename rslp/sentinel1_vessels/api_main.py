@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import Enum
 
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
 from rslp.log_utils import get_logger
+from rslp.sentinel1_vessels.config import (
+    SENTINEL1_HOST,
+    SENTINEL1_PORT,
+    SENTINEL1_SCORE_THRESHOLD,
+)
 from rslp.sentinel1_vessels.predict_pipeline import (
     PredictionTask,
     Sentinel1Image,
@@ -23,14 +26,6 @@ from rslp.sentinel1_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.mp import init_mp
 from rslp.utils.prometheus import setup_prom_metrics
 from rslp.vessels import VesselDetectionDict
-
-# Load environment variables from the .env file
-load_dotenv()
-# Configurable host and port, overridable via environment variables
-SENTINEL1_HOST = os.getenv("SENTINEL1_HOST", "0.0.0.0")
-SENTINEL1_PORT = int(os.getenv("SENTINEL1_PORT", 5555))
-SENTINEL1_SCORE_THRESHOLD = float(os.getenv("SENTINEL1_SCORE_THRESHOLD", "0.7"))
-SENTINEL1_INFRA_DISTANCE_KM = float(os.getenv("SENTINEL1_INFRA_DISTANCE_KM", "0.2"))
 
 # Set up the logger
 logger = get_logger(__name__)
@@ -101,9 +96,6 @@ class Sentinel1Request(BaseModel):
         scratch_path: Optional; Scratch path to save the rslearn dataset.
         score_threshold: Optional; override the detector's score threshold for this
             request. Defaults to the SENTINEL1_SCORE_THRESHOLD env var (0.7 if unset).
-        infra_distance_km: Optional; override the near marine infrastructure filter
-            distance in km. Defaults to the SENTINEL1_INFRA_DISTANCE_KM env var
-            (0.2 if unset).
     """
 
     scene_id: str | None = None
@@ -112,7 +104,6 @@ class Sentinel1Request(BaseModel):
     crop_path: str | None = None
     scratch_path: str | None = None
     score_threshold: float | None = None
-    infra_distance_km: float | None = None
 
     class Config:
         """Configuration for the Sentinel1Request model."""
@@ -206,17 +197,11 @@ async def get_detections(
             if info.score_threshold is not None
             else SENTINEL1_SCORE_THRESHOLD
         )
-        infra_distance_km = (
-            info.infra_distance_km
-            if info.infra_distance_km is not None
-            else SENTINEL1_INFRA_DISTANCE_KM
-        )
         with time_operation(TimerOperations.TotalInferenceTime):
             vessel_detections = predict_pipeline(
                 tasks=[task],
                 score_threshold=threshold,
                 scratch_path=scratch_path,
-                infra_distance_km=infra_distance_km,
             )[0]
         return Sentinel1Response(
             status=StatusEnum.SUCCESS,
