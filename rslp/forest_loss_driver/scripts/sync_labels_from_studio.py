@@ -11,6 +11,7 @@ from upath import UPath
 
 BASE_URL = "https://olmoearth.allenai.org/api/v1/"
 LABEL_MAP = {
+    "Airstrips": "airstrip",
     "Agriculture-Large": "agriculture",
     "Agriculture-Medium": "agriculture",
     "Agriculture-Small": "agriculture",
@@ -43,8 +44,12 @@ def get_tasks(project_id: str) -> list[dict[str, Any]]:
     cur_offset = 0
     tasks: list[dict[str, Any]] = []
     while True:
-        response = requests.get(
-            BASE_URL + f"projects/{project_id}/tasks?offset={cur_offset}",
+        response = requests.post(
+            BASE_URL + "tasks/search",
+            json={
+                "project_id": {"eq": project_id},
+                "offset": cur_offset,
+            },
             headers=get_headers(),
             timeout=10,
         )
@@ -53,42 +58,49 @@ def get_tasks(project_id: str) -> list[dict[str, Any]]:
             raise Exception(f"got bad API response {response.status_code}")
 
         json_data = response.json()
-        tasks.extend(json_data["items"])
-
-        meta = json_data["meta"]
-        if cur_offset != meta["offset"]:
-            raise Exception(
-                f"requested offset {cur_offset} but got offset {meta['offset']}"
-            )
-        cur_count = len(json_data["items"])
-        if meta["total"] <= cur_offset + cur_count:
+        if len(json_data["records"]) == 0:
             break
-        cur_offset += cur_count
+
+        tasks.extend(json_data["records"])
+        cur_offset += len(json_data["records"])
+
     return tasks
 
 
-def get_annotations(project_id: str) -> dict[str, Any]:
+def get_annotations(project_id: str) -> list[dict[str, Any]]:
     """Get all annotations for the specified project as GeoJSON."""
-    response = requests.get(
-        BASE_URL + f"projects/{project_id}/annotations",
-        headers=get_headers(),
-        timeout=10,
-    )
-    if response.status_code != 200:
-        print(response.text)
-        raise Exception(f"got bad API response {response.status_code}")
+    cur_offset = 0
+    annotations: list[dict[str, Any]] = []
+    while True:
+        response = requests.post(
+            BASE_URL + "annotations/search",
+            json={
+                "project_id": {"eq": project_id},
+                "offset": cur_offset,
+            },
+            headers=get_headers(),
+            timeout=10,
+        )
+        if response.status_code != 200:
+            print(response.text)
+            raise Exception(f"got bad API response {response.status_code}")
 
-    return response.json()
+        json_data = response.json()
+        if len(json_data["records"]) == 0:
+            break
+
+        annotations.extend(json_data["records"])
+        cur_offset += len(json_data["records"])
+
+    return annotations
 
 
-def get_label_from_feat(feat: dict[str, Any]) -> str | None:
-    """Get the labeled category for this GeoJSON feature (if any)."""
-    if "metadata_values" not in feat["properties"]:
-        return None
-    for metadata_value in feat["properties"]["metadata_values"]:
+def get_label_from_annotation(annotation: dict[str, Any]) -> str | None:
+    """Get the labeled category for this annotation (if any)."""
+    for metadata_value in annotation["metadata_values"]:
         if metadata_value["name"] != "tag_name":
             continue
-        return metadata_value["tag_name"]
+        return metadata_value["label_name"]
     return None
 
 
@@ -115,17 +127,16 @@ if __name__ == "__main__":
     ds_path = UPath(args.ds_path)
 
     tasks = get_tasks(args.project_id)
-    project_fc = get_annotations(args.project_id)
+    annotations = get_annotations(args.project_id)
 
     task_by_id = {task["id"]: task for task in tasks}
 
-    for feat in project_fc["features"]:
-        properties = feat["properties"]
-        task = task_by_id[properties["task_id"]]
+    for annotation in annotations:
+        task = task_by_id[annotation["task_id"]]
         group = task["attributes"]["group"]
         window_name = task["attributes"]["window"]
 
-        label = get_label_from_feat(feat)
+        label = get_label_from_annotation(annotation)
 
         if args.remap_labels:
             if label not in LABEL_MAP:
