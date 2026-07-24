@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import Enum
 
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
 from rslp.log_utils import get_logger
+from rslp.sentinel1_vessels.config import (
+    SENTINEL1_HOST,
+    SENTINEL1_PORT,
+    SENTINEL1_SCORE_THRESHOLD,
+)
 from rslp.sentinel1_vessels.predict_pipeline import (
     PredictionTask,
     Sentinel1Image,
@@ -23,13 +26,6 @@ from rslp.sentinel1_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.mp import init_mp
 from rslp.utils.prometheus import setup_prom_metrics
 from rslp.vessels import VesselDetectionDict
-
-# Load environment variables from the .env file
-load_dotenv()
-# Configurable host and port, overridable via environment variables
-SENTINEL1_HOST = os.getenv("SENTINEL1_HOST", "0.0.0.0")
-SENTINEL1_PORT = int(os.getenv("SENTINEL1_PORT", 5555))
-SENTINEL1_SCORE_THRESHOLD = float(os.getenv("SENTINEL1_SCORE_THRESHOLD", "0.7"))
 
 # Set up the logger
 logger = get_logger(__name__)

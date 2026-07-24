@@ -2,7 +2,6 @@
 
 import json
 import math
-import os
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -27,6 +26,10 @@ from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
+from rslp.sentinel1_vessels.config import (
+    INFRA_DISTANCE_THRESHOLD_KM,
+    NUM_DATA_LOADER_WORKERS,
+)
 from rslp.sentinel1_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import (
@@ -41,8 +44,6 @@ from rslp.utils.rslearn import (
 from rslp.vessels import VesselAttributes, VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
-
-NUM_DATA_LOADER_WORKERS = int(os.environ.get("RSLEARN_NUM_DATA_LOADER_WORKERS", 4))
 
 # Layer name for the Sentinel-1 image in which we want to detect vessels.
 SENTINEL1_LAYER_NAME = "sentinel1"
@@ -75,10 +76,6 @@ BAND_NAMES = ["vv", "vh"]
 
 # Factor to multiply by when converting bands to 8-bit image.
 NORM_FACTOR = 1.0
-
-# Distance threshold for near marine infrastructure filter in km.
-# 0.05 km = 50 m
-INFRA_DISTANCE_THRESHOLD = 0.05
 
 
 @dataclass
@@ -691,7 +688,7 @@ def _build_predictions_and_crops(
     detections_by_task: list[list[VesselDetection]] = [[] for _ in tasks]
 
     near_infra_filter = NearInfraFilter(
-        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
+        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD_KM
     )
     for detection, crop_window in zip(detections, crop_windows):
         # Apply near infra filter (True -> filter out, False -> keep)
