@@ -65,10 +65,15 @@ python -m rslp.change_finder_v2.annotation_app.create_windows \
     /path/to/dataset/
 
 # 2. Materialize Sentinel-2 imagery
-rslearn dataset prepare --root /path/to/dataset/ --workers 32 --retry-max-attempts 5 --retry-backoff-seconds 5
-rslearn dataset materialize --root /path/to/dataset/ --workers 128 --retry-max-attempts 5 --retry-backoff-seconds 5
+rslearn dataset prepare --root /path/to/dataset/ --workers 32 --retry-max-attempts 5 --retry-backoff-seconds 5 --enabled-layers sentinel2
+rslearn dataset materialize --root /path/to/dataset/ --workers 128 --retry-max-attempts 5 --retry-backoff-seconds 5 --enabled-layers sentinel2
 
-# 3. Launch the annotation app
+# 3. Materialize Esri Wayback imagery (few workers; the Wayback API is
+#    rate-sensitive and prepare makes many identify requests per window)
+rslearn dataset prepare --root /path/to/dataset/ --workers 4 --retry-max-attempts 5 --retry-backoff-seconds 5 --enabled-layers esri
+rslearn dataset materialize --root /path/to/dataset/ --workers 4 --retry-max-attempts 5 --retry-backoff-seconds 5 --enabled-layers esri
+
+# 4. Launch the annotation app
 python -m rslp.change_finder_v2.annotation_app.server \
     --json annotations.json \
     --ds-path /path/to/dataset/ \
@@ -77,6 +82,9 @@ python -m rslp.change_finder_v2.annotation_app.server \
 
 The UI:
 - Displays up to 12 monthly Sentinel-2 images per year in a 2-row grid.
+- Below the Sentinel-2 grid, shows Esri Wayback high-res imagery (one mosaic per
+  6-month period, stored at 1.25 m/pixel via zoom_offset 3); the capture dates
+  appear as buttons and one image is displayed at a time.
 - Toggle overlay to see positive (green) and negative (red) points.
 - Left-click on overlay to add a positive point; right-click to add negative.
 - Click existing points to remove them.
@@ -267,11 +275,14 @@ builds pass1/pass2 without needing annotations or multiple frequent options.
 
 #### Output
 
-Per-window output at `<window>/layers/output_change/<bandset>/geotiff.tif`:
+Per-window output at `<window>/layers/output_change/<bandset>/geotiff.tif` (58 bands):
 - `binary`: 3-channel probability map (nodata / no_change / change)
 - `src`: 13-channel source category probabilities
 - `dst`: 13-channel destination category probabilities
-- `timestamps`: 20-channel sigmoid outputs (per-image change-period membership)
+- `ts_pre_days` / `ts_post_days`: predicted pre/post change dates as integer days
+  since the timestamp epoch
+- `pre_change` / `post_change` / `same_change`: 7/14/6-channel change-category
+  probabilities (class layout [nodata, none, <options...>])
 
 #### 4. Postprocess: raster to GeoJSON
 
@@ -290,12 +301,15 @@ This script:
 - Thresholds the binary change band and computes per-pixel argmax src/dst classes.
 - Finds connected components separately for each unique (src, dst) class pair,
   so each polygon represents a single type of land cover transition.
-- Estimates a change timestamp per polygon via majority vote of per-pixel argmax
-  over the 20 timestamp probability bands, mapped to actual dates from the
-  dataset's layer metadata.
+- Estimates pre/post change dates per polygon as the median of the per-pixel
+  day-encoded timestamp bands.
+- Assigns predicted pre/post/same change categories per polygon via majority vote
+  of the per-pixel argmax category ("none" is a valid prediction).
 
-Each GeoJSON feature includes: `src_class`, `dst_class`, `num_pixels`,
-`avg_change_score`, `timestamp_idx`, `timestamp_start`, `timestamp_end`.
+Each GeoJSON feature includes: `src_class`, `src_class_idx`, `dst_class`,
+`dst_class_idx`, `num_pixels`, `avg_change_score`, `pre_change_days`,
+`post_change_days`, `pre_change_date`, `post_change_date`, `pre_change_category`,
+`post_change_category`, `same_change_category`.
 
 ---
 
@@ -310,7 +324,7 @@ the LCC-specific pre/post-processing.
 
 Per-tile pipeline: create 2048x2048 windows -> materialize Sentinel-2 imagery ->
 run the model -> polygonize the `output_change` raster into a per-tile GeoJSON
-(`{EPSG}_{col}_{row}.geojson`). Optionally the merged 49-band raster is also written
+(`{EPSG}_{col}_{row}.geojson`). Optionally the merged 58-band raster is also written
 (`{EPSG}_{col}_{row}.tif`). Merging the per-tile GeoJSONs into a single layer and
 converting to vector tiles is handled separately (not yet implemented).
 

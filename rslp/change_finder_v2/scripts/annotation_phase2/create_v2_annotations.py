@@ -1,19 +1,16 @@
 """Create a v2 annotation JSON from change_finder_v2 write_raster prediction outputs.
 
 The random-2048 prediction runs (``write_jobs_random_2048``) produce, for each
-2048x2048 tile, a 49-band ``output_change`` GeoTIFF (when ``write_raster`` is set)
+2048x2048 tile, a 58-band ``output_change`` GeoTIFF (when ``write_raster`` is set)
 plus a sibling GeoJSON with the same basename. This script:
 
 1. Scans every ``.tif`` in the input directory.
 2. Thresholds the binary change band (>=0.5) and randomly selects ONE change pixel
    per tile.
-3. Reads the per-pixel argmax source/destination land cover category and the
-   timestep (argmax over the 20 timestamp bands) at that pixel.
-4. Maps the timestep index to an actual date using the sibling GeoJSON, whose
-   features carry ``timestamp_idx`` / ``timestamp_start`` / ``timestamp_end`` that
-   were resolved from window metadata at prediction time (this metadata is not
-   present in the standalone raster).
-5. Emits a v2 annotation entry (a 128x128 window centered on the pixel, with one
+3. Reads the per-pixel argmax source/destination land cover category, the
+   predicted pre/post/same change category, and the predicted pre-change date
+   (decoded from the day-encoded timestamp band) at that pixel.
+4. Emits a v2 annotation entry (a 128x128 window centered on the pixel, with one
    positive point) suitable for
    ``rslp.change_finder_v2.annotation_app.create_windows``.
 
@@ -48,6 +45,12 @@ from rslp.change_finder_v2.lcc_model.postprocess import (
     DST_BAND_OFFSET,
     LC_CLASS_NAMES,
     NUM_LC_CLASSES,
+    POST_CHANGE_BAND_OFFSET,
+    POST_CHANGE_CATEGORY_NAMES,
+    PRE_CHANGE_BAND_OFFSET,
+    PRE_CHANGE_CATEGORY_NAMES,
+    SAME_CHANGE_BAND_OFFSET,
+    SAME_CHANGE_CATEGORY_NAMES,
     SRC_BAND_OFFSET,
     TS_PRE_DAYS_BAND,
 )
@@ -109,6 +112,30 @@ def process_tile(
     src_idx = int(src_probs[1:].argmax()) + 1
     dst_idx = int(dst_probs[1:].argmax()) + 1
 
+    # Predicted change categories at the pixel (skip class 0 = nodata; class 1 =
+    # "none" is a valid prediction).
+    pre_cat_probs = arr[
+        PRE_CHANGE_BAND_OFFSET : PRE_CHANGE_BAND_OFFSET
+        + len(PRE_CHANGE_CATEGORY_NAMES),
+        row,
+        col,
+    ]
+    post_cat_probs = arr[
+        POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET
+        + len(POST_CHANGE_CATEGORY_NAMES),
+        row,
+        col,
+    ]
+    same_cat_probs = arr[
+        SAME_CHANGE_BAND_OFFSET : SAME_CHANGE_BAND_OFFSET
+        + len(SAME_CHANGE_CATEGORY_NAMES),
+        row,
+        col,
+    ]
+    pre_cat_idx = int(pre_cat_probs[1:].argmax()) + 1
+    post_cat_idx = int(post_cat_probs[1:].argmax()) + 1
+    same_cat_idx = int(same_cat_probs[1:].argmax()) + 1
+
     # Predicted pre-change date, decoded from the day-encoded timestamp band.
     pre_change_date = days_to_date(int(arr[TS_PRE_DAYS_BAND, row, col]))
 
@@ -121,6 +148,9 @@ def process_tile(
         "lat": lat,
         "pre_category": LC_CLASS_NAMES[src_idx],
         "post_category": LC_CLASS_NAMES[dst_idx],
+        "pre_change_category": PRE_CHANGE_CATEGORY_NAMES[pre_cat_idx],
+        "post_change_category": POST_CHANGE_CATEGORY_NAMES[post_cat_idx],
+        "same_change_category": SAME_CHANGE_CATEGORY_NAMES[same_cat_idx],
     }
 
     time_range: list[str] | None = None

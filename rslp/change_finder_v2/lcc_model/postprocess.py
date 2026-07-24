@@ -105,6 +105,16 @@ SAME_CHANGE_BANDS = [
     "same_change_flooding",
 ]
 
+# Band offsets of the three change-category sections within the output raster.
+PRE_CHANGE_BAND_OFFSET = TS_POST_DAYS_BAND + 1
+POST_CHANGE_BAND_OFFSET = PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)
+SAME_CHANGE_BAND_OFFSET = POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)
+
+# Plain category names (class layout [nodata, none, <options...>]).
+PRE_CHANGE_CATEGORY_NAMES = [b.removeprefix("pre_change_") for b in PRE_CHANGE_BANDS]
+POST_CHANGE_CATEGORY_NAMES = [b.removeprefix("post_change_") for b in POST_CHANGE_BANDS]
+SAME_CHANGE_CATEGORY_NAMES = [b.removeprefix("same_change_") for b in SAME_CHANGE_BANDS]
+
 OUTPUT_LAYER = "output_change"
 OUTPUT_BANDS = [
     "binary_nodata",
@@ -135,11 +145,19 @@ def _get_geotiff_path(window_dir: UPath) -> UPath | None:
     return None
 
 
+def _majority_class(class_map: np.ndarray, mask: np.ndarray) -> int:
+    """Return the most common class value within the mask."""
+    return int(np.bincount(class_map[mask]).argmax())
+
+
 def _component_to_feature(
     comp_mask: np.ndarray,
     change_score: np.ndarray,
     pre_days: np.ndarray,
     post_days: np.ndarray,
+    pre_cat_class: np.ndarray,
+    post_cat_class: np.ndarray,
+    same_cat_class: np.ndarray,
     src_id: int,
     dst_id: int,
     projection: object,
@@ -188,6 +206,17 @@ def _component_to_feature(
         "post_change_days": post_day,
         "pre_change_date": days_to_date(pre_day).isoformat(),
         "post_change_date": days_to_date(post_day).isoformat(),
+        # Predicted change categories: majority vote over the component of the
+        # per-pixel argmax class ("none" is a valid prediction).
+        "pre_change_category": PRE_CHANGE_CATEGORY_NAMES[
+            _majority_class(pre_cat_class, comp_mask)
+        ],
+        "post_change_category": POST_CHANGE_CATEGORY_NAMES[
+            _majority_class(post_cat_class, comp_mask)
+        ],
+        "same_change_category": SAME_CHANGE_CATEGORY_NAMES[
+            _majority_class(same_cat_class, comp_mask)
+        ],
     }
 
     return {
@@ -226,6 +255,21 @@ def process_window(
     src_class = src_probs[1:].argmax(axis=0) + 1  # (H, W)
     dst_class = dst_probs[1:].argmax(axis=0) + 1  # (H, W)
 
+    # Per-pixel argmax change category (skip class 0 = nodata; class 1 = "none"
+    # is a valid prediction).
+    pre_cat_probs = arr[
+        PRE_CHANGE_BAND_OFFSET : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)
+    ]
+    post_cat_probs = arr[
+        POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)
+    ]
+    same_cat_probs = arr[
+        SAME_CHANGE_BAND_OFFSET : SAME_CHANGE_BAND_OFFSET + len(SAME_CHANGE_BANDS)
+    ]
+    pre_cat_class = pre_cat_probs[1:].argmax(axis=0) + 1  # (H, W)
+    post_cat_class = post_cat_probs[1:].argmax(axis=0) + 1  # (H, W)
+    same_cat_class = same_cat_probs[1:].argmax(axis=0) + 1  # (H, W)
+
     features: list[dict] = []
 
     # Build a combined label image for joint (src, dst) segmentation.
@@ -257,6 +301,9 @@ def process_window(
                 change_score,
                 pre_days,
                 post_days,
+                pre_cat_class,
+                post_cat_class,
+                same_cat_class,
                 s_id,
                 d_id,
                 projection,

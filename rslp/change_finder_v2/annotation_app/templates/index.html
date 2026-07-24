@@ -44,11 +44,12 @@
   #annot-status.ok { color: #81c784; }
   #annot-status.err { color: #e57373; }
 
-  #year-selector { display: flex; gap: 4px; padding: 4px 16px; flex-wrap: wrap; }
-  #year-selector button { font-size: 13px; padding: 3px 10px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
-  #year-selector button.active { background: #1565c0; border-color: #64b5f6; }
+  #year-selector, #esri-date-selector { display: flex; gap: 4px; padding: 4px 16px; flex-wrap: wrap; }
+  #year-selector button, #esri-date-selector button { font-size: 13px; padding: 3px 10px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  #year-selector button.active, #esri-date-selector button.active { background: #1565c0; border-color: #64b5f6; }
 
   #sentinel-grid { display: grid; grid-template-columns: repeat(6, var(--tile-size)); gap: 4px; padding: 4px 16px; overflow-x: auto; }
+  #esri-grid { display: flex; gap: 4px; padding: 4px 16px 16px; }
   .s2-col { text-align: center; }
   .image-stack { position: relative; width: var(--tile-size); height: var(--tile-size); background: #111; border: 1px solid #333; overflow: hidden; }
   .image-stack img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; }
@@ -132,6 +133,10 @@
 <div class="section-label">Sentinel-2 Imagery</div>
 <div id="year-selector"></div>
 <div id="sentinel-grid"></div>
+
+<div class="section-label">ESRI Wayback Imagery</div>
+<div id="esri-date-selector"></div>
+<div id="esri-grid"></div>
 
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

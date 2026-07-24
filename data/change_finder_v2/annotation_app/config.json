@@ -1,5 +1,32 @@
 {
   "layers": {
+    "esri": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "zoom_offset": 3
+        }
+      ],
+      "data_source": {
+        "class_path": "rslp.change_finder_v2.vlm.image_db.esri_wayback_data_source.EsriWayback",
+        "ingest": false,
+        "init_args": {
+          "zoom": 18
+        },
+        "query_config": {
+          "max_matches": 20,
+          "per_period_mosaic_reverse_time_order": false,
+          "period_duration": "183d",
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
+    },
     "sentinel2": {
       "band_sets": [
         {

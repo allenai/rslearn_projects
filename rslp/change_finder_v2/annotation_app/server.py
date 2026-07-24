@@ -107,6 +107,25 @@ def _get_timestamps(
     return result
 
 
+def _get_esri_timestamps(
+    layer_datas: dict[str, WindowLayerData],
+) -> list[dict]:
+    """Extract per-image timestamps from the esri layer's item groups."""
+    ld = layer_datas.get("esri")
+    if ld is None:
+        return []
+
+    result: list[dict] = []
+    for gi, item_group in enumerate(ld.serialized_item_groups):
+        if not item_group:
+            continue
+        ts = item_group[0].get("geometry", {}).get("time_range", [None])[0]
+        if ts is None:
+            continue
+        result.append({"group_idx": gi, "date": ts[:10]})
+    return result
+
+
 def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
     """Create the Flask annotation app."""
     v2_path = UPath(v2_json_path)
@@ -114,10 +133,12 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
     dataset = Dataset(ds_path)
 
     s2_bands: list[str] | None = None
+    esri_bands: list[str] | None = None
     for layer_name, layer_config in dataset.layers.items():
         if layer_name == "sentinel2":
             s2_bands = layer_config.band_sets[0].bands
-            break
+        elif layer_name == "esri":
+            esri_bands = layer_config.band_sets[0].bands
     if s2_bands is None:
         raise RuntimeError("No sentinel2 layer found in dataset config")
 
@@ -145,15 +166,17 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
         wkey = (entry["group"], entry["window_name"])
         window = window_cache.get(wkey)
         if window is None:
-            entry_meta.append({"available": False, "years": {}})
+            entry_meta.append({"available": False, "years": {}, "esri": []})
             continue
         layer_datas = window.load_layer_datas()
         years = _get_timestamps(layer_datas)
+        esri_images = _get_esri_timestamps(layer_datas)
         lat, lon = _get_window_center_wgs84(window)
         entry_meta.append(
             {
                 "available": True,
                 "years": years,
+                "esri": esri_images,
                 "lat": lat,
                 "lon": lon,
             }
@@ -376,6 +399,29 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
         )
         rgb = np.stack([r, g, b], axis=-1)
 
+        return Response(
+            _numpy_to_png(rgb),
+            mimetype="image/png",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    @app.route("/image/esri/<group>/<name>/<int:group_idx>")
+    def image_esri(group: str, name: str, group_idx: int) -> Response:
+        if esri_bands is None:
+            return Response("no esri layer in dataset config", status=404)
+        window = window_cache.get((group, name))
+        if window is None:
+            return Response("window not found", status=404)
+
+        raster_dir = window.get_raster_dir("esri", esri_bands, group_idx=group_idx)
+        tiff_path = raster_dir / "geotiff.tif"
+        if not tiff_path.exists():
+            return Response("GeoTIFF not found", status=404)
+
+        with rasterio.open(str(tiff_path)) as src:
+            bands = src.read()
+
+        rgb = bands[0:3].transpose(1, 2, 0).astype(np.uint8)
         return Response(
             _numpy_to_png(rgb),
             mimetype="image/png",

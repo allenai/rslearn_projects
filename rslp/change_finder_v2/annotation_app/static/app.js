@@ -77,6 +77,7 @@
   let currentEntry = null;
   let currentIndex = 0;
   let selectedYear = null;
+  let selectedEsriIdx = null;
   let selectedPointIdx = 0;
   let showOverlay = false;
   let brighten = false;
@@ -99,6 +100,8 @@
   const windowInfo = document.getElementById("window-info");
   const yearSelector = document.getElementById("year-selector");
   const sentinelGrid = document.getElementById("sentinel-grid");
+  const esriDateSelector = document.getElementById("esri-date-selector");
+  const esriGrid = document.getElementById("esri-grid");
   const annotForm = document.getElementById("annot-form");
   const annotStatus = document.getElementById("annot-status");
   const btnSave = document.getElementById("btn-save");
@@ -319,6 +322,69 @@
     }
   }
 
+  // --- ESRI Wayback imagery ---
+  function getEsriImages() {
+    if (!currentEntry || !currentEntry.meta || !currentEntry.meta.esri) return [];
+    return currentEntry.meta.esri;
+  }
+
+  function renderEsriButtons() {
+    esriDateSelector.innerHTML = "";
+    var images = getEsriImages();
+    if (images.length === 0) return;
+    if (selectedEsriIdx === null || selectedEsriIdx >= images.length) {
+      selectedEsriIdx = 0;
+    }
+    for (var i = 0; i < images.length; i++) {
+      var btn = document.createElement("button");
+      btn.textContent = images[i].date || "?";
+      btn.className = i === selectedEsriIdx ? "active" : "";
+      btn.dataset.esriIdx = i;
+      btn.addEventListener("click", function () {
+        selectedEsriIdx = Number(this.dataset.esriIdx);
+        renderEsriButtons();
+        renderEsri();
+      });
+      esriDateSelector.appendChild(btn);
+    }
+  }
+
+  function renderEsri() {
+    esriGrid.innerHTML = "";
+    if (!currentEntry) return;
+
+    var images = getEsriImages();
+    if (images.length === 0) {
+      esriGrid.innerHTML = '<div class="empty-msg">No ESRI images</div>';
+      return;
+    }
+    if (selectedEsriIdx === null || selectedEsriIdx >= images.length) {
+      selectedEsriIdx = 0;
+    }
+    var img = images[selectedEsriIdx];
+    var entry = currentEntry.entry;
+    var col = document.createElement("div");
+    col.className = "s2-col";
+    col.appendChild(
+      buildImageStack(
+        "/image/esri/" + encodeURIComponent(entry.group) + "/" + encodeURIComponent(entry.window_name) + "/" + img.group_idx,
+        "ESRI " + (img.date || "?")
+      )
+    );
+    var dateLabel = document.createElement("div");
+    dateLabel.className = "s2-date";
+    dateLabel.textContent = img.date || "?";
+    dateLabel.style.cursor = "pointer";
+    dateLabel.title = "Click to copy";
+    dateLabel.addEventListener("click", (function (date) {
+      return function () {
+        if (date) navigator.clipboard.writeText(date);
+      };
+    })(img.date));
+    col.appendChild(dateLabel);
+    esriGrid.appendChild(col);
+  }
+
   function renderAnnotation() {
     if (!currentEntry) {
       for (var f in annotInputs) annotInputs[f].value = "";
@@ -355,6 +421,8 @@
       windowInfo.textContent = "\u2014";
       yearSelector.innerHTML = "";
       sentinelGrid.innerHTML = '<div class="empty-msg">No entry loaded</div>';
+      esriDateSelector.innerHTML = "";
+      esriGrid.innerHTML = '<div class="empty-msg">No entry loaded</div>';
       setNavButtons();
       setPointButtons();
       renderAnnotation();
@@ -373,6 +441,8 @@
     updateHash();
     renderYearButtons();
     renderSentinel();
+    renderEsriButtons();
+    renderEsri();
     renderAnnotation();
   }
 
@@ -381,12 +451,14 @@
     if (idx < 0 || idx >= entriesList.length) return;
     currentIndex = idx;
     var prevYear = selectedYear;
+    var prevEsriIdx = selectedEsriIdx;
     var prevPointIdx = selectedPointIdx;
     if (preserveState) overlayVersion++;
     fetchJSON("/api/entry/" + idx).then(function (data) {
       currentEntry = data;
       if (preserveState) {
         selectedYear = prevYear;
+        selectedEsriIdx = prevEsriIdx;
         selectedPointIdx = prevPointIdx;
         var pts = (currentEntry.entry.positive_points || []);
         if (selectedPointIdx >= pts.length) {
@@ -395,6 +467,7 @@
       } else {
         selectedPointIdx = 0;
         selectedYear = null;
+        selectedEsriIdx = null;
       }
       renderEntry();
     });
@@ -428,7 +501,10 @@
     setPointButtons();
     updatePointCoord();
     renderAnnotation();
-    if (showOverlay) renderSentinel();
+    if (showOverlay) {
+      renderSentinel();
+      renderEsri();
+    }
   }
 
   // --- Click handlers for adding/removing points ---
@@ -583,6 +659,7 @@
     showOverlay = !showOverlay;
     updateOverlayButton();
     renderSentinel();
+    renderEsri();
   }
 
   // --- Toggle brightness ---
