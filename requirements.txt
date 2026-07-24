@@ -1,10 +1,7 @@
+jsonargparse<4.50.0  # TEMP: 4.50.0 breaks rslearn's parse_string override
 prometheus-client>=0.21.1
 python-dotenv>=1.0
 PyYAML>=6
 rslearn>=0.1.9
-# TEMPORARY: jsonargparse 4.50.0 renamed parse_string's params (cfg_str->content),
-# breaking rslearn's RslearnArgumentParser.parse_string override. Remove once rslearn
-# updates the override. jsonargparse is otherwise a transitive dep via rslearn.
-jsonargparse<4.50.0
 s3fs>=2025.2.0
 wandb>=0.21
