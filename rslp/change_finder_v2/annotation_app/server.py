@@ -80,6 +80,11 @@ def _pixel_to_lonlat(
     return wgs84_pt.x, wgs84_pt.y
 
 
+# Maximum number of Sentinel-2 images to show per year (two rows of six in the
+# UI grid).
+MAX_IMAGES_PER_YEAR = 12
+
+
 def _get_timestamps(
     layer_datas: dict[str, WindowLayerData],
 ) -> dict[int, list[dict]]:
@@ -103,6 +108,13 @@ def _get_timestamps(
         if year not in result:
             result[year] = []
         result[year].append({"group_idx": gi, "date": date_str})
+
+    # Cap the number of images per year, sampling evenly across the year so we
+    # never render more than two rows in the UI grid.
+    for year, images in result.items():
+        if len(images) > MAX_IMAGES_PER_YEAR:
+            step = (len(images) - 1) / (MAX_IMAGES_PER_YEAR - 1)
+            result[year] = [images[round(i * step)] for i in range(MAX_IMAGES_PER_YEAR)]
 
     return result
 

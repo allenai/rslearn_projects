@@ -490,6 +490,16 @@
     renderSentinel();
   }
 
+  function changeEsri(delta) {
+    var images = getEsriImages();
+    if (images.length === 0) return;
+    var curIdx = selectedEsriIdx === null ? 0 : selectedEsriIdx;
+    var nextIdx = (curIdx + delta + images.length) % images.length;
+    selectedEsriIdx = nextIdx;
+    renderEsriButtons();
+    renderEsri();
+  }
+
   function changePoint(delta) {
     if (!currentEntry) return;
     var pts = currentEntry.entry.positive_points || [];
@@ -689,10 +699,18 @@
       changeEntry(1);
       e.preventDefault();
     } else if (e.key === "ArrowLeft") {
-      changeYear(-1);
+      if (e.shiftKey) {
+        changeEsri(-1);
+      } else {
+        changeYear(-1);
+      }
       e.preventDefault();
     } else if (e.key === "ArrowRight") {
-      changeYear(1);
+      if (e.shiftKey) {
+        changeEsri(1);
+      } else {
+        changeYear(1);
+      }
       e.preventDefault();
     } else if (e.key === "a" || e.key === "A") {
       toggleOverlay();
