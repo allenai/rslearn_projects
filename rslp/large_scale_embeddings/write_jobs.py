@@ -76,6 +76,11 @@ def get_jobs(
     timestamp: datetime,
     out_path: str,
     completed_path: str,
+    checkpoint_path: str,
+    patch_size: int = 1,
+    window_size: int = 16,
+    overlap_size: int = 4,
+    compile_model: bool = True,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
@@ -93,6 +98,15 @@ def get_jobs(
             have timezone.
         out_path: the directory to write the embedding GeoTIFFs.
         completed_path: the directory for per-tile completion markers.
+        checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
+            Different checkpoints produce different embeddings so they must use
+            different out_path/completed_path (same for patch_size, window_size, and
+            overlap_size below).
+        patch_size: the encoder patch size; yields one embedding per patch_size x
+            patch_size pixels.
+        window_size: the size of the crops the model operates on.
+        overlap_size: overlap in pixels between adjacent crops.
+        compile_model: whether to compile the encoder transformer blocks.
         epsg_code: limit tasks to this UTM zone (EPSG code); default all UTM zones.
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
         geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
@@ -226,6 +240,16 @@ def get_jobs(
             out_path,
             "--completed_path",
             completed_path,
+            "--checkpoint_path",
+            checkpoint_path,
+            "--patch_size",
+            str(patch_size),
+            "--window_size",
+            str(window_size),
+            "--overlap_size",
+            str(overlap_size),
+            "--compile_model",
+            "true" if compile_model else "false",
         ]
         jobs.append(cur_args)
 
@@ -238,6 +262,11 @@ def write_jobs(
     out_path: str,
     completed_path: str,
     queue_name: str,
+    checkpoint_path: str,
+    patch_size: int = 1,
+    window_size: int = 16,
+    overlap_size: int = 4,
+    compile_model: bool = True,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
@@ -253,6 +282,15 @@ def write_jobs(
         out_path: the directory to write the embedding GeoTIFFs.
         completed_path: the directory for per-tile completion markers.
         queue_name: the Beaker queue to write the job entries to.
+        checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
+            Different checkpoints produce different embeddings so they must use
+            different out_path/completed_path (same for patch_size, window_size, and
+            overlap_size below).
+        patch_size: the encoder patch size; yields one embedding per patch_size x
+            patch_size pixels.
+        window_size: the size of the crops the model operates on.
+        overlap_size: overlap in pixels between adjacent crops.
+        compile_model: whether to compile the encoder transformer blocks.
         epsg_code: limit tasks to this UTM zone (EPSG code); default all UTM zones.
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
         geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
@@ -264,6 +302,11 @@ def write_jobs(
         timestamp=timestamp,
         out_path=out_path,
         completed_path=completed_path,
+        checkpoint_path=checkpoint_path,
+        patch_size=patch_size,
+        window_size=window_size,
+        overlap_size=overlap_size,
+        compile_model=compile_model,
         epsg_code=epsg_code,
         wgs84_bounds=wgs84_bounds,
         geojson_fname=geojson_fname,

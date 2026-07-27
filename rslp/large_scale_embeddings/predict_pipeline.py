@@ -14,8 +14,9 @@ are set to the nodata value (-128).
 This module is tile-size-agnostic: it accepts any ``bounds`` whose extents are
 multiples of PATCH_SIZE. The fixed 32768x32768 tiling lives only in write_jobs.py.
 
-Note that different input variants (see EmbeddingInputs) produce different
-embeddings, so each variant must use its own out_path and completed_path.
+Note that different input variants (see EmbeddingInputs), checkpoints, and model
+settings (patch_size/window_size/overlap_size) produce different embeddings, so each
+combination must use its own out_path and completed_path.
 """
 
 import json
@@ -26,6 +27,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 
 import numpy as np
+import yaml
 from rasterio.enums import Resampling
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
@@ -125,6 +127,63 @@ MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
 )
 
 
+def _get_model_extra_args(
+    model_config_fname: str,
+    checkpoint_path: str,
+    patch_size: int,
+    window_size: int,
+    overlap_size: int,
+    compile_model: bool,
+) -> list[str]:
+    """Get the extra arguments to pass to rslearn model predict.
+
+    These override the defaults in the model config file. The encoder and callbacks
+    are list-valued so individual entries cannot be overridden via jsonargparse dotted
+    keys; instead, the corresponding lists are loaded from the model config, updated,
+    and passed whole as JSON.
+
+    Args:
+        model_config_fname: the model configuration file.
+        checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
+        patch_size: the encoder patch size (yields one embedding per patch_size
+            pixels).
+        window_size: the size of the crops the model operates on.
+        overlap_size: overlap in pixels between adjacent crops.
+        compile_model: whether to compile the encoder transformer blocks.
+
+    Returns:
+        list of arguments to pass to rslearn model predict.
+    """
+    with open(model_config_fname) as f:
+        model_config = yaml.safe_load(f)
+
+    # Set the checkpoint path, patch size, and compilation flag on the OlmoEarth
+    # encoder (the first and only encoder entry).
+    encoder = model_config["model"]["init_args"]["model"]["init_args"]["encoder"]
+    encoder[0]["init_args"]["checkpoint_path"] = checkpoint_path
+    encoder[0]["init_args"]["patch_size"] = patch_size
+    encoder[0]["init_args"]["compile_model"] = compile_model
+
+    # Set the merger options on the RslearnWriter callback (the first and only
+    # callback entry). The merger operates at the output resolution, which is
+    # 1/patch_size of the input resolution.
+    callbacks = model_config["trainer"]["callbacks"]
+    merger = callbacks[0]["init_args"]["merger"]
+    merger["init_args"]["downsample_factor"] = patch_size
+    merger["init_args"]["overlap_pixels"] = overlap_size // patch_size
+
+    return [
+        "--model.init_args.model.init_args.encoder",
+        json.dumps(encoder),
+        "--trainer.callbacks",
+        json.dumps(callbacks),
+        "--data.init_args.default_config.crop_size",
+        str(window_size),
+        "--data.init_args.predict_config.overlap_pixels",
+        str(overlap_size),
+    ]
+
+
 def get_output_fname(
     out_path: str, projection: Projection, bounds: PixelBounds
 ) -> UPath:
@@ -187,6 +246,7 @@ def _upload_window_output(
     window: Window,
     projection: Projection,
     out_fname: UPath,
+    patch_size: int,
 ) -> None:
     """Upload one window's embedding raster to the output path.
 
@@ -198,17 +258,39 @@ def _upload_window_output(
         window: the window to upload.
         projection: the UTM projection (must match the window projection).
         out_fname: the output filename.
+        patch_size: the encoder patch size. The embedding raster is at 1/patch_size
+            of the window resolution.
     """
+    # The embedding raster is at 1/patch_size of the window resolution.
+    out_projection = Projection(
+        projection.crs,
+        projection.x_resolution * patch_size,
+        projection.y_resolution * patch_size,
+    )
+    out_bounds = (
+        window.bounds[0] // patch_size,
+        window.bounds[1] // patch_size,
+        window.bounds[2] // patch_size,
+        window.bounds[3] // patch_size,
+    )
     raster = window.data.read_raster(
         OUTPUT_LAYER,
         OUTPUT_BANDS,
         GeotiffRasterFormat(),
+        projection=out_projection,
+        bounds=out_bounds,
         resampling=Resampling.nearest,
     )
     embeddings = raster.get_chw_array().copy()
 
     # A pixel is valid if any band is nonzero in any of the Sentinel-2 mosaics.
-    valid = np.zeros(embeddings.shape[1:], dtype=bool)
+    valid = np.zeros(
+        (
+            window.bounds[3] - window.bounds[1],
+            window.bounds[2] - window.bounds[0],
+        ),
+        dtype=bool,
+    )
     for layer_name, group_idx in window.list_completed_layers():
         if layer_name != SENTINEL2_LAYER:
             continue
@@ -220,6 +302,15 @@ def _upload_window_output(
             resampling=Resampling.nearest,
         ).get_chw_array()
         valid |= (s2_array != 0).any(axis=0)
+    # Downsample the validity mask to the output resolution: an output pixel is
+    # valid if any input pixel in its patch is valid.
+    if patch_size > 1:
+        valid = valid.reshape(
+            valid.shape[0] // patch_size,
+            patch_size,
+            valid.shape[1] // patch_size,
+            patch_size,
+        ).any(axis=(1, 3))
     embeddings[:, ~valid] = NODATA_VALUE
 
     raster_format = GeotiffRasterFormat(
@@ -229,8 +320,8 @@ def _upload_window_output(
     )
     raster_format.encode_raster(
         out_fname.parent,
-        projection,
-        window.bounds,
+        out_projection,
+        out_bounds,
         RasterArray(
             chw_array=embeddings,
             metadata=RasterMetadata(nodata_value=NODATA_VALUE),
@@ -243,6 +334,7 @@ def _upload_window_by_name(
     ds_path: UPath,
     window_name: str,
     out_path: str,
+    patch_size: int,
 ) -> None:
     """Load one window from the scratch dataset and upload its embedding raster.
 
@@ -253,6 +345,7 @@ def _upload_window_by_name(
         ds_path: the scratch dataset path.
         window_name: the name of the window to upload.
         out_path: the output directory.
+        patch_size: the encoder patch size.
     """
     dataset = Dataset(ds_path)
     windows = dataset.load_windows(groups=[PREDICTION_GROUP], names=[window_name])
@@ -262,7 +355,7 @@ def _upload_window_by_name(
         )
     window = windows[0]
     out_fname = get_output_fname(out_path, window.projection, window.bounds)
-    _upload_window_output(window, window.projection, out_fname)
+    _upload_window_output(window, window.projection, out_fname, patch_size)
 
 
 def predict_pipeline(
@@ -272,6 +365,11 @@ def predict_pipeline(
     time_range: tuple[datetime, datetime],
     out_path: str,
     completed_path: str,
+    checkpoint_path: str,
+    patch_size: int = 1,
+    window_size: int = 16,
+    overlap_size: int = 4,
+    compile_model: bool = True,
     scratch_path: str | None = None,
     upload_workers: int = 16,
 ) -> None:
@@ -288,12 +386,39 @@ def predict_pipeline(
             derive the twelve monthly mosaics over the following year from this.
         out_path: directory to write one embedding GeoTIFF per PATCH_SIZE crop.
         completed_path: directory to write per-tile completion markers.
+        checkpoint_path: the OlmoEarth checkpoint to compute embeddings with, e.g.
+            /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000.
+            Different checkpoints produce different embeddings so they must use
+            different out_path/completed_path (same for patch_size, window_size, and
+            overlap_size below).
+        patch_size: the encoder patch size; yields one 128-dimensional embedding per
+            patch_size x patch_size pixels (so the output rasters are at 1/patch_size
+            of the window resolution).
+        window_size: the size of the crops the model operates on (much bigger than 16
+            fails with the 12 monthly inputs at patch_size=1 due to GPU memory
+            constraints).
+        overlap_size: overlap in pixels between adjacent crops, to mitigate embedding
+            seams at crop boundaries.
+        compile_model: whether to compile the encoder transformer blocks.
         scratch_path: optional directory to store the scratch rslearn dataset in
             directly, and keep it afterward (useful for debugging). By default, a
             temporary directory is used and deleted when the tile is done.
         upload_workers: number of worker processes for uploading the per-crop
             embedding GeoTIFFs.
     """
+    if PATCH_SIZE % patch_size != 0:
+        raise ValueError(f"patch_size must divide {PATCH_SIZE}, got {patch_size}")
+    if window_size % patch_size != 0:
+        raise ValueError(
+            f"window_size ({window_size}) must be a multiple of patch_size "
+            f"({patch_size})"
+        )
+    if overlap_size % patch_size != 0:
+        raise ValueError(
+            f"overlap_size ({overlap_size}) must be a multiple of patch_size "
+            f"({patch_size})"
+        )
+
     projection = Projection.deserialize(json.loads(projection_json))
 
     marker_fname = get_marker_fname(completed_path, projection, bounds)
@@ -311,6 +436,11 @@ def predict_pipeline(
                 out_path=out_path,
                 marker_fname=marker_fname,
                 ds_path=UPath(tmp_dir) / "dataset",
+                checkpoint_path=checkpoint_path,
+                patch_size=patch_size,
+                window_size=window_size,
+                overlap_size=overlap_size,
+                compile_model=compile_model,
                 upload_workers=upload_workers,
             )
     else:
@@ -322,6 +452,11 @@ def predict_pipeline(
             out_path=out_path,
             marker_fname=marker_fname,
             ds_path=UPath(scratch_path),
+            checkpoint_path=checkpoint_path,
+            patch_size=patch_size,
+            window_size=window_size,
+            overlap_size=overlap_size,
+            compile_model=compile_model,
             upload_workers=upload_workers,
         )
 
@@ -334,6 +469,11 @@ def _process_tile(
     out_path: str,
     marker_fname: UPath,
     ds_path: UPath,
+    checkpoint_path: str,
+    patch_size: int,
+    window_size: int,
+    overlap_size: int,
+    compile_model: bool,
     upload_workers: int,
 ) -> None:
     """Process one tile using the given scratch dataset path.
@@ -348,6 +488,11 @@ def _process_tile(
         out_path: directory to write one embedding GeoTIFF per PATCH_SIZE crop.
         marker_fname: the per-tile completion marker filename to write.
         ds_path: where to create the temporary rslearn dataset.
+        checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
+        patch_size: the encoder patch size.
+        window_size: the size of the crops the model operates on.
+        overlap_size: overlap in pixels between adjacent crops.
+        compile_model: whether to compile the encoder transformer blocks.
         upload_workers: number of worker processes for uploading the per-crop
             embedding GeoTIFFs.
     """
@@ -404,7 +549,18 @@ def _process_tile(
         if len(completed_fnames) == 0:
             logger.info("skipping prediction since no windows seem to have data")
         else:
-            run_model_predict(model_config_fname, ds_path)
+            run_model_predict(
+                model_config_fname,
+                ds_path,
+                extra_args=_get_model_extra_args(
+                    model_config_fname=model_config_fname,
+                    checkpoint_path=checkpoint_path,
+                    patch_size=patch_size,
+                    window_size=window_size,
+                    overlap_size=overlap_size,
+                    compile_model=compile_model,
+                ),
+            )
 
         # Upload each window's embedding raster. The uploads are handled by a pool
         # of worker processes since converting and uploading the rasters is slow. We
@@ -419,7 +575,12 @@ def _process_tile(
                 skipped_no_data.append(crop_offset)
                 continue
             upload_kwargs.append(
-                dict(ds_path=ds_path, window_name=window.name, out_path=out_path)
+                dict(
+                    ds_path=ds_path,
+                    window_name=window.name,
+                    out_path=out_path,
+                    patch_size=patch_size,
+                )
             )
             written.append(crop_offset)
         if len(upload_kwargs) > 0:

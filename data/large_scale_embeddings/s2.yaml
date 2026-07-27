@@ -8,9 +8,12 @@ model:
           - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
               # The OlmoEarth checkpoint to compute embeddings with, e.g.
-              # /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000
-              checkpoint_path: ${CHECKPOINT_PATH}
+              # /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000.
+              # This placeholder is always overridden by the prediction pipeline
+              # (--checkpoint_path).
+              checkpoint_path: /path/to/checkpoint_dir
               # patch_size 1 yields one 128-dimensional embedding per 10 m pixel.
+              # Overridden by the prediction pipeline (--patch_size).
               patch_size: 1
               embedding_size: 128
               # Output the 128-dim spatial register bottleneck latents (one per
@@ -26,10 +29,10 @@ model:
               # together.
               use_legacy_timestamps: false
               # Whether to compile the encoder transformer blocks (the register
-              # bottleneck stays eager). Inference uses fixed WINDOW_SIZE crops so
+              # bottleneck stays eager). Inference uses fixed-size crops so
               # recompilations are limited to the few distinct batch/timestep
-              # shapes.
-              compile_model: ${COMPILE_MODEL}
+              # shapes. Overridden by the prediction pipeline (--compile_model).
+              compile_model: true
         decoder:
           # L2-normalizes each pixel's embedding and quantizes it to int8 using the
           # AlphaEarth-style power scheme (-128 is reserved for nodata).
@@ -58,15 +61,17 @@ data:
     batch_size: 256
     num_workers: 16
     default_config:
-      # The size of the crops the model operates on, e.g. 16 (much bigger fails
-      # with the 12 monthly inputs at patch_size=1 due to GPU memory constraints).
-      crop_size: ${WINDOW_SIZE}
+      # The size of the crops the model operates on (much bigger fails with the 12
+      # monthly inputs at patch_size=1 due to GPU memory constraints). Overridden
+      # by the prediction pipeline (--window_size).
+      crop_size: 16
     predict_config:
       load_all_crops: true
       # Overlap adjacent crops to mitigate embedding seams at crop boundaries; the
       # RasterMerger below trims half the overlap from each crop when merging.
-      # Must match the RasterMerger overlap_pixels.
-      overlap_pixels: ${OVERLAP_SIZE}
+      # Must match the RasterMerger overlap_pixels (times patch_size). Overridden
+      # by the prediction pipeline (--overlap_size).
+      overlap_pixels: 4
       skip_targets: true
 trainer:
   callbacks:
@@ -78,6 +83,10 @@ trainer:
         merger:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
+            # Must match the encoder patch_size. Overridden by the prediction
+            # pipeline (--patch_size).
             downsample_factor: 1
-            # Must match the predict_config overlap_pixels.
-            overlap_pixels: ${OVERLAP_SIZE}
+            # Must be the predict_config overlap_pixels divided by the encoder
+            # patch_size (the merger operates at the output resolution).
+            # Overridden by the prediction pipeline.
+            overlap_pixels: 4
