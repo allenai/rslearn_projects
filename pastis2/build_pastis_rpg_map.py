@@ -38,41 +38,78 @@ OUT_PATH = HERE / "pastis_rpg_class_map.json"
 BACKGROUND = 0
 
 PASTIS_NAMES = {
-    0: "Background", 1: "Meadow", 2: "Soft winter wheat", 3: "Corn", 4: "Winter barley",
-    5: "Winter rapeseed", 6: "Spring barley", 7: "Sunflower", 8: "Grapevine", 9: "Beet",
-    10: "Winter triticale", 11: "Winter durum wheat", 12: "Fruits/vegetables/flowers",
-    13: "Potatoes", 14: "Leguminous fodder", 15: "Soybeans", 16: "Orchard",
-    17: "Mixed cereal", 18: "Sorghum",
+    0: "Background",
+    1: "Meadow",
+    2: "Soft winter wheat",
+    3: "Corn",
+    4: "Winter barley",
+    5: "Winter rapeseed",
+    6: "Spring barley",
+    7: "Sunflower",
+    8: "Grapevine",
+    9: "Beet",
+    10: "Winter triticale",
+    11: "Winter durum wheat",
+    12: "Fruits/vegetables/flowers",
+    13: "Potatoes",
+    14: "Leguminous fodder",
+    15: "Soybeans",
+    16: "Orchard",
+    17: "Mixed cereal",
+    18: "Sorghum",
     # Extension beyond the original PASTIS 18: the most common French-DROM tropical crops,
     # so overseas parcels get real labels instead of all -> Background. num_classes = 25.
-    19: "Sugarcane", 20: "Banana", 21: "Pineapple", 22: "Vanilla",
-    23: "Tropical tuber", 24: "Ylang-ylang",
+    19: "Sugarcane",
+    20: "Banana",
+    21: "Pineapple",
+    22: "Vanilla",
+    23: "Tropical tuber",
+    24: "Ylang-ylang",
 }
 
 # --- High-confidence, class-defining codes (winter/spring precision preserved) ------
 CORE: dict[str, int] = {
-    "BTH": 2,                       # Blé tendre d'hiver
-    "BDH": 11,                      # Blé dur d'hiver
-    "ORH": 4,                       # Orge d'hiver
-    "ORP": 6,                       # Orge de printemps
-    "CZH": 5,                       # Colza d'hiver
-    "TRN": 7,                       # Tournesol
-    "SOJ": 15,                      # Soja
-    "SOG": 18,                      # Sorgho
-    "TTH": 10,                      # Triticale d'hiver
-    "MIS": 3, "MIE": 3,            # Maïs (grain), Maïs ensilage
-    "BTN": 9, "BVF": 9,            # Betterave (sucrière/bette), betterave fourragère [BVF flagged]
-    "PTC": 13, "PTF": 13,          # Pomme de terre conso / féculière
-    "VRC": 8, "VRN": 8, "VRT": 8,  # Vigne (cuve prod / cuve non-prod / table)
-    "MCR": 17,                     # Mélange de céréales -> mixed cereal
+    "BTH": 2,  # Blé tendre d'hiver
+    "BDH": 11,  # Blé dur d'hiver
+    "ORH": 4,  # Orge d'hiver
+    "ORP": 6,  # Orge de printemps
+    "CZH": 5,  # Colza d'hiver
+    "TRN": 7,  # Tournesol
+    "SOJ": 15,  # Soja
+    "SOG": 18,  # Sorgho
+    "TTH": 10,  # Triticale d'hiver
+    "MIS": 3,
+    "MIE": 3,  # Maïs (grain), Maïs ensilage
+    "BTN": 9,
+    "BVF": 9,  # Betterave (sucrière/bette), betterave fourragère [BVF flagged]
+    "PTC": 13,
+    "PTF": 13,  # Pomme de terre conso / féculière
+    "VRC": 8,
+    "VRN": 8,
+    "VRT": 8,  # Vigne (cuve prod / cuve non-prod / table)
+    "MCR": 17,  # Mélange de céréales -> mixed cereal
     # --- Tropical DROM crops (extension classes 19-24) ---
-    "CSA": 19, "CSF": 19, "CSI": 19, "CSP": 19, "CSR": 19,   # Canne à sucre (all tenures)
-    "BCA": 20, "BCF": 20, "BCI": 20, "BCP": 20, "BCR": 20,   # Banane créole (fruit/légume)
-    "BEA": 20, "BEF": 20, "BEI": 20, "BEP": 20, "BER": 20,   # Banane export
-    "ANA": 21,                                               # Ananas (pineapple)
-    "VNL": 22, "VNV": 22, "VNB": 22,                         # Vanille (verte / sous bois)
-    "TBT": 23,                                               # Tubercule tropical
-    "YLA": 24,                                               # Ylang-ylang (Mayotte)
+    "CSA": 19,
+    "CSF": 19,
+    "CSI": 19,
+    "CSP": 19,
+    "CSR": 19,  # Canne à sucre (all tenures)
+    "BCA": 20,
+    "BCF": 20,
+    "BCI": 20,
+    "BCP": 20,
+    "BCR": 20,  # Banane créole (fruit/légume)
+    "BEA": 20,
+    "BEF": 20,
+    "BEI": 20,
+    "BEP": 20,
+    "BER": 20,  # Banane export
+    "ANA": 21,  # Ananas (pineapple)
+    "VNL": 22,
+    "VNV": 22,
+    "VNB": 22,  # Vanille (verte / sous bois)
+    "TBT": 23,  # Tubercule tropical
+    "YLA": 24,  # Ylang-ylang (Mayotte)
 }
 
 # --- Keyword rules for the long tail (checked in order; first match wins) -----------
@@ -85,30 +122,135 @@ RULES: list[tuple[int, list[str], list[str]]] = [
     # e.g. "café / cacao" doesn't get pulled into another rule.
     (0, ["café", "cacao", "curcuma"], []),
     # Meadow: permanent/temporary grasslands + pure forage grass species + pastoral.
-    (1, ["prairie", "ray-grass", "dactyle", "fétuque", "fléole", "paturin", "brôme",
-         "festulolium", "graminée fourragère", "moha", "bois pâturé",
-         "surface pastorale", "châtaigneraie entretenue", "chênaie entretenue"], []),
+    (
+        1,
+        [
+            "prairie",
+            "ray-grass",
+            "dactyle",
+            "fétuque",
+            "fléole",
+            "paturin",
+            "brôme",
+            "festulolium",
+            "graminée fourragère",
+            "moha",
+            "bois pâturé",
+            "surface pastorale",
+            "châtaigneraie entretenue",
+            "chênaie entretenue",
+        ],
+        [],
+    ),
     # Leguminous fodder: forage legumes + legume-dominant forage mixes.
-    (14, ["luzerne", "trèfle", "sainfoin", "lupin fourrager", "pois fourrager", "vesce",
-          "mélilot", "serradelle", "minette", "lotier", "jarosse", "gesse",
-          "féverole fourragère", "légumineuses fourragères", "légumineuses déshydratées",
-          "légumineuses fourragères prépondérantes", "mélange de légumineuses",
-          "dolique", "cornille", "fenugrec"], []),
+    (
+        14,
+        [
+            "luzerne",
+            "trèfle",
+            "sainfoin",
+            "lupin fourrager",
+            "pois fourrager",
+            "vesce",
+            "mélilot",
+            "serradelle",
+            "minette",
+            "lotier",
+            "jarosse",
+            "gesse",
+            "féverole fourragère",
+            "légumineuses fourragères",
+            "légumineuses déshydratées",
+            "légumineuses fourragères prépondérantes",
+            "mélange de légumineuses",
+            "dolique",
+            "cornille",
+            "fenugrec",
+        ],
+        [],
+    ),
     # Orchard: fruit/nut trees, olives, vineyards handled in CORE.
-    (16, ["verger", "oliveraie", "noix", "noisette", "châtaigne", "prune", "pêche",
-          "poire", "cerise", "pistache", "caroube", "truffière", "pépinière",
-          "agrume", "avocat"],  # citrus/avocado are tree crops -> orchard
-         ["entretenue", "poireau"]),  # exclude 'poireau' (leek): 'poire' is a substring
+    (
+        16,
+        [
+            "verger",
+            "oliveraie",
+            "noix",
+            "noisette",
+            "châtaigne",
+            "prune",
+            "pêche",
+            "poire",
+            "cerise",
+            "pistache",
+            "caroube",
+            "truffière",
+            "pépinière",
+            "agrume",
+            "avocat",
+        ],  # citrus/avocado are tree crops -> orchard
+        ["entretenue", "poireau"],
+    ),  # exclude 'poireau' (leek): 'poire' is a substring
     # Fruits / vegetables / flowers: field vegetables, berries, melons, ornamentals.
-    (12, ["laitue", "batavia", "chou", "carotte", "céleri", "épinard", "epinard",
-          "tomate", "aubergine", "courgette", "citrouille", "courge", "potiron",
-          "poireau", "oignon", "echalotte", "ail ", "artichaut", "haricot", "flageolet",
-          "melon", "pastèque", "fraise", "radis", "navet", "panais", "salsifi",
-          "concombre", "cornichon", "poivron", "piment", "endive", "chicorée",
-          "scarole", "mâche", "cresson", "roquette", "oseille", "rutabaga",
-          "topinambour", "petit fruit rouge", "légume", "fruit annuel", "fruit pérenne",
-          "horticulture", "ornementales", "maïs doux", "houblon", "tabac",
-          "plante médicinale", "plante à parfum", "sous serre", "sous abri"], []),
+    (
+        12,
+        [
+            "laitue",
+            "batavia",
+            "chou",
+            "carotte",
+            "céleri",
+            "épinard",
+            "epinard",
+            "tomate",
+            "aubergine",
+            "courgette",
+            "citrouille",
+            "courge",
+            "potiron",
+            "poireau",
+            "oignon",
+            "echalotte",
+            "ail ",
+            "artichaut",
+            "haricot",
+            "flageolet",
+            "melon",
+            "pastèque",
+            "fraise",
+            "radis",
+            "navet",
+            "panais",
+            "salsifi",
+            "concombre",
+            "cornichon",
+            "poivron",
+            "piment",
+            "endive",
+            "chicorée",
+            "scarole",
+            "mâche",
+            "cresson",
+            "roquette",
+            "oseille",
+            "rutabaga",
+            "topinambour",
+            "petit fruit rouge",
+            "légume",
+            "fruit annuel",
+            "fruit pérenne",
+            "horticulture",
+            "ornementales",
+            "maïs doux",
+            "houblon",
+            "tabac",
+            "plante médicinale",
+            "plante à parfum",
+            "sous serre",
+            "sous abri",
+        ],
+        [],
+    ),
 ]
 
 
@@ -134,19 +276,20 @@ FLAGGED = {
     "CPL": "cereal+protein forage mix -> currently Background; maybe Mixed cereal(17).",
     "PFR": "red berries -> Fruits/veg(12) vs Orchard(16).",
     "grain_legumes": "PHI/PPR/PPO/PCH/LEC/FVL/LDH/LDP (grain pulses) -> Background "
-                     "(PASTIS has no pulse-grain class); only *forage* legumes -> 14.",
+    "(PASTIS has no pulse-grain class); only *forage* legumes -> 14.",
     "spring_variants": "BTP/BDP/TTP/CZP/SGP/AVP (spring wheat/durum/triticale/rapeseed) "
-                       "-> Background (PASTIS keeps only winter variants + Spring barley).",
+    "-> Background (PASTIS keeps only winter variants + Spring barley).",
     "aromatic_ppam": "lavande/thym/menthe etc. -> Background here; PASTIS 'flowers' is "
-                     "ornamental, not aromatic/medicinal.",
+    "ornamental, not aromatic/medicinal.",
     "tropical_ext": "Classes 19-24 (sugarcane/banana/pineapple/vanilla/tropical-tuber/"
-                    "ylang) EXTEND the original PASTIS 18 to label DROM crops. Minor "
-                    "tropical crops (coffee/cacao/curcuma) still -> Background; ACA "
-                    "(autre culture non précisée) stays Background (genuinely unspecified).",
+    "ylang) EXTEND the original PASTIS 18 to label DROM crops. Minor "
+    "tropical crops (coffee/cacao/curcuma) still -> Background; ACA "
+    "(autre culture non précisée) stays Background (genuinely unspecified).",
 }
 
 
 def main() -> None:
+    """Build the RPG code -> class-id map from the culture-codes CSV and write JSON."""
     rows = list(csv.reader(CSV_PATH.open(encoding="utf-8"), delimiter=";"))
     header, data = rows[0], rows[1:]
     assert header[:2] == ["Code", "Libellé"], header
@@ -158,16 +301,19 @@ def main() -> None:
     for code, cid in sorted(mapping.items()):
         by_class[cid].append(code)
 
-    OUT_PATH.write_text(json.dumps(
-        {
-            "_doc": "RPG CODE_CULTU -> PASTIS-18 class id. 0=Background. See "
-                    "build_pastis_rpg_map.py for rules; FLAGGED entries need review.",
-            "class_names": PASTIS_NAMES,
-            "flagged_for_review": FLAGGED,
-            "code_to_class": mapping,
-        },
-        ensure_ascii=False, indent=2,
-    ))
+    OUT_PATH.write_text(
+        json.dumps(
+            {
+                "_doc": "RPG CODE_CULTU -> PASTIS-18 class id. 0=Background. See "
+                "build_pastis_rpg_map.py for rules; FLAGGED entries need review.",
+                "class_names": PASTIS_NAMES,
+                "flagged_for_review": FLAGGED,
+                "code_to_class": mapping,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
 
     print(f"total codes mapped: {len(mapping)}  -> {OUT_PATH.name}")
     print("per-class counts (n codes):")

@@ -17,10 +17,12 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Territory:
-    key: str          # short id used in paths
+    """One French RPG territory (metropole or a DROM) and its native CRS + download URL."""
+
+    key: str  # short id used in paths
     name: str
-    epsg: int         # native CRS of the RPG delivery
-    url: str | None = None    # RPG archive download URL (fill per year)
+    epsg: int  # native CRS of the RPG delivery
+    url: str | None = None  # RPG archive download URL (fill per year)
     local: str | None = None  # or a pre-downloaded archive/dir path
 
 
@@ -39,7 +41,9 @@ _URL = {
 }
 
 TERRITORIES: list[Territory] = [
-    Territory("metropole", "France metropolitaine + Corse", 2154, url=_URL["metropole"]),
+    Territory(
+        "metropole", "France metropolitaine + Corse", 2154, url=_URL["metropole"]
+    ),
     Territory("guadeloupe", "Guadeloupe", 5490, url=_URL["guadeloupe"]),
     Territory("martinique", "Martinique", 5490, url=_URL["martinique"]),
     Territory("guyane", "Guyane", 2972, url=_URL["guyane"]),

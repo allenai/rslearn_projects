@@ -28,22 +28,21 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely.geometry import Point
-from upath import UPath
-
 from rasterio.crs import CRS
 from rslearn.dataset.add_windows import add_windows_from_geometries
 from rslearn.dataset.dataset import Dataset
 from rslearn.utils import Projection, STGeometry
+from shapely.geometry import Point
 from territories import TERRITORIES
+from upath import UPath
 
 HERE = Path(__file__).parent
 RPG = Path(os.environ.get("PASTIS2_RPG_DIR", HERE / "data" / "rpg"))
 
-PATCH_PX = 128          # PASTIS patch size
-RESOLUTION = 10.0       # m/px (Sentinel-2 baseline)
-BIN_M = PATCH_PX * RESOLUTION   # 1280 m = one window footprint (the sampling cell)
-RARITY_POWER = 1.0      # cell weight = (1/class_freq)**RARITY_POWER; >0 over-samples rare
+PATCH_PX = 128  # PASTIS patch size
+RESOLUTION = 10.0  # m/px (Sentinel-2 baseline)
+BIN_M = PATCH_PX * RESOLUTION  # 1280 m = one window footprint (the sampling cell)
+RARITY_POWER = 1.0  # cell weight = (1/class_freq)**RARITY_POWER; >0 over-samples rare
 
 
 def growing_season(year: int, fetch_months: int = 12) -> tuple[datetime, datetime]:
@@ -83,20 +82,25 @@ def sample_cells(gdf: gpd.GeoDataFrame, n: int, seed: int = 0) -> list[Point]:
     rarity = freq ** (-RARITY_POWER)
     cells = (
         pd.DataFrame({"cx": cx, "cy": cy, "rarity": rarity})
-        .groupby(["cx", "cy"])["rarity"].max().reset_index()
+        .groupby(["cx", "cy"])["rarity"]
+        .max()
+        .reset_index()
     )
     n = min(n, len(cells))
     p = cells["rarity"].to_numpy()
     p = p / p.sum()
     idx = np.random.default_rng(seed).choice(len(cells), size=n, replace=False, p=p)
     sel = cells.iloc[idx]
-    return [Point((cx_ + 0.5) * BIN_M, (cy_ + 0.5) * BIN_M)
-            for cx_, cy_ in zip(sel["cx"], sel["cy"])]
+    return [
+        Point((cx_ + 0.5) * BIN_M, (cy_ + 0.5) * BIN_M)
+        for cx_, cy_ in zip(sel["cx"], sel["cy"])
+    ]
 
 
 def build_for_territory(
     ds: Dataset, key: str, n_cells: int, year: int, fetch_months: int
 ) -> int:
+    """Sample cells for one territory and create its windows; returns the count."""
     gpkg = RPG / f"{key}.gpkg"
     if not gpkg.exists():
         print(f"[{key}] missing {gpkg}; run download_rpg.py first — skipping")
@@ -117,26 +121,41 @@ def build_for_territory(
         group=f"rpg_{year}",
         geometries=geoms,
         projection=out_proj,
-        window_size=PATCH_PX,             # one 128px window centered on each sampled cell
+        window_size=PATCH_PX,  # one 128px window centered on each sampled cell
         time_range=growing_season(year, fetch_months),
-        use_utm=True,                     # per-window UTM -> covers metropole + all DROM
+        use_utm=True,  # per-window UTM -> covers metropole + all DROM
     )
     print(f"[{key}] epsg={epsg} cells={len(cells)} -> {len(windows)} windows")
     return len(windows)
 
 
 def main() -> None:
+    """Build windows for every territory (metropole capped by --target-total)."""
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", required=True, help="rslearn dataset root (has config.json)")
+    ap.add_argument(
+        "--dataset", required=True, help="rslearn dataset root (has config.json)"
+    )
     ap.add_argument("--year", type=int, required=True)
-    ap.add_argument("--target-total", type=int, default=20000,
-                    help="approx total windows across metropole")
-    ap.add_argument("--per-territory-min", type=int, default=50,
-                    help="minimum sampled cells per DROM so islands are covered")
-    ap.add_argument("--fetch-months", type=int, default=12,
-                    help="acquisition-window span in months (18/24 to over-fetch so 12 "
-                         "calendar slots fill despite cloud dropouts). Also set the S2 "
-                         "layer's query_config.max_matches >= this in config.json.")
+    ap.add_argument(
+        "--target-total",
+        type=int,
+        default=20000,
+        help="approx total windows across metropole",
+    )
+    ap.add_argument(
+        "--per-territory-min",
+        type=int,
+        default=50,
+        help="minimum sampled cells per DROM so islands are covered",
+    )
+    ap.add_argument(
+        "--fetch-months",
+        type=int,
+        default=12,
+        help="acquisition-window span in months (18/24 to over-fetch so 12 "
+        "calendar slots fill despite cloud dropouts). Also set the S2 "
+        "layer's query_config.max_matches >= this in config.json.",
+    )
     args = ap.parse_args()
 
     ds = Dataset(UPath(args.dataset))

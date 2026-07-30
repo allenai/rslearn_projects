@@ -21,13 +21,14 @@ from pathlib import Path
 
 import geopandas as gpd  # rslearn env has geopandas/fiona
 import pyogrio
-
 from territories import TERRITORIES, Territory
 
 HERE = Path(__file__).parent
 RAW = HERE / "data" / "raw"
 OUT = HERE / "data" / "rpg"
-CLASS_MAP = json.loads((HERE / "pastis_rpg_class_map.json").read_text())["code_to_class"]
+CLASS_MAP = json.loads((HERE / "pastis_rpg_class_map.json").read_text())[
+    "code_to_class"
+]
 
 
 def _fetch(t: Territory, year: int) -> Path:
@@ -50,7 +51,7 @@ def _fetch(t: Territory, year: int) -> Path:
         # IGN geoplateforme rejects urllib's default User-Agent (HTTP 403); send a
         # browser-like UA. Stream to disk (files can be GBs).
         req = urllib.request.Request(t.url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req) as r, open(archive, "wb") as f:  # noqa: S310
+        with urllib.request.urlopen(req) as r, open(archive, "wb") as f:  # noqa: S310  # nosec B310
             shutil.copyfileobj(r, f)
     # IGN RPG archives are .7z; older data.gouv ones are .zip.
     marker = dest / ".extracted"
@@ -72,8 +73,13 @@ def _find_parcels_layer(path: Path) -> Path:
     """Locate the PARCELLES shapefile/gpkg under an extracted RPG delivery."""
     # Prefer the PARCELLES layer; a delivery also ships ILOTS_ANONYMES.* (no crop code),
     # so the generic *.gpkg/*.shp globs must come last.
-    for pat in ("**/PARCELLES_GRAPHIQUES.shp", "**/*PARCELLES*.shp",
-                "**/PARCELLES_GRAPHIQUES.gpkg", "**/*PARCELLES*.gpkg", "**/*.gpkg"):
+    for pat in (
+        "**/PARCELLES_GRAPHIQUES.shp",
+        "**/*PARCELLES*.shp",
+        "**/PARCELLES_GRAPHIQUES.gpkg",
+        "**/*PARCELLES*.gpkg",
+        "**/*.gpkg",
+    ):
         hits = sorted(path.glob(pat))
         if hits:
             return hits[0]
@@ -103,11 +109,14 @@ def normalize(t: Territory, year: int) -> Path:
     out = OUT / f"{t.key}.gpkg"
     gdf.to_file(out, driver="GPKG")
     n_pos = int((gdf["class_id"] > 0).sum())
-    print(f"[{t.key}] {len(gdf)} parcels ({n_pos} with a positive PASTIS class) -> {out}")
+    print(
+        f"[{t.key}] {len(gdf)} parcels ({n_pos} with a positive PASTIS class) -> {out}"
+    )
     return out
 
 
 def main() -> None:
+    """Download + normalize the RPG for one or all territories."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--year", type=int, required=True)
     ap.add_argument("--territory", default=None, help="one key, else all")

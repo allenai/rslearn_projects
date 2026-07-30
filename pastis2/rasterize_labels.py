@@ -25,15 +25,15 @@ import pathlib
 from pathlib import Path
 
 import geopandas as gpd
-from upath import UPath
 import numpy as np
 import pandas as pd
 from rasterio import features
 from rasterio.transform import Affine
-
+from rslearn.dataset import Window
 from rslearn.dataset.dataset import Dataset
 from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat
+from upath import UPath
 
 HERE = Path(__file__).parent
 RPG = pathlib.Path(os.environ.get("PASTIS2_RPG_DIR", HERE / "data" / "rpg"))
@@ -53,7 +53,7 @@ def load_all_parcels() -> gpd.GeoDataFrame:
     return gdf
 
 
-def rasterize_window(window, parcels_4326: gpd.GeoDataFrame) -> np.ndarray:
+def rasterize_window(window: Window, parcels_4326: gpd.GeoDataFrame) -> np.ndarray:
     """Return a (H, W) uint8 class-id mask for one window (0 = background)."""
     proj = window.projection
     minx, miny, maxx, maxy = window.bounds  # pixel coords
@@ -91,6 +91,7 @@ def rasterize_window(window, parcels_4326: gpd.GeoDataFrame) -> np.ndarray:
 
 
 def main() -> None:
+    """Rasterize RPG parcels into a per-window class-id label raster for a group."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", required=True, help="rslearn dataset root")
     ap.add_argument("--group", required=True, help="window group, e.g. rpg_2019")
@@ -109,7 +110,9 @@ def main() -> None:
         raster_dir = window.get_raster_dir(LABEL_LAYER, LABEL_BANDS)
         # encode_raster wants a RasterArray (C, H, W) aligned to (projection, bounds).
         fmt.encode_raster(
-            raster_dir, window.projection, window.bounds,
+            raster_dir,
+            window.projection,
+            window.bounds,
             RasterArray(chw_array=mask[None]),
         )
         window.mark_layer_completed(LABEL_LAYER)
