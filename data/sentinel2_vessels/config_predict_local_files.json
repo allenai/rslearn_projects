@@ -33,6 +33,14 @@
             "B08"
           ],
           "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
+            "init_args": {
+              "geotiff_options": {
+                "compress": "none"
+              }
+            }
+          },
           "remap": {
             "dst": [
               0,
@@ -43,14 +51,6 @@
               1000,
               11000
             ]
-          },
-          "format": {
-            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
-            "init_args": {
-              "geotiff_options": {
-                "compress": "none"
-              }
-            }
           }
         },
         {
@@ -63,6 +63,14 @@
             "B12"
           ],
           "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
+            "init_args": {
+              "geotiff_options": {
+                "compress": "none"
+              }
+            }
+          },
           "remap": {
             "dst": [
               0,
@@ -74,15 +82,7 @@
               11000
             ]
           },
-          "zoom_offset": -1,
-          "format": {
-            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
-            "init_args": {
-              "geotiff_options": {
-                "compress": "none"
-              }
-            }
-          }
+          "zoom_offset": -1
         },
         {
           "bands": [
@@ -91,6 +91,14 @@
             "B10"
           ],
           "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
+            "init_args": {
+              "geotiff_options": {
+                "compress": "none"
+              }
+            }
+          },
           "remap": {
             "dst": [
               0,
@@ -102,15 +110,7 @@
               11000
             ]
           },
-          "zoom_offset": -2,
-          "format": {
-            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
-            "init_args": {
-              "geotiff_options": {
-                "compress": "none"
-              }
-            }
-          }
+          "zoom_offset": -2
         }
       ],
       "data_source": {
