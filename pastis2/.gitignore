@@ -12,3 +12,12 @@ __pycache__/
 
 # Kept in git (small, useful): *.py, config.json, README.md,
 # pastis_rpg_class_map.json, data/rpg_culture_codes.csv, and the example *.png outputs.
+
+# Session scratch (regenerable / data-adjacent), not for git.
+# (symlinks to the DROM/mayotte RPG gpkgs used as build helpers)
+data/rpg_drom/
+data/rpg_may/
+# command logs
+*.log
+# 61 MB self-contained QA viewer; regenerate via viz_html.py
+viz_qa/*.html

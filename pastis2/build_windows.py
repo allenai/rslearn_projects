@@ -47,18 +47,16 @@ RARITY_POWER = 1.0      # cell weight = (1/class_freq)**RARITY_POWER; >0 over-sa
 
 
 def growing_season(year: int, fetch_months: int = 12) -> tuple[datetime, datetime]:
-    """Acquisition window ending Aug <year>, spanning ``fetch_months`` months back.
+    """PASTIS-faithful acquisition span: Sep <year-1> .. Nov <year>.
 
-    The eval targets the 12-month season Sep <year-1> .. Aug <year>. Set fetch_months
-    to 18 or 24 to OVER-fetch: S2 (period_duration=30d) then yields up to that many
-    monthly composites, and make_tensors reduces them to 12 calendar-month slots,
-    back-filling any cloudy target-year month from an adjacent year. This is how we end
-    up with a full 12 months despite cloud dropouts.
+    Matches the original PASTIS date range ("between September 2018 and November 2019"
+    for year=2019). We pull the DENSE irregular Sentinel-2/1 time series over this whole
+    span (all individual acquisitions), rather than monthly composites, so the sequence
+    length/structure mirrors PASTIS's 38-61 observations. ``fetch_months`` is unused now
+    (it was for the old monthly-mosaic over-fetch trick).
     """
-    end = datetime(year, 8, 31, tzinfo=timezone.utc)
-    # Go back fetch_months (approx via 30-day months is fine; rslearn clips by scene date).
-    start_total = (year * 12 + 8) - fetch_months  # month index of Aug<year> minus span
-    start = datetime(start_total // 12, start_total % 12 + 1, 1, tzinfo=timezone.utc)
+    start = datetime(year - 1, 9, 1, tzinfo=timezone.utc)
+    end = datetime(year, 11, 30, tzinfo=timezone.utc)
     return (start, end)
 
 
