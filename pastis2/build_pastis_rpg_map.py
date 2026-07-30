@@ -58,13 +58,14 @@ PASTIS_NAMES = {
     17: "Mixed cereal",
     18: "Sorghum",
     # Extension beyond the original PASTIS 18: the most common French-DROM tropical crops,
-    # so overseas parcels get real labels instead of all -> Background. num_classes = 25.
+    # so overseas parcels get real labels instead of all -> Background. num_classes = 26.
     19: "Sugarcane",
     20: "Banana",
     21: "Pineapple",
     22: "Vanilla",
     23: "Tropical tuber",
     24: "Ylang-ylang",
+    25: "Coffee/Cacao",  # RPG code CAC = "Café / Cacao"; present across the DROMs
 }
 
 # --- High-confidence, class-defining codes (winter/spring precision preserved) ------
@@ -110,6 +111,7 @@ CORE: dict[str, int] = {
     "VNB": 22,  # Vanille (verte / sous bois)
     "TBT": 23,  # Tubercule tropical
     "YLA": 24,  # Ylang-ylang (Mayotte)
+    "CAC": 25,  # Café / Cacao (coffee/cocoa)
 }
 
 # --- Keyword rules for the long tail (checked in order; first match wins) -----------
@@ -117,10 +119,9 @@ CORE: dict[str, int] = {
 # lowercased French label.
 RULES: list[tuple[int, list[str], list[str]]] = [
     # Remaining tropical crops without a dedicated class -> Background(0). The common
-    # ones (sugarcane/banana/pineapple/vanilla/tuber/ylang) are handled explicitly in
-    # CORE; only minor/unmappable tropical crops fall through here. Checked FIRST so
-    # e.g. "café / cacao" doesn't get pulled into another rule.
-    (0, ["café", "cacao", "curcuma"], []),
+    # ones (sugarcane/banana/pineapple/vanilla/tuber/ylang/coffee-cacao) are handled
+    # explicitly in CORE; only minor/unmappable tropical crops (curcuma) fall through here.
+    (0, ["curcuma"], []),
     # Meadow: permanent/temporary grasslands + pure forage grass species + pastoral.
     (
         1,
@@ -281,10 +282,10 @@ FLAGGED = {
     "-> Background (PASTIS keeps only winter variants + Spring barley).",
     "aromatic_ppam": "lavande/thym/menthe etc. -> Background here; PASTIS 'flowers' is "
     "ornamental, not aromatic/medicinal.",
-    "tropical_ext": "Classes 19-24 (sugarcane/banana/pineapple/vanilla/tropical-tuber/"
-    "ylang) EXTEND the original PASTIS 18 to label DROM crops. Minor "
-    "tropical crops (coffee/cacao/curcuma) still -> Background; ACA "
-    "(autre culture non précisée) stays Background (genuinely unspecified).",
+    "tropical_ext": "Classes 19-25 (sugarcane/banana/pineapple/vanilla/tropical-tuber/"
+    "ylang/coffee-cacao) EXTEND the original PASTIS 18 to label DROM crops. "
+    "Minor tropical crops (curcuma) still -> Background; ACA (autre culture "
+    "non précisée) stays Background (genuinely unspecified).",
 }
 
 

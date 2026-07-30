@@ -6,7 +6,7 @@ overseas départements (DROM)**: Guadeloupe, Martinique, Guyane, Réunion, Mayot
 come from the **RPG** (Registre Parcellaire Graphique); imagery is materialized with rslearn
 from the **Microsoft Planetary Computer**.
 
-Semantic labels, **25 classes** (PASTIS's 18 + 6 tropical DROM classes; 0 = background).
+Semantic labels, **26 classes** (PASTIS's 18 + 7 tropical DROM classes; 0 = background).
 
 ## Imagery: faithful to PASTIS (structure), from Planetary Computer (source)
 We match PASTIS's acquisition design and relax only the provider:
@@ -46,7 +46,7 @@ needs `pip install py7zr` (IGN `.7z` archives). The `data/` artifacts are **not*
 
 | Step | Script / file | What it does |
 |---|---|---|
-| 0 | `build_pastis_rpg_map.py` → `pastis_rpg_class_map.json` | RPG `CODE_CULTU` → class id 0–24 (uses `data/rpg_culture_codes.csv`) |
+| 0 | `build_pastis_rpg_map.py` → `pastis_rpg_class_map.json` | RPG `CODE_CULTU` → class id 0–25 (uses `data/rpg_culture_codes.csv`) |
 | 1 | `download_rpg.py --year 2019` | download each territory's RPG → `data/rpg/<key>.gpkg` (geometry + `code_cultu` + `class_id`); URLs in `territories.py` |
 | 2 | `build_windows.py --dataset <ds> --year 2019` | stratified 128×128 @10 m windows (per-window UTM), group `rpg_<year>`, time range Sep 2018–Nov 2019 |
 | 3 | `config_dense.json` | the rslearn dataset config: `sentinel2` (dense, 10-band) + `sentinel1` (dense VV/VH) + `label` |
@@ -90,10 +90,10 @@ re-run to fill gaps). Dense is heavy (~74 S2 + dense S1 per window ≈ 40 MB/win
 with `NUM_JOBS=8–12` due to PC rate limits.
 
 ## Notes
-- **`num_classes = 25`** (PASTIS-18 + 19 Sugarcane, 20 Banana, 21 Pineapple, 22 Vanilla,
-  23 Tropical tuber, 24 Ylang-ylang). The DROM extension gives Mayotte real labels
-  (ylang/banana/vanilla…) instead of ~0 %. `ACA` "autre culture non précisée" stays
-  Background. Any model/eval must use `num_classes = 25`, not 19.
+- **`num_classes = 26`** (PASTIS-18 + 19 Sugarcane, 20 Banana, 21 Pineapple, 22 Vanilla,
+  23 Tropical tuber, 24 Ylang-ylang, 25 Coffee/Cacao). The DROM extension gives Mayotte
+  real labels (ylang/banana/vanilla…) instead of ~0 %. `ACA` "autre culture non précisée"
+  stays Background. Any model/eval must use `num_classes = 26`, not 19.
 - **`pastis_rpg_class_map.json` → `flagged_for_review`** lists judgement calls to verify
   against PASTIS's official nomenclature.
 - **Spatial splits**: PASTIS used 5 scene-disjoint folds; assign a proper spatial/geographic

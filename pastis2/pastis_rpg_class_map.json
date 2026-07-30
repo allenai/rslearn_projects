@@ -19,6 +19,7 @@
     "22": "Vanilla",
     "23": "Tropical tuber",
     "24": "Ylang-ylang",
+    "25": "Coffee/Cacao",
     "3": "Corn",
     "4": "Winter barley",
     "5": "Winter rapeseed",
@@ -69,7 +70,7 @@
     "BUR": 0,
     "BVF": 9,
     "CAB": 16,
-    "CAC": 0,
+    "CAC": 25,
     "CAE": 1,
     "CAF": 12,
     "CAG": 0,
@@ -362,6 +363,6 @@
     "aromatic_ppam": "lavande/thym/menthe etc. -> Background here; PASTIS 'flowers' is ornamental, not aromatic/medicinal.",
     "grain_legumes": "PHI/PPR/PPO/PCH/LEC/FVL/LDH/LDP (grain pulses) -> Background (PASTIS has no pulse-grain class); only *forage* legumes -> 14.",
     "spring_variants": "BTP/BDP/TTP/CZP/SGP/AVP (spring wheat/durum/triticale/rapeseed) -> Background (PASTIS keeps only winter variants + Spring barley).",
-    "tropical_ext": "Classes 19-24 (sugarcane/banana/pineapple/vanilla/tropical-tuber/ylang) EXTEND the original PASTIS 18 to label DROM crops. Minor tropical crops (coffee/cacao/curcuma) still -> Background; ACA (autre culture non pr\u00e9cis\u00e9e) stays Background (genuinely unspecified)."
+    "tropical_ext": "Classes 19-25 (sugarcane/banana/pineapple/vanilla/tropical-tuber/ylang/coffee-cacao) EXTEND the original PASTIS 18 to label DROM crops. Minor tropical crops (curcuma) still -> Background; ACA (autre culture non pr\u00e9cis\u00e9e) stays Background (genuinely unspecified)."
   }
 }
