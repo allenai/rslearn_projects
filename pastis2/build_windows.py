@@ -8,7 +8,8 @@ assigns each window its correct UTM zone -- so metropole, Corsica and every DROM
 handled without per-territory CRS juggling here).
 
 PASTIS geometry: 128x128 px @ 10 m = 1.28 km tiles; time_range = the S2 growing season
-(Sep <year-1> .. Nov <year>). Windows land under <dataset>/windows/<group>/.
+(Sep <year-1> .. Dec <year>; see growing_season). Windows land under
+<dataset>/windows/<group>/.
 
 This is a scaffold: the density-grid + stratification specifics are marked TODO, and it
 requires the rslearn env + an existing dataset root with config.json (Phase 4/5). It is
@@ -46,16 +47,18 @@ RARITY_POWER = 1.0  # cell weight = (1/class_freq)**RARITY_POWER; >0 over-sample
 
 
 def growing_season(year: int, fetch_months: int = 12) -> tuple[datetime, datetime]:
-    """PASTIS-faithful acquisition span: Sep <year-1> .. Nov <year>.
+    """Acquisition span: Sep <year-1> .. Dec <year> (PASTIS + one extra month).
 
-    Matches the original PASTIS date range ("between September 2018 and November 2019"
-    for year=2019). We pull the DENSE irregular Sentinel-2/1 time series over this whole
-    span (all individual acquisitions), rather than monthly composites, so the sequence
+    PASTIS proper is "between September 2018 and November 2019" (for year=2019); we
+    extend the tail by one month to 31 Dec <year> so the dense time series covers the
+    full late-season/harvest window (this intentionally diverges from PASTIS by ~1
+    month). We pull the DENSE irregular Sentinel-2/1 time series over this whole span
+    (all individual acquisitions), rather than monthly composites, so the sequence
     length/structure mirrors PASTIS's 38-61 observations. ``fetch_months`` is unused now
     (it was for the old monthly-mosaic over-fetch trick).
     """
     start = datetime(year - 1, 9, 1, tzinfo=timezone.utc)
-    end = datetime(year, 11, 30, tzinfo=timezone.utc)
+    end = datetime(year, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
     return (start, end)
 
 
@@ -98,7 +101,7 @@ def sample_cells(gdf: gpd.GeoDataFrame, n: int, seed: int = 0) -> list[Point]:
 
 
 def build_for_territory(
-    ds: Dataset, key: str, n_cells: int, year: int, fetch_months: int
+    ds: Dataset, key: str, n_cells: int, year: int, fetch_months: int, group: str
 ) -> int:
     """Sample cells for one territory and create its windows; returns the count."""
     gpkg = RPG / f"{key}.gpkg"
@@ -118,7 +121,7 @@ def build_for_territory(
     geoms = [STGeometry(src_proj, c, None) for c in cells]
     windows = add_windows_from_geometries(
         dataset=ds,
-        group=f"rpg_{year}",
+        group=group,
         geometries=geoms,
         projection=out_proj,
         window_size=PATCH_PX,  # one 128px window centered on each sampled cell
@@ -136,6 +139,12 @@ def main() -> None:
         "--dataset", required=True, help="rslearn dataset root (has config.json)"
     )
     ap.add_argument("--year", type=int, required=True)
+    ap.add_argument(
+        "--group",
+        default=None,
+        help="window group name (default rpg_<year>); set to build a separate span "
+        "alongside an existing group without name collisions",
+    )
     ap.add_argument(
         "--target-total",
         type=int,
@@ -159,12 +168,17 @@ def main() -> None:
     args = ap.parse_args()
 
     ds = Dataset(UPath(args.dataset))
+    group = args.group or f"rpg_{args.year}"
     total = 0
     for t in TERRITORIES:
         # Metropole gets the bulk; each DROM gets at least the min quota.
         n_cells = args.target_total if t.key == "metropole" else args.per_territory_min
-        total += build_for_territory(ds, t.key, n_cells, args.year, args.fetch_months)
-    print(f"created ~{total} windows across {len(TERRITORIES)} territories")
+        total += build_for_territory(
+            ds, t.key, n_cells, args.year, args.fetch_months, group
+        )
+    print(
+        f"created ~{total} windows across {len(TERRITORIES)} territories (group {group})"
+    )
 
 
 if __name__ == "__main__":
