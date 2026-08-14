@@ -1,5 +1,7 @@
 """Unit tests for rslp.large_scale_embeddings.zarr_store."""
 
+from pathlib import Path
+
 import numpy as np
 import zarr
 
@@ -74,7 +76,7 @@ def test_build_zone_spatial_attrs_transform() -> None:
     assert transform[5] == origin_y * -RESOLUTION
 
 
-def test_init_store_root_and_zone_attrs(tmp_path) -> None:
+def test_init_store_root_and_zone_attrs(tmp_path: Path) -> None:
     """init_store writes conforming root and zone-group attributes."""
     store = str(tmp_path / "emb.zarr")
     _init_small_store(store)
@@ -93,7 +95,7 @@ def test_init_store_root_and_zone_attrs(tmp_path) -> None:
     assert zone.attrs["geoemb:type"] == "pixel"
 
 
-def test_init_store_array_layout(tmp_path) -> None:
+def test_init_store_array_layout(tmp_path: Path) -> None:
     """The embedding array has the expected dims, dtype, fill value, and sharding."""
     store = str(tmp_path / "emb.zarr")
     _init_small_store(store, dimensions=4)
@@ -108,7 +110,7 @@ def test_init_store_array_layout(tmp_path) -> None:
     assert array.chunks == (1, 4, 256, 256)
 
 
-def test_write_window_region_roundtrip(tmp_path) -> None:
+def test_write_window_region_roundtrip(tmp_path: Path) -> None:
     """A written window round-trips, and unwritten regions read as nodata."""
     store = str(tmp_path / "emb.zarr")
     _init_small_store(store, dimensions=4)
@@ -132,7 +134,7 @@ def test_write_window_region_roundtrip(tmp_path) -> None:
     assert (array[0, :, row0 : row0 + 4, col0 : col0 + 4] == zs.NODATA_VALUE).all()
 
 
-def test_disjoint_writes_do_not_interfere(tmp_path) -> None:
+def test_disjoint_writes_do_not_interfere(tmp_path: Path) -> None:
     """Two windows written to disjoint shards both round-trip correctly."""
     store = str(tmp_path / "emb.zarr")
     _init_small_store(store, dimensions=4)
@@ -157,7 +159,7 @@ def test_disjoint_writes_do_not_interfere(tmp_path) -> None:
         assert np.array_equal(back, emb)
 
 
-def test_write_window_region_patch_size(tmp_path) -> None:
+def test_write_window_region_patch_size(tmp_path: Path) -> None:
     """With patch_size>1 the store grid is at the output resolution.
 
     The store is created at 1/patch_size resolution and an input-pixel window lands at

@@ -35,6 +35,7 @@ import multiprocessing
 import random
 import time
 from datetime import UTC, datetime
+from multiprocessing.sharedctypes import Synchronized
 from typing import Any
 
 from rslp.log_utils import get_logger
@@ -62,7 +63,9 @@ DEFAULT_WEKA_MOUNT_PATH = "/weka/dfive-default"
 # The OlmoEarth Datasets data source needs an endpoint plus a bearer token, the latter
 # read from a Beaker secret of this name in the target workspace.
 DEFAULT_DATASETS_API_URL = "https://datasets.olmoearth.allenai.org"
-DEFAULT_DATASETS_TOKEN_SECRET = "LCC_DATASETS_API_TOKEN"
+# This is the name of a Beaker secret, not a credential. (bandit flags the assignment
+# because the name contains "token"/"secret".)
+DEFAULT_DATASETS_TOKEN_SECRET = "LCC_DATASETS_API_TOKEN"  # nosec
 
 
 def _state_name(entry: Any) -> str:
@@ -354,7 +357,9 @@ def supervise(
 
     while max_cycles is None or cycle < max_cycles:
         cycle += 1
-        result = ctx.Value("i", _NO_RESULT)
+        # Typeshed types Value() as SynchronizedBase, which has no .value; the "i"
+        # type code makes it a Synchronized[int].
+        result: Synchronized[int] = ctx.Value("i", _NO_RESULT)  # type: ignore[assignment]
         proc = ctx.Process(target=_run_cycle, args=(kwargs, result))
         started = time.time()
         proc.start()
