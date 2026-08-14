@@ -230,7 +230,11 @@ def get_jobs(
                     if not bounds_intersect_wedge(wedge, sub_bounds):
                         continue
                     if (
-                        len(list_kept_crops(projection, sub_bounds, PATCH_SIZE, wedge=wedge))
+                        len(
+                            list_kept_crops(
+                                projection, sub_bounds, PATCH_SIZE, wedge=wedge
+                            )
+                        )
                         == 0
                     ):
                         continue

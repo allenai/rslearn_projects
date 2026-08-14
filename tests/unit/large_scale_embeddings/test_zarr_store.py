@@ -119,7 +119,9 @@ def test_write_window_region_roundtrip(tmp_path) -> None:
     by0 = origin_y + 100 * 512
     window_bounds = (bx0, by0, bx0 + 512, by0 + 512)
     embeddings = np.random.randint(-127, 128, size=(4, 512, 512)).astype(np.int8)
-    zs.write_window_region(store, 10, window_bounds, time_index=1, embeddings=embeddings)
+    zs.write_window_region(
+        store, 10, window_bounds, time_index=1, embeddings=embeddings
+    )
 
     array = zarr.open_group(store=store, path="utm10", mode="r")[zs.EMBEDDINGS_ARRAY]
     col0 = bx0 - origin_x

@@ -232,9 +232,13 @@ def init_store(
         storage_options: fsspec storage options for remote stores.
     """
     if tile_size % shard_size != 0:
-        raise ValueError(f"tile_size {tile_size} must be a multiple of shard_size {shard_size}")
+        raise ValueError(
+            f"tile_size {tile_size} must be a multiple of shard_size {shard_size}"
+        )
     if shard_size % chunk_size != 0:
-        raise ValueError(f"shard_size {shard_size} must be a multiple of chunk_size {chunk_size}")
+        raise ValueError(
+            f"shard_size {shard_size} must be a multiple of chunk_size {chunk_size}"
+        )
     if gsd is None:
         gsd = float(resolution)
 
@@ -255,7 +259,9 @@ def init_store(
 
     years_arr = np.array(years, dtype="int32")
     for zone_number in zone_numbers:
-        projection, origin_px, shape_px = get_zone_grid(zone_number, resolution, tile_size)
+        projection, origin_px, shape_px = get_zone_grid(
+            zone_number, resolution, tile_size
+        )
         height, width = shape_px
         zone_group = root.create_group(zone_group_name(zone_number))
         zone_group.attrs.update(
@@ -301,7 +307,11 @@ def init_store(
             dimension_names=("y",),
         )
         y_coord[:] = (np.arange(height) + origin_y + 0.5) * projection.y_resolution
-        logger.info("created zone group %s with shape %s", zone_group_name(zone_number), shape_px)
+        logger.info(
+            "created zone group %s with shape %s",
+            zone_group_name(zone_number),
+            shape_px,
+        )
 
     zarr.consolidate_metadata(root.store)
     logger.info("initialized store %s with %d zones", store_path, len(zone_numbers))
