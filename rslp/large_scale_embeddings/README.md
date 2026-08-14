@@ -216,3 +216,119 @@ Run `write_jobs` once per reference year (each with its own `completed_path`), a
 targeting the same store. Use a different store per input variant and per set of model
 settings (checkpoint and patch/window/overlap sizes), since those change the
 embeddings.
+
+
+Supervised Runs (recommended)
+-----------------------------
+
+For anything longer than a few hours, use `supervise` instead of driving `write_jobs`
+and `launch` by hand. It loops: recompute the remaining work from the completion
+markers, top the queue up only if it is running shallow, and refill the worker pool.
+It exits when every tile has a marker.
+
+        python -m rslp.main large_scale_embeddings supervise \
+            --inputs S2 \
+            --years '[2024, 2025]' \
+            --store_path gs://BUCKET/PREFIX/s2.zarr \
+            --completed_path_template 'gs://BUCKET/PREFIX/s2_{year}_completed/' \
+            --queue_name USER/QUEUE \
+            --checkpoint_path /weka/dfive-default/helios/checkpoints/... \
+            --image_name USER/IMAGE \
+            --cluster '["ai2/jupiter","ai2/ceres"]' \
+            --geojson_fname data/large_scale_embeddings/initial_regions.geojson \
+            --job_size 8192 --num_workers 8
+
+Run it as a cheap CPU Beaker job, not from a workstation: it must outlive any single
+login session, and a laptop-side loop dies with the session (or silently hangs -- the
+Beaker client has no RPC timeout, so an in-process watchdog cannot bound it).
+
+
+Operational envelope
+--------------------
+
+Hard-won numbers from the 2024/2025 `initial_regions` run. Re-measure if the model,
+image, or cluster changes, but start here.
+
+**Size jobs to finish inside the preemption window.** Workers are preemptible and the
+GPU clusters are routinely at zero free slots, so jobs are interrupted constantly. A
+job that runs longer than the typical gap between preemptions never completes at all.
+Measured throughput was ~2.4 min per window end-to-end (~0.6 min materialize, ~1.8 min
+predict) at `patch_size=1`, `window_size=16` on an H100:
+
+    job_size   windows   ~duration   outcome
+       32768       256       ~9 h     never completed (always preempted first)
+        8192        16      ~38 min   completes reliably
+        4096         4      ~12 min   completes, but ~55% of the time is fixed overhead
+
+`job_size=8192` was the sweet spot. Smaller jobs survive better but pay model load and
+compile per job, so total GPU time rises.
+
+**Preemption is normal, not an error.** Exit 143 with `canceled_for` naming another job
+means preempted; retry is the correct response. Note also that `ai2/jupiter` uses
+"strict priority with unallocated-only backfill", so without an allocation your jobs
+are backfill and can be evicted at any priority.
+
+**Keep the queue shallow.** A queue entry claimed by a worker that then dies is not
+released back to the queue: entries were still CLAIMED 5 hours after being claimed, with
+no worker alive for the last 1.4 of those, and the queue API has no call to release one.
+They do eventually age out, since `status.expiry` is set from `expires_in_sec` (7 days
+by default), but a week is far longer than any job, so within a run that work is lost.
+`max_claimed_entries=1` makes it worse: a dead worker's claim permanently occupies that
+entry's only claim slot. `wait_timeout` on the queue is unrelated to this; it bounds how
+long a worker waits for work to appear. Untested: whether expiry deletes the entry or
+returns it to PENDING. Enqueuing a
+whole run up front therefore bleeds work steadily -- one run accumulated 327 orphaned
+entries. `supervise` enqueues only a small buffer and refills from the markers, which
+bounds the loss to about one entry per worker death.
+
+**`MATERIALIZE_PIPELINE_ARGS` pool sizes are the working default; changing them is
+untested.** Scaling them to the job's window count was tried and reverted, but the
+revert was based on a mismeasured elapsed time, so it is neither proven harmful nor
+proven safe. If you revisit it, note that materialize parallelizes over window x
+item-group units (each window pulls 12 monthly mosaics, so a 12-window job is ~144
+units, not 12), so sizing by window count alone under-parallelizes.
+
+**Measure elapsed time carefully.** These logs are emitted in the machine's local
+time, not UTC. Comparing a log timestamp against `date -u` silently adds the UTC
+offset -- doing so produced a "7 hours with zero completions" reading of what was
+actually 7 minutes, and a wrong conclusion about the pool sizes above. Prefer deltas
+between two timestamps from the same log, and remember a single job takes ~38 minutes
+at `job_size=8192`, so any window shorter than that tells you nothing.
+
+**Worker deaths are common and not yet explained.** Roughly 68% of attempts on an
+8-worker pool ended in SIGKILL (137) or SIGSEGV (139) rather than preemption (143).
+Memory pressure from co-location is the leading theory -- a single-GPU worker can share
+an 8-GPU node with seven siblings -- but it is unproven, and the materialize pool is
+*not* the cause. The cheapest experiment is to request more GPUs per worker so fewer
+land per node, which needs no code change. Vary one thing at a time and measure the
+completion rate; the failure is frequent enough that a few hours gives a clear signal.
+
+**Storage.** ~385 MB per written window on GCS (2048x2048x128 int8 at zstd level 1,
+measured compression ratio 0.717 on real embeddings, range 0.534-0.794). Roughly
+5.4 GB per `job_size=8192` block. Only shards intersecting land are written.
+
+**A smaller `job_size` also tightens AOI clipping.** Blocks outside the GeoJSON
+features are dropped, whereas a large tile merely intersecting a feature had all of its
+land crops processed. `initial_regions` covers ~7,700 windows/year at `job_size=8192`
+versus ~11,300 at 32768. That is usually desirable, but it means output extent is not
+comparable across `job_size` values.
+
+
+Quantization
+------------
+
+Embeddings are L2-normalized and then quantized following the AlphaEarth signed-power
+scheme (see `model.py`): `quantized = round(sign(x) * |x|^0.5 * 127.5)` clipped to
+[-127, 127], with -128 reserved for nodata. This is recorded in the store's
+`geoemb:quantization` metadata with `method: "signed_power"`. To recover approximate
+float embeddings:
+
+```python
+import numpy as np
+
+def dequantize(v: np.ndarray) -> np.ndarray:
+    x = v.astype(np.float32) / 127.5
+    return np.sign(x) * np.abs(x) ** 2.0
+```
+
+Pixels where all Sentinel-2 mosaics are empty are set to -128 in all bands.
