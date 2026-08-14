@@ -1,17 +1,18 @@
 Large-Scale Embeddings
 ======================
 
-This project computes OlmoEarth embeddings over large areas (up to global scale). The
-embeddings are:
+This project computes OlmoEarth embeddings over large areas (up to global scale) and
+writes them to a GeoZarr store following the geoemb embeddings-zarr-convention
+(https://github.com/geo-embeddings/embeddings-zarr-convention). The embeddings are:
 
 - 10 m/pixel (at the default `--patch_size 1`; in general patch_size x 10 m/pixel),
   in the appropriate UTM projection for each location.
 - 128-dimensional, L2-normalized, and quantized to int8 (see Quantization below).
 - Computed from one year of input imagery starting at a user-provided reference
-  timestamp.
+  timestamp; multiple reference years form the store's time axis.
 
 There are two input variants (`EmbeddingInputs`), which produce different embeddings
-and so must be written to different output paths:
+and so must be written to different stores:
 
 - `S2`: twelve monthly Sentinel-2 L2A mosaics.
 - `S2_S1`: the above, plus twelve monthly Sentinel-1 RTC mosaics (converted from
@@ -41,57 +42,95 @@ can process jobs with differing settings):
   blocks.
 
 Note that the checkpoint and the patch/window/overlap sizes all affect the resulting
-embeddings, so each combination must use its own `out_path`/`completed_path` (like
-the input variants).
+embeddings, so each combination must use its own `store`/`completed_path` (like the
+input variants).
+
+
+Output Store
+------------
+
+The store is a Zarr v3 group using the geoemb `utm_zones` spatial layout: one group
+per UTM zone number named `utm{NN}` (01-60). Each zone is stored in its northern CRS
+(EPSG:326NN) with a continuous northing axis that goes negative south of the equator,
+so a single group covers both hemispheres (matching the reference GeoTessera
+implementation of the convention). Each zone group holds:
+
+- an `embeddings` array with dimensions `(time, band, y, x)`: `band` is the 128-dim
+  embedding vector, `time` is the annual reference years. It is int8, sharded so that
+  one shard equals one 2048x2048 prediction window (with 256x256 inner chunks),
+  zstd-compressed, with fill/nodata value -128.
+- `time`, `x`, and `y` coordinate arrays.
+- `proj:` and `spatial:` attributes (CRS and affine transform) and the geoemb
+  provenance attributes (model, source data, quantization, etc.).
+
+Because the array is sharded and sparse, only shards that intersect land are written;
+ocean and unprocessed regions read back as the -128 nodata value.
 
 
 How It Works
 ------------
 
-The world is divided into 32768x32768-pixel tiles in each UTM zone, and each tile is
-one unit of work (one queue job). The prediction pipeline for a tile creates
-2048x2048-pixel windows in a scratch rslearn dataset, materializes the input mosaics,
-runs the model, and uploads one GeoTIFF per window to `out_path`, named
-`{crs}_{x}_{y}.tif` (x/y are the pixel offsets of the window in the UTM projection at
-10 m/pixel, regardless of patch_size; the GeoTIFF itself is at patch_size x
-10 m/pixel). GeoTIFFs are uncompressed (the int8 embeddings are high-entropy, so
-compression only slows down writes) and tiled with 512x512 blocks, with nodata
-value -128.
+Each UTM zone number (1-60) is processed once in its northern CRS. The zone is divided
+into 32768x32768-pixel tiles, and each tile is one unit of work (one queue job). The
+prediction pipeline for a tile creates 2048x2048-pixel windows in a scratch rslearn
+dataset, materializes the input mosaics, runs the model, and writes each window's int8
+embeddings (at 1/patch_size of the 10 m/pixel input resolution) into the store's zone
+array at the window's `(time, y, x)` region. Windows are aligned to the store's shard
+grid, so each window writes exactly one shard and concurrent workers never touch the
+same shard.
 
 To limit duplicated work where UTM zones overlap, tiles and windows are skipped unless
-they intersect their zone's canonical 6-degree wedge (see `tiling.py`). Windows that
-are entirely ocean (per `global_land_mask`) or too close to 0/180 longitude (where
-mosaics are unreliable) are also skipped.
+they intersect their zone's canonical 6-degree longitude wedge, which spans the full
+UTM latitude range (see `tiling.py`). Windows that are entirely ocean (per
+`global_land_mask`) or too close to 0/180 longitude (where mosaics are unreliable) are
+also skipped.
 
 When a tile finishes, a marker file `{crs}_{x}_{y}.json` is written to
-`completed_path` recording the tile's projection, bounds, and time range, plus which
-windows were written and which were skipped (`written`, `skipped_no_data` for windows
-without Sentinel-2 coverage, `skipped_longitude`, and `num_filtered_crops` for
-wedge/ocean-filtered windows). Tiles with existing markers are excluded when writing
-jobs and skipped by the prediction pipeline, so the pipeline is idempotent and jobs
-can safely be re-enqueued to retry failures.
+`completed_path` recording the tile's projection, bounds, time range, time index, and
+which windows were written and which were skipped (`written`, `skipped_no_data` for
+windows without Sentinel-2 coverage, `skipped_longitude`, and `num_filtered_crops`
+for wedge/ocean-filtered windows). Tiles with existing markers are excluded when
+writing jobs and skipped by the prediction pipeline, so the pipeline is idempotent and
+jobs can safely be re-enqueued to retry failures.
+
+The store must be created once with `init_store` before any prediction jobs run.
+`init_store` writes all group metadata (root, zone groups, arrays, coordinates), so
+prediction workers only ever write data regions and never mutate metadata, which
+keeps concurrent writes safe.
 
 
 Running One Tile Locally
 ------------------------
 
 This requires a GPU and access to the OlmoEarth checkpoint (e.g. run on a machine with
-WEKA mounted). From the rslearn_projects root:
+WEKA mounted). From the rslearn_projects root, first create the store, then run a
+tile:
+
+    python -m rslp.main large_scale_embeddings init_store \
+        --store_path gs://BUCKET/embeddings/s2.zarr \
+        --years '[2024]' \
+        --model_url https://huggingface.co/allenai/OlmoEarth-v1_2-Small \
+        --source_data '["https://sentinel.esa.int/web/sentinel/missions/sentinel-2"]' \
+        --zone_numbers '[10]'
 
     python -m rslp.main large_scale_embeddings predict \
         --inputs S2 \
         --projection_json '{"crs": "EPSG:32610", "x_resolution": 10, "y_resolution": -10}' \
         --bounds '[32768, -557056, 65536, -524288]' \
         --time_range '["2024-01-01T00:00:00+00:00", "2024-01-01T00:00:00+00:00"]' \
-        --out_path gs://BUCKET/embeddings/s2/2024/ \
-        --completed_path gs://BUCKET/embeddings/s2/2024_completed/ \
-        --checkpoint_path /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000
+        --store_path gs://BUCKET/embeddings/s2.zarr \
+        --completed_path gs://BUCKET/embeddings/s2_completed/ \
+        --checkpoint_path /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000 \
+        --time_index 0
 
-`bounds` can be any box whose extents are multiples of 2048 (it does not have to be a
-32768x32768 tile). `time_range` is `(T, T)` where T is the reference timestamp; the
-dataset config derives the twelve monthly mosaics over the year following T. By
+The `projection_json` must be the zone's northern CRS (EPSG:326NN). `bounds` can be
+any box whose extents are multiples of 2048 (it does not have to be a 32768x32768
+tile). `time_range` is `(T, T)` where T is the reference timestamp; the dataset config
+derives the twelve monthly mosaics over the year following T. `time_index` is the
+index of this year in the store's time axis (0 for the first year in `--years`). By
 default the scratch rslearn dataset is placed in a temporary directory and deleted;
-pass `--scratch_path /path/to/scratch/` to keep it for debugging.
+pass `--scratch_path /path/to/scratch/` to keep it for debugging, and
+`--debug_geotiff_path /path/` to also write per-window GeoTIFFs for inspection.
 
 
 Running at Scale
@@ -100,24 +139,51 @@ Running at Scale
 Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
 
 1. Build and push a Beaker image containing rslearn_projects (with the
-   `global-land-mask` dependency included).
+   `global-land-mask`, `zarr`, and `gcsfs` dependencies included).
 
-2. Write jobs to a Beaker queue, one per uncompleted tile:
+   Pin images by **Beaker image ID**, not by name. Images are immutable once
+   committed, but a name/tag can be reused or deleted, so a name does not identify
+   what actually ran. Record the ID and the commit it was built from together.
+
+   Two roles need different things from the image:
+
+   - **Workers** only execute `predict`. An older image keeps working for them as
+     long as the job arguments and the store layout have not changed, so there is no
+     need to rebuild workers for a supervisor-only change.
+   - **The supervisor** needs an image that contains `supervise`, including the
+     child-process cycle isolation (without it a hung Beaker RPC can stall the run
+     for hours). Verify a supervisor image on a short run before relying on it.
+
+   Validate a new image end-to-end before a long run: S2 -> forward pass -> int8
+   GeoZarr write, then check that the dequantized per-pixel L2 norm is ~= 1.0. That
+   catches a config-incompatible checkpoint and a broken write path in one pass.
+
+2. Create the store once, covering all reference years and zones:
+
+        python -m rslp.main large_scale_embeddings init_store \
+            --store_path gs://BUCKET/PREFIX/s2.zarr \
+            --years '[2021, 2022, 2023, 2024, 2025]' \
+            --model_url https://huggingface.co/allenai/OlmoEarth-v1_2-Small \
+            --source_data '["https://sentinel.esa.int/web/sentinel/missions/sentinel-2"]'
+
+3. Write jobs to a Beaker queue for one reference year, one job per uncompleted tile
+   (the year's time index is derived from the store's time axis):
 
         python -m rslp.main large_scale_embeddings write_jobs \
             --inputs S2 \
             --timestamp '2025-01-01T00:00:00+00:00' \
-            --out_path gs://ai2-olmoearth-embeddings-us-central1/large_scale_embeddings/20270721/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/ps1_ws16_s2/2025/ \
-            --completed_path gs://ai2-olmoearth-embeddings-us-central1/large_scale_embeddings/20270721/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/ps1_ws16_s2/2025_completed/ \
+            --store_path gs://BUCKET/PREFIX/s2.zarr \
+            --completed_path gs://BUCKET/PREFIX/s2_2025_completed/ \
             --checkpoint_path /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000 \
-            --queue_name favyen/rslp-large-scale-embeddings-queue
+            --queue_name USER/QUEUE
 
    The model settings (`--checkpoint_path`, `--patch_size`, `--window_size`,
    `--overlap_size`, `--compile_model`; see above) are recorded in each job.
    Without additional arguments this enumerates all land tiles globally (~8,700).
    Options to limit the extent:
 
-   - `--epsg_code 32610`: only one UTM zone.
+   - `--epsg_code 32610`: only the zone of this UTM EPSG code (326NN or 327NN both
+     map to zone NN).
    - `--wgs84_bounds '[-125.0, 45.0, -116.0, 49.0]'`: only tiles intersecting these
      WGS84 bounds.
    - `--geojson_fname data/large_scale_embeddings/initial_regions.geojson`: only
@@ -126,14 +192,14 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
      points in Greenland and coastal Antarctica; 88 tiles).
    - `--count 10`: randomly sample this many tiles.
 
-3. Launch workers on Beaker (WEKA must be mounted for the checkpoint). The
+4. Launch workers on Beaker (WEKA must be mounted for the checkpoint). The
    OlmoEarth Datasets data source needs `OEDATASETS_API_URL` (plain env var) and
    `DATASETS_API_TOKEN` (bearer token, read from the `LCC_DATASETS_API_TOKEN`
    Beaker secret which must exist in the `ai2/earth-systems` workspace):
 
         python -m rslp.main common launch \
-            --image_name favyen/rslpomp20260721b \
-            --queue_name favyen/rslp-large-scale-embeddings-queue \
+            --image_name USER/IMAGE \
+            --queue_name USER/QUEUE \
             --num_workers 4 \
             --gpus 1 \
             --priority urgent \
@@ -146,23 +212,7 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
 Progress can be monitored by counting marker files in `completed_path`. To retry
 failed tiles, simply run `write_jobs` again: completed tiles are excluded.
 
-Remember to use different `out_path`/`completed_path` per input variant, model
-settings (checkpoint and patch/window/overlap sizes), and reference timestamp.
-
-
-Quantization
-------------
-
-Embeddings are L2-normalized and then quantized following the AlphaEarth scheme (see
-`model.py`): `quantized = round(sign(x) * |x|^0.5 * 127.5)` clipped to [-127, 127],
-with -128 reserved for nodata. To recover approximate float embeddings:
-
-```python
-import numpy as np
-
-def dequantize(v: np.ndarray) -> np.ndarray:
-    x = v.astype(np.float32) / 127.5
-    return np.sign(x) * np.abs(x) ** 2.0
-```
-
-Pixels where all Sentinel-2 mosaics are empty are set to -128 in all bands.
+Run `write_jobs` once per reference year (each with its own `completed_path`), all
+targeting the same store. Use a different store per input variant and per set of model
+settings (checkpoint and patch/window/overlap sizes), since those change the
+embeddings.
