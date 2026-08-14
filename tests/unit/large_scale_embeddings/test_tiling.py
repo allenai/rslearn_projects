@@ -5,11 +5,14 @@ from rslearn.utils.geometry import Projection
 
 from rslp.large_scale_embeddings.tiling import (
     bounds_intersect_wedge,
+    get_zone_grid,
     get_zone_wedge,
     list_kept_crops,
 )
 
 RESOLUTION = 10
+TILE_SIZE = 32768
+SHARD_SIZE = 2048
 
 # EPSG:32610 is UTM zone 10N, covering -126 to -120 longitude, 0 to 84 latitude.
 UTM_ZONE_10N = CRS.from_epsg(32610)
@@ -55,3 +58,26 @@ def test_list_kept_crops_ocean() -> None:
     bounds = _pixel_bounds_around(150000, 4440000, 4096)
     kept = list_kept_crops(PROJECTION_10N, bounds, 2048)
     assert len(kept) == 0
+
+
+def test_wedge_spans_both_hemispheres() -> None:
+    """The northern-CRS wedge covers southern latitudes (negative northing)."""
+    wedge = get_zone_wedge(UTM_ZONE_10N, RESOLUTION)
+    # A point at ~10S on zone 10's central meridian has negative northing in the
+    # northern CRS (EPSG:32610); it must still fall inside the full-latitude wedge.
+    bounds = _pixel_bounds_around(500000, -1105000, 2048)
+    assert bounds_intersect_wedge(wedge, bounds)
+
+
+def test_get_zone_grid_alignment_and_hemispheres() -> None:
+    """get_zone_grid is tile/shard aligned and spans both hemispheres."""
+    projection, origin, shape = get_zone_grid(10, RESOLUTION, TILE_SIZE)
+    origin_x, origin_y = origin
+    height, width = shape
+    assert projection.crs.to_epsg() == 32610
+    # Origin snapped to the tile grid, shape snapped to the shard grid.
+    assert origin_x % TILE_SIZE == 0 and origin_y % TILE_SIZE == 0
+    assert height % SHARD_SIZE == 0 and width % SHARD_SIZE == 0
+    # Row 0 is north of the equator (negative northing -> negative pixel y) and the
+    # array extends south past the equator (positive pixel y).
+    assert origin_y < 0 < origin_y + height

@@ -2,6 +2,8 @@
 **/.direnv
 **/__pycache__
 **/.mypy_cache
+**/*.egg-info
+.venv
 .env
 lightning_logs
 wandb

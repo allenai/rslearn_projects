@@ -1,7 +1,11 @@
+gcsfs>=2025.2.0
 global-land-mask>=1.0.0
+# jsonargparse 4.50 dropped the cfg_str positional that rslearn's parser override needs.
+jsonargparse[signatures]>=4.39.0,<4.50
 prometheus-client>=0.21.1
 python-dotenv>=1.0
 PyYAML>=6
 rslearn>=0.1.9
 s3fs>=2025.2.0
 wandb>=0.21
+zarr>=3

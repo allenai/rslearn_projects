@@ -3,9 +3,9 @@
 This computes 10 m/pixel, 128-dimensional, int8-quantized OlmoEarth embeddings over
 one tile (a part of a UTM zone) by creating PATCH_SIZE windows, materializing
 Sentinel-2 (and optionally Sentinel-1) mosaics from the OlmoEarth Datasets source,
-running the model, and uploading one GeoTIFF per window to out_path. A per-tile
-marker file is written to completed_path once the tile is done, recording which
-crops were written and which were skipped.
+running the model, and writing each window's embeddings into the GeoZarr store
+(see zarr_store.py). A per-tile marker file is written to completed_path once the
+tile is done, recording which crops were written and which were skipped.
 
 Windows that don't intersect the zone's canonical wedge or that are entirely ocean
 are skipped (see tiling.py). Embedding pixels where all Sentinel-2 mosaics are empty
@@ -16,7 +16,7 @@ multiples of PATCH_SIZE. The fixed 32768x32768 tiling lives only in write_jobs.p
 
 Note that different input variants (see EmbeddingInputs), checkpoints, and model
 settings (patch_size/window_size/overlap_size) produce different embeddings, so each
-combination must use its own out_path and completed_path.
+combination must use its own store and completed_path.
 """
 
 import json
@@ -51,6 +51,7 @@ from rslp.utils.rslearn import (
 
 from .model import NODATA_VALUE
 from .tiling import get_zone_wedge, list_kept_crops
+from .zarr_store import write_window_region
 
 logger = get_logger(__name__)
 
@@ -95,6 +96,13 @@ EMBEDDING_DIM = 128
 # etc.
 OUTPUT_BANDS = [f"B{band_idx}" for band_idx in range(EMBEDDING_DIM)]
 
+# These pool sizes are the long-standing default and are known to work. Scaling them
+# down to the job's window count was tried once and reverted, but on bad evidence (a
+# mismeasured elapsed time), so treat that as untested rather than disproven. If you
+# revisit it, note that materialize parallelizes over window x item-group units --
+# each window pulls 12 monthly mosaics, so a 12-window job is ~144 units, not 12 --
+# so sizing a pool by window count alone would under-parallelize. Measure completion
+# rate over several job durations before concluding anything.
 MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
     disabled_layers=[],
     # Use initial job for prepare since it involves caching steps that should only be
@@ -197,7 +205,7 @@ def get_output_fname(
     Returns:
         the output filename.
     """
-    return UPath(out_path) / f"{str(projection.crs)}_{bounds[0]}_{bounds[1]}.tif"
+    return UPath(out_path) / f"{projection.crs!s}_{bounds[0]}_{bounds[1]}.tif"
 
 
 def get_marker_fname(
@@ -213,7 +221,7 @@ def get_marker_fname(
     Returns:
         the marker filename.
     """
-    return UPath(completed_path) / f"{str(projection.crs)}_{bounds[0]}_{bounds[1]}.json"
+    return UPath(completed_path) / f"{projection.crs!s}_{bounds[0]}_{bounds[1]}.json"
 
 
 def _crop_crosses_bad_longitude(projection: Projection, bounds: PixelBounds) -> bool:
@@ -242,30 +250,25 @@ def _crop_crosses_bad_longitude(projection: Projection, bounds: PixelBounds) -> 
     return False
 
 
-def _upload_window_output(
-    window: Window,
-    projection: Projection,
-    out_fname: UPath,
-    patch_size: int,
-) -> None:
-    """Upload one window's embedding raster to the output path.
+def _read_window_embeddings(window: Window, patch_size: int) -> np.ndarray:
+    """Read the window's int8 embedding raster and mask invalid pixels to nodata.
 
-    Reads the int8 embedding raster from the scratch dataset, sets pixels where all
-    Sentinel-2 mosaics are empty to NODATA_VALUE, and writes a tiled (uncompressed)
-    GeoTIFF to the output path.
+    Reads the merged embedding output from the scratch dataset and sets pixels where
+    all Sentinel-2 mosaics are empty to NODATA_VALUE.
 
     Args:
-        window: the window to upload.
-        projection: the UTM projection (must match the window projection).
-        out_fname: the output filename.
+        window: the window to read.
         patch_size: the encoder patch size. The embedding raster is at 1/patch_size
             of the window resolution.
+
+    Returns:
+        the int8 embedding array of shape (band, height, width).
     """
     # The embedding raster is at 1/patch_size of the window resolution.
     out_projection = Projection(
-        projection.crs,
-        projection.x_resolution * patch_size,
-        projection.y_resolution * patch_size,
+        window.projection.crs,
+        window.projection.x_resolution * patch_size,
+        window.projection.y_resolution * patch_size,
     )
     out_bounds = (
         window.bounds[0] // patch_size,
@@ -312,7 +315,34 @@ def _upload_window_output(
             patch_size,
         ).any(axis=(1, 3))
     embeddings[:, ~valid] = NODATA_VALUE
+    return embeddings
 
+
+def _write_debug_geotiff(
+    window: Window, embeddings: np.ndarray, debug_geotiff_path: str, patch_size: int
+) -> None:
+    """Write a window's embeddings to an uncompressed GeoTIFF for debugging.
+
+    Args:
+        window: the window being written.
+        embeddings: the int8 embedding array of shape (band, height, width).
+        debug_geotiff_path: the directory to write the GeoTIFF to.
+        patch_size: the encoder patch size; the embeddings are at 1/patch_size of the
+            window resolution, so the GeoTIFF is georeferenced at that resolution.
+    """
+    # The embedding raster is at 1/patch_size of the window resolution.
+    out_projection = Projection(
+        window.projection.crs,
+        window.projection.x_resolution * patch_size,
+        window.projection.y_resolution * patch_size,
+    )
+    out_bounds = (
+        window.bounds[0] // patch_size,
+        window.bounds[1] // patch_size,
+        window.bounds[2] // patch_size,
+        window.bounds[3] // patch_size,
+    )
+    out_fname = get_output_fname(debug_geotiff_path, window.projection, window.bounds)
     raster_format = GeotiffRasterFormat(
         always_enable_tiling=True,
         block_size=512,
@@ -330,22 +360,27 @@ def _upload_window_output(
     )
 
 
-def _upload_window_by_name(
+def _write_window_by_name(
     ds_path: UPath,
     window_name: str,
-    out_path: str,
+    store_path: str,
+    time_index: int,
     patch_size: int,
+    debug_geotiff_path: str | None,
 ) -> None:
-    """Load one window from the scratch dataset and upload its embedding raster.
+    """Load one window from the scratch dataset and write its embeddings to the store.
 
-    This is the multiprocessing worker for the upload step; the window is reloaded by
-    name so that only picklable arguments cross the process boundary.
+    This is the multiprocessing worker for the write step; the window is reloaded by
+    name so that only picklable arguments cross the process boundary. The window must
+    be in its zone's northern CRS (EPSG:326NN) so its bounds match the store grid.
 
     Args:
         ds_path: the scratch dataset path.
-        window_name: the name of the window to upload.
-        out_path: the output directory.
+        window_name: the name of the window to write.
+        store_path: the GeoZarr store path.
+        time_index: the index into the store's time axis for this reference year.
         patch_size: the encoder patch size.
+        debug_geotiff_path: if set, also write an uncompressed GeoTIFF here.
     """
     dataset = Dataset(ds_path)
     windows = dataset.load_windows(groups=[PREDICTION_GROUP], names=[window_name])
@@ -354,8 +389,18 @@ def _upload_window_by_name(
             f"expected one window named {window_name} but got {len(windows)}"
         )
     window = windows[0]
-    out_fname = get_output_fname(out_path, window.projection, window.bounds)
-    _upload_window_output(window, window.projection, out_fname, patch_size)
+    embeddings = _read_window_embeddings(window, patch_size)
+    zone_number = window.projection.crs.to_epsg() % 100
+    write_window_region(
+        store_path=store_path,
+        zone_number=zone_number,
+        window_bounds=window.bounds,
+        time_index=time_index,
+        embeddings=embeddings,
+        patch_size=patch_size,
+    )
+    if debug_geotiff_path is not None:
+        _write_debug_geotiff(window, embeddings, debug_geotiff_path, patch_size)
 
 
 def predict_pipeline(
@@ -363,34 +408,38 @@ def predict_pipeline(
     projection_json: str,
     bounds: PixelBounds,
     time_range: tuple[datetime, datetime],
-    out_path: str,
+    store_path: str,
     completed_path: str,
     checkpoint_path: str,
+    time_index: int,
     patch_size: int = 1,
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
     scratch_path: str | None = None,
     upload_workers: int = 16,
+    debug_geotiff_path: str | None = None,
 ) -> None:
     """Compute quantized OlmoEarth embeddings over one tile.
 
     Args:
         inputs: which input variant to use. Different variants produce different
-            embeddings so they must use different out_path/completed_path.
-        projection_json: JSON-encoded projection, normally a UTM zone with 10 m/pixel
-            resolution.
+            embeddings so they must use different stores.
+        projection_json: JSON-encoded projection, normally the zone's northern UTM CRS
+            (EPSG:326NN) with 10 m/pixel resolution.
         bounds: pixel coordinates within the projection on which to compute outputs.
             Each value must be a multiple of PATCH_SIZE.
         time_range: the reference timestamp as (T, T). The layer time_offset/duration
             derive the twelve monthly mosaics over the following year from this.
-        out_path: directory to write one embedding GeoTIFF per PATCH_SIZE crop.
+        store_path: the GeoZarr store to write embeddings into (must be initialized
+            by init_store first).
         completed_path: directory to write per-tile completion markers.
         checkpoint_path: the OlmoEarth checkpoint to compute embeddings with, e.g.
             /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000.
             Different checkpoints produce different embeddings so they must use
-            different out_path/completed_path (same for patch_size, window_size, and
+            different store and completed_path (same for patch_size, window_size, and
             overlap_size below).
+        time_index: the index into the store's time axis for this reference year.
         patch_size: the encoder patch size; yields one 128-dimensional embedding per
             patch_size x patch_size pixels (so the output rasters are at 1/patch_size
             of the window resolution).
@@ -403,8 +452,10 @@ def predict_pipeline(
         scratch_path: optional directory to store the scratch rslearn dataset in
             directly, and keep it afterward (useful for debugging). By default, a
             temporary directory is used and deleted when the tile is done.
-        upload_workers: number of worker processes for uploading the per-crop
-            embedding GeoTIFFs.
+        upload_workers: number of worker processes for writing the per-crop
+            embeddings.
+        debug_geotiff_path: if set, also write an uncompressed GeoTIFF per crop here
+            (for debugging small runs).
     """
     if PATCH_SIZE % patch_size != 0:
         raise ValueError(f"patch_size must divide {PATCH_SIZE}, got {patch_size}")
@@ -433,15 +484,17 @@ def predict_pipeline(
                 projection=projection,
                 bounds=bounds,
                 time_range=time_range,
-                out_path=out_path,
+                store_path=store_path,
                 marker_fname=marker_fname,
                 ds_path=UPath(tmp_dir) / "dataset",
                 checkpoint_path=checkpoint_path,
+                time_index=time_index,
                 patch_size=patch_size,
                 window_size=window_size,
                 overlap_size=overlap_size,
                 compile_model=compile_model,
                 upload_workers=upload_workers,
+                debug_geotiff_path=debug_geotiff_path,
             )
     else:
         _process_tile(
@@ -449,15 +502,17 @@ def predict_pipeline(
             projection=projection,
             bounds=bounds,
             time_range=time_range,
-            out_path=out_path,
+            store_path=store_path,
             marker_fname=marker_fname,
             ds_path=UPath(scratch_path),
             checkpoint_path=checkpoint_path,
+            time_index=time_index,
             patch_size=patch_size,
             window_size=window_size,
             overlap_size=overlap_size,
             compile_model=compile_model,
             upload_workers=upload_workers,
+            debug_geotiff_path=debug_geotiff_path,
         )
 
 
@@ -466,15 +521,17 @@ def _process_tile(
     projection: Projection,
     bounds: PixelBounds,
     time_range: tuple[datetime, datetime],
-    out_path: str,
+    store_path: str,
     marker_fname: UPath,
     ds_path: UPath,
     checkpoint_path: str,
+    time_index: int,
     patch_size: int,
     window_size: int,
     overlap_size: int,
     compile_model: bool,
     upload_workers: int,
+    debug_geotiff_path: str | None,
 ) -> None:
     """Process one tile using the given scratch dataset path.
 
@@ -485,16 +542,18 @@ def _process_tile(
         projection: the projection of the tile.
         bounds: the pixel bounds of the tile.
         time_range: the reference timestamp as (T, T).
-        out_path: directory to write one embedding GeoTIFF per PATCH_SIZE crop.
+        store_path: the GeoZarr store to write embeddings into.
         marker_fname: the per-tile completion marker filename to write.
         ds_path: where to create the temporary rslearn dataset.
         checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
+        time_index: the index into the store's time axis for this reference year.
         patch_size: the encoder patch size.
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
-        upload_workers: number of worker processes for uploading the per-crop
-            embedding GeoTIFFs.
+        upload_workers: number of worker processes for writing the per-crop
+            embeddings.
+        debug_geotiff_path: if set, also write an uncompressed GeoTIFF per crop here.
     """
     # Initialize an rslearn dataset in scratch from the predict dataset config.
     dataset_config_fname = DATASET_CONFIG_FNAME.format(inputs=inputs.value)
@@ -562,9 +621,9 @@ def _process_tile(
                 ),
             )
 
-        # Upload each window's embedding raster. The uploads are handled by a pool
-        # of worker processes since converting and uploading the rasters is slow. We
-        # use the forkserver context because the CUDA context initialized by
+        # Write each window's embeddings to the store. The writes are handled by a
+        # pool of worker processes since converting and writing the rasters is slow.
+        # We use the forkserver context because the CUDA context initialized by
         # run_model_predict above cannot be safely forked.
         upload_kwargs: list[dict] = []
         for window in windows:
@@ -578,8 +637,10 @@ def _process_tile(
                 dict(
                     ds_path=ds_path,
                     window_name=window.name,
-                    out_path=out_path,
+                    store_path=store_path,
+                    time_index=time_index,
                     patch_size=patch_size,
+                    debug_geotiff_path=debug_geotiff_path,
                 )
             )
             written.append(crop_offset)
@@ -587,7 +648,7 @@ def _process_tile(
             pool = multiprocessing.get_context("forkserver").Pool(upload_workers)
             try:
                 for _ in star_imap_unordered(
-                    pool, _upload_window_by_name, upload_kwargs
+                    pool, _write_window_by_name, upload_kwargs
                 ):
                     pass
             finally:
@@ -606,6 +667,7 @@ def _process_tile(
         "projection": projection.serialize(),
         "bounds": list(bounds),
         "time_range": [time_range[0].isoformat(), time_range[1].isoformat()],
+        "time_index": time_index,
         "written": written,
         "skipped_no_data": skipped_no_data,
         "skipped_longitude": skipped_longitude,
