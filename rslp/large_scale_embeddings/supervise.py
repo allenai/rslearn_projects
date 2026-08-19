@@ -44,6 +44,13 @@ from .predict_pipeline import EmbeddingInputs
 
 logger = get_logger(__name__)
 
+# The stages this supervisor can drive. Both are idempotent and marker-driven, so the
+# same shallow-queue and worker-top-up loop works for either; only how remaining work is
+# enumerated and which workflow the entries name differ.
+STAGE_PREDICT = "predict"
+STAGE_RENDER_PCA = "render_pca"
+STAGES = (STAGE_PREDICT, STAGE_RENDER_PCA)
+
 # Pending entries to keep per worker: enough that no worker idles waiting for work,
 # few enough that entries orphaned by dying workers stay a rounding error.
 PENDING_PER_WORKER = 3
@@ -97,6 +104,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
     import rslp.common.worker
     from rslp.utils.beaker import DEFAULT_WORKSPACE, WekaMount
 
+    from .render_pca import get_render_jobs
     from .write_jobs import get_jobs
 
     queue_name = kwargs["queue_name"]
@@ -122,26 +130,43 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
     # Recompute what is left directly from the completion markers. This doubles as the
     # completion check, so it runs every cycle rather than only when the queue drains.
     years = kwargs["years"]
+    stage = kwargs["stage"]
     remaining: list[list[str]] = []
-    for year in years:
+    if stage == STAGE_RENDER_PCA:
+        # Step 3 enumerates from step 1's markers, so it needs no model settings and no
+        # land or wedge filtering: the source markers already name what exists.
         remaining.extend(
-            get_jobs(
-                inputs=kwargs["inputs"],
-                timestamp=datetime(year, 1, 1, tzinfo=UTC),
+            get_render_jobs(
                 store_path=kwargs["store_path"],
-                completed_path=kwargs["completed_path_template"].format(year=year),
-                checkpoint_path=kwargs["checkpoint_path"],
-                time_index=years.index(year),
+                artifact_path=kwargs["artifact_path"],
+                source_completed_paths=[
+                    kwargs["completed_path_template"].format(year=year)
+                    for year in years
+                ],
+                completed_path=kwargs["pca_completed_path"],
                 patch_size=kwargs["patch_size"],
-                window_size=kwargs["window_size"],
-                overlap_size=kwargs["overlap_size"],
-                compile_model=kwargs["compile_model"],
-                epsg_code=kwargs["epsg_code"],
-                wgs84_bounds=kwargs["wgs84_bounds"],
-                geojson_fname=kwargs["geojson_fname"],
-                job_size=kwargs["job_size"],
             )
         )
+    else:
+        for year in years:
+            remaining.extend(
+                get_jobs(
+                    inputs=kwargs["inputs"],
+                    timestamp=datetime(year, 1, 1, tzinfo=UTC),
+                    store_path=kwargs["store_path"],
+                    completed_path=kwargs["completed_path_template"].format(year=year),
+                    checkpoint_path=kwargs["checkpoint_path"],
+                    time_index=years.index(year),
+                    patch_size=kwargs["patch_size"],
+                    window_size=kwargs["window_size"],
+                    overlap_size=kwargs["overlap_size"],
+                    compile_model=kwargs["compile_model"],
+                    epsg_code=kwargs["epsg_code"],
+                    wgs84_bounds=kwargs["wgs84_bounds"],
+                    geojson_fname=kwargs["geojson_fname"],
+                    job_size=kwargs["job_size"],
+                )
+            )
     result.value = len(remaining)
     logger.info("%d job(s) still without a completion marker", len(remaining))
     if not remaining:
@@ -153,7 +178,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
         random.shuffle(remaining)
         batch = remaining[: target_pending - pending]
         rslp.common.worker.write_jobs(
-            queue_name, "large_scale_embeddings", "predict", batch
+            queue_name, "large_scale_embeddings", stage, batch
         )
         logger.info("enqueued %d job(s) (pending was %d)", len(batch), pending)
 
@@ -264,6 +289,9 @@ def supervise(
     checkpoint_path: str,
     image_name: str,
     cluster: list[str],
+    stage: str = STAGE_PREDICT,
+    artifact_path: str | None = None,
+    pca_completed_path: str | None = None,
     weka_bucket: str = DEFAULT_WEKA_BUCKET,
     weka_mount_path: str = DEFAULT_WEKA_MOUNT_PATH,
     datasets_api_url: str = DEFAULT_DATASETS_API_URL,
@@ -298,6 +326,13 @@ def supervise(
         checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
         image_name: the Beaker image the workers run.
         cluster: Beaker clusters to schedule workers on.
+        stage: which step to drive. "predict" writes embeddings and needs GPUs;
+            "render_pca" writes the derived false-color layer from step 1's markers and
+            needs none. Both are idempotent and marker-driven, so the same shallow-queue
+            and worker-top-up loop gives both the same resilience.
+        artifact_path: the fitted PCA artifact. Required for the render_pca stage.
+        pca_completed_path: marker directory for the render_pca stage's own output.
+            Required for the render_pca stage.
         weka_bucket: WEKA bucket to mount (the checkpoint lives there).
         weka_mount_path: where to mount it.
         datasets_api_url: OlmoEarth Datasets API URL for the data source.
@@ -347,10 +382,30 @@ def supervise(
         "epsg_code": epsg_code,
         "wgs84_bounds": wgs84_bounds,
         "stale_seconds": stale_seconds,
+        "stage": stage,
+        "artifact_path": artifact_path,
+        "pca_completed_path": pca_completed_path,
     }
 
     # "spawn" rather than the default fork: the child creates gRPC channels, and
     # forking a process that may already hold them is a known source of hangs.
+    if stage not in STAGES:
+        raise ValueError(f"stage must be one of {STAGES}, got {stage!r}")
+    if stage == STAGE_RENDER_PCA:
+        missing = [
+            name
+            for name, value in (
+                ("artifact_path", artifact_path),
+                ("pca_completed_path", pca_completed_path),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                f"stage {STAGE_RENDER_PCA} requires {', '.join(missing)}; fit the basis "
+                "with the fit_pca workflow first"
+            )
+
     ctx = multiprocessing.get_context("spawn")
     seen_work = False
     cycle = 0

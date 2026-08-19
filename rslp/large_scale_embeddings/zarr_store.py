@@ -34,6 +34,14 @@ logger = get_logger(__name__)
 # Name of the embedding array within each zone group.
 EMBEDDINGS_ARRAY = "embeddings"
 
+# Derived false-color RGB array, written alongside the embeddings for tile serving.
+# It shares the shard grid so one worker owns both of a window's objects and neither
+# write needs locking. 0 is reserved as nodata, so valid pixels occupy 1-255.
+PCA_ARRAY = "pca_rgb"
+PCA_DIMENSIONS = ("time", "rgb", "y", "x")
+PCA_NODATA_VALUE = 0
+PCA_BANDS = 3
+
 # Zarr v3 dimension order for the embedding array.
 EMBEDDING_DIMENSIONS = ("time", "band", "y", "x")
 
@@ -204,6 +212,7 @@ def init_store(
     shard_size: int = DEFAULT_SHARD_SIZE,
     zstd_level: int = DEFAULT_ZSTD_LEVEL,
     quantization_link: str = DEFAULT_QUANTIZATION_LINK,
+    create_pca_array: bool = True,
     overwrite: bool = False,
     storage_options: dict | None = None,
 ) -> None:
@@ -228,6 +237,9 @@ def init_store(
             and be a multiple of chunk_size, and tile_size a multiple of it.
         zstd_level: zstd compression level for the embedding and coordinate arrays.
         quantization_link: URL documenting the dequantization formula.
+        create_pca_array: whether to also create the derived pca_rgb array. It costs
+            nothing until written, and creating it up front keeps prediction workers
+            from ever having to mutate store metadata.
         overwrite: whether to overwrite an existing store.
         storage_options: fsspec storage options for remote stores.
     """
@@ -283,6 +295,21 @@ def init_store(
             dimension_names=EMBEDDING_DIMENSIONS,
         )
 
+        if create_pca_array:
+            # Same shard grid as the embeddings, so a window's two objects are always
+            # written together by one worker. uint8 and 3 bands, so this is about
+            # 2.3% of the embedding volume.
+            zone_group.create_array(
+                PCA_ARRAY,
+                shape=(len(years), PCA_BANDS, height, width),
+                chunks=(1, PCA_BANDS, chunk_size, chunk_size),
+                shards=(1, PCA_BANDS, shard_size, shard_size),
+                dtype="uint8",
+                fill_value=PCA_NODATA_VALUE,
+                compressors=[ZstdCodec(level=zstd_level)],
+                dimension_names=PCA_DIMENSIONS,
+            )
+
         # Coordinate arrays (pixel centers) for xarray/GeoZarr friendliness.
         origin_x, origin_y = origin_px
         time_coord = zone_group.create_array(
@@ -315,6 +342,80 @@ def init_store(
 
     zarr.consolidate_metadata(root.store)
     logger.info("initialized store %s with %d zones", store_path, len(zone_numbers))
+
+
+def _window_offsets(
+    group: "zarr.Group", window_bounds: PixelBounds, patch_size: int
+) -> tuple[int, int]:
+    """Map a window's input-pixel bounds to (row, col) offsets in the zone array.
+
+    The array origin is read back from the zone group's spatial:transform so it always
+    matches what init_store wrote.
+
+    Args:
+        group: the opened zone group.
+        window_bounds: window pixel bounds in the zone's northern CRS, at the input
+            resolution.
+        patch_size: the encoder patch size; the store grid is at 1/patch_size of the
+            input resolution.
+
+    Returns:
+        tuple of (row_offset, col_offset) in output pixels.
+    """
+    transform = group.attrs["spatial:transform"]
+    origin_x = round(transform[2] / transform[0])
+    origin_y = round(transform[5] / transform[4])
+    return (
+        window_bounds[1] // patch_size - origin_y,
+        window_bounds[0] // patch_size - origin_x,
+    )
+
+
+def write_pca_window_region(
+    store_path: str,
+    zone_number: int,
+    window_bounds: PixelBounds,
+    time_index: int,
+    rgb: np.ndarray,
+    patch_size: int = 1,
+    storage_options: dict | None = None,
+) -> None:
+    """Write one window's false-color RGB raster into the zone's pca_rgb array.
+
+    Shares the embedding array's shard grid, so this writes whole shards and is safe
+    under concurrent writes of disjoint windows.
+
+    Args:
+        store_path: the Zarr store path or URL.
+        zone_number: the UTM zone number (1-60) whose group to write into.
+        window_bounds: the window's pixel bounds in the zone's northern CRS, at the
+            input resolution.
+        time_index: the index into the time axis for this reference year.
+        rgb: uint8 array of shape (PCA_BANDS, height, width) at the output resolution.
+        patch_size: the encoder patch size.
+        storage_options: fsspec storage options for remote stores.
+    """
+    if rgb.shape[0] != PCA_BANDS:
+        raise ValueError(f"expected {PCA_BANDS} bands, got {rgb.shape[0]}")
+    group = zarr.open_group(
+        store=store_path,
+        path=zone_group_name(zone_number),
+        mode="r+",
+        storage_options=storage_options,
+    )
+    if PCA_ARRAY not in group:
+        raise KeyError(
+            f"{PCA_ARRAY} array missing from {zone_group_name(zone_number)}; the store "
+            "was created with create_pca_array=False"
+        )
+    row_offset, col_offset = _window_offsets(group, window_bounds, patch_size)
+    _, height, width = rgb.shape
+    group[PCA_ARRAY][
+        time_index,
+        :,
+        row_offset : row_offset + height,
+        col_offset : col_offset + width,
+    ] = rgb
 
 
 def write_window_region(
@@ -353,16 +454,9 @@ def write_window_region(
         mode="r+",
         storage_options=storage_options,
     )
-    transform = group.attrs["spatial:transform"]
-    x_res = transform[0]
-    y_res = transform[4]
-    origin_x = round(transform[2] / x_res)
-    origin_y = round(transform[5] / y_res)
-
     # The store grid is at the output resolution, so map the input-pixel window bounds
     # down to output pixels before offsetting against the (output-pixel) array origin.
-    col_offset = window_bounds[0] // patch_size - origin_x
-    row_offset = window_bounds[1] // patch_size - origin_y
+    row_offset, col_offset = _window_offsets(group, window_bounds, patch_size)
     _, height, width = embeddings.shape
     array = group[EMBEDDINGS_ARRAY]
     array[
