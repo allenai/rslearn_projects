@@ -50,9 +50,7 @@ def test_render_stage_requires_artifact_and_marker_path() -> None:
 
     with pytest.raises(ValueError, match="pca_completed_path"):
         sup.supervise(
-            **_base_kwargs(
-                stage=sup.STAGE_RENDER_PCA, artifact_path="gs://bucket/pca"
-            )
+            **_base_kwargs(stage=sup.STAGE_RENDER_PCA, artifact_path="gs://bucket/pca")
         )
 
     with pytest.raises(ValueError, match="artifact_path"):
@@ -74,7 +72,9 @@ def test_predict_stage_needs_no_pca_arguments() -> None:
     sup.supervise(**_base_kwargs())
 
 
-def test_run_cycle_render_stage_enumerates_from_source_markers(monkeypatch) -> None:
+def test_run_cycle_render_stage_enumerates_from_source_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The render stage must call get_render_jobs, not the predict enumerator."""
     calls: dict[str, object] = {}
 
@@ -113,7 +113,9 @@ def test_run_cycle_render_stage_enumerates_from_source_markers(monkeypatch) -> N
 
     monkeypatch.setattr("beaker.Beaker", FakeBeaker)
 
-    def fake_write_jobs(queue_name, project, workflow, batch) -> None:
+    def fake_write_jobs(
+        queue_name: str, project: str, workflow: str, batch: list
+    ) -> None:
         enqueued["workflow"] = workflow
         enqueued["count"] = len(batch)
 

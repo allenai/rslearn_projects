@@ -61,6 +61,7 @@ class EmbeddingInputs(Enum):
 
     S2 = "s2"
     S2_S1 = "s2_s1"
+    S2_LANDSAT = "s2_landsat"
 
 
 DATASET_CONFIG_FNAME = "data/large_scale_embeddings/{inputs}.json"
