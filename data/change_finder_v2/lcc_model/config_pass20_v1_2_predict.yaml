@@ -14,9 +14,9 @@ model:
         num_classes_binary: 3
         num_classes_src: 13
         num_classes_dst: 13
-        num_classes_pre_change: 7
-        num_classes_post_change: 14
-        num_classes_same_change: 6
+        num_classes_pre_change: 11
+        num_classes_post_change: 15
+        num_classes_same_change: null
         num_timesteps: 20
         embedding_dim: 768
         decoder_stages:
@@ -60,8 +60,6 @@ data:
             label_pre_change: targets
           post_change:
             label_post_change: targets
-          same_change:
-            label_same_change: targets
         tasks:
           binary:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
@@ -81,17 +79,12 @@ data:
           pre_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 7
+              num_classes: 11
               nodata_value: 0
           post_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 14
-              nodata_value: 0
-          same_change:
-            class_path: rslearn.train.tasks.segmentation.SegmentationTask
-            init_args:
-              num_classes: 6
+              num_classes: 15
               nodata_value: 0
     batch_size: 8
     num_workers: 32
@@ -113,6 +106,6 @@ trainer:
       init_args:
         output_layer: output_change
         selector: []
-project_name: 2026_07_23_lcc
+project_name: 2026_08_18_lcc
 run_name: pass20_v1_2_00
 management_dir: ${RSLP_PREFIX}/projects

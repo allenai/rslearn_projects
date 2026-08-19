@@ -26,6 +26,7 @@ model:
         binary_loss_weight: 2.0
         binary_mode: breakpoint
         contrast: abs
+        season_embed: true
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
@@ -109,5 +110,5 @@ trainer:
         output_layer: output_change
         selector: []
 project_name: 2026_08_18_lcc
-run_name: bp_abs_qdrop
+run_name: bp_abs_season_qdrop
 management_dir: ${RSLP_PREFIX}/projects

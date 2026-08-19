@@ -63,6 +63,7 @@
     "new_crop_structure",
     "selective_logging",
     "landslide",
+    "settlement",
   ];
 
   const SAME_CHANGE_CATEGORIES = [
@@ -332,8 +333,8 @@
     esriDateSelector.innerHTML = "";
     var images = getEsriImages();
     if (images.length === 0) return;
-    if (selectedEsriIdx === null || selectedEsriIdx >= images.length) {
-      selectedEsriIdx = 0;
+    if (selectedEsriIdx !== null && selectedEsriIdx >= images.length) {
+      selectedEsriIdx = images.length - 1;
     }
     for (var i = 0; i < images.length; i++) {
       var btn = document.createElement("button");
@@ -358,8 +359,14 @@
       esriGrid.innerHTML = '<div class="empty-msg">No ESRI images</div>';
       return;
     }
-    if (selectedEsriIdx === null || selectedEsriIdx >= images.length) {
-      selectedEsriIdx = 0;
+    if (selectedEsriIdx === null) {
+      // Don't load high-res imagery until the user asks for it, since it is
+      // slow and blocks the rest of the app.
+      esriGrid.innerHTML = '<div class="empty-msg">Select a date or press Shift+\u2190/\u2192 to load high-res image</div>';
+      return;
+    }
+    if (selectedEsriIdx >= images.length) {
+      selectedEsriIdx = images.length - 1;
     }
     var img = images[selectedEsriIdx];
     var entry = currentEntry.entry;
@@ -493,9 +500,12 @@
   function changeEsri(delta) {
     var images = getEsriImages();
     if (images.length === 0) return;
-    var curIdx = selectedEsriIdx === null ? 0 : selectedEsriIdx;
-    var nextIdx = (curIdx + delta + images.length) % images.length;
-    selectedEsriIdx = nextIdx;
+    if (selectedEsriIdx === null) {
+      // First activation: shift+right shows the first image, shift+left the last.
+      selectedEsriIdx = delta > 0 ? 0 : images.length - 1;
+    } else {
+      selectedEsriIdx = (selectedEsriIdx + delta + images.length) % images.length;
+    }
     renderEsriButtons();
     renderEsri();
   }
@@ -525,22 +535,25 @@
     var col = (evt.clientX - rect.left) / rect.width * (currentEntry.entry.bounds[2] - currentEntry.entry.bounds[0]);
     var row = (evt.clientY - rect.top) / rect.height * (currentEntry.entry.bounds[3] - currentEntry.entry.bounds[1]);
 
-    var threshold = 6;
+    // Shift+click always adds, even if close to an existing point.
+    if (!evt.shiftKey) {
+      var threshold = 6;
 
-    // Check positive points.
-    var posPixels = currentEntry.positive_pixels || [];
-    for (var i = 0; i < posPixels.length; i++) {
-      if (Math.abs(posPixels[i].col - col) < threshold && Math.abs(posPixels[i].row - row) < threshold) {
-        removePoint("remove_positive", i);
-        return;
+      // Check positive points.
+      var posPixels = currentEntry.positive_pixels || [];
+      for (var i = 0; i < posPixels.length; i++) {
+        if (Math.abs(posPixels[i].col - col) < threshold && Math.abs(posPixels[i].row - row) < threshold) {
+          removePoint("remove_positive", i);
+          return;
+        }
       }
-    }
-    // Check negative points.
-    var negPixels = currentEntry.negative_pixels || [];
-    for (var j = 0; j < negPixels.length; j++) {
-      if (Math.abs(negPixels[j].col - col) < threshold && Math.abs(negPixels[j].row - row) < threshold) {
-        removePoint("remove_negative", j);
-        return;
+      // Check negative points.
+      var negPixels = currentEntry.negative_pixels || [];
+      for (var j = 0; j < negPixels.length; j++) {
+        if (Math.abs(negPixels[j].col - col) < threshold && Math.abs(negPixels[j].row - row) < threshold) {
+          removePoint("remove_negative", j);
+          return;
+        }
       }
     }
 

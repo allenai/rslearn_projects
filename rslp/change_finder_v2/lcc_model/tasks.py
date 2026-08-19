@@ -283,7 +283,7 @@ class LCCMultiTask(MultiTask):
     def process_output(
         self, raw_output: Any, metadata: SampleMetadata
     ) -> npt.NDArray[np.uint16]:
-        """Stack per-task outputs into a single 58-band uint16 CHW array.
+        """Stack per-task outputs into a single 59-band uint16 CHW array.
 
         The two timestamp bands hold the predicted pre-change and post-change
         dates as integer days since ``TIMESTAMP_EPOCH``: the earliest and latest
@@ -298,8 +298,8 @@ class LCCMultiTask(MultiTask):
         29 = ts_pre_days (days since epoch)
         30 = ts_post_days (days since epoch)
         31..37 = pre_change (softmax probs)
-        38..51 = post_change (softmax probs)
-        52..57 = same_change (softmax probs)
+        38..52 = post_change (softmax probs)
+        53..58 = same_change (softmax probs)
         """
         parts: list[npt.NDArray[np.uint16]] = []
         for task_name in ("binary", "src", "dst"):

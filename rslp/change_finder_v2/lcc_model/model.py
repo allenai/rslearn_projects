@@ -86,7 +86,7 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
         num_classes_src: int = 13,
         num_classes_dst: int = 13,
         num_classes_pre_change: int = 7,
-        num_classes_post_change: int = 12,
+        num_classes_post_change: int = 15,
         num_classes_same_change: int = 6,
         num_timestamps: int = 20,
         embedding_dim: int = 768,

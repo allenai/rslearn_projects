@@ -23,6 +23,7 @@ import torch
 from rslearn.train.model_context import RasterImage
 from rslearn.train.transforms.transform import Transform
 
+from .model_singlepass import mark_negative_points_none
 from .transforms import (
     ANNOTATION_KEY,
     FREQUENT_KEY_PREFIX,
@@ -176,5 +177,8 @@ class FrequentOptionSamplerV2(Transform):
             target_dict["dst"]["valid"] = RasterImage(
                 image=torch.zeros_like(dst_valid.image)
             )
+
+        # Train the change-category heads to predict "none" at negative points.
+        mark_negative_points_none(target_dict)
 
         return input_dict, target_dict

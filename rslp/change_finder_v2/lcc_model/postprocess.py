@@ -71,6 +71,9 @@ LC_CLASS_NAMES = [
 
 # Change-category output bands, in the same order as the model output and the
 # output_change layer in config.json (class layout [nodata, none, <options...>]).
+# The pre_change head is the merged pre+same head: the former same_change
+# categories are appended after the pre categories (see
+# SinglePassMultiTask merge_same_into_pre).
 PRE_CHANGE_BANDS = [
     "pre_change_nodata",
     "pre_change_none",
@@ -79,6 +82,10 @@ PRE_CHANGE_BANDS = [
     "pre_change_wetland_loss",
     "pre_change_water_contract",
     "pre_change_removed_crop_structure",
+    "pre_change_agricultural_activity",
+    "pre_change_wildfire",
+    "pre_change_ice_motion",
+    "pre_change_flooding",
 ]
 POST_CHANGE_BANDS = [
     "post_change_nodata",
@@ -95,25 +102,20 @@ POST_CHANGE_BANDS = [
     "post_change_new_crop_structure",
     "post_change_selective_logging",
     "post_change_landslide",
-]
-SAME_CHANGE_BANDS = [
-    "same_change_nodata",
-    "same_change_none",
-    "same_change_agricultural_activity",
-    "same_change_wildfire",
-    "same_change_ice_motion",
-    "same_change_flooding",
+    "post_change_settlement",
 ]
 
-# Band offsets of the three change-category sections within the output raster.
+# Band offsets of the two change-category sections within the output raster.
 PRE_CHANGE_BAND_OFFSET = TS_POST_DAYS_BAND + 1
 POST_CHANGE_BAND_OFFSET = PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)
-SAME_CHANGE_BAND_OFFSET = POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)
 
 # Plain category names (class layout [nodata, none, <options...>]).
 PRE_CHANGE_CATEGORY_NAMES = [b.removeprefix("pre_change_") for b in PRE_CHANGE_BANDS]
 POST_CHANGE_CATEGORY_NAMES = [b.removeprefix("post_change_") for b in POST_CHANGE_BANDS]
-SAME_CHANGE_CATEGORY_NAMES = [b.removeprefix("same_change_") for b in SAME_CHANGE_BANDS]
+
+# Class index within the merged pre+same head where the former same_change
+# categories start (they are appended after the original pre categories).
+MERGED_SAME_CATEGORY_START = PRE_CHANGE_CATEGORY_NAMES.index("agricultural_activity")
 
 OUTPUT_LAYER = "output_change"
 OUTPUT_BANDS = [
@@ -132,7 +134,6 @@ OUTPUT_BANDS = [
     "ts_post_days",
     *PRE_CHANGE_BANDS,
     *POST_CHANGE_BANDS,
-    *SAME_CHANGE_BANDS,
 ]
 
 
@@ -157,7 +158,6 @@ def _component_to_feature(
     post_days: np.ndarray,
     pre_cat_class: np.ndarray,
     post_cat_class: np.ndarray,
-    same_cat_class: np.ndarray,
     src_id: int,
     dst_id: int,
     projection: object,
@@ -207,15 +207,14 @@ def _component_to_feature(
         "pre_change_date": days_to_date(pre_day).isoformat(),
         "post_change_date": days_to_date(post_day).isoformat(),
         # Predicted change categories: majority vote over the component of the
-        # per-pixel argmax class ("none" is a valid prediction).
+        # per-pixel argmax class ("none" is a valid prediction). The pre head is
+        # the merged pre+same head, so pre_change_category may also be one of
+        # the former same_change categories.
         "pre_change_category": PRE_CHANGE_CATEGORY_NAMES[
             _majority_class(pre_cat_class, comp_mask)
         ],
         "post_change_category": POST_CHANGE_CATEGORY_NAMES[
             _majority_class(post_cat_class, comp_mask)
-        ],
-        "same_change_category": SAME_CHANGE_CATEGORY_NAMES[
-            _majority_class(same_cat_class, comp_mask)
         ],
     }
 
@@ -263,12 +262,8 @@ def process_window(
     post_cat_probs = arr[
         POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)
     ]
-    same_cat_probs = arr[
-        SAME_CHANGE_BAND_OFFSET : SAME_CHANGE_BAND_OFFSET + len(SAME_CHANGE_BANDS)
-    ]
     pre_cat_class = pre_cat_probs[1:].argmax(axis=0) + 1  # (H, W)
     post_cat_class = post_cat_probs[1:].argmax(axis=0) + 1  # (H, W)
-    same_cat_class = same_cat_probs[1:].argmax(axis=0) + 1  # (H, W)
 
     features: list[dict] = []
 
@@ -303,7 +298,6 @@ def process_window(
                 post_days,
                 pre_cat_class,
                 post_cat_class,
-                same_cat_class,
                 s_id,
                 d_id,
                 projection,

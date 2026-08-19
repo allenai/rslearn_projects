@@ -17,8 +17,10 @@ Scene metadata is fetched from the OlmoEarth Datasets API. Required env vars:
 - OEDATASETS_API_URL: e.g. https://datasets.olmoearth.allenai.org
 - DATASETS_API_TOKEN: bearer token for API auth
 
-Idempotent: existing windows are skipped, so re-running after new annotations
-are added only processes and materializes the new entries.
+Idempotent: existing windows are compared against their annotation entry.
+Unchanged entries are skipped; entries whose labels changed get their label
+layers rewritten in place (imagery stays valid); entries whose geometry or
+dates changed are deleted and recreated (and need re-materialization).
 
 After running this script, use ``rslearn dataset materialize`` to download imagery.
 """
@@ -38,6 +40,7 @@ import numpy as np
 import requests
 import shapely
 import shapely.geometry
+from rasterio.enums import Resampling
 from rslearn.config import LayerConfig, QueryConfig, SpaceMode
 from rslearn.data_sources import Item
 from rslearn.data_sources.utils import match_candidate_items_to_window
@@ -114,6 +117,7 @@ POST_CHANGE_CATEGORY_NAMES = [
     "new_crop_structure",
     "selective_logging",
     "landslide",
+    "settlement",
 ]
 
 SAME_CHANGE_CATEGORY_NAMES = [
@@ -419,14 +423,12 @@ def _write_label_layer(
     window.mark_layer_completed(layer_name)
 
 
-def _rasterize_labels(
-    window: Window,
-    layers: dict[str, LayerConfig],
+def _compute_label_arrays(
     entry: dict[str, Any],
     projection: Projection,
     bounds: tuple[int, ...],
-) -> None:
-    """Rasterize point labels into binary/src/dst layers."""
+) -> dict[str, np.ndarray]:
+    """Rasterize point labels into per-layer arrays (no I/O)."""
     h = bounds[3] - bounds[1]
     w = bounds[2] - bounds[0]
 
@@ -468,11 +470,47 @@ def _rasterize_labels(
                     # Unset (cid == 0) but a sibling is set -> class 1 ("none").
                     change_labels[layer_name][row, col] = cid if cid > 0 else 1
 
-    _write_label_layer(window, "label_binary", layers["label_binary"], binary)
-    _write_label_layer(window, "label_src", layers["label_src"], src_label)
-    _write_label_layer(window, "label_dst", layers["label_dst"], dst_label)
-    for layer_name, array_hw in change_labels.items():
+    label_arrays = {
+        "label_binary": binary,
+        "label_src": src_label,
+        "label_dst": dst_label,
+    }
+    label_arrays.update(change_labels)
+    return label_arrays
+
+
+def _write_label_layers(
+    window: Window,
+    layers: dict[str, LayerConfig],
+    label_arrays: dict[str, np.ndarray],
+) -> None:
+    """Write the rasterized label arrays to the window's label layers."""
+    for layer_name, array_hw in label_arrays.items():
         _write_label_layer(window, layer_name, layers[layer_name], array_hw)
+
+
+def _label_layers_match(
+    window: Window,
+    layers: dict[str, LayerConfig],
+    label_arrays: dict[str, np.ndarray],
+) -> bool:
+    """Check whether the window's existing label rasters equal ``label_arrays``."""
+    for layer_name, expected_hw in label_arrays.items():
+        if not window.is_layer_completed(layer_name):
+            return False
+        band_set = layers[layer_name].band_sets[0]
+        raster = window.data.read_raster(
+            layer_name,
+            band_set.bands,
+            band_set.instantiate_raster_format(),
+            resampling=Resampling.nearest,
+        )
+        existing = raster.array
+        if existing.shape != (1, 1) + expected_hw.shape:
+            return False
+        if not np.array_equal(existing[0, 0], expected_hw):
+            return False
+    return True
 
 
 def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
@@ -538,15 +576,42 @@ def _get_window_wgs84_bounds(
     return wgs84.shp
 
 
+def _sidecar_dates_match(
+    existing_value: dict[str, Any] | None,
+    new_value: dict[str, Any],
+) -> bool:
+    """Check whether the annotation dates in the existing sidecar entry match.
+
+    The frequent-block time ranges (and hence the imagery layer datas) are fully
+    determined by these dates plus the window name, so matching dates mean the
+    existing imagery layers are still valid.
+    """
+    if existing_value is None:
+        return False
+    return all(
+        existing_value.get(key) == new_value[key]
+        for key in ("pre_change", "post_change", "first_noticeable")
+    )
+
+
 def _process_entry(
     entry: dict[str, Any],
     ds_path: str,
     gap_days: int = 0,
-) -> tuple[str, dict[str, Any]]:
+    existing_sidecar_value: dict[str, Any] | None = None,
+) -> tuple[str, dict[str, Any] | None, str]:
     """Process one annotation entry: create window, query API, write labels.
 
     Each call is independent (creates its own Dataset/session) so it can run
     in a separate multiprocessing worker.
+
+    If the window already exists, it is compared against the entry:
+    - projection/bounds and sidecar dates match, label rasters equal: skipped.
+    - only the label rasters differ: label layers are rewritten in place (the
+      imagery layer datas are unaffected since they depend only on the dates).
+    - projection/bounds or dates differ: the window directory is deleted and the
+      window is recreated from scratch (existing materialized imagery would be
+      stale), so it must be materialized again.
 
     Args:
         entry: the annotation entry to process.
@@ -554,8 +619,12 @@ def _process_entry(
         gap_days: add this many days to first_noticeable and post_change, so the
             frequent options start later and the model predicts change through
             post_change + gap.
+        existing_sidecar_value: the current annotations-sidecar entry for this
+            window, if any.
 
-    Returns (sidecar_key, sidecar_value) for the annotations sidecar.
+    Returns (sidecar_key, sidecar_value, status) where status is one of
+    "created", "recreated", "labels_updated", or "unchanged". sidecar_value is
+    None for "unchanged" (the existing sidecar entry should be kept).
     """
     api_url = os.environ["OEDATASETS_API_URL"].rstrip("/")
     api_token = os.environ.get("DATASETS_API_TOKEN", "")
@@ -610,6 +679,54 @@ def _process_entry(
         center_col + half,
         center_row + half,
     )
+
+    label_arrays = _compute_label_arrays(entry, projection, bounds)
+
+    positive_pixels = []
+    for pt in entry.get("positive_points", []):
+        col, row = _lonlat_to_pixel(pt["lon"], pt["lat"], projection, bounds)
+        positive_pixels.append({"col": col, "row": row})
+
+    sidecar_key = f"{window_group}/{window_name}"
+    if ref_point is None:
+        sidecar_value = {
+            "pre_change": midpoint.isoformat(),
+            "post_change": post_change.isoformat(),
+            "first_noticeable": first_noticeable.isoformat(),
+            "positive_pixel_coords": [],
+            "is_negative_only": True,
+        }
+    else:
+        sidecar_value = {
+            "pre_change": ref_point["pre_change"],
+            "post_change": post_change.isoformat(),
+            "first_noticeable": first_noticeable.isoformat(),
+            "positive_pixel_coords": positive_pixels,
+        }
+
+    # Decide what to do if the window already exists.
+    status = "created"
+    window_root = Window.get_window_root(UPath(ds_path), window_group, window_name)
+    if (window_root / "metadata.json").exists():
+        existing_windows = dataset.load_windows(
+            groups=[window_group], names=[window_name]
+        )
+        existing_window = existing_windows[0] if existing_windows else None
+        if (
+            existing_window is not None
+            and existing_window.projection == projection
+            and tuple(existing_window.bounds) == bounds
+            and _sidecar_dates_match(existing_sidecar_value, sidecar_value)
+        ):
+            if _label_layers_match(existing_window, dataset.layers, label_arrays):
+                return sidecar_key, None, "unchanged"
+            # Only the labels changed: rewrite them in place and keep the
+            # existing window metadata, layer datas, and materialized imagery.
+            _write_label_layers(existing_window, dataset.layers, label_arrays)
+            return sidecar_key, sidecar_value, "labels_updated"
+        # Geometry or dates changed: existing imagery is stale, start over.
+        window_root.fs.rm(window_root.path, recursive=True)
+        status = "recreated"
 
     block_starts = _compute_frequent_block_starts(
         first_noticeable, post_change, window_name
@@ -673,30 +790,9 @@ def _process_entry(
 
     window.save_layer_datas(layer_datas)
 
-    _rasterize_labels(window, dataset.layers, entry, projection, bounds)
+    _write_label_layers(window, dataset.layers, label_arrays)
 
-    positive_pixels = []
-    for pt in entry.get("positive_points", []):
-        col, row = _lonlat_to_pixel(pt["lon"], pt["lat"], projection, bounds)
-        positive_pixels.append({"col": col, "row": row})
-
-    sidecar_key = f"{window_group}/{window_name}"
-    if ref_point is None:
-        sidecar_value = {
-            "pre_change": midpoint.isoformat(),
-            "post_change": post_change.isoformat(),
-            "first_noticeable": first_noticeable.isoformat(),
-            "positive_pixel_coords": [],
-            "is_negative_only": True,
-        }
-    else:
-        sidecar_value = {
-            "pre_change": ref_point["pre_change"],
-            "post_change": post_change.isoformat(),
-            "first_noticeable": first_noticeable.isoformat(),
-            "positive_pixel_coords": positive_pixels,
-        }
-    return sidecar_key, sidecar_value
+    return sidecar_key, sidecar_value, status
 
 
 def prepare(
@@ -708,8 +804,11 @@ def prepare(
 ) -> None:
     """Prepare the LCC model dataset from v2 annotation JSONs.
 
-    Idempotent: windows that already exist are skipped, so re-running after new
-    annotations have been added only processes the new entries.
+    Idempotent: existing windows are compared against their annotation entry and
+    only reprocessed as much as needed. Unchanged entries are skipped; if only
+    the labels changed, the label layers are rewritten in place; if the window
+    geometry or annotation dates changed, the window is deleted and recreated
+    (and must be materialized again).
 
     Args:
         v2_json_paths: Paths to the v2 annotation JSONs.
@@ -736,10 +835,10 @@ def prepare(
     else:
         annotations_sidecar = {}
 
-    # Filter to entries that need processing.
+    # Filter to complete, non-duplicate entries; existing windows are checked
+    # against their entry in the workers.
     pending: list[dict[str, Any]] = []
     skipped_incomplete = 0
-    skipped_existing = 0
     skipped_duplicate_input = 0
     seen_window_keys: set[tuple[str, str]] = set()
 
@@ -748,46 +847,54 @@ def prepare(
         if not _entry_has_complete_annotations(entry):
             skipped_incomplete += 1
             continue
-        window_name = entry["window_name"]
-        window_group = entry["group"]
-        window_key = (window_group, window_name)
+        window_key = (entry["group"], entry["window_name"])
         if window_key in seen_window_keys:
             skipped_duplicate_input += 1
             continue
         seen_window_keys.add(window_key)
-        window_root = Window.get_window_root(ds_upath, window_group, window_name)
-        if (window_root / "metadata.json").exists():
-            skipped_existing += 1
-            continue
         pending.append(entry)
 
     print(
-        f"{len(pending)} to process, "
-        f"{skipped_incomplete} incomplete, {skipped_existing} already exist, "
+        f"{len(pending)} to check/process, "
+        f"{skipped_incomplete} incomplete, "
         f"{skipped_duplicate_input} duplicate inputs"
     )
 
     kwargs_list = [
-        dict(entry=entry, ds_path=ds_path, gap_days=gap_days) for entry in pending
+        dict(
+            entry=entry,
+            ds_path=ds_path,
+            gap_days=gap_days,
+            existing_sidecar_value=annotations_sidecar.get(
+                f"{entry['group']}/{entry['window_name']}"
+            ),
+        )
+        for entry in pending
     ]
 
-    created = 0
+    status_counts = {"created": 0, "recreated": 0, "labels_updated": 0, "unchanged": 0}
+    processed = 0
     with make_pool_and_star_imap_unordered(
         workers, _process_entry, kwargs_list
     ) as outputs:
-        for sidecar_key, sidecar_value in outputs:
-            annotations_sidecar[sidecar_key] = sidecar_value
-            created += 1
-            if created % 10 == 0:
-                print(f"  Processed {created}/{len(pending)} windows...")
+        for sidecar_key, sidecar_value, status in outputs:
+            if sidecar_value is not None:
+                annotations_sidecar[sidecar_key] = sidecar_value
+            status_counts[status] += 1
+            processed += 1
+            if processed % 10 == 0:
+                print(f"  Processed {processed}/{len(pending)} windows...")
 
     # Write annotation sidecar
     with sidecar_path.open("w") as f:
         json.dump(annotations_sidecar, f)
 
     print(
-        f"Created {created} windows, "
-        f"skipped {skipped_incomplete} incomplete + {skipped_existing} existing "
+        f"{status_counts['created']} created, "
+        f"{status_counts['recreated']} recreated (need re-materialization), "
+        f"{status_counts['labels_updated']} labels updated, "
+        f"{status_counts['unchanged']} unchanged; "
+        f"skipped {skipped_incomplete} incomplete "
         f"+ {skipped_duplicate_input} duplicate inputs"
     )
     print(f"Wrote annotation sidecar to {sidecar_path}")

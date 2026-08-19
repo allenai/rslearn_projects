@@ -22,6 +22,8 @@ import torch.nn.functional as F
 from rslearn.train.model_context import RasterImage
 from rslearn.train.transforms.transform import Transform
 
+from .model_singlepass import mark_negative_points_none
+
 QUARTERLY_KEY = "sentinel2_quarterly"
 FREQUENT_KEY_PREFIX = "sentinel2_frequent_"
 ANNOTATION_KEY = "_lcc_annotation"
@@ -220,6 +222,11 @@ class FrequentOptionSampler(Transform):
                     target_dict[key]["valid"] = RasterImage(
                         image=torch.zeros_like(valid.image)
                     )
+
+        # Train the change-category heads to predict "none" at negative points.
+        # Applied after the masking above since "none" is correct at a negative
+        # point regardless of whether post-change imagery is available.
+        mark_negative_points_none(target_dict)
 
         return input_dict, target_dict
 

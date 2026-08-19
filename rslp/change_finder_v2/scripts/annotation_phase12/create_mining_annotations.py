@@ -1,12 +1,16 @@
-"""Create a v2 annotation JSON from change_finder_v2 write_raster prediction outputs.
+"""Create a v2 annotation JSON of predicted mining pixels from write_raster outputs.
 
 The random-2048 prediction runs (``write_jobs_random_2048``) produce, for each
 2048x2048 tile, a 57-band ``output_change`` GeoTIFF (when ``write_raster`` is set)
 plus a sibling GeoJSON with the same basename. This script:
 
 1. Scans every ``.tif`` in the input directory.
-2. Thresholds the binary change band (>=0.5) and randomly selects ONE change pixel
-   per tile.
+2. Selects pixels predicted as mining by the post-change-category head:
+   - If ``--threshold`` is provided, pixels where the ``post_change_mining``
+     probability band (softmax * 255) is >= the threshold.
+   - Otherwise, pixels where the argmax over the post-change classes (skipping
+     class 0 = nodata) is mining.
+   One qualifying pixel per tile is randomly (but deterministically) selected.
 3. Reads the per-pixel argmax source/destination land cover category, the
    predicted change categories, and the predicted pre-change date (decoded from
    the day-encoded timestamp band) at that pixel. The pre head is the merged
@@ -18,10 +22,11 @@ plus a sibling GeoJSON with the same basename. This script:
 
 Usage::
 
-    python -m rslp.change_finder_v2.scripts.annotation_phase2.create_v2_annotations \
+    python -m rslp.change_finder_v2.scripts.annotation_phase12.create_mining_annotations \
         --input_dir /path/to/write_raster_outputs/ \
-        --output v2_annotations.json \
-        --group phase2
+        --output mining_annotations.json \
+        --group phase12 \
+        --threshold 128
 """
 
 from __future__ import annotations
@@ -43,7 +48,6 @@ from rslearn.utils.raster_format import get_raster_projection_and_bounds
 from upath import UPath
 
 from rslp.change_finder_v2.lcc_model.postprocess import (
-    BINARY_CHANGE_BAND,
     DST_BAND_OFFSET,
     LC_CLASS_NAMES,
     MERGED_SAME_CATEGORY_START,
@@ -57,8 +61,8 @@ from rslp.change_finder_v2.lcc_model.postprocess import (
 )
 from rslp.change_finder_v2.lcc_model.timestamp_encoding import days_to_date
 
-# Binary change probability threshold on the 0-255 uint8 scale (>= 0.5).
-DEFAULT_THRESHOLD = 128
+# Class index of "mining" within the post-change category classes.
+MINING_CLASS_IDX = POST_CHANGE_CATEGORY_NAMES.index("mining")
 # Side length (pixels) of the annotation window centered on the chosen pixel.
 DEFAULT_WINDOW_SIZE = 128
 # Number of years on either side of the change date for the entry time_range.
@@ -96,7 +100,7 @@ def _change_category_value(names: list[str], idx: int) -> str:
 def process_tile(
     tif_path_str: str,
     group: str,
-    threshold: int,
+    threshold: int | None,
     window_size: int,
     seed: int,
 ) -> dict | None:
@@ -108,12 +112,22 @@ def process_tile(
             arr = src.read()
             projection, bounds = get_raster_projection_and_bounds(src)
 
-    change_score = arr[BINARY_CHANGE_BAND]
-    ys, xs = np.where(change_score >= threshold)
+    post_cat_bands = arr[
+        POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET
+        + len(POST_CHANGE_CATEGORY_NAMES)
+    ]
+    if threshold is not None:
+        # Threshold the mining probability band (softmax * 255).
+        mining_mask = post_cat_bands[MINING_CLASS_IDX] >= threshold
+    else:
+        # Argmax over post-change classes, skipping class 0 (nodata).
+        post_cat_argmax = post_cat_bands[1:].argmax(axis=0) + 1
+        mining_mask = post_cat_argmax == MINING_CLASS_IDX
+    ys, xs = np.where(mining_mask)
     if len(ys) == 0:
         return None
 
-    # Deterministically pick one change pixel for this tile.
+    # Deterministically pick one mining pixel for this tile.
     rng = random.Random(f"{tif_path.name}:{seed}")
     i = rng.randrange(len(ys))
     row, col = int(ys[i]), int(xs[i])
@@ -133,12 +147,7 @@ def process_tile(
         row,
         col,
     ]
-    post_cat_probs = arr[
-        POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET
-        + len(POST_CHANGE_CATEGORY_NAMES),
-        row,
-        col,
-    ]
+    post_cat_probs = post_cat_bands[:, row, col]
     pre_cat_idx = int(pre_cat_probs[1:].argmax()) + 1
     post_cat_idx = int(post_cat_probs[1:].argmax()) + 1
 
@@ -206,7 +215,7 @@ def create_annotations(
     input_dir: str,
     output: str,
     group: str,
-    threshold: int = DEFAULT_THRESHOLD,
+    threshold: int | None = None,
     window_size: int = DEFAULT_WINDOW_SIZE,
     seed: int = 0,
     workers: int = 32,
@@ -246,7 +255,8 @@ def main() -> None:
     """CLI entrypoint."""
     parser = argparse.ArgumentParser(
         description=(
-            "Create a v2 annotation JSON from change_finder_v2 write_raster outputs."
+            "Create a v2 annotation JSON of predicted mining pixels from "
+            "change_finder_v2 write_raster outputs."
         )
     )
     parser.add_argument(
@@ -260,8 +270,11 @@ def main() -> None:
     parser.add_argument(
         "--threshold",
         type=int,
-        default=DEFAULT_THRESHOLD,
-        help="Binary change probability threshold (0-255). Default 128 (>=0.5).",
+        default=None,
+        help=(
+            "Mining probability threshold (0-255). If omitted, pixels where the "
+            "argmax over post-change classes is mining are selected instead."
+        ),
     )
     parser.add_argument(
         "--window_size",

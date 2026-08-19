@@ -50,6 +50,7 @@ from torchmetrics.utilities import dim_zero_cat
 from typing_extensions import override
 from upath import UPath
 
+from .prepare import PRE_CHANGE_CATEGORY_NAMES, SAME_CHANGE_CATEGORY_NAMES
 from .timestamp_encoding import timestamps_to_days
 from .timestamp_output import start_end_day_bands
 
@@ -69,6 +70,17 @@ NUM_FREQUENT = 4
 # Change-category heads (predicted per positive point, "none"-aware). These mirror
 # the src/dst segmentation heads and are trained/masked independently.
 CHANGE_CATEGORY_TASKS = ("pre_change", "post_change", "same_change")
+
+# Class names for the merged pre+same change-category head (see
+# SinglePassMultiTask merge_same_into_pre): the pre_change classes followed by
+# the same_change option classes (their nodata/none classes fold into pre's).
+MERGED_PRE_SAME_CATEGORY_NAMES = (
+    PRE_CHANGE_CATEGORY_NAMES + SAME_CHANGE_CATEGORY_NAMES[2:]
+)
+
+# Offset added to same_change option classes (>= 2) when merging them into the
+# pre_change label raster (same class 2 becomes the first class after pre's).
+SAME_TO_MERGED_OFFSET = len(PRE_CHANGE_CATEGORY_NAMES) - 2
 
 # Spacing used for the fake timestamps assigned to padding (duplicated) images.
 QUARTERLY_PERIOD = timedelta(days=90)
@@ -136,6 +148,35 @@ def _build_quarterly_stack(
         q_ts = pad_ts + q_ts
 
     return torch.cat(img_parts, dim=1), q_ts
+
+
+def mark_negative_points_none(target_dict: dict[str, Any]) -> None:
+    """Label negative (no-change) points as "none" for the change-category heads.
+
+    At a negative point there is by definition no change over the annotated time
+    range, so the pre/post/same change-category heads should be trained to
+    predict class 1 ("none") there instead of being masked out. The label
+    rasters only mark negatives in the binary layer (change-category rasters are
+    nodata there), so this derives the negative mask from binary class 1
+    (no_change) and sets classes/valid at those pixels for any change-category
+    target present. Positive points and unlabeled pixels are untouched.
+    """
+    if "binary" not in target_dict:
+        return
+    binary_classes = target_dict["binary"]["classes"].get_hw_tensor().long()
+    binary_valid = target_dict["binary"]["valid"].get_hw_tensor() > 0
+    neg_mask = binary_valid & (binary_classes == 1)
+    if not neg_mask.any():
+        return
+    for name in CHANGE_CATEGORY_TASKS:
+        if name not in target_dict:
+            continue
+        classes = target_dict[name]["classes"].get_hw_tensor().clone()
+        valid = target_dict[name]["valid"].get_hw_tensor().clone()
+        classes[neg_mask] = 1  # class 1 = "none"
+        valid[neg_mask] = 1
+        target_dict[name]["classes"] = RasterImage(image=classes[None, None, :, :])
+        target_dict[name]["valid"] = RasterImage(image=valid[None, None, :, :])
 
 
 def _make_decoder(
@@ -281,6 +322,9 @@ class SinglePassSampler(Transform):
             target_dict["dst"]["valid"] = RasterImage(
                 image=torch.zeros_like(dst_valid.image)
             )
+
+        # Train the change-category heads to predict "none" at negative points.
+        mark_negative_points_none(target_dict)
 
         return input_dict, target_dict
 
@@ -507,6 +551,7 @@ class SinglePassMultiTask(MultiTask):
         tasks: dict[str, Task],
         input_mapping: dict[str, dict[str, str]],
         annotations_path: str,
+        merge_same_into_pre: bool = False,
     ):
         """Create a new SinglePassMultiTask.
 
@@ -514,9 +559,16 @@ class SinglePassMultiTask(MultiTask):
             tasks: map from task name to task object (binary, src, dst).
             input_mapping: per-task raw-input remapping.
             annotations_path: path to lcc_annotations.json sidecar.
+            merge_same_into_pre: merge the same_change categories into the
+                pre_change label raster so a single head predicts both (class
+                layout MERGED_PRE_SAME_CATEGORY_NAMES). On conflict (a point
+                with both a pre and a same category) the pre category wins.
+                Requires the config to have no same_change task and a
+                pre_change task with the merged number of classes.
         """
         super().__init__(tasks=tasks, input_mapping=input_mapping)
         self.annotations_path = annotations_path
+        self.merge_same_into_pre = merge_same_into_pre
         self._annotations: dict[str, dict[str, Any]] | None = None
 
     def _load_annotations(self) -> dict[str, dict[str, Any]]:
@@ -536,6 +588,19 @@ class SinglePassMultiTask(MultiTask):
         When load_targets=False (predict mode), the annotation is not injected
         since the SinglePassSampler transform is not used during prediction.
         """
+        if self.merge_same_into_pre and load_targets:
+            raw_inputs = dict(raw_inputs)
+            pre = raw_inputs["label_pre_change"]
+            same = raw_inputs.pop("label_same_change")
+            assert isinstance(pre, RasterImage) and isinstance(same, RasterImage)
+            # Both label rasters share the same valid mask (class 0 = nodata,
+            # class 1 = "none" when a sibling category field is set), so the
+            # merge only fills same categories where pre has no category.
+            merged = pre.image.clone()
+            fill = (pre.image == 1) & (same.image >= 2)
+            merged[fill] = same.image[fill] + SAME_TO_MERGED_OFFSET
+            raw_inputs["label_pre_change"] = RasterImage(image=merged)
+
         input_dict, target_dict = super().process_inputs(
             raw_inputs, metadata=metadata, load_targets=load_targets
         )
@@ -558,7 +623,7 @@ class SinglePassMultiTask(MultiTask):
     def process_output(
         self, raw_output: Any, metadata: SampleMetadata
     ) -> npt.NDArray[np.uint16]:
-        """Stack per-task outputs into a 56-band uint16 CHW array.
+        """Stack per-task outputs into a uint16 CHW array.
 
         The two timestamp bands hold the predicted pre-change and post-change
         dates as integer days since ``TIMESTAMP_EPOCH``, derived from the per-pixel
@@ -566,15 +631,17 @@ class SinglePassMultiTask(MultiTask):
         real dates via ``raw_output["timestep_days"]``). Probability bands are
         stored as 0..255 within the uint16 raster.
 
-        Band layout:
+        Band layout with the merged pre+same head (57 bands):
         0..2   = binary (softmax probs)
         3..15  = src (softmax probs)
         16..28 = dst (softmax probs)
         29     = ts_pre_days (days since epoch)
         30     = ts_post_days (days since epoch)
-        31..37 = pre_change (softmax probs)
-        38..49 = post_change (softmax probs)
-        50..55 = same_change (softmax probs)
+        31..41 = pre_change, merged pre+same categories (softmax probs)
+        42..56 = post_change (softmax probs)
+
+        Models with a separate same_change head instead have a 7-band pre_change
+        section followed by post_change and a 6-band same_change section.
         """
         parts: list[npt.NDArray[np.uint16]] = []
         for task_name in ("binary", "src", "dst"):
@@ -595,6 +662,10 @@ class SinglePassMultiTask(MultiTask):
             parts.append(np.zeros((2, h, w), dtype=np.uint16))
 
         for task_name in CHANGE_CATEGORY_TASKS:
+            # same_change is absent when the model has no such head (merged
+            # pre+same configs).
+            if task_name not in raw_output:
+                continue
             probs = raw_output[task_name].float()
             parts.append(
                 (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
@@ -661,8 +732,8 @@ class SinglePassChangeModel(nn.Module):
         num_classes_src: int = 13,
         num_classes_dst: int = 13,
         num_classes_pre_change: int = 7,
-        num_classes_post_change: int = 12,
-        num_classes_same_change: int = 6,
+        num_classes_post_change: int = 15,
+        num_classes_same_change: int | None = 6,
         num_timesteps: int = 20,
         embedding_dim: int = 768,
         decoder_stages: list[StageSpec] | None = None,
@@ -682,7 +753,9 @@ class SinglePassChangeModel(nn.Module):
             num_classes_post_change: number of post_change_category classes
                 (including nodata and "none").
             num_classes_same_change: number of same_change_category classes
-                (including nodata and "none").
+                (including nodata and "none"), or None to omit the same_change
+                head entirely (used when the same categories are merged into
+                the pre_change head).
             num_timesteps: expected number of input timesteps (e.g. 20).
             embedding_dim: per-token encoder embedding size (768 for BASE). This
                 is the decoder input dim (a single pass, aggregated over time).
@@ -718,16 +791,21 @@ class SinglePassChangeModel(nn.Module):
         self.decoder_dst = _make_decoder(embedding_dim, decoder_stages, num_classes_dst)
 
         # Change-category decoders (pre/post/same), consuming the same aggregated
-        # feature as src/dst.
+        # feature as src/dst. The same_change decoder is optional: configs that
+        # merge the same categories into the pre head set
+        # num_classes_same_change=None and get no same_change head at all.
         self.decoder_pre_change = _make_decoder(
             embedding_dim, decoder_stages, num_classes_pre_change
         )
         self.decoder_post_change = _make_decoder(
             embedding_dim, decoder_stages, num_classes_post_change
         )
-        self.decoder_same_change = _make_decoder(
-            embedding_dim, decoder_stages, num_classes_same_change
-        )
+        if num_classes_same_change is not None:
+            self.decoder_same_change = _make_decoder(
+                embedding_dim, decoder_stages, num_classes_same_change
+            )
+        else:
+            self.decoder_same_change = None
 
         # Per-token timestamp heads producing one logit per timestep.
         self.start_head = nn.Linear(embedding_dim, 1)
@@ -827,12 +905,16 @@ class SinglePassChangeModel(nn.Module):
 
         Returns:
             Map from change-category task name to logits (B, num_classes, H', W').
+            Only contains heads that are configured (same_change is omitted when
+            num_classes_same_change is None).
         """
-        return {
+        logits = {
             "pre_change": self.decoder_pre_change(feat),
             "post_change": self.decoder_post_change(feat),
-            "same_change": self.decoder_same_change(feat),
         }
+        if self.decoder_same_change is not None:
+            logits["same_change"] = self.decoder_same_change(feat)
+        return logits
 
     def _add_change_category_losses(
         self,
