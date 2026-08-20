@@ -19,7 +19,7 @@ import tqdm
 from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
-from rslearn.utils.get_utm_ups_crs import get_proj_bounds
+from rslearn.utils.get_utm_ups_crs import get_proj_bounds, get_wgs84_bounds
 from upath import UPath
 
 import rslp.common.worker
@@ -103,9 +103,17 @@ def get_jobs(
 
         user_bounds_in_proj: PixelBounds | None = None
         if wgs84_bounds is not None:
-            dst_geom = STGeometry(
-                WGS84_PROJECTION, shapely.box(*wgs84_bounds), None
-            ).to_projection(projection)
+            # Intersect the user bounds with the WGS84 extent of the current UTM zone.
+            # Reprojecting geometry far outside the zone's extent fails (or yields
+            # meaningless bounds), so we skip non-intersecting zones entirely and only
+            # reproject the portion of the user bounds that falls within the zone.
+            zone_shp = shapely.box(*get_wgs84_bounds(utm_zone))
+            intersect_shp = shapely.box(*wgs84_bounds).intersection(zone_shp)
+            if intersect_shp.is_empty:
+                continue
+            dst_geom = STGeometry(WGS84_PROJECTION, intersect_shp, None).to_projection(
+                projection
+            )
             user_bounds_in_proj = (
                 int(dst_geom.shp.bounds[0]),
                 int(dst_geom.shp.bounds[1]),
