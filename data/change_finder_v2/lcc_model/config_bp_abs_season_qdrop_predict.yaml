@@ -109,6 +109,6 @@ trainer:
       init_args:
         output_layer: output_change
         selector: []
-project_name: 2026_08_18_lcc
+project_name: 2026_08_19_lcc
 run_name: bp_abs_season_qdrop
 management_dir: ${RSLP_PREFIX}/projects
