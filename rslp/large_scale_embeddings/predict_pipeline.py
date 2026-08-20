@@ -424,7 +424,7 @@ def predict_pipeline(
             by init_store first).
         completed_path: directory to write per-tile completion markers.
         checkpoint_path: the OlmoEarth checkpoint to compute embeddings with, e.g.
-            /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000.
+            /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_ndvi_w0p1_tanchor_newsamp_psuniform/step667200.
             Different checkpoints produce different embeddings so they must use
             different store and completed_path (same for patch_size, window_size, and
             overlap_size below).

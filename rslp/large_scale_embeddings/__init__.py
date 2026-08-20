@@ -12,17 +12,19 @@ The forward flow is three ordered steps:
 
 from .pca import fit_pca
 from .predict_pipeline import predict_pipeline
-from .render_pca import annotate_pca_array, render_pca_pipeline, write_render_jobs
+from .render_pca import annotate_pca_store, render_pca_pipeline, write_render_jobs
 from .supervise import launch_supervisor, supervise
 from .write_jobs import init_store, write_jobs
+from .zarr_store import init_pca_store
 
 workflows = {
     "fit_pca": fit_pca,
+    "init_pca_store": init_pca_store,
     "init_store": init_store,
     "launch_supervisor": launch_supervisor,
     "predict": predict_pipeline,
     "render_pca": render_pca_pipeline,
-    "annotate_pca_array": annotate_pca_array,
+    "annotate_pca_store": annotate_pca_store,
     "write_render_jobs": write_render_jobs,
     "supervise": supervise,
     "write_jobs": write_jobs,

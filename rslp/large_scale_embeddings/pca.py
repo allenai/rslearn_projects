@@ -40,6 +40,7 @@ from upath import UPath
 from rslp.log_utils import get_logger
 
 from .model import NODATA_VALUE, QUANTIZE_POWER, QUANTIZE_SCALE
+from .zarr_store import PCA_NODATA_VALUE
 
 logger = get_logger(__name__)
 
@@ -253,6 +254,65 @@ def project_to_rgb(embeddings: np.ndarray, artifact: PcaArtifact) -> np.ndarray:
     levels = np.clip(np.rint(scaled * 254.0) + 1.0, 1.0, 255.0).astype(np.uint8)
     out[:, valid] = levels.T
     return out
+
+
+def downsample_rgb(rgb: np.ndarray, factor: int) -> np.ndarray:
+    """Mean-downsample a uint8 RGB block, ignoring nodata pixels.
+
+    Averaging over valid pixels only matters at coastlines and coverage edges: a plain
+    block mean would drag the reserved 0 into the average and darken every edge pixel.
+    A block with no valid pixels stays nodata.
+
+    Args:
+        rgb: uint8 array of shape (bands, height, width). Height and width must be
+            divisible by factor.
+        factor: integer downsample factor.
+
+    Returns:
+        uint8 array of shape (bands, height // factor, width // factor).
+    """
+    if factor == 1:
+        return rgb
+    bands, height, width = rgb.shape
+    if height % factor or width % factor:
+        raise ValueError(f"shape {rgb.shape} is not divisible by factor {factor}")
+    out_h, out_w = height // factor, width // factor
+
+    # Validity is carried by any band; project_to_rgb sets all three to 0 together.
+    valid = (rgb[0] != PCA_NODATA_VALUE).reshape(out_h, factor, out_w, factor)
+    counts = valid.sum(axis=(1, 3))
+    blocks = rgb.reshape(bands, out_h, factor, out_w, factor).astype(np.uint32)
+    sums = (blocks * valid[None, :, :, :, :]).sum(axis=(2, 4))
+
+    out = np.zeros((bands, out_h, out_w), dtype=np.uint8)
+    keep = counts > 0
+    if keep.any():
+        means = sums[:, keep] / counts[keep]
+        # Stay inside 1-255 so a downsampled pixel never collides with nodata.
+        out[:, keep] = np.clip(np.rint(means), 1, 255).astype(np.uint8)
+    return out
+
+
+def build_pyramid(rgb: np.ndarray, max_level: int) -> dict[int, np.ndarray]:
+    """Build every pyramid level for one window from its full-resolution RGB.
+
+    Levels are produced by repeated halving of the previous level rather than by
+    downsampling the original each time, which is both cheaper and what a viewer
+    stepping through zooms will visually expect.
+
+    Args:
+        rgb: uint8 array of shape (bands, height, width) at level 0.
+        max_level: deepest level to produce, downsampled 2**max_level.
+
+    Returns:
+        mapping of level to its uint8 array, including level 0.
+    """
+    levels = {0: rgb}
+    current = rgb
+    for level in range(1, max_level + 1):
+        current = downsample_rgb(current, 2)
+        levels[level] = current
+    return levels
 
 
 def _sample_block_pixels(

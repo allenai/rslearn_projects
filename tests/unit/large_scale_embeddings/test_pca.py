@@ -5,7 +5,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
-import zarr
 
 from rslp.large_scale_embeddings import pca
 from rslp.large_scale_embeddings import zarr_store as zs
@@ -167,7 +166,7 @@ def test_artifact_validates_shapes() -> None:
         )
 
 
-def _init_small_store(path: Path, create_pca: bool = True) -> str:
+def _init_small_store(path: Path) -> str:
     store_path = str(path / "s2.zarr")
     zs.init_store(
         store_path=store_path,
@@ -180,70 +179,8 @@ def _init_small_store(path: Path, create_pca: bool = True) -> str:
         dimensions=DIMS,
         chunk_size=CHUNK,
         shard_size=SHARD,
-        create_pca_array=create_pca,
     )
     return store_path
-
-
-def test_init_store_creates_pca_array(tmp_path: Path) -> None:
-    store_path = _init_small_store(tmp_path)
-    group = zarr.open_group(store=store_path, path="utm10", mode="r")
-
-    assert zs.PCA_ARRAY in group
-    arr = group[zs.PCA_ARRAY]
-    assert arr.shape == (1, zs.PCA_BANDS, *group[zs.EMBEDDINGS_ARRAY].shape[2:])
-    assert arr.dtype == np.uint8
-    assert arr.fill_value == zs.PCA_NODATA_VALUE
-    # Shares the embedding shard grid so one worker owns both objects per window.
-    assert arr.shards[2:] == group[zs.EMBEDDINGS_ARRAY].shards[2:]
-    assert arr.chunks[2:] == group[zs.EMBEDDINGS_ARRAY].chunks[2:]
-
-
-def test_init_store_can_skip_pca_array(tmp_path: Path) -> None:
-    store_path = _init_small_store(tmp_path, create_pca=False)
-    group = zarr.open_group(store=store_path, path="utm10", mode="r")
-    assert zs.PCA_ARRAY not in group
-
-
-def test_write_pca_window_roundtrip(tmp_path: Path) -> None:
-    store_path = _init_small_store(tmp_path)
-    _, (origin_x, origin_y), _ = get_zone_grid(10, RESOLUTION, TILE_SIZE)
-    bx0 = origin_x + 3 * SHARD
-    by0 = origin_y + 5 * SHARD
-    bounds = (bx0, by0, bx0 + SHARD, by0 + SHARD)
-
-    rng = np.random.default_rng(7)
-    rgb = rng.integers(1, 256, size=(zs.PCA_BANDS, SHARD, SHARD), dtype=np.uint8)
-    zs.write_pca_window_region(store_path, 10, bounds, 0, rgb)
-
-    group = zarr.open_group(store=store_path, path="utm10", mode="r")
-    col0 = bx0 - origin_x
-    row0 = by0 - origin_y
-    got = np.asarray(
-        group[zs.PCA_ARRAY][0, :, row0 : row0 + SHARD, col0 : col0 + SHARD]
-    )
-    np.testing.assert_array_equal(got, rgb)
-    # Neighbouring region is untouched.
-    other = np.asarray(group[zs.PCA_ARRAY][0, :, row0 + SHARD : row0 + 2 * SHARD, col0])
-    assert not other.any()
-
-
-def test_write_pca_window_rejects_wrong_band_count(tmp_path: Path) -> None:
-    store_path = _init_small_store(tmp_path)
-    _, (origin_x, origin_y), _ = get_zone_grid(10, RESOLUTION, TILE_SIZE)
-    bounds = (origin_x, origin_y, origin_x + SHARD, origin_y + SHARD)
-    bad = np.zeros((zs.PCA_BANDS + 1, SHARD, SHARD), dtype=np.uint8)
-    with pytest.raises(ValueError, match="expected 3 bands"):
-        zs.write_pca_window_region(store_path, 10, bounds, 0, bad)
-
-
-def test_write_pca_window_without_array_is_actionable(tmp_path: Path) -> None:
-    store_path = _init_small_store(tmp_path, create_pca=False)
-    _, (origin_x, origin_y), _ = get_zone_grid(10, RESOLUTION, TILE_SIZE)
-    bounds = (origin_x, origin_y, origin_x + SHARD, origin_y + SHARD)
-    rgb = np.zeros((zs.PCA_BANDS, SHARD, SHARD), dtype=np.uint8)
-    with pytest.raises(KeyError, match="create_pca_array=False"):
-        zs.write_pca_window_region(store_path, 10, bounds, 0, rgb)
 
 
 def _write_marker(
@@ -318,29 +255,6 @@ def test_fit_pca_end_to_end(tmp_path: Path) -> None:
     assert artifact.metadata["geoemb:pca_dimensions"] == DIMS
     assert artifact.metadata["geoemb:pca_fit_seed"] == 7
 
-    # Render one of the written windows and store it, then read it back.
-    bx0, by0 = written[0]
-    group = zarr.open_group(store=store_path, path="utm10", mode="r")
-    col0, row0 = bx0 - origin_x, by0 - origin_y
-    block = np.asarray(
-        group[zs.EMBEDDINGS_ARRAY][0, :, row0 : row0 + SHARD, col0 : col0 + SHARD]
-    )
-    rgb = pca.project_to_rgb(block, artifact)
-    zs.write_pca_window_region(
-        store_path, 10, (bx0, by0, bx0 + SHARD, by0 + SHARD), 0, rgb
-    )
-
-    got = np.asarray(
-        zarr.open_group(store=store_path, path="utm10", mode="r")[zs.PCA_ARRAY][
-            0, :, row0 : row0 + SHARD, col0 : col0 + SHARD
-        ]
-    )
-    np.testing.assert_array_equal(got, rgb)
-    assert got.min() >= 1  # this window is fully valid, so nothing is nodata
-    # A real basis spreads the data across the byte range rather than collapsing it.
-    assert got.max() > 200
-    assert len(np.unique(got)) > 50
-
 
 def test_fit_pca_without_markers_is_actionable(tmp_path: Path) -> None:
     store_path = _init_small_store(tmp_path)
@@ -350,3 +264,44 @@ def test_fit_pca_without_markers_is_actionable(tmp_path: Path) -> None:
             completed_paths=[str(tmp_path / "absent")],
             artifact_path=str(tmp_path / "artifact"),
         )
+
+
+def test_downsample_rgb_ignores_nodata() -> None:
+    """A block mean must not average the reserved 0 into valid pixels."""
+    rgb = np.full((3, 8, 8), 200, dtype=np.uint8)
+    rgb[:, :4, :4] = zs.PCA_NODATA_VALUE
+    out = pca.downsample_rgb(rgb, 2)
+
+    assert out.shape == (3, 4, 4)
+    # The fully-nodata quadrant stays nodata.
+    assert (out[:, :2, :2] == zs.PCA_NODATA_VALUE).all()
+    # Valid areas keep their value rather than being darkened toward 0.
+    assert (out[:, 2:, 2:] == 200).all()
+
+
+def test_downsample_rgb_partial_block_uses_valid_pixels_only() -> None:
+    rgb = np.zeros((3, 2, 2), dtype=np.uint8)
+    rgb[:, 0, 0] = 100  # one valid pixel of four
+    out = pca.downsample_rgb(rgb, 2)
+    # Mean over the single valid pixel, not over all four.
+    assert out.shape == (3, 1, 1)
+    assert (out[:, 0, 0] == 100).all()
+
+
+def test_downsample_rgb_never_emits_the_nodata_sentinel() -> None:
+    rgb = np.ones((3, 4, 4), dtype=np.uint8)  # darkest valid value
+    out = pca.downsample_rgb(rgb, 2)
+    assert out.min() >= 1
+
+
+def test_downsample_rgb_rejects_indivisible_shape() -> None:
+    with pytest.raises(ValueError, match="not divisible"):
+        pca.downsample_rgb(np.zeros((3, 5, 5), np.uint8), 2)
+
+
+def test_build_pyramid_halves_each_level() -> None:
+    rgb = np.full((3, 2048, 2048), 128, dtype=np.uint8)
+    levels = pca.build_pyramid(rgb, 3)
+    assert sorted(levels) == [0, 1, 2, 3]
+    assert [levels[k].shape[1] for k in range(4)] == [2048, 1024, 512, 256]
+    assert levels[0] is rgb  # level 0 is the input, not a copy

@@ -34,13 +34,32 @@ logger = get_logger(__name__)
 # Name of the embedding array within each zone group.
 EMBEDDINGS_ARRAY = "embeddings"
 
-# Derived false-color RGB array, written alongside the embeddings for tile serving.
-# It shares the shard grid so one worker owns both of a window's objects and neither
-# write needs locking. 0 is reserved as nodata, so valid pixels occupy 1-255.
+# Derived false-color RGB, written to its own sibling store so the basis can be refit
+# without touching the embeddings and two renders can exist side by side during a
+# cutover. 0 is reserved as nodata, so valid pixels occupy 1-255.
 PCA_ARRAY = "pca_rgb"
 PCA_DIMENSIONS = ("time", "rgb", "y", "x")
 PCA_NODATA_VALUE = 0
 PCA_BANDS = 3
+
+# Multiscale pyramid. Level k is downsampled 2**k, so a client picks a level by zoom and
+# reads a bounded number of chunks at any extent instead of the whole view at 10 m.
+# Each level keeps shard == one source window's footprint at that level, which preserves
+# the one-writer-per-shard property that makes concurrent writes safe without locking.
+DEFAULT_PCA_MAX_LEVEL = 3
+
+
+def pca_level_array_name(level: int) -> str:
+    """Name of the pca_rgb array at a pyramid level.
+
+    Args:
+        level: 0 for full resolution, k for a 2**k downsample.
+
+    Returns:
+        the array name.
+    """
+    return PCA_ARRAY if level == 0 else f"{PCA_ARRAY}_{2 ** level}"
+
 
 # Zarr v3 dimension order for the embedding array.
 EMBEDDING_DIMENSIONS = ("time", "band", "y", "x")
@@ -212,7 +231,6 @@ def init_store(
     shard_size: int = DEFAULT_SHARD_SIZE,
     zstd_level: int = DEFAULT_ZSTD_LEVEL,
     quantization_link: str = DEFAULT_QUANTIZATION_LINK,
-    create_pca_array: bool = True,
     overwrite: bool = False,
     storage_options: dict | None = None,
 ) -> None:
@@ -237,9 +255,6 @@ def init_store(
             and be a multiple of chunk_size, and tile_size a multiple of it.
         zstd_level: zstd compression level for the embedding and coordinate arrays.
         quantization_link: URL documenting the dequantization formula.
-        create_pca_array: whether to also create the derived pca_rgb array. It costs
-            nothing until written, and creating it up front keeps prediction workers
-            from ever having to mutate store metadata.
         overwrite: whether to overwrite an existing store.
         storage_options: fsspec storage options for remote stores.
     """
@@ -294,21 +309,6 @@ def init_store(
             compressors=[ZstdCodec(level=zstd_level)],
             dimension_names=EMBEDDING_DIMENSIONS,
         )
-
-        if create_pca_array:
-            # Same shard grid as the embeddings, so a window's two objects are always
-            # written together by one worker. uint8 and 3 bands, so this is about
-            # 2.3% of the embedding volume.
-            zone_group.create_array(
-                PCA_ARRAY,
-                shape=(len(years), PCA_BANDS, height, width),
-                chunks=(1, PCA_BANDS, chunk_size, chunk_size),
-                shards=(1, PCA_BANDS, shard_size, shard_size),
-                dtype="uint8",
-                fill_value=PCA_NODATA_VALUE,
-                compressors=[ZstdCodec(level=zstd_level)],
-                dimension_names=PCA_DIMENSIONS,
-            )
 
         # Coordinate arrays (pixel centers) for xarray/GeoZarr friendliness.
         origin_x, origin_y = origin_px
@@ -371,51 +371,188 @@ def _window_offsets(
     )
 
 
-def write_pca_window_region(
-    store_path: str,
+def init_pca_store(
+    pca_store_path: str,
+    zone_numbers: list[int],
+    years: list[int],
+    model_url: str,
+    source_data: list[str],
+    resolution: float,
+    tile_size: int,
+    gsd: float | None = None,
+    build_version: str = "0.0.1",
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    shard_size: int = DEFAULT_SHARD_SIZE,
+    max_level: int = DEFAULT_PCA_MAX_LEVEL,
+    zstd_level: int = DEFAULT_ZSTD_LEVEL,
+    overwrite: bool = False,
+    storage_options: dict | None = None,
+) -> None:
+    """Create the sibling store that holds the derived false-color pyramid.
+
+    Kept separate from the embeddings store so the basis can be refit without touching
+    the source, and so two renders can exist side by side while a cutover completes.
+    Put the basis version in the path, e.g. ``.../pca_v1.zarr``.
+
+    Every level keeps one shard equal to one source window's footprint at that level, so
+    a window is still a whole object owned by a single writer and concurrent renders of
+    disjoint windows need no locking.
+
+    Args:
+        pca_store_path: the store path or URL to create.
+        zone_numbers: the UTM zone numbers to create; defaults to the caller's list.
+        years: the annual reference years, defining the time axis.
+        model_url: URL reference to the encoder the embeddings came from.
+        source_data: URLs of the source datasets.
+        resolution: the level-0 resolution in metres per pixel.
+        tile_size: the tile size in pixels, as used for the embeddings store.
+        gsd: ground sample distance; defaults to resolution.
+        build_version: version of the software that built the store.
+        chunk_size: inner chunk spatial size at level 0.
+        shard_size: shard spatial size at level 0; must equal the prediction window.
+        max_level: deepest pyramid level, downsampled 2**max_level.
+        zstd_level: zstd compression level.
+        overwrite: whether to overwrite an existing store.
+        storage_options: fsspec storage options for remote stores.
+    """
+    if shard_size % (2**max_level) != 0:
+        raise ValueError(
+            f"shard_size {shard_size} must be divisible by 2**max_level "
+            f"({2**max_level}) so every level keeps one shard per window"
+        )
+    if gsd is None:
+        gsd = float(resolution)
+
+    root = zarr.open_group(
+        store=pca_store_path,
+        mode="w" if overwrite else "w-",
+        storage_options=storage_options,
+    )
+    geoemb_attrs = build_geoemb_attrs(
+        dimensions=PCA_BANDS,
+        model_url=model_url,
+        source_data=source_data,
+        gsd=gsd,
+        build_version=build_version,
+    )
+    multiscales = [
+        {
+            "array": pca_level_array_name(level),
+            "factor": 2**level,
+            "resolution": float(resolution) * (2**level),
+        }
+        for level in range(max_level + 1)
+    ]
+    root.attrs.update(
+        {
+            "zarr_conventions": ZARR_CONVENTIONS,
+            **geoemb_attrs,
+            "geoemb:multiscales": multiscales,
+            "geoemb:note": (
+                "False-color visualization derived from embeddings by PCA. Three "
+                "components capture only a minority of embedding variance; do not use "
+                "these bands as features."
+            ),
+        }
+    )
+
+    years_arr = np.array(years, dtype="int32")
+    for zone_number in zone_numbers:
+        projection, origin_px, shape_px = get_zone_grid(
+            zone_number, resolution, tile_size
+        )
+        height, width = shape_px
+        zone_group = root.create_group(zone_group_name(zone_number))
+        zone_group.attrs.update(
+            {
+                "zarr_conventions": ZARR_CONVENTIONS,
+                **geoemb_attrs,
+                **build_zone_spatial_attrs(projection, origin_px, shape_px),
+                "geoemb:multiscales": multiscales,
+            }
+        )
+        for level in range(max_level + 1):
+            factor = 2**level
+            level_shard = shard_size // factor
+            zone_group.create_array(
+                pca_level_array_name(level),
+                shape=(len(years), PCA_BANDS, height // factor, width // factor),
+                chunks=(
+                    1,
+                    PCA_BANDS,
+                    min(chunk_size, level_shard),
+                    min(chunk_size, level_shard),
+                ),
+                shards=(1, PCA_BANDS, level_shard, level_shard),
+                dtype="uint8",
+                fill_value=PCA_NODATA_VALUE,
+                compressors=[ZstdCodec(level=zstd_level)],
+                dimension_names=PCA_DIMENSIONS,
+            )
+
+        time_coord = zone_group.create_array(
+            "time", shape=(len(years),), dtype="int32", dimension_names=("time",)
+        )
+        time_coord[:] = years_arr
+        logger.info(
+            "created pca zone group %s with %d level(s)",
+            zone_group_name(zone_number),
+            max_level + 1,
+        )
+
+    zarr.consolidate_metadata(root.store)
+    logger.info(
+        "initialized pca store %s with %d zones and levels 0..%d",
+        pca_store_path,
+        len(zone_numbers),
+        max_level,
+    )
+
+
+def write_pca_window_levels(
+    pca_store_path: str,
     zone_number: int,
     window_bounds: PixelBounds,
     time_index: int,
-    rgb: np.ndarray,
+    levels: dict[int, np.ndarray],
     patch_size: int = 1,
     storage_options: dict | None = None,
 ) -> None:
-    """Write one window's false-color RGB raster into the zone's pca_rgb array.
-
-    Shares the embedding array's shard grid, so this writes whole shards and is safe
-    under concurrent writes of disjoint windows.
+    """Write one window's RGB into every pyramid level of the pca store.
 
     Args:
-        store_path: the Zarr store path or URL.
+        pca_store_path: the pca store path or URL.
         zone_number: the UTM zone number (1-60) whose group to write into.
         window_bounds: the window's pixel bounds in the zone's northern CRS, at the
             input resolution.
         time_index: the index into the time axis for this reference year.
-        rgb: uint8 array of shape (PCA_BANDS, height, width) at the output resolution.
+        levels: mapping of pyramid level to its uint8 (PCA_BANDS, h, w) array.
         patch_size: the encoder patch size.
         storage_options: fsspec storage options for remote stores.
     """
-    if rgb.shape[0] != PCA_BANDS:
-        raise ValueError(f"expected {PCA_BANDS} bands, got {rgb.shape[0]}")
     group = zarr.open_group(
-        store=store_path,
+        store=pca_store_path,
         path=zone_group_name(zone_number),
         mode="r+",
         storage_options=storage_options,
     )
-    if PCA_ARRAY not in group:
-        raise KeyError(
-            f"{PCA_ARRAY} array missing from {zone_group_name(zone_number)}; the store "
-            "was created with create_pca_array=False"
-        )
     row_offset, col_offset = _window_offsets(group, window_bounds, patch_size)
-    _, height, width = rgb.shape
-    group[PCA_ARRAY][
-        time_index,
-        :,
-        row_offset : row_offset + height,
-        col_offset : col_offset + width,
-    ] = rgb
+    for level, rgb in sorted(levels.items()):
+        name = pca_level_array_name(level)
+        if name not in group:
+            raise KeyError(
+                f"{name} missing from {zone_group_name(zone_number)}; the pca store was "
+                f"created with a smaller max_level"
+            )
+        if rgb.shape[0] != PCA_BANDS:
+            raise ValueError(
+                f"level {level}: expected {PCA_BANDS} bands, got {rgb.shape[0]}"
+            )
+        factor = 2**level
+        row = row_offset // factor
+        col = col_offset // factor
+        _, height, width = rgb.shape
+        group[name][time_index, :, row : row + height, col : col + width] = rgb
 
 
 def write_window_region(

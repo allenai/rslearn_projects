@@ -1,16 +1,26 @@
-"""Step 3 of the embedding flow: render the false-color pca_rgb layer.
+"""Step 3 of the embedding flow: render the false-color pyramid.
 
 The flow is three ordered steps, each depending on the previous one's output:
 
 1. ``predict`` writes the int8 embeddings into the GeoZarr archive.
 2. ``fit_pca`` samples that archive and fits the global basis, so the basis is fitted
    on exactly the data it will be applied to.
-3. ``render_pca`` (this module) reads the embeddings back and writes ``pca_rgb``.
+3. ``render_pca`` (this module) reads the embeddings back and writes the multiscale
+   ``pca_rgb`` pyramid into a **separate** store.
 
-Step 3 is deliberately separate rather than folded into step 1, because the basis
-cannot exist until step 1 has produced data to fit on. It is also the cheap step: no
-model, no GPU, just a read, three dot products per pixel and a write. That means it
-runs on ordinary CPU workers instead of competing for GPU capacity.
+Step 3 is deliberately separate from step 1 because the basis cannot exist until step 1
+has produced data to fit on. It is also the cheap step: no model, no GPU, just a read,
+three dot products per pixel, and a write. That means it runs on ordinary CPU workers
+instead of competing for GPU capacity.
+
+The output is a sibling store rather than another array inside the embeddings store, so
+the basis can be refit without touching the source and two renders can exist side by
+side while a cutover completes. Put the basis version in its path.
+
+The pyramid is what makes the store directly servable: a client picks a level by zoom and
+reads a bounded number of chunks at any extent, instead of pulling a whole view at 10 m.
+Every level keeps one shard per window footprint, so a window is still a whole object
+owned by a single writer and concurrent renders of disjoint windows need no locking.
 
 Work is enumerated from step 1's completion markers rather than by re-running the land
 and wedge filters. Each marker lists exactly the windows that were written, so step 3
@@ -28,57 +38,88 @@ from upath import UPath
 import rslp.common.worker
 from rslp.log_utils import get_logger
 
-from .pca import PcaArtifact, project_to_rgb
-from .zarr_store import EMBEDDINGS_ARRAY, PCA_ARRAY, zone_group_name
+from .pca import PcaArtifact, build_pyramid, project_to_rgb
+from .zarr_store import (
+    DEFAULT_PCA_MAX_LEVEL,
+    EMBEDDINGS_ARRAY,
+    pca_level_array_name,
+    write_pca_window_levels,
+    zone_group_name,
+)
 
 logger = get_logger(__name__)
 
 
-def get_pca_marker_fname(completed_path: str, source_marker_name: str) -> UPath:
-    """Locate this step's completion marker for a given source marker.
+def pca_marker_name(source_fname: UPath) -> str:
+    """Build this step's marker name for a step 1 marker, unique across years.
+
+    The source's parent directory must be part of the name. Step 1 puts the year in the
+    *directory* (completed_2022/, completed_2023/, ...) and gives every year the same
+    file name for a given block, so keying only on the file name collapses all years
+    onto one marker: the first year written makes every later year look already done and
+    the block is silently skipped.
+
+    Derived from the path alone rather than from the marker's ``time_index`` field, so
+    enumeration can compute it without opening every source marker.
+
+    Args:
+        source_fname: the step 1 marker being rendered.
+
+    Returns:
+        the marker file name for this unit of work.
+    """
+    return f"{source_fname.parent.name}_{source_fname.name}"
+
+
+def get_pca_marker_fname(completed_path: str, source_fname: UPath) -> UPath:
+    """Locate this step's completion marker for a given step 1 marker.
 
     Args:
         completed_path: the directory holding step 3's markers.
-        source_marker_name: the file name of the step 1 marker being rendered.
+        source_fname: the step 1 marker being rendered.
 
     Returns:
         the marker path for this unit of work.
     """
-    return UPath(completed_path) / source_marker_name
+    return UPath(completed_path) / pca_marker_name(source_fname)
 
 
 def render_pca_pipeline(
     store_path: str,
+    pca_store_path: str,
     artifact_path: str,
     source_marker: str,
     completed_path: str,
     patch_size: int = 1,
+    max_level: int = DEFAULT_PCA_MAX_LEVEL,
     storage_options: dict | None = None,
 ) -> None:
-    """Render one block's worth of windows into the store's pca_rgb array.
+    """Render one block's worth of windows into the pca store's pyramid.
 
     Idempotent: returns immediately if this block's marker already exists, so jobs can
     be re-enqueued freely after a worker dies.
 
     Args:
-        store_path: the GeoZarr store holding both arrays.
+        store_path: the GeoZarr store holding the embeddings. Opened read-only.
+        pca_store_path: the sibling store to write the false-color pyramid into.
         artifact_path: the fitted global PCA artifact from step 2.
         source_marker: path to the step 1 completion marker naming the windows to
             render.
         completed_path: directory for this step's own completion markers.
         patch_size: the encoder patch size used when the embeddings were written.
+        max_level: deepest pyramid level to write, downsampled 2**max_level.
         storage_options: fsspec storage options for remote stores.
     """
     source_fname = UPath(source_marker)
-    marker_fname = get_pca_marker_fname(completed_path, source_fname.name)
-    if marker_fname.exists():
-        logger.info("marker file %s already exists", marker_fname)
-        return
-
     with source_fname.open() as f:
         source = json.load(f)
     written: list[list[int]] = source.get("written") or []
     time_index = source["time_index"]
+
+    marker_fname = get_pca_marker_fname(completed_path, source_fname)
+    if marker_fname.exists():
+        logger.info("marker file %s already exists", marker_fname)
+        return
 
     projection = Projection.deserialize(source["projection"])
     epsg = projection.crs.to_epsg()
@@ -90,19 +131,13 @@ def render_pca_pipeline(
     group = zarr.open_group(
         store=store_path,
         path=zone_group_name(zone_number),
-        mode="r+",
+        mode="r",
         storage_options=storage_options,
     )
-    if PCA_ARRAY not in group:
-        raise KeyError(
-            f"{PCA_ARRAY} missing from {zone_group_name(zone_number)}; re-run init_store "
-            "with create_pca_array=True"
-        )
     transform = group.attrs["spatial:transform"]
     origin_x = round(transform[2] / transform[0])
     origin_y = round(transform[5] / transform[4])
     embeddings_array = group[EMBEDDINGS_ARRAY]
-    pca_array = group[PCA_ARRAY]
     window_size = embeddings_array.shards[2]
 
     rendered: list[list[int]] = []
@@ -117,23 +152,35 @@ def render_pca_pipeline(
         )
         rgb = project_to_rgb(block, artifact)
         if not rgb.any():
-            # Nothing valid here; leave the shard unwritten so the array stays sparse.
+            # Nothing valid here; leave the shards unwritten so the arrays stay sparse.
             empty.append([x, y])
             continue
-        pca_array[time_index, :, row : row + window_size, col : col + window_size] = rgb
+        write_pca_window_levels(
+            pca_store_path=pca_store_path,
+            zone_number=zone_number,
+            window_bounds=(x, y, x + window_size, y + window_size),
+            time_index=time_index,
+            levels=build_pyramid(rgb, max_level),
+            patch_size=patch_size,
+            storage_options=storage_options,
+        )
         rendered.append([x, y])
 
     logger.info(
-        "rendered %d window(s), skipped %d empty, for %s",
+        "rendered %d window(s) at levels 0..%d, skipped %d empty, for %s",
         len(rendered),
+        max_level,
         len(empty),
         source_fname.name,
     )
 
     marker = {
         "source_marker": str(source_fname),
+        "pca_store_path": pca_store_path,
         "artifact_path": artifact_path,
         "time_index": time_index,
+        "max_level": max_level,
+        "levels": [pca_level_array_name(k) for k in range(max_level + 1)],
         "rendered": rendered,
         "skipped_empty": empty,
     }
@@ -145,19 +192,23 @@ def render_pca_pipeline(
 
 def get_render_jobs(
     store_path: str,
+    pca_store_path: str,
     artifact_path: str,
     source_completed_paths: list[str],
     completed_path: str,
     patch_size: int = 1,
+    max_level: int = DEFAULT_PCA_MAX_LEVEL,
 ) -> list[list[str]]:
     """Build one job per step 1 marker that has not yet been rendered.
 
     Args:
-        store_path: the GeoZarr store holding both arrays.
+        store_path: the GeoZarr store holding the embeddings.
+        pca_store_path: the sibling store to write the pyramid into.
         artifact_path: the fitted global PCA artifact.
         source_completed_paths: step 1 marker directories, one per reference year.
         completed_path: directory for this step's markers.
         patch_size: the encoder patch size used when the embeddings were written.
+        max_level: deepest pyramid level to write.
 
     Returns:
         a list of worker argument lists, one per unrendered block.
@@ -178,12 +229,14 @@ def get_render_jobs(
             if not fname.name.endswith(".json"):
                 continue
             total += 1
-            if fname.name in done:
+            if pca_marker_name(fname) in done:
                 continue
             jobs.append(
                 [
                     "--store_path",
                     store_path,
+                    "--pca_store_path",
+                    pca_store_path,
                     "--artifact_path",
                     artifact_path,
                     "--source_marker",
@@ -192,6 +245,8 @@ def get_render_jobs(
                     completed_path,
                     "--patch_size",
                     str(patch_size),
+                    "--max_level",
+                    str(max_level),
                 ]
             )
     logger.info("%d source marker(s), %d still to render", total, len(jobs))
@@ -200,24 +255,28 @@ def get_render_jobs(
 
 def write_render_jobs(
     store_path: str,
+    pca_store_path: str,
     artifact_path: str,
     source_completed_paths: list[str],
     completed_path: str,
     queue_name: str,
     patch_size: int = 1,
+    max_level: int = DEFAULT_PCA_MAX_LEVEL,
 ) -> None:
     """Enqueue step 3 jobs on a Beaker queue.
 
-    The artifact must already exist: rendering against a missing or refitted basis
-    would produce pixels that do not match the rest of the archive.
+    The artifact must already exist: rendering against a missing or refitted basis would
+    produce pixels that do not match the rest of the store.
 
     Args:
-        store_path: the GeoZarr store holding both arrays.
+        store_path: the GeoZarr store holding the embeddings.
+        pca_store_path: the sibling store to write the pyramid into.
         artifact_path: the fitted global PCA artifact from step 2.
         source_completed_paths: step 1 marker directories, one per reference year.
         completed_path: directory for this step's markers.
         queue_name: the Beaker queue to write job entries to.
         patch_size: the encoder patch size used when the embeddings were written.
+        max_level: deepest pyramid level to write.
     """
     # Fail before enqueuing anything rather than after every worker has started.
     artifact = PcaArtifact.load(artifact_path)
@@ -229,10 +288,12 @@ def write_render_jobs(
 
     jobs = get_render_jobs(
         store_path=store_path,
+        pca_store_path=pca_store_path,
         artifact_path=artifact_path,
         source_completed_paths=source_completed_paths,
         completed_path=completed_path,
         patch_size=patch_size,
+        max_level=max_level,
     )
     if not jobs:
         logger.info("nothing to render; every source marker already has output")
@@ -242,21 +303,23 @@ def write_render_jobs(
     )
 
 
-def annotate_pca_array(
-    store_path: str,
+def annotate_pca_store(
+    pca_store_path: str,
     artifact_path: str,
     zone_numbers: list[int] | None = None,
+    max_level: int = DEFAULT_PCA_MAX_LEVEL,
     storage_options: dict | None = None,
 ) -> None:
-    """Record the basis provenance onto each zone's pca_rgb array attributes.
+    """Record the basis provenance onto the pca store's arrays.
 
     The RGB pixels are meaningless without knowing which basis produced them, so the
-    artifact metadata is copied onto the array itself. Run once after step 2.
+    artifact metadata is copied onto every pyramid level. Run once after step 2.
 
     Args:
-        store_path: the GeoZarr store to annotate.
+        pca_store_path: the pca store to annotate.
         artifact_path: the fitted artifact whose metadata to record.
         zone_numbers: zones to annotate; defaults to every zone group present.
+        max_level: deepest pyramid level to annotate.
         storage_options: fsspec storage options for remote stores.
     """
     artifact = PcaArtifact.load(artifact_path)
@@ -264,7 +327,9 @@ def annotate_pca_array(
     metadata["geoemb:pca_artifact_path"] = artifact_path
     metadata["geoemb:pca_annotated_at"] = datetime.now().astimezone().isoformat()
 
-    root = zarr.open_group(store=store_path, mode="r+", storage_options=storage_options)
+    root = zarr.open_group(
+        store=pca_store_path, mode="r+", storage_options=storage_options
+    )
     if zone_numbers is None:
         zones = [name for name in root.group_keys() if name.startswith("utm")]
     else:
@@ -273,8 +338,18 @@ def annotate_pca_array(
     annotated = 0
     for name in zones:
         group = root[name]
-        if PCA_ARRAY not in group:
-            continue
-        group[PCA_ARRAY].attrs.update(metadata)
-        annotated += 1
-    logger.info("annotated %d pca_rgb array(s) in %s", annotated, store_path)
+        for level in range(max_level + 1):
+            array_name = pca_level_array_name(level)
+            if array_name not in group:
+                continue
+            group[array_name].attrs.update(metadata)
+            annotated += 1
+    # init_pca_store consolidates metadata at creation, and readers prefer that
+    # snapshot over each array's own zarr.json. Without re-consolidating, everything
+    # written above stays invisible to a default reader.
+    zarr.consolidate_metadata(root.store)
+    logger.info(
+        "annotated %d pca array(s) and re-consolidated metadata in %s",
+        annotated,
+        pca_store_path,
+    )

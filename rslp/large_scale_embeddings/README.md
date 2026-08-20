@@ -11,17 +11,87 @@ writes them to a GeoZarr store following the geoemb embeddings-zarr-convention
 - Computed from one year of input imagery starting at a user-provided reference
   timestamp; multiple reference years form the store's time axis.
 
-There are two input variants (`EmbeddingInputs`), which produce different embeddings
+There are three input variants (`EmbeddingInputs`), which produce different embeddings
 and so must be written to different stores:
 
 - `S2`: twelve monthly Sentinel-2 L2A mosaics.
 - `S2_S1`: the above, plus twelve monthly Sentinel-1 RTC mosaics (converted from
-  linear intensities to dB). Sentinel-1 is best-effort: where it is unavailable, the
-  embeddings are computed from Sentinel-2 alone. Sentinel-2 coverage is required.
+  linear intensities to dB).
+- `S2_LANDSAT`: the Sentinel-2 mosaics plus twelve monthly Landsat 8/9 Collection 2
+  Level-1 mosaics, using the 11 bands the encoder's `landsat` modality defines
+  (`B8` at 15 m, then `B1`-`B7`, `B9`-`B11` at 30 m, all resampled onto the window
+  grid). Landsat is sourced from a **requester-pays** GCS bucket, so the reading
+  project is billed; see the operational envelope below.
 
-The configuration files are in `data/large_scale_embeddings/`: `s2.json`/`s2_s1.json`
-are the rslearn dataset configs (imagery comes from the OlmoEarth Datasets sources)
-and `s2.yaml`/`s2_s1.yaml` are the model configs.
+The secondary modality is best-effort in both mixed variants: where it is unavailable
+the embeddings are computed from Sentinel-2 alone. Sentinel-2 coverage is required.
+
+Each variant has an rslearn dataset config and a model config in
+`data/large_scale_embeddings/`, named `{variant}.json` and `{variant}.yaml`. Imagery
+comes from the OlmoEarth Datasets sources.
+
+
+Three-Step Flow
+---------------
+
+A full run is three ordered steps. Each depends on the previous one's output, and all
+three are idempotent and driven by completion markers, so any of them can be
+interrupted and resumed.
+
+1. **`predict`** writes the int8 embeddings. Needs GPUs. Enqueue with `write_jobs`, or
+   let `supervise --stage predict` keep the queue and worker pool topped up.
+2. **`fit_pca`** samples the archive just written and fits the global false-color
+   basis, so the basis reflects exactly the data it will be applied to. Single process,
+   reads about one inner chunk per sampled window rather than a pass over the archive.
+   A basis fitted on one region does not transfer: measured on real blocks, a
+   Washington-fitted basis captured 69.5% of Washington's variance but only 3.0% of
+   Ukraine's, and per-region normalization bounds were nearly disjoint. Sampling is
+   therefore stratified across every UTM zone with data.
+3. **`render_pca`** reads the embeddings back and writes the multiscale `pca_rgb`
+   pyramid into the sibling pca store, created once with `init_pca_store`. CPU only, no
+   model, so it schedules without competing for GPU capacity. Enqueue with
+   `write_render_jobs`, or use `supervise --stage render_pca --gpus 0`. Follow it with
+   `annotate_pca_store` to record the basis provenance onto every level.
+
+Three components capture roughly 21-40% of local variance, so `pca_rgb` is a
+visualization of the embeddings, not a reduced-dimension version of them.
+
+
+Store Layout on Disk
+--------------------
+
+Two sibling stores per run, under a prefix that records the checkpoint and the model
+settings:
+
+    gs://BUCKET/geozarr_{aoi}_{years}_{date}/
+      {checkpoint}/
+        {variant}_ps1_ws16_overlap4/
+          embeddings.zarr        int8 embeddings, one array per UTM zone
+          pca_v1.zarr            uint8 false-color pyramid, same zone layout
+          completed_{year}/      step 1 markers
+          pca_completed_{year}/  step 3 markers
+
+`embeddings.zarr` is named for its contents rather than its inputs, since the input
+variant already appears in the path above it and does not need restating.
+
+The PCA output is a **separate store**, not another array inside the embeddings store,
+for two reasons. Refitting the basis invalidates every rendered pixel while leaving the
+embeddings valid, so the derived layer needs its own lifecycle; putting the basis version
+in the store name (`pca_v1`) lets a re-render land beside the old one and cut over
+atomically instead of leaving the layer half-rendered and unservable. And the two want
+different storage classes: the embeddings are cold, while the RGB layer is read often and
+Nearline charges per read.
+
+The pca store holds a multiscale pyramid, `pca_rgb` at level 0 plus `pca_rgb_2`,
+`pca_rgb_4` and so on, listed in the `geoemb:multiscales` attribute. That is what makes
+the store directly servable from a public bucket with no tile server: a client picks a
+level by zoom and reads roughly a constant number of chunks at any extent. Reading a
+1600x900 view from the level-0 array alone would need 24 chunks at z14 but 1,296 at z11
+and over a million at z6. The pyramid costs 33% more bytes.
+
+Every level keeps one shard per source window footprint (2048 px at level 0, 1024 at
+level 1, and so on), so a window stays a whole object owned by a single writer and
+concurrent renders need no locking, exactly as for the embeddings.
 
 The model settings are provided as arguments to `write_jobs`/`predict` and override
 the defaults in the model configs (they are recorded in each queue job, so workers
@@ -29,7 +99,7 @@ can process jobs with differing settings):
 
 - `--checkpoint_path` (required): the OlmoEarth checkpoint to compute embeddings
   with, e.g.
-  `/weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000`.
+  `/weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_ndvi_w0p1_tanchor_newsamp_psuniform/step667200`.
 - `--patch_size` (default `1`): the encoder patch size, yielding one embedding per
   patch_size x patch_size pixels; the output rasters are at 1/patch_size of the
   10 m/pixel window resolution.
@@ -107,7 +177,7 @@ WEKA mounted). From the rslearn_projects root, first create the store, then run 
 tile:
 
     python -m rslp.main large_scale_embeddings init_store \
-        --store_path gs://BUCKET/embeddings/s2.zarr \
+        --store_path gs://BUCKET/PREFIX/embeddings.zarr \
         --years '[2024]' \
         --model_url https://huggingface.co/allenai/OlmoEarth-v1_2-Small \
         --source_data '["https://sentinel.esa.int/web/sentinel/missions/sentinel-2"]' \
@@ -118,9 +188,9 @@ tile:
         --projection_json '{"crs": "EPSG:32610", "x_resolution": 10, "y_resolution": -10}' \
         --bounds '[32768, -557056, 65536, -524288]' \
         --time_range '["2024-01-01T00:00:00+00:00", "2024-01-01T00:00:00+00:00"]' \
-        --store_path gs://BUCKET/embeddings/s2.zarr \
-        --completed_path gs://BUCKET/embeddings/s2_completed/ \
-        --checkpoint_path /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000 \
+        --store_path gs://BUCKET/PREFIX/embeddings.zarr \
+        --completed_path gs://BUCKET/PREFIX/completed_2024/ \
+        --checkpoint_path /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_ndvi_w0p1_tanchor_newsamp_psuniform/step667200 \
         --time_index 0
 
 The `projection_json` must be the zone's northern CRS (EPSG:326NN). `bounds` can be
@@ -161,7 +231,7 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
 2. Create the store once, covering all reference years and zones:
 
         python -m rslp.main large_scale_embeddings init_store \
-            --store_path gs://BUCKET/PREFIX/s2.zarr \
+            --store_path gs://BUCKET/PREFIX/embeddings.zarr \
             --years '[2021, 2022, 2023, 2024, 2025]' \
             --model_url https://huggingface.co/allenai/OlmoEarth-v1_2-Small \
             --source_data '["https://sentinel.esa.int/web/sentinel/missions/sentinel-2"]'
@@ -172,9 +242,9 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
         python -m rslp.main large_scale_embeddings write_jobs \
             --inputs S2 \
             --timestamp '2025-01-01T00:00:00+00:00' \
-            --store_path gs://BUCKET/PREFIX/s2.zarr \
+            --store_path gs://BUCKET/PREFIX/embeddings.zarr \
             --completed_path gs://BUCKET/PREFIX/s2_2025_completed/ \
-            --checkpoint_path /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000 \
+            --checkpoint_path /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_ndvi_w0p1_tanchor_newsamp_psuniform/step667200 \
             --queue_name USER/QUEUE
 
    The model settings (`--checkpoint_path`, `--patch_size`, `--window_size`,
@@ -229,7 +299,7 @@ It exits when every tile has a marker.
         python -m rslp.main large_scale_embeddings supervise \
             --inputs S2 \
             --years '[2024, 2025]' \
-            --store_path gs://BUCKET/PREFIX/s2.zarr \
+            --store_path gs://BUCKET/PREFIX/embeddings.zarr \
             --completed_path_template 'gs://BUCKET/PREFIX/s2_{year}_completed/' \
             --queue_name USER/QUEUE \
             --checkpoint_path /weka/dfive-default/helios/checkpoints/... \

@@ -41,6 +41,7 @@ from typing import Any
 from rslp.log_utils import get_logger
 
 from .predict_pipeline import EmbeddingInputs
+from .zarr_store import DEFAULT_PCA_MAX_LEVEL
 
 logger = get_logger(__name__)
 
@@ -138,6 +139,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
         remaining.extend(
             get_render_jobs(
                 store_path=kwargs["store_path"],
+                pca_store_path=kwargs["pca_store_path"],
                 artifact_path=kwargs["artifact_path"],
                 source_completed_paths=[
                     kwargs["completed_path_template"].format(year=year)
@@ -145,6 +147,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
                 ],
                 completed_path=kwargs["pca_completed_path"],
                 patch_size=kwargs["patch_size"],
+                max_level=kwargs["max_level"],
             )
         )
     else:
@@ -291,7 +294,9 @@ def supervise(
     cluster: list[str],
     stage: str = STAGE_PREDICT,
     artifact_path: str | None = None,
+    pca_store_path: str | None = None,
     pca_completed_path: str | None = None,
+    max_level: int = DEFAULT_PCA_MAX_LEVEL,
     weka_bucket: str = DEFAULT_WEKA_BUCKET,
     weka_mount_path: str = DEFAULT_WEKA_MOUNT_PATH,
     datasets_api_url: str = DEFAULT_DATASETS_API_URL,
@@ -331,8 +336,11 @@ def supervise(
             needs none. Both are idempotent and marker-driven, so the same shallow-queue
             and worker-top-up loop gives both the same resilience.
         artifact_path: the fitted PCA artifact. Required for the render_pca stage.
+        pca_store_path: the sibling store to write the pyramid into. Required for the
+            render_pca stage; create it once with init_pca_store.
         pca_completed_path: marker directory for the render_pca stage's own output.
             Required for the render_pca stage.
+        max_level: deepest pyramid level the render_pca stage writes.
         weka_bucket: WEKA bucket to mount (the checkpoint lives there).
         weka_mount_path: where to mount it.
         datasets_api_url: OlmoEarth Datasets API URL for the data source.
@@ -384,7 +392,9 @@ def supervise(
         "stale_seconds": stale_seconds,
         "stage": stage,
         "artifact_path": artifact_path,
+        "pca_store_path": pca_store_path,
         "pca_completed_path": pca_completed_path,
+        "max_level": max_level,
     }
 
     # "spawn" rather than the default fork: the child creates gRPC channels, and
@@ -396,6 +406,7 @@ def supervise(
             name
             for name, value in (
                 ("artifact_path", artifact_path),
+                ("pca_store_path", pca_store_path),
                 ("pca_completed_path", pca_completed_path),
             )
             if not value

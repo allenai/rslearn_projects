@@ -8,7 +8,7 @@ model:
           - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
               # The OlmoEarth checkpoint to compute embeddings with, e.g.
-              # /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000.
+              # /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_ndvi_w0p1_tanchor_newsamp_psuniform/step667200.
               # This placeholder is always overridden by the prediction pipeline
               # (--checkpoint_path).
               checkpoint_path: /path/to/checkpoint_dir

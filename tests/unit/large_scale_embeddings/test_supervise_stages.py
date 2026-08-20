@@ -44,19 +44,27 @@ def test_unknown_stage_is_rejected() -> None:
         sup.supervise(**_base_kwargs(stage="nonsense"))
 
 
-def test_render_stage_requires_artifact_and_marker_path() -> None:
-    with pytest.raises(ValueError, match="artifact_path, pca_completed_path"):
+def test_render_stage_requires_its_three_paths() -> None:
+    with pytest.raises(
+        ValueError, match="artifact_path, pca_store_path, pca_completed_path"
+    ):
         sup.supervise(**_base_kwargs(stage=sup.STAGE_RENDER_PCA))
 
+    # Naming two of the three still fails, and the error names only what is missing.
     with pytest.raises(ValueError, match="pca_completed_path"):
-        sup.supervise(
-            **_base_kwargs(stage=sup.STAGE_RENDER_PCA, artifact_path="gs://bucket/pca")
-        )
-
-    with pytest.raises(ValueError, match="artifact_path"):
         sup.supervise(
             **_base_kwargs(
                 stage=sup.STAGE_RENDER_PCA,
+                artifact_path="gs://bucket/pca",
+                pca_store_path="gs://bucket/pca_v1.zarr",
+            )
+        )
+
+    with pytest.raises(ValueError, match="pca_store_path"):
+        sup.supervise(
+            **_base_kwargs(
+                stage=sup.STAGE_RENDER_PCA,
+                artifact_path="gs://bucket/pca",
                 pca_completed_path="gs://bucket/pca_completed/",
             )
         )
@@ -139,6 +147,8 @@ def test_run_cycle_render_stage_enumerates_from_source_markers(
             "stage": sup.STAGE_RENDER_PCA,
             "store_path": "gs://bucket/s2.zarr",
             "artifact_path": "gs://bucket/pca",
+            "pca_store_path": "gs://bucket/pca_v1.zarr",
+            "max_level": 3,
             "pca_completed_path": "gs://bucket/pca_completed/",
             "completed_path_template": "gs://bucket/s2_{year}_completed/",
             "patch_size": 1,
@@ -162,6 +172,8 @@ def test_run_cycle_render_stage_enumerates_from_source_markers(
     ]
     assert calls["completed_path"] == "gs://bucket/pca_completed/"
     assert calls["artifact_path"] == "gs://bucket/pca"
+    assert calls["pca_store_path"] == "gs://bucket/pca_v1.zarr"
+    assert calls["max_level"] == 3
     # Entries name the render workflow, not predict.
     assert result.value == 2
     assert enqueued["workflow"] == sup.STAGE_RENDER_PCA
