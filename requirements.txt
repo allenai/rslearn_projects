@@ -1,7 +1,6 @@
-jsonargparse<4.50.0  # TEMP: 4.50.0 breaks rslearn's parse_string override
 prometheus-client>=0.21.1
 python-dotenv>=1.0
 PyYAML>=6
-rslearn>=0.1.9
+rslearn>=0.1.13
 s3fs>=2025.2.0
 wandb>=0.21
