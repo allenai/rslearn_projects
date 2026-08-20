@@ -1,0 +1,175 @@
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --row-hover: #1f242e;
+  --text: #e6e8eb;
+  --muted: #8b929c;
+  --bar: #3b82f6;
+  --bar-truncated: #a855f7;
+  --accent: #2563eb;
+  --border: #262b34;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+header h1 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.path {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.total {
+  font-weight: 600;
+}
+
+button {
+  margin-left: auto;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+button:hover {
+  filter: brightness(1.1);
+}
+
+main {
+  padding: 12px 20px 60px;
+}
+
+.status {
+  color: var(--muted);
+  padding: 8px 0;
+}
+
+.tree {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.node {
+  --indent: 0px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  padding-left: calc(6px + var(--indent));
+  border-radius: 4px;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.row:hover {
+  background: var(--row-hover);
+}
+
+.caret {
+  width: 14px;
+  flex: 0 0 14px;
+  text-align: center;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.caret.leaf {
+  visibility: hidden;
+}
+
+.size {
+  flex: 0 0 90px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar-wrap {
+  flex: 0 0 160px;
+  height: 12px;
+  background: #232833;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  background: var(--bar);
+}
+
+.bar.truncated {
+  background: var(--bar-truncated);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pct {
+  flex: 0 0 52px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.children {
+  overflow: hidden;
+}
+
+.children.collapsed {
+  display: none;
+}
+
+.tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bar-truncated);
+  color: white;
+}
+
+.tag.collapsed {
+  background: #0d9488;
+}
+
+.tag.err {
+  background: #dc2626;
+}

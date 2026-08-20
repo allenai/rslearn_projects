@@ -2,7 +2,6 @@
 
 import json
 import math
-import os
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -27,6 +26,10 @@ from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
+from rslp.sentinel1_vessels.config import (
+    INFRA_DISTANCE_THRESHOLD_KM,
+    NUM_DATA_LOADER_WORKERS,
+)
 from rslp.sentinel1_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.filter import NearInfraFilter
 from rslp.utils.rslearn import (
@@ -42,16 +45,21 @@ from rslp.vessels import VesselAttributes, VesselDetection, VesselDetectionSourc
 
 logger = get_logger(__name__)
 
-NUM_DATA_LOADER_WORKERS = int(os.environ.get("RSLEARN_NUM_DATA_LOADER_WORKERS", 4))
-
 # Layer name for the Sentinel-1 image in which we want to detect vessels.
 SENTINEL1_LAYER_NAME = "sentinel1"
 
 # Layer names for historical Sentinel-1 images.
 HISTORICAL_LAYER_NAME = "sentinel1_historical"
 
-# Number of historical item groups the detector consumes (image_1 and image_2).
-HISTORICAL_GROUP_COUNT = 2
+# Number of historical item groups the detector consumes (image_1).
+HISTORICAL_GROUP_COUNT = 1
+
+# Time offset (relative to the target scene) used to search for the historical image.
+# We search for the best-overlapping scene within the 30-day window starting here.
+# Note that for training we just picked arbitrary historical images in the 60-day period
+# starting 90 days before the scene time, while here we are picking one historical image
+# in the 30-day period starting 60 days before the scene time.
+HISTORICAL_TIME_OFFSET = timedelta(days=-60)
 
 # Name of layer containing the output.
 OUTPUT_LAYER_NAME = "output"
@@ -68,10 +76,6 @@ BAND_NAMES = ["vv", "vh"]
 
 # Factor to multiply by when converting bands to 8-bit image.
 NORM_FACTOR = 1.0
-
-# Distance threshold for near marine infrastructure filter in km.
-# 0.05 km = 50 m
-INFRA_DISTANCE_THRESHOLD = 0.05
 
 
 @dataclass
@@ -92,10 +96,9 @@ class PredictionTask:
     """A task to predict vessels in one Sentinel-1 scene.
 
     Args:
-        scene_id: the Sentinel-1 scene ID. One of scene_id or image/historical1/historical2 must be set.
+        scene_id: the Sentinel-1 scene ID. One of scene_id or image/historical1 must be set.
         image: the Sentinel1Image to detect vessels in.
-        historical1: the Sentinel1Image to use as first historical image.
-        historical2: the Sentinel1Image to use as second historical image.
+        historical1: the Sentinel1Image to use as the historical image.
         json_path: optional path to write the JSON of vessel detections.
         crop_path: optional path to write the vessel crop images.
         geojson_path: optional path to write GeoJSON of detections.
@@ -104,7 +107,6 @@ class PredictionTask:
     scene_id: str | None = None
     image: Sentinel1Image | None = None
     historical1: Sentinel1Image | None = None
-    historical2: Sentinel1Image | None = None
     json_path: str | None = None
     crop_path: str | None = None
     geojson_path: str | None = None
@@ -200,9 +202,7 @@ def setup_dataset_with_scene_ids(
         # because it will find too many images in mosaic mode, or not the best
         # overlapping image in intersect/contain mode.
         historical_layer_item_groups: list[list[Item]] = []
-        for hist_group_idx, hist_time_offset in enumerate(
-            [timedelta(days=-60), timedelta(days=-90)]
-        ):
+        for hist_group_idx, hist_time_offset in enumerate([HISTORICAL_TIME_OFFSET]):
             hist_time_range = (
                 wgs84_geom.time_range[0] + hist_time_offset,
                 wgs84_geom.time_range[0] + hist_time_offset + timedelta(days=30),
@@ -274,7 +274,7 @@ def setup_dataset_with_image_files(
 
     Args:
         ds_path: the dataset path to write to.
-        tasks: the list of prediction tasks that have image/historical1/historical2 set.
+        tasks: the list of prediction tasks that have image/historical1 set.
 
     Returns:
         a list of SceneData corresponding to the specified images.
@@ -292,7 +292,6 @@ def setup_dataset_with_image_files(
     for task in tasks:
         assert task.image is not None
         assert task.historical1 is not None
-        assert task.historical2 is not None
         target_item_specs.append(
             {
                 "fnames": [
@@ -302,16 +301,15 @@ def setup_dataset_with_image_files(
                 "bands": [["vv"], ["vh"]],
             }
         )
-        for image in [task.historical1, task.historical2]:
-            historical_item_specs.append(
-                {
-                    "fnames": [
-                        UPath(image.vv).absolute().as_uri(),
-                        UPath(image.vh).absolute().as_uri(),
-                    ],
-                    "bands": [["vv"], ["vh"]],
-                }
-            )
+        historical_item_specs.append(
+            {
+                "fnames": [
+                    UPath(task.historical1.vv).absolute().as_uri(),
+                    UPath(task.historical1.vh).absolute().as_uri(),
+                ],
+                "bands": [["vv"], ["vh"]],
+            }
+        )
 
     for layer_name, item_specs, dir_name in [
         (SENTINEL1_LAYER_NAME, target_item_specs, "source_dir"),
@@ -370,6 +368,7 @@ def setup_dataset_with_image_files(
 def get_vessel_detections(
     ds_path: UPath,
     scene_datas: list[SceneData],
+    score_threshold: float,
 ) -> list[VesselDetection]:
     """Apply the vessel detector.
 
@@ -380,6 +379,8 @@ def get_vessel_detections(
         ds_path: the dataset path that will be populated with a new window to apply the
             detector.
         scene_datas: the SceneDatas to apply the detector on.
+        score_threshold: override the detector's configured score threshold for this
+            run, so callers can raise or lower the cutoff without editing the config.
     """
     # Create a window for each SceneData.
     dataset = Dataset(ds_path)
@@ -432,11 +433,13 @@ def get_vessel_detections(
 
     # Run object detector.
     with time_operation(TimerOperations.RunModelPredict):
-        run_model_predict(
-            DETECT_MODEL_CONFIG,
-            ds_path,
-            extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
-        )
+        extra_args = [
+            "--data.init_args.num_workers",
+            str(NUM_DATA_LOADER_WORKERS),
+            "--data.init_args.task.init_args.tasks.detect.init_args.score_threshold",
+            str(score_threshold),
+        ]
+        run_model_predict(DETECT_MODEL_CONFIG, ds_path, extra_args=extra_args)
 
     # Read the detections.
     detections: list[VesselDetection] = []
@@ -537,12 +540,28 @@ def run_attribute_model(
     )
     materialize_dataset(ds_path, materialize_pipeline_args)
 
-    # Verify that no window is unmaterialized.
-    for window in windows:
-        if not window.is_layer_completed(SENTINEL1_LAYER_NAME):
-            raise ValueError(
-                f"window {window.name} does not have materialized Sentinel-1 image"
-            )
+    # Drop detections whose crop window could not be materialized -- e.g. a detection so
+    # close to the scene edge that its crop runs off the imagery. Without a materialized
+    # crop there is neither an attribute prediction nor a crop image to produce, so the
+    # detection cannot be reported. The attribute model already skips windows without a
+    # completed layer; we just filter them out here (keeping detections/windows aligned)
+    # and return early if none remain, to avoid an empty dataloader.
+    kept_detections: list[VesselDetection] = []
+    kept_windows: list[Window] = []
+    for detection, window in zip(detections, windows):
+        if window.is_layer_completed(SENTINEL1_LAYER_NAME):
+            kept_detections.append(detection)
+            kept_windows.append(window)
+    if len(kept_windows) < len(windows):
+        logger.warning(
+            f"Dropped {len(windows) - len(kept_windows)} detection(s) whose crop window "
+            "could not be materialized (near the scene edge)."
+        )
+    detections[:] = kept_detections
+    windows = kept_windows
+
+    if len(windows) == 0:
+        return []
 
     # Run attribute model.
     run_model_predict(
@@ -572,6 +591,7 @@ def run_attribute_model(
 
 def predict_pipeline(
     tasks: list[PredictionTask],
+    score_threshold: float,
     scratch_path: str | None = None,
 ) -> list[list[VesselDetection]]:
     """Run the Sentinel-1 vessel prediction pipeline.
@@ -583,6 +603,8 @@ def predict_pipeline(
     Args:
         tasks: prediction tasks to execute. They must all specify scene IDs or all
             specify image files to process.
+        score_threshold: override the detector's score threshold for this run,
+            replacing the value baked into the model config.
         scratch_path: directory to use to store temporary dataset.
 
     Returns:
@@ -615,7 +637,9 @@ def predict_pipeline(
 
     # Apply the vessel detection model.
     with time_operation(TimerOperations.GetVesselDetections):
-        detections = get_vessel_detections(ds_path, scene_datas)
+        detections = get_vessel_detections(
+            ds_path, scene_datas, score_threshold=score_threshold
+        )
 
     # Apply the attribute prediction model.
     # This also collects vessel crop windows.
@@ -664,7 +688,7 @@ def _build_predictions_and_crops(
     detections_by_task: list[list[VesselDetection]] = [[] for _ in tasks]
 
     near_infra_filter = NearInfraFilter(
-        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD
+        infra_distance_threshold=INFRA_DISTANCE_THRESHOLD_KM
     )
     for detection, crop_window in zip(detections, crop_windows):
         # Apply near infra filter (True -> filter out, False -> keep)

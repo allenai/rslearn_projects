@@ -1,0 +1,105 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterModel
+      init_args:
+        # Tree -> X (deforestation) binary classification centered on the labeled
+        # pixel. Reduced-input variant: the first 3 monthly mosaics of the
+        # pre-change calendar year and the first 3 of the post-change calendar year.
+        # The OlmoEarth encoder is applied to the pre and post groups separately and
+        # the two annual embeddings are combined before a center-feature
+        # classification head.
+        input_size: 64
+        input_modalities: ["sentinel2"]
+        task_type: "change_classify"
+        task_name: "lcc_deforestation"
+        task_channels: 2
+        task_timesteps: 6
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.0001
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/olmoearth_evals/lcc_deforestation/
+    inputs:
+      sentinel2:
+        data_type: "raster"
+        # The first 3 pre-year monthly mosaics first, then the first 3 post-year
+        # monthly mosaics. The change_classify model splits the time series in half
+        # (first half = pre, second half = post), so this ordering is significant.
+        # Each item group is listed explicitly so that, with load_all_layers, only
+        # windows that have all of these monthly mosaics materialized for both the
+        # pre and post layers are included.
+        layers: ["pre_sentinel2", "pre_sentinel2.1", "pre_sentinel2.2", "post_sentinel2", "post_sentinel2.1", "post_sentinel2.2"]
+        bands: ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B09", "B11", "B12"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+      label:
+        data_type: "vector"
+        layers: ["label"]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          eval_task:
+            class_path: rslearn.train.tasks.classification.ClassificationTask
+            init_args:
+              property_name: "category"
+              classes: ["negative", "positive"]
+              enable_auroc: true
+              metric_kwargs:
+                average: "micro"
+        input_mapping:
+          eval_task:
+            label: "targets"
+    batch_size: 8
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslearn.train.transforms.pad.Pad
+          init_args:
+            mode: "center"
+            size: 64
+            image_selectors: ["sentinel2"]
+        - class_path: rslp.olmoearth_evals.eval_adapter.EvalAdapterNormalize
+          init_args:
+            input_size: 64
+            input_modalities: ["sentinel2"]
+            task_type: "change_classify"
+            task_name: "lcc_deforestation"
+            task_channels: 2
+            task_timesteps: 6
+    train_config:
+      tags:
+        split: train
+    val_config:
+      tags:
+        split: val
+    test_config:
+      tags:
+        split: val
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_eval_task/accuracy
+        mode: max
+project_name: placeholder
+run_name: placeholder
+management_dir: ${RSLP_PREFIX}/projects

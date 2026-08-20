@@ -72,7 +72,7 @@
           "src_dir": "PLACEHOLDER"
         },
         "query_config": {
-          "max_matches": 2,
+          "max_matches": 1,
           "space_mode": "INTERSECTS"
         }
       },

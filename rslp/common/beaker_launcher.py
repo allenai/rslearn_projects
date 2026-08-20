@@ -3,7 +3,13 @@
 import uuid
 from datetime import datetime
 
-from beaker import Beaker, BeakerEnvVar, BeakerExperimentSpec, BeakerImageSource
+from beaker import (
+    Beaker,
+    BeakerConstraints,
+    BeakerEnvVar,
+    BeakerExperimentSpec,
+    BeakerImageSource,
+)
 from beaker.exceptions import BeakerImageNotFound
 
 from rslp.log_utils import get_logger
@@ -36,12 +42,14 @@ def get_command(project: str, workflow: str, extra_args: list[str]) -> list[str]
 
 
 def launch_job(
-    project: str,
-    workflow: str,
-    extra_args: list[str],
     image: str,
-    clusters: list[str],
-    task_name: str | None,
+    clusters: list[str] | None = None,
+    hostname: str | None = None,
+    project: str | None = None,
+    workflow: str | None = None,
+    extra_args: list[str] = [],
+    command: list[str] | None = None,
+    task_name: str | None = None,
     gpu_count: int = 0,
     shared_memory: str | None = None,
     priority: str = DEFAULT_PRIORITY,
@@ -51,19 +59,28 @@ def launch_job(
     preemptible: bool = True,
     weka_mounts: list[WekaMount] = [],
 ) -> None:
-    """Launch a Beaker job to run an rslp workflow.
+    """Launch a Beaker job to run an rslp workflow or an arbitrary command.
 
     The BEAKER_ADDR, BEAKER_CONFIG, and BEAKER_TOKEN environment variables must be
     configured.
 
+    The job's command is either ``command`` (run verbatim) or, if ``command`` is not
+    set, the rslp workflow indicated by ``project``/``workflow``/``extra_args``. Exactly
+    one of these two modes must be specified.
+
     Args:
-        project: the rslp project containing the workflow(s) to run.
-        workflow: the workflow to run.
-        extra_args: a list of arguments for the workflow.
         image: the name of the Beaker image to use. If it doesn't exist, we look for a
             local Docker image matching this name and attempt to register it into
             Beaker.
-        clusters: list of Beaker clusters to target.
+        clusters: list of Beaker clusters to target. Exactly one of clusters or
+            hostname must be set.
+        hostname: a specific Beaker host to constrain the job to. Exactly one of
+            clusters or hostname must be set.
+        project: the rslp project containing the workflow to run (workflow mode).
+        workflow: the workflow to run (workflow mode).
+        extra_args: a list of arguments for the workflow (workflow mode).
+        command: an arbitrary command to run instead of an rslp workflow. If set,
+            project/workflow/extra_args are ignored.
         task_name: name for the Beaker job.
         gpu_count: number of GPUs to assign.
         shared_memory: amount of shared memory.
@@ -75,8 +92,18 @@ def launch_job(
         preemptible: whether to make the Beaker job preemptible.
         weka_mounts: list of weka mounts for Beaker job.
     """
+    if command is None:
+        if project is None or workflow is None:
+            raise ValueError("must set either command or both project and workflow")
+        command = get_command(project, workflow, extra_args)
+    if (clusters is None) == (hostname is None):
+        raise ValueError("exactly one of clusters or hostname must be set")
+
     if task_name is None:
-        task_name = f"{project}_{workflow}"
+        if project is not None and workflow is not None:
+            task_name = f"{project}_{workflow}"
+        else:
+            task_name = "command"
 
     logger.info("Starting Beaker client...")
     logger.info(f"Workspace: {workspace}")
@@ -101,14 +128,18 @@ def launch_job(
         logger.info("Creating experiment spec...")
         datasets = [create_gcp_credentials_mount()]
         datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
+        if hostname is not None:
+            constraints = BeakerConstraints(hostname=[hostname])
+        else:
+            constraints = BeakerConstraints(cluster=clusters)
         experiment_spec = BeakerExperimentSpec.new(
             budget=budget,
             task_name=unique_task_name,
             beaker_image=image_source.beaker,
             result_path="/models",
             priority=priority,
-            cluster=clusters,
-            command=get_command(project, workflow, extra_args),
+            constraints=constraints,
+            command=command,
             env_vars=base_env_vars + task_specific_env_vars,
             datasets=datasets,
             resources={"gpuCount": gpu_count, "sharedMemory": shared_memory},

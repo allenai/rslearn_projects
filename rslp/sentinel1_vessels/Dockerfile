@@ -14,9 +14,9 @@ RUN wget -q -O /opt/rslearn_projects/marine_infrastructure.geojson \
 ENV MARINE_INFRA_PATH=/opt/rslearn_projects/marine_infrastructure.geojson
 
 # Download detector and attribute checkpoints.
-RUN mkdir -p /project_data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/ && \
-    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/best.ckpt \
-        -O /project_data/projects/sentinel1_vessels/data_20250521_model_20250530_satlaspretrain_unfreeze4_13/best.ckpt && \
+RUN mkdir -p /project_data/projects/20260626_num_historical/data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist/ && \
+    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/20260626_num_historical/data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist/best.ckpt \
+        -O /project_data/projects/20260626_num_historical/data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist/best.ckpt && \
     mkdir -p /project_data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/ && \
     wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/best.ckpt \
         -O /project_data/projects/2026_04_22_sentinel1_vessel_attribute/swinb_newdata_01/best.ckpt

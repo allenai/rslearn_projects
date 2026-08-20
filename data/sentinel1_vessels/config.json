@@ -28,7 +28,12 @@
       "band_sets": [
         {
           "bands": [
-            "vv",
+            "vv"
+          ],
+          "dtype": "float32"
+        },
+        {
+          "bands": [
             "vh"
           ],
           "dtype": "float32"
@@ -45,7 +50,12 @@
       "band_sets": [
         {
           "bands": [
-            "vv",
+            "vv"
+          ],
+          "dtype": "float32"
+        },
+        {
+          "bands": [
             "vh"
           ],
           "dtype": "float32"
@@ -58,7 +68,7 @@
           "orbit_direction": "ASCENDING"
         },
         "query_config": {
-          "max_matches": 2
+          "max_matches": 1
         },
         "time_offset": "-90d"
       },

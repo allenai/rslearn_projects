@@ -53,8 +53,8 @@ def test_image_files() -> None:
     """Test inference using image files downloaded from the S1 AWS bucket.
 
     Downloads raw VV/VH GeoTIFFs (with GCPs) for a single scene and passes
-    them directly as image / historical1 / historical2 to exercise the
-    image-files code path end-to-end.
+    them directly as image / historical1 to exercise the image-files code path
+    end-to-end.
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
         vv_path = _download_raw(tmp_dir, SCENE_ID, "vv")
@@ -67,7 +67,6 @@ def test_image_files() -> None:
             json={
                 "image": image_payload,
                 "historical1": image_payload,
-                "historical2": image_payload,
             },
         )
         assert response.status_code == 200

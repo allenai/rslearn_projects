@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import Enum
 
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 
 from rslp.log_utils import get_logger
+from rslp.sentinel1_vessels.config import (
+    SENTINEL1_HOST,
+    SENTINEL1_PORT,
+    SENTINEL1_SCORE_THRESHOLD,
+)
 from rslp.sentinel1_vessels.predict_pipeline import (
     PredictionTask,
     Sentinel1Image,
@@ -23,12 +26,6 @@ from rslp.sentinel1_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.mp import init_mp
 from rslp.utils.prometheus import setup_prom_metrics
 from rslp.vessels import VesselDetectionDict
-
-# Load environment variables from the .env file
-load_dotenv()
-# Configurable host and port, overridable via environment variables
-SENTINEL1_HOST = os.getenv("SENTINEL1_HOST", "0.0.0.0")
-SENTINEL1_PORT = int(os.getenv("SENTINEL1_PORT", 5555))
 
 # Set up the logger
 logger = get_logger(__name__)
@@ -90,23 +87,23 @@ class Sentinel1Request(BaseModel):
 
     Attributes:
         scene_id: scene ID to process. The scene will be downloaded from AWS
-            (credentials are required). One of scene ID or
-            image/historical1/historical2 must be set.
+            (credentials are required). One of scene ID or image/historical1 must be
+            set.
         image: the vv and vh filename for the image to detect vessels in.
-        historical1: the vv and vh filename for the first historical image. It must
-            have the same orbit direction as the target image.
-        historical2: the vv and vh filename for the second historical image. It must
-            have the same orbit direction as the target image.
+        historical1: the vv and vh filename for the historical image. It must have the
+            same orbit direction as the target image.
         crop_path: Optional; Path to save the cropped images.
         scratch_path: Optional; Scratch path to save the rslearn dataset.
+        score_threshold: Optional; override the detector's score threshold for this
+            request. Defaults to the SENTINEL1_SCORE_THRESHOLD env var (0.7 if unset).
     """
 
     scene_id: str | None = None
     image: Sentinel1Image | None = None
     historical1: Sentinel1Image | None = None
-    historical2: Sentinel1Image | None = None
     crop_path: str | None = None
     scratch_path: str | None = None
+    score_threshold: float | None = None
 
     class Config:
         """Configuration for the Sentinel1Request model."""
@@ -136,10 +133,6 @@ class Sentinel1Request(BaseModel):
                         "historical1": {
                             "vh": "/path/to/h1_vh.tif",
                             "vv": "/path/to/h1_vv.tif",
-                        },
-                        "historical2": {
-                            "vh": "/path/to/h2_vh.tif",
-                            "vv": "/path/to/h2_vv.tif",
                         },
                     },
                 },
@@ -175,13 +168,11 @@ async def get_detections(
     Returns:
         Sentinel1Response: Response object with status and predictions.
     """
-    if not info.scene_id and not (info.image and info.historical1 and info.historical2):
-        logger.error(
-            "Invalid request: Missing scene_id or image/historical1/historical2."
-        )
+    if not info.scene_id and not (info.image and info.historical1):
+        logger.error("Invalid request: Missing scene_id or image/historical1.")
         raise HTTPException(
             status_code=400,
-            detail="scene_id or image/historical1/historical2 must be specified.",
+            detail="scene_id or image/historical1 must be specified.",
         )
 
     # Get a scratch path to use.
@@ -196,15 +187,20 @@ async def get_detections(
         scene_id=info.scene_id,
         image=info.image,
         historical1=info.historical1,
-        historical2=info.historical2,
         crop_path=info.crop_path,
     )
 
     try:
         logger.info("Processing request with input data.")
+        threshold = (
+            info.score_threshold
+            if info.score_threshold is not None
+            else SENTINEL1_SCORE_THRESHOLD
+        )
         with time_operation(TimerOperations.TotalInferenceTime):
             vessel_detections = predict_pipeline(
                 tasks=[task],
+                score_threshold=threshold,
                 scratch_path=scratch_path,
             )[0]
         return Sentinel1Response(
