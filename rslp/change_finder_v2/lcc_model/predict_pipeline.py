@@ -3,7 +3,9 @@
 This applies the land cover change model over a tile (one part of a UTM zone) by
 creating PATCH_SIZE windows, materializing Sentinel-2 imagery from the OlmoEarth
 Datasets source, running the model, and polygonizing the resulting change raster
-into a per-tile GeoJSON. Optionally the merged output_change raster is also written.
+into a per-tile GeoJSON. Optionally the merged output_change raster (full uint16,
+write_raster) and/or the compact uint8 summary raster (write_summary_raster) are
+also written.
 
 Unlike the satlas pipeline, there is no rtree index: the OlmoEarth Datasets source
 queries its API per window, and all imagery is derived from a single reference
@@ -40,7 +42,13 @@ from rslp.utils.rslearn import (
     run_model_predict,
 )
 
-from .postprocess import OUTPUT_BANDS, OUTPUT_LAYER, collect_features
+from .postprocess import (
+    OUTPUT_BANDS,
+    OUTPUT_LAYER,
+    SUMMARY_BANDS,
+    collect_features,
+    summary_window_array,
+)
 
 logger = get_logger(__name__)
 
@@ -63,9 +71,11 @@ CHANGE_FINDER_MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
     # Use initial job for prepare since it involves caching steps that should only be
     # performed once.
     prepare_args=PrepareArgs(
+        retry_max_attempts=10,
+        retry_backoff=timedelta(seconds=5),
         apply_windows_args=ApplyWindowsArgs(
             group=PREDICTION_GROUP, workers=32, use_initial_job=True
-        )
+        ),
     ),
     # The OlmoEarth Datasets source sets ingest=false, so this step is a no-op, but we
     # keep it for parity with the standard materialize pipeline.
@@ -77,7 +87,7 @@ CHANGE_FINDER_MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
     ),
     materialize_args=MaterializeArgs(
         ignore_errors=False,
-        retry_max_attempts=3,
+        retry_max_attempts=10,
         retry_backoff=timedelta(seconds=5),
         apply_windows_args=ApplyWindowsArgs(
             group=PREDICTION_GROUP, workers=128, use_initial_job=False
@@ -87,7 +97,11 @@ CHANGE_FINDER_MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
 
 
 def get_output_fname(
-    out_path: str, projection: Projection, bounds: PixelBounds, raster: bool = False
+    out_path: str,
+    projection: Projection,
+    bounds: PixelBounds,
+    raster: bool = False,
+    summary: bool = False,
 ) -> UPath:
     """Get the output filename to use for this task.
 
@@ -97,21 +111,30 @@ def get_output_fname(
         bounds: the bounds of this task.
         raster: whether this is the merged raster output (.tif) rather than the
             polygonized GeoJSON (.geojson).
+        summary: whether this is the uint8 summary raster (implies raster);
+            named with a _summary suffix so it can coexist with the full
+            raster in the same output directory.
 
     Returns:
         the output filename.
     """
-    suffix = "tif" if raster else "geojson"
-    return UPath(out_path) / f"{str(projection.crs)}_{bounds[0]}_{bounds[1]}.{suffix}"
+    if summary:
+        suffix = "_summary.tif"
+    elif raster:
+        suffix = ".tif"
+    else:
+        suffix = ".geojson"
+    return UPath(out_path) / f"{str(projection.crs)}_{bounds[0]}_{bounds[1]}{suffix}"
 
 
 def merge_and_upload_raster(
     projection: Projection,
     bounds: PixelBounds,
     windows: list[Window],
-    out_fname: UPath,
+    full_fname: UPath | None,
+    summary_fname: UPath | None,
 ) -> None:
-    """Mosaic each window's output_change raster into a tile-level GeoTIFF.
+    """Mosaic each window's output_change raster into tile-level GeoTIFF(s).
 
     Windows without a prediction (missing input imagery) are left as zeros.
 
@@ -119,12 +142,19 @@ def merge_and_upload_raster(
         projection: the UTM projection that we are working in.
         bounds: the overall bounds of this task.
         windows: the windows that were used for prediction.
-        out_fname: the filename to write the merged result.
+        full_fname: write the full merged raster (all OUTPUT_BANDS, uint16)
+            here, or None to skip it.
+        summary_fname: write the uint8 summary raster (SUMMARY_BANDS) here,
+            or None to skip it.
     """
-    num_bands = len(OUTPUT_BANDS)
     height = bounds[3] - bounds[1]
     width = bounds[2] - bounds[0]
-    prediction = np.zeros((num_bands, height, width), dtype=np.uint16)
+    full = None
+    if full_fname is not None:
+        full = np.zeros((len(OUTPUT_BANDS), height, width), dtype=np.uint16)
+    summary = None
+    if summary_fname is not None:
+        summary = np.zeros((len(SUMMARY_BANDS), height, width), dtype=np.uint8)
 
     for window in windows:
         if window.projection != projection:
@@ -142,19 +172,27 @@ def merge_and_upload_raster(
 
         col_offset = window.bounds[0] - bounds[0]
         row_offset = window.bounds[1] - bounds[1]
-        prediction[
-            :,
-            row_offset : row_offset + PATCH_SIZE,
-            col_offset : col_offset + PATCH_SIZE,
-        ] = arr
+        window_slice = (
+            slice(None),
+            slice(row_offset, row_offset + PATCH_SIZE),
+            slice(col_offset, col_offset + PATCH_SIZE),
+        )
+        if full is not None:
+            full[window_slice] = arr
+        if summary is not None:
+            summary[window_slice] = summary_window_array(arr)
 
-    GeotiffRasterFormat().encode_raster(
-        out_fname.parent,
-        projection,
-        bounds,
-        RasterArray(chw_array=prediction),
-        fname=out_fname.name,
-    )
+    for prediction, out_fname in [(full, full_fname), (summary, summary_fname)]:
+        if prediction is None:
+            continue
+        GeotiffRasterFormat().encode_raster(
+            out_fname.parent,
+            projection,
+            bounds,
+            RasterArray(chw_array=prediction),
+            fname=out_fname.name,
+        )
+        logger.info("wrote merged raster to %s", out_fname)
 
 
 def predict_pipeline(
@@ -164,6 +202,7 @@ def predict_pipeline(
     out_path: str,
     scratch_path: str,
     write_raster: bool = False,
+    write_summary_raster: bool = False,
     threshold: int = DEFAULT_THRESHOLD,
     min_pixels: int = DEFAULT_MIN_PIXELS,
     workers: int = DEFAULT_POSTPROCESS_WORKERS,
@@ -180,7 +219,10 @@ def predict_pipeline(
         out_path: directory to write the outputs (per-tile GeoJSON, optionally a
             per-tile GeoTIFF named based on the bounds).
         scratch_path: where to store the temporary rslearn dataset.
-        write_raster: also write the merged output_change raster GeoTIFF.
+        write_raster: also write the full merged output_change raster GeoTIFF
+            (all OUTPUT_BANDS, uint16; includes the per-category scores).
+        write_summary_raster: also write the compact uint8 summary raster
+            (SUMMARY_BANDS), which the olmoearth_lcc_viewer consumes directly.
         threshold: binary change probability threshold (0-255) for polygonization.
         min_pixels: minimum connected-component size for polygonization.
         workers: parallel workers for polygonization.
@@ -189,7 +231,12 @@ def predict_pipeline(
 
     out_fname = get_output_fname(out_path, projection, bounds)
     raster_fname = get_output_fname(out_path, projection, bounds, raster=True)
-    if out_fname.exists() and (not write_raster or raster_fname.exists()):
+    summary_fname = get_output_fname(out_path, projection, bounds, summary=True)
+    if (
+        out_fname.exists()
+        and (not write_raster or raster_fname.exists())
+        and (not write_summary_raster or summary_fname.exists())
+    ):
         logger.info(f"output file {out_fname} already exists")
         return
 
@@ -273,12 +320,15 @@ def predict_pipeline(
         json.dump(fc, f)
     logger.info("wrote %d features to %s", len(features), out_fname)
 
-    # Optionally also write the merged output_change raster.
-    if write_raster:
+    # Optionally also write the merged output_change raster(s).
+    if write_raster or write_summary_raster:
         merge_and_upload_raster(
-            projection, bounds, list(tile_to_window.values()), raster_fname
+            projection,
+            bounds,
+            list(tile_to_window.values()),
+            raster_fname if write_raster else None,
+            summary_fname if write_summary_raster else None,
         )
-        logger.info("wrote merged raster to %s", raster_fname)
 
 
 class PredictTaskArgs:
@@ -318,6 +368,7 @@ def predict_multi(
     scratch_path: str,
     tasks: str,
     write_raster: bool = False,
+    write_summary_raster: bool = False,
     threshold: int = DEFAULT_THRESHOLD,
 ) -> None:
     """Run multiple prediction tasks sequentially.
@@ -328,7 +379,9 @@ def predict_multi(
         tasks: JSON-encoded list of serialized PredictTaskArgs dicts (see
             PredictTaskArgs.serialize). Passed as a plain string and parsed here to
             avoid jsonargparse re-parsing the nested timestamp/bounds values.
-        write_raster: also write the merged output_change raster GeoTIFF per tile.
+        write_raster: also write the full merged output_change raster GeoTIFF per
+            tile.
+        write_summary_raster: also write the compact uint8 summary raster per tile.
         threshold: binary change probability threshold (0-255) for polygonization.
     """
     os.makedirs(scratch_path, exist_ok=True)
@@ -347,5 +400,6 @@ def predict_multi(
                 out_path=out_path,
                 scratch_path=os.path.join(tmp_dir, "scratch"),
                 write_raster=write_raster,
+                write_summary_raster=write_summary_raster,
                 threshold=threshold,
             )

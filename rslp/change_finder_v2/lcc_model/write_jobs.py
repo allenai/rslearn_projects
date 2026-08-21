@@ -70,6 +70,7 @@ def get_jobs(
     batch_size: int = 1,
     count: int | None = None,
     write_raster: bool = False,
+    write_summary_raster: bool = False,
     threshold: int = DEFAULT_THRESHOLD,
 ) -> list[list[str]]:
     """Get batches of prediction tasks.
@@ -83,7 +84,9 @@ def get_jobs(
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
         batch_size: how many tasks to run per worker job.
         count: limit to this many tasks (randomly sampled).
-        write_raster: whether workers should also write the merged raster.
+        write_raster: whether workers should also write the full merged raster.
+        write_summary_raster: whether workers should also write the compact uint8
+            summary raster.
         threshold: binary change probability threshold (0-255) for polygonization.
 
     Returns:
@@ -181,6 +184,8 @@ def get_jobs(
         ]
         if write_raster:
             cur_args += ["--write_raster", "true"]
+        if write_summary_raster:
+            cur_args += ["--write_summary_raster", "true"]
         cur_args += ["--threshold", str(threshold)]
         jobs.append(cur_args)
 
@@ -196,6 +201,7 @@ def write_jobs(
     batch_size: int = 1,
     count: int | None = None,
     write_raster: bool = False,
+    write_summary_raster: bool = False,
     threshold: int = DEFAULT_THRESHOLD,
 ) -> None:
     """Enumerate tiles for one reference timestamp and write jobs to a Beaker queue.
@@ -208,7 +214,9 @@ def write_jobs(
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
         batch_size: how many tasks to run per worker job.
         count: limit to this many tasks (randomly sampled).
-        write_raster: whether workers should also write the merged raster.
+        write_raster: whether workers should also write the full merged raster.
+        write_summary_raster: whether workers should also write the compact uint8
+            summary raster.
         threshold: binary change probability threshold (0-255) for polygonization.
     """
     jobs = get_jobs(
@@ -219,6 +227,7 @@ def write_jobs(
         batch_size=batch_size,
         count=count,
         write_raster=write_raster,
+        write_summary_raster=write_summary_raster,
         threshold=threshold,
     )
     # Shuffle so outputs start appearing from random parts of the world (aids debugging).

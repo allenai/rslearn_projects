@@ -42,7 +42,7 @@ from rslearn.utils.raster_format import (
 from scipy import ndimage
 from upath import UPath
 
-from .timestamp_encoding import days_to_date
+from .timestamp_encoding import TIMESTAMP_EPOCH, days_to_date
 
 BINARY_CHANGE_BAND = 2
 SRC_BAND_OFFSET = 3
@@ -135,6 +135,94 @@ OUTPUT_BANDS = [
     *PRE_CHANGE_BANDS,
     *POST_CHANGE_BANDS,
 ]
+
+# Compact uint8 summary raster layout (see summary_window_array). The class
+# bands hold the per-head argmax class index (0 = no prediction; argmax skips
+# the nodata class), the score bands hold the probability (0-255) of the
+# argmax class, and the month bands hold 0 for no prediction or 1 + whole
+# calendar months since TIMESTAMP_EPOCH (Jan 2015; 255 reaches March 2036).
+# This layout matches the olmoearth_lcc_viewer COGs exactly, so its
+# make_cogs.py converts summary rasters without any band changes.
+SUMMARY_BANDS = [
+    "binary_change",
+    "pre_class",
+    "post_class",
+    "src_class",
+    "dst_class",
+    "pre_score",
+    "post_score",
+    "ts_pre_month",
+    "ts_post_month",
+]
+
+
+def _days_to_month_values(days: np.ndarray) -> np.ndarray:
+    """Convert day-since-epoch values to the summary month encoding.
+
+    The result is 1 + whole calendar months between TIMESTAMP_EPOCH and the
+    day's date, clipped to the uint8 range.
+    """
+    epoch_day = np.datetime64(TIMESTAMP_EPOCH.date().isoformat())
+    dates = epoch_day + days.astype("timedelta64[D]")
+    months = (dates.astype("datetime64[M]") - epoch_day.astype("datetime64[M]")).astype(
+        np.int64
+    ) + 1
+    return np.clip(months, 1, 255).astype(np.uint8)
+
+
+def summary_window_array(arr: np.ndarray) -> np.ndarray:
+    """Derive the uint8 summary bands from a full output window array.
+
+    Args:
+        arr: (len(OUTPUT_BANDS), H, W) array with probabilities scaled 0-255.
+
+    Returns:
+        (len(SUMMARY_BANDS), H, W) uint8 array.
+    """
+    # Pixels with no prediction were left all-zero; use the binary head to
+    # detect them.
+    valid = arr[0 : BINARY_CHANGE_BAND + 1].max(axis=0) > 0
+
+    head_probs = {
+        "pre": arr[
+            PRE_CHANGE_BAND_OFFSET : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)
+        ],
+        "post": arr[
+            POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)
+        ],
+        "src": arr[SRC_BAND_OFFSET : SRC_BAND_OFFSET + NUM_LC_CLASSES],
+        "dst": arr[DST_BAND_OFFSET : DST_BAND_OFFSET + NUM_LC_CLASSES],
+    }
+    classes: dict[str, np.ndarray] = {}
+    scores: dict[str, np.ndarray] = {}
+    for head, probs in head_probs.items():
+        # Argmax excluding the nodata class (index 0); 0 is reserved for
+        # pixels with no prediction.
+        argmax = probs[1:].argmax(axis=0) + 1
+        scores[head] = np.clip(
+            np.take_along_axis(probs, argmax[None], axis=0)[0], 0, 255
+        ).astype(np.uint8)
+        classes[head] = np.where(valid, argmax, 0).astype(np.uint8)
+
+    months = {}
+    for head, band in [("pre", TS_PRE_DAYS_BAND), ("post", TS_POST_DAYS_BAND)]:
+        months[head] = np.where(valid, _days_to_month_values(arr[band]), 0).astype(
+            np.uint8
+        )
+
+    return np.stack(
+        [
+            np.clip(arr[BINARY_CHANGE_BAND], 0, 255).astype(np.uint8),
+            classes["pre"],
+            classes["post"],
+            classes["src"],
+            classes["dst"],
+            scores["pre"],
+            scores["post"],
+            months["pre"],
+            months["post"],
+        ]
+    )
 
 
 def _get_geotiff_path(window_dir: UPath) -> UPath | None:

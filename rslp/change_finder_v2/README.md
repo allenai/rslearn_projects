@@ -324,9 +324,12 @@ the LCC-specific pre/post-processing.
 
 Per-tile pipeline: create 2048x2048 windows -> materialize Sentinel-2 imagery ->
 run the model -> polygonize the `output_change` raster into a per-tile GeoJSON
-(`{EPSG}_{col}_{row}.geojson`). Optionally the merged 58-band raster is also written
-(`{EPSG}_{col}_{row}.tif`). Merging the per-tile GeoJSONs into a single layer and
-converting to vector tiles is handled separately (not yet implemented).
+(`{EPSG}_{col}_{row}.geojson`). Optionally the full merged 57-band uint16 raster
+(`{EPSG}_{col}_{row}.tif`, with the per-category scores) and/or the compact 9-band
+uint8 summary raster (`{EPSG}_{col}_{row}_summary.tif`, consumed directly by
+olmoearth_lcc_viewer; see `postprocess.SUMMARY_BANDS`) are also written. Merging
+the per-tile GeoJSONs into a single layer and converting to vector tiles is
+handled separately (not yet implemented).
 
 The prediction pipeline accepts any tile size that is a multiple of 2048; only the
 job-writer fixes the tile size to 32768.
@@ -346,7 +349,10 @@ Optional flags:
   WGS84 bounding box.
 - `--batch_size 4`: tiles per worker job.
 - `--count 100`: randomly sample at most this many tiles (for testing).
-- `--write_raster true`: also write the merged 49-band raster per tile.
+- `--write_raster true`: also write the full merged 57-band uint16 raster per tile
+  (includes the per-category scores).
+- `--write_summary_raster true`: also write the compact 9-band uint8 summary
+  raster per tile (preferred at scale; the viewer consumes it directly).
 
 Tiles whose outputs already exist in `out_path` are skipped, so re-running resumes.
 
@@ -393,6 +399,8 @@ Arguments:
   reference timestamp.
 - `--count 500`: number of land tiles to enqueue.
 - `--batch_size 4`: tiles per worker job.
-- `--write_raster true`: also write the merged 49-band raster per tile.
+- `--write_raster true`: also write the full merged 57-band uint16 raster per tile.
+- `--write_summary_raster true`: also write the compact 9-band uint8 summary
+  raster per tile.
 
 Launch workers the same way as for scaled prediction above.

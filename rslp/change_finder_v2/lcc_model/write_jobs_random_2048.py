@@ -88,6 +88,7 @@ def write_jobs_random_2048(
     count: int = 100,
     batch_size: int = 1,
     write_raster: bool = False,
+    write_summary_raster: bool = False,
     threshold: int = DEFAULT_THRESHOLD,
     workers: int = 32,
 ) -> None:
@@ -105,7 +106,9 @@ def write_jobs_random_2048(
         queue_name: the Beaker queue to write the job entries to.
         count: number of land tiles to enqueue.
         batch_size: how many tasks to run per worker job.
-        write_raster: whether workers should also write the merged raster.
+        write_raster: whether workers should also write the full merged raster.
+        write_summary_raster: whether workers should also write the compact uint8
+            summary raster.
         threshold: binary change probability threshold (0-255) for polygonization.
         workers: number of worker processes for land checks.
     """
@@ -189,6 +192,8 @@ def write_jobs_random_2048(
         ]
         if write_raster:
             cur_args += ["--write_raster", "true"]
+        if write_summary_raster:
+            cur_args += ["--write_summary_raster", "true"]
         cur_args += ["--threshold", str(threshold)]
         jobs.append(cur_args)
 
