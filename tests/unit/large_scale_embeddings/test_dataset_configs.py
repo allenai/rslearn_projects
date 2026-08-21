@@ -51,9 +51,9 @@ def _accepted_params(class_path: str) -> tuple[set[str], bool] | None:
             for fn in node.body:
                 if isinstance(fn, ast.FunctionDef) and fn.name == "__init__":
                     a = fn.args
-                    names = {
-                        x.arg for x in a.posonlyargs + a.args + a.kwonlyargs
-                    } - {"self"}
+                    names = {x.arg for x in a.posonlyargs + a.args + a.kwonlyargs} - {
+                        "self"
+                    }
                     return names, bool(a.kwarg)
     return None
 

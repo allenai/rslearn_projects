@@ -200,7 +200,10 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
                     mount_path=kwargs["weka_mount_path"],
                 )
             ],
-            extra_env_vars={"OEDATASETS_API_URL": kwargs["datasets_api_url"]},
+            extra_env_vars={
+                "OEDATASETS_API_URL": kwargs["datasets_api_url"],
+                **(kwargs.get("worker_env_vars") or {}),
+            },
             extra_env_secrets={"DATASETS_API_TOKEN": kwargs["datasets_token_secret"]},
         )
         logger.info("launched %d worker(s)", num_workers - live)
@@ -301,6 +304,7 @@ def supervise(
     weka_mount_path: str = DEFAULT_WEKA_MOUNT_PATH,
     datasets_api_url: str = DEFAULT_DATASETS_API_URL,
     datasets_token_secret: str = DEFAULT_DATASETS_TOKEN_SECRET,
+    worker_env_vars: dict[str, str] | None = None,
     num_workers: int = 8,
     gpus: int = 1,
     job_size: int = 8192,
@@ -345,6 +349,11 @@ def supervise(
         weka_mount_path: where to mount it.
         datasets_api_url: OlmoEarth Datasets API URL for the data source.
         datasets_token_secret: Beaker secret holding the datasets bearer token.
+        worker_env_vars: extra plain env vars for the workers this launches, merged over
+            the defaults. Needed for GDAL settings the data sources rely on, notably
+            GS_USER_PROJECT: olmoearth_shared's rasterio_session_for_path honours
+            requester_pays only for S3, so a GCS requester-pays bucket (Landsat) returns
+            HTTP 400 unless GDAL is given a billing project this way.
         num_workers: how many workers to keep alive.
         gpus: GPUs to request per worker. Raising this reduces how many workers share
             a node, which is worth trying if workers are dying to memory pressure.
@@ -377,6 +386,7 @@ def supervise(
         "weka_mount_path": weka_mount_path,
         "datasets_api_url": datasets_api_url,
         "datasets_token_secret": datasets_token_secret,
+        "worker_env_vars": worker_env_vars,
         "num_workers": num_workers,
         "gpus": gpus,
         "job_size": job_size,
