@@ -2,12 +2,85 @@
 
 import os
 from dataclasses import dataclass
+from functools import cache
 
 from beaker import BeakerDataMount, BeakerDataSource, BeakerEnvVar, BeakerImageSource
 from beaker.client import Beaker
+from beaker.exceptions import BeakerSecretNotFound
+
+from rslp.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 DEFAULT_WORKSPACE = "ai2/earth-systems"
 DEFAULT_BUDGET = "ai2/atec-olmoearth"
+
+# Fallback secret holding a Beaker token shared across the project.
+SHARED_BEAKER_TOKEN_SECRET = "RSLP_BEAKER_TOKEN"  # nosec
+
+
+# Cached because callers invoke this once per worker inside a launch loop, and neither
+# the username nor the secret's existence changes within a process. Without this, a
+# 128-worker launch would open 128 Beaker clients to ask the same question.
+@cache
+def resolve_beaker_token_secret(workspace: str = DEFAULT_WORKSPACE) -> str:
+    """Choose which Beaker secret to mount as BEAKER_TOKEN.
+
+    Beaker attributes anything a job creates to the owner of the token that job carries.
+    A launcher that mounts one shared token therefore produces jobs owned by whoever owns
+    that token, not by the person who started the run. That is wrong for attribution and
+    for quota, and it means you cannot cancel your own jobs. It matters most for
+    ``supervise``, which launches further jobs from inside a job.
+
+    Prefers ``<username>_BEAKER_TOKEN``, the convention already used across this
+    workspace and in olmoearth_pretrain. Falls back to the shared secret when the caller
+    has not written their own, so this cannot break a launcher that worked before; write
+    yours with::
+
+        beaker secret write "$(beaker account whoami --format json | jq -r '.[0].name')_BEAKER_TOKEN" <token>
+
+    Args:
+        workspace: the workspace whose secrets to look in.
+
+    Returns:
+        the name of the Beaker secret to mount as BEAKER_TOKEN.
+    """
+    try:
+        with Beaker.from_env(default_workspace=workspace) as beaker:
+            username = beaker.user_name
+            if not username:
+                logger.warning(
+                    "could not determine the Beaker username; mounting %s, so jobs this "
+                    "run creates will be attributed to that token's owner",
+                    SHARED_BEAKER_TOKEN_SECRET,
+                )
+                return SHARED_BEAKER_TOKEN_SECRET
+            name = f"{username}_BEAKER_TOKEN"
+            try:
+                beaker.secret.get(name)
+            except BeakerSecretNotFound:
+                logger.warning(
+                    "no %s secret in %s, so mounting %s instead; jobs this run creates "
+                    "will be attributed to that token's owner rather than to %s. Write "
+                    "your own with: beaker secret write %s <token>",
+                    name,
+                    workspace,
+                    SHARED_BEAKER_TOKEN_SECRET,
+                    username,
+                    name,
+                )
+                return SHARED_BEAKER_TOKEN_SECRET
+            logger.info("mounting %s as BEAKER_TOKEN", name)
+            return name
+    except Exception:
+        # Never let attribution break a launch: fall back to the behaviour that has
+        # always worked, and say why.
+        logger.warning(
+            "could not resolve a per-user Beaker token secret; falling back to %s",
+            SHARED_BEAKER_TOKEN_SECRET,
+            exc_info=True,
+        )
+        return SHARED_BEAKER_TOKEN_SECRET
 
 
 @dataclass
@@ -27,13 +100,18 @@ class WekaMount:
         )
 
 
-def get_base_env_vars(use_weka_prefix: bool = False) -> list[BeakerEnvVar]:
+def get_base_env_vars(
+    use_weka_prefix: bool = False, token_secret: str | None = None
+) -> list[BeakerEnvVar]:
     """Get basic environment variables that should be common across all Beaker jobs.
 
     Args:
         use_weka_prefix: set RSLP_PREFIX to RSLP_WEKA_PREFIX which should be set up to
             point to Weka. Otherwise it is set to RSLP_PREFIX which could be GCS or
             Weka.
+        token_secret: the Beaker secret to mount as BEAKER_TOKEN. Defaults to the
+            launching user's own secret, falling back to the shared one; see
+            :func:`resolve_beaker_token_secret`. Pass a name explicitly to pin it.
     """
     env_vars = [
         BeakerEnvVar(
@@ -70,7 +148,7 @@ def get_base_env_vars(use_weka_prefix: bool = False) -> list[BeakerEnvVar]:
         ),
         BeakerEnvVar(
             name="BEAKER_TOKEN",  # nosec
-            secret="RSLP_BEAKER_TOKEN",  # nosec
+            secret=token_secret or resolve_beaker_token_secret(),  # nosec
         ),
     ]
 

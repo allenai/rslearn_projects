@@ -166,10 +166,12 @@ def launch_workers(
         BeakerEnvVar(name=env_name, secret=secret_name)
         for env_name, secret_name in extra_env_secrets.items()
     ]
+    # Loop-invariant, and resolving the Beaker token secret costs an API call, so build
+    # it once rather than once per worker.
+    base_env_vars = get_base_env_vars(use_weka_prefix=False)
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         for _ in tqdm.tqdm(range(num_workers)):
-            env_vars = get_base_env_vars(use_weka_prefix=False)
-            env_vars += extra_beaker_env_vars
+            env_vars = base_env_vars + extra_beaker_env_vars
 
             datasets = [create_gcp_credentials_mount()]
             datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
