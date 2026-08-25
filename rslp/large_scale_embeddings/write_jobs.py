@@ -42,11 +42,6 @@ logger = get_logger(__name__)
 # of PATCH_SIZE).
 TILE_SIZE = 32768
 
-# When filtering tiles by GeoJSON, skip a UTM zone entirely if no feature's WGS84
-# bounding box comes within this many degrees longitude of the zone. This avoids
-# projecting shapes into distant UTM zones where the transform is unreliable.
-GEOJSON_ZONE_LONGITUDE_MARGIN = 6.0
-
 
 def enumerate_tiles_in_zone(utm_zone: CRS) -> Generator[tuple[int, int], None, None]:
     """List the (column, row) of all TILE_SIZE tiles within a UTM zone.
@@ -135,23 +130,22 @@ def get_jobs(
     for utm_zone in tqdm.tqdm(utm_zones, desc="Enumerating tasks across UTM zones"):
         projection = Projection(utm_zone, RESOLUTION, -RESOLUTION)
         wedge = get_zone_wedge(utm_zone, RESOLUTION)
+        zone_shp = shapely.box(*get_wgs84_bounds(utm_zone))
 
-        # Project the GeoJSON shapes near this zone into the zone's pixel coordinate
-        # system (skipping the zone if there are none nearby).
+        # Intersect the GeoJSON shapes with the WGS84 extent of the current UTM zone
+        # and project them into the zone's pixel coordinate system (skipping the zone
+        # if no shape intersects it). Reprojecting geometry far outside the zone's
+        # extent fails (or yields meaningless bounds), so we only reproject the
+        # portion of each shape that falls within the zone.
         zone_geojson_shapes: list[shapely.Geometry] | None = None
         if geojson_shapes is not None:
-            zone_number = utm_zone.to_epsg() % 100
-            zone_lon_min = -180 + (zone_number - 1) * 6
-            zone_lon_max = zone_lon_min + 6
             zone_geojson_shapes = []
             for shp in geojson_shapes:
-                shp_bounds = shp.bounds
-                if shp_bounds[2] < zone_lon_min - GEOJSON_ZONE_LONGITUDE_MARGIN:
-                    continue
-                if shp_bounds[0] > zone_lon_max + GEOJSON_ZONE_LONGITUDE_MARGIN:
+                zone_intersect_shp = shp.intersection(zone_shp)
+                if zone_intersect_shp.is_empty:
                     continue
                 zone_geojson_shapes.append(
-                    STGeometry(WGS84_PROJECTION, shp, None)
+                    STGeometry(WGS84_PROJECTION, zone_intersect_shp, None)
                     .to_projection(projection)
                     .shp
                 )
@@ -160,11 +154,8 @@ def get_jobs(
 
         user_bounds_in_proj: PixelBounds | None = None
         if wgs84_bounds is not None:
-            # Intersect the user bounds with the WGS84 extent of the current UTM zone.
-            # Reprojecting geometry far outside the zone's extent fails (or yields
-            # meaningless bounds), so we skip non-intersecting zones entirely and only
-            # reproject the portion of the user bounds that falls within the zone.
-            zone_shp = shapely.box(*get_wgs84_bounds(utm_zone))
+            # Intersect the user bounds with the zone extent for the same reason as
+            # the GeoJSON shapes above.
             intersect_shp = shapely.box(*wgs84_bounds).intersection(zone_shp)
             if intersect_shp.is_empty:
                 continue
