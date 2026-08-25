@@ -347,6 +347,6 @@ trainer:
       init_args:
         monitor: val_binary/auroc
         mode: max
-project_name: 2026_08_19_lcc
+project_name: 2026_08_24_lcc
 run_name: pool_and_head_v1_2_00
 management_dir: ${RSLP_PREFIX}/projects

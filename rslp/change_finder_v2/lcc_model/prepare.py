@@ -541,6 +541,33 @@ def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
             )
 
 
+POSITIVE_POINT_DATE_FIELDS = (
+    "pre_change",
+    "post_change",
+    "first_date_change_noticeable",
+)
+
+
+def _get_positive_points_missing_dates(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Get positive points missing date fields, if the entry has mixed points.
+
+    An entry is mixed when at least one positive point has all three date fields
+    (pre_change, post_change, first_date_change_noticeable) and at least one
+    doesn't. Returns the incomplete points for mixed entries, otherwise an empty
+    list (entries with no dated positive points stay on the "incomplete" path).
+    """
+    complete: list[dict[str, Any]] = []
+    incomplete: list[dict[str, Any]] = []
+    for pt in entry.get("positive_points", []):
+        if all(pt.get(field) for field in POSITIVE_POINT_DATE_FIELDS):
+            complete.append(pt)
+        else:
+            incomplete.append(pt)
+    if complete and incomplete:
+        return incomplete
+    return []
+
+
 def _entry_has_complete_annotations(entry: dict[str, Any]) -> bool:
     """Check that the entry has enough annotation info to create a training window.
 
@@ -820,10 +847,12 @@ def prepare(
     if "OEDATASETS_API_URL" not in os.environ:
         raise RuntimeError("OEDATASETS_API_URL env var must be set")
 
-    entries = []
+    # Each element is (source path, index within that file, entry).
+    entries: list[tuple[str, int, dict[str, Any]]] = []
     for v2_json_path in v2_json_paths:
         with open(v2_json_path) as f:
-            entries.extend(json.load(f))
+            for idx, entry in enumerate(json.load(f)):
+                entries.append((v2_json_path, idx, entry))
 
     ds_upath = UPath(ds_path)
 
@@ -841,9 +870,29 @@ def prepare(
     skipped_incomplete = 0
     skipped_duplicate_input = 0
     seen_window_keys: set[tuple[str, str]] = set()
+    # One warning string per skipped mixed entry (some positive points have all
+    # three date fields, some don't).
+    mixed_warnings: list[str] = []
 
-    for entry in entries:
+    for source_path, source_idx, entry in entries:
         _validate_positive_point_dates(entry)
+        missing_date_points = _get_positive_points_missing_dates(entry)
+        if missing_date_points:
+            lines = [
+                f"ERROR: mixed positive points in {source_path} index {source_idx} "
+                f"(window {entry.get('group')}/{entry.get('window_name')}): "
+                f"{len(missing_date_points)} positive point(s) missing date fields:"
+            ]
+            for pt in missing_date_points:
+                missing_fields = [
+                    field for field in POSITIVE_POINT_DATE_FIELDS if not pt.get(field)
+                ]
+                lines.append(
+                    f"  point lon={pt.get('lon')} lat={pt.get('lat')} "
+                    f"missing {', '.join(missing_fields)}"
+                )
+            mixed_warnings.append("\n".join(lines))
+            continue
         if not _entry_has_complete_annotations(entry):
             skipped_incomplete += 1
             continue
@@ -857,7 +906,8 @@ def prepare(
     print(
         f"{len(pending)} to check/process, "
         f"{skipped_incomplete} incomplete, "
-        f"{skipped_duplicate_input} duplicate inputs"
+        f"{skipped_duplicate_input} duplicate inputs, "
+        f"{len(mixed_warnings)} skipped for mixed positive points"
     )
 
     kwargs_list = [
@@ -895,9 +945,19 @@ def prepare(
         f"{status_counts['labels_updated']} labels updated, "
         f"{status_counts['unchanged']} unchanged; "
         f"skipped {skipped_incomplete} incomplete "
-        f"+ {skipped_duplicate_input} duplicate inputs"
+        f"+ {skipped_duplicate_input} duplicate inputs "
+        f"+ {len(mixed_warnings)} mixed positive points"
     )
     print(f"Wrote annotation sidecar to {sidecar_path}")
+
+    if mixed_warnings:
+        print(
+            f"\n{len(mixed_warnings)} entries were skipped because some of their "
+            "positive points have all of pre_change/post_change/"
+            "first_date_change_noticeable and some do not:"
+        )
+        for warning in mixed_warnings:
+            print(warning)
 
 
 def main() -> None:

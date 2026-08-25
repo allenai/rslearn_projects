@@ -353,6 +353,6 @@ trainer:
       init_args:
         monitor: val_binary/auroc
         mode: max
-project_name: 2026_08_19_lcc
+project_name: 2026_08_24_lcc
 run_name: temporal_posenc_attnpool_v1_2_00
 management_dir: ${RSLP_PREFIX}/projects

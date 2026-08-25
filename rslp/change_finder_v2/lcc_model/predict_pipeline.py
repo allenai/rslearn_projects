@@ -53,7 +53,9 @@ from .postprocess import (
 logger = get_logger(__name__)
 
 DATASET_CONFIG_FNAME = "data/change_finder_v2/lcc_model/config_predict.json"
-MODEL_CONFIG_FNAME = "data/change_finder_v2/lcc_model/config_bp_abs_qdrop_predict.yaml"
+MODEL_CONFIG_FNAME = (
+    "data/change_finder_v2/lcc_model/config_bp_abs_season_qdrop_predict.yaml"
+)
 
 # Per-window size. The tile size (passed via bounds) must be a multiple of this.
 PATCH_SIZE = 2048
