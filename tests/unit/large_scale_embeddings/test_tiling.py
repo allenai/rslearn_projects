@@ -1,9 +1,15 @@
 """Unit tests for rslp.large_scale_embeddings.tiling."""
 
+import numpy as np
+import pytest
+import shapely
 from rasterio.crs import CRS
-from rslearn.utils.geometry import Projection
+from rslearn.const import WGS84_PROJECTION
+from rslearn.utils.geometry import Projection, STGeometry
 
+import rslp.large_scale_embeddings.tiling as tiling
 from rslp.large_scale_embeddings.tiling import (
+    LAND_STEP_SIZE,
     bounds_intersect_wedge,
     get_zone_wedge,
     list_kept_crops,
@@ -55,3 +61,43 @@ def test_list_kept_crops_ocean() -> None:
     bounds = _pixel_bounds_around(150000, 4440000, 4096)
     kept = list_kept_crops(PROJECTION_10N, bounds, 2048)
     assert len(kept) == 0
+
+
+def test_list_kept_crops_outside_wedge() -> None:
+    """Crops on land but outside the zone's wedge are skipped."""
+    # x=1100000m in zone 10N is around -114 longitude (Idaho, land), well inside
+    # zone 11/12's territory.
+    bounds = _pixel_bounds_around(1100000, 5040000, 4096)
+    kept = list_kept_crops(PROJECTION_10N, bounds, 2048)
+    assert len(kept) == 0
+
+
+def test_list_kept_crops_small_island(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An island smaller than a crop but >= LAND_STEP_SIZE is captured.
+
+    The land mask is mocked so that only one grid sample point in the interior of one
+    crop (away from all crop corners) is land; the crop must still be kept.
+    """
+    crop_size = 2048
+    bounds = _pixel_bounds_around(530000, 5040000, 2 * crop_size)
+    # A sample point in the interior of the first crop: crop_size / 2 is a multiple
+    # of LAND_STEP_SIZE but not on any crop corner or edge.
+    assert (crop_size // 2) % LAND_STEP_SIZE == 0
+    island_x_px = bounds[0] + crop_size // 2
+    island_y_px = bounds[1] + crop_size // 2
+    island_geom = STGeometry(
+        PROJECTION_10N, shapely.Point(island_x_px, island_y_px), None
+    ).to_projection(WGS84_PROJECTION)
+    island_lon, island_lat = island_geom.shp.x, island_geom.shp.y
+
+    # Land only within ~1 km of the island point, which is smaller than the
+    # LAND_STEP_SIZE spacing (2.56 km) so no other sample point registers as land.
+    def fake_is_land(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
+        return (np.abs(lat - island_lat) < 0.01) & (np.abs(lon - island_lon) < 0.01)
+
+    monkeypatch.setattr(tiling.globe, "is_land", fake_is_land)
+
+    kept = list_kept_crops(PROJECTION_10N, bounds, crop_size)
+    assert kept == [
+        (bounds[0], bounds[1], bounds[0] + crop_size, bounds[1] + crop_size)
+    ]

@@ -72,28 +72,7 @@ RESOLUTION = 10
 PREDICTION_GROUP = "predict"
 
 SENTINEL2_LAYER = "sentinel2_l2a"
-# Band order in the dataset config band set (used to read materialized mosaics when
-# computing the validity mask).
-SENTINEL2_BANDS = [
-    "B01",
-    "B02",
-    "B03",
-    "B04",
-    "B05",
-    "B06",
-    "B07",
-    "B08",
-    "B8A",
-    "B09",
-    "B11",
-    "B12",
-]
-
 OUTPUT_LAYER = "output"
-EMBEDDING_DIM = 128
-# The dataset configs use num_bands, for which rslearn generates band names B0, B1,
-# etc.
-OUTPUT_BANDS = [f"B{band_idx}" for band_idx in range(EMBEDDING_DIM)]
 
 MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
     disabled_layers=[],
@@ -243,6 +222,7 @@ def _crop_crosses_bad_longitude(projection: Projection, bounds: PixelBounds) -> 
 
 
 def _upload_window_output(
+    dataset: Dataset,
     window: Window,
     projection: Projection,
     out_fname: UPath,
@@ -255,6 +235,7 @@ def _upload_window_output(
     GeoTIFF to the output path.
 
     Args:
+        dataset: the scratch dataset (used to look up band names from the config).
         window: the window to upload.
         projection: the UTM projection (must match the window projection).
         out_fname: the output filename.
@@ -275,7 +256,7 @@ def _upload_window_output(
     )
     raster = window.data.read_raster(
         OUTPUT_LAYER,
-        OUTPUT_BANDS,
+        dataset.layers[OUTPUT_LAYER].band_sets[0].bands,
         GeotiffRasterFormat(),
         projection=out_projection,
         bounds=out_bounds,
@@ -296,7 +277,7 @@ def _upload_window_output(
             continue
         s2_array = window.data.read_raster(
             SENTINEL2_LAYER,
-            SENTINEL2_BANDS,
+            dataset.layers[SENTINEL2_LAYER].band_sets[0].bands,
             GeotiffRasterFormat(),
             group_idx=group_idx,
             resampling=Resampling.nearest,
@@ -355,7 +336,7 @@ def _upload_window_by_name(
         )
     window = windows[0]
     out_fname = get_output_fname(out_path, window.projection, window.bounds)
-    _upload_window_output(window, window.projection, out_fname, patch_size)
+    _upload_window_output(dataset, window, window.projection, out_fname, patch_size)
 
 
 def predict_pipeline(
@@ -541,12 +522,7 @@ def _process_tile(
         )
 
         # Run the model only if at least one window has materialized imagery.
-        completed_fnames = list(
-            ds_path.glob(
-                f"windows/{PREDICTION_GROUP}/*/layers/{SENTINEL2_LAYER}/completed"
-            )
-        )
-        if len(completed_fnames) == 0:
+        if not any(window.is_layer_completed(SENTINEL2_LAYER) for window in windows):
             logger.info("skipping prediction since no windows seem to have data")
         else:
             run_model_predict(
