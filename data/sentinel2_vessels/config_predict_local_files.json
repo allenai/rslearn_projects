@@ -33,6 +33,14 @@
             "B08"
           ],
           "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
+            "init_args": {
+              "geotiff_options": {
+                "compress": "none"
+              }
+            }
+          },
           "remap": {
             "dst": [
               0,
@@ -55,6 +63,14 @@
             "B12"
           ],
           "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
+            "init_args": {
+              "geotiff_options": {
+                "compress": "none"
+              }
+            }
+          },
           "remap": {
             "dst": [
               0,
@@ -75,6 +91,14 @@
             "B10"
           ],
           "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.GeotiffRasterFormat",
+            "init_args": {
+              "geotiff_options": {
+                "compress": "none"
+              }
+            }
+          },
           "remap": {
             "dst": [
               0,
@@ -97,6 +121,14 @@
         }
       },
       "type": "raster"
+    }
+  },
+  "tile_store": {
+    "class_path": "rslearn.tile_stores.default.DefaultTileStore",
+    "init_args": {
+      "geotiff_options": {
+        "compress": "none"
+      }
     }
   }
 }
