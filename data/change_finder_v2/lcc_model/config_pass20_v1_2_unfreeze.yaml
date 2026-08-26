@@ -324,6 +324,6 @@ trainer:
         module_selector: ["model", "encoder"]
         unfreeze_at_epoch: 5
         unfreeze_lr_factor: 1
-project_name: 2026_08_24_lcc
+project_name: 2026_08_25_lcc
 run_name: pass20_v1_2_unfreeze_00
 management_dir: ${RSLP_PREFIX}/projects
