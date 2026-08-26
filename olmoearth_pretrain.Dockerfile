@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
+FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime
 
 RUN apt update
 RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
@@ -13,7 +13,7 @@ COPY requirements.txt /opt/rslearn_projects/requirements.txt
 COPY requirements-extra.txt /opt/rslearn_projects/requirements-extra.txt
 COPY requirements-olmocore.txt /opt/rslearn_projects/requirements-olmocore.txt
 # Using cache mount here avoids needing to re-download dependencies for later builds if the version didn't change.
-RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system /opt/rslearn[extra] /opt/olmoearth_pretrain -r /opt/rslearn_projects/requirements.txt -r /opt/rslearn_projects/requirements-extra.txt -r /opt/rslearn_projects/requirements-olmocore.txt
+RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system --break-system-packages /opt/rslearn[extra] /opt/olmoearth_pretrain -r /opt/rslearn_projects/requirements.txt -r /opt/rslearn_projects/requirements-extra.txt -r /opt/rslearn_projects/requirements-olmocore.txt
 
 # Now copy the source code and install for real.
 # If we don't change any dependencies, then only these steps need to be repeated
@@ -23,6 +23,6 @@ COPY ./docker_build/olmoearth_pretrain /opt/olmoearth_pretrain
 COPY ./docker_build/olmoearth_run /opt/olmoearth_run
 COPY . /opt/rslearn_projects/
 
-RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system /opt/rslearn[extra] /opt/olmoearth_pretrain /opt/rslearn_projects[extra] /opt/olmoearth_run[runner]
+RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system --break-system-packages /opt/rslearn[extra] /opt/olmoearth_pretrain /opt/rslearn_projects[extra] /opt/olmoearth_run[runner]
 
 WORKDIR /opt/rslearn_projects
