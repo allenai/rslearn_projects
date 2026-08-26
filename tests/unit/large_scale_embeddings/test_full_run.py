@@ -154,3 +154,39 @@ def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> Non
     run_all_mod.run_all(**COMMON, gpus=1)
     assert ("predict", 1) in seen
     assert ("render_pca", 0) in seen
+
+
+def test_gdal_env_vars_are_passed_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Workers get the GDAL settings the data sources need without being asked.
+
+    Omitting either fails the run minutes in with an error naming neither variable, so
+    they are defaults rather than something a caller has to remember.
+    """
+    seen: list[dict] = []
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod, "supervise", lambda **kw: seen.append(kw["worker_env_vars"])
+    )
+    _stub_paths(monkeypatch, exists=True)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+
+    run_all_mod.run_all(**COMMON, skip_pca=True)
+    assert seen[0]["GS_USER_PROJECT"] == "earthsystem-dev-c3po"
+    assert seen[0]["AWS_NO_SIGN_REQUEST"] == "YES"
+
+
+def test_caller_can_override_a_gdal_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An explicit value wins over the default, and the other default survives."""
+    seen: list[dict] = []
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod, "supervise", lambda **kw: seen.append(kw["worker_env_vars"])
+    )
+    _stub_paths(monkeypatch, exists=True)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+
+    run_all_mod.run_all(
+        **COMMON, skip_pca=True, worker_env_vars={"GS_USER_PROJECT": "other-project"}
+    )
+    assert seen[0]["GS_USER_PROJECT"] == "other-project"
+    assert seen[0]["AWS_NO_SIGN_REQUEST"] == "YES"

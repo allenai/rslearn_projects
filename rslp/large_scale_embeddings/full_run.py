@@ -29,6 +29,22 @@ from .zarr_store import DEFAULT_PCA_MAX_LEVEL, init_pca_store
 
 logger = get_logger(__name__)
 
+# GDAL settings the Landsat and Sentinel-2 sources need, applied by default because
+# omitting either fails the run minutes in, after the image pull and dataset prepare,
+# with an error that names neither variable:
+#
+# GS_USER_PROJECT -- olmoearth_shared's rasterio_session_for_path honours
+#   requester_pays only for S3, returning a bare GSSession() for GCS. The USGS Landsat
+#   mirror is requester-pays, so without a billing project GDAL gets HTTP 400.
+# AWS_NO_SIGN_REQUEST -- some assets resolve to public S3, where GDAL otherwise looks
+#   for credentials that do not exist in a Beaker worker and raises InvalidCredentials.
+#
+# Both are overridable: a caller passing either key in worker_env_vars wins.
+DEFAULT_WORKER_ENV_VARS = {
+    "GS_USER_PROJECT": "earthsystem-dev-c3po",
+    "AWS_NO_SIGN_REQUEST": "YES",
+}
+
 
 def run_all(
     inputs: EmbeddingInputs,
@@ -81,6 +97,11 @@ def run_all(
             normally when it hits max_cycles, so its return is not proof of
             completion; advancing on partial data is the failure this guards.
     """
+    # Merge so an explicit value wins but the GDAL defaults are never simply forgotten.
+    supervise_kwargs["worker_env_vars"] = {
+        **DEFAULT_WORKER_ENV_VARS,
+        **(supervise_kwargs.get("worker_env_vars") or {}),
+    }
     completed_paths = [completed_path_template.format(year=year) for year in years]
 
     logger.info("step 0/4: ensuring the store exists at %s", store_path)
