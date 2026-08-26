@@ -2,6 +2,7 @@
 
 import os
 import uuid
+from datetime import timedelta
 
 import tqdm
 from beaker import (
@@ -16,6 +17,7 @@ from beaker import (
 
 from rslp.utils.beaker import (
     DEFAULT_BUDGET,
+    DEFAULT_MIN_RUNTIME,
     DEFAULT_WORKSPACE,
     create_gcp_credentials_mount,
     create_gee_credentials_mount,
@@ -45,6 +47,9 @@ def launch_job(
     clusters: list[str] | None = None,
     hostname: str | None = None,
     priority: BeakerJobPriority = BeakerJobPriority.high,
+    extra_env_vars: dict[str, str] = {},
+    extra_env_secrets: dict[str, str] | None = None,
+    min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
 ) -> None:
     """Launch a Beaker job that materializes the rslearn dataset.
 
@@ -55,7 +60,15 @@ def launch_job(
             clusters must be set.
         hostname: optional Beaker host to constrain to.
         priority: the priority to assign to the Beaker job.
+        extra_env_vars: additional environment variables to set in the Beaker job.
+        extra_env_secrets: additional environment variables to set in the Beaker job
+            from Beaker secrets, mapping environment variable name to the name of the
+            Beaker secret (in the target workspace) to read its value from.
+        min_runtime: how long to protect the (preemptible) Beaker job from
+            preemption.
     """
+    if extra_env_secrets is None:
+        extra_env_secrets = {}
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         experiment_name = str(uuid.uuid4())[0:16]
         weka_mount = BeakerDataMount(
@@ -88,6 +101,20 @@ def launch_job(
                     value=os.environ["HTTPS_PROXY"],
                 ),
             ]
+        for env_name, env_value in extra_env_vars.items():
+            env_vars.append(
+                BeakerEnvVar(
+                    name=env_name,
+                    value=env_value,
+                )
+            )
+        for env_name, secret_name in extra_env_secrets.items():
+            env_vars.append(
+                BeakerEnvVar(
+                    name=env_name,
+                    secret=secret_name,
+                )
+            )
         # Set one GPU if not targeting a specific host, otherwise we might have
         # hundreds of jobs scheduled on the same host.
         # Also we can only set cluster constraint if we do not specify hostname.
@@ -116,7 +143,7 @@ def launch_job(
                 create_gee_credentials_mount(),
             ],
             resources=resources,
-            preemptible=True,
+            min_runtime=min_runtime,
             constraints=constraints,
             env_vars=env_vars,
         )
@@ -132,6 +159,9 @@ def launch_jobs(
     hosts: list[str] | None = None,
     command: list[str] | None = None,
     priority: BeakerJobPriority = BeakerJobPriority.high,
+    extra_env_vars: dict[str, str] = {},
+    extra_env_secrets: dict[str, str] | None = None,
+    min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
 ) -> None:
     """Launch Beaker jobs to materialize an rslearn dataset.
 
@@ -146,6 +176,12 @@ def launch_jobs(
             as an alternative to specifying clusters+num_jobs.
         command: override the default materialization command.
         priority: the priority to assign to the Beaker jobs.
+        extra_env_vars: additional environment variables to set in the Beaker jobs.
+        extra_env_secrets: additional environment variables to set in the Beaker jobs
+            from Beaker secrets, mapping environment variable name to the name of the
+            Beaker secret (in the target workspace) to read its value from.
+        min_runtime: how long to protect each (preemptible) Beaker job from
+            preemption.
     """
     if (clusters is not None and hosts is not None) or (
         clusters is None and hosts is None
@@ -168,6 +204,9 @@ def launch_jobs(
                 command=command,
                 clusters=clusters,
                 priority=priority,
+                extra_env_vars=extra_env_vars,
+                extra_env_secrets=extra_env_secrets,
+                min_runtime=min_runtime,
             )
 
     else:
@@ -177,4 +216,7 @@ def launch_jobs(
                 command=command,
                 hostname=host,
                 priority=priority,
+                extra_env_vars=extra_env_vars,
+                extra_env_secrets=extra_env_secrets,
+                min_runtime=min_runtime,
             )

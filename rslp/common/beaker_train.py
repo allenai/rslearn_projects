@@ -3,6 +3,7 @@
 import os
 import shutil
 import uuid
+from datetime import timedelta
 
 from beaker import (
     Beaker,
@@ -17,6 +18,7 @@ from beaker import (
 from rslp import launcher_lib
 from rslp.utils.beaker import (
     DEFAULT_BUDGET,
+    DEFAULT_MIN_RUNTIME,
     DEFAULT_WORKSPACE,
     WekaMount,
     create_gcp_credentials_mount,
@@ -44,6 +46,7 @@ def beaker_train(
     retries: int = 0,
     extra_env_vars: dict[str, str] = {},
     extra_env_secrets: dict[str, str] | None = None,
+    min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
 ) -> None:
     """Launch training for the specified config on Beaker.
 
@@ -73,6 +76,8 @@ def beaker_train(
         extra_env_secrets: additional environment variables to set in the Beaker job
             from Beaker secrets, mapping environment variable name to the name of the
             Beaker secret (in the target workspace) to read its value from.
+        min_runtime: how long to protect the (preemptible) Beaker job from
+            preemption.
     """
     # Normalize the config_path / config_paths option to always get a config_paths list
     # (so if config_path is set, make a one-element list from it).
@@ -206,7 +211,7 @@ def beaker_train(
                         constraints=BeakerConstraints(
                             cluster=cluster,
                         ),
-                        preemptible=True,
+                        min_runtime=min_runtime,
                         datasets=datasets,
                         env_vars=env_vars,
                         resources=BeakerTaskResources(

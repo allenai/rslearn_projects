@@ -5,6 +5,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable
+from datetime import timedelta
 from queue import Empty as QueueEmpty
 from typing import Any
 
@@ -23,6 +24,7 @@ from rslp.log_utils import get_logger
 from rslp.main import run_workflow
 from rslp.utils.beaker import (
     DEFAULT_BUDGET,
+    DEFAULT_MIN_RUNTIME,
     DEFAULT_WORKSPACE,
     WekaMount,
     create_gcp_credentials_mount,
@@ -136,6 +138,7 @@ def launch_workers(
     weka_mounts: list[WekaMount] = [],
     extra_env_vars: dict[str, str] | None = None,
     extra_env_secrets: dict[str, str] | None = None,
+    min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -153,6 +156,8 @@ def launch_workers(
         extra_env_secrets: additional environment variables to set on each worker from
             Beaker secrets, mapping environment variable name to the name of the Beaker
             secret (in the target workspace) to read its value from.
+        min_runtime: how long to protect each (preemptible) worker job from
+            preemption.
     """
     if extra_env_vars is None:
         extra_env_vars = {}
@@ -189,7 +194,7 @@ def launch_workers(
                 constraints=BeakerConstraints(
                     cluster=cluster,
                 ),
-                preemptible=True,
+                min_runtime=min_runtime,
                 datasets=datasets,
                 env_vars=env_vars,
                 resources=BeakerTaskResources(
