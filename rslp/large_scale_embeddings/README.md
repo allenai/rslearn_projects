@@ -224,6 +224,20 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
      child-process cycle isolation (without it a hung Beaker RPC can stall the run
      for hours). Verify a supervisor image on a short run before relying on it.
 
+   **Checkpoint and olmoearth_pretrain must be paired.** A checkpoint's config.json
+   serializes every encoder field that existed when it was trained, including defaults,
+   and `Config.from_dict` rejects fields the current code has removed. Loading a
+   checkpoint against too-new code fails with `Failed to construct 'encoder_config' in
+   config`, which names neither the field nor the checkpoint. rslearn's
+   `_patch_legacy_encoder_config` only adds a missing key and cannot bridge this.
+
+   Known pairing: the distilled release candidate
+   `regbtl_v1_2_gdyn_d768_proj128lin_sup768_w1_newsamp_psuniform/step667200` needs
+   olmoearth_pretrain at or before `72ba0a8e` (2026-08-24). The next commit,
+   `5c573d7a`, drops `register_read_layers` and `register_shared_read_kv`; later ones
+   drop `register_output_dim`, `register_unit_norm` and `register_latent_every_n`, all
+   of which that checkpoint's config still carries.
+
    Validate a new image end-to-end before a long run: S2 -> forward pass -> int8
    GeoZarr write, then check that the dequantized per-pixel L2 norm is ~= 1.0. That
    catches a config-incompatible checkpoint and a broken write path in one pass.
