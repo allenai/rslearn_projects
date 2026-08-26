@@ -10,6 +10,7 @@ The forward flow is three ordered steps:
    (``write_render_jobs`` enqueues the work). CPU only, no model.
 """
 
+from .full_run import launch_run_all, run_all
 from .pca import fit_pca
 from .predict_pipeline import predict_pipeline
 from .render_pca import annotate_pca_store, render_pca_pipeline, write_render_jobs
@@ -21,9 +22,11 @@ workflows = {
     "fit_pca": fit_pca,
     "init_pca_store": init_pca_store,
     "init_store": init_store,
+    "launch_run_all": launch_run_all,
     "launch_supervisor": launch_supervisor,
     "predict": predict_pipeline,
     "render_pca": render_pca_pipeline,
+    "run_all": run_all,
     "annotate_pca_store": annotate_pca_store,
     "write_render_jobs": write_render_jobs,
     "supervise": supervise,
