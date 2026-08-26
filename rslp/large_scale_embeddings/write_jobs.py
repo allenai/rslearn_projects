@@ -385,6 +385,8 @@ def init_store(
     source_data: list[str],
     zone_numbers: list[int] | None = None,
     patch_size: int = 1,
+    band_chunk: int = zarr_store.DEFAULT_BAND_CHUNK,
+    matryoshka_dims: list[int] | None = None,
     build_version: str = "0.0.1",
     zstd_level: int = zarr_store.DEFAULT_ZSTD_LEVEL,
     overwrite: bool = False,
@@ -402,6 +404,10 @@ def init_store(
         zone_numbers: the UTM zone numbers to create; defaults to all of 1-60.
         patch_size: the encoder patch size; the store grid is at 1/patch_size of the
             input resolution, so it must match the patch_size used by write_jobs.
+        band_chunk: dimensions per inner chunk along the band axis. Makes Matryoshka
+            prefix reads proportionally cheaper at negligible storage cost.
+        matryoshka_dims: prefix widths the model supports, recorded in the store's
+            provenance so a reader knows which truncations are valid.
         build_version: version of the software that built the store.
         zstd_level: zstd compression level for the arrays.
         overwrite: whether to overwrite an existing store.
@@ -425,6 +431,8 @@ def init_store(
         resolution=output_resolution,
         tile_size=output_tile_size,
         dimensions=EMBEDDING_DIM,
+        band_chunk=band_chunk,
+        matryoshka_dims=matryoshka_dims,
         chunk_size=min(zarr_store.DEFAULT_CHUNK_SIZE, output_shard_size),
         shard_size=output_shard_size,
         zstd_level=zstd_level,
