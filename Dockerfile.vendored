@@ -1,0 +1,57 @@
+# Builds the large_scale_embeddings image from local checkouts instead of from
+# GitHub, which the default Dockerfile does via `git clone`.
+#
+# Use this when a run depends on rslearn, olmoearth_pretrain, or olmoearth_run
+# changes that are not on a branch yet, or on a pinned commit of one of them. The
+# distilled-model run needs both: a patched rslearn and an olmoearth_pretrain old
+# enough to load the release-candidate checkpoint (see
+# rslp/large_scale_embeddings/README.md for that pairing).
+#
+# Populate these first; `docker_build` is gitignored, so they are yours to place:
+#
+#   docker_build/rslearn              github.com/allenai/rslearn
+#   docker_build/olmoearth_pretrain   github.com/allenai/olmoearth_pretrain
+#   docker_build/olmoearth_run        github.com/allenai/olmoearth_run
+#
+# Then, from the repo root:
+#
+#   docker build -f Dockerfile.vendored -t rslpomp-geozarr-<tag> .
+#   beaker image create --name rslpomp-geozarr-<tag> \
+#       --workspace ai2/earth-systems rslpomp-geozarr-<tag>
+#
+# Whatever is checked out in those three directories is what ships, so confirm
+# each one is on the commit you intend before building. Nothing in the image
+# records which commits went in.
+
+FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime
+
+RUN apt update
+RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Dependency manifests are copied before the sources so that editing code does
+# not invalidate the (slow) dependency layer below.
+COPY docker_build/rslearn/pyproject.toml /opt/rslearn/pyproject.toml
+COPY docker_build/olmoearth_pretrain/pyproject.toml /opt/olmoearth_pretrain/pyproject.toml
+COPY requirements.txt /opt/rslearn_projects/requirements.txt
+COPY requirements-extra.txt /opt/rslearn_projects/requirements-extra.txt
+COPY requirements-olmocore.txt /opt/rslearn_projects/requirements-olmocore.txt
+RUN uv pip install --system --break-system-packages \
+      /opt/rslearn[extra] /opt/olmoearth_pretrain \
+      -r /opt/rslearn_projects/requirements.txt \
+      -r /opt/rslearn_projects/requirements-extra.txt \
+      -r /opt/rslearn_projects/requirements-olmocore.txt
+
+COPY ./docker_build/rslearn /opt/rslearn
+COPY ./docker_build/olmoearth_pretrain /opt/olmoearth_pretrain
+COPY ./docker_build/olmoearth_run /opt/olmoearth_run
+COPY . /opt/rslearn_projects/
+
+# Re-run with the real sources present so the editable installs pick up the code
+# that the manifest-only layer above could not see.
+RUN uv pip install --system --break-system-packages \
+      /opt/rslearn[extra] /opt/olmoearth_pretrain \
+      /opt/rslearn_projects[extra] /opt/olmoearth_run[runner]
+
+WORKDIR /opt/rslearn_projects
