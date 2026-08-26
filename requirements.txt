@@ -1,11 +1,11 @@
-gcsfs>=2025.2.0
+# gcsfs 2026.8.0 returns wrong bytes for ranged reads, which surfaces as a
+# bogus Zarr shard-index checksum mismatch on sharded stores. The stored data
+# and checksums are correct; only this client is broken. Unpin when fixed.
+gcsfs>=2025.2.0,<2026.8
 prometheus-client>=0.21.1
 python-dotenv>=1.0
 PyYAML>=6
 rslearn>=0.1.14
 s3fs>=2025.2.0
 wandb>=0.21
-# 3.3.0 mis-validates the shard index crc32c on read (computes it over the
-# wrong byte span), so it cannot read stores it wrote itself. Data and stored
-# checksums are correct; only 3.3.0's reader is broken. Unpin when fixed.
-zarr>=3,<3.3
+zarr>=3
