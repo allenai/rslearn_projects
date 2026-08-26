@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 import zarr
 
 from rslp.large_scale_embeddings import zarr_store as zs
@@ -210,3 +211,52 @@ def test_write_window_region_patch_size(tmp_path: Path) -> None:
     row0 = by0 // patch_size - out_oy
     back = array[0, :, row0 : row0 + out_px, col0 : col0 + out_px]
     assert np.array_equal(back, embeddings)
+
+
+def test_init_store_band_chunking(tmp_path: Path) -> None:
+    """The band axis is chunked, so a Matryoshka prefix read is proportionally cheap.
+
+    With the whole width in one chunk, reading the first N dimensions still fetches all
+    of them and discards the rest. This asserts the inner chunk is narrower than the
+    band axis while the shard still spans it, which is what keeps one window in one
+    object for concurrent writers.
+    """
+    store_path = str(tmp_path / "store.zarr")
+    zs.init_store(
+        store_path=store_path,
+        zone_numbers=[10],
+        years=[2024],
+        model_url=MODEL_URL,
+        source_data=SOURCE_DATA,
+        resolution=RESOLUTION,
+        tile_size=TILE_SIZE,
+        dimensions=128,
+        band_chunk=32,
+        shard_size=512,
+        chunk_size=256,
+    )
+    array = zarr.open_group(store=store_path, path="utm10", mode="r")[
+        zs.EMBEDDINGS_ARRAY
+    ]
+    assert array.chunks == (1, 32, 256, 256)
+    assert array.shards == (1, 128, 512, 512)
+    # Four band groups per shard, so the trained prefixes 32/64/96/128 land exactly.
+    assert array.shards[1] // array.chunks[1] == 4
+
+
+def test_init_store_rejects_band_chunk_that_does_not_divide(tmp_path: Path) -> None:
+    """A band_chunk that does not divide the width would make an invalid shard grid."""
+    with pytest.raises(ValueError, match="must divide dimensions"):
+        zs.init_store(
+            store_path=str(tmp_path / "bad.zarr"),
+            zone_numbers=[10],
+            years=[2024],
+            model_url=MODEL_URL,
+            source_data=SOURCE_DATA,
+            resolution=RESOLUTION,
+            tile_size=TILE_SIZE,
+            dimensions=100,
+            band_chunk=32,
+            shard_size=512,
+            chunk_size=256,
+        )

@@ -72,6 +72,20 @@ EMBEDDING_DIMENSIONS = ("time", "band", "y", "x")
 DEFAULT_CHUNK_SIZE = 256
 DEFAULT_SHARD_SIZE = 2048
 DEFAULT_ZSTD_LEVEL = 1
+# Dimensions per inner chunk along the band axis.
+#
+# Chunking the band axis is what makes a Matryoshka prefix read cheap: with the whole
+# width in one chunk, reading embeddings[..., :64] still fetches all 128 dimensions and
+# discards half. At 32 the trained prefixes land exactly (32/64/96/128) and a 64-dim
+# read costs 50% of the bytes.
+#
+# It is close to free. Measured on four real 256x256x128 chunks at zstd-1, splitting the
+# band axis changed stored size by under 0.02% at every granularity from 64 down to 8:
+# the embedding dimensions are effectively decorrelated, so the codec gains nothing from
+# seeing them together. The cost is the shard index, 16 bytes per inner chunk, which
+# goes from 1 KB to 4 KB per shard. Full-width reads are unaffected because the
+# sub-chunks are contiguous within the shard and zarr coalesces them into one request.
+DEFAULT_BAND_CHUNK = 32
 # Chunk size (in elements) for the 1-D x/y coordinate arrays. They are linear ramps
 # so they compress to almost nothing under zstd.
 COORD_CHUNK_SIZE = 65536
@@ -229,6 +243,7 @@ def init_store(
     build_version: str = "0.0.1",
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     shard_size: int = DEFAULT_SHARD_SIZE,
+    band_chunk: int = DEFAULT_BAND_CHUNK,
     zstd_level: int = DEFAULT_ZSTD_LEVEL,
     quantization_link: str = DEFAULT_QUANTIZATION_LINK,
     overwrite: bool = False,
@@ -253,6 +268,9 @@ def init_store(
         chunk_size: inner chunk spatial size for the embedding array.
         shard_size: outer shard spatial size; must equal the window (PATCH_SIZE) size
             and be a multiple of chunk_size, and tile_size a multiple of it.
+        band_chunk: dimensions per inner chunk along the band axis; must divide
+            dimensions. Smaller values make Matryoshka prefix reads proportionally
+            cheaper at negligible storage cost.
         zstd_level: zstd compression level for the embedding and coordinate arrays.
         quantization_link: URL documenting the dequantization formula.
         overwrite: whether to overwrite an existing store.
@@ -266,6 +284,10 @@ def init_store(
         raise ValueError(
             f"shard_size {shard_size} must be a multiple of chunk_size {chunk_size}"
         )
+    # The shard spans the full band axis, and zarr requires the shard shape to be a
+    # whole multiple of the inner chunk shape on every axis.
+    if dimensions % min(band_chunk, dimensions) != 0:
+        raise ValueError(f"band_chunk {band_chunk} must divide dimensions {dimensions}")
     if gsd is None:
         gsd = float(resolution)
 
@@ -302,7 +324,7 @@ def init_store(
         zone_group.create_array(
             EMBEDDINGS_ARRAY,
             shape=(len(years), dimensions, height, width),
-            chunks=(1, dimensions, chunk_size, chunk_size),
+            chunks=(1, min(band_chunk, dimensions), chunk_size, chunk_size),
             shards=(1, dimensions, shard_size, shard_size),
             dtype="int8",
             fill_value=NODATA_VALUE,
