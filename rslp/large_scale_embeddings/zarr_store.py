@@ -160,6 +160,7 @@ def build_geoemb_attrs(
     gsd: float,
     build_version: str,
     quantization_link: str = DEFAULT_QUANTIZATION_LINK,
+    matryoshka_dims: list[int] | None = None,
 ) -> dict:
     """Build the geoemb convention attributes (shared by the root and zone groups).
 
@@ -170,6 +171,11 @@ def build_geoemb_attrs(
         gsd: ground sample distance in meters.
         build_version: version of the software that built the store.
         quantization_link: URL documenting the dequantization formula.
+        matryoshka_dims: prefix widths the model was trained to support, if any. A
+            distilled checkpoint trains embeddings[..., :d] to be a usable embedding on
+            its own for each d, so a reader can truncate to any listed width. Recorded
+            because it is not derivable from the array: the store would otherwise look
+            like an ordinary 128-dim archive, and truncating one of those is meaningless.
 
     Returns:
         a dict of geoemb: attributes.
@@ -184,6 +190,11 @@ def build_geoemb_attrs(
         "geoemb:spatial_layout": "utm_zones",
         "geoemb:quantization": _quantization_attrs(quantization_link),
         "geoemb:build_version": build_version,
+        **(
+            {"geoemb:matryoshka_dims": sorted(matryoshka_dims, reverse=True)}
+            if matryoshka_dims
+            else {}
+        ),
     }
 
 
@@ -244,6 +255,7 @@ def init_store(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     shard_size: int = DEFAULT_SHARD_SIZE,
     band_chunk: int = DEFAULT_BAND_CHUNK,
+    matryoshka_dims: list[int] | None = None,
     zstd_level: int = DEFAULT_ZSTD_LEVEL,
     quantization_link: str = DEFAULT_QUANTIZATION_LINK,
     overwrite: bool = False,
@@ -271,6 +283,8 @@ def init_store(
         band_chunk: dimensions per inner chunk along the band axis; must divide
             dimensions. Smaller values make Matryoshka prefix reads proportionally
             cheaper at negligible storage cost.
+        matryoshka_dims: prefix widths the model supports, recorded in the store's
+            provenance so a reader knows which truncations are valid.
         zstd_level: zstd compression level for the embedding and coordinate arrays.
         quantization_link: URL documenting the dequantization formula.
         overwrite: whether to overwrite an existing store.
@@ -300,6 +314,7 @@ def init_store(
         dimensions=dimensions,
         model_url=model_url,
         source_data=source_data,
+        matryoshka_dims=matryoshka_dims,
         gsd=gsd,
         build_version=build_version,
         quantization_link=quantization_link,
