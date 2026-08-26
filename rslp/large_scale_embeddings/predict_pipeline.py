@@ -62,6 +62,12 @@ class EmbeddingInputs(Enum):
     S2 = "s2"
     S2_S1 = "s2_s1"
     S2_LANDSAT = "s2_landsat"
+    # The distilled release candidate: same inputs as S2_LANDSAT but the model's
+    # 128-dim student head rather than its 768-dim teacher. A separate variant because
+    # the variant name is what separates the two stores -- the student is selected by
+    # an environment variable, which leaves no trace in the output path, so running
+    # both against one checkpoint under one variant would silently mix them.
+    S2_LANDSAT_DISTILLED = "s2_landsat_distilled"
 
 
 DATASET_CONFIG_FNAME = "data/large_scale_embeddings/{inputs}.json"
