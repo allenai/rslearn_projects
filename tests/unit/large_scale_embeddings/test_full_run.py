@@ -157,10 +157,10 @@ def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_gdal_env_vars_are_passed_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Workers get the GDAL settings the data sources need without being asked.
+    """Workers get GS_USER_PROJECT without being asked.
 
-    Omitting either fails the run minutes in with an error naming neither variable, so
-    they are defaults rather than something a caller has to remember.
+    Omitting it fails the run minutes in with an HTTP 400 that names no variable, so it
+    is a default rather than something a caller has to remember.
     """
     seen: list[dict] = []
     monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
@@ -172,7 +172,9 @@ def test_gdal_env_vars_are_passed_by_default(monkeypatch: pytest.MonkeyPatch) ->
 
     run_all_mod.run_all(**COMMON, skip_pca=True)
     assert seen[0]["GS_USER_PROJECT"] == "earthsystem-dev-c3po"
-    assert seen[0]["AWS_NO_SIGN_REQUEST"] == "YES"
+    # AWS credentials are secrets, mounted by supervise, not plain env vars. An unsigned
+    # request could not serve requester_pays=True, so that flag must not appear here.
+    assert "AWS_NO_SIGN_REQUEST" not in seen[0]
 
 
 def test_caller_can_override_a_gdal_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -189,4 +191,3 @@ def test_caller_can_override_a_gdal_default(monkeypatch: pytest.MonkeyPatch) -> 
         **COMMON, skip_pca=True, worker_env_vars={"GS_USER_PROJECT": "other-project"}
     )
     assert seen[0]["GS_USER_PROJECT"] == "other-project"
-    assert seen[0]["AWS_NO_SIGN_REQUEST"] == "YES"

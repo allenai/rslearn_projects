@@ -74,6 +74,13 @@ DEFAULT_DATASETS_API_URL = "https://datasets.olmoearth.allenai.org"
 # This is the name of a Beaker secret, not a credential. (bandit flags the assignment
 # because the name contains "token"/"secret".)
 DEFAULT_DATASETS_TOKEN_SECRET = "LCC_DATASETS_API_TOKEN"  # nosec
+# Beaker secrets holding AWS credentials, mirroring what olmoearth_run's deployed runner
+# injects from Secret Manager (see runner_secret_vars_google_batch_mapping). The data
+# sources request every asset with requester_pays=True, so an S3 asset needs signed
+# requests: without credentials GDAL raises InvalidCredentials. GCS is the preferred
+# backend and S3 the fallback, so this is rarely exercised but fails hard when it is.
+DEFAULT_AWS_KEY_ID_SECRET = "AWS_ACCESS_KEY_ID"  # nosec
+DEFAULT_AWS_SECRET_KEY_SECRET = "AWS_SECRET_ACCESS_KEY"  # nosec
 
 
 def _state_name(entry: Any) -> str:
@@ -204,7 +211,17 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
                 "OEDATASETS_API_URL": kwargs["datasets_api_url"],
                 **(kwargs.get("worker_env_vars") or {}),
             },
-            extra_env_secrets={"DATASETS_API_TOKEN": kwargs["datasets_token_secret"]},
+            extra_env_secrets={
+                "DATASETS_API_TOKEN": kwargs["datasets_token_secret"],
+                # .get so a caller passing a partial config still launches; these have
+                # module defaults and are only overridden to point at other secrets.
+                "AWS_ACCESS_KEY_ID": kwargs.get(
+                    "aws_key_id_secret", DEFAULT_AWS_KEY_ID_SECRET
+                ),
+                "AWS_SECRET_ACCESS_KEY": kwargs.get(
+                    "aws_secret_key_secret", DEFAULT_AWS_SECRET_KEY_SECRET
+                ),
+            },
         )
         logger.info("launched %d worker(s)", num_workers - live)
 
@@ -304,6 +321,8 @@ def supervise(
     weka_mount_path: str = DEFAULT_WEKA_MOUNT_PATH,
     datasets_api_url: str = DEFAULT_DATASETS_API_URL,
     datasets_token_secret: str = DEFAULT_DATASETS_TOKEN_SECRET,
+    aws_key_id_secret: str = DEFAULT_AWS_KEY_ID_SECRET,
+    aws_secret_key_secret: str = DEFAULT_AWS_SECRET_KEY_SECRET,
     worker_env_vars: dict[str, str] | None = None,
     num_workers: int = 8,
     gpus: int = 1,
@@ -349,6 +368,9 @@ def supervise(
         weka_mount_path: where to mount it.
         datasets_api_url: OlmoEarth Datasets API URL for the data source.
         datasets_token_secret: Beaker secret holding the datasets bearer token.
+        aws_key_id_secret: Beaker secret holding an AWS access key id, for the S3
+            fallback the data sources read with requester_pays=True.
+        aws_secret_key_secret: Beaker secret holding the matching AWS secret key.
         worker_env_vars: extra plain env vars for the workers this launches, merged over
             the defaults. Needed for GDAL settings the data sources rely on, notably
             GS_USER_PROJECT: olmoearth_shared's rasterio_session_for_path honours
@@ -386,6 +408,8 @@ def supervise(
         "weka_mount_path": weka_mount_path,
         "datasets_api_url": datasets_api_url,
         "datasets_token_secret": datasets_token_secret,
+        "aws_key_id_secret": aws_key_id_secret,
+        "aws_secret_key_secret": aws_secret_key_secret,
         "worker_env_vars": worker_env_vars,
         "num_workers": num_workers,
         "gpus": gpus,

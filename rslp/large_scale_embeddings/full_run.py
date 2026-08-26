@@ -29,20 +29,18 @@ from .zarr_store import DEFAULT_PCA_MAX_LEVEL, init_pca_store
 
 logger = get_logger(__name__)
 
-# GDAL settings the Landsat and Sentinel-2 sources need, applied by default because
-# omitting either fails the run minutes in, after the image pull and dataset prepare,
-# with an error that names neither variable:
+# GS_USER_PROJECT is required for the Landsat reads and easy to forget: omitting it
+# fails minutes in, after the image pull and dataset prepare, with an HTTP 400 that names
+# no variable. olmoearth_shared's rasterio_session_for_path honours requester_pays only
+# for S3, returning a bare GSSession() for GCS, so the requester-pays USGS mirror needs
+# GDAL to be handed a billing project this way. The deployed olmoearth_run runner sets
+# exactly this, from the same project id.
 #
-# GS_USER_PROJECT -- olmoearth_shared's rasterio_session_for_path honours
-#   requester_pays only for S3, returning a bare GSSession() for GCS. The USGS Landsat
-#   mirror is requester-pays, so without a billing project GDAL gets HTTP 400.
-# AWS_NO_SIGN_REQUEST -- some assets resolve to public S3, where GDAL otherwise looks
-#   for credentials that do not exist in a Beaker worker and raises InvalidCredentials.
-#
-# Both are overridable: a caller passing either key in worker_env_vars wins.
+# AWS credentials are NOT here: they are secrets, mounted by supervise from Beaker
+# secrets. Note that AWS_NO_SIGN_REQUEST would be actively wrong -- the data sources
+# request assets with requester_pays=True, which cannot be served by an unsigned request.
 DEFAULT_WORKER_ENV_VARS = {
     "GS_USER_PROJECT": "earthsystem-dev-c3po",
-    "AWS_NO_SIGN_REQUEST": "YES",
 }
 
 
