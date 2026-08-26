@@ -73,7 +73,11 @@ DEFAULT_WEKA_MOUNT_PATH = "/weka/dfive-default"
 DEFAULT_DATASETS_API_URL = "https://datasets.olmoearth.allenai.org"
 # This is the name of a Beaker secret, not a credential. (bandit flags the assignment
 # because the name contains "token"/"secret".)
-DEFAULT_DATASETS_TOKEN_SECRET = "LCC_DATASETS_API_TOKEN"  # nosec
+# Named to pair with OEDATASETS_API_URL. The predecessor, LCC_DATASETS_API_TOKEN,
+# carried a project prefix (land cover change) despite being the general datasets
+# token; it still holds the same value, so an older invocation passing it by name
+# keeps working.
+DEFAULT_DATASETS_TOKEN_SECRET = "OEDATASETS_API_TOKEN"  # nosec
 # Beaker secrets holding AWS credentials, mirroring what olmoearth_run's deployed runner
 # injects from Secret Manager (see runner_secret_vars_google_batch_mapping). The data
 # sources request every asset with requester_pays=True, so an S3 asset needs signed

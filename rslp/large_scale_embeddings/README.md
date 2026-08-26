@@ -264,7 +264,7 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
 
 4. Launch workers on Beaker (WEKA must be mounted for the checkpoint). The
    OlmoEarth Datasets data source needs `OEDATASETS_API_URL` (plain env var) and
-   `DATASETS_API_TOKEN` (bearer token, read from the `LCC_DATASETS_API_TOKEN`
+   `DATASETS_API_TOKEN` (bearer token, read from the `OEDATASETS_API_TOKEN`
    Beaker secret which must exist in the `ai2/earth-systems` workspace):
 
         python -m rslp.main common launch \
@@ -276,7 +276,7 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
             --cluster '["ai2/jupiter","ai2/ceres"]' \
             --weka_mounts+='{"bucket_name": "dfive-default", "mount_path": "/weka/dfive-default"}' \
             --extra_env_vars '{"OEDATASETS_API_URL": "https://datasets.olmoearth.allenai.org"}' \
-            --extra_env_secrets '{"DATASETS_API_TOKEN": "LCC_DATASETS_API_TOKEN"}' \
+            --extra_env_secrets '{"DATASETS_API_TOKEN": "OEDATASETS_API_TOKEN"}' \
             --shared_memory 256GiB
 
 Progress can be monitored by counting marker files in `completed_path`. To retry
