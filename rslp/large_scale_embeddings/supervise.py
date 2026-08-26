@@ -100,6 +100,45 @@ def _state_name(entry: Any) -> str:
         return "UNKNOWN"
 
 
+def _stage_marker_paths(kwargs: dict[str, Any]) -> list[str]:
+    """The completion-marker directories this stage writes into.
+
+    Args:
+        kwargs: the supervise() arguments.
+
+    Returns:
+        one path per marker directory the stage is responsible for.
+    """
+    if kwargs["stage"] == STAGE_RENDER_PCA:
+        return [kwargs["pca_completed_path"]]
+    return [
+        kwargs["completed_path_template"].format(year=year) for year in kwargs["years"]
+    ]
+
+
+def _any_completion_markers(kwargs: dict[str, Any]) -> bool:
+    """Whether this stage has already written at least one completion marker.
+
+    A remaining count of zero has two very different causes: the stage is genuinely
+    finished, or the AOI and zone filters excluded everything so nothing was ever
+    enumerated. Markers on disk are what separates them, so the first-cycle guard
+    consults this instead of inferring from the count alone.
+
+    Args:
+        kwargs: the supervise() arguments.
+
+    Returns:
+        True if any marker exists for this stage.
+    """
+    from upath import UPath
+
+    for path in _stage_marker_paths(kwargs):
+        upath = UPath(path)
+        if upath.exists() and any(True for _ in upath.iterdir()):
+            return True
+    return False
+
+
 def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
     """Run one supervision cycle, reporting the remaining job count via `result`.
 
@@ -493,11 +532,12 @@ def supervise(
                 proc.exitcode,
             )
         elif remaining == 0:
-            if not seen_work:
+            if not seen_work and not _any_completion_markers(kwargs):
                 # Enumerating nothing on the very first cycle almost never means "the
                 # run is finished" -- far more often the AOI filters, bounds, or zone
-                # selection exclude everything. Fail loudly rather than reporting a
-                # successful no-op run.
+                # selection exclude everything. Existing markers are the exception: a
+                # resumed run whose stage is already complete legitimately sees zero
+                # remaining on cycle one, and must skip the stage rather than fail.
                 raise ValueError(
                     "enumerated no jobs at all on the first cycle; check "
                     "geojson_fname/wgs84_bounds/epsg_code and that store_path and "

@@ -160,7 +160,7 @@ def test_run_cycle_render_stage_enumerates_from_source_markers(
             "weka_bucket": "b",
             "weka_mount_path": "/m",
             "datasets_api_url": "https://example.invalid",
-            "datasets_token_secret": "SECRET",  # noqa: S106
+            "datasets_token_secret": "SECRET",
         },
         result,
     )
@@ -180,3 +180,60 @@ def test_run_cycle_render_stage_enumerates_from_source_markers(
     assert enqueued["count"] == 2
     # The render stage asks for no GPUs.
     assert enqueued["gpus"] == 0
+
+
+# ---------------------------------------------------------------- marker detection
+#
+# A remaining count of zero on the first cycle is ambiguous: either the stage is
+# already finished, or the AOI and zone filters excluded everything. Conflating the
+# two made a resumed run fail instead of skipping its completed stage, so these
+# pin down the distinction.
+
+
+def test_stage_marker_paths_predict_expands_every_year() -> None:
+    paths = sup._stage_marker_paths(
+        {
+            "stage": sup.STAGE_PREDICT,
+            "years": [2023, 2024],
+            "completed_path_template": "gs://bucket/done_{year}/",
+        }
+    )
+    assert paths == ["gs://bucket/done_2023/", "gs://bucket/done_2024/"]
+
+
+def test_stage_marker_paths_render_uses_the_pca_path() -> None:
+    paths = sup._stage_marker_paths(
+        {
+            "stage": sup.STAGE_RENDER_PCA,
+            "years": [2024],
+            "completed_path_template": "gs://bucket/done_{year}/",
+            "pca_completed_path": "gs://bucket/pca_done/",
+        }
+    )
+    assert paths == ["gs://bucket/pca_done/"]
+
+
+def test_any_completion_markers_true_when_a_marker_exists(tmp_path) -> None:
+    done = tmp_path / "done_2024"
+    done.mkdir()
+    (done / "EPSG:32610_0_0.json").write_text("{}")
+    assert sup._any_completion_markers(
+        {
+            "stage": sup.STAGE_PREDICT,
+            "years": [2024],
+            "completed_path_template": str(tmp_path / "done_{year}") + "/",
+        }
+    )
+
+
+def test_any_completion_markers_false_for_missing_and_empty_dirs(tmp_path) -> None:
+    # 2023's directory does not exist at all; 2024's exists but is empty. Neither is
+    # evidence of work, so a zero remaining count really does mean nothing matched.
+    (tmp_path / "done_2024").mkdir()
+    assert not sup._any_completion_markers(
+        {
+            "stage": sup.STAGE_PREDICT,
+            "years": [2023, 2024],
+            "completed_path_template": str(tmp_path / "done_{year}") + "/",
+        }
+    )
