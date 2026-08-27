@@ -1,0 +1,138 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_2_BASE
+              patch_size: 4
+              use_legacy_timestamps: false
+        decoder:
+          - class_path: rslearn.models.unet.UNetDecoder
+            init_args:
+              in_channels: [[4, 768]]
+              out_channels: 7
+              num_channels: {2: 256, 1: 128}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+    optimizer:
+      class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
+      init_args:
+        lr: 0.0001
+        layer_decay_rate: 0.8
+        num_layers: 12
+        encoder_prefix: model.encoder.0
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/monocrop_classifier/20260720/
+    inputs:
+      sentinel2_l2a:
+        data_type: raster
+        layers: [sentinel2_l2a]
+        bands: [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      targets:
+        data_type: raster
+        layers: [label]
+        bands: [label]
+        is_target: true
+        dtype: INT32
+    task:
+      class_path: rslearn.train.tasks.segmentation.SegmentationTask
+      init_args:
+        num_classes: 7
+        # Merge soybean (7) into the mennonites_soybean slot (2), which is
+        # renamed to "soybean". The remaining classes keep their original IDs.
+        class_id_mapping: {7: 2}
+        nodata_value: 0
+        enable_accuracy_metric: false
+        class_names: [nodata, mennonites_nonsoybean, soybean, oil_palm, other_agriculture, pastures, rice]
+        other_metrics:
+          window_accuracy:
+            class_path: rslp.forest_loss_driver.monocrop_classifier.metrics.PerWindowAccuracy
+            init_args:
+              num_classes: 7
+          window_confusion_matrix:
+            class_path: rslp.forest_loss_driver.monocrop_classifier.metrics.PerWindowConfusionMatrix
+            init_args:
+              num_classes: 7
+              class_names: [nodata, mennonites_nonsoybean, soybean, oil_palm, other_agriculture, pastures, rice]
+    batch_size: 4
+    num_workers: 16
+    default_config:
+      crop_size: 128
+    train_config:
+      tags:
+        split: train
+      transforms:
+        - class_path: rslp.forest_loss_driver.monocrop_classifier.transforms.PostLossMonthSampler
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: [sentinel2_l2a, target/classes, target/valid]
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+    val_config:
+      tags:
+        split: val
+      transforms:
+        - class_path: rslp.forest_loss_driver.monocrop_classifier.transforms.PostLossMonthSampler
+          init_args:
+            num_post_months: 6
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+    test_config:
+      tags:
+        split: val
+      transforms:
+        - class_path: rslp.forest_loss_driver.monocrop_classifier.transforms.PostLossMonthSampler
+          init_args:
+            num_post_months: ${MONOCROP_NUM_POST_MONTHS}
+            default_num_post_months: 6
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+    predict_config:
+      groups: [predict]
+      crop_size: 128
+      load_all_crops: true
+      skip_targets: true
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: epoch
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_window_accuracy
+        mode: max
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: output
+        selector: []
+project_name: 2026_07_monocrop_classifier
+run_name: olmoearth_v1_2_base_llrd_merged_soy
+management_dir: ${RSLP_PREFIX}/projects
