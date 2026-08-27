@@ -286,30 +286,54 @@ Per-window output at `<window>/layers/output_change/<bandset>/geotiff.tif` (58 b
 
 #### 4. Postprocess: raster to GeoJSON
 
-Convert prediction rasters to a GeoJSON of change polygons:
+Convert prediction rasters to GeoJSONs of change polygons. By default (with
+`--out_dir`) each worker job writes one GeoJSON per input raster, so features
+are not retained in memory across jobs; pass `--output` instead (or in
+addition) to merge all features into a single GeoJSON file.
 
 ```bash
 python -m rslp.change_finder_v2.lcc_model.postprocess \
     --dataset_path "$PREDICT_DS" \
-    --output changes.geojson \
-    --threshold 128 \
+    --out_dir changes/ \
     --min_pixels 10 \
     --workers 32
 ```
 
-This script:
-- Thresholds the binary change band and computes per-pixel argmax src/dst classes.
-- Finds connected components separately for each unique (src, dst) class pair,
-  so each polygon represents a single type of land cover transition.
-- Estimates pre/post change dates per polygon as the median of the per-pixel
-  day-encoded timestamp bands.
-- Assigns predicted pre/post/same change categories per polygon via majority vote
-  of the per-pixel argmax category ("none" is a valid prediction).
+With `--dataset_path`, `--out_dir` writes one `<window_name>.geojson` per
+prediction window, so polygons remain split at 2048-window boundaries and the
+files can be numerous.
 
-Each GeoJSON feature includes: `src_class`, `src_class_idx`, `dst_class`,
-`dst_class_idx`, `num_pixels`, `avg_change_score`, `pre_change_days`,
-`post_change_days`, `pre_change_date`, `post_change_date`, `pre_change_category`,
-`post_change_category`, `same_change_category`.
+Alternatively, run over the merged 9-band summary rasters written by the scaled
+prediction pipeline (`--write_summary_raster`); each `*_summary.tif` tile is
+processed whole so polygons are not split at 2048-window boundaries (a full
+32768x32768 tile is ~10 GB in memory, so keep `--workers` low). Here
+`--out_dir` writes one `<tile>_summary.geojson` per tile:
+
+```bash
+python -m rslp.change_finder_v2.lcc_model.postprocess \
+    --summary_path /path/to/tile_outputs/ \
+    --out_dir changes/ \
+    --workers 4
+```
+
+Polygonization operates on the summary representation (`SUMMARY_BANDS`; full
+per-window rasters are converted on the fly via `summary_window_array`):
+- A pixel is a change pixel if its argmax pre or post change category is a real
+  category (not "none"). The pre head is the merged pre+same head, so the former
+  same-change categories (e.g. wildfire) count as pre categories.
+- Finds connected components separately for each unique (pre category, post
+  category) combination, so each polygon represents a single category combo.
+- Per polygon, majority-votes the src/dst land cover classes and the change
+  start/end months (dates are month granularity, first of the month).
+- Averages the binary change score over the polygon, and averages the
+  per-pixel argmax score of each head predicting a real category (one head
+  usually; two for combos like deforestation+mining).
+
+Each GeoJSON feature includes: `num_pixels`, `area_hectares` (10 m pixels =
+0.01 ha each, rounded to 2 decimals), `binary_change_score` and
+`category_change_score` (0-255 scale), `pre_change_category`,
+`post_change_category`, `src_class`, `src_class_idx`, `dst_class`,
+`dst_class_idx`, `pre_change_date`, `post_change_date`.
 
 ---
 

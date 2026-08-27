@@ -24,7 +24,6 @@ import rslp.common.worker
 from rslp.log_utils import get_logger
 
 from .predict_pipeline import (
-    DEFAULT_THRESHOLD,
     PATCH_SIZE,
     RESOLUTION,
     PredictTaskArgs,
@@ -89,7 +88,6 @@ def write_jobs_random_2048(
     batch_size: int = 1,
     write_raster: bool = False,
     write_summary_raster: bool = False,
-    threshold: int = DEFAULT_THRESHOLD,
     workers: int = 32,
 ) -> None:
     """Sample random 2048x2048 land tiles and write prediction jobs to a Beaker queue.
@@ -109,7 +107,6 @@ def write_jobs_random_2048(
         write_raster: whether workers should also write the full merged raster.
         write_summary_raster: whether workers should also write the compact uint8
             summary raster.
-        threshold: binary change probability threshold (0-255) for polygonization.
         workers: number of worker processes for land checks.
     """
     time_range_seconds = int((end_time - start_time).total_seconds())
@@ -194,7 +191,6 @@ def write_jobs_random_2048(
             cur_args += ["--write_raster", "true"]
         if write_summary_raster:
             cur_args += ["--write_summary_raster", "true"]
-        cur_args += ["--threshold", str(threshold)]
         jobs.append(cur_args)
 
     random.shuffle(jobs)

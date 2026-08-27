@@ -20,7 +20,6 @@ from upath import UPath
 
 import rslp.common.worker
 from rslp.change_finder_v2.lcc_model.predict_pipeline import (
-    DEFAULT_THRESHOLD,
     PATCH_SIZE,
     RESOLUTION,
     PredictTaskArgs,
@@ -88,7 +87,6 @@ def write_jobs_random_2048_china(
     count: int = 200,
     batch_size: int = 1,
     write_raster: bool = False,
-    threshold: int = DEFAULT_THRESHOLD,
 ) -> None:
     """Sample random 2048x2048 tiles in China and write prediction jobs to a queue.
 
@@ -105,7 +103,6 @@ def write_jobs_random_2048_china(
         count: number of tiles to enqueue.
         batch_size: how many tasks to run per worker job.
         write_raster: whether workers should also write the merged raster.
-        threshold: binary change probability threshold (0-255) for polygonization.
     """
     time_range_seconds = int((end_time - start_time).total_seconds())
 
@@ -173,7 +170,6 @@ def write_jobs_random_2048_china(
         ]
         if write_raster:
             cur_args += ["--write_raster", "true"]
-        cur_args += ["--threshold", str(threshold)]
         jobs.append(cur_args)
 
     random.shuffle(jobs)

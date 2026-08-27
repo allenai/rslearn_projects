@@ -64,7 +64,6 @@ RESOLUTION = 10
 PREDICTION_GROUP = "predict"
 
 # Default postprocessing parameters (match postprocess.py CLI defaults).
-DEFAULT_THRESHOLD = 128
 DEFAULT_MIN_PIXELS = 10
 DEFAULT_POSTPROCESS_WORKERS = 32
 
@@ -205,7 +204,6 @@ def predict_pipeline(
     scratch_path: str,
     write_raster: bool = False,
     write_summary_raster: bool = False,
-    threshold: int = DEFAULT_THRESHOLD,
     min_pixels: int = DEFAULT_MIN_PIXELS,
     workers: int = DEFAULT_POSTPROCESS_WORKERS,
 ) -> None:
@@ -225,7 +223,6 @@ def predict_pipeline(
             (all OUTPUT_BANDS, uint16; includes the per-category scores).
         write_summary_raster: also write the compact uint8 summary raster
             (SUMMARY_BANDS), which the olmoearth_lcc_viewer consumes directly.
-        threshold: binary change probability threshold (0-255) for polygonization.
         min_pixels: minimum connected-component size for polygonization.
         workers: parallel workers for polygonization.
     """
@@ -311,9 +308,8 @@ def predict_pipeline(
         run_model_predict(MODEL_CONFIG_FNAME, ds_path)
 
     # Polygonize the change raster into a per-tile GeoJSON.
-    features = collect_features(
+    _, features = collect_features(
         dataset_path=str(ds_path),
-        threshold=threshold,
         min_pixels=min_pixels,
         workers=workers,
     )
@@ -371,7 +367,6 @@ def predict_multi(
     tasks: str,
     write_raster: bool = False,
     write_summary_raster: bool = False,
-    threshold: int = DEFAULT_THRESHOLD,
 ) -> None:
     """Run multiple prediction tasks sequentially.
 
@@ -384,7 +379,6 @@ def predict_multi(
         write_raster: also write the full merged output_change raster GeoTIFF per
             tile.
         write_summary_raster: also write the compact uint8 summary raster per tile.
-        threshold: binary change probability threshold (0-255) for polygonization.
     """
     os.makedirs(scratch_path, exist_ok=True)
     for task in json.loads(tasks):
@@ -403,5 +397,4 @@ def predict_multi(
                 scratch_path=os.path.join(tmp_dir, "scratch"),
                 write_raster=write_raster,
                 write_summary_raster=write_summary_raster,
-                threshold=threshold,
             )

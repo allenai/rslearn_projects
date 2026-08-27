@@ -26,7 +26,6 @@ import rslp.common.worker
 from rslp.log_utils import get_logger
 
 from .predict_pipeline import (
-    DEFAULT_THRESHOLD,
     RESOLUTION,
     PredictTaskArgs,
     get_output_fname,
@@ -71,7 +70,6 @@ def get_jobs(
     count: int | None = None,
     write_raster: bool = False,
     write_summary_raster: bool = False,
-    threshold: int = DEFAULT_THRESHOLD,
 ) -> list[list[str]]:
     """Get batches of prediction tasks.
 
@@ -87,7 +85,6 @@ def get_jobs(
         write_raster: whether workers should also write the full merged raster.
         write_summary_raster: whether workers should also write the compact uint8
             summary raster.
-        threshold: binary change probability threshold (0-255) for polygonization.
 
     Returns:
         a list of worker argument lists, one per batch of TILE_SIZE tiles.
@@ -186,7 +183,6 @@ def get_jobs(
             cur_args += ["--write_raster", "true"]
         if write_summary_raster:
             cur_args += ["--write_summary_raster", "true"]
-        cur_args += ["--threshold", str(threshold)]
         jobs.append(cur_args)
 
     return jobs
@@ -202,7 +198,6 @@ def write_jobs(
     count: int | None = None,
     write_raster: bool = False,
     write_summary_raster: bool = False,
-    threshold: int = DEFAULT_THRESHOLD,
 ) -> None:
     """Enumerate tiles for one reference timestamp and write jobs to a Beaker queue.
 
@@ -217,7 +212,6 @@ def write_jobs(
         write_raster: whether workers should also write the full merged raster.
         write_summary_raster: whether workers should also write the compact uint8
             summary raster.
-        threshold: binary change probability threshold (0-255) for polygonization.
     """
     jobs = get_jobs(
         timestamp=timestamp,
@@ -228,7 +222,6 @@ def write_jobs(
         count=count,
         write_raster=write_raster,
         write_summary_raster=write_summary_raster,
-        threshold=threshold,
     )
     # Shuffle so outputs start appearing from random parts of the world (aids debugging).
     random.shuffle(jobs)

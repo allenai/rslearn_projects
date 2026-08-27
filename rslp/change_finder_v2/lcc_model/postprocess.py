@@ -1,21 +1,41 @@
 """Convert v2 LCC prediction rasters to GeoJSON change polygons.
 
-Reads the ``output_change`` layer from each prediction window. For each window:
+Polygonization operates on the compact uint8 summary representation (see
+SUMMARY_BANDS / summary_window_array):
 
-1. Threshold the binary change probability band.
-2. Compute per-pixel argmax source and destination land cover classes.
-3. For each unique (src, dst) class pair, find connected components and
-   vectorize them to WGS-84 polygons.
-4. Estimate the change timestamp per polygon via majority vote of per-pixel
-   argmax over the 20 timestamp probability bands, then map to actual dates
-   read from the dataset's layer metadata.
+1. A pixel is a change pixel if the argmax pre or post change category is a
+   real category (not "none"; the pre head is the merged pre+same head).
+2. Vectorize connected components of pixels sharing the same (pre category,
+   post category) combination to WGS-84 polygons, using a single
+   rasterio.features.shapes pass over the raster.
+3. Per polygon, sample the source/destination land cover classes, the change
+   start/end months, and the scores at a representative interior point.
+
+Two input modes:
+
+- ``--dataset_path``: read the full ``output_change`` layer from each
+  prediction window of an rslearn dataset (converted to the summary
+  representation on the fly).
+- ``--summary_path``: read the merged ``*_summary.tif`` tiles written by the
+  prediction pipeline (write_summary_raster).
+
+Two output modes (at least one must be set):
+
+- ``--out_dir``: write one GeoJSON per input raster from within each worker
+  job (``<tile>_summary.geojson`` per summary tile, ``<window>.geojson`` per
+  window), so features are not retained across jobs.
+- ``--output``: additionally (or instead) merge all features into a single
+  GeoJSON file; this retains every feature in memory until the end.
 
 Usage::
 
     python -m rslp.change_finder_v2.lcc_model.postprocess \
         --dataset_path /path/to/predict_dataset \
-        --output geojson_out.geojson \
-        --threshold 128
+        --out_dir geojson_out/
+
+    python -m rslp.change_finder_v2.lcc_model.postprocess \
+        --summary_path /path/to/tile_outputs \
+        --output geojson_out.geojson
 """
 
 from __future__ import annotations
@@ -23,8 +43,7 @@ from __future__ import annotations
 import argparse
 import json
 import multiprocessing
-import multiprocessing.pool
-from collections.abc import Iterable
+from datetime import datetime, timezone
 
 import numpy as np
 import rasterio
@@ -32,17 +51,21 @@ import rasterio.features
 import shapely
 import shapely.affinity
 import shapely.geometry
-import shapely.ops
 import tqdm
-from rslearn.utils.geometry import WGS84_PROJECTION, STGeometry
+from rslearn.utils.geometry import (
+    WGS84_PROJECTION,
+    PixelBounds,
+    Projection,
+    STGeometry,
+)
+from rslearn.utils.mp import make_pool_and_star_imap_unordered
 from rslearn.utils.raster_format import (
     get_bandset_dirname,
     get_raster_projection_and_bounds,
 )
-from scipy import ndimage
 from upath import UPath
 
-from .timestamp_encoding import TIMESTAMP_EPOCH, days_to_date
+from .timestamp_encoding import TIMESTAMP_EPOCH
 
 BINARY_CHANGE_BAND = 2
 SRC_BAND_OFFSET = 3
@@ -155,6 +178,22 @@ SUMMARY_BANDS = [
     "ts_post_month",
 ]
 
+# Indices into SUMMARY_BANDS.
+SUMMARY_BINARY_CHANGE_BAND = SUMMARY_BANDS.index("binary_change")
+SUMMARY_PRE_CLASS_BAND = SUMMARY_BANDS.index("pre_class")
+SUMMARY_POST_CLASS_BAND = SUMMARY_BANDS.index("post_class")
+SUMMARY_SRC_CLASS_BAND = SUMMARY_BANDS.index("src_class")
+SUMMARY_DST_CLASS_BAND = SUMMARY_BANDS.index("dst_class")
+SUMMARY_PRE_SCORE_BAND = SUMMARY_BANDS.index("pre_score")
+SUMMARY_POST_SCORE_BAND = SUMMARY_BANDS.index("post_score")
+SUMMARY_TS_PRE_MONTH_BAND = SUMMARY_BANDS.index("ts_pre_month")
+SUMMARY_TS_POST_MONTH_BAND = SUMMARY_BANDS.index("ts_post_month")
+
+# Class index of the "none" category in both category heads (index 0 is
+# nodata, which the summary argmax skips; 0 in the summary class bands instead
+# means no prediction).
+NONE_CATEGORY_IDX = 1
+
 
 def _days_to_month_values(days: np.ndarray) -> np.ndarray:
     """Convert day-since-epoch values to the summary month encoding.
@@ -168,6 +207,18 @@ def _days_to_month_values(days: np.ndarray) -> np.ndarray:
         np.int64
     ) + 1
     return np.clip(months, 1, 255).astype(np.uint8)
+
+
+def _month_value_to_date(month_value: int) -> datetime:
+    """Decode a summary month value back to the first day of that month (UTC).
+
+    Inverse of _days_to_month_values: month_value is 1 + whole calendar months
+    since TIMESTAMP_EPOCH.
+    """
+    months_since_epoch = int(month_value) - 1
+    year = TIMESTAMP_EPOCH.year + months_since_epoch // 12
+    month = 1 + months_since_epoch % 12
+    return datetime(year, month, 1, tzinfo=timezone.utc)
 
 
 def summary_window_array(arr: np.ndarray) -> np.ndarray:
@@ -234,76 +285,82 @@ def _get_geotiff_path(window_dir: UPath) -> UPath | None:
     return None
 
 
-def _majority_class(class_map: np.ndarray, mask: np.ndarray) -> int:
-    """Return the most common class value within the mask."""
-    return int(np.bincount(class_map[mask]).argmax())
+def _shape_to_feature(
+    pixel_poly: shapely.geometry.base.BaseGeometry,
+    summary: np.ndarray,
+    pre_idx: int,
+    post_idx: int,
+    projection: Projection,
+    bounds: PixelBounds,
+) -> dict:
+    """Build a GeoJSON feature dict for one vectorized connected component.
 
+    Per-polygon properties are sampled at a representative interior point of
+    the polygon (guaranteed to be inside it, unlike the centroid), so they
+    reflect one change pixel of the component rather than an aggregate.
 
-def _component_to_feature(
-    comp_mask: np.ndarray,
-    change_score: np.ndarray,
-    pre_days: np.ndarray,
-    post_days: np.ndarray,
-    pre_cat_class: np.ndarray,
-    post_cat_class: np.ndarray,
-    src_id: int,
-    dst_id: int,
-    projection: object,
-    bounds: tuple[int, int, int, int],
-) -> dict | None:
-    """Vectorize a single connected component and build a GeoJSON feature dict."""
-    num_pixels = int(comp_mask.sum())
-    avg_score = float(change_score[comp_mask].mean())
+    Args:
+        pixel_poly: the component's polygon in raster pixel coordinates
+            (before translating by the bounds offset).
+        summary: (len(SUMMARY_BANDS), H, W) uint8 summary array.
+        pre_idx: the component's pre change category class index.
+        post_idx: the component's post change category class index.
+        projection: the projection of the raster.
+        bounds: the pixel bounds of the raster within the projection.
+    """
+    # The polygon follows pixel edges, so its area is its pixel count (holes
+    # are already excluded).
+    num_pixels = int(round(pixel_poly.area))
     col0, row0 = bounds[0], bounds[1]
 
-    # Change dates: median over the component of the per-pixel pre/post day bands
-    # (days since TIMESTAMP_EPOCH), converted back to real dates.
-    pre_day = int(np.median(pre_days[comp_mask]))
-    post_day = int(np.median(post_days[comp_mask]))
+    # Area from the projection's per-pixel resolution (10 m pixels = 0.01 ha).
+    pixel_area_hectares = abs(projection.x_resolution * projection.y_resolution) / 10000
+    area_hectares = round(num_pixels * pixel_area_hectares, 2)
 
-    shapes = list(
-        rasterio.features.shapes(
-            comp_mask.astype(np.uint8),
-            mask=comp_mask,
-            connectivity=8,
-        )
-    )
-    if not shapes:
-        return None
+    # Sample the summary bands at a representative interior point.
+    point = pixel_poly.representative_point()
+    height, width = summary.shape[1], summary.shape[2]
+    row = min(max(int(point.y), 0), height - 1)
+    col = min(max(int(point.x), 0), width - 1)
+    pixel = summary[:, row, col]
 
-    polys = []
-    for geom, _ in shapes:
-        shp = shapely.geometry.shape(geom)
-        shp = shapely.affinity.translate(shp, xoff=col0, yoff=row0)
-        polys.append(shp)
+    binary_change_score = float(pixel[SUMMARY_BINARY_CHANGE_BAND])
 
-    merged = shapely.ops.unary_union(polys)
-    if merged.is_empty:
-        return None
+    # Average the argmax score of each head that predicts a real category
+    # (usually one head; sometimes both, like deforestation+mining).
+    head_scores = []
+    if pre_idx != NONE_CATEGORY_IDX:
+        head_scores.append(float(pixel[SUMMARY_PRE_SCORE_BAND]))
+    if post_idx != NONE_CATEGORY_IDX:
+        head_scores.append(float(pixel[SUMMARY_POST_SCORE_BAND]))
+    category_change_score = float(np.mean(head_scores))
 
-    geom_wgs84 = STGeometry(projection, merged, None).to_projection(WGS84_PROJECTION)
+    src_id = int(pixel[SUMMARY_SRC_CLASS_BAND])
+    dst_id = int(pixel[SUMMARY_DST_CLASS_BAND])
+
+    # Change start/end months, decoded to the first day of the month.
+    pre_month = int(pixel[SUMMARY_TS_PRE_MONTH_BAND])
+    post_month = int(pixel[SUMMARY_TS_POST_MONTH_BAND])
+
+    shp = shapely.affinity.translate(pixel_poly, xoff=col0, yoff=row0)
+    geom_wgs84 = STGeometry(projection, shp, None).to_projection(WGS84_PROJECTION)
 
     props: dict = {
         "num_pixels": num_pixels,
-        "avg_change_score": round(avg_score, 2),
+        "area_hectares": area_hectares,
+        "binary_change_score": round(binary_change_score, 2),
+        "category_change_score": round(category_change_score, 2),
+        # The component's defining change categories. The pre head is the
+        # merged pre+same head, so pre_change_category may also be one of the
+        # former same_change categories.
+        "pre_change_category": PRE_CHANGE_CATEGORY_NAMES[pre_idx],
+        "post_change_category": POST_CHANGE_CATEGORY_NAMES[post_idx],
         "src_class": LC_CLASS_NAMES[src_id],
         "src_class_idx": src_id,
         "dst_class": LC_CLASS_NAMES[dst_id],
         "dst_class_idx": dst_id,
-        "pre_change_days": pre_day,
-        "post_change_days": post_day,
-        "pre_change_date": days_to_date(pre_day).isoformat(),
-        "post_change_date": days_to_date(post_day).isoformat(),
-        # Predicted change categories: majority vote over the component of the
-        # per-pixel argmax class ("none" is a valid prediction). The pre head is
-        # the merged pre+same head, so pre_change_category may also be one of
-        # the former same_change categories.
-        "pre_change_category": PRE_CHANGE_CATEGORY_NAMES[
-            _majority_class(pre_cat_class, comp_mask)
-        ],
-        "post_change_category": POST_CHANGE_CATEGORY_NAMES[
-            _majority_class(post_cat_class, comp_mask)
-        ],
+        "pre_change_date": _month_value_to_date(pre_month).isoformat(),
+        "post_change_date": _month_value_to_date(post_month).isoformat(),
     }
 
     return {
@@ -313,162 +370,285 @@ def _component_to_feature(
     }
 
 
-def process_window(
-    window_dir: UPath,
-    threshold: int,
+def features_from_summary(
+    summary: np.ndarray,
+    projection: Projection,
+    bounds: PixelBounds,
     min_pixels: int,
 ) -> list[dict]:
-    """Process one prediction window and return GeoJSON-ready feature dicts."""
+    """Polygonize a summary array into GeoJSON feature dicts (WGS84).
+
+    Change pixels are those where at least one category head predicts a real
+    category (not "none"). Connected components group change pixels sharing
+    the same (pre category, post category) combination; they are all
+    vectorized in a single rasterio.features.shapes pass over the raster.
+
+    Args:
+        summary: (len(SUMMARY_BANDS), H, W) uint8 summary array (see
+            summary_window_array).
+        projection: the projection of the raster.
+        bounds: the pixel bounds of the raster within the projection.
+        min_pixels: minimum connected-component size to keep.
+
+    Returns:
+        list of GeoJSON feature dicts with WGS84 geometries.
+    """
+    pre_class = summary[SUMMARY_PRE_CLASS_BAND]
+    post_class = summary[SUMMARY_POST_CLASS_BAND]
+
+    # Change pixels: a valid prediction (class 0 means no prediction) where at
+    # least one head predicts a real category.
+    change_mask = (pre_class > NONE_CATEGORY_IDX) | (post_class > NONE_CATEGORY_IDX)
+    change_mask &= (pre_class > 0) & (post_class > 0)
+    if not change_mask.any():
+        return []
+
+    # Encode each (pre, post) category combination as a unique integer.
+    # shapes() then yields one polygon per connected region of equal value
+    # within the mask, i.e. one polygon per component.
+    combo_labels = pre_class.astype(np.uint16) * len(
+        POST_CHANGE_CATEGORY_NAMES
+    ) + post_class.astype(np.uint16)
+
+    features: list[dict] = []
+    for geom, combo_val in rasterio.features.shapes(combo_labels, mask=change_mask):
+        pixel_poly = shapely.geometry.shape(geom)
+        if pixel_poly.area < min_pixels:
+            continue
+
+        pre_idx = int(combo_val) // len(POST_CHANGE_CATEGORY_NAMES)
+        post_idx = int(combo_val) % len(POST_CHANGE_CATEGORY_NAMES)
+        features.append(
+            _shape_to_feature(
+                pixel_poly,
+                summary,
+                pre_idx,
+                post_idx,
+                projection,
+                bounds,
+            )
+        )
+
+    return features
+
+
+def _write_feature_collection(features: list[dict], out_path: UPath) -> None:
+    """Write a GeoJSON FeatureCollection to out_path."""
+    geojson = {
+        "type": "FeatureCollection",
+        "features": features,
+    }
+    with out_path.open("w") as f:
+        json.dump(geojson, f)
+
+
+def process_window(
+    window_dir: UPath,
+    min_pixels: int,
+    out_path: UPath | None = None,
+    return_features: bool = True,
+) -> tuple[int, list[dict]]:
+    """Process one prediction window into GeoJSON features.
+
+    If out_path is set, the features are written there as a FeatureCollection
+    (windows with no output geotiff write nothing). Returns the feature count
+    and the features themselves (empty list if return_features is False).
+    """
     tif_path = _get_geotiff_path(window_dir)
     if tif_path is None:
-        return []
+        return 0, []
 
     with rasterio.open(tif_path) as src:
         arr = src.read()
         projection, bounds = get_raster_projection_and_bounds(src)
 
-    change_score = arr[BINARY_CHANGE_BAND]
-    change_mask = change_score >= threshold
-    if not change_mask.any():
-        return []
-
-    src_probs = arr[SRC_BAND_OFFSET : SRC_BAND_OFFSET + NUM_LC_CLASSES]
-    dst_probs = arr[DST_BAND_OFFSET : DST_BAND_OFFSET + NUM_LC_CLASSES]
-    pre_days = arr[TS_PRE_DAYS_BAND]
-    post_days = arr[TS_POST_DAYS_BAND]
-
-    # Per-pixel argmax class (skip class 0 = nodata by taking argmax over 1..12
-    # and adding 1).
-    src_class = src_probs[1:].argmax(axis=0) + 1  # (H, W)
-    dst_class = dst_probs[1:].argmax(axis=0) + 1  # (H, W)
-
-    # Per-pixel argmax change category (skip class 0 = nodata; class 1 = "none"
-    # is a valid prediction).
-    pre_cat_probs = arr[
-        PRE_CHANGE_BAND_OFFSET : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)
-    ]
-    post_cat_probs = arr[
-        POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)
-    ]
-    pre_cat_class = pre_cat_probs[1:].argmax(axis=0) + 1  # (H, W)
-    post_cat_class = post_cat_probs[1:].argmax(axis=0) + 1  # (H, W)
-
-    features: list[dict] = []
-
-    # Build a combined label image for joint (src, dst) segmentation.
-    # Encode as src_id * NUM_LC_CLASSES + dst_id so each unique pair gets a
-    # unique integer, then iterate over unique pairs.
-    pair_labels = src_class.astype(np.int32) * NUM_LC_CLASSES + dst_class.astype(
-        np.int32
+    features = features_from_summary(
+        summary_window_array(arr), projection, bounds, min_pixels
     )
-    pair_labels[~change_mask] = -1
-
-    for pair_val in np.unique(pair_labels):
-        if pair_val < 0:
-            continue
-        s_id = int(pair_val // NUM_LC_CLASSES)
-        d_id = int(pair_val % NUM_LC_CLASSES)
-        if s_id == d_id:
-            continue
-
-        pair_mask = pair_labels == pair_val
-        labels, num_components = ndimage.label(pair_mask)
-
-        for comp_id in range(1, num_components + 1):
-            comp_mask = labels == comp_id
-            if comp_mask.sum() < min_pixels:
-                continue
-
-            feat = _component_to_feature(
-                comp_mask,
-                change_score,
-                pre_days,
-                post_days,
-                pre_cat_class,
-                post_cat_class,
-                s_id,
-                d_id,
-                projection,
-                bounds,
-            )
-            if feat is not None:
-                features.append(feat)
-
-    return features
+    if out_path is not None:
+        _write_feature_collection(features, out_path)
+    return len(features), features if return_features else []
 
 
-def _process_window_star(kwargs: dict) -> list[dict]:
-    return process_window(**kwargs)
+def process_summary_tif(
+    tif_path: UPath,
+    min_pixels: int,
+    out_path: UPath | None = None,
+    return_features: bool = True,
+) -> tuple[int, list[dict]]:
+    """Polygonize one merged summary GeoTIFF into GeoJSON features.
+
+    If out_path is set, the features are written there as a FeatureCollection.
+    Returns the feature count and the features themselves (empty list if
+    return_features is False).
+    """
+    with tif_path.open("rb") as f:
+        with rasterio.open(f) as src:
+            summary = src.read()
+            projection, bounds = get_raster_projection_and_bounds(src)
+
+    if summary.shape[0] != len(SUMMARY_BANDS):
+        raise ValueError(
+            f"{tif_path} has {summary.shape[0]} bands, expected "
+            f"{len(SUMMARY_BANDS)} summary bands"
+        )
+
+    features = features_from_summary(summary, projection, bounds, min_pixels)
+    if out_path is not None:
+        _write_feature_collection(features, out_path)
+    return len(features), features if return_features else []
 
 
 def collect_features(
     dataset_path: str,
-    threshold: int = 128,
     min_pixels: int = 10,
     workers: int = 32,
-) -> list[dict]:
-    """Scan all predict windows and return GeoJSON feature dicts (WGS84).
+    out_dir: UPath | None = None,
+    return_features: bool = True,
+) -> tuple[int, list[dict]]:
+    """Scan all predict windows and polygonize them to GeoJSON features (WGS84).
 
-    Returns an empty list if the predict group has no windows.
+    If out_dir is set, each window's features are written to
+    ``<out_dir>/<window_name>.geojson`` from within the worker job. Returns
+    the total feature count and the merged features (empty list if
+    return_features is False). The count is 0 if the predict group has no
+    windows.
     """
     ds_root = UPath(dataset_path)
     predict_dir = ds_root / "windows" / "predict"
 
     if not predict_dir.exists():
-        return []
+        return 0, []
 
     kwargs_list = [
-        dict(window_dir=window_dir, threshold=threshold, min_pixels=min_pixels)
+        dict(
+            window_dir=window_dir,
+            min_pixels=min_pixels,
+            out_path=(
+                out_dir / f"{window_dir.name}.geojson" if out_dir is not None else None
+            ),
+            return_features=return_features,
+        )
         for window_dir in sorted(predict_dir.iterdir())
         if window_dir.is_dir()
     ]
 
+    total_count = 0
     all_features: list[dict] = []
-
-    pool: multiprocessing.pool.Pool | None = None
-    results: Iterable[list[dict]]
-    if workers <= 0:
-        results = map(_process_window_star, kwargs_list)
-    else:
-        pool = multiprocessing.Pool(workers)
-        results = pool.imap_unordered(_process_window_star, kwargs_list)
-
-    try:
-        for features in tqdm.tqdm(results, total=len(kwargs_list), desc="Processing"):
+    with make_pool_and_star_imap_unordered(
+        workers, process_window, kwargs_list
+    ) as results:
+        for num_features, features in tqdm.tqdm(
+            results, total=len(kwargs_list), desc="Processing"
+        ):
+            total_count += num_features
             all_features.extend(features)
-    finally:
-        if pool is not None:
-            pool.close()
-            pool.join()
+    return total_count, all_features
 
-    return all_features
+
+def collect_features_from_summaries(
+    summary_path: str,
+    min_pixels: int = 10,
+    workers: int = 4,
+    out_dir: UPath | None = None,
+    return_features: bool = True,
+) -> tuple[int, list[dict]]:
+    """Polygonize all ``*_summary.tif`` tiles under a directory.
+
+    These are the merged summary rasters written by the prediction pipeline
+    (write_summary_raster). Each tile is processed whole, so components are
+    not split at window boundaries; a full 32768x32768 tile is ~10 GB in
+    memory, so keep workers low.
+
+    If out_dir is set, each tile's features are written to
+    ``<out_dir>/<tile>_summary.geojson`` from within the worker job. Returns
+    the total feature count and the merged features (empty list if
+    return_features is False).
+    """
+    root = UPath(summary_path)
+    tif_paths = sorted(root.glob("*_summary.tif"))
+    if not tif_paths:
+        raise ValueError(f"no *_summary.tif files found under {summary_path}")
+
+    kwargs_list = [
+        dict(
+            tif_path=tif_path,
+            min_pixels=min_pixels,
+            out_path=(
+                out_dir / tif_path.name.replace(".tif", ".geojson")
+                if out_dir is not None
+                else None
+            ),
+            return_features=return_features,
+        )
+        for tif_path in tif_paths
+    ]
+
+    total_count = 0
+    all_features: list[dict] = []
+    with make_pool_and_star_imap_unordered(
+        workers, process_summary_tif, kwargs_list
+    ) as results:
+        for num_features, features in tqdm.tqdm(
+            results, total=len(kwargs_list), desc="Processing"
+        ):
+            total_count += num_features
+            all_features.extend(features)
+    return total_count, all_features
 
 
 def create_geojson(
-    dataset_path: str,
-    output: str,
-    threshold: int = 128,
+    output: str | None = None,
+    out_dir: str | None = None,
+    dataset_path: str | None = None,
+    summary_path: str | None = None,
     min_pixels: int = 10,
-    workers: int = 32,
+    workers: int | None = None,
 ) -> None:
-    """Scan all predict windows and write a GeoJSON FeatureCollection."""
-    all_features = collect_features(
-        dataset_path=dataset_path,
-        threshold=threshold,
-        min_pixels=min_pixels,
-        workers=workers,
-    )
+    """Polygonize predictions and write GeoJSON FeatureCollections.
 
-    geojson = {
-        "type": "FeatureCollection",
-        "features": all_features,
-    }
+    Exactly one of dataset_path (rslearn predict dataset) or summary_path
+    (directory of merged ``*_summary.tif`` tiles) must be provided.
 
-    out_path = UPath(output)
-    with out_path.open("w") as f:
-        json.dump(geojson, f)
+    At least one of out_dir (one GeoJSON per input raster, written from
+    within each worker job) or output (a single merged GeoJSON, which
+    requires retaining all features in memory) must be provided.
+    """
+    if (dataset_path is None) == (summary_path is None):
+        raise ValueError("provide exactly one of dataset_path or summary_path")
+    if output is None and out_dir is None:
+        raise ValueError("provide at least one of output or out_dir")
 
-    print(f"Wrote {len(all_features)} features to {output}")
+    out_dir_path: UPath | None = None
+    if out_dir is not None:
+        out_dir_path = UPath(out_dir)
+        out_dir_path.mkdir(parents=True, exist_ok=True)
+
+    return_features = output is not None
+
+    if dataset_path is not None:
+        total_count, all_features = collect_features(
+            dataset_path=dataset_path,
+            min_pixels=min_pixels,
+            workers=32 if workers is None else workers,
+            out_dir=out_dir_path,
+            return_features=return_features,
+        )
+    else:
+        assert summary_path is not None
+        total_count, all_features = collect_features_from_summaries(
+            summary_path=summary_path,
+            min_pixels=min_pixels,
+            workers=4 if workers is None else workers,
+            out_dir=out_dir_path,
+            return_features=return_features,
+        )
+
+    if out_dir is not None:
+        print(f"Wrote per-raster GeoJSONs ({total_count} features) to {out_dir}")
+    if output is not None:
+        _write_feature_collection(all_features, UPath(output))
+        print(f"Wrote {total_count} features to {output}")
 
 
 def main() -> None:
@@ -476,15 +656,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Convert v2 LCC prediction rasters to GeoJSON change polygons."
     )
-    parser.add_argument(
-        "--dataset_path", required=True, help="Root of the prediction dataset."
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument("--dataset_path", help="Root of the prediction dataset.")
+    input_group.add_argument(
+        "--summary_path",
+        help="Directory containing merged *_summary.tif tiles from the "
+        "prediction pipeline (write_summary_raster).",
     )
-    parser.add_argument("--output", required=True, help="Output GeoJSON file path.")
     parser.add_argument(
-        "--threshold",
-        type=int,
-        default=128,
-        help="Binary change probability threshold (0-255).",
+        "--out_dir",
+        help="Directory to write one GeoJSON per input raster (per summary "
+        "tile for --summary_path, per window for --dataset_path).",
+    )
+    parser.add_argument(
+        "--output",
+        help="Optional single merged GeoJSON file; retains all features in "
+        "memory across per-raster jobs.",
     )
     parser.add_argument(
         "--min_pixels",
@@ -492,13 +679,23 @@ def main() -> None:
         default=10,
         help="Minimum pixels for a connected component to be included.",
     )
-    parser.add_argument("--workers", type=int, default=32)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Parallel workers (default 32 for --dataset_path, 4 for "
+        "--summary_path since each tile is large in memory).",
+    )
     args = parser.parse_args()
 
+    if args.output is None and args.out_dir is None:
+        parser.error("at least one of --out_dir and --output is required")
+
     create_geojson(
-        dataset_path=args.dataset_path,
         output=args.output,
-        threshold=args.threshold,
+        out_dir=args.out_dir,
+        dataset_path=args.dataset_path,
+        summary_path=args.summary_path,
         min_pixels=args.min_pixels,
         workers=args.workers,
     )
