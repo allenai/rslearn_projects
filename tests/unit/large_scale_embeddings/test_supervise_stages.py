@@ -262,7 +262,7 @@ class _InlineProcess:
     def start(self):
         try:
             self._target(*self._args)
-        except Exception:
+        except Exception:  # noqa: BLE001 - mirrors a real cycle crashing for any reason
             self.exitcode = 1
 
     def join(self, timeout=None):
