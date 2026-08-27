@@ -63,6 +63,15 @@ DEFAULT_CYCLE_BUDGET_SECONDS = 600
 # Sentinel for "the child did not report a result" (timed out, crashed, or killed).
 _NO_RESULT = -1
 
+# Consecutive failed cycles tolerated before giving up.
+#
+# A cycle reports nothing when it was killed for exceeding its budget, or when it
+# crashed. The first is transient and worth retrying; the second may not be. A missing
+# geojson, a bad store path or a revoked credential fails identically on every cycle, and
+# retrying forever turns a startup mistake into a job that looks alive indefinitely while
+# doing nothing. Three strikes distinguishes the two without tripping on a single hang.
+MAX_CONSECUTIVE_CYCLE_FAILURES = 3
+
 # Deployment defaults, collected here rather than buried in the signatures below so a
 # different environment only has to change one place (or override them per call).
 # The checkpoint lives on WEKA, so workers need it mounted.
@@ -496,6 +505,7 @@ def supervise(
 
     ctx = multiprocessing.get_context("spawn")
     seen_work = False
+    consecutive_failures = 0
     cycle = 0
 
     while max_cycles is None or cycle < max_cycles:
@@ -524,14 +534,28 @@ def supervise(
 
         if remaining == _NO_RESULT:
             # Killed, crashed, or otherwise did not report. Nothing to conclude about
-            # the run's state, so just try again next cycle.
+            # the run's state from one of these, so retry -- but not forever, since a
+            # deterministic failure looks exactly the same and would otherwise spin.
+            consecutive_failures += 1
+            if consecutive_failures >= MAX_CONSECUTIVE_CYCLE_FAILURES:
+                raise RuntimeError(
+                    f"{consecutive_failures} consecutive cycles failed to report a "
+                    f"result (last exit code {proc.exitcode}); treating this as a "
+                    "permanent error rather than retrying. Check the traceback above: "
+                    "a missing geojson_fname, an unreadable store_path or an expired "
+                    "credential all fail this way on every cycle."
+                )
             logger.warning(
-                "cycle %d did not report a result after %ds (exit code %s); retrying",
+                "cycle %d did not report a result after %ds (exit code %s); retrying "
+                "(%d/%d consecutive failures)",
                 cycle,
                 elapsed,
                 proc.exitcode,
+                consecutive_failures,
+                MAX_CONSECUTIVE_CYCLE_FAILURES,
             )
         elif remaining == 0:
+            consecutive_failures = 0
             if not seen_work and not _any_completion_markers(kwargs):
                 # Enumerating nothing on the very first cycle almost never means "the
                 # run is finished" -- far more often the AOI filters, bounds, or zone
@@ -546,6 +570,7 @@ def supervise(
             logger.info("all tiles have completion markers; run complete")
             return
         else:
+            consecutive_failures = 0
             seen_work = True
             logger.info(
                 "cycle %d done in %ds; %d job(s) remaining", cycle, elapsed, remaining

@@ -237,3 +237,100 @@ def test_any_completion_markers_false_for_missing_and_empty_dirs(tmp_path) -> No
             "completed_path_template": str(tmp_path / "done_{year}") + "/",
         }
     )
+
+
+# ------------------------------------------------------- repeated cycle failures
+#
+# A cycle reports nothing whether it was killed for running long or crashed outright.
+# Retrying forever is right for the first and wrong for the second: a missing
+# geojson_fname failed identically every 15 minutes for an hour on a real run, and the
+# job looked alive the whole time.
+
+
+class _InlineProcess:
+    """Runs the cycle in-process instead of spawning.
+
+    supervise uses a spawn context so it can kill a hung cycle, but spawn pickles the
+    target, and a test's local function is unpicklable. Running inline keeps the
+    supervise loop under test while letting the fake cycle be a closure.
+    """
+
+    def __init__(self, target, args):
+        self._target, self._args = target, args
+        self.exitcode = 0
+
+    def start(self):
+        try:
+            self._target(*self._args)
+        except Exception:
+            self.exitcode = 1
+
+    def join(self, timeout=None):
+        return None
+
+    def is_alive(self):
+        return False
+
+    def terminate(self):
+        return None
+
+    def kill(self):
+        return None
+
+
+class _Shared:
+    def __init__(self, value):
+        self.value = value
+
+
+class _InlineContext:
+    def Value(self, _typecode, init):
+        return _Shared(init)
+
+    def Process(self, target, args):
+        return _InlineProcess(target, args)
+
+
+def _inline(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sup.multiprocessing, "get_context", lambda _m: _InlineContext())
+    monkeypatch.setattr(sup.time, "sleep", lambda _s: None)
+
+
+def test_failure_cap_is_small_but_tolerates_one_hang() -> None:
+    assert 2 <= sup.MAX_CONSECUTIVE_CYCLE_FAILURES <= 5
+
+
+def test_supervise_raises_after_repeated_cycle_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _inline(monkeypatch)
+    calls = {"n": 0}
+
+    def never_reports(kwargs, result):
+        # Leave result at _NO_RESULT, as a crashed or killed cycle does.
+        calls["n"] += 1
+
+    monkeypatch.setattr(sup, "_run_cycle", never_reports)
+    with pytest.raises(RuntimeError, match="consecutive cycles failed"):
+        sup.supervise(**_base_kwargs(max_cycles=None, cycle_seconds=0))
+    assert calls["n"] == sup.MAX_CONSECUTIVE_CYCLE_FAILURES
+
+
+def test_a_reporting_cycle_resets_the_failure_streak(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # fail, fail, report, fail, fail -> never three consecutively, so no raise; the loop
+    # ends on max_cycles instead.
+    _inline(monkeypatch)
+    script = [None, None, 4, None, None]
+    seen = {"i": 0}
+
+    def scripted(kwargs, result):
+        val = script[seen["i"] % len(script)]
+        seen["i"] += 1
+        if val is not None:
+            result.value = val
+
+    monkeypatch.setattr(sup, "_run_cycle", scripted)
+    sup.supervise(**_base_kwargs(max_cycles=5, cycle_seconds=0))
+    assert seen["i"] == 5
