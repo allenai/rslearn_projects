@@ -1,0 +1,16 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          init_args:
+            model_id: OLMOEARTH_V1_2_BASE
+        embedding_dim: 768
+        decoder_stages:
+          - [[768, 3]]
+          - [[256, 3]]
+          - [[128, 3]]
+    optimizer:
+      init_args:
+        num_layers: 12
+run_name: size_llrd_base

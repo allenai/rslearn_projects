@@ -1,0 +1,96 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslp.change_finder_v2.lcc_model.model_20260618.TransitionDualPassModel
+      init_args:
+        encoder:
+          class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          init_args:
+            model_id: OLMOEARTH_V1_1_BASE
+            patch_size: 4
+            token_pooling: false
+            use_legacy_timestamps: false
+        num_classes: 10
+        num_timesteps: 20
+        num_pass1: 10
+        embedding_dim: 768
+        decoder_stages:
+          - [[768, 3]]
+          - [[256, 3]]
+          - [[128, 3]]
+        temporal_depth: 1
+        temporal_heads: 8
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: ${PREDICT_DS}
+    inputs:
+      sentinel2_quarterly:
+        data_type: "raster"
+        layers: ["sentinel2_quarterly"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_0:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_0"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+    task:
+      class_path: rslp.change_finder_v2.lcc_model.model_20260618.LCCTransitionMultiTask
+      init_args:
+        annotations_path: unused_in_predict_mode
+        num_classes: 10
+        class_names: ["no_change", "deforestation", "urban_expansion", "construction_mining", "from_water", "to_water", "urban_erosion", "new_crop_field", "wetland_loss", "forest_regrowth"]
+        input_mapping:
+          binary:
+            label_binary: targets
+          src:
+            label_src: targets
+          dst:
+            label_dst: targets
+        tasks:
+          binary:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 3
+              nodata_value: 0
+          src:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 13
+              nodata_value: 0
+          dst:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 13
+              nodata_value: 0
+    batch_size: 8
+    num_workers: 32
+    predict_config:
+      groups: ["predict"]
+      crop_size: 64
+      load_all_crops: true
+      overlap_pixels: 16
+      skip_targets: true
+      transforms:
+        - class_path: rslp.change_finder_v2.lcc_model.transforms.PredictPassBuilder
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+trainer:
+  callbacks:
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: output_change
+        selector: []
+project_name: 2026_06_16_lcc
+run_name: transition_dualpass_20260618_01
+management_dir: ${RSLP_PREFIX}/projects

@@ -1,0 +1,65 @@
+{
+  "layers": {
+    "esri": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8",
+          "zoom_offset": 3
+        }
+      ],
+      "data_source": {
+        "class_path": "rslp.change_finder_v2.vlm.image_db.esri_wayback_data_source.EsriWayback",
+        "ingest": false,
+        "init_args": {
+          "zoom": 18
+        },
+        "query_config": {
+          "max_matches": 20,
+          "per_period_mosaic_reverse_time_order": false,
+          "period_duration": "91d",
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
+    },
+    "sentinel2": {
+      "band_sets": [
+        {
+          "bands": [
+            "R",
+            "G",
+            "B"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "query": {
+            "cloud_cover": {
+              "lte": 50
+            },
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          }
+        },
+        "query_config": {
+          "max_matches": 60,
+          "per_period_mosaic_reverse_time_order": false,
+          "period_duration": "30d",
+          "space_mode": "MOSAIC"
+        }
+      },
+      "type": "raster"
+    }
+  }
+}

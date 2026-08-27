@@ -1,0 +1,233 @@
+# Ablation B — time after change: evaluate the DEFAULT (production) LCC model at a
+# range of delays after the change. The model architecture matches the production
+# config (16 quarterly + 4 recent, two passes 10/10); only the frequent option used
+# at test time varies, via the LCC_OPTION_INDEX env var (0 = first-observable,
+# 1 = +1 month, ..., 7 = +7 months in the fixed-option ablation dataset).
+#
+# This is a TEST-ONLY config: load the production checkpoint and run `rslearn model
+# test`, looping the offset. AUROC is reported as test_binary/auroc. Model management
+# is disabled here so the --ckpt_path argument is used directly.
+#
+# Example (phase 3, run yourself):
+#   CKPT=/weka/.../projects/2026_06_16_lcc/olmoearth_base_ps4_01/checkpoints/best.ckpt
+#   for i in 0 1 2 3 4 5 6 7; do
+#     LCC_OPTION_INDEX=$i rslearn model test \
+#       --config data/change_finder_v2/lcc_model/ablation/ablation_b_time_after_change.yaml \
+#       --ckpt_path "$CKPT"
+#   done
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslp.change_finder_v2.lcc_model.model.DualPassChangeModel
+      init_args:
+        encoder:
+          class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          init_args:
+            model_id: OLMOEARTH_V1_1_BASE
+            patch_size: 4
+        num_classes_binary: 3
+        num_classes_src: 13
+        num_classes_dst: 13
+        num_timestamps: 20
+        embedding_dim: 768
+        decoder_stages:
+          - [[768, 1], [512, 3]]
+          - [[256, 3]]
+          - [[128, 3]]
+        binary_loss_weight: 100.0
+        num_passes: 2
+        num_pass1: 10
+        eval_crop_size: 64
+        eval_overlap: 0
+    optimizer:
+      class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
+      init_args:
+        lr: 0.0001
+        layer_decay_rate: 0.65
+        num_layers: 12
+        encoder_prefix: "model.encoder"
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 5
+        min_lr: 0
+        cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_ablation_dataset_20260621/
+    inputs:
+      sentinel2_quarterly:
+        data_type: "raster"
+        layers: ["sentinel2_quarterly"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_0:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_0"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_1:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_1"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_2:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_3:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_3"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_4:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_4"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_5:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_5"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_6:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_6"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_7:
+        data_type: "raster"
+        layers: ["sentinel2_frequent_7"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      label_binary:
+        data_type: "raster"
+        layers: ["label_binary"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+      label_src:
+        data_type: "raster"
+        layers: ["label_src"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+      label_dst:
+        data_type: "raster"
+        layers: ["label_dst"]
+        bands: ["label"]
+        is_target: true
+        dtype: INT32
+    task:
+      class_path: rslp.change_finder_v2.lcc_model.tasks.LCCMultiTask
+      init_args:
+        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_ablation_dataset_20260621/lcc_annotations.json
+        input_mapping:
+          binary:
+            label_binary: targets
+          src:
+            label_src: targets
+          dst:
+            label_dst: targets
+        tasks:
+          binary:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 3
+              nodata_value: 0
+              enable_confusion_matrix: true
+              enable_f1_metric: true
+              report_metric_per_class: true
+              f1_metric_thresholds: [[0.5], [0.6], [0.7], [0.8], [0.9], [0.95], [0.98], [0.99]]
+              class_names: ["nodata", "no_change", "change"]
+              enable_accuracy_metric: false
+              metric_kwargs:
+                average: "micro"
+              other_metrics:
+                accuracy:
+                  class_path: rslp.change_finder_v2.lcc_model.tasks.BalancedBinaryMetric
+                  init_args:
+                    metric: accuracy
+                auroc:
+                  class_path: rslp.change_finder_v2.lcc_model.tasks.BalancedBinaryMetric
+                  init_args:
+                    metric: auroc
+          src:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 13
+              nodata_value: 0
+              enable_confusion_matrix: true
+              class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
+              metric_kwargs:
+                average: "micro"
+          dst:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 13
+              nodata_value: 0
+              enable_confusion_matrix: true
+              class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
+              metric_kwargs:
+                average: "micro"
+    batch_size: 4
+    num_workers: 16
+    use_in_memory_dataset: false
+    default_config:
+      crop_size: 64
+      transforms:
+        - class_path: rslp.change_finder_v2.lcc_model.transforms.FrequentOptionSampler
+          init_args:
+            option_index: ${LCC_OPTION_INDEX}
+            num_quarterly: 16
+            num_frequent: 4
+            quarterly_anchor: recent
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    test_config:
+      crop_size: 128
+      tags:
+        split: "val"
+trainer:
+  max_epochs: 200

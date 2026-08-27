@@ -1,0 +1,25 @@
+model:
+  init_args:
+    model:
+      class_path: rslp.change_finder_v2.lcc_model.model_perimage.PerImageChangeModel
+      init_args:
+        encoder:
+          class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          init_args:
+            model_id: OLMOEARTH_V1_2_BASE
+            patch_size: 4
+            token_pooling: true
+            use_legacy_timestamps: false
+        decoder_type: "attn"
+        num_temporal_selfattn_layers: 1
+        num_classes_binary: 3
+        num_classes_src: 13
+        num_classes_dst: 13
+        num_timesteps: 20
+        embedding_dim: 768
+        decoder_stages:
+          - [[768, 3]]
+          - [[256, 3]]
+          - [[128, 3]]
+        binary_loss_weight: 2.0
+run_name: perimage_attn
