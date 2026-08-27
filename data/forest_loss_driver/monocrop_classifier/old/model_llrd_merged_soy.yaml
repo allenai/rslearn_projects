@@ -133,6 +133,6 @@ trainer:
       init_args:
         output_layer: output
         selector: []
-project_name: 20260827_monocrop_classifier
+project_name: 2026_07_monocrop_classifier
 run_name: olmoearth_v1_2_base_llrd_merged_soy
 management_dir: ${RSLP_PREFIX}/projects
