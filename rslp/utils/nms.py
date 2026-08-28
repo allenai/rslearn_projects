@@ -15,6 +15,69 @@ DEFAULT_GRID_SIZE = 64
 DEFAULT_DISTANCE_THRESHOLD = 10
 
 
+def distance_nms(
+    centers: np.ndarray,
+    scores: np.ndarray,
+    distance_threshold: int,
+    grid_size: int = DEFAULT_GRID_SIZE,
+    indices: np.ndarray | None = None,
+) -> list[int]:
+    """Apply distance-based non-maximum suppression over detection centers.
+
+    Greedily keeps detections in descending score order, eliminating any detection whose
+    center lies within ``distance_threshold`` of an already-kept, higher-scoring one.
+
+    Args:
+        centers: (N, 2) array of (x, y) detection centers.
+        scores: (N,) array of detection scores.
+        distance_threshold: detections within this center distance are considered the
+            same object.
+        grid_size: cell size for the spatial index used to look up nearby centers.
+        indices: original indices for the rows of ``centers``, defaulting to range(N).
+            Returned indices are drawn from this set.
+
+    Returns:
+        the indices of the detections to keep.
+    """
+    if indices is None:
+        indices = np.arange(len(centers))
+
+    grid_index = GridIndex(size=max(grid_size, distance_threshold))
+    for idx, (cx, cy) in zip(indices, centers):
+        grid_index.insert((cx, cy, cx, cy), idx)
+
+    sorted_order = np.argsort(scores)
+    sorted_indices = indices[sorted_order]
+    sorted_centers = centers[sorted_order]
+    sorted_scores = scores[sorted_order]
+
+    elim_inds: set[int] = set()
+    keep_indices: list[int] = []
+    for idx, (cx, cy), score in zip(sorted_indices, sorted_centers, sorted_scores):
+        if idx in elim_inds:
+            continue
+        rect = [
+            cx - distance_threshold,
+            cy - distance_threshold,
+            cx + distance_threshold,
+            cy + distance_threshold,
+        ]
+        for other_idx in grid_index.query(rect):
+            i = np.where(sorted_indices == other_idx)[0][0]
+            if other_idx == idx or other_idx in elim_inds:
+                continue
+            other_score = sorted_scores[i]
+            if other_score > score or (other_score == score and other_idx < idx):
+                other_cx, other_cy = sorted_centers[i]
+                if math.hypot(cx - other_cx, cy - other_cy) <= distance_threshold:
+                    elim_inds.add(idx)
+                    break
+        if idx not in elim_inds:
+            keep_indices.append(idx)
+
+    return keep_indices
+
+
 class NMSDistanceMerger(CropPredictionMerger):
     """Merge predictions by applying distance-based NMS."""
 
@@ -81,24 +144,6 @@ class NMSDistanceMerger(CropPredictionMerger):
 
         return [features[i] for i in keep_indices]
 
-    def _boxes_center_distance(self, box1: np.ndarray, box2: np.ndarray) -> float:
-        """Compute the Euclidean distance between the centers of two boxes.
-
-        Args:
-            box1: numpy array of shape (4,) representing the first bounding box.
-            box2: numpy array of shape (4,) representing the second bounding box.
-
-        Returns:
-            distance: the Euclidean distance between the centers of the two boxes.
-        """
-        cx1 = (box1[0] + box1[2]) / 2
-        cy1 = (box1[1] + box1[3]) / 2
-        cx2 = (box2[0] + box2[2]) / 2
-        cy2 = (box2[1] + box2[3]) / 2
-        dx = cx1 - cx2
-        dy = cy1 - cy2
-        return math.sqrt(dx * dx + dy * dy)
-
     def _apply_nms(
         self, boxes: np.ndarray, scores: np.ndarray, indices: np.ndarray = None
     ) -> list[int]:
@@ -112,46 +157,9 @@ class NMSDistanceMerger(CropPredictionMerger):
         Returns:
             List of indices of boxes to keep.
         """
-        if indices is None:
-            indices = np.arange(len(boxes))
-
-        grid_index = GridIndex(size=max(self.grid_size, self.distance_threshold))
-        for idx, box in zip(indices, boxes):
-            cx = (box[0] + box[2]) / 2
-            cy = (box[1] + box[3]) / 2
-            grid_index.insert((cx, cy, cx, cy), idx)
-
-        sorted_order = np.argsort(scores)
-        sorted_indices = indices[sorted_order]
-        sorted_boxes = boxes[sorted_order]
-        sorted_scores = scores[sorted_order]
-
-        elim_inds = set()
-        keep_indices = []
-        for idx, box, score in zip(sorted_indices, sorted_boxes, sorted_scores):
-            if idx in elim_inds:
-                continue
-            cx = (box[0] + box[2]) / 2
-            cy = (box[1] + box[3]) / 2
-            rect = [
-                cx - self.distance_threshold,
-                cy - self.distance_threshold,
-                cx + self.distance_threshold,
-                cy + self.distance_threshold,
-            ]
-            neighbor_indices = grid_index.query(rect)
-            for other_idx in neighbor_indices:
-                i = np.where(sorted_indices == other_idx)[0][0]
-                if other_idx == idx or other_idx in elim_inds:
-                    continue
-                other_score = sorted_scores[i]
-                if other_score > score or (other_score == score and other_idx < idx):
-                    other_box = sorted_boxes[i]
-                    distance = self._boxes_center_distance(box, other_box)
-                    if distance <= self.distance_threshold:
-                        elim_inds.add(idx)
-                        break
-            if idx not in elim_inds:
-                keep_indices.append(idx)
-
-        return keep_indices
+        centers = np.stack(
+            [(boxes[:, 0] + boxes[:, 2]) / 2, (boxes[:, 1] + boxes[:, 3]) / 2], axis=1
+        )
+        return distance_nms(
+            centers, scores, self.distance_threshold, self.grid_size, indices
+        )
