@@ -334,3 +334,88 @@ def test_a_reporting_cycle_resets_the_failure_streak(
     monkeypatch.setattr(sup, "_run_cycle", scripted)
     sup.supervise(**_base_kwargs(max_cycles=5, cycle_seconds=0))
     assert seen["i"] == 5
+
+
+# ------------------------------------------------------------ stale claim detection
+#
+# Claims are never released by the queue, so a dead worker's claim lingers forever.
+# Skipping every claimed job would deadlock the run on the first worker death; trusting a
+# claim only while it is young keeps recovery while cutting duplicate work.
+
+
+class _Val:
+    def __init__(self, s: str) -> None:
+        self.string_value = s
+
+
+class _ListVal:
+    def __init__(self, args: list[str]) -> None:
+        self.values = [_Val(a) for a in args]
+
+
+class _Field:
+    def __init__(self, args: list[str]) -> None:
+        self.list_value = _ListVal(args)
+
+
+class _Input:
+    def __init__(self, args: list[str]) -> None:
+        self.fields = {"args": _Field(args)}
+
+
+class _Claimed:
+    def __init__(self, seconds: int) -> None:
+        self.seconds = seconds
+
+
+class _Status:
+    def __init__(self, state: str, claimed_at: int = 0) -> None:
+        # _state_name reads this; mirror the shape it expects.
+        self.state = state
+        self.claimed = _Claimed(claimed_at)
+
+
+class _Entry:
+    def __init__(self, args: list[str], state: str, claimed_at: int = 0) -> None:
+        self.input = _Input(args)
+        self.status = _Status(state, claimed_at)
+
+
+def test_entry_job_key_reads_the_args() -> None:
+    assert sup._entry_job_key(_Entry(["--a", "1"], "PENDING")) == ("--a", "1")
+
+
+def test_entry_job_key_tolerates_a_malformed_payload() -> None:
+    class Broken:
+        input = object()
+
+    assert sup._entry_job_key(Broken()) is None
+
+
+def test_pending_and_fresh_claims_count_as_in_flight(monkeypatch) -> None:
+    monkeypatch.setattr(sup, "_state_name", lambda e: e.status.state)
+    now = 10_000
+    entries = [
+        _Entry(["job", "a"], "PENDING"),
+        _Entry(["job", "b"], "CLAIMED", claimed_at=now - 60),      # 1 min old
+        _Entry(["job", "c"], "CLAIMED", claimed_at=now - 100_000),  # long dead
+        _Entry(["job", "d"], "COMPLETED"),
+    ]
+    keys = sup._in_flight_job_keys(entries, now, claim_stale_seconds=5400)
+    assert ("job", "a") in keys, "a pending entry needs no duplicate"
+    assert ("job", "b") in keys, "a fresh claim is being worked"
+    assert ("job", "c") not in keys, "a stale claim must be re-offered, or work is lost"
+    assert ("job", "d") not in keys, "a finished entry says nothing about pending work"
+
+
+def test_a_claim_without_a_timestamp_is_treated_as_live(monkeypatch) -> None:
+    # Re-offering a job that is genuinely being worked costs one duplicate; wrongly
+    # skipping one costs the whole run, so the unknown case errs toward live.
+    monkeypatch.setattr(sup, "_state_name", lambda e: e.status.state)
+    entries = [_Entry(["job", "x"], "CLAIMED", claimed_at=0)]
+    assert ("job", "x") in sup._in_flight_job_keys(entries, 10_000)
+
+
+def test_stale_threshold_is_well_clear_of_one_job() -> None:
+    # A predict job at job_size 8192 runs ~25 min; the threshold must not sit near that.
+    assert sup.DEFAULT_CLAIM_STALE_SECONDS >= 3 * 25 * 60

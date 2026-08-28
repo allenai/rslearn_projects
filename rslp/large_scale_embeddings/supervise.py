@@ -109,6 +109,77 @@ def _state_name(entry: Any) -> str:
         return "UNKNOWN"
 
 
+# How long a claim is trusted before the job is offered again.
+#
+# Claims in a Beaker queue are never released, so a worker that dies mid-job leaves its
+# claim behind forever. Skipping every claimed job would therefore deadlock the run on the
+# first worker death -- which is why the queue used to be topped up blindly. Trusting a
+# claim only while it is young keeps that recovery while cutting the duplicate work that
+# blind top-up generates: at Kenya scale the queue reached 56 claims against 33 live
+# workers, and throughput decayed as the wasted share grew.
+#
+# Sized well above a job: a predict job at job_size 8192 runs ~25 min, so 90 minutes only
+# re-offers work whose worker is almost certainly gone.
+DEFAULT_CLAIM_STALE_SECONDS = 5400
+
+
+def _entry_job_key(entry: Any) -> tuple[str, ...] | None:
+    """The job an entry runs, as its argument list.
+
+    Args:
+        entry: a Beaker queue entry.
+
+    Returns:
+        the entry's args as a tuple, or None if the payload does not carry them.
+    """
+    try:
+        values = entry.input.fields["args"].list_value.values
+    except Exception:  # noqa: BLE001 - a malformed entry must not stop a cycle
+        return None
+    keys = tuple(v.string_value for v in values)
+    return keys or None
+
+
+def _in_flight_job_keys(
+    entries: Any,
+    now: float,
+    claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS,
+) -> set[tuple[str, ...]]:
+    """Jobs already queued or being worked on, which need no second entry.
+
+    A pending entry is waiting to be picked up. A claimed entry counts only while its
+    claim is younger than `claim_stale_seconds`; past that the worker holding it is
+    presumed dead and the job is offered again.
+
+    Args:
+        entries: the queue's entries.
+        now: current unix time, passed in so this stays testable.
+        claim_stale_seconds: age past which a claim is ignored.
+
+    Returns:
+        the set of job keys that should not be enqueued again this cycle.
+    """
+    in_flight: set[tuple[str, ...]] = set()
+    for entry in entries:
+        state = _state_name(entry)
+        if state not in ("PENDING", "CLAIMED"):
+            continue
+        key = _entry_job_key(entry)
+        if key is None:
+            continue
+        if state == "PENDING":
+            in_flight.add(key)
+            continue
+        claimed = getattr(getattr(entry, "status", None), "claimed", None)
+        seconds = getattr(claimed, "seconds", 0) or 0
+        # No timestamp means nothing can be concluded about the claim's age, so treat it
+        # as live: re-offering a job that is genuinely being worked costs a duplicate,
+        # while wrongly skipping one costs the whole run.
+        if seconds == 0 or now - seconds < claim_stale_seconds:
+            in_flight.add(key)
+    return in_flight
+
+
 def _stage_marker_paths(kwargs: dict[str, Any]) -> list[str]:
     """The completion-marker directories this stage writes into.
 
@@ -173,11 +244,15 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
 
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         queue = beaker.queue.get(queue_name)
+        entries = list(beaker.queue.list_entries(queue))
         counts: dict[str, int] = {}
-        for entry in beaker.queue.list_entries(queue):
+        for entry in entries:
             name = _state_name(entry)
             counts[name] = counts.get(name, 0) + 1
         now = time.time()
+        in_flight = _in_flight_job_keys(
+            entries, now, kwargs.get("claim_stale_seconds", DEFAULT_CLAIM_STALE_SECONDS)
+        )
         live = sum(
             1
             for worker in beaker.queue.list_workers(queue)
@@ -234,15 +309,24 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
     if not remaining:
         return
 
-    # Top the queue up only when it is shallow, so duplicate work and orphaned
-    # entries both stay bounded.
+    # Top the queue up only when it is shallow, and only with work that is not already
+    # queued or actively claimed. The shallow-queue guard bounds duplication; this bounds
+    # it much harder, because a job can be re-offered many times over a long run.
+    fresh = [job for job in remaining if tuple(job) not in in_flight]
     if pending < target_pending:
-        random.shuffle(remaining)
-        batch = remaining[: target_pending - pending]
-        rslp.common.worker.write_jobs(
-            queue_name, "large_scale_embeddings", stage, batch
+        random.shuffle(fresh)
+        batch = fresh[: target_pending - pending]
+        if batch:
+            rslp.common.worker.write_jobs(
+                queue_name, "large_scale_embeddings", stage, batch
+            )
+        logger.info(
+            "enqueued %d job(s) (pending was %d; %d of %d already in flight)",
+            len(batch),
+            pending,
+            len(remaining) - len(fresh),
+            len(remaining),
         )
-        logger.info("enqueued %d job(s) (pending was %d)", len(batch), pending)
 
     if live < num_workers:
         rslp.common.worker.launch_workers(
@@ -390,6 +474,7 @@ def supervise(
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     cycle_seconds: int = 900,
     stale_seconds: int = 900,
+    claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS,
     cycle_budget_seconds: int = DEFAULT_CYCLE_BUDGET_SECONDS,
     max_cycles: int | None = None,
 ) -> None:
@@ -444,6 +529,10 @@ def supervise(
         wgs84_bounds: limit work to tiles intersecting these WGS84 bounds.
         cycle_seconds: how long to sleep between cycles.
         stale_seconds: a worker with no heartbeat for this long counts as dead.
+        claim_stale_seconds: how long a queue entry's claim is trusted before the
+            job is offered again. Must comfortably exceed one job's runtime or live
+            work gets duplicated; claims are never released, so it cannot be
+            infinite either, or a dead worker's job would never be retried.
         cycle_budget_seconds: kill a cycle that runs longer than this.
         max_cycles: stop after this many cycles; None runs until the work is done.
     """
@@ -476,6 +565,7 @@ def supervise(
         "epsg_code": epsg_code,
         "wgs84_bounds": wgs84_bounds,
         "stale_seconds": stale_seconds,
+        "claim_stale_seconds": claim_stale_seconds,
         "stage": stage,
         "artifact_path": artifact_path,
         "pca_store_path": pca_store_path,
