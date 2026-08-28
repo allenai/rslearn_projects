@@ -85,9 +85,10 @@ To train locally instead:
 
 ## 4. Prediction windows (e.g. for mining hard negatives)
 
-`create_predict_windows` searches the public ASF API (no credentials needed) for
-NISAR L2 GCOV scenes acquired in a time range, keeps the dual-pol H-transmit ones
-(the only mode with the HHHH/HVHV bands), and creates one unlabeled window per scene
+`create_predict_windows` searches the olmoearth_datasets API (requires the
+`OEDATASETS_API_URL` and `DATASETS_API_TOKEN` environment variables) for dual-pol
+H-transmit NISAR L2 GCOV scenes acquired in a time range (the only mode with the
+HHHH/HVHV bands), and creates one unlabeled window per scene
 at a random location within the scene footprint (deterministic per scene, so
 re-running does not move existing windows). The windows go into the `predict` group
 by default (matching `predict_config` in the model configs); use `--group` to

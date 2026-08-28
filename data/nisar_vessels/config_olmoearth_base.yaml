@@ -8,12 +8,12 @@ model:
           - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
               model_id: OLMOEARTH_V1_2_BASE
-              patch_size: 4
+              patch_size: 8
         decoders:
           detect:
             - class_path: rslearn.models.faster_rcnn.FasterRCNN
               init_args:
-                downsample_factors: [4]
+                downsample_factors: [8]
                 num_channels: 768
                 num_classes: 2
                 anchor_sizes: [[32]]
@@ -159,5 +159,5 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 project_name: 2026_08_28_nisar_vessels
-run_name: data_20260828_olmoearth_base_02
+run_name: data_20260828_olmoearth_base_03
 management_dir: ${RSLP_PREFIX}/projects

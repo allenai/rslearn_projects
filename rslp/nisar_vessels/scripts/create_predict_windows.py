@@ -1,8 +1,9 @@
 r"""Create prediction windows from NISAR scenes in a time range.
 
-Searches the public ASF API for NISAR L2 GCOV scenes acquired in the given time
-range, keeps the dual-pol H-transmit ones (the only mode with the HHHH/HVHV bands
-the dataset uses), and creates one window per scene at a random location within the
+Searches the olmoearth_datasets API (requires the OEDATASETS_API_URL and
+DATASETS_API_TOKEN environment variables) for dual-pol H-transmit NISAR L2 GCOV
+scenes acquired in the given time range (the only mode with the HHHH/HVHV bands the
+dataset uses), and creates one window per scene at a random location within the
 scene footprint. The windows have no label layer; they are intended for the
 "predict" group so the model can be applied to them (e.g. with a low confidence
 threshold to mine false positives to add back to the dataset as negatives).
@@ -20,11 +21,15 @@ Example:
 """
 
 import argparse
+import multiprocessing
+import os
 import random
+from datetime import datetime, timedelta
 from typing import Any
 
 import requests
 import shapely
+import shapely.geometry
 import tqdm
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
@@ -38,11 +43,17 @@ from .create_dataset import PIXEL_SIZE, TIME_BUFFER, parse_time
 
 logger = get_logger(__name__)
 
-ASF_SEARCH_URL = "https://api.daac.asf.alaska.edu/services/search/param"
-ASF_TIMEOUT = 300
+SEARCH_TIMEOUT = 300
+SEARCH_PAGE_SIZE = 1000
+SEARCH_WORKERS = 16
 
-# The polarization (POLE) code in the granule name must have this primary
-# polarization for the granule to contain the HHHH/HVHV bands.
+# The datasets API caps offset+limit pagination at 10000 results per search, so we
+# query the time range in chunks small enough to stay well under that limit
+# (globally there are roughly 1500 GCOV granules per day).
+SEARCH_QUERY_CHUNK = timedelta(hours=12)
+
+# The primary polarization (first POLE slot) must be HH/HV dual pol (H transmit)
+# for the granule to contain the HHHH/HVHV bands.
 WANTED_PRIMARY_POLARIZATION = "DH"
 
 # Number of attempts to sample a window center inside the scene footprint before
@@ -50,43 +61,81 @@ WANTED_PRIMARY_POLARIZATION = "DH"
 MAX_PLACEMENT_ATTEMPTS = 100
 
 
-def get_scenes(start_time: str, end_time: str) -> list[dict[str, Any]]:
+def _search_chunk(chunk: tuple[datetime, datetime]) -> list[dict[str, Any]]:
+    """Search the datasets API for dual-pol GCOV items in one time chunk.
+
+    Args:
+        chunk: the (start, end) of the time chunk to search.
+
+    Returns:
+        the matching items, paginated through completely.
+    """
+    search_url = f"{os.environ['OEDATASETS_API_URL'].rstrip('/')}/api/v1/items/search"
+    headers = {"Authorization": f"Bearer {os.environ['DATASETS_API_TOKEN']}"}
+    chunk_start, chunk_end = chunk
+
+    results: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        response = requests.post(
+            search_url,
+            headers=headers,
+            json={
+                "collection": {"eq": "nisar-l2-gcov"},
+                "instrument": {"eq": "L"},
+                "primary_polarization": {"eq": WANTED_PRIMARY_POLARIZATION},
+                "collected_at": {
+                    "gte": chunk_start.isoformat(),
+                    "lt": chunk_end.isoformat(),
+                },
+                "limit": SEARCH_PAGE_SIZE,
+                "offset": offset,
+            },
+            timeout=SEARCH_TIMEOUT,
+        )
+        response.raise_for_status()
+        records = response.json()["records"]
+        results.extend(records)
+        if len(records) < SEARCH_PAGE_SIZE:
+            return results
+        offset += SEARCH_PAGE_SIZE
+
+
+def get_scenes(
+    start_time: str, end_time: str, workers: int = SEARCH_WORKERS
+) -> list[dict[str, Any]]:
     """Get dual-pol NISAR L2 GCOV scenes acquired in the given time range.
+
+    Uses the olmoearth_datasets API, so the OEDATASETS_API_URL and
+    DATASETS_API_TOKEN environment variables must be set. The time range is queried
+    in SEARCH_QUERY_CHUNK chunks (in parallel) since the API caps pagination at
+    10000 results per search.
 
     Args:
         start_time: ISO-format start of the time range.
         end_time: ISO-format end of the time range.
+        workers: number of parallel search processes.
 
     Returns:
-        the matching ASF search results (with granuleName, wkt, startTime, and
-        stopTime among other fields), de-duplicated by granule name.
+        the matching items (dicts with id and properties, where properties include
+        geometry and collected_at), de-duplicated by item ID.
     """
-    response = requests.get(
-        ASF_SEARCH_URL,
-        params={
-            "dataset": "NISAR",
-            "processingLevel": "GCOV",
-            "start": start_time,
-            "end": end_time,
-            "output": "jsonlite",
-        },
-        timeout=ASF_TIMEOUT,
-    )
-    response.raise_for_status()
-    results = response.json()["results"]
+    start = parse_time(start_time)
+    end = parse_time(end_time)
+    chunks = []
+    cur = start
+    while cur < end:
+        chunks.append((cur, min(cur + SEARCH_QUERY_CHUNK, end)))
+        cur += SEARCH_QUERY_CHUNK
 
     scenes: dict[str, dict[str, Any]] = {}
-    for scene in results:
-        name = scene["granuleName"]
-        # The POLE code, e.g. DHDH, is the 10th underscore-delimited field, giving
-        # the primary and secondary band polarization modes.
-        pole_code = name.split("_")[9]
-        if not pole_code.startswith(WANTED_PRIMARY_POLARIZATION):
-            continue
-        scenes[name] = scene
+    with multiprocessing.Pool(min(workers, len(chunks))) as pool:
+        outputs = pool.imap_unordered(_search_chunk, chunks)
+        for records in tqdm.tqdm(outputs, total=len(chunks), desc="Searching scenes"):
+            for scene in records:
+                scenes[scene["id"]] = scene
     logger.info(
-        "got %d scenes (%d dual-pol) in %s to %s",
-        len(results),
+        "got %d dual-pol scenes in %s to %s",
         len(scenes),
         start_time,
         end_time,
@@ -125,15 +174,15 @@ def create_window_for_scene(
 
     Args:
         dataset: the output rslearn dataset.
-        scene: the ASF search result for the scene.
+        scene: the olmoearth_datasets item for the scene.
         group: the group to add the window to.
         window_size: the window size in pixels.
 
     Returns:
         whether a window was created (False if the scene was skipped).
     """
-    scene_name = scene["granuleName"]
-    footprint = shapely.from_wkt(scene["wkt"])
+    scene_name = scene["id"]
+    footprint = shapely.geometry.shape(scene["properties"]["geometry"])
 
     # Footprints crossing the antimeridian come back spanning most of the globe;
     # skip them rather than placing windows incorrectly.
@@ -157,10 +206,8 @@ def create_window_for_scene(
         int(center_proj.x) + window_size // 2,
         int(center_proj.y) + window_size // 2,
     )
-    time_range = (
-        parse_time(scene["startTime"]) - TIME_BUFFER,
-        parse_time(scene["stopTime"]) + TIME_BUFFER,
-    )
+    collected_at = parse_time(scene["properties"]["collected_at"])
+    time_range = (collected_at - TIME_BUFFER, collected_at + TIME_BUFFER)
 
     window = Window(
         storage=dataset.storage,
@@ -184,6 +231,7 @@ def create_predict_windows(
     group: str = "predict",
     window_size: int = 2048,
     max_scenes: int | None = None,
+    workers: int = SEARCH_WORKERS,
 ) -> None:
     """Create one randomly placed window per NISAR scene in the time range.
 
@@ -195,11 +243,12 @@ def create_predict_windows(
         group: the group to add the windows to.
         window_size: the size of each window in pixels.
         max_scenes: optionally limit to this many scenes (randomly sampled).
+        workers: number of parallel search processes.
     """
-    scenes = get_scenes(start_time, end_time)
+    scenes = get_scenes(start_time, end_time, workers=workers)
     if max_scenes is not None and len(scenes) > max_scenes:
         # Sort first so the sample is deterministic regardless of API ordering.
-        scenes.sort(key=lambda scene: scene["granuleName"])
+        scenes.sort(key=lambda scene: scene["id"])
         scenes = random.Random(0).sample(scenes, max_scenes)
         logger.info("randomly sampled %d scenes", max_scenes)
 
@@ -251,6 +300,12 @@ if __name__ == "__main__":
         default=None,
         help="Optionally limit to this many scenes (randomly sampled)",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=SEARCH_WORKERS,
+        help=f"Number of parallel search processes (default: {SEARCH_WORKERS})",
+    )
     args = parser.parse_args()
     create_predict_windows(
         args.ds_path,
@@ -259,4 +314,5 @@ if __name__ == "__main__":
         group=args.group,
         window_size=args.window_size,
         max_scenes=args.max_scenes,
+        workers=args.workers,
     )
