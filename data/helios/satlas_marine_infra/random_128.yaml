@@ -11,6 +11,7 @@ model:
               selector: ["encoder"]
               forward_kwargs:
                 patch_size: {PATCH_SIZE}
+              random_initialization: true
         decoders:
           detect:
             - class_path: rslearn.models.conv.Conv
@@ -26,7 +27,7 @@ model:
                 activation:
                   class_path: torch.nn.LayerNorm
                   init_args:
-                    normalized_shape: [192, {256/PATCH_SIZE}, {256/PATCH_SIZE}]
+                    normalized_shape: [192, {128/PATCH_SIZE}, {128/PATCH_SIZE}]
             - class_path: rslearn.models.conv.Conv
               init_args:
                 in_channels: 192
@@ -97,7 +98,7 @@ data:
         input_mapping:
           detect:
             targets: "targets"
-    batch_size: 2
+    batch_size: 4
     num_workers: 32
     default_config:
       transforms:
@@ -113,17 +114,19 @@ data:
             band_names:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
-      patch_size: 256
+      patch_size: 128
       tags:
         split: train
         nonempty: "yes"
     val_config:
-      patch_size: 256
+      patch_size: 128
+      load_all_patches: true
       tags:
         split: val
         nonempty: "yes"
     test_config:
-      patch_size: 256
+      patch_size: 128
+      load_all_patches: true
       tags:
         split: val
         nonempty: "yes"
@@ -144,9 +147,5 @@ trainer:
         save_last: true
         monitor: val_detect/mAP
         mode: max
-    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
-      init_args:
-        module_selector: ["model", "encoder", 0]
-        unfreeze_at_epoch: 2
 rslp_project: helios_finetuning
 rslp_experiment: placeholder
