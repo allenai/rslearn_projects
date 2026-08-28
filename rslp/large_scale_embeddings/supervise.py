@@ -328,11 +328,18 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
             len(remaining),
         )
 
-    if live < num_workers:
+    # A worker holds one job at a time, so launching more workers than there are
+    # outstanding jobs is pure churn: each surplus worker starts, finds nothing to claim,
+    # and exits, and the next cycle's top-up launches it again. This is invisible during
+    # the bulk of a run, where jobs outnumber workers, and dominates a tail resume: four
+    # jobs left kept relaunching toward num_workers=32, each surplus worker living long
+    # enough only to log "listening for messages" and stop.
+    worker_target = min(num_workers, len(remaining))
+    if live < worker_target:
         rslp.common.worker.launch_workers(
             image_name=kwargs["image_name"],
             queue_name=queue_name,
-            num_workers=num_workers - live,
+            num_workers=worker_target - live,
             cluster=kwargs["cluster"],
             gpus=kwargs["gpus"],
             shared_memory=kwargs["shared_memory"],
@@ -359,7 +366,12 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
                 ),
             },
         )
-        logger.info("launched %d worker(s)", num_workers - live)
+        logger.info(
+            "launched %d worker(s) (target %d for %d outstanding job(s))",
+            worker_target - live,
+            worker_target,
+            len(remaining),
+        )
 
 
 def launch_supervisor(

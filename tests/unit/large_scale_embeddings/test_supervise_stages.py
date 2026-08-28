@@ -80,90 +80,108 @@ def test_predict_stage_needs_no_pca_arguments() -> None:
     sup.supervise(**_base_kwargs())
 
 
-def test_run_cycle_render_stage_enumerates_from_source_markers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The render stage must call get_render_jobs, not the predict enumerator."""
-    calls: dict[str, object] = {}
+class _FakeQueueApi:
+    """A queue with nothing in it and nobody working it."""
 
-    def fake_get_render_jobs(**kwargs: object) -> list[list[str]]:
-        calls.update(kwargs)
-        return [["--source_marker", "a.json"], ["--source_marker", "b.json"]]
+    def get(self, name: str) -> object:
+        return object()
 
-    monkeypatch.setattr(
-        "rslp.large_scale_embeddings.render_pca.get_render_jobs", fake_get_render_jobs
-    )
+    def list_entries(self, queue: object) -> list:
+        return []
 
-    enqueued: dict[str, object] = {}
+    def list_workers(self, queue: object) -> list:
+        return []
 
-    class FakeQueueApi:
-        def get(self, name: str) -> object:
-            return object()
 
-        def list_entries(self, queue: object) -> list:
-            return []
+class _FakeBeaker:
+    queue = _FakeQueueApi()
 
-        def list_workers(self, queue: object) -> list:
-            return []
+    def __enter__(self) -> "_FakeBeaker":
+        return self
 
-    class FakeBeaker:
-        queue = FakeQueueApi()
+    def __exit__(self, *exc: object) -> None:
+        return None
 
-        def __enter__(self) -> "FakeBeaker":
-            return self
+    @classmethod
+    def from_env(cls, **kwargs: object) -> "_FakeBeaker":
+        return cls()
 
-        def __exit__(self, *exc: object) -> None:
-            return None
 
-        @classmethod
-        def from_env(cls, **kwargs: object) -> "FakeBeaker":
-            return cls()
-
-    monkeypatch.setattr("beaker.Beaker", FakeBeaker)
+def _install_cycle_fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Stub out Beaker and the enqueue/launch calls, returning what they recorded."""
+    recorded: dict[str, object] = {}
+    monkeypatch.setattr("beaker.Beaker", _FakeBeaker)
 
     def fake_write_jobs(
         queue_name: str, project: str, workflow: str, batch: list
     ) -> None:
-        enqueued["workflow"] = workflow
-        enqueued["count"] = len(batch)
+        recorded["workflow"] = workflow
+        recorded["count"] = len(batch)
 
     def fake_launch_workers(**kwargs: object) -> None:
-        enqueued["launched"] = kwargs.get("num_workers")
-        enqueued["gpus"] = kwargs.get("gpus")
+        recorded["launched"] = kwargs.get("num_workers")
+        recorded["gpus"] = kwargs.get("gpus")
 
     monkeypatch.setattr("rslp.common.worker.write_jobs", fake_write_jobs)
     monkeypatch.setattr("rslp.common.worker.launch_workers", fake_launch_workers)
+    return recorded
 
-    class Result:
-        value = -1
 
-    result = Result()
-    sup._run_cycle(
-        {
-            "queue_name": "user/queue",
-            "num_workers": 2,
-            "stale_seconds": 900,
-            "years": [2024, 2025],
-            "stage": sup.STAGE_RENDER_PCA,
-            "store_path": "gs://bucket/s2.zarr",
-            "artifact_path": "gs://bucket/pca",
-            "pca_store_path": "gs://bucket/pca_v1.zarr",
-            "max_level": 3,
-            "pca_completed_path": "gs://bucket/pca_completed/",
-            "completed_path_template": "gs://bucket/s2_{year}_completed/",
-            "patch_size": 1,
-            "image_name": "user/image",
-            "cluster": ["ai2/cluster"],
-            "gpus": 0,
-            "shared_memory": "64GiB",
-            "priority": "normal",
-            "weka_bucket": "b",
-            "weka_mount_path": "/m",
-            "datasets_api_url": "https://example.invalid",
-            "datasets_token_secret": "SECRET",
-        },
-        result,
+def _render_cycle_kwargs(**overrides: object) -> dict[str, object]:
+    """A complete render-stage kwargs set for _run_cycle, with overrides applied."""
+    kwargs: dict[str, object] = {
+        "queue_name": "user/queue",
+        "num_workers": 2,
+        "stale_seconds": 900,
+        "years": [2024, 2025],
+        "stage": sup.STAGE_RENDER_PCA,
+        "store_path": "gs://bucket/s2.zarr",
+        "artifact_path": "gs://bucket/pca",
+        "pca_store_path": "gs://bucket/pca_v1.zarr",
+        "max_level": 3,
+        "pca_completed_path": "gs://bucket/pca_completed/",
+        "completed_path_template": "gs://bucket/s2_{year}_completed/",
+        "patch_size": 1,
+        "image_name": "user/image",
+        "cluster": ["ai2/cluster"],
+        "gpus": 0,
+        "shared_memory": "64GiB",
+        "priority": "normal",
+        "weka_bucket": "b",
+        "weka_mount_path": "/m",
+        "datasets_api_url": "https://example.invalid",
+        "datasets_token_secret": "SECRET",
+    }
+    kwargs.update(overrides)
+    return kwargs
+
+
+class _Result:
+    value = -1
+
+
+def _stub_render_jobs(monkeypatch: pytest.MonkeyPatch, count: int) -> dict[str, object]:
+    """Make the render enumerator return `count` jobs, capturing its arguments."""
+    calls: dict[str, object] = {}
+
+    def fake_get_render_jobs(**kwargs: object) -> list[list[str]]:
+        calls.update(kwargs)
+        return [["--source_marker", f"{i}.json"] for i in range(count)]
+
+    monkeypatch.setattr(
+        "rslp.large_scale_embeddings.render_pca.get_render_jobs", fake_get_render_jobs
     )
+    return calls
+
+
+def test_run_cycle_render_stage_enumerates_from_source_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The render stage must call get_render_jobs, not the predict enumerator."""
+    calls = _stub_render_jobs(monkeypatch, 2)
+    enqueued = _install_cycle_fakes(monkeypatch)
+    result = _Result()
+    sup._run_cycle(_render_cycle_kwargs(), result)
 
     # Both years' marker directories are handed to the render enumerator.
     assert calls["source_completed_paths"] == [
@@ -180,6 +198,37 @@ def test_run_cycle_render_stage_enumerates_from_source_markers(
     assert enqueued["count"] == 2
     # The render stage asks for no GPUs.
     assert enqueued["gpus"] == 0
+
+
+def test_worker_launches_are_capped_by_outstanding_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tail with fewer jobs than workers must not launch the full worker count.
+
+    A worker holds one job at a time, so a surplus worker starts, finds an empty queue
+    and exits, and the next cycle launches it again. On a real resume this churned
+    toward num_workers=32 for four outstanding jobs.
+    """
+    _stub_render_jobs(monkeypatch, 3)
+    enqueued = _install_cycle_fakes(monkeypatch)
+    result = _Result()
+    sup._run_cycle(_render_cycle_kwargs(num_workers=32), result)
+
+    assert result.value == 3
+    assert enqueued["launched"] == 3
+
+
+def test_worker_launches_use_the_full_count_when_work_is_plentiful(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cap must not throttle the bulk of a run, where jobs outnumber workers."""
+    _stub_render_jobs(monkeypatch, 50)
+    enqueued = _install_cycle_fakes(monkeypatch)
+    result = _Result()
+    sup._run_cycle(_render_cycle_kwargs(num_workers=8), result)
+
+    assert result.value == 50
+    assert enqueued["launched"] == 8
 
 
 # ---------------------------------------------------------------- marker detection
@@ -397,7 +446,7 @@ def test_pending_and_fresh_claims_count_as_in_flight(monkeypatch) -> None:
     now = 10_000
     entries = [
         _Entry(["job", "a"], "PENDING"),
-        _Entry(["job", "b"], "CLAIMED", claimed_at=now - 60),      # 1 min old
+        _Entry(["job", "b"], "CLAIMED", claimed_at=now - 60),  # 1 min old
         _Entry(["job", "c"], "CLAIMED", claimed_at=now - 100_000),  # long dead
         _Entry(["job", "d"], "COMPLETED"),
     ]
