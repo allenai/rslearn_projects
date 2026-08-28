@@ -22,12 +22,17 @@ model:
                 num_channels: 128
                 num_classes: 2
                 anchor_sizes: [[32], [64], [128], [256]]
-    lr: 0.0001
-    plateau: true
-    plateau_factor: 0.2
-    plateau_patience: 2
-    plateau_min_lr: 1e-6
-    plateau_cooldown: 10
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.0001
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 1e-6
+        cooldown: 10
     # SatlasPretrain Sentinel-1 backbone; NISAR HH/HV (in decibels) stand in for
     # Sentinel-1 vv/vh.
     restore_config:
@@ -79,6 +84,9 @@ data:
       transforms:
         # NISAR GCOV provides gamma-0 backscatter in linear power; convert to
         # decibels and roughly normalize (typical values are -35 to +5 dB).
+        - class_path: rslp.nisar_vessels.transforms.FillNaN
+          init_args:
+            selectors: ["image"]
         - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
           init_args:
             selectors: ["image"]
@@ -90,6 +98,9 @@ data:
     train_config:
       crop_size: 128
       transforms:
+        - class_path: rslp.nisar_vessels.transforms.FillNaN
+          init_args:
+            selectors: ["image"]
         - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
           init_args:
             selectors: ["image"]
@@ -143,5 +154,5 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 project_name: 2026_08_28_nisar_vessels
-run_name: data_20260828_satlas_01
+run_name: data_20260828_satlas_02
 management_dir: ${RSLP_PREFIX}/projects

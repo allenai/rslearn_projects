@@ -74,6 +74,9 @@ data:
       transforms:
         # NISAR GCOV provides gamma-0 backscatter in linear power. OlmoEarth expects
         # Sentinel-1 in decibels, so convert before normalizing.
+        - class_path: rslp.nisar_vessels.transforms.FillNaN
+          init_args:
+            selectors: ["sentinel1"]
         - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
           init_args:
             selectors: ["sentinel1"]
@@ -90,6 +93,9 @@ data:
     train_config:
       crop_size: 128
       transforms:
+        - class_path: rslp.nisar_vessels.transforms.FillNaN
+          init_args:
+            selectors: ["sentinel1"]
         - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
           init_args:
             selectors: ["sentinel1"]
@@ -153,5 +159,5 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 project_name: 2026_08_28_nisar_vessels
-run_name: data_20260828_olmoearth_base_01
+run_name: data_20260828_olmoearth_base_02
 management_dir: ${RSLP_PREFIX}/projects
