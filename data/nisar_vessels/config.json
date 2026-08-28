@@ -1,0 +1,33 @@
+{
+  "layers": {
+    "label": {
+      "type": "vector"
+    },
+    "nisar": {
+      "band_sets": [
+        {
+          "bands": [
+            "HHHH",
+            "HVHV"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.nisar.l2_gcov.NisarL2Gcov",
+        "ingest": false,
+        "init_args": {
+          "query": {
+            "instrument": {
+              "eq": "L"
+            }
+          }
+        }
+      },
+      "type": "raster"
+    },
+    "output": {
+      "type": "vector"
+    }
+  }
+}
