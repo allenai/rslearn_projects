@@ -78,6 +78,7 @@ def get_jobs(
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
+    batch_size: int | None = None,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
@@ -108,6 +109,8 @@ def get_jobs(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        batch_size: crops per batch, or None to keep the config's value. Lower it
+            for tiles whose full monthly input stack will not fit in GPU memory.
         epsg_code: limit tasks to the zone of this UTM EPSG code (326NN or 327NN both
             map to zone NN); default all UTM zones.
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
@@ -294,6 +297,7 @@ def get_jobs(
             str(overlap_size),
             "--compile_model",
             "true" if compile_model else "false",
+            *(["--batch_size", str(batch_size)] if batch_size is not None else []),
         ]
         jobs.append(cur_args)
 
@@ -311,6 +315,7 @@ def write_jobs(
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
+    batch_size: int | None = None,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
@@ -339,6 +344,8 @@ def write_jobs(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        batch_size: crops per batch, or None to keep the config's value. Lower it
+            for tiles whose full monthly input stack will not fit in GPU memory.
         epsg_code: limit tasks to the zone of this UTM EPSG code; default all zones.
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
         geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
@@ -366,6 +373,7 @@ def write_jobs(
         window_size=window_size,
         overlap_size=overlap_size,
         compile_model=compile_model,
+        batch_size=batch_size,
         epsg_code=epsg_code,
         wgs84_bounds=wgs84_bounds,
         geojson_fname=geojson_fname,

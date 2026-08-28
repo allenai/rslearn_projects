@@ -133,6 +133,7 @@ def _get_model_extra_args(
     window_size: int,
     overlap_size: int,
     compile_model: bool,
+    batch_size: int | None,
 ) -> list[str]:
     """Get the extra arguments to pass to rslearn model predict.
 
@@ -149,6 +150,13 @@ def _get_model_extra_args(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        batch_size: crops per batch, or None to keep the config's value.
+
+            This is the GPU-memory knob. Crops are tiny, so the config batches many of
+            them for throughput, but a tile carrying every monthly input has far more
+            channels per crop and the same batch no longer fits. Batching only groups
+            independent crops, so a smaller batch changes footprint and speed, never
+            the embeddings.
 
     Returns:
         list of arguments to pass to rslearn model predict.
@@ -180,6 +188,11 @@ def _get_model_extra_args(
         str(window_size),
         "--data.init_args.predict_config.overlap_pixels",
         str(overlap_size),
+        *(
+            ["--data.init_args.batch_size", str(batch_size)]
+            if batch_size is not None
+            else []
+        ),
     ]
 
 
@@ -411,6 +424,7 @@ def predict_pipeline(
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
+    batch_size: int | None = None,
     scratch_path: str | None = None,
     upload_workers: int = 16,
     debug_geotiff_path: str | None = None,
@@ -444,6 +458,10 @@ def predict_pipeline(
         overlap_size: overlap in pixels between adjacent crops, to mitigate embedding
             seams at crop boundaries.
         compile_model: whether to compile the encoder transformer blocks.
+        batch_size: crops per batch, or None to keep the config's value. Lower it
+            for a tile whose full monthly input stack will not fit in GPU memory;
+            batching groups independent crops, so this changes footprint and
+            speed, never the embeddings.
         scratch_path: optional directory to store the scratch rslearn dataset in
             directly, and keep it afterward (useful for debugging). By default, a
             temporary directory is used and deleted when the tile is done.
@@ -488,6 +506,7 @@ def predict_pipeline(
                 window_size=window_size,
                 overlap_size=overlap_size,
                 compile_model=compile_model,
+                batch_size=batch_size,
                 upload_workers=upload_workers,
                 debug_geotiff_path=debug_geotiff_path,
             )
@@ -506,6 +525,7 @@ def predict_pipeline(
             window_size=window_size,
             overlap_size=overlap_size,
             compile_model=compile_model,
+            batch_size=batch_size,
             upload_workers=upload_workers,
             debug_geotiff_path=debug_geotiff_path,
         )
@@ -525,6 +545,7 @@ def _process_tile(
     window_size: int,
     overlap_size: int,
     compile_model: bool,
+    batch_size: int | None,
     upload_workers: int,
     debug_geotiff_path: str | None,
 ) -> None:
@@ -546,6 +567,10 @@ def _process_tile(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        batch_size: crops per batch, or None to keep the config's value. Lower it
+            for a tile whose full monthly input stack will not fit in GPU memory;
+            batching groups independent crops, so this changes footprint and
+            speed, never the embeddings.
         upload_workers: number of worker processes for writing the per-crop
             embeddings.
         debug_geotiff_path: if set, also write an uncompressed GeoTIFF per crop here.
@@ -608,6 +633,7 @@ def _process_tile(
                     window_size=window_size,
                     overlap_size=overlap_size,
                     compile_model=compile_model,
+                    batch_size=batch_size,
                 ),
             )
 

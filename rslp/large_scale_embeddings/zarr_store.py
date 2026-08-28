@@ -58,7 +58,7 @@ def pca_level_array_name(level: int) -> str:
     Returns:
         the array name.
     """
-    return PCA_ARRAY if level == 0 else f"{PCA_ARRAY}_{2 ** level}"
+    return PCA_ARRAY if level == 0 else f"{PCA_ARRAY}_{2**level}"
 
 
 # Zarr v3 dimension order for the embedding array.

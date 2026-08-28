@@ -298,6 +298,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
                     window_size=kwargs["window_size"],
                     overlap_size=kwargs["overlap_size"],
                     compile_model=kwargs["compile_model"],
+                    batch_size=kwargs.get("batch_size"),
                     epsg_code=kwargs["epsg_code"],
                     wgs84_bounds=kwargs["wgs84_bounds"],
                     geojson_fname=kwargs["geojson_fname"],
@@ -479,6 +480,7 @@ def supervise(
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
+    batch_size: int | None = None,
     priority: str = "high",
     shared_memory: str = "256GiB",
     geojson_fname: str | None = None,
@@ -534,6 +536,9 @@ def supervise(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        batch_size: crops per batch, or None to keep the config's value. Lower it for
+            tiles whose full monthly input stack will not fit in GPU memory; batching
+            groups independent crops, so this changes footprint, not output.
         priority: Beaker priority for the workers.
         shared_memory: shared memory to request per worker.
         geojson_fname: limit work to tiles intersecting this WGS84 GeoJSON file.
@@ -571,6 +576,7 @@ def supervise(
         "window_size": window_size,
         "overlap_size": overlap_size,
         "compile_model": compile_model,
+        "batch_size": batch_size,
         "priority": priority,
         "shared_memory": shared_memory,
         "geojson_fname": geojson_fname,

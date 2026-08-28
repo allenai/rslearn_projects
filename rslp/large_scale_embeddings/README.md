@@ -424,6 +424,7 @@ float embeddings:
 ```python
 import numpy as np
 
+
 def dequantize(v: np.ndarray) -> np.ndarray:
     x = v.astype(np.float32) / 127.5
     return np.sign(x) * np.abs(x) ** 2.0
