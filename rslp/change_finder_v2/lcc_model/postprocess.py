@@ -23,7 +23,10 @@ Two output modes (at least one must be set):
 
 - ``--out_dir``: write one GeoJSON per input raster from within each worker
   job (``<tile>_summary.geojson`` per summary tile, ``<window>.geojson`` per
-  window), so features are not retained across jobs.
+  window), so features are not retained across jobs. In summary mode, when
+  ``--output`` is not also set, tiles whose GeoJSON already exists in the
+  output directory are skipped, so re-running the command incrementally
+  converts only new tiles.
 - ``--output``: additionally (or instead) merge all features into a single
   GeoJSON file; this retains every feature in memory until the end.
 
@@ -564,11 +567,36 @@ def collect_features_from_summaries(
     ``<out_dir>/<tile>_summary.geojson`` from within the worker job. Returns
     the total feature count and the merged features (empty list if
     return_features is False).
+
+    When out_dir is set and merged features are not requested
+    (return_features is False), tiles whose GeoJSON already exists in out_dir
+    are skipped, so the conversion can run incrementally while the prediction
+    job is still producing summary tiles.
     """
     root = UPath(summary_path)
     tif_paths = sorted(root.glob("*_summary.tif"))
     if not tif_paths:
         raise ValueError(f"no *_summary.tif files found under {summary_path}")
+
+    if out_dir is not None and not return_features:
+        # List out_dir once instead of one exists() call per tile since it
+        # may be an object storage path.
+        try:
+            existing_names = {p.name for p in out_dir.iterdir()}
+        except FileNotFoundError:
+            existing_names = set()
+        remaining = [
+            tif_path
+            for tif_path in tif_paths
+            if tif_path.name.replace(".tif", ".geojson") not in existing_names
+        ]
+        if len(remaining) < len(tif_paths):
+            print(
+                f"Skipping {len(tif_paths) - len(remaining)} of {len(tif_paths)} "
+                "summary tiles that already have a GeoJSON in "
+                f"{out_dir}"
+            )
+        tif_paths = remaining
 
     kwargs_list = [
         dict(
@@ -613,6 +641,9 @@ def create_geojson(
     At least one of out_dir (one GeoJSON per input raster, written from
     within each worker job) or output (a single merged GeoJSON, which
     requires retaining all features in memory) must be provided.
+
+    In summary mode with out_dir set and output unset, tiles whose GeoJSON
+    already exists in out_dir are skipped (incremental conversion).
     """
     if (dataset_path is None) == (summary_path is None):
         raise ValueError("provide exactly one of dataset_path or summary_path")
