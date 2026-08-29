@@ -108,8 +108,12 @@ def test_all_stages_run_in_order_when_complete(
     monkeypatch.setattr(
         run_all_mod, "annotate_pca_store", lambda **kw: calls.append("annotate")
     )
+    monkeypatch.setattr(
+        run_all_mod, "init_web_store", lambda **kw: calls.append("init_web")
+    )
+    monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
 
-    run_all_mod.run_all(**COMMON)
+    run_all_mod.run_all(**COMMON, web_min_zoom=12, web_max_zoom=14)
     assert calls == [
         "init",
         "supervise:predict",
@@ -117,7 +121,55 @@ def test_all_stages_run_in_order_when_complete(
         "init_pca",
         "supervise:render_pca",
         "annotate",
+        "init_web",
+        "supervise:reproject_web",
+        "supervise:reproject_web",
+        "supervise:reproject_web",
     ]
+
+
+def test_web_zooms_run_deepest_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A coarse shard reads the four below it, so a shallower zoom must not run first."""
+    zooms: list[int] = []
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod,
+        "supervise",
+        lambda **kw: zooms.append(kw["web_zoom"]) if kw.get("web_zoom") else None,
+    )
+    _stub_paths(monkeypatch, exists=False)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
+
+    run_all_mod.run_all(**COMMON, web_min_zoom=10, web_max_zoom=14)
+    assert zooms == [14, 13, 12, 11, 10]
+
+
+def test_skip_web_pca_stops_after_annotate(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The display pyramid is opt-out, so a run can still produce only the UTM stores."""
+    calls: list[str] = []
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod, "supervise", lambda **kw: calls.append(f"supervise:{kw['stage']}")
+    )
+    _stub_paths(monkeypatch, exists=False)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod, "init_web_store", lambda **kw: calls.append("init_web")
+    )
+
+    run_all_mod.run_all(**COMMON, skip_web_pca=True)
+    assert "init_web" not in calls
+    assert "supervise:reproject_web" not in calls
 
 
 def test_skip_pca_stops_after_predict(monkeypatch: pytest.MonkeyPatch) -> None:

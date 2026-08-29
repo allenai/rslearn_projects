@@ -33,10 +33,24 @@ def _base_kwargs(**overrides: object) -> dict:
     return kwargs
 
 
-def test_stages_are_the_two_expected() -> None:
-    assert sup.STAGES == (sup.STAGE_PREDICT, sup.STAGE_RENDER_PCA)
+def test_stages_are_the_three_expected() -> None:
+    """The stage names are the queue's workflow names, so they are a wire contract."""
+    assert sup.STAGES == (
+        sup.STAGE_PREDICT,
+        sup.STAGE_RENDER_PCA,
+        sup.STAGE_REPROJECT_WEB,
+    )
     assert sup.STAGE_PREDICT == "predict"
     assert sup.STAGE_RENDER_PCA == "render_pca"
+    assert sup.STAGE_REPROJECT_WEB == "reproject_web"
+
+
+def test_every_stage_has_a_registered_workflow() -> None:
+    """A stage a worker cannot run would enqueue jobs that fail one by one."""
+    from rslp.large_scale_embeddings import workflows
+
+    for stage in sup.STAGES:
+        assert stage in workflows, f"stage {stage} has no worker entry point"
 
 
 def test_unknown_stage_is_rejected() -> None:

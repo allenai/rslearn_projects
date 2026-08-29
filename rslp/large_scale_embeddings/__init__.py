@@ -8,12 +8,17 @@ The forward flow is three ordered steps:
    basis reflects exactly the data it will be applied to.
 3. ``render_pca`` reads the embeddings back and writes the ``pca_rgb`` layer
    (``write_render_jobs`` enqueues the work). CPU only, no model.
+4. ``reproject_web`` warps that layer into a single web-mercator pyramid for display.
+   The UTM pyramid keeps ``shard == one prediction window`` at every level, so object
+   count for a view never falls however far you zoom out, and a view spanning two zones
+   cannot be drawn at all. This stage fixes both. CPU only, no model.
 """
 
 from .full_run import launch_run_all, run_all
 from .pca import fit_pca
 from .predict_pipeline import predict_pipeline
 from .render_pca import annotate_pca_store, render_pca_pipeline, write_render_jobs
+from .reproject_web import init_web_store, reproject_web_shard_pipeline
 from .supervise import launch_supervisor, supervise
 from .write_jobs import init_store, write_jobs
 from .zarr_store import init_pca_store
@@ -26,6 +31,8 @@ workflows = {
     "launch_supervisor": launch_supervisor,
     "predict": predict_pipeline,
     "render_pca": render_pca_pipeline,
+    "reproject_web": reproject_web_shard_pipeline,
+    "init_web_store": init_web_store,
     "run_all": run_all,
     "annotate_pca_store": annotate_pca_store,
     "write_render_jobs": write_render_jobs,

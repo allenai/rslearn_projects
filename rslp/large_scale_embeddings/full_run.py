@@ -23,7 +23,8 @@ from rslp.log_utils import get_logger
 from .pca import fit_pca
 from .predict_pipeline import EmbeddingInputs
 from .render_pca import annotate_pca_store, get_render_jobs
-from .supervise import STAGE_PREDICT, STAGE_RENDER_PCA, supervise
+from .reproject_web import get_web_jobs, init_web_store
+from .supervise import STAGE_PREDICT, STAGE_RENDER_PCA, STAGE_REPROJECT_WEB, supervise
 from .write_jobs import get_jobs, init_store
 from .zarr_store import DEFAULT_PCA_MAX_LEVEL, init_pca_store
 
@@ -63,6 +64,11 @@ def run_all(
     max_level: int = DEFAULT_PCA_MAX_LEVEL,
     render_gpus: int = 0,
     skip_pca: bool = False,
+    skip_web_pca: bool = False,
+    web_store_path: str | None = None,
+    web_completed_path: str | None = None,
+    web_min_zoom: int = 8,
+    web_max_zoom: int = 14,
     **supervise_kwargs: Any,
 ) -> None:
     """Run init_store, predict, fit_pca, render_pca and annotate to completion.
@@ -87,6 +93,11 @@ def run_all(
         render_gpus: GPUs for the render stage. It needs none; a nonzero value is only
             for saturated clusters that count slots in GPUs.
         skip_pca: stop after predict. For a run whose only product is embeddings.
+        skip_web_pca: stop after annotate, leaving the display pyramid unbuilt.
+        web_store_path: the web-mercator PCA store. Defaults beside the UTM one.
+        web_completed_path: marker directory for step 5. Defaults beside the store.
+        web_min_zoom: shallowest zoom to build.
+        web_max_zoom: deepest zoom, warped directly from the UTM store.
         supervise_kwargs: forwarded verbatim to :func:`supervise`, so this never
             drifts from its options.
 
@@ -102,7 +113,7 @@ def run_all(
     }
     completed_paths = [completed_path_template.format(year=year) for year in years]
 
-    logger.info("step 0/4: ensuring the store exists at %s", store_path)
+    logger.info("step 0/5: ensuring the store exists at %s", store_path)
     if UPath(store_path).exists():
         logger.info("store already exists; leaving it as is")
     else:
@@ -116,7 +127,7 @@ def run_all(
             patch_size=int(supervise_kwargs.get("patch_size", 1)),
         )
 
-    logger.info("step 1/4: predict")
+    logger.info("step 1/5: predict")
     supervise(
         inputs=inputs,
         years=years,
@@ -142,14 +153,14 @@ def run_all(
         logger.info("skip_pca set; stopping after predict")
         return
 
-    logger.info("step 2/4: fit_pca -> %s", artifact_path)
+    logger.info("step 2/5: fit_pca -> %s", artifact_path)
     fit_pca(
         store_path=store_path,
         completed_paths=completed_paths,
         artifact_path=artifact_path,
     )
 
-    logger.info("step 3/4: render_pca into %s", pca_store_path)
+    logger.info("step 3/5: render_pca into %s", pca_store_path)
     if not UPath(pca_store_path).exists():
         init_pca_store(
             pca_store_path=pca_store_path,
@@ -194,14 +205,75 @@ def run_all(
             "not annotating a partly-rendered store"
         )
 
-    logger.info("step 4/4: annotate_pca_store")
+    logger.info("step 4/5: annotate_pca_store")
     annotate_pca_store(
         pca_store_path=pca_store_path,
         artifact_path=artifact_path,
         zone_numbers=zone_numbers,
         max_level=max_level,
     )
-    logger.info("run complete: all four steps finished with no work outstanding")
+    if skip_web_pca:
+        logger.info("skip_web_pca set; stopping after annotate")
+        return
+
+    # Siblings of the UTM pyramid by default, so a run needs no extra paths to gain a
+    # display layer. The version lives in the name, as it does for pca_v1.zarr, so a
+    # rebuild can be staged beside the old one.
+    web_store_path = web_store_path or pca_store_path.replace(
+        "pca_v1.zarr", "pca_web_v1.zarr"
+    )
+    web_completed_path = web_completed_path or (
+        pca_completed_path.rstrip("/") + "_web/"
+    )
+
+    # Step 5: the display pyramid. One supervise stage per zoom, deepest first, because
+    # a coarse shard is built from the four below it and those must already exist.
+    # Zoom order is the dependency, so this is a sequence rather than one flat stage.
+    logger.info("step 5/5: reproject_web (zooms %d..%d)", web_min_zoom, web_max_zoom)
+    if not UPath(web_store_path).exists():
+        init_web_store(
+            store_path=web_store_path,
+            years=years,
+            min_zoom=web_min_zoom,
+            max_zoom=web_max_zoom,
+            source_store_path=pca_store_path,
+        )
+    else:
+        logger.info("web store already exists; leaving it as is")
+
+    for zoom in range(web_max_zoom, web_min_zoom - 1, -1):
+        supervise(
+            inputs=inputs,
+            years=years,
+            store_path=store_path,
+            completed_path_template=completed_path_template,
+            checkpoint_path=checkpoint_path,
+            stage=STAGE_REPROJECT_WEB,
+            pca_store_path=pca_store_path,
+            artifact_path=artifact_path,
+            web_store_path=web_store_path,
+            web_completed_path=web_completed_path,
+            web_zoom=zoom,
+            web_base_zoom=web_max_zoom,
+            zone_numbers=zone_numbers,
+            **supervise_kwargs,
+        )
+        outstanding = get_web_jobs(
+            source_store_path=pca_store_path,
+            web_store_path=web_store_path,
+            completed_path=web_completed_path,
+            zoom=zoom,
+            years=years,
+            zone_numbers=zone_numbers or [],
+            base_zoom=web_max_zoom,
+        )
+        if outstanding:
+            raise RuntimeError(
+                f"reproject_web z{zoom} finished with {len(outstanding)} shard(s) "
+                "outstanding; a coarser level built on an incomplete one would be wrong"
+            )
+
+    logger.info("run complete: all five steps finished with no work outstanding")
 
 
 def _require_no_predict_jobs(

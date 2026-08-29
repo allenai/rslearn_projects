@@ -50,7 +50,12 @@ logger = get_logger(__name__)
 # enumerated and which workflow the entries name differ.
 STAGE_PREDICT = "predict"
 STAGE_RENDER_PCA = "render_pca"
-STAGES = (STAGE_PREDICT, STAGE_RENDER_PCA)
+# One zoom level at a time. A coarse shard is built from the four below it, so its
+# inputs must already exist; running every zoom as one flat stage would race. The zoom
+# is a supervise argument rather than a stage name so the resumability, worker
+# management and marker handling are shared with every other stage.
+STAGE_REPROJECT_WEB = "reproject_web"
+STAGES = (STAGE_PREDICT, STAGE_RENDER_PCA, STAGE_REPROJECT_WEB)
 
 # Pending entries to keep per worker: enough that no worker idles waiting for work,
 # few enough that entries orphaned by dying workers stay a rounding error.
@@ -236,6 +241,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
     from rslp.utils.beaker import DEFAULT_WORKSPACE, WekaMount
 
     from .render_pca import get_render_jobs
+    from .reproject_web import get_web_jobs
     from .write_jobs import get_jobs
 
     queue_name = kwargs["queue_name"]
@@ -267,7 +273,22 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
     years = kwargs["years"]
     stage = kwargs["stage"]
     remaining: list[list[str]] = []
-    if stage == STAGE_RENDER_PCA:
+    if stage == STAGE_REPROJECT_WEB:
+        # Enumerated from the UTM PCA store's own object keys: the destination grid is
+        # global and almost entirely empty, so listing what exists beats probing it.
+        remaining.extend(
+            get_web_jobs(
+                source_store_path=kwargs["pca_store_path"],
+                web_store_path=kwargs["web_store_path"],
+                completed_path=kwargs["web_completed_path"],
+                zoom=kwargs["web_zoom"],
+                years=years,
+                zone_numbers=kwargs["zone_numbers"],
+                base_zoom=kwargs["web_base_zoom"],
+                source_url=kwargs.get("pca_store_url"),
+            )
+        )
+    elif stage == STAGE_RENDER_PCA:
         # Step 3 enumerates from step 1's markers, so it needs no model settings and no
         # land or wedge filtering: the source markers already name what exists.
         remaining.extend(
@@ -481,6 +502,12 @@ def supervise(
     overlap_size: int = 4,
     compile_model: bool = True,
     batch_size: int | None = None,
+    web_store_path: str | None = None,
+    web_completed_path: str | None = None,
+    web_zoom: int | None = None,
+    web_base_zoom: int = 14,
+    pca_store_url: str | None = None,
+    zone_numbers: list[int] | None = None,
     priority: str = "high",
     shared_memory: str = "256GiB",
     geojson_fname: str | None = None,
@@ -539,6 +566,13 @@ def supervise(
         batch_size: crops per batch, or None to keep the config's value. Lower it for
             tiles whose full monthly input stack will not fit in GPU memory; batching
             groups independent crops, so this changes footprint, not output.
+        web_store_path: the web-mercator PCA store, for the reproject_web stage.
+        web_completed_path: marker directory for the reproject_web stage.
+        web_zoom: which zoom this stage builds. Levels run one at a time because a
+            coarse shard is built from the four below it.
+        web_base_zoom: the deepest zoom, warped directly from the UTM store.
+        pca_store_url: https base of the UTM PCA store, for listing its keys.
+        zone_numbers: UTM zones present in the source.
         priority: Beaker priority for the workers.
         shared_memory: shared memory to request per worker.
         geojson_fname: limit work to tiles intersecting this WGS84 GeoJSON file.
@@ -577,6 +611,12 @@ def supervise(
         "overlap_size": overlap_size,
         "compile_model": compile_model,
         "batch_size": batch_size,
+        "web_store_path": web_store_path,
+        "web_completed_path": web_completed_path,
+        "web_zoom": web_zoom,
+        "web_base_zoom": web_base_zoom,
+        "pca_store_url": pca_store_url,
+        "zone_numbers": zone_numbers,
         "priority": priority,
         "shared_memory": shared_memory,
         "geojson_fname": geojson_fname,
