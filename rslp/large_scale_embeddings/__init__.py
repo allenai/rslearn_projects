@@ -31,9 +31,6 @@ workflows = {
     "launch_supervisor": launch_supervisor,
     "predict": predict_pipeline,
     "render_utm_pca": render_pca_pipeline,
-    # The old name, kept so an existing script or a queue entry written before the
-    # rename still resolves.
-    "render_pca": render_pca_pipeline,
     "render_web_pca": render_web_pca_pipeline,
     "init_web_store": init_web_store,
     "run_all": run_all,
