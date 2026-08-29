@@ -50,6 +50,14 @@ logger = get_logger(__name__)
 # cycle interval the throughput ceiling regardless of worker count.
 WEB_PENDING_PER_WORKER = 64
 
+# Supervisor cycle length for the web stage, overriding supervise's 900s default. That
+# default is sized for predict, whose jobs run tens of minutes. A web shard takes a few
+# seconds, so 32 workers drain a full 2,048-job queue in under three minutes and then
+# idle out the rest of the cycle: measured at 900s the stage ran ~18% of the time and
+# the interval, not the worker count, set throughput. Depth alone cannot fix it, since
+# enqueueing is rate-limited to ~17 entries/s; the interval has to come down too.
+WEB_CYCLE_SECONDS = 120
+
 DEFAULT_WORKER_ENV_VARS = {
     "GS_USER_PROJECT": "earthsystem-dev-c3po",
 }
@@ -275,9 +283,12 @@ def run_all(
     }
     web_kwargs = {k: v for k, v in supervise_kwargs.items() if k not in web_explicit}
     web_kwargs["gpus"] = render_gpus
-    # A shard takes seconds, so the queue has to be kept far deeper than the default or
-    # workers idle between cycles and the cycle interval becomes the ceiling.
+    # A shard takes seconds rather than tens of minutes, so both of supervise's
+    # long-job defaults are wrong here: the queue has to be far deeper and the cycle
+    # far shorter, or workers drain the queue and idle until the next cycle. setdefault
+    # rather than assignment, so an explicit flag at launch still wins.
     web_kwargs.setdefault("pending_per_worker", WEB_PENDING_PER_WORKER)
+    web_kwargs.setdefault("cycle_seconds", WEB_CYCLE_SECONDS)
 
     for zoom in range(web_max_zoom, web_min_zoom - 1, -1):
         supervise(

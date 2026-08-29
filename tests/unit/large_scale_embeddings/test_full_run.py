@@ -322,3 +322,62 @@ def test_caller_can_override_a_gdal_default(monkeypatch: pytest.MonkeyPatch) -> 
         **COMMON, skip_pca=True, worker_env_vars={"GS_USER_PROJECT": "other-project"}
     )
     assert seen[0]["GS_USER_PROJECT"] == "other-project"
+
+
+def test_web_tuning_does_not_reach_the_other_stages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The short cycle and deep queue are scoped to render_web_pca.
+
+    Both are wrong for the long-job stages: a predict job runs tens of minutes, so a
+    120s cycle would re-enumerate markers ~19 times per job and a 64-deep queue would
+    leave claims outstanding far longer than a worker's life. Passing them on the
+    command line applies them run-wide, which is why they belong in the web kwargs.
+    """
+    seen: dict[str, dict] = {}
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod, "supervise", lambda **kw: seen.setdefault(kw["stage"], kw)
+    )
+    _stub_paths(monkeypatch, exists=False)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
+
+    run_all_mod.run_all(**COMMON, web_min_zoom=14, web_max_zoom=14)
+
+    web = seen[run_all_mod.STAGE_RENDER_WEB_PCA]
+    assert web["cycle_seconds"] == run_all_mod.WEB_CYCLE_SECONDS
+    assert web["pending_per_worker"] == run_all_mod.WEB_PENDING_PER_WORKER
+    for stage in ("predict", run_all_mod.STAGE_RENDER_UTM_PCA):
+        # Absent entirely, so supervise applies its own long-job defaults.
+        assert "cycle_seconds" not in seen[stage]
+        assert "pending_per_worker" not in seen[stage]
+
+
+def test_explicit_cycle_seconds_still_wins_for_the_web_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """setdefault, not assignment: an operator can still override at launch."""
+    seen: dict[str, dict] = {}
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod, "supervise", lambda **kw: seen.setdefault(kw["stage"], kw)
+    )
+    _stub_paths(monkeypatch, exists=False)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
+
+    run_all_mod.run_all(**COMMON, web_min_zoom=14, web_max_zoom=14, cycle_seconds=45)
+
+    assert seen[run_all_mod.STAGE_RENDER_WEB_PCA]["cycle_seconds"] == 45
+    assert seen["predict"]["cycle_seconds"] == 45
