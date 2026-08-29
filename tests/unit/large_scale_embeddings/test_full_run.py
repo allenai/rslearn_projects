@@ -381,3 +381,54 @@ def test_explicit_cycle_seconds_still_wins_for_the_web_stage(
 
     assert seen[run_all_mod.STAGE_RENDER_WEB_PCA]["cycle_seconds"] == 45
     assert seen["predict"]["cycle_seconds"] == 45
+
+
+def test_web_workers_outlive_the_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A web worker must wait longer for work than the supervisor takes to refill.
+
+    The worker default is ten seconds, which is right for a queue filled once up front
+    and wrong for one refilled on a cycle: measured on the Kenya rebuild, all 32 workers
+    quit seconds after draining the queue, and because a worker counts as live until its
+    heartbeat goes stale, the supervisor then waited fifteen minutes before topping up.
+    Three minutes of work, fifteen minutes of nothing. The ordering asserted here is what
+    stops that pairing coming back.
+    """
+    seen: dict[str, dict] = {}
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod, "supervise", lambda **kw: seen.setdefault(kw["stage"], kw)
+    )
+    _stub_paths(monkeypatch, exists=False)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
+
+    run_all_mod.run_all(**COMMON, web_min_zoom=14, web_max_zoom=14)
+
+    web = seen[run_all_mod.STAGE_RENDER_WEB_PCA]
+    assert web["worker_idle_seconds"] == run_all_mod.WEB_WORKER_IDLE_SECONDS
+    assert web["worker_idle_seconds"] > web["cycle_seconds"]
+    # The long-job stages keep the worker default: a predict worker that idles for
+    # fifteen minutes is holding a GPU it is not using.
+    for stage in ("predict", run_all_mod.STAGE_RENDER_UTM_PCA):
+        assert "worker_idle_seconds" not in seen[stage]
+
+
+def test_launch_workers_passes_the_idle_timeout() -> None:
+    """supervise's option has to reach the worker's command line to do anything.
+
+    Asserted against the real signature rather than a stub, because the defect this
+    guards against is a supervise-side option that is silently accepted and never
+    forwarded -- which looks exactly like a working fix until the run is watched.
+    """
+    import inspect
+
+    from rslp.common.worker import launch_workers
+
+    assert "idle_timeout" in inspect.signature(launch_workers).parameters
+    source = inspect.getsource(launch_workers)
+    assert '"--idle_timeout"' in source

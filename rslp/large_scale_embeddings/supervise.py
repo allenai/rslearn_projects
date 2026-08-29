@@ -377,6 +377,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
                     mount_path=kwargs["weka_mount_path"],
                 )
             ],
+            idle_timeout=kwargs.get("worker_idle_seconds"),
             extra_env_vars={
                 "OEDATASETS_API_URL": kwargs["datasets_api_url"],
                 **(kwargs.get("worker_env_vars") or {}),
@@ -520,6 +521,7 @@ def supervise(
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     cycle_seconds: int = 900,
+    worker_idle_seconds: int | None = None,
     stale_seconds: int = 900,
     claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS,
     cycle_budget_seconds: int = DEFAULT_CYCLE_BUDGET_SECONDS,
@@ -588,6 +590,14 @@ def supervise(
         epsg_code: limit work to the zone of this UTM EPSG code.
         wgs84_bounds: limit work to tiles intersecting these WGS84 bounds.
         cycle_seconds: how long to sleep between cycles.
+        worker_idle_seconds: how long a worker waits for new work before exiting. None
+            leaves the worker's own default, which is ten seconds -- right for a queue
+            filled once up front, wrong for one a supervisor refills on a cycle. With
+            the default, every worker quits within ten seconds of draining the queue,
+            and because `live` trusts a heartbeat for `stale_seconds` afterwards, the
+            supervisor believes a full pool is still working and does not top up. That
+            pairing is what turns a three-minute burst of work into a fifteen-minute
+            gap. Set it above the cycle interval and workers stay for the next refill.
         stale_seconds: a worker with no heartbeat for this long counts as dead.
         claim_stale_seconds: how long a queue entry's claim is trusted before the
             job is offered again. Must comfortably exceed one job's runtime or live

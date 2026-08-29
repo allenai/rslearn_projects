@@ -136,6 +136,7 @@ def launch_workers(
     weka_mounts: list[WekaMount] = [],
     extra_env_vars: dict[str, str] | None = None,
     extra_env_secrets: dict[str, str] | None = None,
+    idle_timeout: int | None = None,
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -153,6 +154,11 @@ def launch_workers(
         extra_env_secrets: additional environment variables to set on each worker from
             Beaker secrets, mapping environment variable name to the name of the Beaker
             secret (in the target workspace) to read its value from.
+        idle_timeout: seconds a worker waits for new work before exiting. Left unset,
+            the worker's own default applies. Raise it when a supervisor refills the
+            queue on a cycle: a worker that quits the moment the queue drains has to be
+            relaunched and pay container start again, and the supervisor cannot notice
+            it has gone until its heartbeat goes stale.
     """
     if extra_env_vars is None:
         extra_env_vars = {}
@@ -187,6 +193,11 @@ def launch_workers(
                     "worker",
                     "--queue_name",
                     queue_name,
+                    *(
+                        []
+                        if idle_timeout is None
+                        else ["--idle_timeout", str(idle_timeout)]
+                    ),
                 ],
                 constraints=BeakerConstraints(
                     cluster=cluster,

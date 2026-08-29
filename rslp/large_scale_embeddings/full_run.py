@@ -58,6 +58,14 @@ WEB_PENDING_PER_WORKER = 64
 # enqueueing is rate-limited to ~17 entries/s; the interval has to come down too.
 WEB_CYCLE_SECONDS = 120
 
+# How long a web worker waits for more work before exiting. It must exceed the cycle
+# interval above, or the pool dies between refills: measured on the Kenya rebuild, the
+# ten-second default had all 32 workers quit within seconds of draining the queue, and
+# the supervisor then counted them as live for another fifteen minutes, so a three-minute
+# burst of work was followed by a fifteen-minute gap. These workers hold no GPU, so
+# waiting costs almost nothing next to paying container start again.
+WEB_WORKER_IDLE_SECONDS = 900
+
 DEFAULT_WORKER_ENV_VARS = {
     "GS_USER_PROJECT": "earthsystem-dev-c3po",
 }
@@ -289,6 +297,7 @@ def run_all(
     # rather than assignment, so an explicit flag at launch still wins.
     web_kwargs.setdefault("pending_per_worker", WEB_PENDING_PER_WORKER)
     web_kwargs.setdefault("cycle_seconds", WEB_CYCLE_SECONDS)
+    web_kwargs.setdefault("worker_idle_seconds", WEB_WORKER_IDLE_SECONDS)
 
     for zoom in range(web_max_zoom, web_min_zoom - 1, -1):
         supervise(
