@@ -278,10 +278,13 @@ def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
     monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
 
     run_all_mod.run_all(**COMMON, gpus=1)
     assert ("predict", 1) in seen
     assert ("render_utm_pca", 0) in seen
+    assert ("render_web_pca", 0) in seen
 
 
 def test_gdal_env_vars_are_passed_by_default(monkeypatch: pytest.MonkeyPatch) -> None:

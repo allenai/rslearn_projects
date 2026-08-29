@@ -134,3 +134,35 @@ def test_init_rejects_an_inverted_zoom_range(tmp_path) -> None:
         rw.init_web_store(
             str(tmp_path / "w.zarr"), years=[2020], min_zoom=10, max_zoom=8
         )
+
+
+def test_source_url_accepts_both_bucket_url_forms() -> None:
+    """run_all hands over a gs:// path; requiring https:// failed the driver on Beaker.
+
+    Both spellings name the same object, so the listing must derive a bucket and prefix
+    from either. This is checked on the parse alone -- no network -- because the bug was
+    a rejected string, not a bad request.
+    """
+    import re
+
+    for url in (
+        "gs://bucket/a/b/pca_v1.zarr",
+        "https://storage.googleapis.com/bucket/a/b/pca_v1.zarr",
+        "gs://bucket/a/b/pca_v1.zarr/",
+    ):
+        m = re.match(
+            r"https://storage\.googleapis\.com/([^/]+)/(.+)", url.rstrip("/")
+        ) or re.match(r"gs://([^/]+)/(.+)", url.rstrip("/"))
+        assert m, f"{url} should parse"
+        assert m.group(1) == "bucket"
+        assert m.group(2) == "a/b/pca_v1.zarr"
+
+    with pytest.raises(ValueError, match="expected a gs://"):
+        rw.source_shard_positions("s3://bucket/a", "utm10")
+
+
+def test_enumeration_and_writer_agree_on_the_marker_name() -> None:
+    """Enumeration skips by name, so a drift here silently rebuilds everything forever."""
+    fname = rw.web_marker_fname("gs://b/done", zoom=14, time_index=2, row=7, col=9)
+    assert fname.name == rw.web_marker_name(2, 7, 9)
+    assert fname.parent.name == "z14"

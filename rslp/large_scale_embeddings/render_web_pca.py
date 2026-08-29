@@ -487,7 +487,8 @@ def source_shard_positions(store_url: str, zone: str) -> set[tuple[int, int]]:
     them are ocean.
 
     Args:
-        store_url: base URL of the UTM PCA store.
+        store_url: the UTM PCA store, as either a gs:// or an
+            https://storage.googleapis.com/ URL.
         zone: zone group name, e.g. "utm10".
 
     Returns:
@@ -498,11 +499,15 @@ def source_shard_positions(store_url: str, zone: str) -> set[tuple[int, int]]:
     import urllib.request
     import xml.dom.minidom
 
-    m = re.match(
-        r"https://storage\.googleapis\.com/([^/]+)/(.+)", store_url.rstrip("/")
+    url = store_url.rstrip("/")
+    m = re.match(r"https://storage\.googleapis\.com/([^/]+)/(.+)", url) or re.match(
+        r"gs://([^/]+)/(.+)", url
     )
     if not m:
-        raise ValueError(f"cannot derive a bucket listing from {store_url}")
+        raise ValueError(
+            f"cannot derive a bucket listing from {store_url}; expected a gs:// or "
+            "https://storage.googleapis.com/ URL"
+        )
     bucket, root = m.group(1), m.group(2)
     prefix = f"{root}/{zone}/pca_rgb/c/"
 
@@ -668,6 +673,24 @@ def render_web_pca_pipeline_all(
             )
 
 
+def web_marker_name(time_index: int, row: int, col: int) -> str:
+    """Filename of one shard's marker within its zoom directory.
+
+    The single source of truth for that name. The writer and the enumerator must agree
+    exactly: if they drift, enumeration never sees its own completed work and the stage
+    rebuilds everything on every cycle, forever, with no error to notice.
+
+    Args:
+        time_index: index on the time axis.
+        row: shard row.
+        col: shard column.
+
+    Returns:
+        the marker filename.
+    """
+    return f"{time_index}_{row}_{col}.json"
+
+
 def web_marker_fname(
     completed_path: str, zoom: int, time_index: int, row: int, col: int
 ) -> UPath:
@@ -686,7 +709,7 @@ def web_marker_fname(
     Returns:
         the marker path.
     """
-    return UPath(completed_path) / f"z{zoom}" / f"{time_index}_{row}_{col}.json"
+    return UPath(completed_path) / f"z{zoom}" / web_marker_name(time_index, row, col)
 
 
 def render_web_pca_pipeline(
@@ -799,12 +822,17 @@ def get_web_jobs(
     for _ in range(base_zoom - zoom):
         shards = parent_shards(shards)
 
+    done: set[str] = set()
+    level_dir = UPath(completed_path) / f"z{zoom}"
+    if level_dir.exists():
+        done = {fname.name for fname in level_dir.iterdir()}
+
     jobs: list[list[str]] = []
     total = 0
     for time_index in range(len(years)):
         for row, col in sorted(shards):
             total += 1
-            if web_marker_fname(completed_path, zoom, time_index, row, col).exists():
+            if web_marker_name(time_index, row, col) in done:
                 continue
             jobs.append(
                 [
