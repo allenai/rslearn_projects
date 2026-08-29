@@ -642,6 +642,7 @@ def supervise(
         "geojson_fname": geojson_fname,
         "epsg_code": epsg_code,
         "wgs84_bounds": wgs84_bounds,
+        "worker_idle_seconds": worker_idle_seconds,
         "stale_seconds": stale_seconds,
         "claim_stale_seconds": claim_stale_seconds,
         "stage": stage,
