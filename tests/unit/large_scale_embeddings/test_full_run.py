@@ -150,6 +150,44 @@ def test_web_zooms_run_deepest_first(monkeypatch: pytest.MonkeyPatch) -> None:
     assert zooms == [14, 13, 12, 11, 10]
 
 
+def test_web_stage_survives_leaked_supervise_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """jsonargparse expands supervise's signature into run_all's CLI.
+
+    Because run_all takes **supervise_kwargs, a supervise-only option such as
+    --web_zoom becomes a run_all option and arrives here carrying its default. Passing
+    that through while also naming it explicitly raised "got multiple values for
+    keyword argument" and failed the driver on the real run.
+    """
+    seen: list[int] = []
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod,
+        "supervise",
+        lambda **kw: seen.append(kw["web_zoom"]) if kw.get("web_zoom") else None,
+    )
+    _stub_paths(monkeypatch, exists=False)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
+
+    run_all_mod.run_all(
+        **COMMON,
+        web_min_zoom=13,
+        web_max_zoom=14,
+        # Exactly what the CLI hands over: supervise's own defaults, unasked for.
+        web_zoom=None,
+        web_base_zoom=14,
+        pending_per_worker=3,
+    )
+    assert seen == [14, 13]
+
+
 def test_skip_web_pca_stops_after_annotate(monkeypatch: pytest.MonkeyPatch) -> None:
     """The display pyramid is opt-out, so a run can still produce only the UTM stores."""
     calls: list[str] = []

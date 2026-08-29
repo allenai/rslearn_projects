@@ -246,7 +246,26 @@ def run_all(
     else:
         logger.info("web store already exists; leaving it as is")
 
-    web_kwargs = dict(supervise_kwargs)
+    # jsonargparse expands supervise's own signature into this function's CLI, because
+    # of **supervise_kwargs. So a supervise-only option like --web_zoom arrives here
+    # carrying its default, and passing it on while also naming it below raises
+    # "got multiple values for keyword argument". Drop anything set explicitly.
+    web_explicit = {
+        "inputs",
+        "years",
+        "store_path",
+        "completed_path_template",
+        "checkpoint_path",
+        "stage",
+        "pca_store_path",
+        "artifact_path",
+        "web_store_path",
+        "web_completed_path",
+        "web_zoom",
+        "web_base_zoom",
+        "zone_numbers",
+    }
+    web_kwargs = {k: v for k, v in supervise_kwargs.items() if k not in web_explicit}
     web_kwargs["gpus"] = render_gpus
     # A shard takes seconds, so the queue has to be kept far deeper than the default or
     # workers idle between cycles and the cycle interval becomes the ceiling.
