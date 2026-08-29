@@ -288,16 +288,25 @@ def run_all(
         "web_zoom",
         "web_base_zoom",
         "zone_numbers",
+        # Stripped and then set below rather than left to setdefault. Because run_all
+        # takes **supervise_kwargs, jsonargparse expands supervise's whole signature
+        # into run_all's CLI, so these three arrive here already present, carrying
+        # supervise's own defaults. setdefault therefore never fired and the web values
+        # below were dead code: the runs that looked correct only did so because the
+        # same numbers were also passed on the command line by hand.
+        "cycle_seconds",
+        "pending_per_worker",
+        "worker_idle_seconds",
     }
     web_kwargs = {k: v for k, v in supervise_kwargs.items() if k not in web_explicit}
     web_kwargs["gpus"] = render_gpus
-    # A shard takes seconds rather than tens of minutes, so both of supervise's
-    # long-job defaults are wrong here: the queue has to be far deeper and the cycle
-    # far shorter, or workers drain the queue and idle until the next cycle. setdefault
-    # rather than assignment, so an explicit flag at launch still wins.
-    web_kwargs.setdefault("pending_per_worker", WEB_PENDING_PER_WORKER)
-    web_kwargs.setdefault("cycle_seconds", WEB_CYCLE_SECONDS)
-    web_kwargs.setdefault("worker_idle_seconds", WEB_WORKER_IDLE_SECONDS)
+    # A shard takes seconds rather than tens of minutes, so supervise's long-job
+    # defaults are all wrong here: the queue has to be deeper, the cycle shorter, and
+    # the worker has to outlive the gap between refills. Assigned, not defaulted -- see
+    # the note in web_explicit above for why a default cannot work through this CLI.
+    web_kwargs["pending_per_worker"] = WEB_PENDING_PER_WORKER
+    web_kwargs["cycle_seconds"] = WEB_CYCLE_SECONDS
+    web_kwargs["worker_idle_seconds"] = WEB_WORKER_IDLE_SECONDS
 
     for zoom in range(web_max_zoom, web_min_zoom - 1, -1):
         supervise(

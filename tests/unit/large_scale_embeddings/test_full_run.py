@@ -348,21 +348,43 @@ def test_web_tuning_does_not_reach_the_other_stages(
     monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
 
-    run_all_mod.run_all(**COMMON, web_min_zoom=14, web_max_zoom=14)
+    # Exactly what the CLI hands over. run_all takes **supervise_kwargs, so jsonargparse
+    # expands supervise's signature into run_all's own options, and every one of these
+    # arrives already set to supervise's default whether asked for or not. A test that
+    # omits them cannot see the defect this guards: setdefault does nothing when the key
+    # is already present, so the web values never applied on a real run.
+    run_all_mod.run_all(
+        **COMMON,
+        web_min_zoom=14,
+        web_max_zoom=14,
+        cycle_seconds=900,
+        pending_per_worker=3,
+        worker_idle_seconds=None,
+    )
 
     web = seen[run_all_mod.STAGE_RENDER_WEB_PCA]
     assert web["cycle_seconds"] == run_all_mod.WEB_CYCLE_SECONDS
     assert web["pending_per_worker"] == run_all_mod.WEB_PENDING_PER_WORKER
     for stage in ("predict", run_all_mod.STAGE_RENDER_UTM_PCA):
-        # Absent entirely, so supervise applies its own long-job defaults.
-        assert "cycle_seconds" not in seen[stage]
-        assert "pending_per_worker" not in seen[stage]
+        # They receive whatever the CLI supplied, which for a long-job stage is the
+        # right answer: a 15-minute cycle and a shallow queue suit jobs that run for
+        # tens of minutes. What matters is that they did not pick up the web values.
+        assert seen[stage]["cycle_seconds"] == 900
+        assert seen[stage]["pending_per_worker"] == 3
+        assert seen[stage]["cycle_seconds"] != run_all_mod.WEB_CYCLE_SECONDS
+        assert seen[stage]["pending_per_worker"] != run_all_mod.WEB_PENDING_PER_WORKER
 
 
-def test_explicit_cycle_seconds_still_wins_for_the_web_stage(
+def test_web_stage_ignores_a_leaked_cycle_seconds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """setdefault, not assignment: an operator can still override at launch."""
+    """The web stage keeps its own timings whatever arrives from the CLI.
+
+    An operator override cannot be honoured here: once jsonargparse has expanded the
+    signature, a leaked default and a value someone actually typed are indistinguishable.
+    Given the choice between silently ignoring a typed flag and silently ignoring the
+    tuning that makes the stage work at all, this takes the first.
+    """
     seen: dict[str, dict] = {}
     monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
@@ -379,7 +401,11 @@ def test_explicit_cycle_seconds_still_wins_for_the_web_stage(
 
     run_all_mod.run_all(**COMMON, web_min_zoom=14, web_max_zoom=14, cycle_seconds=45)
 
-    assert seen[run_all_mod.STAGE_RENDER_WEB_PCA]["cycle_seconds"] == 45
+    assert (
+        seen[run_all_mod.STAGE_RENDER_WEB_PCA]["cycle_seconds"]
+        == run_all_mod.WEB_CYCLE_SECONDS
+    )
+    # The long-job stages still take it, which is where an override is meaningful.
     assert seen["predict"]["cycle_seconds"] == 45
 
 
@@ -407,15 +433,27 @@ def test_web_workers_outlive_the_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
 
-    run_all_mod.run_all(**COMMON, web_min_zoom=14, web_max_zoom=14)
+    # Exactly what the CLI hands over. run_all takes **supervise_kwargs, so jsonargparse
+    # expands supervise's signature into run_all's own options, and every one of these
+    # arrives already set to supervise's default whether asked for or not. A test that
+    # omits them cannot see the defect this guards: setdefault does nothing when the key
+    # is already present, so the web values never applied on a real run.
+    run_all_mod.run_all(
+        **COMMON,
+        web_min_zoom=14,
+        web_max_zoom=14,
+        cycle_seconds=900,
+        pending_per_worker=3,
+        worker_idle_seconds=None,
+    )
 
     web = seen[run_all_mod.STAGE_RENDER_WEB_PCA]
     assert web["worker_idle_seconds"] == run_all_mod.WEB_WORKER_IDLE_SECONDS
     assert web["worker_idle_seconds"] > web["cycle_seconds"]
-    # The long-job stages keep the worker default: a predict worker that idles for
-    # fifteen minutes is holding a GPU it is not using.
+    # The long-job stages keep the worker's own default: a predict worker that idles
+    # for fifteen minutes is holding a GPU it is not using.
     for stage in ("predict", run_all_mod.STAGE_RENDER_UTM_PCA):
-        assert "worker_idle_seconds" not in seen[stage]
+        assert seen[stage]["worker_idle_seconds"] is None
 
 
 def test_launch_workers_passes_the_idle_timeout() -> None:
