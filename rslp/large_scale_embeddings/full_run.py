@@ -40,6 +40,11 @@ logger = get_logger(__name__)
 # AWS credentials are NOT here: they are secrets, mounted by supervise from Beaker
 # secrets. Note that AWS_NO_SIGN_REQUEST would be actively wrong -- the data sources
 # request assets with requester_pays=True, which cannot be served by an unsigned request.
+# Queue depth per worker for the web stage. Its jobs take seconds, not hours, so the
+# default of three would leave workers idle between supervisor cycles and make the
+# cycle interval the throughput ceiling regardless of worker count.
+WEB_PENDING_PER_WORKER = 64
+
 DEFAULT_WORKER_ENV_VARS = {
     "GS_USER_PROJECT": "earthsystem-dev-c3po",
 }
@@ -241,6 +246,12 @@ def run_all(
     else:
         logger.info("web store already exists; leaving it as is")
 
+    web_kwargs = dict(supervise_kwargs)
+    web_kwargs["gpus"] = render_gpus
+    # A shard takes seconds, so the queue has to be kept far deeper than the default or
+    # workers idle between cycles and the cycle interval becomes the ceiling.
+    web_kwargs.setdefault("pending_per_worker", WEB_PENDING_PER_WORKER)
+
     for zoom in range(web_max_zoom, web_min_zoom - 1, -1):
         supervise(
             inputs=inputs,
@@ -256,7 +267,7 @@ def run_all(
             web_zoom=zoom,
             web_base_zoom=web_max_zoom,
             zone_numbers=zone_numbers,
-            **supervise_kwargs,
+            **web_kwargs,
         )
         outstanding = get_web_jobs(
             source_store_path=pca_store_path,

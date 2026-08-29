@@ -246,7 +246,12 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
 
     queue_name = kwargs["queue_name"]
     num_workers = kwargs["num_workers"]
-    target_pending = num_workers * PENDING_PER_WORKER
+    # How deep to keep the queue. The default assumes long jobs -- a predict job runs
+    # for hours, so three in hand per worker is plenty. A stage of short jobs inverts
+    # that: a reproject_web shard takes seconds, so a worker drains its three and then
+    # idles until the next cycle, and the cycle interval becomes the throughput ceiling
+    # however many workers are running. Such a stage passes a much larger value.
+    target_pending = num_workers * kwargs.get("pending_per_worker", PENDING_PER_WORKER)
 
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         queue = beaker.queue.get(queue_name)
@@ -506,6 +511,7 @@ def supervise(
     web_completed_path: str | None = None,
     web_zoom: int | None = None,
     web_base_zoom: int = 14,
+    pending_per_worker: int = PENDING_PER_WORKER,
     pca_store_url: str | None = None,
     zone_numbers: list[int] | None = None,
     priority: str = "high",
@@ -571,6 +577,9 @@ def supervise(
         web_zoom: which zoom this stage builds. Levels run one at a time because a
             coarse shard is built from the four below it.
         web_base_zoom: the deepest zoom, warped directly from the UTM store.
+        pending_per_worker: queue depth to maintain per worker. Raise it for stages
+            whose jobs take seconds rather than hours, or the cycle interval caps
+            throughput no matter how many workers run.
         pca_store_url: https base of the UTM PCA store, for listing its keys.
         zone_numbers: UTM zones present in the source.
         priority: Beaker priority for the workers.
@@ -615,6 +624,7 @@ def supervise(
         "web_completed_path": web_completed_path,
         "web_zoom": web_zoom,
         "web_base_zoom": web_base_zoom,
+        "pending_per_worker": pending_per_worker,
         "pca_store_url": pca_store_url,
         "zone_numbers": zone_numbers,
         "priority": priority,
