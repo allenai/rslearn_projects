@@ -8,6 +8,7 @@ cover the validation and the enumeration branch without touching Beaker.
 import importlib
 
 import pytest
+from typing_extensions import Self
 
 from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
 
@@ -18,17 +19,17 @@ sup = importlib.import_module("rslp.large_scale_embeddings.supervise")
 
 
 def _base_kwargs(**overrides: object) -> dict:
-    kwargs = dict(
-        inputs=EmbeddingInputs.S2,
-        years=[2024],
-        store_path="gs://bucket/s2.zarr",
-        completed_path_template="gs://bucket/s2_{year}_completed/",
-        queue_name="user/queue",
-        checkpoint_path="/weka/ckpt",
-        image_name="user/image",
-        cluster=["ai2/cluster"],
-        max_cycles=0,
-    )
+    kwargs = {
+        "inputs": EmbeddingInputs.S2,
+        "years": [2024],
+        "store_path": "gs://bucket/s2.zarr",
+        "completed_path_template": "gs://bucket/s2_{year}_completed/",
+        "queue_name": "user/queue",
+        "checkpoint_path": "/weka/ckpt",
+        "image_name": "user/image",
+        "cluster": ["ai2/cluster"],
+        "max_cycles": 0,
+    }
     kwargs.update(overrides)
     return kwargs
 
@@ -110,7 +111,7 @@ class _FakeQueueApi:
 class _FakeBeaker:
     queue = _FakeQueueApi()
 
-    def __enter__(self) -> "_FakeBeaker":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc: object) -> None:

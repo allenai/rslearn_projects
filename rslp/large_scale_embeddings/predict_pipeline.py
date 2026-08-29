@@ -247,11 +247,11 @@ def _crop_crosses_bad_longitude(projection: Projection, bounds: PixelBounds) -> 
         WGS84_PROJECTION
     )
     wgs84_bounds = wgs84_geom.shp.bounds
-    if wgs84_bounds[0] <= -180 + epsilon or wgs84_bounds[2] >= 180 - epsilon:
-        return True
-    if wgs84_bounds[0] < -90 and wgs84_bounds[2] > 90:
-        return True
-    return False
+    touches_antimeridian = (
+        wgs84_bounds[0] <= -180 + epsilon or wgs84_bounds[2] >= 180 - epsilon
+    )
+    spans_the_seam = wgs84_bounds[0] < -90 and wgs84_bounds[2] > 90
+    return touches_antimeridian or spans_the_seam
 
 
 def _read_window_embeddings(
@@ -650,14 +650,14 @@ def _process_tile(
                 skipped_no_data.append(crop_offset)
                 continue
             upload_kwargs.append(
-                dict(
-                    ds_path=ds_path,
-                    window_name=window.name,
-                    store_path=store_path,
-                    time_index=time_index,
-                    patch_size=patch_size,
-                    debug_geotiff_path=debug_geotiff_path,
-                )
+                {
+                    "ds_path": ds_path,
+                    "window_name": window.name,
+                    "store_path": store_path,
+                    "time_index": time_index,
+                    "patch_size": patch_size,
+                    "debug_geotiff_path": debug_geotiff_path,
+                }
             )
             written.append(crop_offset)
         if len(upload_kwargs) > 0:

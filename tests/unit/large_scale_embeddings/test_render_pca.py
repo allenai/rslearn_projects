@@ -165,14 +165,14 @@ def test_render_writes_rgb_for_every_written_window(tmp_path: Path) -> None:
 
 def test_render_is_idempotent(tmp_path: Path) -> None:
     run = _build_run(tmp_path)
-    kwargs = dict(
-        store_path=run["store_path"],
-        pca_store_path=run["pca_store_path"],
-        artifact_path=run["artifact_path"],
-        source_marker=run["source_marker"],
-        completed_path=run["completed_path"],
-        max_level=MAX_LEVEL,
-    )
+    kwargs = {
+        "store_path": run["store_path"],
+        "pca_store_path": run["pca_store_path"],
+        "artifact_path": run["artifact_path"],
+        "source_marker": run["source_marker"],
+        "completed_path": run["completed_path"],
+        "max_level": MAX_LEVEL,
+    }
     render_pca.render_pca_pipeline(**kwargs)
     marker_path = Path(run["completed_path"]) / render_pca.pca_marker_name(
         Path(run["source_marker"])

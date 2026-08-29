@@ -90,7 +90,7 @@ class QuantizedEmbeddingHead(Predictor):
             model output with the int8-quantized feature map along with a dummy loss.
         """
         if not isinstance(intermediates, FeatureMaps):
-            raise ValueError("input to QuantizedEmbeddingHead must be a FeatureMaps")
+            raise TypeError("input to QuantizedEmbeddingHead must be a FeatureMaps")
         if len(intermediates.feature_maps) != 1:
             raise ValueError(
                 "input to QuantizedEmbeddingHead must have one feature map, "

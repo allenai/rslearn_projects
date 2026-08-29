@@ -28,21 +28,21 @@ def _stub_paths(monkeypatch: pytest.MonkeyPatch, *, exists: bool) -> None:
     monkeypatch.setattr(run_all_mod, "UPath", lambda _path: _StubPath(exists))
 
 
-COMMON: dict[str, Any] = dict(
-    inputs=EmbeddingInputs.S2,
-    years=[2024],
-    store_path="gs://bucket/embeddings.zarr",
-    completed_path_template="gs://bucket/completed_{year}/",
-    queue_name="user/queue",
-    checkpoint_path="/fake/ckpt",
-    image_name="user/image",
-    cluster=["ai2/jupiter"],
-    model_url="https://example.invalid/model",
-    source_data=["https://example.invalid/s2"],
-    artifact_path="gs://bucket/artifact",
-    pca_store_path="gs://bucket/pca.zarr",
-    pca_completed_path="gs://bucket/pca_completed/",
-)
+COMMON: dict[str, Any] = {
+    "inputs": EmbeddingInputs.S2,
+    "years": [2024],
+    "store_path": "gs://bucket/embeddings.zarr",
+    "completed_path_template": "gs://bucket/completed_{year}/",
+    "queue_name": "user/queue",
+    "checkpoint_path": "/fake/ckpt",
+    "image_name": "user/image",
+    "cluster": ["ai2/jupiter"],
+    "model_url": "https://example.invalid/model",
+    "source_data": ["https://example.invalid/s2"],
+    "artifact_path": "gs://bucket/artifact",
+    "pca_store_path": "gs://bucket/pca.zarr",
+    "pca_completed_path": "gs://bucket/pca_completed/",
+}
 
 
 def test_predict_shortfall_stops_the_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
