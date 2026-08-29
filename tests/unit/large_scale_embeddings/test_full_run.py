@@ -119,12 +119,12 @@ def test_all_stages_run_in_order_when_complete(
         "supervise:predict",
         "fit_pca",
         "init_pca",
-        "supervise:render_pca",
+        "supervise:render_utm_pca",
         "annotate",
         "init_web",
-        "supervise:reproject_web",
-        "supervise:reproject_web",
-        "supervise:reproject_web",
+        "supervise:render_web_pca",
+        "supervise:render_web_pca",
+        "supervise:render_web_pca",
     ]
 
 
@@ -148,6 +148,44 @@ def test_web_zooms_run_deepest_first(monkeypatch: pytest.MonkeyPatch) -> None:
 
     run_all_mod.run_all(**COMMON, web_min_zoom=10, web_max_zoom=14)
     assert zooms == [14, 13, 12, 11, 10]
+
+
+def test_web_stage_passes_every_required_supervise_argument(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every argument supervise requires must actually be handed over.
+
+    The stubs elsewhere accept **kw, so an omission is invisible to them and only
+    surfaces when the real supervise runs -- which on Beaker means a failed driver
+    minutes after launch. This checks the call against the real signature.
+    """
+    import inspect
+
+    from rslp.large_scale_embeddings import supervise as real_supervise
+
+    required = {
+        name
+        for name, p in inspect.signature(real_supervise).parameters.items()
+        if p.default is inspect.Parameter.empty
+        and p.kind
+        in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    }
+    seen: list[set[str]] = []
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "supervise", lambda **kw: seen.append(set(kw)))
+    _stub_paths(monkeypatch, exists=False)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
+
+    run_all_mod.run_all(**COMMON, web_min_zoom=14, web_max_zoom=14)
+    for passed in seen:
+        missing = required - passed
+        assert not missing, f"supervise call omits {sorted(missing)}"
 
 
 def test_web_stage_survives_leaked_supervise_options(
@@ -207,7 +245,7 @@ def test_skip_web_pca_stops_after_annotate(monkeypatch: pytest.MonkeyPatch) -> N
 
     run_all_mod.run_all(**COMMON, skip_web_pca=True)
     assert "init_web" not in calls
-    assert "supervise:reproject_web" not in calls
+    assert "supervise:render_web_pca" not in calls
 
 
 def test_skip_pca_stops_after_predict(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -243,7 +281,7 @@ def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> Non
 
     run_all_mod.run_all(**COMMON, gpus=1)
     assert ("predict", 1) in seen
-    assert ("render_pca", 0) in seen
+    assert ("render_utm_pca", 0) in seen
 
 
 def test_gdal_env_vars_are_passed_by_default(monkeypatch: pytest.MonkeyPatch) -> None:

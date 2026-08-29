@@ -588,7 +588,7 @@ def parent_shards(shards: set[tuple[int, int]]) -> set[tuple[int, int]]:
     return {(r // 2, c // 2) for r, c in shards}
 
 
-def reproject_web_pipeline(
+def render_web_pca_pipeline_all(
     source_store_path: str,
     web_store_path: str,
     years: list[int],
@@ -689,7 +689,7 @@ def web_marker_fname(
     return UPath(completed_path) / f"z{zoom}" / f"{time_index}_{row}_{col}.json"
 
 
-def reproject_web_shard_pipeline(
+def render_web_pca_pipeline(
     source_store_path: str,
     web_store_path: str,
     completed_path: str,

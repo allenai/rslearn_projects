@@ -67,9 +67,9 @@ def test_init_args_are_accepted_by_the_data_source(config_path: Path) -> None:
         if not data_source:
             continue
         accepted = _accepted_params(data_source["class_path"])
-        assert (
-            accepted is not None
-        ), f"cannot locate {data_source['class_path']} under {SOURCE_DIR}"
+        assert accepted is not None, (
+            f"cannot locate {data_source['class_path']} under {SOURCE_DIR}"
+        )
         names, takes_kwargs = accepted
         if takes_kwargs:
             continue

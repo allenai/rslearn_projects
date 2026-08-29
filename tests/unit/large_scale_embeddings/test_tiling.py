@@ -7,7 +7,7 @@ from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import Projection, STGeometry
 
-import rslp.large_scale_embeddings.tiling as tiling
+from rslp.large_scale_embeddings import tiling
 from rslp.large_scale_embeddings.tiling import (
     LAND_STEP_SIZE,
     bounds_intersect_wedge,

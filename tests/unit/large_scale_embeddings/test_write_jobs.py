@@ -132,6 +132,6 @@ def test_get_jobs_geojson(tmp_path: pathlib.Path) -> None:
     assert seen_epsg_codes == {32611, 32612, 32613, 32614, 32615, 32637}
     # The tile grid is aligned to northing 0, so the Nairobi tile starts exactly at the
     # equator and extends south: y1 is what carries the sign, not y0.
-    assert any(
-        epsg == 32637 and bounds[3] > 0 for epsg, bounds in seen_bounds
-    ), "the Nairobi feature should produce a tile extending south of the equator"
+    assert any(epsg == 32637 and bounds[3] > 0 for epsg, bounds in seen_bounds), (
+        "the Nairobi feature should produce a tile extending south of the equator"
+    )

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from rslp.large_scale_embeddings import reproject_web as rw
+from rslp.large_scale_embeddings import render_web_pca as rw
 
 
 def test_level_is_the_xyz_zoom() -> None:
@@ -39,6 +39,7 @@ def test_shards_tile_the_world_without_gaps() -> None:
 
 def test_ground_per_shard_doubles_per_level() -> None:
     """This is what makes object count fall 4x per level, unlike the UTM pyramid."""
+
     def width(zoom: int) -> float:
         min_x, _, max_x, _ = rw.shard_bounds(zoom, 0, 0)
         return max_x - min_x
@@ -130,4 +131,6 @@ def test_downsample_of_empty_writes_nothing(tmp_path) -> None:
 def test_init_rejects_an_inverted_zoom_range(tmp_path) -> None:
     """A silently empty pyramid would be much harder to notice than an error."""
     with pytest.raises(ValueError, match="below min_zoom"):
-        rw.init_web_store(str(tmp_path / "w.zarr"), years=[2020], min_zoom=10, max_zoom=8)
+        rw.init_web_store(
+            str(tmp_path / "w.zarr"), years=[2020], min_zoom=10, max_zoom=8
+        )

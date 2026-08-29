@@ -37,12 +37,12 @@ def test_stages_are_the_three_expected() -> None:
     """The stage names are the queue's workflow names, so they are a wire contract."""
     assert sup.STAGES == (
         sup.STAGE_PREDICT,
-        sup.STAGE_RENDER_PCA,
-        sup.STAGE_REPROJECT_WEB,
+        sup.STAGE_RENDER_UTM_PCA,
+        sup.STAGE_RENDER_WEB_PCA,
     )
     assert sup.STAGE_PREDICT == "predict"
-    assert sup.STAGE_RENDER_PCA == "render_pca"
-    assert sup.STAGE_REPROJECT_WEB == "reproject_web"
+    assert sup.STAGE_RENDER_UTM_PCA == "render_utm_pca"
+    assert sup.STAGE_RENDER_WEB_PCA == "render_web_pca"
 
 
 def test_every_stage_has_a_registered_workflow() -> None:
@@ -62,13 +62,13 @@ def test_render_stage_requires_its_three_paths() -> None:
     with pytest.raises(
         ValueError, match="artifact_path, pca_store_path, pca_completed_path"
     ):
-        sup.supervise(**_base_kwargs(stage=sup.STAGE_RENDER_PCA))
+        sup.supervise(**_base_kwargs(stage=sup.STAGE_RENDER_UTM_PCA))
 
     # Naming two of the three still fails, and the error names only what is missing.
     with pytest.raises(ValueError, match="pca_completed_path"):
         sup.supervise(
             **_base_kwargs(
-                stage=sup.STAGE_RENDER_PCA,
+                stage=sup.STAGE_RENDER_UTM_PCA,
                 artifact_path="gs://bucket/pca",
                 pca_store_path="gs://bucket/pca_v1.zarr",
             )
@@ -77,7 +77,7 @@ def test_render_stage_requires_its_three_paths() -> None:
     with pytest.raises(ValueError, match="pca_store_path"):
         sup.supervise(
             **_base_kwargs(
-                stage=sup.STAGE_RENDER_PCA,
+                stage=sup.STAGE_RENDER_UTM_PCA,
                 artifact_path="gs://bucket/pca",
                 pca_completed_path="gs://bucket/pca_completed/",
             )
@@ -86,7 +86,7 @@ def test_render_stage_requires_its_three_paths() -> None:
 
 def test_render_stage_error_points_at_fit_pca() -> None:
     with pytest.raises(ValueError, match="fit_pca"):
-        sup.supervise(**_base_kwargs(stage=sup.STAGE_RENDER_PCA))
+        sup.supervise(**_base_kwargs(stage=sup.STAGE_RENDER_UTM_PCA))
 
 
 def test_predict_stage_needs_no_pca_arguments() -> None:
@@ -148,7 +148,7 @@ def _render_cycle_kwargs(**overrides: object) -> dict[str, object]:
         "num_workers": 2,
         "stale_seconds": 900,
         "years": [2024, 2025],
-        "stage": sup.STAGE_RENDER_PCA,
+        "stage": sup.STAGE_RENDER_UTM_PCA,
         "store_path": "gs://bucket/s2.zarr",
         "artifact_path": "gs://bucket/pca",
         "pca_store_path": "gs://bucket/pca_v1.zarr",
@@ -208,7 +208,7 @@ def test_run_cycle_render_stage_enumerates_from_source_markers(
     assert calls["max_level"] == 3
     # Entries name the render workflow, not predict.
     assert result.value == 2
-    assert enqueued["workflow"] == sup.STAGE_RENDER_PCA
+    assert enqueued["workflow"] == sup.STAGE_RENDER_UTM_PCA
     assert enqueued["count"] == 2
     # The render stage asks for no GPUs.
     assert enqueued["gpus"] == 0
@@ -267,7 +267,7 @@ def test_stage_marker_paths_predict_expands_every_year() -> None:
 def test_stage_marker_paths_render_uses_the_pca_path() -> None:
     paths = sup._stage_marker_paths(
         {
-            "stage": sup.STAGE_RENDER_PCA,
+            "stage": sup.STAGE_RENDER_UTM_PCA,
             "years": [2024],
             "completed_path_template": "gs://bucket/done_{year}/",
             "pca_completed_path": "gs://bucket/pca_done/",

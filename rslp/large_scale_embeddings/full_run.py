@@ -23,8 +23,13 @@ from rslp.log_utils import get_logger
 from .pca import fit_pca
 from .predict_pipeline import EmbeddingInputs
 from .render_pca import annotate_pca_store, get_render_jobs
-from .reproject_web import get_web_jobs, init_web_store
-from .supervise import STAGE_PREDICT, STAGE_RENDER_PCA, STAGE_REPROJECT_WEB, supervise
+from .render_web_pca import get_web_jobs, init_web_store
+from .supervise import (
+    STAGE_PREDICT,
+    STAGE_RENDER_UTM_PCA,
+    STAGE_RENDER_WEB_PCA,
+    supervise,
+)
 from .write_jobs import get_jobs, init_store
 from .zarr_store import DEFAULT_PCA_MAX_LEVEL, init_pca_store
 
@@ -188,7 +193,7 @@ def run_all(
         checkpoint_path=checkpoint_path,
         image_name=image_name,
         cluster=cluster,
-        stage=STAGE_RENDER_PCA,
+        stage=STAGE_RENDER_UTM_PCA,
         artifact_path=artifact_path,
         pca_store_path=pca_store_path,
         pca_completed_path=pca_completed_path,
@@ -234,7 +239,7 @@ def run_all(
     # Step 5: the display pyramid. One supervise stage per zoom, deepest first, because
     # a coarse shard is built from the four below it and those must already exist.
     # Zoom order is the dependency, so this is a sequence rather than one flat stage.
-    logger.info("step 5/5: reproject_web (zooms %d..%d)", web_min_zoom, web_max_zoom)
+    logger.info("step 5/5: render_web_pca (zooms %d..%d)", web_min_zoom, web_max_zoom)
     if not UPath(web_store_path).exists():
         init_web_store(
             store_path=web_store_path,
@@ -255,7 +260,10 @@ def run_all(
         "years",
         "store_path",
         "completed_path_template",
+        "queue_name",
         "checkpoint_path",
+        "image_name",
+        "cluster",
         "stage",
         "pca_store_path",
         "artifact_path",
@@ -277,8 +285,11 @@ def run_all(
             years=years,
             store_path=store_path,
             completed_path_template=completed_path_template,
+            queue_name=queue_name,
             checkpoint_path=checkpoint_path,
-            stage=STAGE_REPROJECT_WEB,
+            image_name=image_name,
+            cluster=cluster,
+            stage=STAGE_RENDER_WEB_PCA,
             pca_store_path=pca_store_path,
             artifact_path=artifact_path,
             web_store_path=web_store_path,
@@ -299,7 +310,7 @@ def run_all(
         )
         if outstanding:
             raise RuntimeError(
-                f"reproject_web z{zoom} finished with {len(outstanding)} shard(s) "
+                f"render_web_pca z{zoom} finished with {len(outstanding)} shard(s) "
                 "outstanding; a coarser level built on an incomplete one would be wrong"
             )
 

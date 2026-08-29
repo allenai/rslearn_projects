@@ -49,13 +49,13 @@ logger = get_logger(__name__)
 # same shallow-queue and worker-top-up loop works for either; only how remaining work is
 # enumerated and which workflow the entries name differ.
 STAGE_PREDICT = "predict"
-STAGE_RENDER_PCA = "render_pca"
+STAGE_RENDER_UTM_PCA = "render_utm_pca"
 # One zoom level at a time. A coarse shard is built from the four below it, so its
 # inputs must already exist; running every zoom as one flat stage would race. The zoom
 # is a supervise argument rather than a stage name so the resumability, worker
 # management and marker handling are shared with every other stage.
-STAGE_REPROJECT_WEB = "reproject_web"
-STAGES = (STAGE_PREDICT, STAGE_RENDER_PCA, STAGE_REPROJECT_WEB)
+STAGE_RENDER_WEB_PCA = "render_web_pca"
+STAGES = (STAGE_PREDICT, STAGE_RENDER_UTM_PCA, STAGE_RENDER_WEB_PCA)
 
 # Pending entries to keep per worker: enough that no worker idles waiting for work,
 # few enough that entries orphaned by dying workers stay a rounding error.
@@ -194,7 +194,7 @@ def _stage_marker_paths(kwargs: dict[str, Any]) -> list[str]:
     Returns:
         one path per marker directory the stage is responsible for.
     """
-    if kwargs["stage"] == STAGE_RENDER_PCA:
+    if kwargs["stage"] == STAGE_RENDER_UTM_PCA:
         return [kwargs["pca_completed_path"]]
     return [
         kwargs["completed_path_template"].format(year=year) for year in kwargs["years"]
@@ -241,14 +241,14 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
     from rslp.utils.beaker import DEFAULT_WORKSPACE, WekaMount
 
     from .render_pca import get_render_jobs
-    from .reproject_web import get_web_jobs
+    from .render_web_pca import get_web_jobs
     from .write_jobs import get_jobs
 
     queue_name = kwargs["queue_name"]
     num_workers = kwargs["num_workers"]
     # How deep to keep the queue. The default assumes long jobs -- a predict job runs
     # for hours, so three in hand per worker is plenty. A stage of short jobs inverts
-    # that: a reproject_web shard takes seconds, so a worker drains its three and then
+    # that: a render_web_pca shard takes seconds, so a worker drains its three and then
     # idles until the next cycle, and the cycle interval becomes the throughput ceiling
     # however many workers are running. Such a stage passes a much larger value.
     target_pending = num_workers * kwargs.get("pending_per_worker", PENDING_PER_WORKER)
@@ -278,7 +278,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
     years = kwargs["years"]
     stage = kwargs["stage"]
     remaining: list[list[str]] = []
-    if stage == STAGE_REPROJECT_WEB:
+    if stage == STAGE_RENDER_WEB_PCA:
         # Enumerated from the UTM PCA store's own object keys: the destination grid is
         # global and almost entirely empty, so listing what exists beats probing it.
         remaining.extend(
@@ -293,7 +293,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
                 source_url=kwargs.get("pca_store_url"),
             )
         )
-    elif stage == STAGE_RENDER_PCA:
+    elif stage == STAGE_RENDER_UTM_PCA:
         # Step 3 enumerates from step 1's markers, so it needs no model settings and no
         # land or wedge filtering: the source markers already name what exists.
         remaining.extend(
@@ -572,8 +572,8 @@ def supervise(
         batch_size: crops per batch, or None to keep the config's value. Lower it for
             tiles whose full monthly input stack will not fit in GPU memory; batching
             groups independent crops, so this changes footprint, not output.
-        web_store_path: the web-mercator PCA store, for the reproject_web stage.
-        web_completed_path: marker directory for the reproject_web stage.
+        web_store_path: the web-mercator PCA store, for the render_web_pca stage.
+        web_completed_path: marker directory for the render_web_pca stage.
         web_zoom: which zoom this stage builds. Levels run one at a time because a
             coarse shard is built from the four below it.
         web_base_zoom: the deepest zoom, warped directly from the UTM store.
@@ -645,7 +645,7 @@ def supervise(
     # forking a process that may already hold them is a known source of hangs.
     if stage not in STAGES:
         raise ValueError(f"stage must be one of {STAGES}, got {stage!r}")
-    if stage == STAGE_RENDER_PCA:
+    if stage == STAGE_RENDER_UTM_PCA:
         missing = [
             name
             for name, value in (
@@ -657,7 +657,7 @@ def supervise(
         ]
         if missing:
             raise ValueError(
-                f"stage {STAGE_RENDER_PCA} requires {', '.join(missing)}; fit the basis "
+                f"stage {STAGE_RENDER_UTM_PCA} requires {', '.join(missing)}; fit the basis "
                 "with the fit_pca workflow first"
             )
 
