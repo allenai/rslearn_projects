@@ -60,9 +60,12 @@ What runs
   Sentinel-2 (the one required modality); missing S1/Landsat are reported, not
   fatal, matching their `required: false` in the model config.
 - `make_beaker_specs.py` -- writes `specs/windows.yaml` (one 0-GPU,
-  non-preemptible window-creation task), `specs/cand.yaml` (30 1-GPU tasks:
-  prepare + materialize + check + predict per shard group) and
-  `specs/distilled.yaml` (30 1-GPU predict-only tasks over the same imagery).
+  non-preemptible window-creation task) plus `specs/cand.yaml` and
+  `specs/distilled.yaml` (30 1-GPU tasks each, one per shard group). The
+  imagery is shared, so it materializes exactly once: `--materialize_arm`
+  (default cand) picks which arm's tasks carry prepare + materialize + check;
+  the other arm is predict-only and must run second. To run only one arm, pass
+  `--materialize_arm <that arm>` and never launch the other spec.
 
 Running it
 ----------
@@ -73,6 +76,13 @@ Running it
     beaker experiment create specs/windows.yaml      # once, first
     beaker experiment create specs/cand.yaml         # after windows completes
     beaker experiment create specs/distilled.yaml    # after cand completes
+
+Distilled arm only (no cand_ndvi forward passes at all):
+
+    python make_beaker_specs.py --mount gabrielt/ds1020-embeddings-20260831 \
+        --materialize_arm distilled
+    beaker experiment create specs/windows.yaml
+    beaker experiment create specs/distilled.yaml    # after windows completes
 
 Smoke-test first: regenerate with `--groups y2017_00` and run that single cand
 task before launching all 30; confirm the checkpoint loads, mosaics

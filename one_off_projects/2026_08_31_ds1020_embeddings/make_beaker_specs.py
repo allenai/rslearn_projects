@@ -6,22 +6,24 @@ window group because there are 58,825 windows rather than seven:
 - windows.yaml   one 0-GPU task that creates every window (STAGES="windows").
                  Runs once, before anything else. Not preemptible: it must not
                  restart halfway through interleaved with the sharded jobs.
-- cand.yaml      one 1-GPU task per shard group running
-                 STAGES="prepare materialize check predict" with the cand_ndvi
-                 arm (output layer "output").
-- distilled.yaml one 1-GPU task per shard group running STAGES="predict" with
-                 the distilled arm (output layer "output_distilled"). Launch
-                 after cand.yaml finishes: it reuses the imagery those jobs
-                 materialized.
+- cand.yaml      one 1-GPU task per shard group, cand_ndvi arm (output layer
+                 "output").
+- distilled.yaml one 1-GPU task per shard group, distilled arm (output layer
+                 "output_distilled").
+
+The imagery layers are shared, so exactly one arm's tasks carry
+prepare/materialize/check; the other arm is predict-only and must run second.
+--materialize_arm picks which (default cand). To run ONLY the distilled arm,
+pass --materialize_arm distilled and never launch cand.yaml.
 
 Usage:
     beaker dataset create one_off_projects/2026_08_31_ds1020_embeddings \
         --name ds1020-embeddings-20260831 --workspace ai2/earth-systems
     python make_beaker_specs.py --mount gabrielt/ds1020-embeddings-20260831
     beaker experiment create specs/windows.yaml
-    # when it finishes:
+    # when it finishes, the arm that materializes (cand by default):
     beaker experiment create specs/cand.yaml
-    # when those finish:
+    # when those finish, the predict-only arm (skip if not wanted):
     beaker experiment create specs/distilled.yaml
 
 Pass --groups to regenerate specs for a subset (e.g. re-running failed shards).
@@ -110,8 +112,22 @@ def main() -> None:
     parser.add_argument(
         "--groups", nargs="*", default=None, help="only these shard groups"
     )
+    parser.add_argument(
+        "--materialize_arm",
+        choices=["cand", "distilled"],
+        default="cand",
+        help=(
+            "which arm's tasks carry prepare/materialize/check (imagery is shared, "
+            "so it materializes exactly once); the other arm's tasks are "
+            "predict-only and must run second. Pass 'distilled' to run only the "
+            "distilled arm without ever launching cand.yaml."
+        ),
+    )
     parser.add_argument("--out_dir", default="specs")
     args = parser.parse_args()
+    full_stages = "prepare materialize check predict"
+    cand_stages = full_stages if args.materialize_arm == "cand" else "predict"
+    distilled_stages = full_stages if args.materialize_arm == "distilled" else "predict"
 
     here = pathlib.Path(__file__).parent
     groups = []
@@ -152,15 +168,15 @@ def main() -> None:
             "version": "v2",
             "budget": "ai2/atec-olmoearth",
             "description": (
-                "ds1020: materialize S2+S1+Landsat (3x30d mosaics) and run cand_ndvi "
-                "(224 px windows, patch_size=1, crop 16, overlap 4), one task per shard group"
+                f"ds1020: cand_ndvi (224 px windows, patch_size=1, crop 16, overlap 4), "
+                f"one task per shard group; stages: {cand_stages}"
             ),
             "tasks": [
                 make_task(
                     f"ds1020_cand_{g}",
                     make_command(
                         args.ds,
-                        "prepare materialize check predict",
+                        cand_stages,
                         extra=f'export SHARD_GROUPS="{g}"\n',
                     ),
                     args.mount,
@@ -174,15 +190,15 @@ def main() -> None:
             "version": "v2",
             "budget": "ai2/atec-olmoearth",
             "description": (
-                "ds1020: distilled lin_sup768_w1_d128 forward passes over the already-"
-                "materialized windows, one task per shard group (launch after cand.yaml)"
+                f"ds1020: distilled lin_sup768_w1_d128, one task per shard group; "
+                f"stages: {distilled_stages}"
             ),
             "tasks": [
                 make_task(
                     f"ds1020_distilled_{g}",
                     make_command(
                         args.ds,
-                        "predict",
+                        distilled_stages,
                         extra=(
                             f'export SHARD_GROUPS="{g}"\n'
                             "export MODEL_CONFIG=distilled.yaml\n"
