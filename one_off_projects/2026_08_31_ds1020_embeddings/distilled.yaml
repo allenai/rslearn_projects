@@ -1,0 +1,139 @@
+# DISTILLED candidate (lin_sup768_w1_d128) over the ds1020 survey-point
+# windows. Copied from data/large_scale_embeddings/s2_s1_landsat_distilled.yaml;
+# the only difference is the batch size, retuned for 9 mosaics per sample
+# instead of 36.
+#
+# This checkpoint is a d768 encoder with a detached per-cell Linear(768, 128)
+# student on the register bottleneck. The shipped embedding is the student's
+# output, which the model exposes as `projected_registers` -- NOT the 768-dim
+# `registers` that use_register_bottleneck_output returns. rslearn's wrapper has
+# no flag for that yet, so patch_rslearn_projected_registers.py teaches the
+# installed copy to honour OE_PROJECTED_REGISTER_DIM=128. Without that patch this
+# config would silently write the first 128 of 768 register dims, which is not
+# the distilled embedding at all.
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              # lin_sup768_w1_d128, the distilled release candidate.
+              checkpoint_path: /weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/regbtl_v1_2_gdyn_d768_proj128lin_sup768_w1_newsamp_psuniform/step667200
+              # patch_size 1 yields one 128-dimensional embedding per 10 m pixel.
+              # Overridden by the prediction pipeline (--patch_size).
+              patch_size: 1
+              embedding_size: 128
+              # Output the 128-dim spatial register bottleneck latents (one per
+              # patch in dynamic-grid mode) rather than the 768-dim encoder patch
+              # tokens.
+              use_register_bottleneck_output: true
+              # Normalize inputs inside the encoder. Sentinel-1 is converted to
+              # decibels by the Sentinel1ToDecibels transform below first, since the
+              # normalization stats expect dB.
+              normalize: true
+              autocast_dtype: bfloat16
+              # Use the actual mosaic timestamps (from the materialized layer
+              # metadata) rather than dummy monthly timestamps. This also pads
+              # samples with differing numbers of mosaics so they can be batched
+              # together.
+              use_legacy_timestamps: false
+              # Whether to compile the encoder transformer blocks (the register
+              # bottleneck stays eager). Inference uses fixed-size crops so
+              # recompilations are limited to the few distinct batch/timestep
+              # shapes. Overridden by the prediction pipeline (--compile_model).
+              compile_model: true
+        decoder:
+          # L2-normalizes each pixel's embedding and quantizes it to int8 using the
+          # AlphaEarth-style power scheme (-128 is reserved for nodata).
+          - class_path: rslp.large_scale_embeddings.model.QuantizedEmbeddingHead
+            init_args:
+              l2_normalize: true
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    # Overridden by the prediction pipeline via --data.init_args.path.
+    path: placeholder
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2_l2a"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel1:
+        data_type: "raster"
+        layers: ["sentinel1"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        # Sentinel-1 is best-effort: windows missing it are still processed with
+        # Sentinel-2 only.
+        required: false
+      landsat:
+        data_type: "raster"
+        layers: ["landsat"]
+        # Pretraining band order for the landsat modality (panchromatic first),
+        # matching the year-aligned eval configs.
+        bands: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        # Landsat is best-effort like Sentinel-1: windows missing it are still
+        # processed from the modalities that are present.
+        required: false
+    task:
+      # Inference-only task: no targets/loss; writes the head's int8 output.
+      class_path: rslearn.train.tasks.embedding.EmbeddingTask
+    # The 768-wide encoder ran at 64 x 36 mosaics on an 80 GB H100; these windows
+    # carry 9 mosaics per sample, so 128 here is half those tokens per batch.
+    batch_size: 128
+    num_workers: 16
+    default_config:
+      # The size of the crops the model operates on (much bigger fails with the 12
+      # monthly inputs at patch_size=1 due to GPU memory constraints). Overridden
+      # by the prediction pipeline (--window_size).
+      crop_size: 16
+      transforms:
+        # The Sentinel-1 RTC source delivers linear intensities; convert to dB as
+        # expected by the OlmoEarth normalization stats.
+        - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
+          init_args:
+            selectors: ["sentinel1"]
+            # Sentinel-1 is optional (required: false above), so skip samples
+            # where it is missing.
+            skip_missing: true
+    predict_config:
+      load_all_crops: true
+      # Overlap adjacent crops to mitigate embedding seams at crop boundaries; the
+      # RasterMerger below trims half the overlap from each crop when merging.
+      # Must match the RasterMerger overlap_pixels (times patch_size). Overridden
+      # by the prediction pipeline (--overlap_size).
+      overlap_pixels: 4
+      skip_targets: true
+trainer:
+  callbacks:
+    # Writes the int8 128-band embedding raster to the "output" layer.
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        # A separate layer so both models' embeddings live in one dataset and the
+        # explorer can offer them side by side.
+        output_layer: output_distilled
+        selector: []
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            # Must match the encoder patch_size. Overridden by the prediction
+            # pipeline (--patch_size).
+            downsample_factor: 1
+            # Must be the predict_config overlap_pixels divided by the encoder
+            # patch_size (the merger operates at the output resolution).
+            # Overridden by the prediction pipeline.
+            overlap_pixels: 4
