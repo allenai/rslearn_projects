@@ -104,6 +104,15 @@ at 2,000-window shards that is ~18k mosaics and ~723k crops (~2.8k batches at
 Caveats
 -------
 
+- The landsat query MUST carry `wrs_row: {lte: 122}` (already in
+  config_90d.json). Without it, the CLOUD_COVER-ascending sort fills mosaic
+  groups with nighttime ascending scenes (L1GT tier-2, WRS-2 rows ~208-212 over
+  California, which report low cloud): optical bands come back flat at the
+  DN-5000 zero-reflectance offset with only thermal carrying signal. Learned
+  the hard way on the first 2026-08-31 launch; `scrub_landsat.py` removes the
+  poisoned layers AND the landsat item groups in items.json (materialize reuses
+  saved item groups, so fixing the query alone is not enough).
+
 - ~1,500 fixed-CSV points share a lat/lon with another point (same date), so a
   few percent of windows are byte-identical duplicates under different names.
   Not worth deduplicating.
