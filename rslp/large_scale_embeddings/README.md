@@ -448,6 +448,12 @@ recording its source, its area, and whatever about its geometry will bite you.
   and entirely north of the equator. The outline excludes the overseas departments,
   which is what makes it usable: they would drag a run across both hemispheres and a
   dozen more zones.
+- `france_southeast.geojson`, 114,260 km2, UTM 31 to 32, seam at lon 6. A validation
+  footprint rather than a coverage one: 29 jobs a year, so at 8 workers the queue drains
+  and refills several times and the supervisor's refill path is actually exercised, and
+  the run finishes in hours. Picked for terrain range, from the Camargue at sea level to
+  the Alps at 4,800 m, because flat uniform ground validates the plumbing but not the
+  model.
 - `seattle.geojson` and `wasatch_front.geojson`, small single-zone areas for smoke runs.
 - `pastis.geojson`, four small polygons in Normandy, inside the France footprint.
 
