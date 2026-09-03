@@ -520,8 +520,8 @@ def supervise(
     geojson_fname: str | None = None,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
-    cycle_seconds: int = 900,
-    worker_idle_seconds: int | None = None,
+    cycle_seconds: int = 180,
+    worker_idle_seconds: int | None = 900,
     stale_seconds: int = 900,
     claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS,
     cycle_budget_seconds: int = DEFAULT_CYCLE_BUDGET_SECONDS,
@@ -589,15 +589,24 @@ def supervise(
         geojson_fname: limit work to tiles intersecting this WGS84 GeoJSON file.
         epsg_code: limit work to the zone of this UTM EPSG code.
         wgs84_bounds: limit work to tiles intersecting these WGS84 bounds.
-        cycle_seconds: how long to sleep between cycles.
-        worker_idle_seconds: how long a worker waits for new work before exiting. None
-            leaves the worker's own default, which is ten seconds -- right for a queue
-            filled once up front, wrong for one a supervisor refills on a cycle. With
-            the default, every worker quits within ten seconds of draining the queue,
-            and because `live` trusts a heartbeat for `stale_seconds` afterwards, the
+        cycle_seconds: how long to sleep between cycles. The real period is a cycle's
+            own work plus this, and a cycle re-enumerates every tile, so shortening it
+            is self-limiting; `cycle_budget_seconds` caps the enumeration half.
+        worker_idle_seconds: how long a worker waits for new work before exiting. Keep
+            it at or above `stale_seconds`, which is what the default does.
+            Passing None leaves the worker's own default of ten seconds, which is right
+            for a queue filled once up front and wrong for one a supervisor refills on a
+            cycle: every worker then quits within ten seconds of draining the queue, and
+            because `live` trusts a heartbeat for `stale_seconds` afterwards, the
             supervisor believes a full pool is still working and does not top up. That
-            pairing is what turns a three-minute burst of work into a fifteen-minute
-            gap. Set it above the cycle interval and workers stay for the next refill.
+            pairing is what turned a three-minute burst of web work into a fifteen-minute
+            gap, and it is why the predict stage measured a 60% duty cycle on Kenya. Any
+            value below `stale_seconds` leaves a smaller version of the same blind spot,
+            so the two are matched rather than merely ordered.
+
+            What this costs is an idle worker holding its claim, which only happens once
+            the queue is genuinely empty: at the tail of a global run, 128 GPUs for up to
+            fifteen minutes, about 32 GPU-hours against the run's 53,000.
         stale_seconds: a worker with no heartbeat for this long counts as dead.
         claim_stale_seconds: how long a queue entry's claim is trusted before the
             job is offered again. Must comfortably exceed one job's runtime or live

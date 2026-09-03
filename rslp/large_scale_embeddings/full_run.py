@@ -64,6 +64,11 @@ WEB_CYCLE_SECONDS = 120
 # the supervisor then counted them as live for another fifteen minutes, so a three-minute
 # burst of work was followed by a fifteen-minute gap. These workers hold no GPU, so
 # waiting costs almost nothing next to paying container start again.
+#
+# This now equals supervise's own default, which was raised off None once the same defect
+# was found to cost the predict stage 40% of its wall clock. Kept explicit anyway: the
+# value is load-bearing for this stage in a way it is not elsewhere, since a web queue
+# drains in under three minutes and a predict queue does not.
 WEB_WORKER_IDLE_SECONDS = 900
 
 DEFAULT_WORKER_ENV_VARS = {

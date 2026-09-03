@@ -70,3 +70,60 @@ def test_every_kwarg_the_cycle_reads_is_actually_passed() -> None:
     assert len(read) > 10, f"only found {len(read)} kwargs reads; the walk is wrong"
     missing = sorted(read - packed)
     assert not missing, f"read from kwargs but never packed into it: {missing}"
+
+
+def test_a_worker_never_dies_before_the_supervisor_would_notice() -> None:
+    """`worker_idle_seconds` must be at least `stale_seconds`.
+
+    These two are read by different actors and their pairing is the whole defect. A
+    worker exits after `worker_idle_seconds` of finding nothing to claim; the supervisor
+    keeps counting it live until its heartbeat is `stale_seconds` old, and does not top
+    the pool up while it believes the pool is full. Any gap between them is dead time,
+    and the original pairing -- ten seconds against nine hundred -- is what held the
+    predict stage to a 60% duty cycle on the Kenya run.
+
+    Ordering is not enough, so this asserts the bound rather than a strict inequality:
+    setting idle to half of stale would shrink the window without closing it.
+    """
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    defaults = {
+        name: param.default
+        for name, param in inspect.signature(mod.supervise).parameters.items()
+    }
+    idle, stale = defaults["worker_idle_seconds"], defaults["stale_seconds"]
+    assert idle is not None, (
+        "worker_idle_seconds defaults to None, which hands the worker its own "
+        "ten-second timeout and reopens the duty-cycle gap"
+    )
+    assert idle >= stale, (
+        f"worker_idle_seconds ({idle}) is below stale_seconds ({stale}), so a worker "
+        f"can exit up to {stale - idle}s before the supervisor stops counting it live"
+    )
+
+
+def test_the_cycle_sleep_leaves_room_for_the_cycle() -> None:
+    """`cycle_seconds` is a sleep, not a period, and workers have to outlast the period.
+
+    A cycle re-enumerates every tile before it sleeps, so the real interval between
+    refills is that work plus `cycle_seconds`, bounded above by `cycle_budget_seconds`
+    because the parent kills a cycle that overruns it. A worker must survive the worst
+    case or the pool empties between refills, which is the same failure the test above
+    guards from the other side.
+    """
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    defaults = {
+        name: param.default
+        for name, param in inspect.signature(mod.supervise).parameters.items()
+    }
+    worst_case = defaults["cycle_budget_seconds"] + defaults["cycle_seconds"]
+    assert defaults["worker_idle_seconds"] + defaults["stale_seconds"] >= worst_case, (
+        f"a worker idles out after {defaults['worker_idle_seconds']}s and is counted "
+        f"live for {defaults['stale_seconds']}s more, but a cycle can take up to "
+        f"{worst_case}s to come back round"
+    )
