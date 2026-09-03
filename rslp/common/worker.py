@@ -35,6 +35,9 @@ logger = get_logger(__name__)
 # about a pending claim that hasn't completed yet.
 MAX_JOB_HOURS = 4
 
+# How much of a failure's text to keep in an entry's rejection reason.
+REJECTION_CHARS = 500
+
 
 def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
     """Make a signal handler that cleans up the specified directory before exiting.
@@ -57,6 +60,7 @@ def worker_pipeline(
     queue_name: str,
     retries: int = 3,
     retry_sleep: int = 60,
+    max_retry_sleep: int = 600,
     idle_timeout: int = 10,
     flush_messages: bool = False,
 ) -> None:
@@ -67,12 +71,14 @@ def worker_pipeline(
 
     Args:
         queue_name: the name of the Beaker queue.
-        retries: retry for this many consecutive errors before terminating. A "retry"
-            may run a different job than the one that originally caused failure. This
-            ensures workers will complete most of the jobs before they terminate due to
-            errors.
-        retry_sleep: sleep for this many seconds between retries. Sleeping helps in
-            case there is an error due to rate limiting.
+        retries: terminate after this many errors in a row, so a worker gives up when
+            it is failing systematically but not on a few scattered bad jobs. A "retry"
+            may run a different job than the one that failed. The count resets on every
+            success.
+        retry_sleep: base seconds to sleep after an error, doubled per consecutive
+            error, since a worker failing repeatedly is usually failing for a reason
+            that outlasts one entry.
+        max_retry_sleep: cap on that doubling.
         idle_timeout: seconds before we terminate if there is no activity.
         flush_messages: whether to just flesh messages without actually running the
             requested workflows. This is to just delete all the messages in a topic.
@@ -108,10 +114,9 @@ def worker_pipeline(
                         if not flush_messages:
                             process_message(entry_input)
                         tx.send(entry_id, done=True)
+                        consecutive_errors = 0
                     except Exception as e:
-                        # TODO: does the entry go back in queue if we didn't reply to it with tx.send?
-                        # This code below is pretty much copied from the Pub/Sub processing code.
-                        # Maybe it's fine if it goes away to be honest, some tasks just don't work.
+                        consecutive_errors += 1
                         logger.error(
                             "encountered error while processing message %s: %s (%d/%d consecutive errors)",
                             entry_input,
@@ -119,10 +124,26 @@ def worker_pipeline(
                             consecutive_errors,
                             retries,
                         )
-                        consecutive_errors += 1
+                        # Release the claim: Beaker never releases one on its own, so an
+                        # unanswered entry stays CLAIMED and its job counts as in flight
+                        # until the claim goes stale. REJECTED does not, so the
+                        # supervisor re-enqueues on its next cycle.
+                        try:
+                            tx.send(
+                                entry_id,
+                                rejection=f"{type(e).__name__}: {e}"[:REJECTION_CHARS],
+                            )
+                        except Exception:
+                            # Not worth losing the run over: the entry just goes stale.
+                            logger.exception("could not reject entry %s", entry_id)
                         if consecutive_errors >= retries:
                             raise
-                        time.sleep(retry_sleep)
+                        time.sleep(
+                            min(
+                                retry_sleep * 2 ** (consecutive_errors - 1),
+                                max_retry_sleep,
+                            )
+                        )
 
 
 def launch_workers(
