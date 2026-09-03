@@ -431,3 +431,79 @@ def dequantize(v: np.ndarray) -> np.ndarray:
 ```
 
 Pixels where all Sentinel-2 mosaics are empty are set to -128 in all bands.
+
+
+Chunk shape: the open question and how to close it
+--------------------------------------------------
+
+The store fixes three geometry parameters and only one of them rests on evidence.
+
+`DEFAULT_SHARD_SIZE = 2048` is not a tuning parameter at all. One prediction window
+writes exactly one object, which is what keeps concurrent writers on disjoint objects
+and needs no locking. It moves only if the write path does.
+
+`DEFAULT_BAND_CHUNK = 64` is well grounded, but only in bytes: it is the width the
+2026-09-01 release candidate is trained to emit, so one chunk is one usable vector, and
+a finer split costs a range request per extra sub-chunk because zarr does not coalesce
+adjacent ranges. What other depths cost in requests and index size has been computed,
+never measured.
+
+`DEFAULT_CHUNK_SIZE = 256` is the weak one. It came from a single comparison against
+512 on a single access pattern. 128 and 1024 were never tried, and no transect-shaped
+read was ever measured, which is the shape that punishes a large spatial chunk hardest.
+
+`bench_chunking.py` closes this. Two commands:
+
+    python -m rslp.main large_scale_embeddings bench_build_variants \
+        --source_store_path gs://BUCKET/.../embeddings.zarr \
+        --out_prefix gs://BUCKET/bench/chunking_v1 \
+        --model_url https://huggingface.co/allenai/OlmoEarth-v1_2-Small \
+        --source_data '["https://sentinel.esa.int/web/sentinel/missions/sentinel-2"]'
+
+    python -m rslp.main large_scale_embeddings bench_measure \
+        --out_prefix gs://BUCKET/bench/chunking_v1 \
+        --results_path gs://BUCKET/bench/chunking_v1/results.json
+
+Design, and why each choice is what it is:
+
+- **No prediction re-run.** A 3x3 block of finished shards is read out of an existing
+  store and rewritten into one variant store per chunk shape. Every variant then holds
+  byte-identical embeddings, so any difference between them is layout and nothing else.
+  The experiment costs a rewrite, not a run.
+- **Area: 3x3 shards, 6,144 px, 61.44 km.** Three is the smallest meaningful number.
+  The 20 km AOI pattern is exactly one shard wide, so a 2x2 block can only place it
+  shard-aligned or corner-straddling; at 3x3 there is also a centre shard with written
+  neighbours on all sides, which is the ordinary case globally. A single shard would
+  report its own terrain rather than the layout.
+- **Reads placed off-alignment on purpose.** Every pattern starts at an offset divisible
+  by none of 128, 256, 512 or 1024. A benchmark that aligns its reads to chunk
+  boundaries measures the best case for large chunks and describes no AOI anyone draws.
+  A unit test asserts this, and it has already caught the AOI read sitting exactly on a
+  shard boundary.
+- **Five patterns**: a point at 128 dims and at 64, a 1 km area, a shard-straddling
+  20 km Matryoshka AOI, and a 40 km transect.
+- **The continental view is deliberately absent.** That read belongs to the PCA pyramid
+  in `pca_v1.zarr`, whose levels exist so a wide extent touches a bounded number of
+  chunks. Benchmarking it against `embeddings.zarr` would argue for a chunk shape
+  nothing needs.
+- **Compression held at `DEFAULT_ZSTD_LEVEL`**, which was settled offline by
+  recompressing real chunks (the table in `zarr_store.py`). One control variant carries
+  the old level 1 so the in-situ result can be checked against the offline one.
+
+Each measurement reports bytes moved, requests made, distinct objects touched, wall
+clock, and read amplification (bytes moved over bytes wanted). The store is reopened for
+every repeat, because zarr caches a shard index per array handle and reusing one would
+hide a cost every cold client pays.
+
+A reference row, measured against the live Kenya store, which is `sp256/d32/z1`:
+
+| pattern | moved | requests | objects | amplification |
+| --- | --- | --- | --- | --- |
+| point, 128 dims | 6.15 MB | 5 | 1 | 48,053x |
+| point, 64 dims | 3.09 MB | 3 | 1 | 48,357x |
+| 1 km area, 128 dims | 6.15 MB | 5 | 1 | 5x |
+| 40 km transect, 64 dims | 51.02 MB | 37 | 3 | 12x |
+
+Cost of the sweep: 17 variants at 4.8 GB of array each, so about 55 GB written and
+roughly an hour of one core per variant in compression. It parallelises one process per
+variant. Set `--only sp128_d64_z3.zarr` to build a single one.
