@@ -559,6 +559,7 @@ def build_variants(
     source_data: list[str],
     zone_number: int = SOURCE_ZONE,
     block_shards: int = BLOCK_SHARDS,
+    time_index: int = 0,
     zstd_level: int | None = None,
     only: str | None = None,
 ) -> None:
@@ -574,6 +575,11 @@ def build_variants(
         source_data: passed through to the variants' metadata.
         zone_number: UTM zone to copy.
         block_shards: edge of the block to copy, in shards.
+        time_index: which reference year to copy. One is enough and copying more is
+            pure waste: T is chunked at 1, so every year is an independent shard and
+            no access pattern here crosses the time axis. Copying all three years of
+            the Kenya store would have tripled 55 GB of writes to 246 GB and the
+            compression time with it.
         zstd_level: level for the sweep. Defaults to the store's current default.
         only: build just this one variant name, for running the sweep in parallel.
     """
@@ -592,7 +598,10 @@ def build_variants(
         f"{source_store_path}/{zone_group_name(zone_number)}/{EMBEDDINGS_ARRAY}",
         mode="r",
     )
-    time_len = source.shape[0]
+    if not 0 <= time_index < source.shape[0]:
+        raise ValueError(
+            f"time_index {time_index} is outside the source's {source.shape[0]} year(s)"
+        )
     origin_y = SOURCE_SHARD_ROW * DEFAULT_SHARD_SIZE
     origin_x = SOURCE_SHARD_COL * DEFAULT_SHARD_SIZE
 
@@ -604,7 +613,7 @@ def build_variants(
             init_store(
                 store_path=path,
                 zone_numbers=[zone_number],
-                years=list(range(2000, 2000 + time_len)),
+                years=[2000],
                 model_url=model_url,
                 source_data=source_data,
                 resolution=10,
@@ -634,7 +643,7 @@ def build_variants(
             started = time.perf_counter()
             block = np.asarray(
                 source[
-                    :,
+                    time_index,
                     :,
                     y : y + DEFAULT_SHARD_SIZE,
                     x : x + DEFAULT_SHARD_SIZE,
@@ -650,7 +659,7 @@ def build_variants(
             )
             for name, target in targets:
                 started = time.perf_counter()
-                target[:, :, y : y + DEFAULT_SHARD_SIZE, x : x + DEFAULT_SHARD_SIZE] = (
+                target[0, :, y : y + DEFAULT_SHARD_SIZE, x : x + DEFAULT_SHARD_SIZE] = (
                     block
                 )
                 logger.info(

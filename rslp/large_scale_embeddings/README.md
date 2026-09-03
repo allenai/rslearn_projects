@@ -507,3 +507,8 @@ A reference row, measured against the live Kenya store, which is `sp256/d32/z1`:
 Cost of the sweep: 17 variants at 4.8 GB of array each, so about 55 GB written and
 roughly an hour of one core per variant in compression. It parallelises one process per
 variant. Set `--only sp128_d64_z3.zarr` to build a single one.
+
+Only one reference year is copied (`--time_index`, default 0). T is chunked at 1, so
+every year is an independent shard and no pattern here crosses the time axis; copying
+all three years of the Kenya store would raise that 55 GB to 246 GB and triple the
+compression time for no extra signal.
