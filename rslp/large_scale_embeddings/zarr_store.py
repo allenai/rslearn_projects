@@ -71,7 +71,27 @@ EMBEDDING_DIMENSIONS = ("time", "band", "y", "x")
 # halves the bytes read per interactive AOI versus 512, at ~14% more storage.
 DEFAULT_CHUNK_SIZE = 256
 DEFAULT_SHARD_SIZE = 2048
-DEFAULT_ZSTD_LEVEL = 1
+# Measured by pulling one 64x256x256 int8 chunk out of the Kenya store and
+# recompressing it. Level 3 is the setting to be at: it is the only step on the curve
+# that costs nothing the pipeline is waiting on.
+#
+#   level   stored    ratio   vs 1     compress    decompress
+#   1       3.16 MB   0.753      -     734 MB/s    1003 MB/s
+#   3       2.96 MB   0.705   -6.3%    261 MB/s     963 MB/s
+#   5       2.81 MB   0.670  -11.0%    125 MB/s     948 MB/s
+#   9       2.73 MB   0.652  -13.4%     75 MB/s     908 MB/s
+#   19      2.56 MB   0.610  -19.0%      7 MB/s     651 MB/s
+#
+# The 6.3% comes off storage *and* off every byte read, since a range request moves the
+# compressed chunk. The cost is 1.3 extra seconds of one core per 537 MB shard, against
+# tens of minutes of GPU inference for that same shard, and decompression is unchanged.
+# Level 5 is defensible on the same grounds; it is not taken here only because 3 is what
+# the comparable AlphaEarth mosaic uses, so a like-for-like read comparison stays honest.
+#
+# Note this does not close the gap to that mosaic: at level 3 its chunks compress to
+# 0.617 against our 0.705, and order-0 entropy is near identical (6.92 vs 6.80 bits per
+# byte), so the difference is longer-range redundancy in their data, not their setting.
+DEFAULT_ZSTD_LEVEL = 3
 # Dimensions per inner chunk along the band axis.
 #
 # Chunking the band axis is what makes a Matryoshka prefix read cheap: with the whole
