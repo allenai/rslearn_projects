@@ -68,6 +68,12 @@ class EmbeddingInputs(Enum):
     # an environment variable, which leaves no trace in the output path, so running
     # both against one checkpoint under one variant would silently mix them.
     S2_LANDSAT_DISTILLED = "s2_landsat_distilled"
+    # The 2026-09-01 release candidate
+    # (regbtl_v1_2_gdyn_d768_proj128lin_sup768_w1_newsamp_psuniform_stunorm_mlpgram1),
+    # which adds Sentinel-1 to the distilled variant's inputs. Sentinel-1 and Landsat
+    # are both best-effort, so a window with only Sentinel-2 is still embedded; only
+    # the modality mix changes, not the output shape.
+    S2_S1_LANDSAT_DISTILLED = "s2_s1_landsat_distilled"
 
 
 DATASET_CONFIG_FNAME = "data/large_scale_embeddings/{inputs}.json"

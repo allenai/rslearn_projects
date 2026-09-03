@@ -76,16 +76,30 @@ DEFAULT_ZSTD_LEVEL = 1
 #
 # Chunking the band axis is what makes a Matryoshka prefix read cheap: with the whole
 # width in one chunk, reading embeddings[..., :64] still fetches all 128 dimensions and
-# discards half. At 32 the trained prefixes land exactly (32/64/96/128) and a 64-dim
-# read costs 50% of the bytes.
+# discards half. Splitting it is close to free in bytes -- measured on four real
+# 256x256x128 chunks at zstd-1, every granularity from 64 down to 8 changed stored size
+# by under 0.02%, because the embedding dimensions are effectively decorrelated and the
+# codec gains nothing from seeing them together.
 #
-# It is close to free. Measured on four real 256x256x128 chunks at zstd-1, splitting the
-# band axis changed stored size by under 0.02% at every granularity from 64 down to 8:
-# the embedding dimensions are effectively decorrelated, so the codec gains nothing from
-# seeing them together. The cost is the shard index, 16 bytes per inner chunk, which
-# goes from 1 KB to 4 KB per shard. Full-width reads are unaffected because the
-# sub-chunks are contiguous within the shard and zarr coalesces them into one request.
-DEFAULT_BAND_CHUNK = 32
+# Set to the smallest width the model is actually trained to emit, and no smaller.
+# The 2026-09-01 release candidate finalized Matryoshka at 64, so 64 it is. A finer
+# split buys nothing and costs a request per extra sub-chunk on every read.
+#
+# That last point corrects what this comment used to claim -- that contiguous
+# sub-chunks are coalesced into one request, which made the granularity look free.
+# Measured against the Kenya store with zarr-python 3, a 64-dim read at band_chunk=32
+# issues *two* RangeByteRequests whose byte ranges are exactly adjacent
+# (…start=266977979 end=268044380, then start=268044380 end=269172053). It does not
+# merge them. So granularity is paid for in round trips:
+#
+#   band_chunk   64-dim read            128-dim read           shard index
+#   32           1 index + 2 chunks     1 index + 4 chunks     4,100 B
+#   64           1 index + 1 chunk      1 index + 2 chunks     2,052 B
+#
+# Bytes are identical either way. If a future checkpoint ships trained 32- or 16-dim
+# prefixes, drop this back and re-render: a 32-dim read from a 64-deep store costs the
+# full 4.19 MB rather than 2.10.
+DEFAULT_BAND_CHUNK = 64
 # Chunk size (in elements) for the 1-D x/y coordinate arrays. They are linear ramps
 # so they compress to almost nothing under zstd.
 COORD_CHUNK_SIZE = 65536
