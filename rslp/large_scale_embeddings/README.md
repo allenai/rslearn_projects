@@ -433,6 +433,42 @@ def dequantize(v: np.ndarray) -> np.ndarray:
 Pixels where all Sentinel-2 mosaics are empty are set to -128 in all bands.
 
 
+Areas
+-----
+
+`data/large_scale_embeddings/*.geojson` holds the run footprints. Each carries a `note`
+recording its source, its area, and whatever about its geometry will bite you.
+
+- `initial_regions.geojson`, the original multi-region run.
+- `kenya.geojson`, 590,902 km2, UTM 36 to 37, crosses the equator so southern windows
+  carry negative northing in the northern CRS the store uses.
+- `france.geojson`, 554,368 km2, UTM 30 to 32. The European counterpart to Kenya,
+  within 6% of it by enumerated job count (131 jobs against 124 at `job_size 8192`, one
+  year), so a run here is directly comparable. Two zone seams rather than Kenya's one,
+  and entirely north of the equator. The outline excludes the overseas departments,
+  which is what makes it usable: they would drag a run across both hemispheres and a
+  dozen more zones.
+- `seattle.geojson` and `wasatch_front.geojson`, small single-zone areas for smoke runs.
+- `pastis.geojson`, four small polygons in Normandy, inside the France footprint.
+
+Sizing a new area before committing to it is one call, and worth making:
+
+    python -c "
+    from datetime import UTC, datetime
+    from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
+    from rslp.large_scale_embeddings.write_jobs import get_jobs
+    print(len(get_jobs(inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+        timestamp=datetime(2024, 1, 1, tzinfo=UTC), store_path='/tmp/x.zarr',
+        completed_path='/tmp/c/', checkpoint_path='/weka/x', time_index=0,
+        patch_size=1, window_size=16, overlap_size=4, compile_model=True,
+        batch_size=None, epsg_code=None, wgs84_bounds=None,
+        geojson_fname='data/large_scale_embeddings/france.geojson', job_size=8192)))"
+
+Point `store_path` and `completed_path` at local paths, not a bucket: enumeration only
+needs them to check for markers, and an unauthenticated bucket read fails on the
+completion check before it reports a count.
+
+
 Chunk shape: the open question and how to close it
 --------------------------------------------------
 
