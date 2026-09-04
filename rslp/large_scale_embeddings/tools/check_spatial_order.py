@@ -41,7 +41,7 @@ invariant and needs no priors at all.
 
 Usage
 -----
-    python -m rslp.large_scale_embeddings.check_spatial_order
+    python -m rslp.large_scale_embeddings.tools.check_spatial_order
         --store_path https://.../embeddings.zarr --zone utm36
 
 The store reads anonymously over https, which is worth preferring here: gcloud

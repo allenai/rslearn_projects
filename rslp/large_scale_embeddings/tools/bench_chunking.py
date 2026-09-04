@@ -71,7 +71,7 @@ from upath import UPath
 
 from rslp.log_utils import get_logger
 
-from .zarr_store import (
+from ..zarr_store import (
     DEFAULT_SHARD_SIZE,
     EMBEDDINGS_ARRAY,
     init_store,

@@ -14,18 +14,17 @@ The forward flow is three ordered steps:
    cannot be drawn at all. This stage fixes both. CPU only, no model.
 """
 
-from .bench_chunking import build_variants, measure
 from .full_run import launch_run_all, run_all
 from .pca import fit_pca
 from .predict_pipeline import predict_pipeline
 from .render_pca import annotate_pca_store, render_pca_pipeline, write_render_jobs
 from .render_web_pca import init_web_store, render_web_pca_pipeline
 from .supervise import launch_supervisor, supervise
+from .tools import build_variants, measure
 from .write_jobs import init_store, write_jobs
 from .zarr_store import init_pca_store
 
 workflows = {
-    # Read-cost sweep over the two free chunk parameters. See bench_chunking.
     "bench_build_variants": build_variants,
     "bench_measure": measure,
     "fit_pca": fit_pca,

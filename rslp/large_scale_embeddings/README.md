@@ -494,7 +494,7 @@ never measured.
 512 on a single access pattern. 128 and 1024 were never tried, and no transect-shaped
 read was ever measured, which is the shape that punishes a large spatial chunk hardest.
 
-`bench_chunking.py` closes this. Two commands:
+`tools/bench_chunking.py` closes this. Two commands:
 
     python -m rslp.main large_scale_embeddings bench_build_variants \
         --source_store_path gs://BUCKET/.../embeddings.zarr \

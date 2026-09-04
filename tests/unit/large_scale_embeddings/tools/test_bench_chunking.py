@@ -1,6 +1,6 @@
 """Guards on the chunking benchmark's design, not on its measurements."""
 
-from rslp.large_scale_embeddings.bench_chunking import (
+from rslp.large_scale_embeddings.tools.bench_chunking import (
     BAND_CHUNKS,
     BLOCK_SHARDS,
     CONTROL_SHAPE,
