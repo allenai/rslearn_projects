@@ -96,7 +96,7 @@ def test_predict_stage_needs_no_pca_arguments() -> None:
 
 
 class _FakeQueueApi:
-    """A queue with nothing in it and nobody working it."""
+    """A queue with nothing in it."""
 
     def get(self, name: str) -> object:
         return object()
@@ -104,12 +104,42 @@ class _FakeQueueApi:
     def list_entries(self, queue: object) -> list:
         return []
 
-    def list_workers(self, queue: object) -> list:
-        return []
+
+class _FakeWorkspaceApi:
+    def get(self, name: str) -> object:
+        return object()
+
+
+class _FakeUserApi:
+    def get(self) -> object:
+        return object()
+
+
+class _FakeExperiment:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _FakeWorkload:
+    def __init__(self, name: str) -> None:
+        self.experiment = _FakeExperiment(name)
+
+
+class _FakeWorkloadApi:
+    """Stands in for the workload listing the worker count is derived from."""
+
+    def __init__(self, names: list[str] | None = None) -> None:
+        self.names = names or []
+
+    def list(self, **kwargs: object) -> list:
+        return [_FakeWorkload(name) for name in self.names]
 
 
 class _FakeBeaker:
     queue = _FakeQueueApi()
+    workspace = _FakeWorkspaceApi()
+    user = _FakeUserApi()
+    workload = _FakeWorkloadApi()
 
     def __enter__(self) -> Self:
         return self
@@ -122,9 +152,19 @@ class _FakeBeaker:
         return cls()
 
 
-def _install_cycle_fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
-    """Stub out Beaker and the enqueue/launch calls, returning what they recorded."""
+def _install_cycle_fakes(
+    monkeypatch: pytest.MonkeyPatch, existing_workers: int = 0
+) -> dict[str, object]:
+    """Stub out Beaker and the enqueue/launch calls, returning what they recorded.
+
+    `existing_workers` seeds that many non-finalized worker experiments named for the
+    test's queue, which is what the cycle counts against its target.
+    """
     recorded: dict[str, object] = {}
+    prefix = sup.worker_name_prefix("user/queue")
+    _FakeBeaker.workload = _FakeWorkloadApi(
+        [f"{prefix}_{i:08x}" for i in range(existing_workers)]
+    )
     monkeypatch.setattr("beaker.Beaker", _FakeBeaker)
 
     def fake_write_jobs(
@@ -136,6 +176,7 @@ def _install_cycle_fakes(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     def fake_launch_workers(**kwargs: object) -> None:
         recorded["launched"] = kwargs.get("num_workers")
         recorded["gpus"] = kwargs.get("gpus")
+        recorded["name_prefix"] = kwargs.get("name_prefix")
 
     monkeypatch.setattr("rslp.common.worker.write_jobs", fake_write_jobs)
     monkeypatch.setattr("rslp.common.worker.launch_workers", fake_launch_workers)
@@ -147,7 +188,6 @@ def _render_cycle_kwargs(**overrides: object) -> dict[str, object]:
     kwargs: dict[str, object] = {
         "queue_name": "user/queue",
         "num_workers": 2,
-        "stale_seconds": 900,
         "years": [2024, 2025],
         "stage": sup.STAGE_RENDER_UTM_PCA,
         "store_path": "gs://bucket/s2.zarr",
@@ -246,40 +286,61 @@ def test_worker_launches_use_the_full_count_when_work_is_plentiful(
     assert enqueued["launched"] == 8
 
 
-def test_starting_workers_count_toward_the_target(
+def test_a_starting_worker_counts_toward_the_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A worker launched last cycle must not be launched again while it boots.
+    """A worker that exists but is not yet working still counts against the target.
 
-    `live` counts workers registered with the queue, which only happens once a
-    container is running. Pulling a multi-gigabyte image takes minutes, so a worker
-    launched last cycle is invisible to `live` this cycle. Relaunching the shortfall
-    every cycle overshoots num_workers by however many cycles a start takes: a run
-    asking for 2 workers on a 180s cycle got 8.
+    This is the whole over-launch bug: a worker only registers with the queue once its
+    container runs, so counting queue registrations misses every worker still pulling
+    its image and the shortfall is launched again every cycle. Counting non-finalized
+    worker experiments sees them from the moment they are created.
     """
     _stub_render_jobs(monkeypatch, 50)
-    enqueued = _install_cycle_fakes(monkeypatch)
+    enqueued = _install_cycle_fakes(monkeypatch, existing_workers=6)
     result = _Result()
-    sup._run_cycle(
-        _render_cycle_kwargs(num_workers=8, recently_launched=6), result, _Result()
-    )
+    sup._run_cycle(_render_cycle_kwargs(num_workers=8), result, _Result())
 
-    # Six already on their way, so only the remaining two are launched.
+    # Six already exist, so only the remaining two are launched.
     assert enqueued["launched"] == 2
 
 
-def test_a_full_pool_of_starting_workers_launches_none(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_a_full_pool_launches_none(monkeypatch: pytest.MonkeyPatch) -> None:
     """Once the target is accounted for, a cycle launches nothing at all."""
+    _stub_render_jobs(monkeypatch, 50)
+    enqueued = _install_cycle_fakes(monkeypatch, existing_workers=8)
+    result = _Result()
+    sup._run_cycle(_render_cycle_kwargs(num_workers=8), result, _Result())
+
+    assert enqueued.get("launched", 0) == 0
+
+
+def test_another_runs_workers_do_not_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only workers named for this run's queue count toward its target.
+
+    Worker experiments used to be named `worker_<random>` with nothing tying them to a
+    queue, so a supervisor could not tell its own workers from another run's. The name
+    prefix is what makes the count attributable.
+    """
+    _stub_render_jobs(monkeypatch, 50)
+    enqueued = _install_cycle_fakes(monkeypatch)
+    _FakeBeaker.workload = _FakeWorkloadApi(
+        [f"{sup.worker_name_prefix('user/other-queue')}_{i:08x}" for i in range(8)]
+    )
+    result = _Result()
+    sup._run_cycle(_render_cycle_kwargs(num_workers=8), result, _Result())
+
+    assert enqueued["launched"] == 8
+
+
+def test_workers_are_named_for_their_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The launch must use the same prefix the count looks for, or nothing matches."""
     _stub_render_jobs(monkeypatch, 50)
     enqueued = _install_cycle_fakes(monkeypatch)
     result = _Result()
-    sup._run_cycle(
-        _render_cycle_kwargs(num_workers=8, recently_launched=8), result, _Result()
-    )
+    sup._run_cycle(_render_cycle_kwargs(num_workers=8), result, _Result())
 
-    assert enqueued.get("launched", 0) == 0
+    assert enqueued["name_prefix"] == sup.worker_name_prefix("user/queue")
 
 
 def test_the_cycle_reports_what_it_launched(

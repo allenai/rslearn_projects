@@ -8,29 +8,20 @@ loses workers constantly. Two existing properties make that survivable:
 2. ``get_jobs`` derives the remaining work from those markers, so "what is left" never
    has to be tracked separately.
 
-Two design points, both learned the hard way:
+Two design points:
 
 **Keep the queue shallow.** A Beaker queue entry claimed by a worker that then dies is
-not released back to the queue. Entries were still CLAIMED 5 hours after being claimed,
-with no worker alive for the last 1.4 of those, and the queue API has no call to release
-one. They are not immortal -- ``status.expiry`` is set from ``expires_in_sec`` (7 days
-by default), so they eventually age out -- but a week is far longer than any job, so
-within a run that work is simply lost. Note also ``max_claimed_entries=1``: a dead
-worker's claim permanently occupies that entry's only claim slot. (``wait_timeout`` on
-the queue is unrelated; it bounds how long a worker waits for work to appear.)
+not released back to the queue, and the queue API has no call to release one. Entries
+do age out via ``expires_in_sec``, but a week is far longer than any job, so within a
+run that work is lost. Enqueuing a whole run up front therefore bleeds work steadily.
+This enqueues only a small buffer and refills it from the markers, bounding the loss to
+about one entry per worker death.
 
-Enqueuing a whole run up front therefore bleeds work steadily (one run accumulated 327
-orphaned entries). This enqueues only a small buffer and refills it from the markers,
-which bounds the loss to about one entry per worker death.
-
-**Run each cycle in a child process.** The Beaker client has no RPC timeout, and a
-hung gRPC call cannot be interrupted by ``signal.alarm`` because the C core does not
-yield to the interpreter between bytecodes. An in-process watchdog therefore does not
-work -- two earlier attempts silently stalled for ~10 hours each, which stopped both
-queue refills and worker top-up. Only a process-level kill bounds it, so every cycle
-runs in a spawned child that the parent will terminate if it overruns its budget.
+**Run each cycle in a child process.** The Beaker client has no RPC timeout, and a hung
+gRPC call cannot be interrupted by ``signal.alarm`` because the C core does not yield to
+the interpreter between bytecodes. Only a process-level kill bounds it, so every cycle
+runs in a spawned child the parent terminates if it overruns its budget.
 """
-
 import multiprocessing
 import random
 import time
@@ -65,16 +56,16 @@ PENDING_PER_WORKER = 3
 # gets killed. Cycles normally take well under a minute.
 DEFAULT_CYCLE_BUDGET_SECONDS = 600
 
+# Cap on the workload listing the worker count is drawn from. Scoped to this user's
+# unfinalized experiments, so it only has to cover one person's concurrent runs.
+WORKER_LIST_LIMIT = 500
+
 # Sentinel for "the child did not report a result" (timed out, crashed, or killed).
 _NO_RESULT = -1
 
-# Consecutive failed cycles tolerated before giving up.
-#
-# A cycle reports nothing when it was killed for exceeding its budget, or when it
-# crashed. The first is transient and worth retrying; the second may not be. A missing
-# geojson, a bad store path or a revoked credential fails identically on every cycle, and
-# retrying forever turns a startup mistake into a job that looks alive indefinitely while
-# doing nothing. Three strikes distinguishes the two without tripping on a single hang.
+# Consecutive failed cycles tolerated before giving up. A killed cycle is transient
+# and worth retrying, but a bad path or a revoked credential fails identically every
+# time, and retrying forever turns a startup mistake into a job that looks alive.
 MAX_CONSECUTIVE_CYCLE_FAILURES = 3
 
 # Deployment defaults, collected here rather than buried in the signatures below so a
@@ -87,16 +78,11 @@ DEFAULT_WEKA_MOUNT_PATH = "/weka/dfive-default"
 DEFAULT_DATASETS_API_URL = "https://datasets.olmoearth.allenai.org"
 # This is the name of a Beaker secret, not a credential. (bandit flags the assignment
 # because the name contains "token"/"secret".)
-# Named to pair with OEDATASETS_API_URL. The predecessor, LCC_DATASETS_API_TOKEN,
-# carried a project prefix (land cover change) despite being the general datasets
-# token; it still holds the same value, so an older invocation passing it by name
-# keeps working.
+# Named to pair with OEDATASETS_API_URL.
 DEFAULT_DATASETS_TOKEN_SECRET = "OEDATASETS_API_TOKEN"  # nosec
 # Beaker secrets holding AWS credentials, mirroring what olmoearth_run's deployed runner
-# injects from Secret Manager (see runner_secret_vars_google_batch_mapping). The data
-# sources request every asset with requester_pays=True, so an S3 asset needs signed
-# requests: without credentials GDAL raises InvalidCredentials. GCS is the preferred
-# backend and S3 the fallback, so this is rarely exercised but fails hard when it is.
+# injects. Data sources request assets with requester_pays=True, so an S3 asset needs
+# signed requests or GDAL raises InvalidCredentials. S3 is the fallback backend.
 DEFAULT_AWS_KEY_ID_SECRET = "AWS_ACCESS_KEY_ID"  # nosec
 DEFAULT_AWS_SECRET_KEY_SECRET = "AWS_SECRET_ACCESS_KEY"  # nosec
 
@@ -116,27 +102,16 @@ def _state_name(entry: Any) -> str:
 
 # How long a claim is trusted before the job is offered again.
 #
-# Claims in a Beaker queue are never released, so a worker that dies mid-job leaves its
-# claim behind forever. Skipping every claimed job would therefore deadlock the run on the
-# first worker death -- which is why the queue used to be topped up blindly. Trusting a
-# claim only while it is young keeps that recovery while cutting the duplicate work that
-# blind top-up generates: at Kenya scale the queue reached 56 claims against 33 live
-# workers, and throughput decayed as the wasted share grew.
-#
-# Sized well above a job: a predict job at job_size 8192 runs ~25 min, so 90 minutes only
-# re-offers work whose worker is almost certainly gone.
+# Claims are never released, so a worker that dies mid-job leaves its claim behind
+# forever and skipping every claimed job would deadlock the run on the first death.
+# Trusting a claim only while it is young keeps that recovery without the duplicate work
+# a blind top-up generates. Size it well above one job's runtime.
 # GDAL environment every worker needs, merged in below so it cannot be forgotten.
 #
-# GS_USER_PROJECT is required for the Landsat reads: olmoearth_shared's
-# rasterio_session_for_path honours requester_pays only for S3, returning a bare
-# GSSession() for GCS, so the requester-pays USGS mirror needs GDAL handed a billing
-# project this way. Omitting it fails minutes in, after the image pull and the dataset
-# prepare, with an HTTP 400 that names no variable.
-#
+# GS_USER_PROJECT is required for the Landsat reads: rasterio_session_for_path honours
+# requester_pays only for S3, so the requester-pays USGS mirror needs GDAL handed a
+# billing project this way. Omitting it fails with an HTTP 400 that names no variable.
 # This lives here rather than in full_run because supervise is what launches workers.
-# full_run merged it and launch_supervisor did not, so every run started directly from
-# the supervisor read Landsat without a billing project and silently produced
-# embeddings with the Landsat inputs missing.
 DEFAULT_WORKER_ENV_VARS = {
     "GS_USER_PROJECT": "earthsystem-dev-c3po",
 }
@@ -240,6 +215,52 @@ def _any_completion_markers(kwargs: dict[str, Any]) -> bool:
     return False
 
 
+def worker_name_prefix(queue_name: str) -> str:
+    """Experiment-name prefix identifying the workers of one run.
+
+    Args:
+        queue_name: the Beaker queue name, e.g. "user/my-queue".
+
+    Returns:
+        the prefix to name this run's worker experiments with.
+    """
+    return "worker_" + queue_name.replace("/", "-")
+
+
+def _count_workers(beaker: Any, workspace: Any, name_prefix: str) -> int:
+    """Count this run's workers that exist and have not finalized.
+
+    Beaker knows a worker exists the moment its experiment is created, so this counts
+    one that is still pulling its image just as it counts one mid-job. Deriving the
+    count from queue heartbeats instead undercounts for the whole of container start,
+    which is minutes for a large image, and the pool overshoots by however many cycles
+    that takes.
+
+    Args:
+        beaker: an open Beaker client.
+        workspace: the workspace to search.
+        name_prefix: the prefix from `worker_name_prefix`.
+
+    Returns:
+        the number of live or starting workers belonging to this run.
+    """
+    from beaker import BeakerWorkloadType
+
+    return sum(
+        1
+        for workload in beaker.workload.list(
+            workspace=workspace,
+            author=beaker.user.get(),
+            finalized=False,
+            workload_type=BeakerWorkloadType.experiment,
+            limit=WORKER_LIST_LIMIT,
+        )
+        if getattr(getattr(workload, "experiment", None), "name", "").startswith(
+            name_prefix
+        )
+    )
+
+
 def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> None:
     """Run one supervision cycle, reporting the remaining job count via `result`.
 
@@ -264,11 +285,9 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
 
     queue_name = kwargs["queue_name"]
     num_workers = kwargs["num_workers"]
-    # How deep to keep the queue. The default assumes long jobs -- a predict job runs
-    # for hours, so three in hand per worker is plenty. A stage of short jobs inverts
-    # that: a render_web_pca shard takes seconds, so a worker drains its three and then
-    # idles until the next cycle, and the cycle interval becomes the throughput ceiling
-    # however many workers are running. Such a stage passes a much larger value.
+    # How deep to keep the queue. The default assumes long jobs. A stage of short jobs
+    # needs much more: a worker drains its few entries and then idles until the next
+    # cycle, making the cycle interval the throughput ceiling.
     target_pending = num_workers * kwargs.get("pending_per_worker", PENDING_PER_WORKER)
 
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
@@ -282,14 +301,13 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
         in_flight = _in_flight_job_keys(
             entries, now, kwargs.get("claim_stale_seconds", DEFAULT_CLAIM_STALE_SECONDS)
         )
-        live = sum(
-            1
-            for worker in beaker.queue.list_workers(queue)
-            if now - int(getattr(getattr(worker, "heartbeat", None), "seconds", 0) or 0)
-            < kwargs["stale_seconds"]
+        live = _count_workers(
+            beaker,
+            beaker.workspace.get(DEFAULT_WORKSPACE),
+            worker_name_prefix(queue_name),
         )
     pending = counts.get("PENDING", 0)
-    logger.info("queue=%s live_workers=%d", counts, live)
+    logger.info("queue=%s workers=%d", counts, live)
 
     # Recompute what is left directly from the completion markers. This doubles as the
     # completion check, so it runs every cycle rather than only when the queue drains.
@@ -373,24 +391,14 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
             len(remaining),
         )
 
-    # A worker holds one job at a time, so launching more workers than there are
-    # outstanding jobs is pure churn: each surplus worker starts, finds nothing to claim,
-    # and exits, and the next cycle's top-up launches it again. This is invisible during
-    # the bulk of a run, where jobs outnumber workers, and dominates a tail resume: four
-    # jobs left kept relaunching toward num_workers=32, each surplus worker living long
-    # enough only to log "listening for messages" and stop.
-    # A worker counts as live once it registers with the queue, which happens when its
-    # container is up. Pulling a 15 GB image takes minutes, so a worker launched last
-    # cycle is usually invisible to `live` this cycle, and launching the shortfall again
-    # every cycle overshoots num_workers by a factor of however many cycles that takes.
-    # The parent carries recent launches forward for exactly this reason.
-    starting = int(kwargs.get("recently_launched", 0) or 0)
+    # A worker holds one job at a time, so launching more than there are outstanding
+    # jobs is pure churn: each surplus worker starts, finds nothing to claim and exits.
     worker_target = min(num_workers, len(remaining))
-    if live + starting < worker_target:
+    if live < worker_target:
         rslp.common.worker.launch_workers(
             image_name=kwargs["image_name"],
             queue_name=queue_name,
-            num_workers=worker_target - live - starting,
+            num_workers=worker_target - live,
             cluster=kwargs["cluster"],
             gpus=kwargs["gpus"],
             shared_memory=kwargs["shared_memory"],
@@ -402,6 +410,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
                 )
             ],
             idle_timeout=kwargs.get("worker_idle_seconds"),
+            name_prefix=worker_name_prefix(queue_name),
             extra_env_vars={
                 "OEDATASETS_API_URL": kwargs["datasets_api_url"],
                 **(kwargs.get("worker_env_vars") or {}),
@@ -418,16 +427,14 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
                 ),
             },
         )
-        just_launched = worker_target - live - starting
+        just_launched = worker_target - live
         if launched is not None:
             launched.value = just_launched
         logger.info(
-            "launched %d worker(s) (target %d, %d live, %d still starting, "
-            "%d outstanding job(s))",
+            "launched %d worker(s) (target %d, %d existing, %d outstanding job(s))",
             just_launched,
             worker_target,
             live,
-            starting,
             len(remaining),
         )
 
@@ -564,8 +571,6 @@ def supervise(
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     cycle_seconds: int = 180,
     worker_idle_seconds: int | None = 900,
-    stale_seconds: int = 900,
-    worker_startup_seconds: int = 2700,
     claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS,
     cycle_budget_seconds: int = DEFAULT_CYCLE_BUDGET_SECONDS,
     max_cycles: int | None = None,
@@ -637,43 +642,11 @@ def supervise(
         cycle_seconds: how long to sleep between cycles. The real period is a cycle's
             own work plus this, and a cycle re-enumerates every tile, so shortening it
             is self-limiting; `cycle_budget_seconds` caps the enumeration half.
-        worker_idle_seconds: how long a worker waits for new work before exiting. Keep
-            it at or above `stale_seconds`, which is what the default does.
-            Passing None leaves the worker's own default of ten seconds, which is right
-            for a queue filled once up front and wrong for one a supervisor refills on a
-            cycle: every worker then quits within ten seconds of draining the queue, and
-            because `live` trusts a heartbeat for `stale_seconds` afterwards, the
-            supervisor believes a full pool is still working and does not top up. That
-            pairing is what turned a three-minute burst of web work into a fifteen-minute
-            gap, and it is why the predict stage measured a 60% duty cycle on Kenya. Any
-            value below `stale_seconds` leaves a smaller version of the same blind spot,
-            so the two are matched rather than merely ordered.
-
-            What this costs is an idle worker holding its claim, which only happens once
-            the queue is genuinely empty: at the tail of a global run, 128 GPUs for up to
-            fifteen minutes, about 32 GPU-hours against the run's 53,000.
-        stale_seconds: a worker with no heartbeat for this long counts as dead.
-        worker_startup_seconds: how long a launched worker is assumed to be starting up
-            and counted toward `num_workers` even though it has not registered with the
-            queue yet. A worker only registers once its container is running, so without
-            this the shortfall is relaunched every cycle and the pool overshoots
-            `num_workers` by however many cycles a start takes.
-
-            Must exceed a cold image pull, which is the part that is easy to
-            underestimate. This was first set to 900 to match `stale_seconds`, chosen
-            for symmetry rather than measured: on a 15.85 GiB image, four of eight
-            workers were still pulling twenty minutes after launch, so the window
-            expired, the supervisor saw four live and topped up by four, and a request
-            for eight became twelve.
-
-            The cost of setting it too high is the opposite and much cheaper: a worker
-            that dies during startup is not replaced until the window passes, leaving
-            the pool short of target for that long.
-
-            This remains a timer standing in for a fact. Counting worker workloads that
-            have not finalized would be exact, but Beaker worker experiments are named
-            `worker_<random>` with nothing tying them to a queue, so they cannot be
-            attributed to a run without changing how they are named.
+        worker_idle_seconds: how long a worker waits for new work before exiting.
+            Passing None leaves the worker's own default of ten seconds, which suits a
+            queue filled once up front but not one a supervisor refills on a cycle:
+            every worker then quits the moment the queue drains and has to be relaunched
+            on the next cycle, paying container start each time.
         claim_stale_seconds: how long a queue entry's claim is trusted before the
             job is offered again. Must comfortably exceed one job's runtime or live
             work gets duplicated; claims are never released, so it cannot be
@@ -723,11 +696,8 @@ def supervise(
         "epsg_code": epsg_code,
         "wgs84_bounds": wgs84_bounds,
         "worker_idle_seconds": worker_idle_seconds,
-        "stale_seconds": stale_seconds,
-        "worker_startup_seconds": worker_startup_seconds,
         # Overwritten before every cycle from the parent's launch ledger. Packed here
         # so the dict really does carry everything the cycle reads.
-        "recently_launched": 0,
         "claim_stale_seconds": claim_stale_seconds,
         "stage": stage,
         "artifact_path": artifact_path,
@@ -760,8 +730,6 @@ def supervise(
     seen_work = False
     consecutive_failures = 0
     cycle = 0
-    # (launched_at, count) for workers still within their startup window.
-    recent_launches: list[tuple[float, int]] = []
 
     while max_cycles is None or cycle < max_cycles:
         cycle += 1
@@ -769,15 +737,6 @@ def supervise(
         # type code makes it a Synchronized[int].
         result: Synchronized[int] = ctx.Value("i", _NO_RESULT)  # type: ignore[assignment]
         launched: Synchronized[int] = ctx.Value("i", 0)  # type: ignore[assignment]
-        # Workers launched recently but not yet registered with the queue. Dropped once
-        # older than worker_startup_seconds, by which point each has either registered
-        # (so `live` sees it) or died (so it should be replaced).
-        recent_launches = [
-            (when, count)
-            for when, count in recent_launches
-            if time.time() - when < worker_startup_seconds
-        ]
-        kwargs["recently_launched"] = sum(count for _, count in recent_launches)
         proc = ctx.Process(target=_run_cycle, args=(kwargs, result, launched))
         started = time.time()
         proc.start()
@@ -796,8 +755,6 @@ def supervise(
                 proc.join(30)
         elapsed = int(time.time() - started)
         remaining = result.value
-        if launched.value > 0:
-            recent_launches.append((time.time(), launched.value))
 
         if remaining == _NO_RESULT:
             # Killed, crashed, or otherwise did not report. Nothing to conclude about
@@ -824,11 +781,9 @@ def supervise(
         elif remaining == 0:
             consecutive_failures = 0
             if not seen_work and not _any_completion_markers(kwargs):
-                # Enumerating nothing on the very first cycle almost never means "the
-                # run is finished" -- far more often the AOI filters, bounds, or zone
-                # selection exclude everything. Existing markers are the exception: a
-                # resumed run whose stage is already complete legitimately sees zero
-                # remaining on cycle one, and must skip the stage rather than fail.
+                # Nothing on the first cycle usually means the AOI filters, bounds
+                # or zone selection exclude everything, not that the run is done. A
+                # resumed run with existing markers is the legitimate exception.
                 raise ValueError(
                     "enumerated no jobs at all on the first cycle; check "
                     "geojson_fname/wgs84_bounds/epsg_code and that store_path and "

@@ -64,61 +64,27 @@ def pca_level_array_name(level: int) -> str:
 # Zarr v3 dimension order for the embedding array.
 EMBEDDING_DIMENSIONS = ("time", "band", "y", "x")
 
-# Default chunk (inner) and shard (outer storage unit) spatial sizes, and zstd level.
+# Default chunk (inner) and shard (outer storage unit) spatial sizes.
 # The shard size must equal the window size (PATCH_SIZE) so each prediction window
 # writes exactly one shard, keeping concurrent region writes on disjoint objects.
-# chunk=256 was chosen from a small-AOI read benchmark on real embeddings: it roughly
-# halves the bytes read per interactive AOI versus 512, at ~14% more storage.
+# chunk=256 halves the bytes read per interactive AOI versus 512, at ~14% more storage.
 DEFAULT_CHUNK_SIZE = 256
 DEFAULT_SHARD_SIZE = 2048
-# Measured by pulling one 64x256x256 int8 chunk out of the Kenya store and
-# recompressing it. Level 3 is the setting to be at: it is the only step on the curve
-# that costs nothing the pipeline is waiting on.
-#
-#   level   stored    ratio   vs 1     compress    decompress
-#   1       3.16 MB   0.753      -     734 MB/s    1003 MB/s
-#   3       2.96 MB   0.705   -6.3%    261 MB/s     963 MB/s
-#   5       2.81 MB   0.670  -11.0%    125 MB/s     948 MB/s
-#   9       2.73 MB   0.652  -13.4%     75 MB/s     908 MB/s
-#   19      2.56 MB   0.610  -19.0%      7 MB/s     651 MB/s
-#
-# The 6.3% comes off storage *and* off every byte read, since a range request moves the
-# compressed chunk. The cost is 1.3 extra seconds of one core per 537 MB shard, against
-# tens of minutes of GPU inference for that same shard, and decompression is unchanged.
-# Level 5 is defensible on the same grounds; it is not taken here only because 3 is what
-# the comparable AlphaEarth mosaic uses, so a like-for-like read comparison stays honest.
-#
-# Note this does not close the gap to that mosaic: at level 3 its chunks compress to
-# 0.617 against our 0.705, and order-0 entropy is near identical (6.92 vs 6.80 bits per
-# byte), so the difference is longer-range redundancy in their data, not their setting.
+# Compression is off the pipeline's critical path (seconds of CPU per shard against
+# minutes of GPU inference), so this is set for read cost, not write cost. Level 3 also
+# matches the AlphaEarth mosaic, keeping like-for-like read comparisons honest.
 DEFAULT_ZSTD_LEVEL = 3
 # Dimensions per inner chunk along the band axis.
 #
-# Chunking the band axis is what makes a Matryoshka prefix read cheap: with the whole
-# width in one chunk, reading embeddings[..., :64] still fetches all 128 dimensions and
-# discards half. Splitting it is close to free in bytes -- measured on four real
-# 256x256x128 chunks at zstd-1, every granularity from 64 down to 8 changed stored size
-# by under 0.02%, because the embedding dimensions are effectively decorrelated and the
+# Chunking this axis is what makes a Matryoshka prefix read cheap: with the whole width
+# in one chunk, reading embeddings[..., :64] still fetches all 128 dimensions. Splitting
+# it costs essentially nothing in bytes, since the dimensions are decorrelated and the
 # codec gains nothing from seeing them together.
 #
-# Set to the smallest width the model is actually trained to emit, and no smaller.
-# The 2026-09-01 release candidate finalized Matryoshka at 64, so 64 it is. A finer
-# split buys nothing and costs a request per extra sub-chunk on every read.
-#
-# That last point corrects what this comment used to claim -- that contiguous
-# sub-chunks are coalesced into one request, which made the granularity look free.
-# Measured against the Kenya store with zarr-python 3, a 64-dim read at band_chunk=32
-# issues *two* RangeByteRequests whose byte ranges are exactly adjacent
-# (…start=266977979 end=268044380, then start=268044380 end=269172053). It does not
-# merge them. So granularity is paid for in round trips:
-#
-#   band_chunk   64-dim read            128-dim read           shard index
-#   32           1 index + 2 chunks     1 index + 4 chunks     4,100 B
-#   64           1 index + 1 chunk      1 index + 2 chunks     2,052 B
-#
-# Bytes are identical either way. If a future checkpoint ships trained 32- or 16-dim
-# prefixes, drop this back and re-render: a 32-dim read from a 64-deep store costs the
-# full 4.19 MB rather than 2.10.
+# Set to the smallest width the model is trained to emit, and no smaller. zarr-python
+# does not coalesce adjacent sub-chunk range requests, so a finer split buys no bytes
+# and costs one request per extra sub-chunk on every read. If a checkpoint later ships
+# trained 32- or 16-dim prefixes, lower this and re-render.
 DEFAULT_BAND_CHUNK = 64
 # Chunk size (in elements) for the 1-D x/y coordinate arrays. They are linear ramps
 # so they compress to almost nothing under zstd.

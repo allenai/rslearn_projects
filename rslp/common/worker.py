@@ -158,6 +158,7 @@ def launch_workers(
     extra_env_vars: dict[str, str] | None = None,
     extra_env_secrets: dict[str, str] | None = None,
     idle_timeout: int | None = None,
+    name_prefix: str = "worker",
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -177,9 +178,11 @@ def launch_workers(
             secret (in the target workspace) to read its value from.
         idle_timeout: seconds a worker waits for new work before exiting. Left unset,
             the worker's own default applies. Raise it when a supervisor refills the
-            queue on a cycle: a worker that quits the moment the queue drains has to be
-            relaunched and pay container start again, and the supervisor cannot notice
-            it has gone until its heartbeat goes stale.
+            queue on a cycle, so a worker does not quit the moment the queue drains and
+            have to pay container start again.
+        name_prefix: prefix for each worker's experiment name. Pass a value unique to
+            the run so its launcher can count its own workers by name; the default
+            makes every run's workers indistinguishable.
     """
     if extra_env_vars is None:
         extra_env_vars = {}
@@ -231,7 +234,7 @@ def launch_workers(
                 ),
             )
             unique_id = str(uuid.uuid4())[0:8]
-            beaker.experiment.create(name=f"worker_{unique_id}", spec=spec)
+            beaker.experiment.create(name=f"{name_prefix}_{unique_id}", spec=spec)
 
 
 def write_jobs(

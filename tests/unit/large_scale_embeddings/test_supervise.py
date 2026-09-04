@@ -72,72 +72,54 @@ def test_every_kwarg_the_cycle_reads_is_actually_passed() -> None:
     assert not missing, f"read from kwargs but never packed into it: {missing}"
 
 
-def test_a_worker_never_dies_before_the_supervisor_would_notice() -> None:
-    """`worker_idle_seconds` must be at least `stale_seconds`.
+def test_the_worker_count_is_not_time_based() -> None:
+    """The pool size must be derived from state, not from a startup timer.
 
-    These two are read by different actors and their pairing is the whole defect. A
-    worker exits after `worker_idle_seconds` of finding nothing to claim; the supervisor
-    keeps counting it live until its heartbeat is `stale_seconds` old, and does not top
-    the pool up while it believes the pool is full. Any gap between them is dead time,
-    and the original pairing -- ten seconds against nine hundred -- is what held the
-    predict stage to a 60% duty cycle on the Kenya run.
-
-    Ordering is not enough, so this asserts the bound rather than a strict inequality:
-    setting idle to half of stale would shrink the window without closing it.
+    Counting workers by queue registration misses every worker still starting, so the
+    shortfall gets launched again each cycle and the pool overshoots `num_workers` by
+    however many cycles a container start takes. A timer covering that window only
+    narrows the race: set too short it overshoots anyway, set too long it leaves the
+    pool short whenever a worker dies while starting. `_count_workers` asks Beaker
+    which worker experiments exist and have not finalized, which is exact.
     """
     import importlib
     import inspect
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    defaults = {
-        name: param.default
-        for name, param in inspect.signature(mod.supervise).parameters.items()
-    }
-    idle, stale = defaults["worker_idle_seconds"], defaults["stale_seconds"]
-    assert idle is not None, (
-        "worker_idle_seconds defaults to None, which hands the worker its own "
-        "ten-second timeout and reopens the duty-cycle gap"
-    )
-    assert idle >= stale, (
-        f"worker_idle_seconds ({idle}) is below stale_seconds ({stale}), so a worker "
-        f"can exit up to {stale - idle}s before the supervisor stops counting it live"
-    )
+    params = inspect.signature(mod.supervise).parameters
+    for name in ("worker_startup_seconds", "stale_seconds"):
+        assert name not in params, (
+            f"{name} is back: the worker count is a timer again, so the pool will "
+            "overshoot num_workers whenever a container start outlasts it"
+        )
 
 
-def test_the_startup_window_outlasts_a_cold_image_pull() -> None:
-    """`worker_startup_seconds` must exceed how long a worker takes to register.
+def test_workers_are_named_so_a_run_can_count_its_own() -> None:
+    """Worker names must distinguish one run's workers from another's.
 
-    A worker counts as live only once its container is running and it has registered
-    with the queue. The window is what stops the supervisor relaunching the shortfall
-    in the meantime, so if it is shorter than a cold image pull the pool overshoots
-    `num_workers` anyway, just less often.
-
-    Measured: on a 15.85 GiB image, four of eight workers had not registered twenty
-    minutes after launch. The original 900, chosen to match `stale_seconds` rather than
-    from measurement, turned a request for eight workers into twelve. The bound below
-    is that observation plus headroom, not a round number.
+    The count is a name-prefix match over unfinalized experiments, so a bare
+    `worker_<random>` name would make every concurrent run's workers count toward every
+    other run's target.
     """
     import importlib
-    import inspect
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    window = (
-        inspect.signature(mod.supervise).parameters["worker_startup_seconds"].default
+    mine = mod.worker_name_prefix("user/queue-a")
+    theirs = mod.worker_name_prefix("user/queue-b")
+    assert mine != theirs
+    assert not mine.startswith(theirs) and not theirs.startswith(mine), (
+        "one queue's prefix matches another's, so their worker counts would collide"
     )
-    assert window >= 1800, (
-        f"worker_startup_seconds is {window}s, but a worker has been observed taking "
-        "over 20 minutes to register after launch; the pool will overshoot num_workers"
-    )
+    assert "/" not in mine, "a Beaker experiment name cannot contain a slash"
 
 
-def test_the_cycle_sleep_leaves_room_for_the_cycle() -> None:
-    """`cycle_seconds` is a sleep, not a period, and workers have to outlast the period.
+def test_a_worker_outlasts_the_gap_between_refills() -> None:
+    """A worker must survive until the next cycle can hand it work.
 
     A cycle re-enumerates every tile before it sleeps, so the real interval between
     refills is that work plus `cycle_seconds`, bounded above by `cycle_budget_seconds`
-    because the parent kills a cycle that overruns it. A worker must survive the worst
-    case or the pool empties between refills, which is the same failure the test above
-    guards from the other side.
+    because the parent kills a cycle that overruns. A worker that idles out sooner has
+    to be relaunched and pay container start again.
     """
     import importlib
     import inspect
@@ -147,11 +129,15 @@ def test_the_cycle_sleep_leaves_room_for_the_cycle() -> None:
         name: param.default
         for name, param in inspect.signature(mod.supervise).parameters.items()
     }
+    idle = defaults["worker_idle_seconds"]
+    assert idle is not None, (
+        "worker_idle_seconds defaults to None, which hands the worker its own "
+        "ten-second timeout, so it quits the moment the queue drains"
+    )
     worst_case = defaults["cycle_budget_seconds"] + defaults["cycle_seconds"]
-    assert defaults["worker_idle_seconds"] + defaults["stale_seconds"] >= worst_case, (
-        f"a worker idles out after {defaults['worker_idle_seconds']}s and is counted "
-        f"live for {defaults['stale_seconds']}s more, but a cycle can take up to "
-        f"{worst_case}s to come back round"
+    assert idle >= worst_case, (
+        f"a worker idles out after {idle}s but a cycle can take up to {worst_case}s "
+        "to come back round, so the pool empties between refills"
     )
 
 
