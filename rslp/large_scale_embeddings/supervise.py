@@ -553,7 +553,7 @@ def supervise(
     cycle_seconds: int = 180,
     worker_idle_seconds: int | None = 900,
     stale_seconds: int = 900,
-    worker_startup_seconds: int = 900,
+    worker_startup_seconds: int = 2700,
     claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS,
     cycle_budget_seconds: int = DEFAULT_CYCLE_BUDGET_SECONDS,
     max_cycles: int | None = None,
@@ -641,10 +641,25 @@ def supervise(
         stale_seconds: a worker with no heartbeat for this long counts as dead.
         worker_startup_seconds: how long a launched worker is assumed to be starting up
             and counted toward `num_workers` even though it has not registered with the
-            queue yet. A worker only registers once its container is running, and
-            pulling a multi-gigabyte image takes minutes, so without this the shortfall
-            is relaunched every cycle and the pool overshoots `num_workers` by however
-            many cycles a start takes. Should comfortably exceed a cold container start.
+            queue yet. A worker only registers once its container is running, so without
+            this the shortfall is relaunched every cycle and the pool overshoots
+            `num_workers` by however many cycles a start takes.
+
+            Must exceed a cold image pull, which is the part that is easy to
+            underestimate. This was first set to 900 to match `stale_seconds`, chosen
+            for symmetry rather than measured: on a 15.85 GiB image, four of eight
+            workers were still pulling twenty minutes after launch, so the window
+            expired, the supervisor saw four live and topped up by four, and a request
+            for eight became twelve.
+
+            The cost of setting it too high is the opposite and much cheaper: a worker
+            that dies during startup is not replaced until the window passes, leaving
+            the pool short of target for that long.
+
+            This remains a timer standing in for a fact. Counting worker workloads that
+            have not finalized would be exact, but Beaker worker experiments are named
+            `worker_<random>` with nothing tying them to a queue, so they cannot be
+            attributed to a run without changing how they are named.
         claim_stale_seconds: how long a queue entry's claim is trusted before the
             job is offered again. Must comfortably exceed one job's runtime or live
             work gets duplicated; claims are never released, so it cannot be

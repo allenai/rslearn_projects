@@ -104,6 +104,32 @@ def test_a_worker_never_dies_before_the_supervisor_would_notice() -> None:
     )
 
 
+def test_the_startup_window_outlasts_a_cold_image_pull() -> None:
+    """`worker_startup_seconds` must exceed how long a worker takes to register.
+
+    A worker counts as live only once its container is running and it has registered
+    with the queue. The window is what stops the supervisor relaunching the shortfall
+    in the meantime, so if it is shorter than a cold image pull the pool overshoots
+    `num_workers` anyway, just less often.
+
+    Measured: on a 15.85 GiB image, four of eight workers had not registered twenty
+    minutes after launch. The original 900, chosen to match `stale_seconds` rather than
+    from measurement, turned a request for eight workers into twelve. The bound below
+    is that observation plus headroom, not a round number.
+    """
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    window = (
+        inspect.signature(mod.supervise).parameters["worker_startup_seconds"].default
+    )
+    assert window >= 1800, (
+        f"worker_startup_seconds is {window}s, but a worker has been observed taking "
+        "over 20 minutes to register after launch; the pool will overshoot num_workers"
+    )
+
+
 def test_the_cycle_sleep_leaves_room_for_the_cycle() -> None:
     """`cycle_seconds` is a sleep, not a period, and workers have to outlast the period.
 
