@@ -17,11 +17,12 @@ and so must be written to different stores:
 - `S2`: twelve monthly Sentinel-2 L2A mosaics.
 - `S2_S1`: the above, plus twelve monthly Sentinel-1 RTC mosaics (converted from
   linear intensities to dB).
-- `S2_LANDSAT`: the Sentinel-2 mosaics plus twelve monthly Landsat 8/9 Collection 2
-  Level-1 mosaics, using the 11 bands the encoder's `landsat` modality defines
-  (`B8` at 15 m, then `B1`-`B7`, `B9`-`B11` at 30 m, all resampled onto the window
-  grid). Landsat is sourced from a **requester-pays** GCS bucket, so the reading
-  project is billed; see the operational envelope below.
+- `S2_LANDSAT_DISTILLED`: the Sentinel-2 mosaics plus twelve monthly Landsat 8/9
+  Collection 2 Level-1 mosaics, using the 11 bands the encoder's `landsat` modality
+  defines (`B8` at 15 m, then `B1`-`B7`, `B9`-`B11` at 30 m, all resampled onto the
+  window grid), through the model's 128-dim student head. Landsat is sourced from a
+  **requester-pays** GCS bucket, so the reading project is billed; see the operational
+  envelope below.
 
 The secondary modality is best-effort in both mixed variants: where it is unavailable
 the embeddings are computed from Sentinel-2 alone. Sentinel-2 coverage is required.
