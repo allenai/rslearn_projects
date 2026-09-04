@@ -436,7 +436,7 @@ def launch_supervisor(
     image_name: str,
     cluster: list[str],
     supervise_args: list[str],
-    priority: str = "high",
+    priority: str = "urgent",
     task_name: str = "geozarr-supervisor",
     cpu_count: float = 2,
     memory: str = "8GiB",
@@ -457,8 +457,12 @@ def launch_supervisor(
         supervise_args: arguments forwarded verbatim to the `supervise` workflow, e.g.
             ["--inputs", "S2", "--years", "[2024, 2025]", ...]. Passed through rather
             than re-declared so this launcher never drifts from supervise()'s options.
-        priority: Beaker priority. Losing the supervisor stalls the whole run, so
-            prefer a priority that will not be evicted.
+        priority: Beaker priority. Losing the supervisor stalls the whole run: with
+            it gone nothing refills the queue, nothing replaces a preempted worker,
+            and no preempted worker's job is re-offered, so every later preemption
+            is permanent loss rather than a retry. Defaults to urgent for that
+            reason. "high" is not enough; the rc-9 supervisor ran at high with
+            preemptible=False and was still evicted 12 hours in.
         task_name: name for the Beaker experiment.
         cpu_count: CPUs to request.
         memory: memory to request.
@@ -545,7 +549,7 @@ def supervise(
     pending_per_worker: int = PENDING_PER_WORKER,
     pca_store_url: str | None = None,
     zone_numbers: list[int] | None = None,
-    priority: str = "high",
+    priority: str = "urgent",
     shared_memory: str = "256GiB",
     geojson_fname: str | None = None,
     epsg_code: int | None = None,
@@ -615,7 +619,9 @@ def supervise(
             throughput no matter how many workers run.
         pca_store_url: https base of the UTM PCA store, for listing its keys.
         zone_numbers: UTM zones present in the source.
-        priority: Beaker priority for the workers.
+        priority: Beaker priority for the workers. A preempted worker loses its
+            whole job: there is no intra-job checkpointing, so hours of prediction
+            go with it. Defaults to urgent.
         shared_memory: shared memory to request per worker.
         geojson_fname: limit work to tiles intersecting this WGS84 GeoJSON file.
         epsg_code: limit work to the zone of this UTM EPSG code.

@@ -402,7 +402,7 @@ def launch_run_all(
     image_name: str,
     cluster: list[str],
     run_all_args: list[str],
-    priority: str = "high",
+    priority: str = "urgent",
     task_name: str = "geozarr-run-all",
     cpu_count: float = 2,
     memory: str = "8GiB",
@@ -420,8 +420,9 @@ def launch_run_all(
         run_all_args: arguments forwarded verbatim to the ``run_all`` workflow. Passed
             through rather than re-declared so this launcher never drifts from
             run_all()'s options.
-        priority: Beaker priority. Losing the driver stalls the whole run, so prefer a
-            priority that will not be evicted.
+        priority: Beaker priority. Losing the driver stalls the whole run, so this
+            defaults to urgent. "high" is not enough: the rc-9 supervisor ran at
+            high with preemptible=False and was still evicted 12 hours in.
         task_name: name for the Beaker experiment.
         cpu_count: CPUs to request.
         memory: memory to request.
