@@ -224,7 +224,7 @@ def _any_completion_markers(kwargs: dict[str, Any]) -> bool:
     return False
 
 
-def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
+def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> None:
     """Run one supervision cycle, reporting the remaining job count via `result`.
 
     This runs in a child process so the parent can kill it if a Beaker RPC hangs. It
@@ -234,6 +234,8 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
     Args:
         kwargs: the supervise() arguments this cycle needs.
         result: shared int the remaining-job count is written to.
+        launched: shared int the number of workers launched is written to, so the
+            parent can carry it into the next cycle's liveness count.
     """
     from beaker import Beaker, BeakerJobPriority
 
@@ -361,12 +363,18 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
     # the bulk of a run, where jobs outnumber workers, and dominates a tail resume: four
     # jobs left kept relaunching toward num_workers=32, each surplus worker living long
     # enough only to log "listening for messages" and stop.
+    # A worker counts as live once it registers with the queue, which happens when its
+    # container is up. Pulling a 15 GB image takes minutes, so a worker launched last
+    # cycle is usually invisible to `live` this cycle, and launching the shortfall again
+    # every cycle overshoots num_workers by a factor of however many cycles that takes.
+    # The parent carries recent launches forward for exactly this reason.
+    starting = int(kwargs.get("recently_launched", 0) or 0)
     worker_target = min(num_workers, len(remaining))
-    if live < worker_target:
+    if live + starting < worker_target:
         rslp.common.worker.launch_workers(
             image_name=kwargs["image_name"],
             queue_name=queue_name,
-            num_workers=worker_target - live,
+            num_workers=worker_target - live - starting,
             cluster=kwargs["cluster"],
             gpus=kwargs["gpus"],
             shared_memory=kwargs["shared_memory"],
@@ -394,10 +402,16 @@ def _run_cycle(kwargs: dict[str, Any], result: Any) -> None:
                 ),
             },
         )
+        just_launched = worker_target - live - starting
+        if launched is not None:
+            launched.value = just_launched
         logger.info(
-            "launched %d worker(s) (target %d for %d outstanding job(s))",
-            worker_target - live,
+            "launched %d worker(s) (target %d, %d live, %d still starting, "
+            "%d outstanding job(s))",
+            just_launched,
             worker_target,
+            live,
+            starting,
             len(remaining),
         )
 
@@ -523,6 +537,7 @@ def supervise(
     cycle_seconds: int = 180,
     worker_idle_seconds: int | None = 900,
     stale_seconds: int = 900,
+    worker_startup_seconds: int = 900,
     claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS,
     cycle_budget_seconds: int = DEFAULT_CYCLE_BUDGET_SECONDS,
     max_cycles: int | None = None,
@@ -608,6 +623,12 @@ def supervise(
             the queue is genuinely empty: at the tail of a global run, 128 GPUs for up to
             fifteen minutes, about 32 GPU-hours against the run's 53,000.
         stale_seconds: a worker with no heartbeat for this long counts as dead.
+        worker_startup_seconds: how long a launched worker is assumed to be starting up
+            and counted toward `num_workers` even though it has not registered with the
+            queue yet. A worker only registers once its container is running, and
+            pulling a multi-gigabyte image takes minutes, so without this the shortfall
+            is relaunched every cycle and the pool overshoots `num_workers` by however
+            many cycles a start takes. Should comfortably exceed a cold container start.
         claim_stale_seconds: how long a queue entry's claim is trusted before the
             job is offered again. Must comfortably exceed one job's runtime or live
             work gets duplicated; claims are never released, so it cannot be
@@ -653,6 +674,10 @@ def supervise(
         "wgs84_bounds": wgs84_bounds,
         "worker_idle_seconds": worker_idle_seconds,
         "stale_seconds": stale_seconds,
+        "worker_startup_seconds": worker_startup_seconds,
+        # Overwritten before every cycle from the parent's launch ledger. Packed here
+        # so the dict really does carry everything the cycle reads.
+        "recently_launched": 0,
         "claim_stale_seconds": claim_stale_seconds,
         "stage": stage,
         "artifact_path": artifact_path,
@@ -685,13 +710,25 @@ def supervise(
     seen_work = False
     consecutive_failures = 0
     cycle = 0
+    # (launched_at, count) for workers still within their startup window.
+    recent_launches: list[tuple[float, int]] = []
 
     while max_cycles is None or cycle < max_cycles:
         cycle += 1
         # Typeshed types Value() as SynchronizedBase, which has no .value; the "i"
         # type code makes it a Synchronized[int].
         result: Synchronized[int] = ctx.Value("i", _NO_RESULT)  # type: ignore[assignment]
-        proc = ctx.Process(target=_run_cycle, args=(kwargs, result))
+        launched: Synchronized[int] = ctx.Value("i", 0)  # type: ignore[assignment]
+        # Workers launched recently but not yet registered with the queue. Dropped once
+        # older than worker_startup_seconds, by which point each has either registered
+        # (so `live` sees it) or died (so it should be replaced).
+        recent_launches = [
+            (when, count)
+            for when, count in recent_launches
+            if time.time() - when < worker_startup_seconds
+        ]
+        kwargs["recently_launched"] = sum(count for _, count in recent_launches)
+        proc = ctx.Process(target=_run_cycle, args=(kwargs, result, launched))
         started = time.time()
         proc.start()
         proc.join(cycle_budget_seconds)
@@ -709,6 +746,8 @@ def supervise(
                 proc.join(30)
         elapsed = int(time.time() - started)
         remaining = result.value
+        if launched.value > 0:
+            recent_launches.append((time.time(), launched.value))
 
         if remaining == _NO_RESULT:
             # Killed, crashed, or otherwise did not report. Nothing to conclude about

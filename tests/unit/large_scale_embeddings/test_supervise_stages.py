@@ -246,6 +246,58 @@ def test_worker_launches_use_the_full_count_when_work_is_plentiful(
     assert enqueued["launched"] == 8
 
 
+def test_starting_workers_count_toward_the_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker launched last cycle must not be launched again while it boots.
+
+    `live` counts workers registered with the queue, which only happens once a
+    container is running. Pulling a multi-gigabyte image takes minutes, so a worker
+    launched last cycle is invisible to `live` this cycle. Relaunching the shortfall
+    every cycle overshoots num_workers by however many cycles a start takes: a run
+    asking for 2 workers on a 180s cycle got 8.
+    """
+    _stub_render_jobs(monkeypatch, 50)
+    enqueued = _install_cycle_fakes(monkeypatch)
+    result = _Result()
+    sup._run_cycle(
+        _render_cycle_kwargs(num_workers=8, recently_launched=6), result, _Result()
+    )
+
+    # Six already on their way, so only the remaining two are launched.
+    assert enqueued["launched"] == 2
+
+
+def test_a_full_pool_of_starting_workers_launches_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once the target is accounted for, a cycle launches nothing at all."""
+    _stub_render_jobs(monkeypatch, 50)
+    enqueued = _install_cycle_fakes(monkeypatch)
+    result = _Result()
+    sup._run_cycle(
+        _render_cycle_kwargs(num_workers=8, recently_launched=8), result, _Result()
+    )
+
+    assert enqueued.get("launched", 0) == 0
+
+
+def test_the_cycle_reports_what_it_launched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The parent's ledger is only correct if the cycle reports its launches back.
+
+    The cycle runs in a spawned process, so this shared int is the only channel. Left
+    unset, the parent counts nothing as starting and the overshoot returns.
+    """
+    _stub_render_jobs(monkeypatch, 50)
+    _install_cycle_fakes(monkeypatch)
+    result, launched = _Result(), _Result()
+    sup._run_cycle(_render_cycle_kwargs(num_workers=5), result, launched)
+
+    assert launched.value == 5
+
+
 # ---------------------------------------------------------------- marker detection
 #
 # A remaining count of zero on the first cycle is ambiguous: either the stage is
@@ -370,7 +422,7 @@ def test_supervise_raises_after_repeated_cycle_failures(
     _inline(monkeypatch)
     calls = {"n": 0}
 
-    def never_reports(kwargs, result):
+    def never_reports(kwargs, result, launched=None):
         # Leave result at _NO_RESULT, as a crashed or killed cycle does.
         calls["n"] += 1
 
@@ -389,7 +441,7 @@ def test_a_reporting_cycle_resets_the_failure_streak(
     script = [None, None, 4, None, None]
     seen = {"i": 0}
 
-    def scripted(kwargs, result):
+    def scripted(kwargs, result, launched=None):
         val = script[seen["i"] % len(script)]
         seen["i"] += 1
         if val is not None:
