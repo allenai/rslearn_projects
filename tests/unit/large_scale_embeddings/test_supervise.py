@@ -127,3 +127,42 @@ def test_the_cycle_sleep_leaves_room_for_the_cycle() -> None:
         f"live for {defaults['stale_seconds']}s more, but a cycle can take up to "
         f"{worst_case}s to come back round"
     )
+
+
+def test_workers_always_get_the_gdal_billing_project() -> None:
+    """`supervise` must merge the GDAL worker env, not rely on its caller to.
+
+    The requester-pays USGS Landsat mirror needs GDAL handed a billing project via
+    GS_USER_PROJECT; without it every Landsat read fails with an HTTP 400 that names no
+    variable, and the run carries on producing embeddings with the Landsat inputs
+    missing. Silent degradation, not a crash.
+
+    This lived in `run_all` only, so a supervisor launched directly through
+    `launch_supervisor` skipped it entirely. Five diagnostic runs went out that way.
+    """
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    assert "GS_USER_PROJECT" in mod.DEFAULT_WORKER_ENV_VARS
+    src = inspect.getsource(mod.supervise)
+    assert "DEFAULT_WORKER_ENV_VARS," in src, (
+        "supervise packs worker_env_vars without merging the defaults, so a caller "
+        "that does not pass them launches workers with no billing project"
+    )
+
+
+def test_an_explicit_worker_env_var_still_wins() -> None:
+    """Merging defaults must not stop a caller overriding one.
+
+    The merge order matters: defaults first, caller second. Reversed, a run could not
+    point at a different billing project.
+    """
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    src = inspect.getsource(mod.supervise)
+    i = src.index("DEFAULT_WORKER_ENV_VARS,")
+    j = src.index("(worker_env_vars or {}),")
+    assert i < j, "caller-supplied worker_env_vars must be spread after the defaults"

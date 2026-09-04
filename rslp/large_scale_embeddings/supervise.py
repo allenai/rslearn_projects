@@ -125,6 +125,22 @@ def _state_name(entry: Any) -> str:
 #
 # Sized well above a job: a predict job at job_size 8192 runs ~25 min, so 90 minutes only
 # re-offers work whose worker is almost certainly gone.
+# GDAL environment every worker needs, merged in below so it cannot be forgotten.
+#
+# GS_USER_PROJECT is required for the Landsat reads: olmoearth_shared's
+# rasterio_session_for_path honours requester_pays only for S3, returning a bare
+# GSSession() for GCS, so the requester-pays USGS mirror needs GDAL handed a billing
+# project this way. Omitting it fails minutes in, after the image pull and the dataset
+# prepare, with an HTTP 400 that names no variable.
+#
+# This lives here rather than in full_run because supervise is what launches workers.
+# full_run merged it and launch_supervisor did not, so every run started directly from
+# the supervisor read Landsat without a billing project and silently produced
+# embeddings with the Landsat inputs missing.
+DEFAULT_WORKER_ENV_VARS = {
+    "GS_USER_PROJECT": "earthsystem-dev-c3po",
+}
+
 DEFAULT_CLAIM_STALE_SECONDS = 5400
 
 
@@ -651,7 +667,12 @@ def supervise(
         "datasets_token_secret": datasets_token_secret,
         "aws_key_id_secret": aws_key_id_secret,
         "aws_secret_key_secret": aws_secret_key_secret,
-        "worker_env_vars": worker_env_vars,
+        # Merged so an explicit value wins but the GDAL defaults are never simply
+        # forgotten, whichever entry point started this supervisor.
+        "worker_env_vars": {
+            **DEFAULT_WORKER_ENV_VARS,
+            **(worker_env_vars or {}),
+        },
         "num_workers": num_workers,
         "gpus": gpus,
         "job_size": job_size,

@@ -25,6 +25,9 @@ from .predict_pipeline import EmbeddingInputs
 from .render_pca import annotate_pca_store, get_render_jobs
 from .render_web_pca import get_web_jobs, init_web_store
 from .supervise import (
+    DEFAULT_WORKER_ENV_VARS as SUPERVISE_WORKER_ENV_VARS,
+)
+from .supervise import (
     STAGE_PREDICT,
     STAGE_RENDER_UTM_PCA,
     STAGE_RENDER_WEB_PCA,
@@ -71,9 +74,9 @@ WEB_CYCLE_SECONDS = 120
 # drains in under three minutes and a predict queue does not.
 WEB_WORKER_IDLE_SECONDS = 900
 
-DEFAULT_WORKER_ENV_VARS = {
-    "GS_USER_PROJECT": "earthsystem-dev-c3po",
-}
+# Re-exported from supervise, which now owns it: the merge has to happen where workers
+# are launched, or it is skipped by every entry point that is not this one.
+DEFAULT_WORKER_ENV_VARS = SUPERVISE_WORKER_ENV_VARS
 
 
 def run_all(
