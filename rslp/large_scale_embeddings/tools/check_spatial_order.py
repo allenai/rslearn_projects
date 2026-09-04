@@ -2,50 +2,31 @@
 
 Why this exists
 ---------------
-olmoearth_pretrain commit d3e0941 reshaped the model's output registers from
-``[B, HxW, d]`` to ``[B, H, W, d]``, for both the ``registers`` and
-``projected_registers`` keys. The 2026-09-01 release candidate
-(``..._stunorm_mlpgram1``, training ref ``b6324ded``) contains that commit; the
-image last built here, from ``72ba0a8e``, does not.
-
-Nothing in this repo touches those keys, so the reshape is absorbed upstream in
-the model wrapper. That is what makes it dangerous: if the wrapper flattens on
-the wrong layout, embeddings land on the wrong pixels while the store stays
-healthy by every check normally run. Markers appear, byte counts match, and a
-dequantized vector still has L2 norm near 1.0, because a scrambled image is
-still a valid image.
+The model wrapper flattens the encoder's output registers, and the register layout has
+changed upstream (``[B, HxW, d]`` to ``[B, H, W, d]``). Flattening on the wrong layout
+puts embeddings on the wrong pixels while the store stays healthy by every check
+normally run: markers appear, byte counts match, and a dequantized vector still has L2
+norm near 1.0, because a scrambled image is still a valid image.
 
 What this checks, and what it does not
 --------------------------------------
-Embeddings of neighbouring ground are strongly correlated and decorrelate with
-distance. Measured on the Kenya run at 64 dims, mean cosine runs 0.964 at 10 m,
-0.855 at 40 m, 0.626 at 640 m and 0.403 at 2 km. A flattening error destroys
-that: adjacent pixels become arbitrary pairs and the near-field collapses toward
-the far-field value.
+Embeddings of neighbouring ground are strongly correlated and decorrelate with distance.
+A flattening error destroys that: adjacent pixels become arbitrary pairs and the near
+field collapses toward the far field. So this catches scrambling, the catastrophic case,
+and needs no knowledge of what is on the ground.
 
-So this catches scrambling, which is the catastrophic case, and it needs no
-knowledge of what is on the ground.
-
-It does **not** catch a pure height/width transpose. A transpose preserves
-autocorrelation magnitude, it only swaps the axes, and our windows and crops are
-square so the reshape would not even error. Catching that needs external
-geometry: render a PCA tile over satellite imagery and look, which the explorer
-already does and where a transposed store is obvious immediately.
-
-An earlier version of this module used water as ground truth, asserting that two
-lake pixels must resemble each other more than lake resembles land. It failed on
-a known-good store, because the coordinates chosen were not reliably open water
-and because the cosine baseline between unit vectors is high enough (0.3 to 0.5)
-that land-cover priors are a weak signal. Autocorrelation is the stronger
-invariant and needs no priors at all.
+It does **not** catch a pure height/width transpose, which preserves autocorrelation and
+only swaps the axes; windows and crops are square, so the reshape would not even error.
+Catching that needs external geometry: render a PCA tile over imagery and look, or use
+``check_zone_agreement`` below.
 
 Usage
 -----
     python -m rslp.large_scale_embeddings.tools.check_spatial_order
         --store_path https://.../embeddings.zarr --zone utm36
 
-The store reads anonymously over https, which is worth preferring here: gcloud
-credentials expire often and this check should not fail for that reason.
+The store reads anonymously over https, worth preferring here because gcloud credentials
+expire often and this check should not fail for that reason.
 """
 
 import numpy as np
@@ -61,15 +42,12 @@ NODATA = -128
 # field the near field is compared against.
 SEPARATIONS = (1, 2, 4, 8, 16, 32, 64, 128)
 
-# The near-field value carries the test. A correct store measures 0.96 to 0.98
-# between adjacent pixels; a scrambled one collapses to its far-field value,
-# which is 0.4 to 0.7 depending on terrain. 0.90 sits well clear of both.
+# The near-field value carries the test. A correct store measures 0.96 to 0.98 between
+# adjacent pixels; a scrambled one collapses to its far-field value of 0.4 to 0.7.
 MIN_NEAR = 0.90
-# The gap only guards the degenerate case where every pixel is identical, which
-# would pass MIN_NEAR with a perfect 1.0. Kept loose on purpose: homogeneous
-# ground decorrelates slowly and that is not a defect. Two real patches from the
-# Kenya run measured gaps of 0.415 and 0.259, so a 0.25 bound would have failed
-# a healthy store over nothing more than flat terrain.
+# Guards only the degenerate case where every pixel is identical, which would pass
+# MIN_NEAR with a perfect 1.0. Kept loose: homogeneous ground decorrelates slowly and
+# that is not a defect.
 MIN_GAP = 0.10
 
 
@@ -183,10 +161,8 @@ def check_spatial_order(
     return decay
 
 
-# Cross-zone agreement measured on the Kenya run at 12 points in the utm36/utm37
-# overlap: mean 0.9844, min 0.9699. 0.90 leaves headroom for genuine resampling
-# differences at the seam while sitting far above the ambient similarity between
-# unrelated ground, which the decay measurement puts at 0.4 to 0.7.
+# Leaves headroom for genuine resampling differences at a zone seam while sitting far
+# above the ambient similarity between unrelated ground, which is 0.4 to 0.7.
 MIN_CROSS_ZONE = 0.90
 
 

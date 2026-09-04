@@ -53,25 +53,16 @@ logger = get_logger(__name__)
 # cycle interval the throughput ceiling regardless of worker count.
 WEB_PENDING_PER_WORKER = 64
 
-# Supervisor cycle length for the web stage, overriding supervise's 900s default. That
-# default is sized for predict, whose jobs run tens of minutes. A web shard takes a few
-# seconds, so 32 workers drain a full 2,048-job queue in under three minutes and then
-# idle out the rest of the cycle: measured at 900s the stage ran ~18% of the time and
-# the interval, not the worker count, set throughput. Depth alone cannot fix it, since
-# enqueueing is rate-limited to ~17 entries/s; the interval has to come down too.
+# Supervisor cycle length for the web stage. The default is sized for predict, whose
+# jobs run tens of minutes; a web shard takes seconds, so a full pool drains the queue
+# in minutes and then idles, making the interval rather than the worker count set
+# throughput. Queue depth alone cannot fix it, since enqueueing is rate-limited.
 WEB_CYCLE_SECONDS = 120
 
-# How long a web worker waits for more work before exiting. It must exceed the cycle
-# interval above, or the pool dies between refills: measured on the Kenya rebuild, the
-# ten-second default had all 32 workers quit within seconds of draining the queue, and
-# the supervisor then counted them as live for another fifteen minutes, so a three-minute
-# burst of work was followed by a fifteen-minute gap. These workers hold no GPU, so
-# waiting costs almost nothing next to paying container start again.
-#
-# This now equals supervise's own default, which was raised off None once the same defect
-# was found to cost the predict stage 40% of its wall clock. Kept explicit anyway: the
-# value is load-bearing for this stage in a way it is not elsewhere, since a web queue
-# drains in under three minutes and a predict queue does not.
+# How long a web worker waits for more work before exiting. Must exceed the cycle
+# interval above, or the pool dies between refills. These workers hold no GPU, so
+# waiting costs almost nothing next to paying container start again. Kept explicit
+# because the value is load-bearing for this stage in a way it is not elsewhere.
 WEB_WORKER_IDLE_SECONDS = 900
 
 # Re-exported from supervise, which now owns it: the merge has to happen where workers
@@ -421,16 +412,14 @@ def launch_run_all(
             through rather than re-declared so this launcher never drifts from
             run_all()'s options.
         priority: Beaker priority. Losing the driver stalls the whole run, so this
-            defaults to urgent. "high" is not enough: the rc-9 supervisor ran at
-            high with preemptible=False and was still evicted 12 hours in.
+            defaults to urgent.
         task_name: name for the Beaker experiment.
         cpu_count: CPUs to request.
         memory: memory to request.
         gpu_count: GPUs to request; 0 unless the cluster only schedules by GPU slot.
-        preemptible: whether the driver may be preempted. Defaults to True for the
-            same reason as the supervisor: Beaker replaces a preempted preemptible
-            task and abandons a non-preemptible one, so False makes preemption
-            terminal for the one process whose loss stops everything.
+        preemptible: whether the driver may be preempted. Defaults to True: Beaker
+            replaces a preempted preemptible task and abandons a non-preemptible one,
+            so False makes preemption terminal.
 
     Returns:
         the created Beaker experiment's ID.

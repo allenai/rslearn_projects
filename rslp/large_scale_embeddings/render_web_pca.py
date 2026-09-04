@@ -2,39 +2,29 @@
 
 Why this exists
 ---------------
-The PCA store is a visualization artifact -- its own ``geoemb:note`` says its bands are
-not features -- and its only consumer is a web map. Inheriting the embeddings' UTM
-layout costs that consumer dearly:
+The PCA store is a visualization artifact and its only consumer is a web map, so the
+embeddings' UTM layout costs that consumer dearly:
 
-* a view spanning two UTM zones cannot be drawn at all without client-side reprojection,
-  which is why Kenya reads as two separate areas rather than one country;
-* every UTM pyramid level keeps ``shard == one prediction window``, so a level's shard
-  covers the same 20.48 km of ground no matter how coarse it is. Downsampling happens
-  inside a window and never across windows, so the *object count* for a given extent is
-  identical at every level. A full-extent Kenya view reads ~3,900 objects at level 0 and
-  still ~3,900 at the coarsest level.
+* a view spanning two UTM zones cannot be drawn without client-side reprojection;
+* every UTM pyramid level keeps ``shard == one prediction window``, so downsampling
+  happens inside a window and never across windows, and the object count for a given
+  extent is identical at every level.
 
 Here the grid is EPSG:3857 on the standard XYZ scheme, so a level *is* a web-map zoom
-and a shard is a fixed 2048 px regardless of level. Ground coverage therefore doubles
-per level and object count falls 4x, which is what a pyramid is supposed to do.
+and a shard is a fixed 2048 px regardless of level. Ground coverage doubles per level
+and object count falls 4x, which is what a pyramid is supposed to do.
 
-What it costs
--------------
-Mercator samples uniformly in the projected plane, so holding ground resolution costs
-sec^2(latitude) in pixels: nothing at the equator, ~2.2x at Seattle, ~2.5x weighted over
-global land. Against a PCA layer measured at 3.6% of the embeddings, that is a few
-percent of the archive to remove an entire class of problem.
+The cost is that mercator samples uniformly in the projected plane, so holding ground
+resolution costs sec^2(latitude) in pixels. Against a PCA layer that is a few percent
+of the archive, that is cheap for removing an entire class of problem.
 
 Ordering matters
 ----------------
 PCA is applied per-pixel to unresampled embeddings, then the RGB is reprojected here.
-The reverse -- resampling 128-d int8 vectors and then projecting -- would interpolate
-embeddings, which is not a meaningful operation. So this stage reads ``pca_v1.zarr``,
-never ``embeddings.zarr``, and the embeddings are left in UTM at 10 m untouched as the
-analysis-grade path.
-
-One consequence to state plainly: after this stage the visualization pixels no longer
-align 1:1 with embedding pixels.
+The reverse would interpolate embeddings, which is not a meaningful operation. So this
+stage reads the PCA store, never ``embeddings.zarr``, and the embeddings stay in UTM at
+10 m as the analysis-grade path. One consequence to state plainly: after this stage the
+visualization pixels no longer align 1:1 with embedding pixels.
 """
 
 import json

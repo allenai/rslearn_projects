@@ -1,28 +1,22 @@
 """Fit and apply a global PCA basis for false-color RGB rendering of embeddings.
 
-The RGB layer exists to be served to map clients, so its colors must mean the same
-thing everywhere. That is the whole design constraint: both the basis and the
-normalization bounds have to be global, otherwise the same color encodes different
-things in different places.
+The RGB layer is served to map clients, so its colors must mean the same thing
+everywhere. That is the whole design constraint: both the basis and the normalization
+bounds have to be global, or the same color encodes different things in different
+places.
 
-Methodology follows the one settled on in olmoearth_run's embedding PCA artifact:
+Methodology follows olmoearth_run's embedding PCA artifact: three components mapped to
+RGB, fitted incrementally on a random sample of valid pixels, with per-component
+2nd/98th percentile bounds computed on the transformed fit sample and applied globally
+at render time. Two deliberate deviations:
 
-- three components, mapped to RGB;
-- fitted incrementally on a random sample of valid pixels;
-- per-component 2nd/98th percentile normalization bounds computed on the transformed
-  fit sample, and applied globally at render time.
-
-Two deliberate deviations from that implementation:
-
-1. The artifact is stored as ``.npz`` (mean, components, bounds) plus JSON metadata,
-   rather than a pickled scikit-learn estimator. Projection is three dot products, so
-   there is no reason to couple a multi-terabyte archive to a pickle protocol or an
-   sklearn version.
-2. The fit sample is drawn from the GeoZarr archive itself, stratified across UTM
-   zones. This matters: a basis fitted on one region does not transfer. Measured on
-   real blocks from this store, a Washington-fitted basis captured 69.5% of
-   Washington's variance but only 3.0% of Ukraine's, and per-region normalization
-   bounds were nearly disjoint. Sampling must therefore span zones, not just tiles.
+1. The artifact is ``.npz`` (mean, components, bounds) plus JSON metadata rather than a
+   pickled scikit-learn estimator. Projection is three dot products, so there is no
+   reason to couple a multi-terabyte archive to a pickle protocol or an sklearn version.
+2. The fit sample is drawn from the archive itself, stratified across UTM zones. A basis
+   fitted on one region does not transfer: fitting on one region and applying it to a
+   distant one captures a small fraction of the variance, and the normalization bounds
+   come out nearly disjoint. Sampling must span zones, not just tiles.
 
 Expectation setting: three components capture roughly 21-40% of local variance for
 128-dimensional embeddings. This is a visualization of the embeddings, not a

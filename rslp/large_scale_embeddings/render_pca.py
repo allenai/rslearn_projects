@@ -1,30 +1,24 @@
 """Step 3 of the embedding flow: render the false-color pyramid.
 
-The flow is three ordered steps, each depending on the previous one's output:
+``predict`` writes the int8 embeddings, ``fit_pca`` fits a global basis on exactly the
+data it will be applied to, and this module reads the embeddings back and writes the
+multiscale ``pca_rgb`` pyramid into a separate store.
 
-1. ``predict`` writes the int8 embeddings into the GeoZarr archive.
-2. ``fit_pca`` samples that archive and fits the global basis, so the basis is fitted
-   on exactly the data it will be applied to.
-3. ``render_pca`` (this module) reads the embeddings back and writes the multiscale
-   ``pca_rgb`` pyramid into a **separate** store.
+It is separate from step 1 because the basis cannot exist until step 1 has produced data
+to fit on, and because it is cheap: no model, no GPU, just a read, three dot products
+per pixel, and a write, so it runs on ordinary CPU workers.
 
-Step 3 is deliberately separate from step 1 because the basis cannot exist until step 1
-has produced data to fit on. It is also the cheap step: no model, no GPU, just a read,
-three dot products per pixel, and a write. That means it runs on ordinary CPU workers
-instead of competing for GPU capacity.
+The output is a sibling store rather than another array in the embeddings store, so the
+basis can be refit without touching the source and two renders can coexist during a
+cutover. Put the basis version in its path.
 
-The output is a sibling store rather than another array inside the embeddings store, so
-the basis can be refit without touching the source and two renders can exist side by
-side while a cutover completes. Put the basis version in its path.
+The pyramid is what makes the store directly servable: a client picks a level by zoom
+and reads a bounded number of chunks at any extent. Every level keeps one shard per
+window footprint, so a window is still a whole object owned by a single writer and
+concurrent renders of disjoint windows need no locking.
 
-The pyramid is what makes the store directly servable: a client picks a level by zoom and
-reads a bounded number of chunks at any extent, instead of pulling a whole view at 10 m.
-Every level keeps one shard per window footprint, so a window is still a whole object
-owned by a single writer and concurrent renders of disjoint windows need no locking.
-
-Work is enumerated from step 1's completion markers rather than by re-running the land
-and wedge filters. Each marker lists exactly the windows that were written, so step 3
-covers precisely step 1's output with no risk of the two disagreeing.
+Work is enumerated from step 1's completion markers, each of which lists exactly the
+windows that were written, so this stage covers precisely step 1's output.
 """
 
 import json

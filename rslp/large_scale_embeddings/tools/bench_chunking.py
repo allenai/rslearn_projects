@@ -2,51 +2,30 @@
 
 Why this exists
 ---------------
-The store fixes three things and two of them are not evidence-based. The shard is
-pinned at 2048 px by the write path: one prediction window writes one object, which is
-what makes concurrent writes safe without locking, so it is not a free parameter unless
-that changes. The chunk's two dimensions are free, and today's values were chosen thinly:
-
-- ``DEFAULT_CHUNK_SIZE = 256`` came from one comparison against 512 on one access
-  pattern. 128 and 1024 were never tried.
-- ``DEFAULT_BAND_CHUNK = 64`` is well founded, but only for bytes. It matches the width
-  the model is trained to emit, so one chunk is one usable vector. What it costs in
-  requests and index size at other depths has been computed, never measured.
-
-This module measures both axes against real access patterns on real data, so the choice
-stops being an argument and becomes a table.
+The shard is pinned at 2048 px by the write path: one prediction window writes one
+object, which is what makes concurrent writes safe without locking. The chunk's two
+dimensions are free, and today's values were chosen thinly -- ``DEFAULT_CHUNK_SIZE``
+from one comparison on one access pattern, ``DEFAULT_BAND_CHUNK`` from byte counts
+alone. This measures both axes against real access patterns on real data.
 
 What it does not measure, on purpose
 ------------------------------------
-The zoomed-out continental view is not in here. That read is served by the PCA pyramid
-in ``pca_v1.zarr``, whose levels exist precisely so a wide extent touches a bounded
-number of chunks; asking ``embeddings.zarr`` for a continent is not an access pattern
-anyone should have. Benchmarking it here would produce a large number that argues for a
-chunk shape nothing needs.
-
-Compression level is also fixed, at the ``DEFAULT_ZSTD_LEVEL`` the store now uses. It was
-settled offline by recompressing real chunks (see the table in ``zarr_store.py``), and
-mixing it into this sweep would triple the write cost to re-confirm a known answer. One
-control variant carries the old level so the in-situ number can be checked against the
-offline one.
+The zoomed-out continental view, which is served by the PCA pyramid rather than by
+``embeddings.zarr``; benchmarking it would argue for a chunk shape nothing needs.
+Compression level is also held at ``DEFAULT_ZSTD_LEVEL``, with one control variant at
+the old level so the in-situ number can be checked against the offline one.
 
 The design
 ----------
 Prediction is not re-run. A block of finished shards is read out of an existing store
 once and rewritten into one variant store per chunk shape, so every variant holds
-byte-identical embeddings and the only difference between them is layout. That makes the
-comparison clean and makes the whole experiment cost a rewrite rather than a run.
+byte-identical embeddings and the only difference is layout.
 
-Area: ``BLOCK_SHARDS`` squared shards, 3 x 3 by default, which is 6,144 px or 61.44 km
-on a side. Three is the smallest number that is actually meaningful here, for two
-reasons. The 20 km AOI pattern is exactly one shard wide, so at 2 x 2 it can only be
-placed shard-aligned or corner-straddling, and at 3 x 3 there is also a centre shard
-fully surrounded by written neighbours, which is the ordinary case in a global store. And
-a single shard's compression ratio varies with its terrain, so a one-shard measurement
-would report that terrain rather than the layout.
-
-Reads are placed deliberately off-alignment. A benchmark that happens to align every
-read to a chunk boundary flatters large chunks, and no real AOI is drawn that way.
+``BLOCK_SHARDS`` squared shards, 3 x 3 by default. Three is the smallest meaningful
+size: it gives a centre shard fully surrounded by written neighbours, and it averages
+over enough terrain that the result reports layout rather than one shard's content.
+Reads are placed deliberately off-alignment, since a benchmark that aligns every read
+to a chunk boundary flatters large chunks and no real AOI is drawn that way.
 
 Usage
 -----
@@ -57,9 +36,8 @@ Usage
     python -m rslp.main large_scale_embeddings bench_measure \
         --out_prefix gs://BUCKET/bench/chunking_v1
 
-Build is the expensive half: 4.8 GB of array per variant, 17 variants, so about 55 GB
-written and roughly an hour of one core per variant in compression. It parallelises over
-variants trivially, one process each. Measure is cheap and can be re-run freely.
+Build is the expensive half and parallelises over variants, one process each. Measure
+is cheap and can be re-run freely.
 """
 
 import json

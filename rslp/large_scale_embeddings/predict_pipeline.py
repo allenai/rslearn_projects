@@ -93,13 +93,10 @@ OUTPUT_LAYER = "output"
 # before any dataset is materialized.
 EMBEDDING_DIM = 128
 
-# These pool sizes are the long-standing default and are known to work. Scaling them
-# down to the job's window count was tried once and reverted, but on bad evidence (a
-# mismeasured elapsed time), so treat that as untested rather than disproven. If you
-# revisit it, note that materialize parallelizes over window x item-group units --
-# each window pulls 12 monthly mosaics, so a 12-window job is ~144 units, not 12 --
-# so sizing a pool by window count alone would under-parallelize. Measure completion
-# rate over several job durations before concluding anything.
+# These pool sizes are the long-standing default and are known to work. If you try
+# sizing them to the job instead, note that materialize parallelizes over
+# window x item-group units, not windows: each window pulls one mosaic per month, so
+# sizing a pool by window count alone would under-parallelize.
 MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
     disabled_layers=[],
     # Use initial job for prepare since it involves caching steps that should only be
@@ -156,13 +153,9 @@ def _get_model_extra_args(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
-        batch_size: crops per batch, or None to keep the config's value.
-
-            This is the GPU-memory knob. Crops are tiny, so the config batches many of
-            them for throughput, but a tile carrying every monthly input has far more
-            channels per crop and the same batch no longer fits. Batching only groups
-            independent crops, so a smaller batch changes footprint and speed, never
-            the embeddings.
+        batch_size: crops per batch, or None to keep the config's value. This is the
+            GPU-memory knob: batching only groups independent crops, so changing it
+            affects footprint and speed, never the embeddings.
 
     Returns:
         list of arguments to pass to rslearn model predict.
@@ -464,10 +457,8 @@ def predict_pipeline(
         overlap_size: overlap in pixels between adjacent crops, to mitigate embedding
             seams at crop boundaries.
         compile_model: whether to compile the encoder transformer blocks.
-        batch_size: crops per batch, or None to keep the config's value. Lower it
-            for a tile whose full monthly input stack will not fit in GPU memory;
-            batching groups independent crops, so this changes footprint and
-            speed, never the embeddings.
+        batch_size: crops per batch, or None to keep the config's value. Lower it for
+            a tile whose input stack will not fit in GPU memory.
         scratch_path: optional directory to store the scratch rslearn dataset in
             directly, and keep it afterward (useful for debugging). By default, a
             temporary directory is used and deleted when the tile is done.

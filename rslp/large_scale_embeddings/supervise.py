@@ -464,12 +464,9 @@ def launch_supervisor(
         supervise_args: arguments forwarded verbatim to the `supervise` workflow, e.g.
             ["--inputs", "S2", "--years", "[2024, 2025]", ...]. Passed through rather
             than re-declared so this launcher never drifts from supervise()'s options.
-        priority: Beaker priority. Losing the supervisor stalls the whole run: with
-            it gone nothing refills the queue, nothing replaces a preempted worker,
-            and no preempted worker's job is re-offered, so every later preemption
-            is permanent loss rather than a retry. Defaults to urgent for that
-            reason. "high" is not enough; the rc-9 supervisor ran at high with
-            preemptible=False and was still evicted 12 hours in.
+        priority: Beaker priority. With no supervisor nothing refills the queue and no
+            preempted worker's job is re-offered, so every later preemption becomes
+            permanent loss rather than a retry. Defaults to urgent for that reason.
         task_name: name for the Beaker experiment.
         cpu_count: CPUs to request.
         memory: memory to request.
@@ -477,16 +474,11 @@ def launch_supervisor(
             GPU clusters a 0-GPU task may never be scheduled (slots are counted
             in GPUs), so requesting 1 is sometimes the only way to place it
             alongside the workers. Wasteful; prefer 0 where it schedules.
-        preemptible: whether the supervisor itself may be preempted. Defaults to
-            True, which reads backwards but is the safe setting: Beaker mints a
-            replacement job for a preempted *preemptible* task and does not for a
-            non-preemptible one, so False makes preemption terminal. The rc-9
-            supervisor died exactly that way, as the only component of the run
-            that could not come back, while its preemptible workers were replaced
-            up to seven times each. Non-preemptible buys a minimum-runtime floor
-            (8h for rc-9, which ran 12h13m) and nothing after it. Restarting is
-            safe: the supervisor re-reads completion markers and refills, so it
-            holds no state a restart would lose.
+        preemptible: whether the supervisor itself may be preempted. Defaults to True,
+            which reads backwards but is the safe setting: Beaker replaces a preempted
+            preemptible task and abandons a non-preemptible one, so False makes
+            preemption terminal. Non-preemptible buys only a minimum-runtime floor.
+            Restarting is safe, since the supervisor holds no state a restart loses.
 
     Returns:
         the created Beaker experiment's ID.
@@ -632,9 +624,8 @@ def supervise(
             throughput no matter how many workers run.
         pca_store_url: https base of the UTM PCA store, for listing its keys.
         zone_numbers: UTM zones present in the source.
-        priority: Beaker priority for the workers. A preempted worker loses its
-            whole job: there is no intra-job checkpointing, so hours of prediction
-            go with it. Defaults to urgent.
+        priority: Beaker priority for the workers. A preempted worker loses its whole
+            job, since there is no intra-job checkpointing. Defaults to urgent.
         shared_memory: shared memory to request per worker.
         geojson_fname: limit work to tiles intersecting this WGS84 GeoJSON file.
         epsg_code: limit work to the zone of this UTM EPSG code.

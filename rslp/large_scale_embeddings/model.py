@@ -119,18 +119,13 @@ class PredictHeartbeat(Callback):
     """Log prediction progress periodically, so a slow job is not mistaken for a hung one.
 
     Lightning's progress bar writes with carriage returns and reaches a container log
-    only when it happens to flush, which for these jobs is once every twenty or thirty
-    minutes. Between flushes the log is completely silent, and a job that is working
-    normally is indistinguishable from one that has deadlocked.
-
-    That ambiguity is expensive. A run was declared hung and killed four times on the
-    strength of silence alone; every one of those jobs was in fact predicting, and the
-    evidence only surfaced when one was left alone long enough to print a second
-    progress line thirty minutes later. A timestamped line at a known interval removes
-    the ambiguity: if the interval passes with no line, the job really is stuck.
+    only when it flushes, which for these jobs is once every twenty or thirty minutes.
+    Between flushes a healthy job is indistinguishable from a deadlocked one, so log
+    silence cannot be used as a stall signal. A timestamped line at a known interval
+    can: if the interval passes with no line, the job really is stuck.
 
     Logged rather than printed, so it carries the timestamp and logger name the rest of
-    the pipeline's output has, and interleaves with it in the container log.
+    the pipeline's output has.
     """
 
     def __init__(
