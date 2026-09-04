@@ -407,7 +407,7 @@ def launch_run_all(
     cpu_count: float = 2,
     memory: str = "8GiB",
     gpu_count: int = 0,
-    preemptible: bool = False,
+    preemptible: bool = True,
 ) -> str:
     """Launch :func:`run_all` as a CPU-only Beaker job.
 
@@ -427,8 +427,10 @@ def launch_run_all(
         cpu_count: CPUs to request.
         memory: memory to request.
         gpu_count: GPUs to request; 0 unless the cluster only schedules by GPU slot.
-        preemptible: whether the driver may be preempted. Defaults to False; it is
-            cheap and losing it stops all progress.
+        preemptible: whether the driver may be preempted. Defaults to True for the
+            same reason as the supervisor: Beaker replaces a preempted preemptible
+            task and abandons a non-preemptible one, so False makes preemption
+            terminal for the one process whose loss stops everything.
 
     Returns:
         the created Beaker experiment's ID.

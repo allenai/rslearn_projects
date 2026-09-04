@@ -441,7 +441,7 @@ def launch_supervisor(
     cpu_count: float = 2,
     memory: str = "8GiB",
     gpu_count: int = 0,
-    preemptible: bool = False,
+    preemptible: bool = True,
 ) -> str:
     """Launch `supervise` as a CPU-only Beaker job so a run outlives any one session.
 
@@ -471,7 +471,15 @@ def launch_supervisor(
             in GPUs), so requesting 1 is sometimes the only way to place it
             alongside the workers. Wasteful; prefer 0 where it schedules.
         preemptible: whether the supervisor itself may be preempted. Defaults to
-            False; the supervisor is cheap and losing it stops all progress.
+            True, which reads backwards but is the safe setting: Beaker mints a
+            replacement job for a preempted *preemptible* task and does not for a
+            non-preemptible one, so False makes preemption terminal. The rc-9
+            supervisor died exactly that way, as the only component of the run
+            that could not come back, while its preemptible workers were replaced
+            up to seven times each. Non-preemptible buys a minimum-runtime floor
+            (8h for rc-9, which ran 12h13m) and nothing after it. Restarting is
+            safe: the supervisor re-reads completion markers and refills, so it
+            holds no state a restart would lose.
 
     Returns:
         the created Beaker experiment's ID.
