@@ -7,11 +7,17 @@ square root, scaled to the int8 range, and rounded. The value -128 is never prod
 by the quantizer; it is reserved as the nodata value in the output GeoTIFFs.
 """
 
+import time
 from typing import Any
 
 import torch
+from lightning.pytorch.callbacks import Callback
 from rslearn.models.component import FeatureMaps, Predictor
 from rslearn.train.model_context import ModelContext, ModelOutput
+
+from rslp.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 QUANTIZE_POWER = 2.0
 QUANTIZE_SCALE = 127.5
@@ -107,3 +113,92 @@ class QuantizedEmbeddingHead(Predictor):
             outputs=quantize_embeddings(features),
             loss_dict={"loss": 0},
         )
+
+
+class PredictHeartbeat(Callback):
+    """Log prediction progress periodically, so a slow job is not mistaken for a hung one.
+
+    Lightning's progress bar writes with carriage returns and reaches a container log
+    only when it happens to flush, which for these jobs is once every twenty or thirty
+    minutes. Between flushes the log is completely silent, and a job that is working
+    normally is indistinguishable from one that has deadlocked.
+
+    That ambiguity is expensive. A run was declared hung and killed four times on the
+    strength of silence alone; every one of those jobs was in fact predicting, and the
+    evidence only surfaced when one was left alone long enough to print a second
+    progress line thirty minutes later. A timestamped line at a known interval removes
+    the ambiguity: if the interval passes with no line, the job really is stuck.
+
+    Logged rather than printed, so it carries the timestamp and logger name the rest of
+    the pipeline's output has, and interleaves with it in the container log.
+    """
+
+    def __init__(
+        self, every_n_batches: int = 50, every_n_seconds: float = 120.0
+    ) -> None:
+        """Set the heartbeat interval.
+
+        Whichever bound is reached first triggers a line, because batch time varies by
+        more than an order of magnitude with crop size and modality count: a batch
+        interval alone goes quiet on slow batches, and a time interval alone floods the
+        log on fast ones.
+
+        Args:
+            every_n_batches: log at least this often in batches.
+            every_n_seconds: log at least this often in seconds.
+        """
+        super().__init__()
+        self.every_n_batches = every_n_batches
+        self.every_n_seconds = every_n_seconds
+        self._started = 0.0
+        self._last_logged = 0.0
+        self._last_batch = 0
+
+    def on_predict_start(self, trainer: Any, pl_module: Any) -> None:
+        """Mark the start so the first line reports a real rate.
+
+        Args:
+            trainer: the Lightning trainer.
+            pl_module: the Lightning module.
+        """
+        self._started = self._last_logged = time.time()
+        self._last_batch = 0
+
+    def on_predict_batch_end(
+        self,
+        trainer: Any,
+        pl_module: Any,
+        outputs: Any,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int = 0,
+    ) -> None:
+        """Log a heartbeat once either interval has elapsed.
+
+        Args:
+            trainer: the Lightning trainer.
+            pl_module: the Lightning module.
+            outputs: the batch's predictions, unused.
+            batch: the batch, unused.
+            batch_idx: index of the batch just finished.
+            dataloader_idx: which dataloader, unused.
+        """
+        now = time.time()
+        batches_since = batch_idx - self._last_batch
+        if (
+            batches_since < self.every_n_batches
+            and now - self._last_logged < self.every_n_seconds
+        ):
+            return
+        elapsed = now - self._started
+        window = now - self._last_logged
+        logger.info(
+            "predict heartbeat: batch %d, %.1f min elapsed, %.2f batch/s recent, "
+            "%.2f batch/s overall",
+            batch_idx,
+            elapsed / 60,
+            batches_since / window if window > 0 else 0.0,
+            (batch_idx + 1) / elapsed if elapsed > 0 else 0.0,
+        )
+        self._last_logged = now
+        self._last_batch = batch_idx

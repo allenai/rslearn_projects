@@ -117,3 +117,10 @@ trainer:
             # patch_size (the merger operates at the output resolution).
             # Overridden by the prediction pipeline.
             overlap_pixels: 4
+    # Turns a silent job into a legible one: without it the only progress signal is
+    # Lightning's progress bar, which reaches a container log every twenty or thirty
+    # minutes, and silence in between is indistinguishable from a deadlock.
+    - class_path: rslp.large_scale_embeddings.model.PredictHeartbeat
+      init_args:
+        every_n_batches: 50
+        every_n_seconds: 120
