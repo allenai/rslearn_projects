@@ -25,11 +25,15 @@
 
 FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime
 
-RUN apt update
 # g++ is needed at runtime by torch.compile (inductor) to build CPU kernels. The base
 # image ships gcc but not g++, and without it a compiled predict stalls inside the
 # prediction loop with no traceback and no exit.
-RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget g++
+#
+# update and install must share one RUN. Split across two, the update layer caches and
+# its package index goes stale, so adding a package later fails with 404s on every
+# fetch while the already-cached ones keep working.
+RUN apt update && apt install -y \
+    libpq-dev ffmpeg libsm6 libxext6 git wget g++
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
