@@ -210,3 +210,78 @@ def test_the_backoff_doubles_and_is_capped(harness: Any) -> None:
         max_retry_sleep=40,
     )
     assert slept == [10, 20, 40, 40, 40]
+
+
+def test_workers_request_an_allocated_min_runtime() -> None:
+    """A worker must ask for more than five minutes, or its job is unallocated.
+
+    The scheduler classifies a job as allocated only when its min_runtime exceeds five
+    minutes, and unallocated jobs yield to any allocated work regardless of priority.
+    Three France workers were preempted on jupiter with "allocated workloads are
+    scheduled ahead of unallocated ones" while requesting a min_runtime of zero, which
+    is what the retired `preemptible=True` produced.
+    """
+    import inspect
+    from datetime import timedelta
+
+    from rslp.common import worker
+
+    default = inspect.signature(worker.launch_workers).parameters["min_runtime"].default
+    assert default > timedelta(minutes=5), (
+        f"launch_workers requests min_runtime={default}, at or under the five-minute "
+        "threshold, so every worker it starts is an unallocated job"
+    )
+    assert default <= timedelta(hours=8), "eight hours is the scheduler's maximum"
+
+
+def test_workers_are_replaced_when_preempted() -> None:
+    """auto_resume must default on, or a preempted worker is simply gone."""
+    import inspect
+
+    from rslp.common import worker
+
+    assert (
+        inspect.signature(worker.launch_workers).parameters["auto_resume"].default
+        is True
+    )
+
+
+def test_termination_releases_the_in_flight_entry() -> None:
+    """SIGTERM must hand the claimed entry back, not leave it CLAIMED.
+
+    Beaker gives about five minutes between SIGTERM and the kill. An entry left claimed
+    is untouchable until it goes stale, which is `claim_stale_seconds` later, so the job
+    sits idle for over an hour instead of being re-offered on the next cycle.
+    """
+    import signal
+
+    from rslp.common.worker import _release_on_termination
+
+    sent: list[dict] = []
+
+    class _Tx:
+        def send(self, entry_id, **kwargs):
+            sent.append({"entry_id": entry_id, **kwargs})
+
+    handler = _release_on_termination(_Tx(), {"entry_id": "entry-abc"})
+    with pytest.raises(SystemExit):
+        handler(signal.SIGTERM, None)
+
+    assert len(sent) == 1, "the in-flight entry was not released"
+    assert sent[0]["entry_id"] == "entry-abc"
+    assert sent[0].get("rejection"), "must reject, not mark done: the work is unfinished"
+
+
+def test_termination_with_no_entry_is_harmless() -> None:
+    """A worker killed while idle has nothing to release and must not fail trying."""
+    import signal
+
+    from rslp.common.worker import _release_on_termination
+
+    class _Tx:
+        def send(self, entry_id, **kwargs):
+            raise AssertionError("nothing should be sent when no entry is in flight")
+
+    handler = _release_on_termination(_Tx(), {"entry_id": None})
+    with pytest.raises(SystemExit):
+        handler(signal.SIGTERM, None)

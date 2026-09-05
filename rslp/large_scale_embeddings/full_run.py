@@ -31,9 +31,7 @@ from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
 from rslp.large_scale_embeddings.render_pca import annotate_pca_store, get_render_jobs
 from rslp.large_scale_embeddings.render_web_pca import get_web_jobs, init_web_store
 from rslp.large_scale_embeddings.supervise import (
-    DEFAULT_WORKER_ENV_VARS as SUPERVISE_WORKER_ENV_VARS,
-)
-from rslp.large_scale_embeddings.supervise import (
+    DEFAULT_SUPERVISOR_MIN_RUNTIME,
     STAGE_PREDICT,
     STAGE_RENDER_UTM_PCA,
     STAGE_RENDER_WEB_PCA,
@@ -43,6 +41,9 @@ from rslp.large_scale_embeddings.supervise import (
     PcaConfig,
     WorkerConfig,
     supervise,
+)
+from rslp.large_scale_embeddings.supervise import (
+    DEFAULT_WORKER_ENV_VARS as SUPERVISE_WORKER_ENV_VARS,
 )
 from rslp.large_scale_embeddings.write_jobs import get_jobs, init_store
 from rslp.large_scale_embeddings.zarr_store import (
@@ -375,7 +376,8 @@ def launch_run_all(
     cpu_count: float = 2,
     memory: str = "8GiB",
     gpu_count: int = 0,
-    preemptible: bool = True,
+    min_runtime: timedelta = DEFAULT_SUPERVISOR_MIN_RUNTIME,
+    auto_resume: bool = True,
 ) -> str:
     """Launch :func:`run_all` as a CPU-only Beaker job.
 
@@ -394,9 +396,10 @@ def launch_run_all(
         cpu_count: CPUs to request.
         memory: memory to request.
         gpu_count: GPUs to request; 0 unless the cluster only schedules by GPU slot.
-        preemptible: whether the driver may be preempted. Defaults to True: Beaker
-            replaces a preempted preemptible task and abandons a non-preemptible one,
-            so False makes preemption terminal.
+        min_runtime: how long the scheduler should let the driver run before it may be
+            preempted. Above five minutes the job counts as allocated.
+        auto_resume: whether Beaker replaces the job when it is preempted. Leave this on:
+            without it a preempted driver stops the whole run.
 
     Returns:
         the created Beaker experiment's ID.
@@ -409,7 +412,8 @@ def launch_run_all(
         command=["python", "-m", "rslp.main"],
         arguments=["large_scale_embeddings", "run_all", *run_all_args],
         constraints=BeakerConstraints(cluster=cluster),
-        preemptible=preemptible,
+        min_runtime=min_runtime,
+        auto_resume=auto_resume,
         datasets=[create_gcp_credentials_mount()],
         env_vars=get_base_env_vars(),
         resources=BeakerTaskResources(

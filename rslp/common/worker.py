@@ -1,10 +1,12 @@
 """Worker to process jobs in a list of jobs."""
 
 import shutil
+import signal
 import sys
 import time
 import uuid
 from collections.abc import Callable
+from datetime import timedelta
 from queue import Empty as QueueEmpty
 from typing import Any
 
@@ -38,6 +40,14 @@ MAX_JOB_HOURS = 4
 # How much of a failure's text to keep in an entry's rejection reason.
 REJECTION_CHARS = 500
 
+# Minimum runtime to request for a worker, which is what makes its job *allocated*
+# rather than unallocated. The scheduler treats anything at or under five minutes as
+# unallocated, and unallocated jobs only run when no allocated job wants the slot, so a
+# worker without this is preempted by allocated work whatever its priority. Set it to
+# roughly one job: long enough to finish a unit of work, short enough to be placed
+# quickly, since a shorter request fits the allocation grid sooner.
+DEFAULT_WORKER_MIN_RUNTIME = timedelta(minutes=45)
+
 
 def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
     """Make a signal handler that cleans up the specified directory before exiting.
@@ -54,6 +64,41 @@ def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
         sys.exit(1)
 
     return cleanup_signal_handler
+
+
+def _release_on_termination(
+    tx: Any, current: dict[str, str | None]
+) -> Callable[[int, Any], None]:
+    """Make a SIGTERM handler that hands the in-flight entry back to the queue.
+
+    Beaker sends SIGTERM about five minutes before it kills a preempted job. Without
+    this the entry stays CLAIMED and nothing may touch it until the claim goes stale,
+    which is `claim_stale_seconds` later; rejecting it means the supervisor re-offers
+    the job on its next cycle instead. The work itself is still lost, since a job is
+    only marked complete once every window in it is written.
+
+    Args:
+        tx: the queue worker channel to send the rejection on.
+        current: single-key dict holding the entry id being processed, or None.
+
+    Returns:
+        a handler to pass to signal.signal.
+    """
+
+    def handler(signo: int, stack_frame: Any) -> None:
+        entry_id = current.get("entry_id")
+        logger.error(
+            "caught signal %d; releasing entry %s back to the queue", signo, entry_id
+        )
+        if entry_id is not None:
+            try:
+                tx.send(entry_id, rejection=f"worker terminated by signal {signo}")
+            except Exception:
+                # The job is going away regardless; the entry just goes stale instead.
+                logger.exception("could not release entry %s", entry_id)
+        sys.exit(1)
+
+    return handler
 
 
 def worker_pipeline(
@@ -98,6 +143,8 @@ def worker_pipeline(
 
         consecutive_errors = 0
         with beaker.queue.worker_channel(queue, worker) as (tx, rx):
+            in_flight: dict[str, str | None] = {"entry_id": None}
+            signal.signal(signal.SIGTERM, _release_on_termination(tx, in_flight))
             while True:
                 try:
                     batch = rx.rx.get(block=True, timeout=idle_timeout)
@@ -107,12 +154,14 @@ def worker_pipeline(
                 for worker_input in batch:
                     entry_id = worker_input.metadata.entry_id
                     entry_input = pb2_to_dict(worker_input.input)
+                    in_flight["entry_id"] = entry_id
                     logger.info("processing entry %s", entry_id)
 
                     try:
                         if not flush_messages:
                             process_message(entry_input)
                         tx.send(entry_id, done=True)
+                        in_flight["entry_id"] = None
                         consecutive_errors = 0
                     except Exception as e:
                         consecutive_errors += 1
@@ -158,6 +207,8 @@ def launch_workers(
     extra_env_secrets: dict[str, str] | None = None,
     idle_timeout: int | None = None,
     name_prefix: str = "worker",
+    min_runtime: timedelta = DEFAULT_WORKER_MIN_RUNTIME,
+    auto_resume: bool = True,
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -182,6 +233,11 @@ def launch_workers(
         name_prefix: prefix for each worker's experiment name. Pass a value unique to
             the run so its launcher can count its own workers by name; the default
             makes every run's workers indistinguishable.
+        min_runtime: how long the scheduler should let a worker run before it may be
+            preempted. Above five minutes the job counts as allocated; at or below it
+            the job is unallocated and yields to any allocated work.
+        auto_resume: whether Beaker replaces the job when it is preempted. Without it a
+            preempted worker is simply gone.
     """
     if extra_env_vars is None:
         extra_env_vars = {}
@@ -223,7 +279,8 @@ def launch_workers(
                 constraints=BeakerConstraints(
                     cluster=cluster,
                 ),
-                preemptible=True,
+                min_runtime=min_runtime,
+                auto_resume=auto_resume,
                 datasets=datasets,
                 env_vars=env_vars,
                 resources=BeakerTaskResources(

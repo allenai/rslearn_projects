@@ -80,6 +80,11 @@ PENDING_PER_WORKER = 3
 # gets killed. Cycles normally take well under a minute.
 DEFAULT_CYCLE_BUDGET_SECONDS = int(timedelta(minutes=10).total_seconds())
 
+# Minimum runtime to request for the supervisor. It is a cheap CPU job that should stay
+# up for the whole run, but a shorter request is placed sooner, and auto_resume brings it
+# back if it is preempted, so there is no reason to ask for the eight-hour maximum.
+DEFAULT_SUPERVISOR_MIN_RUNTIME = timedelta(hours=1)
+
 # Cap on the workload listing the worker count is drawn from. Scoped to this user's
 # unfinalized experiments, so it only has to cover one person's concurrent runs.
 WORKER_LIST_LIMIT = 500
@@ -571,7 +576,8 @@ def launch_supervisor(
     cpu_count: float = 2,
     memory: str = "8GiB",
     gpu_count: int = 0,
-    preemptible: bool = True,
+    min_runtime: timedelta = DEFAULT_SUPERVISOR_MIN_RUNTIME,
+    auto_resume: bool = True,
 ) -> str:
     """Launch `supervise` as a CPU-only Beaker job so a run outlives any one session.
 
@@ -597,11 +603,13 @@ def launch_supervisor(
             GPU clusters a 0-GPU task may never be scheduled (slots are counted
             in GPUs), so requesting 1 is sometimes the only way to place it
             alongside the workers. Wasteful; prefer 0 where it schedules.
-        preemptible: whether the supervisor itself may be preempted. Defaults to True,
-            which reads backwards but is the safe setting: Beaker replaces a preempted
-            preemptible task and abandons a non-preemptible one, so False makes
-            preemption terminal. Non-preemptible buys only a minimum-runtime floor.
-            Restarting is safe, since the supervisor holds no state a restart loses.
+        min_runtime: how long the scheduler should let the supervisor run before it may
+            be preempted. Above five minutes the job counts as allocated; at or below it
+            it is unallocated and yields to any allocated work.
+        auto_resume: whether Beaker replaces the job when it is preempted. Leave this on:
+            without it a preempted supervisor is gone for good, and with it gone nothing
+            refills the queue or replaces a worker. Restarting is safe, since the
+            supervisor re-reads completion markers and holds no state.
 
     Returns:
         the created Beaker experiment's ID.
@@ -614,7 +622,8 @@ def launch_supervisor(
         command=["python", "-m", "rslp.main"],
         arguments=["large_scale_embeddings", "supervise", *supervise_args],
         constraints=BeakerConstraints(cluster=cluster),
-        preemptible=preemptible,
+        min_runtime=min_runtime,
+        auto_resume=auto_resume,
         datasets=[create_gcp_credentials_mount()],
         env_vars=get_base_env_vars(),
         resources=BeakerTaskResources(

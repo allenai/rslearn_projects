@@ -384,9 +384,21 @@ store. It cannot change *within* a run, though, because a marker is keyed on its
 block's bounds and a different size will not match the markers already written.
 
 **Preemption is normal, not an error.** Exit 143 with `canceled_for` naming another job
-means preempted; retry is the correct response. Note also that `ai2/jupiter` uses
-"strict priority with unallocated-only backfill", so without an allocation your jobs
-are backfill and can be evicted at any priority.
+means preempted; retry is the correct response.
+
+**Ask for a min_runtime, or the job is unallocated.** On the clusters using the newer
+scheduler (jupiter, ceres, titan), a job counts as *allocated* only if its `min_runtime`
+exceeds five minutes; anything at or below that is unallocated and runs only when no
+allocated job wants the slot. `canceled_for` says so directly: "allocated workloads are
+scheduled ahead of unallocated ones". Priority (urgent/high/normal/low) orders jobs
+*within* a workspace and does not decide between budgets, so it cannot rescue an
+unallocated job. Set `min_runtime` to roughly the time one job needs to make real
+progress: a shorter request is placed sooner, and the maximum is eight hours. Pair it
+with `auto_resume` so a preempted job is replaced. The older `preemptible` flag is
+deprecated and maps to `min_runtime=0`, i.e. unallocated.
+
+Scheduling between budgets is driven by usage against allocation over a 5-7 day
+lookback, not by priority, so bursting above the allocation lowers priority later.
 
 **Keep the queue shallow.** A queue entry claimed by a worker that then dies is not
 released back to the queue: entries were still CLAIMED 5 hours after being claimed, with
