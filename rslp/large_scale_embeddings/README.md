@@ -287,7 +287,7 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
      map to zone NN).
    - `--wgs84_bounds '[-125.0, 45.0, -116.0, 49.0]'`: only tiles intersecting these
      WGS84 bounds.
-   - `--geojson_fname data/large_scale_embeddings/aois/initial_regions.geojson`: only
+   - `--geojson_fname data/large_scale_embeddings/areas/initial_regions.geojson`: only
      tiles intersecting a feature in the given WGS84 GeoJSON file (the included
      `initial_regions.geojson` covers Washington, Montana, Ukraine, Thailand, and
      points in Greenland and coastal Antarctica; 88 tiles).
@@ -337,7 +337,7 @@ It exits when every tile has a marker.
             --worker.image_name USER/IMAGE \
             --worker.cluster '["ai2/jupiter","ai2/ceres"]' \
             --worker.num_workers 8 \
-            --aoi.geojson_fname data/large_scale_embeddings/aois/initial_regions.geojson \
+            --aoi.geojson_fname data/large_scale_embeddings/areas/initial_regions.geojson \
             --aoi.job_size 8192
 
 Its options are grouped into config objects, so they are namespaced on the command
@@ -448,7 +448,7 @@ Pixels where all Sentinel-2 mosaics are empty are set to -128 in all bands.
 Areas
 -----
 
-`data/large_scale_embeddings/aois/*.geojson` holds the run footprints. Each carries a `note`
+`data/large_scale_embeddings/areas/*.geojson` holds the run footprints. Each carries a `note`
 recording its source, its area, and whatever about its geometry will bite you.
 
 - `initial_regions.geojson`, the original multi-region run.
@@ -480,7 +480,7 @@ Sizing a new area before committing to it is one call, and worth making:
         completed_path='/tmp/c/', checkpoint_path='/weka/x', time_index=0,
         patch_size=1, window_size=16, overlap_size=4, compile_model=True,
         batch_size=None, epsg_code=None, wgs84_bounds=None,
-        geojson_fname='data/large_scale_embeddings/aois/france.geojson', job_size=8192)))"
+        geojson_fname='data/large_scale_embeddings/areas/france.geojson', job_size=8192)))"
 
 Point `store_path` and `completed_path` at local paths, not a bucket: enumeration only
 needs them to check for markers, and an unauthenticated bucket read fails on the

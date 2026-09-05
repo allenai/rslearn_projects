@@ -45,7 +45,10 @@ from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
 from rslp.large_scale_embeddings.render_pca import get_render_jobs
 from rslp.large_scale_embeddings.render_web_pca import get_web_jobs
 from rslp.large_scale_embeddings.write_jobs import get_jobs
-from rslp.large_scale_embeddings.zarr_store import DEFAULT_PCA_MAX_LEVEL
+from rslp.large_scale_embeddings.zarr_store import (
+    DEFAULT_PCA_MAX_LEVEL,
+    get_store_years,
+)
 from rslp.log_utils import get_logger
 from rslp.utils.beaker import (
     DEFAULT_BUDGET,
@@ -457,6 +460,18 @@ def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> No
             )
         )
     else:
+        # The slot a year occupies is a property of the store, not of this run's --years.
+        # Deriving it from --years puts a single-year run into slot 0 whatever year it
+        # names, so a 2025 run against a store built for 2017-2025 would silently land
+        # in 2017's slot with the markers still reading completed_2025.
+        store_years = get_store_years(config.store_path)
+        missing = [year for year in years if year not in store_years]
+        if missing:
+            raise ValueError(
+                f"store {config.store_path} has years {store_years}, which do not "
+                f"include {missing}; init_store fixes the time axis at creation, so "
+                "the store must be created with every year the run will write"
+            )
         for year in years:
             remaining.extend(
                 get_jobs(
@@ -465,7 +480,7 @@ def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> No
                     store_path=config.store_path,
                     completed_path=config.completed_path_template.format(year=year),
                     checkpoint_path=config.model.checkpoint_path,
-                    time_index=years.index(year),
+                    time_index=store_years.index(year),
                     patch_size=config.model.patch_size,
                     window_size=config.model.window_size,
                     overlap_size=config.model.overlap_size,

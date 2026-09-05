@@ -607,3 +607,44 @@ def test_a_claim_without_a_timestamp_is_treated_as_live(monkeypatch) -> None:
 def test_stale_threshold_is_well_clear_of_one_job() -> None:
     # A predict job at job_size 8192 runs ~25 min; the threshold must not sit near that.
     assert sup.DEFAULT_CLAIM_STALE_SECONDS >= 3 * 25 * 60
+
+
+def test_time_index_comes_from_the_store_not_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A year must land in the slot the store gave it, not this run's list position.
+
+    The time axis is fixed at init_store, so an archive built for 2017-2025 reserves
+    nine slots. A run invoked with --years '[2025]' has a one-element list, and taking
+    the index from that list writes 2025 into slot 0, which is 2017. The markers still
+    read completed_2025, so nothing downstream notices.
+    """
+    captured: dict[str, object] = {}
+
+    def fake_get_jobs(**kwargs: object) -> list[list[str]]:
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(sup, "get_jobs", fake_get_jobs)
+    monkeypatch.setattr(sup, "get_store_years", lambda _p: [2017, 2018, 2025])
+    _install_cycle_fakes(monkeypatch)
+
+    sup._run_cycle(
+        _render_cycle_config(stage=sup.STAGE_PREDICT, years=[2025]), _Result()
+    )
+    assert captured["time_index"] == 2, (
+        "2025 is the store's third year, so it must be written at index 2; index 0 "
+        "would overwrite 2017"
+    )
+
+
+def test_a_year_the_store_lacks_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Writing a year the axis has no slot for must fail loudly, not silently."""
+    monkeypatch.setattr(sup, "get_jobs", lambda **kw: [])
+    monkeypatch.setattr(sup, "get_store_years", lambda _p: [2024])
+    _install_cycle_fakes(monkeypatch)
+
+    with pytest.raises(ValueError, match="do not include"):
+        sup._run_cycle(
+            _render_cycle_config(stage=sup.STAGE_PREDICT, years=[2025]), _Result()
+        )
