@@ -50,11 +50,14 @@ import zarr.abc.store
 from upath import UPath
 from zarr.storage import FsspecStore
 
+from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
 from rslp.large_scale_embeddings.zarr_store import (
+    DEFAULT_MODEL_URL,
     DEFAULT_SHARD_SIZE,
     DEFAULT_ZSTD_LEVEL,
     EMBEDDINGS_ARRAY,
     init_store,
+    source_data_for,
     zone_group_name,
 )
 from rslp.log_utils import get_logger
@@ -531,8 +534,8 @@ def measure(
 def build_variants(
     source_store_path: str,
     out_prefix: str,
-    model_url: str,
-    source_data: list[str],
+    model_url: str = DEFAULT_MODEL_URL,
+    source_data: list[str] | None = None,
     zone_number: int = SOURCE_ZONE,
     block_shards: int = BLOCK_SHARDS,
     time_index: int = 0,
@@ -587,7 +590,11 @@ def build_variants(
                 zone_numbers=[zone_number],
                 years=[2000],
                 model_url=model_url,
-                source_data=source_data,
+                source_data=(
+                    source_data
+                    if source_data is not None
+                    else source_data_for(EmbeddingInputs.S2_LANDSAT_DISTILLED.value)
+                ),
                 resolution=10,
                 tile_size=32768,
                 dimensions=FULL_DIMS,
