@@ -12,16 +12,16 @@ Two design points:
 
 **Keep the queue shallow.** A Beaker queue entry claimed by a worker that then dies is
 not released back to the queue, and the queue API has no call to release one. Entries
-do age out via ``expires_in_sec``, but a week is far longer than any job, so within a
-run that work is lost. Enqueuing a whole run up front therefore bleeds work steadily.
-This enqueues only a small buffer and refills it from the markers, bounding the loss to
-about one entry per worker death.
+do age out, but only after ``write_jobs``' ``expires_in_sec``, which defaults to a
+week, so within a run that work is lost. Enqueuing a whole run up front therefore
+bleeds work steadily. This enqueues only a small buffer and refills it from the markers,
+bounding the loss to about one entry per worker death.
 
-**Run each cycle in a child process.** The Beaker client has no RPC timeout, and a hung
-gRPC call cannot be interrupted by ``signal.alarm`` because the C core does not yield to
-the interpreter between bytecodes. Only a process-level kill bounds it, so every cycle
-runs in a spawned child the parent terminates if it overruns its budget.
+**Run each cycle in a child process.** The Beaker client has no RPC timeout and a hung
+call cannot be interrupted in-process, so every cycle runs in a spawned child the parent
+terminates if it overruns its budget.
 """
+
 import multiprocessing
 import random
 import time
