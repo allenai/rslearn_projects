@@ -190,7 +190,11 @@ class CycleConfig:
 class AoiConfig:
     """Which ground the run covers, and how it is cut into jobs."""
 
-    job_size: int = 8192
+    # A job is the unit of work lost to a preemption: the completion marker is written
+    # once, after every window in the block, so a job killed near the end redoes all of
+    # it. Must be a multiple of PATCH_SIZE and divide TILE_SIZE. Changing it mid-run
+    # orphans existing markers, since a marker is keyed on its block's bounds.
+    job_size: int = 4096
     geojson_fname: str | None = None
     epsg_code: int | None = None
     wgs84_bounds: tuple[float, float, float, float] | None = None

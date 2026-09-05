@@ -338,7 +338,7 @@ It exits when every tile has a marker.
             --worker.cluster '["ai2/jupiter","ai2/ceres"]' \
             --worker.num_workers 8 \
             --aoi.geojson_fname data/large_scale_embeddings/areas/initial_regions.geojson \
-            --aoi.job_size 8192
+            --aoi.job_size 4096
 
 Its options are grouped into config objects, so they are namespaced on the command
 line: `--model.*` (checkpoint and patch/window/overlap/compile/batch settings),
@@ -370,8 +370,18 @@ predict) at `patch_size=1`, `window_size=16` on an H100:
         8192        16      ~38 min   completes reliably
         4096         4      ~12 min   completes, but ~55% of the time is fixed overhead
 
-`job_size=8192` was the sweet spot. Smaller jobs survive better but pay model load and
-compile per job, so total GPU time rises.
+Smaller jobs survive better but pay model load and compile per job, so total GPU time
+rises. The default is 4096. `job_size` is the unit of work a preemption destroys: the
+completion marker is written once, after every window in the block, so a job killed
+near the end redoes all of it. Those durations were measured when a job ran ~38 min;
+with the current model a job is several times longer, which moves the balance toward
+the smaller size. Note also that `urgent` is preempted by other `urgent` work, so
+priority reduces the rate rather than removing it.
+
+`job_size` does not affect the store's layout: shard and chunk sizes are fixed at
+`init_store`. It is purely a scheduling knob, so it can differ between runs against one
+store. It cannot change *within* a run, though, because a marker is keyed on its
+block's bounds and a different size will not match the markers already written.
 
 **Preemption is normal, not an error.** Exit 143 with `canceled_for` naming another job
 means preempted; retry is the correct response. Note also that `ai2/jupiter` uses
