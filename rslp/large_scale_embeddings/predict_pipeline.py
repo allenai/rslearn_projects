@@ -37,6 +37,9 @@ from rslearn.utils.raster_format import GeotiffRasterFormat
 from shapely import box as shapely_box
 from upath import UPath
 
+from rslp.large_scale_embeddings.model import NODATA_VALUE
+from rslp.large_scale_embeddings.tiling import get_zone_wedge, list_kept_crops
+from rslp.large_scale_embeddings.zarr_store import write_window_region
 from rslp.log_utils import get_logger
 from rslp.utils.rslearn import (
     ApplyWindowsArgs,
@@ -47,10 +50,6 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
-
-from .model import NODATA_VALUE
-from .tiling import get_zone_wedge, list_kept_crops
-from .zarr_store import write_window_region
 
 logger = get_logger(__name__)
 

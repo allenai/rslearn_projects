@@ -165,7 +165,7 @@ def _install_cycle_fakes(
     _FakeBeaker.workload = _FakeWorkloadApi(
         [f"{prefix}_{i:08x}" for i in range(existing_workers)]
     )
-    monkeypatch.setattr("beaker.Beaker", _FakeBeaker)
+    monkeypatch.setattr(sup, "Beaker", _FakeBeaker)
 
     def fake_write_jobs(
         queue_name: str, project: str, workflow: str, batch: list
@@ -223,9 +223,7 @@ def _stub_render_jobs(monkeypatch: pytest.MonkeyPatch, count: int) -> dict[str, 
         calls.update(kwargs)
         return [["--source_marker", f"{i}.json"] for i in range(count)]
 
-    monkeypatch.setattr(
-        "rslp.large_scale_embeddings.render_pca.get_render_jobs", fake_get_render_jobs
-    )
+    monkeypatch.setattr(sup, "get_render_jobs", fake_get_render_jobs)
     return calls
 
 

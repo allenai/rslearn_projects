@@ -45,16 +45,19 @@ import time
 from typing import Any
 
 import numpy as np
+import zarr
+import zarr.abc.store
 from upath import UPath
+from zarr.storage import FsspecStore
 
-from rslp.log_utils import get_logger
-
-from ..zarr_store import (
+from rslp.large_scale_embeddings.zarr_store import (
     DEFAULT_SHARD_SIZE,
+    DEFAULT_ZSTD_LEVEL,
     EMBEDDINGS_ARRAY,
     init_store,
     zone_group_name,
 )
+from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 
@@ -208,8 +211,6 @@ def _counting_store_class() -> Any:
     Returns:
         a Store subclass that records every range request made through it.
     """
-    import zarr.abc.store
-
     class CountingStore(zarr.abc.store.Store):  # type: ignore[misc]
         """Wraps a zarr store and records every range request made through it.
 
@@ -405,9 +406,6 @@ def _open_counted(store_path: str, zone_number: int) -> tuple[Any, Any]:
     Returns:
         the array and the counter wrapped around its store.
     """
-    import zarr
-    from zarr.storage import FsspecStore
-
     counted = _counting_store_class()(FsspecStore.from_url(store_path, read_only=True))
     group = zarr.open_group(counted, mode="r")
     array = group[f"{zone_group_name(zone_number)}/{EMBEDDINGS_ARRAY}"]
@@ -561,10 +559,6 @@ def build_variants(
         zstd_level: level for the sweep. Defaults to the store's current default.
         only: build just this one variant name, for running the sweep in parallel.
     """
-    import zarr
-
-    from .zarr_store import DEFAULT_ZSTD_LEVEL
-
     level = DEFAULT_ZSTD_LEVEL if zstd_level is None else zstd_level
     grid = variant_grid(level)
     if only is not None:

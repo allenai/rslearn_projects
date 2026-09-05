@@ -29,10 +29,21 @@ visualization pixels no longer align 1:1 with embedding pixels.
 
 import json
 import math
+import re
+import urllib.parse
+import urllib.request
+import xml.dom.minidom
 from typing import Any
 
+import fsspec
 import numpy as np
+import rasterio.warp
+import zarr
+from affine import Affine
+from pyproj import Transformer
+from rasterio.enums import Resampling
 from upath import UPath
+from zarr.codecs import ZstdCodec
 
 from rslp.log_utils import get_logger
 
@@ -204,9 +215,6 @@ def init_web_store(
     Raises:
         ValueError: if the zoom range is empty or inverted.
     """
-    import zarr
-    from zarr.codecs import ZstdCodec
-
     if max_zoom < min_zoom:
         raise ValueError(f"max_zoom {max_zoom} is below min_zoom {min_zoom}")
 
@@ -281,8 +289,6 @@ def _zarr_store(path: str, storage_options: dict[str, Any] | None) -> Any:
     """
     if "://" not in path:
         return path
-    import fsspec
-
     return fsspec.get_mapper(path, **(storage_options or {}))
 
 
@@ -339,11 +345,6 @@ def reproject_shard(
     Returns:
         the number of valid (non-nodata) pixels written.
     """
-    import rasterio.warp
-    from affine import Affine
-    from pyproj import Transformer
-    from rasterio.enums import Resampling
-
     min_x, min_y, max_x, max_y = shard_bounds(zoom, shard_row, shard_col)
     res = web_resolution(zoom)
     dst = np.zeros((WEB_BANDS, WEB_SHARD, WEB_SHARD), dtype=np.uint8)
@@ -501,11 +502,6 @@ def source_shard_positions(store_url: str, zone: str) -> set[tuple[int, int]]:
     Returns:
         (y_shard, x_shard) pairs, in units of the UTM array's 2048 px shards.
     """
-    import re
-    import urllib.parse
-    import urllib.request
-    import xml.dom.minidom
-
     url = store_url.rstrip("/")
     m = re.match(r"https://storage\.googleapis\.com/([^/]+)/(.+)", url) or re.match(
         r"gs://([^/]+)/(.+)", url
@@ -560,8 +556,6 @@ def web_shards_for_source(
     Returns:
         (shard_row, shard_col) pairs in the destination grid.
     """
-    from pyproj import Transformer
-
     to_web = Transformer.from_crs(
         f"EPSG:{UTM_NORTH_EPSG_BASE + zone_number}", f"EPSG:{WEB_EPSG}", always_xy=True
     )
@@ -627,8 +621,6 @@ def render_web_pca_pipeline_all(
             source_store_path when that is already an https URL.
         storage_options: fsspec options for the destination.
     """
-    import zarr
-
     listing_url = source_url or source_store_path
     src = zarr.open_group(_zarr_store(source_store_path, None), mode="r")
 
@@ -749,8 +741,6 @@ def render_web_pca_pipeline(
         base_zoom: the deepest zoom, warped directly from UTM.
         storage_options: fsspec options for the destination.
     """
-    import zarr
-
     marker = web_marker_fname(completed_path, zoom, time_index, shard_row, shard_col)
     if marker.exists():
         logger.info("marker %s already exists", marker)

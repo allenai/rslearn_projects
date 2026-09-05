@@ -30,6 +30,8 @@ expire often and this check should not fail for that reason.
 """
 
 import numpy as np
+import pyproj
+import zarr
 
 from rslp.log_utils import get_logger
 
@@ -106,8 +108,6 @@ def check_spatial_order(
         ValueError: if the patch is empty, or if near-field correlation is absent,
             which is what a flattening error looks like.
     """
-    import zarr
-
     array = zarr.open_array(f"{store_path}/{zone}/embeddings", mode="r")
     block = np.asarray(
         array[time_index, :dims, row : row + size, col : col + size]
@@ -199,9 +199,6 @@ def check_zone_agreement(
         ValueError: if no point has data in both zones, or if agreement is too low,
             which is what a reorientation looks like.
     """
-    import pyproj
-    import zarr
-
     arrays = {
         z: zarr.open_array(f"{store_path}/{z}/embeddings", mode="r")
         for z in (zone_a, zone_b)

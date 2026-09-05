@@ -24,17 +24,15 @@ from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
 from upath import UPath
 
 import rslp.common.worker
-from rslp.log_utils import get_logger
-
-from . import zarr_store
-from .predict_pipeline import (
+from rslp.large_scale_embeddings import zarr_store
+from rslp.large_scale_embeddings.predict_pipeline import (
     EMBEDDING_DIM,
     PATCH_SIZE,
     RESOLUTION,
     EmbeddingInputs,
     get_marker_fname,
 )
-from .tiling import (
+from rslp.large_scale_embeddings.tiling import (
     UTM_MAX_LAT,
     UTM_MIN_LAT,
     bounds_intersect_wedge,
@@ -42,6 +40,7 @@ from .tiling import (
     get_zone_wedge,
     list_kept_crops,
 )
+from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 

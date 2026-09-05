@@ -30,16 +30,15 @@ from rslearn.utils.geometry import Projection
 from upath import UPath
 
 import rslp.common.worker
-from rslp.log_utils import get_logger
-
-from .pca import PcaArtifact, build_pyramid, project_to_rgb
-from .zarr_store import (
+from rslp.large_scale_embeddings.pca import PcaArtifact, build_pyramid, project_to_rgb
+from rslp.large_scale_embeddings.zarr_store import (
     DEFAULT_PCA_MAX_LEVEL,
     EMBEDDINGS_ARRAY,
     pca_level_array_name,
     write_pca_window_levels,
     zone_group_name,
 )
+from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 

@@ -29,12 +29,20 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import numpy as np
+import zarr
 from upath import UPath
 
+from rslp.large_scale_embeddings.model import (
+    NODATA_VALUE,
+    QUANTIZE_POWER,
+    QUANTIZE_SCALE,
+)
+from rslp.large_scale_embeddings.zarr_store import (
+    EMBEDDINGS_ARRAY,
+    PCA_NODATA_VALUE,
+    zone_group_name,
+)
 from rslp.log_utils import get_logger
-
-from .model import NODATA_VALUE, QUANTIZE_POWER, QUANTIZE_SCALE
-from .zarr_store import PCA_NODATA_VALUE
 
 logger = get_logger(__name__)
 
@@ -448,10 +456,6 @@ def _sample_from_marker(
     Returns:
         float32 array of shape (pixels, dimensions), or None if nothing usable.
     """
-    import zarr
-
-    from .zarr_store import EMBEDDINGS_ARRAY, zone_group_name
-
     with marker_fname.open() as f:
         marker = json.load(f)
     written = marker.get("written") or []

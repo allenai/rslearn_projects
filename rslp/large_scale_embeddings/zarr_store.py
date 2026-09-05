@@ -24,10 +24,9 @@ import zarr
 from rslearn.utils.geometry import PixelBounds, Projection
 from zarr.codecs import ZstdCodec
 
+from rslp.large_scale_embeddings.model import NODATA_VALUE
+from rslp.large_scale_embeddings.tiling import get_zone_grid
 from rslp.log_utils import get_logger
-
-from .model import NODATA_VALUE
-from .tiling import get_zone_grid
 
 logger = get_logger(__name__)
 

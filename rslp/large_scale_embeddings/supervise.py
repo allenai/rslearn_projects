@@ -25,14 +25,34 @@ terminates if it overruns its budget.
 import multiprocessing
 import random
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from multiprocessing.sharedctypes import Synchronized
 from typing import Any
 
-from rslp.log_utils import get_logger
+from beaker import (
+    Beaker,
+    BeakerConstraints,
+    BeakerExperimentSpec,
+    BeakerJobPriority,
+    BeakerTaskResources,
+    BeakerWorkloadType,
+)
+from upath import UPath
 
-from .predict_pipeline import EmbeddingInputs
-from .zarr_store import DEFAULT_PCA_MAX_LEVEL
+import rslp.common.worker
+from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
+from rslp.large_scale_embeddings.render_pca import get_render_jobs
+from rslp.large_scale_embeddings.render_web_pca import get_web_jobs
+from rslp.large_scale_embeddings.write_jobs import get_jobs
+from rslp.large_scale_embeddings.zarr_store import DEFAULT_PCA_MAX_LEVEL
+from rslp.log_utils import get_logger
+from rslp.utils.beaker import (
+    DEFAULT_BUDGET,
+    DEFAULT_WORKSPACE,
+    WekaMount,
+    create_gcp_credentials_mount,
+    get_base_env_vars,
+)
 
 logger = get_logger(__name__)
 
@@ -54,7 +74,7 @@ PENDING_PER_WORKER = 3
 
 # A cycle that outruns this is assumed wedged (almost always a hung Beaker RPC) and
 # gets killed. Cycles normally take well under a minute.
-DEFAULT_CYCLE_BUDGET_SECONDS = 600
+DEFAULT_CYCLE_BUDGET_SECONDS = int(timedelta(minutes=10).total_seconds())
 
 # Cap on the workload listing the worker count is drawn from. Scoped to this user's
 # unfinalized experiments, so it only has to cover one person's concurrent runs.
@@ -106,6 +126,8 @@ def _state_name(entry: Any) -> str:
 # forever and skipping every claimed job would deadlock the run on the first death.
 # Trusting a claim only while it is young keeps that recovery without the duplicate work
 # a blind top-up generates. Size it well above one job's runtime.
+DEFAULT_CLAIM_STALE_SECONDS = int(timedelta(minutes=90).total_seconds())
+
 # GDAL environment every worker needs, merged in below so it cannot be forgotten.
 #
 # GS_USER_PROJECT is required for the Landsat reads: rasterio_session_for_path honours
@@ -115,8 +137,6 @@ def _state_name(entry: Any) -> str:
 DEFAULT_WORKER_ENV_VARS = {
     "GS_USER_PROJECT": "earthsystem-dev-c3po",
 }
-
-DEFAULT_CLAIM_STALE_SECONDS = 5400
 
 
 def _entry_job_key(entry: Any) -> tuple[str, ...] | None:
@@ -206,8 +226,6 @@ def _any_completion_markers(kwargs: dict[str, Any]) -> bool:
     Returns:
         True if any marker exists for this stage.
     """
-    from upath import UPath
-
     for path in _stage_marker_paths(kwargs):
         upath = UPath(path)
         if upath.exists() and any(True for _ in upath.iterdir()):
@@ -244,8 +262,6 @@ def _count_workers(beaker: Any, workspace: Any, name_prefix: str) -> int:
     Returns:
         the number of live or starting workers belonging to this run.
     """
-    from beaker import BeakerWorkloadType
-
     return sum(
         1
         for workload in beaker.workload.list(
@@ -274,15 +290,6 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
         launched: shared int the number of workers launched is written to, so the
             parent can carry it into the next cycle's liveness count.
     """
-    from beaker import Beaker, BeakerJobPriority
-
-    import rslp.common.worker
-    from rslp.utils.beaker import DEFAULT_WORKSPACE, WekaMount
-
-    from .render_pca import get_render_jobs
-    from .render_web_pca import get_web_jobs
-    from .write_jobs import get_jobs
-
     queue_name = kwargs["queue_name"]
     num_workers = kwargs["num_workers"]
     # How deep to keep the queue. The default assumes long jobs. A stage of short jobs
@@ -481,21 +488,6 @@ def launch_supervisor(
     Returns:
         the created Beaker experiment's ID.
     """
-    from beaker import (
-        Beaker,
-        BeakerConstraints,
-        BeakerExperimentSpec,
-        BeakerJobPriority,
-        BeakerTaskResources,
-    )
-
-    from rslp.utils.beaker import (
-        DEFAULT_BUDGET,
-        DEFAULT_WORKSPACE,
-        create_gcp_credentials_mount,
-        get_base_env_vars,
-    )
-
     spec = BeakerExperimentSpec.new(
         budget=DEFAULT_BUDGET,
         description="large_scale_embeddings supervisor",

@@ -14,27 +14,40 @@ Failures are not absorbed. A stage that cannot finish raises, which fails the Be
 job, rather than letting the next stage run on incomplete data.
 """
 
+from datetime import datetime, timedelta
 from typing import Any
 
+from beaker import (
+    Beaker,
+    BeakerConstraints,
+    BeakerExperimentSpec,
+    BeakerJobPriority,
+    BeakerTaskResources,
+)
 from upath import UPath
 
-from rslp.log_utils import get_logger
-
-from .pca import fit_pca
-from .predict_pipeline import EmbeddingInputs
-from .render_pca import annotate_pca_store, get_render_jobs
-from .render_web_pca import get_web_jobs, init_web_store
-from .supervise import (
+from rslp.large_scale_embeddings.pca import fit_pca
+from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
+from rslp.large_scale_embeddings.render_pca import annotate_pca_store, get_render_jobs
+from rslp.large_scale_embeddings.render_web_pca import get_web_jobs, init_web_store
+from rslp.large_scale_embeddings.supervise import (
     DEFAULT_WORKER_ENV_VARS as SUPERVISE_WORKER_ENV_VARS,
 )
-from .supervise import (
+from rslp.large_scale_embeddings.supervise import (
     STAGE_PREDICT,
     STAGE_RENDER_UTM_PCA,
     STAGE_RENDER_WEB_PCA,
     supervise,
 )
-from .write_jobs import get_jobs, init_store
-from .zarr_store import DEFAULT_PCA_MAX_LEVEL, init_pca_store
+from rslp.large_scale_embeddings.write_jobs import get_jobs, init_store
+from rslp.large_scale_embeddings.zarr_store import DEFAULT_PCA_MAX_LEVEL, init_pca_store
+from rslp.log_utils import get_logger
+from rslp.utils.beaker import (
+    DEFAULT_BUDGET,
+    DEFAULT_WORKSPACE,
+    create_gcp_credentials_mount,
+    get_base_env_vars,
+)
 
 logger = get_logger(__name__)
 
@@ -57,13 +70,13 @@ WEB_PENDING_PER_WORKER = 64
 # jobs run tens of minutes; a web shard takes seconds, so a full pool drains the queue
 # in minutes and then idles, making the interval rather than the worker count set
 # throughput. Queue depth alone cannot fix it, since enqueueing is rate-limited.
-WEB_CYCLE_SECONDS = 120
+WEB_CYCLE_SECONDS = int(timedelta(minutes=2).total_seconds())
 
 # How long a web worker waits for more work before exiting. Must exceed the cycle
 # interval above, or the pool dies between refills. These workers hold no GPU, so
 # waiting costs almost nothing next to paying container start again. Kept explicit
 # because the value is load-bearing for this stage in a way it is not elsewhere.
-WEB_WORKER_IDLE_SECONDS = 900
+WEB_WORKER_IDLE_SECONDS = int(timedelta(minutes=15).total_seconds())
 
 # Re-exported from supervise, which now owns it: the merge has to happen where workers
 # are launched, or it is skipped by every entry point that is not this one.
@@ -359,8 +372,6 @@ def _require_no_predict_jobs(
     exits normally when it runs out of cycles, and a basis fitted on a partly-written
     archive is wrong in a way nothing downstream detects.
     """
-    from datetime import datetime
-
     outstanding = 0
     for time_index, (year, completed_path) in enumerate(zip(years, completed_paths)):
         jobs = get_jobs(
@@ -424,21 +435,6 @@ def launch_run_all(
     Returns:
         the created Beaker experiment's ID.
     """
-    from beaker import (
-        Beaker,
-        BeakerConstraints,
-        BeakerExperimentSpec,
-        BeakerJobPriority,
-        BeakerTaskResources,
-    )
-
-    from rslp.utils.beaker import (
-        DEFAULT_BUDGET,
-        DEFAULT_WORKSPACE,
-        create_gcp_credentials_mount,
-        get_base_env_vars,
-    )
-
     spec = BeakerExperimentSpec.new(
         budget=DEFAULT_BUDGET,
         description="large_scale_embeddings full run",
