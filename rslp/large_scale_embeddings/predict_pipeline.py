@@ -84,10 +84,8 @@ OUTPUT_LAYER = "output"
 # before any dataset is materialized.
 EMBEDDING_DIM = 128
 
-# These pool sizes are the long-standing default and are known to work. If you try
-# sizing them to the job instead, note that materialize parallelizes over
-# window x item-group units, not windows: each window pulls one mosaic per month, so
-# sizing a pool by window count alone would under-parallelize.
+# Materialize parallelizes over window x item-group units, not windows, so sizing these
+# pools by window count alone would under-parallelize.
 MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
     disabled_layers=[],
     # Use initial job for prepare since it involves caching steps that should only be
