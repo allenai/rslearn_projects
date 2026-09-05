@@ -19,16 +19,17 @@ sup = importlib.import_module("rslp.large_scale_embeddings.supervise")
 
 
 def _base_kwargs(**overrides: object) -> dict:
-    kwargs = {
+    kwargs: dict[str, object] = {
         "inputs": EmbeddingInputs.S2,
         "years": [2024],
         "store_path": "gs://bucket/s2.zarr",
         "completed_path_template": "gs://bucket/s2_{year}_completed/",
         "queue_name": "user/queue",
-        "checkpoint_path": "/weka/ckpt",
-        "image_name": "user/image",
-        "cluster": ["ai2/cluster"],
-        "max_cycles": 0,
+        "model": sup.ModelConfig(checkpoint_path="/weka/ckpt"),
+        "worker": sup.WorkerConfig(
+            image_name="user/image", cluster=["ai2/cluster"]
+        ),
+        "cycle": sup.CycleConfig(max_cycles=0),
     }
     kwargs.update(overrides)
     return kwargs
@@ -61,26 +62,30 @@ def test_unknown_stage_is_rejected() -> None:
 
 def test_render_stage_requires_its_three_paths() -> None:
     with pytest.raises(
-        ValueError, match="artifact_path, pca_store_path, pca_completed_path"
+        ValueError, match="pca.artifact_path, pca.store_path, pca.completed_path"
     ):
         sup.supervise(**_base_kwargs(stage=sup.STAGE_RENDER_UTM_PCA))
 
     # Naming two of the three still fails, and the error names only what is missing.
-    with pytest.raises(ValueError, match="pca_completed_path"):
+    with pytest.raises(ValueError, match="pca.completed_path"):
         sup.supervise(
             **_base_kwargs(
                 stage=sup.STAGE_RENDER_UTM_PCA,
-                artifact_path="gs://bucket/pca",
-                pca_store_path="gs://bucket/pca_v1.zarr",
+                pca=sup.PcaConfig(
+                    artifact_path="gs://bucket/pca",
+                    store_path="gs://bucket/pca_v1.zarr",
+                ),
             )
         )
 
-    with pytest.raises(ValueError, match="pca_store_path"):
+    with pytest.raises(ValueError, match="pca.store_path"):
         sup.supervise(
             **_base_kwargs(
                 stage=sup.STAGE_RENDER_UTM_PCA,
-                artifact_path="gs://bucket/pca",
-                pca_completed_path="gs://bucket/pca_completed/",
+                pca=sup.PcaConfig(
+                    artifact_path="gs://bucket/pca",
+                    completed_path="gs://bucket/pca_completed/",
+                ),
             )
         )
 
@@ -183,32 +188,42 @@ def _install_cycle_fakes(
     return recorded
 
 
-def _render_cycle_kwargs(**overrides: object) -> dict[str, object]:
-    """A complete render-stage kwargs set for _run_cycle, with overrides applied."""
-    kwargs: dict[str, object] = {
-        "queue_name": "user/queue",
-        "num_workers": 2,
-        "years": [2024, 2025],
-        "stage": sup.STAGE_RENDER_UTM_PCA,
-        "store_path": "gs://bucket/s2.zarr",
-        "artifact_path": "gs://bucket/pca",
-        "pca_store_path": "gs://bucket/pca_v1.zarr",
-        "max_level": 3,
-        "pca_completed_path": "gs://bucket/pca_completed/",
-        "completed_path_template": "gs://bucket/s2_{year}_completed/",
-        "patch_size": 1,
-        "image_name": "user/image",
-        "cluster": ["ai2/cluster"],
-        "gpus": 0,
-        "shared_memory": "64GiB",
-        "priority": "normal",
-        "weka_bucket": "b",
-        "weka_mount_path": "/m",
-        "datasets_api_url": "https://example.invalid",
-        "datasets_token_secret": "SECRET",
-    }
-    kwargs.update(overrides)
-    return kwargs
+def _render_cycle_config(
+    num_workers: int = 2, **overrides: object
+) -> sup.SuperviseConfig:
+    """A complete render-stage config for _run_cycle, with overrides applied."""
+    config = sup.SuperviseConfig(
+        inputs=EmbeddingInputs.S2,
+        years=[2024, 2025],
+        store_path="gs://bucket/s2.zarr",
+        completed_path_template="gs://bucket/s2_{year}_completed/",
+        queue_name="user/queue",
+        stage=sup.STAGE_RENDER_UTM_PCA,
+        model=sup.ModelConfig(checkpoint_path="/weka/ckpt"),
+        worker=sup.WorkerConfig(
+            image_name="user/image",
+            cluster=["ai2/cluster"],
+            num_workers=num_workers,
+            gpus=0,
+            shared_memory="64GiB",
+            priority="normal",
+            weka_bucket="b",
+            weka_mount_path="/m",
+            datasets_api_url="https://example.invalid",
+            datasets_token_secret="SECRET",
+        ),
+        cycle=sup.CycleConfig(),
+        aoi=sup.AoiConfig(),
+        pca=sup.PcaConfig(
+            artifact_path="gs://bucket/pca",
+            store_path="gs://bucket/pca_v1.zarr",
+            completed_path="gs://bucket/pca_completed/",
+            max_level=3,
+        ),
+    )
+    for key, value in overrides.items():
+        setattr(config, key, value)
+    return config
 
 
 class _Result:
@@ -234,7 +249,7 @@ def test_run_cycle_render_stage_enumerates_from_source_markers(
     calls = _stub_render_jobs(monkeypatch, 2)
     enqueued = _install_cycle_fakes(monkeypatch)
     result = _Result()
-    sup._run_cycle(_render_cycle_kwargs(), result)
+    sup._run_cycle(_render_cycle_config(), result)
 
     # Both years' marker directories are handed to the render enumerator.
     assert calls["source_completed_paths"] == [
@@ -265,7 +280,7 @@ def test_worker_launches_are_capped_by_outstanding_jobs(
     _stub_render_jobs(monkeypatch, 3)
     enqueued = _install_cycle_fakes(monkeypatch)
     result = _Result()
-    sup._run_cycle(_render_cycle_kwargs(num_workers=32), result)
+    sup._run_cycle(_render_cycle_config(num_workers=32), result)
 
     assert result.value == 3
     assert enqueued["launched"] == 3
@@ -278,7 +293,7 @@ def test_worker_launches_use_the_full_count_when_work_is_plentiful(
     _stub_render_jobs(monkeypatch, 50)
     enqueued = _install_cycle_fakes(monkeypatch)
     result = _Result()
-    sup._run_cycle(_render_cycle_kwargs(num_workers=8), result)
+    sup._run_cycle(_render_cycle_config(num_workers=8), result)
 
     assert result.value == 50
     assert enqueued["launched"] == 8
@@ -297,7 +312,7 @@ def test_a_starting_worker_counts_toward_the_target(
     _stub_render_jobs(monkeypatch, 50)
     enqueued = _install_cycle_fakes(monkeypatch, existing_workers=6)
     result = _Result()
-    sup._run_cycle(_render_cycle_kwargs(num_workers=8), result, _Result())
+    sup._run_cycle(_render_cycle_config(num_workers=8), result, _Result())
 
     # Six already exist, so only the remaining two are launched.
     assert enqueued["launched"] == 2
@@ -308,7 +323,7 @@ def test_a_full_pool_launches_none(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_render_jobs(monkeypatch, 50)
     enqueued = _install_cycle_fakes(monkeypatch, existing_workers=8)
     result = _Result()
-    sup._run_cycle(_render_cycle_kwargs(num_workers=8), result, _Result())
+    sup._run_cycle(_render_cycle_config(num_workers=8), result, _Result())
 
     assert enqueued.get("launched", 0) == 0
 
@@ -326,7 +341,7 @@ def test_another_runs_workers_do_not_count(monkeypatch: pytest.MonkeyPatch) -> N
         [f"{sup.worker_name_prefix('user/other-queue')}_{i:08x}" for i in range(8)]
     )
     result = _Result()
-    sup._run_cycle(_render_cycle_kwargs(num_workers=8), result, _Result())
+    sup._run_cycle(_render_cycle_config(num_workers=8), result, _Result())
 
     assert enqueued["launched"] == 8
 
@@ -336,7 +351,7 @@ def test_workers_are_named_for_their_queue(monkeypatch: pytest.MonkeyPatch) -> N
     _stub_render_jobs(monkeypatch, 50)
     enqueued = _install_cycle_fakes(monkeypatch)
     result = _Result()
-    sup._run_cycle(_render_cycle_kwargs(num_workers=8), result, _Result())
+    sup._run_cycle(_render_cycle_config(num_workers=8), result, _Result())
 
     assert enqueued["name_prefix"] == sup.worker_name_prefix("user/queue")
 
@@ -352,7 +367,7 @@ def test_the_cycle_reports_what_it_launched(
     _stub_render_jobs(monkeypatch, 50)
     _install_cycle_fakes(monkeypatch)
     result, launched = _Result(), _Result()
-    sup._run_cycle(_render_cycle_kwargs(num_workers=5), result, launched)
+    sup._run_cycle(_render_cycle_config(num_workers=5), result, launched)
 
     assert launched.value == 5
 
@@ -367,23 +382,21 @@ def test_the_cycle_reports_what_it_launched(
 
 def test_stage_marker_paths_predict_expands_every_year() -> None:
     paths = sup._stage_marker_paths(
-        {
-            "stage": sup.STAGE_PREDICT,
-            "years": [2023, 2024],
-            "completed_path_template": "gs://bucket/done_{year}/",
-        }
+        _render_cycle_config(
+            stage=sup.STAGE_PREDICT,
+            years=[2023, 2024],
+            completed_path_template="gs://bucket/done_{year}/",
+        )
     )
     assert paths == ["gs://bucket/done_2023/", "gs://bucket/done_2024/"]
 
 
 def test_stage_marker_paths_render_uses_the_pca_path() -> None:
     paths = sup._stage_marker_paths(
-        {
-            "stage": sup.STAGE_RENDER_UTM_PCA,
-            "years": [2024],
-            "completed_path_template": "gs://bucket/done_{year}/",
-            "pca_completed_path": "gs://bucket/pca_done/",
-        }
+        _render_cycle_config(
+            stage=sup.STAGE_RENDER_UTM_PCA,
+            pca=sup.PcaConfig(completed_path="gs://bucket/pca_done/"),
+        )
     )
     assert paths == ["gs://bucket/pca_done/"]
 
@@ -393,11 +406,11 @@ def test_any_completion_markers_true_when_a_marker_exists(tmp_path) -> None:
     done.mkdir()
     (done / "EPSG:32610_0_0.json").write_text("{}")
     assert sup._any_completion_markers(
-        {
-            "stage": sup.STAGE_PREDICT,
-            "years": [2024],
-            "completed_path_template": str(tmp_path / "done_{year}") + "/",
-        }
+        _render_cycle_config(
+            stage=sup.STAGE_PREDICT,
+            years=[2024],
+            completed_path_template=str(tmp_path / "done_{year}") + "/",
+        )
     )
 
 
@@ -406,11 +419,11 @@ def test_any_completion_markers_false_for_missing_and_empty_dirs(tmp_path) -> No
     # evidence of work, so a zero remaining count really does mean nothing matched.
     (tmp_path / "done_2024").mkdir()
     assert not sup._any_completion_markers(
-        {
-            "stage": sup.STAGE_PREDICT,
-            "years": [2023, 2024],
-            "completed_path_template": str(tmp_path / "done_{year}") + "/",
-        }
+        _render_cycle_config(
+            stage=sup.STAGE_PREDICT,
+            years=[2023, 2024],
+            completed_path_template=str(tmp_path / "done_{year}") + "/",
+        )
     )
 
 
@@ -481,13 +494,13 @@ def test_supervise_raises_after_repeated_cycle_failures(
     _inline(monkeypatch)
     calls = {"n": 0}
 
-    def never_reports(kwargs, result, launched=None):
+    def never_reports(config, result, launched=None):
         # Leave result at _NO_RESULT, as a crashed or killed cycle does.
         calls["n"] += 1
 
     monkeypatch.setattr(sup, "_run_cycle", never_reports)
     with pytest.raises(RuntimeError, match="consecutive cycles failed"):
-        sup.supervise(**_base_kwargs(max_cycles=None, cycle_seconds=0))
+        sup.supervise(**_base_kwargs(cycle=sup.CycleConfig(max_cycles=None, seconds=0)))
     assert calls["n"] == sup.MAX_CONSECUTIVE_CYCLE_FAILURES
 
 
@@ -500,14 +513,14 @@ def test_a_reporting_cycle_resets_the_failure_streak(
     script = [None, None, 4, None, None]
     seen = {"i": 0}
 
-    def scripted(kwargs, result, launched=None):
+    def scripted(config, result, launched=None):
         val = script[seen["i"] % len(script)]
         seen["i"] += 1
         if val is not None:
             result.value = val
 
     monkeypatch.setattr(sup, "_run_cycle", scripted)
-    sup.supervise(**_base_kwargs(max_cycles=5, cycle_seconds=0))
+    sup.supervise(**_base_kwargs(cycle=sup.CycleConfig(max_cycles=5, seconds=0)))
     assert seen["i"] == 5
 
 

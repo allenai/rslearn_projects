@@ -25,6 +25,7 @@ terminates if it overruns its budget.
 import multiprocessing
 import random
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from multiprocessing.sharedctypes import Synchronized
 from typing import Any
@@ -106,20 +107,6 @@ DEFAULT_DATASETS_TOKEN_SECRET = "OEDATASETS_API_TOKEN"  # nosec
 DEFAULT_AWS_KEY_ID_SECRET = "AWS_ACCESS_KEY_ID"  # nosec
 DEFAULT_AWS_SECRET_KEY_SECRET = "AWS_SECRET_ACCESS_KEY"  # nosec
 
-
-def _state_name(entry: Any) -> str:
-    """Get the state enum name for a queue entry (PENDING/CLAIMED/COMPLETED)."""
-    status = entry.status
-    try:
-        return (
-            status.DESCRIPTOR.fields_by_name["state"]
-            .enum_type.values_by_number[int(status.state)]
-            .name.split("_")[-1]
-        )
-    except (KeyError, ValueError):
-        return "UNKNOWN"
-
-
 # How long a claim is trusted before the job is offered again.
 #
 # Claims are never released, so a worker that dies mid-job leaves its claim behind
@@ -137,6 +124,125 @@ DEFAULT_CLAIM_STALE_SECONDS = int(timedelta(minutes=90).total_seconds())
 DEFAULT_WORKER_ENV_VARS = {
     "GS_USER_PROJECT": "earthsystem-dev-c3po",
 }
+
+
+@dataclass
+class ModelConfig:
+    """What the encoder is and how it is run.
+
+    These all change the embeddings, so a change here needs its own store.
+    """
+
+    checkpoint_path: str
+    patch_size: int = 1
+    window_size: int = 16
+    overlap_size: int = 4
+    compile_model: bool = True
+    # Crops per batch, or None to keep the model config's value. The GPU-memory knob:
+    # batching groups independent crops, so it changes footprint and speed, not output.
+    batch_size: int | None = None
+
+
+@dataclass
+class WorkerConfig:
+    """The Beaker worker pool: what to run, where, and with which credentials."""
+
+    image_name: str
+    cluster: list[str]
+    num_workers: int = 8
+    gpus: int = 1
+    # A preempted worker loses its whole job, since there is no intra-job checkpointing.
+    priority: str = "urgent"
+    shared_memory: str = "256GiB"
+    # How long a worker waits for new work before exiting. Must exceed the cycle
+    # interval, or the pool empties between refills. None leaves the worker's own
+    # ten-second default, which suits a queue filled once up front but not one a
+    # supervisor refills.
+    idle_seconds: int | None = 900
+    env_vars: dict[str, str] | None = None
+    weka_bucket: str = DEFAULT_WEKA_BUCKET
+    weka_mount_path: str = DEFAULT_WEKA_MOUNT_PATH
+    datasets_api_url: str = DEFAULT_DATASETS_API_URL
+    datasets_token_secret: str = DEFAULT_DATASETS_TOKEN_SECRET
+    aws_key_id_secret: str = DEFAULT_AWS_KEY_ID_SECRET
+    aws_secret_key_secret: str = DEFAULT_AWS_SECRET_KEY_SECRET
+
+    def __post_init__(self) -> None:
+        """Merge the GDAL defaults so a caller cannot drop them by passing env_vars."""
+        self.env_vars = {**DEFAULT_WORKER_ENV_VARS, **(self.env_vars or {})}
+
+
+@dataclass
+class CycleConfig:
+    """Pacing of the supervision loop."""
+
+    seconds: int = 180
+    budget_seconds: int = DEFAULT_CYCLE_BUDGET_SECONDS
+    claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS
+    pending_per_worker: int = PENDING_PER_WORKER
+    max_cycles: int | None = None
+
+
+@dataclass
+class AoiConfig:
+    """Which ground the run covers, and how it is cut into jobs."""
+
+    job_size: int = 8192
+    geojson_fname: str | None = None
+    epsg_code: int | None = None
+    wgs84_bounds: tuple[float, float, float, float] | None = None
+    zone_numbers: list[int] | None = None
+
+
+@dataclass
+class PcaConfig:
+    """Paths and levels for the render stages. Unused by the predict stage."""
+
+    artifact_path: str | None = None
+    store_path: str | None = None
+    completed_path: str | None = None
+    store_url: str | None = None
+    max_level: int = DEFAULT_PCA_MAX_LEVEL
+    web_store_path: str | None = None
+    web_completed_path: str | None = None
+    web_zoom: int | None = None
+    web_base_zoom: int = 14
+
+
+@dataclass
+class SuperviseConfig:
+    """Everything one supervision cycle reads.
+
+    Assembled by `supervise` and handed to each child process whole, so a cycle cannot
+    silently read a value the parent never set.
+    """
+
+    inputs: EmbeddingInputs
+    years: list[int]
+    store_path: str
+    completed_path_template: str
+    queue_name: str
+    stage: str
+    model: ModelConfig
+    worker: WorkerConfig
+    cycle: CycleConfig
+    aoi: AoiConfig
+    pca: PcaConfig
+
+
+def _state_name(entry: Any) -> str:
+    """Get the state enum name for a queue entry (PENDING/CLAIMED/COMPLETED)."""
+    status = entry.status
+    try:
+        return (
+            status.DESCRIPTOR.fields_by_name["state"]
+            .enum_type.values_by_number[int(status.state)]
+            .name.split("_")[-1]
+        )
+    except (KeyError, ValueError):
+        return "UNKNOWN"
+
+
 
 
 def _entry_job_key(entry: Any) -> tuple[str, ...] | None:
@@ -196,23 +302,23 @@ def _in_flight_job_keys(
     return in_flight
 
 
-def _stage_marker_paths(kwargs: dict[str, Any]) -> list[str]:
+def _stage_marker_paths(config: SuperviseConfig) -> list[str]:
     """The completion-marker directories this stage writes into.
 
     Args:
-        kwargs: the supervise() arguments.
+        config: the run configuration.
 
     Returns:
         one path per marker directory the stage is responsible for.
     """
-    if kwargs["stage"] == STAGE_RENDER_UTM_PCA:
-        return [kwargs["pca_completed_path"]]
+    if config.stage == STAGE_RENDER_UTM_PCA:
+        return [config.pca.completed_path]
     return [
-        kwargs["completed_path_template"].format(year=year) for year in kwargs["years"]
+        config.completed_path_template.format(year=year) for year in config.years
     ]
 
 
-def _any_completion_markers(kwargs: dict[str, Any]) -> bool:
+def _any_completion_markers(config: SuperviseConfig) -> bool:
     """Whether this stage has already written at least one completion marker.
 
     A remaining count of zero has two very different causes: the stage is genuinely
@@ -221,12 +327,12 @@ def _any_completion_markers(kwargs: dict[str, Any]) -> bool:
     consults this instead of inferring from the count alone.
 
     Args:
-        kwargs: the supervise() arguments.
+        config: the run configuration.
 
     Returns:
         True if any marker exists for this stage.
     """
-    for path in _stage_marker_paths(kwargs):
+    for path in _stage_marker_paths(config):
         upath = UPath(path)
         if upath.exists() and any(True for _ in upath.iterdir()):
             return True
@@ -277,7 +383,7 @@ def _count_workers(beaker: Any, workspace: Any, name_prefix: str) -> int:
     )
 
 
-def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> None:
+def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> None:
     """Run one supervision cycle, reporting the remaining job count via `result`.
 
     This runs in a child process so the parent can kill it if a Beaker RPC hangs. It
@@ -285,17 +391,17 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
     leaves it at `_NO_RESULT` if it does not get that far.
 
     Args:
-        kwargs: the supervise() arguments this cycle needs.
+        config: the run configuration.
         result: shared int the remaining-job count is written to.
         launched: shared int the number of workers launched is written to, so the
             parent can carry it into the next cycle's liveness count.
     """
-    queue_name = kwargs["queue_name"]
-    num_workers = kwargs["num_workers"]
+    queue_name = config.queue_name
+    num_workers = config.worker.num_workers
     # How deep to keep the queue. The default assumes long jobs. A stage of short jobs
     # needs much more: a worker drains its few entries and then idles until the next
     # cycle, making the cycle interval the throughput ceiling.
-    target_pending = num_workers * kwargs.get("pending_per_worker", PENDING_PER_WORKER)
+    target_pending = num_workers * config.cycle.pending_per_worker
 
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         queue = beaker.queue.get(queue_name)
@@ -305,9 +411,7 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
             name = _state_name(entry)
             counts[name] = counts.get(name, 0) + 1
         now = time.time()
-        in_flight = _in_flight_job_keys(
-            entries, now, kwargs.get("claim_stale_seconds", DEFAULT_CLAIM_STALE_SECONDS)
-        )
+        in_flight = _in_flight_job_keys(entries, now, config.cycle.claim_stale_seconds)
         live = _count_workers(
             beaker,
             beaker.workspace.get(DEFAULT_WORKSPACE),
@@ -318,22 +422,22 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
 
     # Recompute what is left directly from the completion markers. This doubles as the
     # completion check, so it runs every cycle rather than only when the queue drains.
-    years = kwargs["years"]
-    stage = kwargs["stage"]
+    years = config.years
+    stage = config.stage
     remaining: list[list[str]] = []
     if stage == STAGE_RENDER_WEB_PCA:
         # Enumerated from the UTM PCA store's own object keys: the destination grid is
         # global and almost entirely empty, so listing what exists beats probing it.
         remaining.extend(
             get_web_jobs(
-                source_store_path=kwargs["pca_store_path"],
-                web_store_path=kwargs["web_store_path"],
-                completed_path=kwargs["web_completed_path"],
-                zoom=kwargs["web_zoom"],
+                source_store_path=config.pca.store_path,
+                web_store_path=config.pca.web_store_path,
+                completed_path=config.pca.web_completed_path,
+                zoom=config.pca.web_zoom,
                 years=years,
-                zone_numbers=kwargs["zone_numbers"],
-                base_zoom=kwargs["web_base_zoom"],
-                source_url=kwargs.get("pca_store_url"),
+                zone_numbers=config.aoi.zone_numbers,
+                base_zoom=config.pca.web_base_zoom,
+                source_url=config.pca.store_url,
             )
         )
     elif stage == STAGE_RENDER_UTM_PCA:
@@ -341,37 +445,36 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
         # land or wedge filtering: the markers already name what exists.
         remaining.extend(
             get_render_jobs(
-                store_path=kwargs["store_path"],
-                pca_store_path=kwargs["pca_store_path"],
-                artifact_path=kwargs["artifact_path"],
+                store_path=config.store_path,
+                pca_store_path=config.pca.store_path,
+                artifact_path=config.pca.artifact_path,
                 source_completed_paths=[
-                    kwargs["completed_path_template"].format(year=year)
-                    for year in years
+                    config.completed_path_template.format(year=year) for year in years
                 ],
-                completed_path=kwargs["pca_completed_path"],
-                patch_size=kwargs["patch_size"],
-                max_level=kwargs["max_level"],
+                completed_path=config.pca.completed_path,
+                patch_size=config.model.patch_size,
+                max_level=config.pca.max_level,
             )
         )
     else:
         for year in years:
             remaining.extend(
                 get_jobs(
-                    inputs=kwargs["inputs"],
+                    inputs=config.inputs,
                     timestamp=datetime(year, 1, 1, tzinfo=UTC),
-                    store_path=kwargs["store_path"],
-                    completed_path=kwargs["completed_path_template"].format(year=year),
-                    checkpoint_path=kwargs["checkpoint_path"],
+                    store_path=config.store_path,
+                    completed_path=config.completed_path_template.format(year=year),
+                    checkpoint_path=config.model.checkpoint_path,
                     time_index=years.index(year),
-                    patch_size=kwargs["patch_size"],
-                    window_size=kwargs["window_size"],
-                    overlap_size=kwargs["overlap_size"],
-                    compile_model=kwargs["compile_model"],
-                    batch_size=kwargs.get("batch_size"),
-                    epsg_code=kwargs["epsg_code"],
-                    wgs84_bounds=kwargs["wgs84_bounds"],
-                    geojson_fname=kwargs["geojson_fname"],
-                    job_size=kwargs["job_size"],
+                    patch_size=config.model.patch_size,
+                    window_size=config.model.window_size,
+                    overlap_size=config.model.overlap_size,
+                    compile_model=config.model.compile_model,
+                    batch_size=config.model.batch_size,
+                    epsg_code=config.aoi.epsg_code,
+                    wgs84_bounds=config.aoi.wgs84_bounds,
+                    geojson_fname=config.aoi.geojson_fname,
+                    job_size=config.aoi.job_size,
                 )
             )
     result.value = len(remaining)
@@ -403,33 +506,29 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
     worker_target = min(num_workers, len(remaining))
     if live < worker_target:
         rslp.common.worker.launch_workers(
-            image_name=kwargs["image_name"],
+            image_name=config.worker.image_name,
             queue_name=queue_name,
             num_workers=worker_target - live,
-            cluster=kwargs["cluster"],
-            gpus=kwargs["gpus"],
-            shared_memory=kwargs["shared_memory"],
-            priority=BeakerJobPriority[kwargs["priority"]],
+            cluster=config.worker.cluster,
+            gpus=config.worker.gpus,
+            shared_memory=config.worker.shared_memory,
+            priority=BeakerJobPriority[config.worker.priority],
             weka_mounts=[
                 WekaMount(
-                    bucket_name=kwargs["weka_bucket"],
-                    mount_path=kwargs["weka_mount_path"],
+                    bucket_name=config.worker.weka_bucket,
+                    mount_path=config.worker.weka_mount_path,
                 )
             ],
-            idle_timeout=kwargs.get("worker_idle_seconds"),
+            idle_timeout=config.worker.idle_seconds,
             name_prefix=worker_name_prefix(queue_name),
             extra_env_vars={
-                "OEDATASETS_API_URL": kwargs["datasets_api_url"],
-                **(kwargs.get("worker_env_vars") or {}),
+                "OEDATASETS_API_URL": config.worker.datasets_api_url,
+                **(config.worker.env_vars or {}),
             },
             extra_env_secrets={
-                "DATASETS_API_TOKEN": kwargs["datasets_token_secret"],
-                "AWS_ACCESS_KEY_ID": kwargs.get(
-                    "aws_key_id_secret", DEFAULT_AWS_KEY_ID_SECRET
-                ),
-                "AWS_SECRET_ACCESS_KEY": kwargs.get(
-                    "aws_secret_key_secret", DEFAULT_AWS_SECRET_KEY_SECRET
-                ),
+                "DATASETS_API_TOKEN": config.worker.datasets_token_secret,
+                "AWS_ACCESS_KEY_ID": config.worker.aws_key_id_secret,
+                "AWS_SECRET_ACCESS_KEY": config.worker.aws_secret_key_secret,
             },
         )
         just_launched = worker_target - live
@@ -516,216 +615,89 @@ def supervise(
     store_path: str,
     completed_path_template: str,
     queue_name: str,
-    checkpoint_path: str,
-    image_name: str,
-    cluster: list[str],
+    model: ModelConfig,
+    worker: WorkerConfig,
     stage: str = STAGE_PREDICT,
-    artifact_path: str | None = None,
-    pca_store_path: str | None = None,
-    pca_completed_path: str | None = None,
-    max_level: int = DEFAULT_PCA_MAX_LEVEL,
-    weka_bucket: str = DEFAULT_WEKA_BUCKET,
-    weka_mount_path: str = DEFAULT_WEKA_MOUNT_PATH,
-    datasets_api_url: str = DEFAULT_DATASETS_API_URL,
-    datasets_token_secret: str = DEFAULT_DATASETS_TOKEN_SECRET,
-    aws_key_id_secret: str = DEFAULT_AWS_KEY_ID_SECRET,
-    aws_secret_key_secret: str = DEFAULT_AWS_SECRET_KEY_SECRET,
-    worker_env_vars: dict[str, str] | None = None,
-    num_workers: int = 8,
-    gpus: int = 1,
-    job_size: int = 8192,
-    patch_size: int = 1,
-    window_size: int = 16,
-    overlap_size: int = 4,
-    compile_model: bool = True,
-    batch_size: int | None = None,
-    web_store_path: str | None = None,
-    web_completed_path: str | None = None,
-    web_zoom: int | None = None,
-    web_base_zoom: int = 14,
-    pending_per_worker: int = PENDING_PER_WORKER,
-    pca_store_url: str | None = None,
-    zone_numbers: list[int] | None = None,
-    priority: str = "urgent",
-    shared_memory: str = "256GiB",
-    geojson_fname: str | None = None,
-    epsg_code: int | None = None,
-    wgs84_bounds: tuple[float, float, float, float] | None = None,
-    cycle_seconds: int = 180,
-    worker_idle_seconds: int | None = 900,
-    claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS,
-    cycle_budget_seconds: int = DEFAULT_CYCLE_BUDGET_SECONDS,
-    max_cycles: int | None = None,
+    cycle: CycleConfig | None = None,
+    aoi: AoiConfig | None = None,
+    pca: PcaConfig | None = None,
 ) -> None:
     """Refill the queue and worker pool each cycle until every tile has a marker.
 
     Args:
-        inputs: which input variant to use.
-        years: the reference years to produce; each becomes a (T, T) timestamp. The
-            order must match the store's time axis.
-        store_path: the GeoZarr store to write into (must already be initialized).
-        completed_path_template: marker directory containing a ``{year}``
-            placeholder, e.g. ``gs://bucket/prefix/s2_{year}_completed/``.
-        queue_name: the Beaker queue to keep topped up.
-        checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
-        image_name: the Beaker image the workers run.
-        cluster: Beaker clusters to schedule workers on.
-        stage: which step to drive. "predict" writes embeddings and needs GPUs;
-            "render_pca" writes the derived false-color layer from the predict markers and
-            needs none. Both are idempotent and marker-driven, so the same shallow-queue
-            and worker-top-up loop gives both the same resilience.
-        artifact_path: the fitted PCA artifact. Required for the render_pca stage.
-        pca_store_path: the sibling store to write the pyramid into. Required for the
-            render_pca stage; create it once with init_pca_store.
-        pca_completed_path: marker directory for the render_pca stage's own output.
-            Required for the render_pca stage.
-        max_level: deepest pyramid level the render_pca stage writes.
-        weka_bucket: WEKA bucket to mount (the checkpoint lives there).
-        weka_mount_path: where to mount it.
-        datasets_api_url: OlmoEarth Datasets API URL for the data source.
-        datasets_token_secret: Beaker secret holding the datasets bearer token.
-        aws_key_id_secret: Beaker secret holding an AWS access key id, for the S3
-            fallback the data sources read with requester_pays=True.
-        aws_secret_key_secret: Beaker secret holding the matching AWS secret key.
-        worker_env_vars: extra plain env vars for the workers this launches, merged over
-            the defaults. Needed for GDAL settings the data sources rely on, notably
-            GS_USER_PROJECT: olmoearth_shared's rasterio_session_for_path honours
-            requester_pays only for S3, so a GCS requester-pays bucket (Landsat) returns
-            HTTP 400 unless GDAL is given a billing project this way.
-        num_workers: how many workers to keep alive.
-        gpus: GPUs to request per worker. Raising this reduces how many workers share
-            a node, which is worth trying if workers are dying to memory pressure.
-        job_size: pixel size of each job. Must be small enough that a job finishes
-            inside the typical gap between preemptions (see the README).
-        patch_size: the encoder patch size.
-        window_size: the size of the crops the model operates on.
-        overlap_size: overlap in pixels between adjacent crops.
-        compile_model: whether to compile the encoder transformer blocks.
-        batch_size: crops per batch, or None to keep the config's value. Lower it for
-            tiles whose full monthly input stack will not fit in GPU memory; batching
-            groups independent crops, so this changes footprint, not output.
-        web_store_path: the web-mercator PCA store, for the render_web_pca stage.
-        web_completed_path: marker directory for the render_web_pca stage.
-        web_zoom: which zoom this stage builds. Levels run one at a time because a
-            coarse shard is built from the four below it.
-        web_base_zoom: the deepest zoom, warped directly from the UTM store.
-        pending_per_worker: queue depth to maintain per worker. Raise it for stages
-            whose jobs take seconds rather than hours, or the cycle interval caps
-            throughput no matter how many workers run.
-        pca_store_url: https base of the UTM PCA store, for listing its keys.
-        zone_numbers: UTM zones present in the source.
-        priority: Beaker priority for the workers. A preempted worker loses its whole
-            job, since there is no intra-job checkpointing. Defaults to urgent.
-        shared_memory: shared memory to request per worker.
-        geojson_fname: limit work to tiles intersecting this WGS84 GeoJSON file.
-        epsg_code: limit work to the zone of this UTM EPSG code.
-        wgs84_bounds: limit work to tiles intersecting these WGS84 bounds.
-        cycle_seconds: how long to sleep between cycles. The real period is a cycle's
-            own work plus this, and a cycle re-enumerates every tile, so shortening it
-            is self-limiting; `cycle_budget_seconds` caps the enumeration half.
-        worker_idle_seconds: how long a worker waits for new work before exiting.
-            Passing None leaves the worker's own default of ten seconds, which suits a
-            queue filled once up front but not one a supervisor refills on a cycle:
-            every worker then quits the moment the queue drains and has to be relaunched
-            on the next cycle, paying container start each time.
-        claim_stale_seconds: how long a queue entry's claim is trusted before the
-            job is offered again. Must comfortably exceed one job's runtime or live
-            work gets duplicated; claims are never released, so it cannot be
-            infinite either, or a dead worker's job would never be retried.
-        cycle_budget_seconds: kill a cycle that runs longer than this.
-        max_cycles: stop after this many cycles; None runs until the work is done.
-    """
-    kwargs: dict[str, Any] = {
-        "inputs": inputs,
-        "years": years,
-        "store_path": store_path,
-        "completed_path_template": completed_path_template,
-        "queue_name": queue_name,
-        "checkpoint_path": checkpoint_path,
-        "image_name": image_name,
-        "cluster": cluster,
-        "weka_bucket": weka_bucket,
-        "weka_mount_path": weka_mount_path,
-        "datasets_api_url": datasets_api_url,
-        "datasets_token_secret": datasets_token_secret,
-        "aws_key_id_secret": aws_key_id_secret,
-        "aws_secret_key_secret": aws_secret_key_secret,
-        # Merged so an explicit value wins but the GDAL defaults are never simply
-        # forgotten, whichever entry point started this supervisor.
-        "worker_env_vars": {
-            **DEFAULT_WORKER_ENV_VARS,
-            **(worker_env_vars or {}),
-        },
-        "num_workers": num_workers,
-        "gpus": gpus,
-        "job_size": job_size,
-        "patch_size": patch_size,
-        "window_size": window_size,
-        "overlap_size": overlap_size,
-        "compile_model": compile_model,
-        "batch_size": batch_size,
-        "web_store_path": web_store_path,
-        "web_completed_path": web_completed_path,
-        "web_zoom": web_zoom,
-        "web_base_zoom": web_base_zoom,
-        "pending_per_worker": pending_per_worker,
-        "pca_store_url": pca_store_url,
-        "zone_numbers": zone_numbers,
-        "priority": priority,
-        "shared_memory": shared_memory,
-        "geojson_fname": geojson_fname,
-        "epsg_code": epsg_code,
-        "wgs84_bounds": wgs84_bounds,
-        "worker_idle_seconds": worker_idle_seconds,
-        "claim_stale_seconds": claim_stale_seconds,
-        "stage": stage,
-        "artifact_path": artifact_path,
-        "pca_store_path": pca_store_path,
-        "pca_completed_path": pca_completed_path,
-        "max_level": max_level,
-    }
+        inputs: which input variant to embed.
+        years: the annual reference years to cover.
+        store_path: the GeoZarr store to write into.
+        completed_path_template: marker directory containing ``{year}``.
+        queue_name: the Beaker queue to enqueue work on.
+        model: the encoder and how it is run. See `ModelConfig`.
+        worker: the Beaker worker pool. See `WorkerConfig`.
+        stage: which stage to drive; one of `STAGES`.
+        cycle: loop pacing. See `CycleConfig`.
+        aoi: the ground to cover and how to cut it up. See `AoiConfig`.
+        pca: paths for the render stages. See `PcaConfig`. Required by
+            `STAGE_RENDER_UTM_PCA` and `STAGE_RENDER_WEB_PCA`.
 
-    # "spawn" rather than the default fork: the child creates gRPC channels, and
-    # forking a process that may already hold them is a known source of hangs.
+    Raises:
+        ValueError: if the stage is unknown, if a render stage is missing a path it
+            needs, or if the first cycle enumerates no work at all.
+    """
+    cycle = cycle or CycleConfig()
+    config = SuperviseConfig(
+        inputs=inputs,
+        years=years,
+        store_path=store_path,
+        completed_path_template=completed_path_template,
+        queue_name=queue_name,
+        stage=stage,
+        model=model,
+        worker=worker,
+        cycle=cycle,
+        aoi=aoi or AoiConfig(),
+        pca=pca or PcaConfig(),
+    )
+
     if stage not in STAGES:
         raise ValueError(f"stage must be one of {STAGES}, got {stage!r}")
     if stage == STAGE_RENDER_UTM_PCA:
         missing = [
             name
             for name, value in (
-                ("artifact_path", artifact_path),
-                ("pca_store_path", pca_store_path),
-                ("pca_completed_path", pca_completed_path),
+                ("pca.artifact_path", config.pca.artifact_path),
+                ("pca.store_path", config.pca.store_path),
+                ("pca.completed_path", config.pca.completed_path),
             )
             if not value
         ]
         if missing:
             raise ValueError(
-                f"stage {STAGE_RENDER_UTM_PCA} requires {', '.join(missing)}; fit the basis "
-                "with the fit_pca workflow first"
+                f"stage {STAGE_RENDER_UTM_PCA} requires {', '.join(missing)}; fit the "
+                "basis with the fit_pca workflow first"
             )
 
+    # "spawn" rather than the default fork: the child creates gRPC channels, and
+    # forking a process that may already hold them is a known source of hangs.
     ctx = multiprocessing.get_context("spawn")
     seen_work = False
     consecutive_failures = 0
-    cycle = 0
+    cycle_number = 0
 
-    while max_cycles is None or cycle < max_cycles:
-        cycle += 1
+    while cycle.max_cycles is None or cycle_number < cycle.max_cycles:
+        cycle_number += 1
         # Typeshed types Value() as SynchronizedBase, which has no .value; the "i"
         # type code makes it a Synchronized[int].
         result: Synchronized[int] = ctx.Value("i", _NO_RESULT)  # type: ignore[assignment]
         launched: Synchronized[int] = ctx.Value("i", 0)  # type: ignore[assignment]
-        proc = ctx.Process(target=_run_cycle, args=(kwargs, result, launched))
+        proc = ctx.Process(target=_run_cycle, args=(config, result, launched))
         started = time.time()
         proc.start()
-        proc.join(cycle_budget_seconds)
+        proc.join(cycle.budget_seconds)
         if proc.is_alive():
             logger.warning(
                 "cycle %d exceeded its %ds budget; killing it (likely a hung Beaker "
                 "RPC) and continuing",
-                cycle,
-                cycle_budget_seconds,
+                cycle_number,
+                cycle.budget_seconds,
             )
             proc.terminate()
             proc.join(30)
@@ -745,13 +717,14 @@ def supervise(
                     f"{consecutive_failures} consecutive cycles failed to report a "
                     f"result (last exit code {proc.exitcode}); treating this as a "
                     "permanent error rather than retrying. Check the traceback above: "
-                    "a missing geojson_fname, an unreadable store_path or an expired "
+                    "a missing aoi.geojson_fname, an unreadable store_path or an "
+                    "expired "
                     "credential all fail this way on every cycle."
                 )
             logger.warning(
                 "cycle %d did not report a result after %ds (exit code %s); retrying "
                 "(%d/%d consecutive failures)",
-                cycle,
+                cycle_number,
                 elapsed,
                 proc.exitcode,
                 consecutive_failures,
@@ -759,14 +732,14 @@ def supervise(
             )
         elif remaining == 0:
             consecutive_failures = 0
-            if not seen_work and not _any_completion_markers(kwargs):
+            if not seen_work and not _any_completion_markers(config):
                 # Nothing on the first cycle usually means the AOI filters, bounds
                 # or zone selection exclude everything, not that the run is done. A
                 # resumed run with existing markers is the legitimate exception.
                 raise ValueError(
                     "enumerated no jobs at all on the first cycle; check "
-                    "geojson_fname/wgs84_bounds/epsg_code and that store_path and "
-                    "completed_path_template are correct"
+                    "aoi.geojson_fname/aoi.wgs84_bounds/aoi.epsg_code and that "
+                    "store_path and completed_path_template are correct"
                 )
             logger.info("all tiles have completion markers; run complete")
             return
@@ -774,9 +747,12 @@ def supervise(
             consecutive_failures = 0
             seen_work = True
             logger.info(
-                "cycle %d done in %ds; %d job(s) remaining", cycle, elapsed, remaining
+                "cycle %d done in %ds; %d job(s) remaining",
+                cycle_number,
+                elapsed,
+                remaining,
             )
 
-        time.sleep(cycle_seconds)
+        time.sleep(cycle.seconds)
 
-    logger.info("reached max_cycles=%d; exiting", cycle)
+    logger.info("reached max_cycles=%d; exiting", cycle_number)

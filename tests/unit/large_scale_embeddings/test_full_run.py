@@ -12,6 +12,12 @@ import pytest
 
 import rslp.large_scale_embeddings.full_run as run_all_mod
 from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
+from rslp.large_scale_embeddings.supervise import (
+    CycleConfig,
+    ModelConfig,
+    PcaConfig,
+    WorkerConfig,
+)
 
 
 class _StubPath:
@@ -34,14 +40,15 @@ COMMON: dict[str, Any] = {
     "store_path": "gs://bucket/embeddings.zarr",
     "completed_path_template": "gs://bucket/completed_{year}/",
     "queue_name": "user/queue",
-    "checkpoint_path": "/fake/ckpt",
-    "image_name": "user/image",
-    "cluster": ["ai2/jupiter"],
+    "model": ModelConfig(checkpoint_path="/fake/ckpt"),
+    "worker": WorkerConfig(image_name="user/image", cluster=["ai2/jupiter"]),
     "model_url": "https://example.invalid/model",
     "source_data": ["https://example.invalid/s2"],
-    "artifact_path": "gs://bucket/artifact",
-    "pca_store_path": "gs://bucket/pca.zarr",
-    "pca_completed_path": "gs://bucket/pca_completed/",
+    "pca": PcaConfig(
+        artifact_path="gs://bucket/artifact",
+        store_path="gs://bucket/pca.zarr",
+        completed_path="gs://bucket/pca_completed/",
+    ),
 }
 
 
@@ -136,7 +143,11 @@ def test_web_zooms_run_deepest_first(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         run_all_mod,
         "supervise",
-        lambda **kw: zooms.append(kw["web_zoom"]) if kw.get("web_zoom") else None,
+        lambda **kw: (
+            zooms.append(kw["pca"].web_zoom)
+            if kw["stage"] == run_all_mod.STAGE_RENDER_WEB_PCA
+            else None
+        ),
     )
     _stub_paths(monkeypatch, exists=False)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
@@ -188,42 +199,21 @@ def test_web_stage_passes_every_required_supervise_argument(
         assert not missing, f"supervise call omits {sorted(missing)}"
 
 
-def test_web_stage_survives_leaked_supervise_options(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """jsonargparse expands supervise's signature into run_all's CLI.
+def test_run_all_takes_no_open_kwargs() -> None:
+    """`run_all` must not accept **kwargs, or jsonargparse leaks options into it again.
 
-    Because run_all takes **supervise_kwargs, a supervise-only option such as
-    --web_zoom becomes a run_all option and arrives here carrying its default. Passing
-    that through while also naming it explicitly raised "got multiple values for
-    keyword argument" and failed the driver on the real run.
+    It used to take **supervise_kwargs, which made jsonargparse expand supervise's whole
+    signature into run_all's CLI. Every supervise option then arrived here already set
+    to its default, indistinguishable from one a person typed, so the web stage's own
+    tuning had to be assigned rather than defaulted and a `setdefault` silently did
+    nothing. Config objects close that off only while the open kwargs stay gone.
     """
-    seen: list[int] = []
-    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
-    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
-    monkeypatch.setattr(
-        run_all_mod,
-        "supervise",
-        lambda **kw: seen.append(kw["web_zoom"]) if kw.get("web_zoom") else None,
-    )
-    _stub_paths(monkeypatch, exists=False)
-    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
-    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
-    monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
-    monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
+    import inspect
 
-    run_all_mod.run_all(
-        **COMMON,
-        web_min_zoom=13,
-        web_max_zoom=14,
-        # Exactly what the CLI hands over: supervise's own defaults, unasked for.
-        web_zoom=None,
-        web_base_zoom=14,
-        pending_per_worker=3,
+    kinds = [p.kind for p in inspect.signature(run_all_mod.run_all).parameters.values()]
+    assert inspect.Parameter.VAR_KEYWORD not in kinds, (
+        "run_all accepts **kwargs again, so supervise's options will leak into its CLI"
     )
-    assert seen == [14, 13]
 
 
 def test_skip_web_pca_stops_after_annotate(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -271,7 +261,7 @@ def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(
         run_all_mod,
         "supervise",
-        lambda **kw: seen.append((kw["stage"], kw.get("gpus"))),
+        lambda **kw: seen.append((kw["stage"], kw["worker"].gpus)),
     )
     _stub_paths(monkeypatch, exists=True)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
@@ -281,7 +271,11 @@ def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
 
-    run_all_mod.run_all(**COMMON, gpus=1)
+    run_all_mod.run_all(
+        **{**COMMON, "worker": WorkerConfig(
+            image_name="user/image", cluster=["ai2/jupiter"], gpus=1
+        )}
+    )
     assert ("predict", 1) in seen
     assert ("render_utm_pca", 0) in seen
     assert ("render_web_pca", 0) in seen
@@ -296,7 +290,7 @@ def test_gdal_env_vars_are_passed_by_default(monkeypatch: pytest.MonkeyPatch) ->
     seen: list[dict] = []
     monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
     monkeypatch.setattr(
-        run_all_mod, "supervise", lambda **kw: seen.append(kw["worker_env_vars"])
+        run_all_mod, "supervise", lambda **kw: seen.append(kw["worker"].env_vars)
     )
     _stub_paths(monkeypatch, exists=True)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
@@ -313,13 +307,21 @@ def test_caller_can_override_a_gdal_default(monkeypatch: pytest.MonkeyPatch) -> 
     seen: list[dict] = []
     monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
     monkeypatch.setattr(
-        run_all_mod, "supervise", lambda **kw: seen.append(kw["worker_env_vars"])
+        run_all_mod, "supervise", lambda **kw: seen.append(kw["worker"].env_vars)
     )
     _stub_paths(monkeypatch, exists=True)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
 
     run_all_mod.run_all(
-        **COMMON, skip_pca=True, worker_env_vars={"GS_USER_PROJECT": "other-project"}
+        **{
+            **COMMON,
+            "worker": WorkerConfig(
+                image_name="user/image",
+                cluster=["ai2/jupiter"],
+                env_vars={"GS_USER_PROJECT": "other-project"},
+            ),
+        },
+        skip_pca=True,
     )
     assert seen[0]["GS_USER_PROJECT"] == "other-project"
 
@@ -355,24 +357,22 @@ def test_web_tuning_does_not_reach_the_other_stages(
     # is already present, so the web values never applied on a real run.
     run_all_mod.run_all(
         **COMMON,
+        cycle=CycleConfig(seconds=900),
         web_min_zoom=14,
         web_max_zoom=14,
-        cycle_seconds=900,
-        pending_per_worker=3,
-        worker_idle_seconds=None,
     )
 
     web = seen[run_all_mod.STAGE_RENDER_WEB_PCA]
-    assert web["cycle_seconds"] == run_all_mod.WEB_CYCLE_SECONDS
-    assert web["pending_per_worker"] == run_all_mod.WEB_PENDING_PER_WORKER
+    assert web["cycle"].seconds == run_all_mod.WEB_CYCLE_SECONDS
+    assert web["cycle"].pending_per_worker == run_all_mod.WEB_PENDING_PER_WORKER
     for stage in ("predict", run_all_mod.STAGE_RENDER_UTM_PCA):
         # They receive whatever the CLI supplied, which for a long-job stage is the
         # right answer: a 15-minute cycle and a shallow queue suit jobs that run for
         # tens of minutes. What matters is that they did not pick up the web values.
-        assert seen[stage]["cycle_seconds"] == 900
-        assert seen[stage]["pending_per_worker"] == 3
-        assert seen[stage]["cycle_seconds"] != run_all_mod.WEB_CYCLE_SECONDS
-        assert seen[stage]["pending_per_worker"] != run_all_mod.WEB_PENDING_PER_WORKER
+        assert seen[stage]["cycle"].seconds == 900
+        assert seen[stage]["cycle"].pending_per_worker == 3
+        assert seen[stage]["cycle"].seconds != run_all_mod.WEB_CYCLE_SECONDS
+        assert seen[stage]["cycle"].pending_per_worker != run_all_mod.WEB_PENDING_PER_WORKER
 
 
 def test_web_stage_ignores_a_leaked_cycle_seconds(
@@ -399,14 +399,19 @@ def test_web_stage_ignores_a_leaked_cycle_seconds(
     monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
 
-    run_all_mod.run_all(**COMMON, web_min_zoom=14, web_max_zoom=14, cycle_seconds=45)
+    run_all_mod.run_all(
+        **COMMON,
+        web_min_zoom=14,
+        web_max_zoom=14,
+        cycle=CycleConfig(seconds=45),
+    )
 
     assert (
-        seen[run_all_mod.STAGE_RENDER_WEB_PCA]["cycle_seconds"]
+        seen[run_all_mod.STAGE_RENDER_WEB_PCA]["cycle"].seconds
         == run_all_mod.WEB_CYCLE_SECONDS
     )
     # The long-job stages still take it, which is where an override is meaningful.
-    assert seen["predict"]["cycle_seconds"] == 45
+    assert seen["predict"]["cycle"].seconds == 45
 
 
 def test_web_workers_outlive_the_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -440,20 +445,18 @@ def test_web_workers_outlive_the_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
     # is already present, so the web values never applied on a real run.
     run_all_mod.run_all(
         **COMMON,
+        cycle=CycleConfig(seconds=900),
         web_min_zoom=14,
         web_max_zoom=14,
-        cycle_seconds=900,
-        pending_per_worker=3,
-        worker_idle_seconds=None,
     )
 
     web = seen[run_all_mod.STAGE_RENDER_WEB_PCA]
-    assert web["worker_idle_seconds"] == run_all_mod.WEB_WORKER_IDLE_SECONDS
-    assert web["worker_idle_seconds"] > web["cycle_seconds"]
+    assert web["worker"].idle_seconds == run_all_mod.WEB_WORKER_IDLE_SECONDS
+    assert web["worker"].idle_seconds > web["cycle"].seconds
     # The long-job stages keep the worker's own default: a predict worker that idles
     # for fifteen minutes is holding a GPU it is not using.
     for stage in ("predict", run_all_mod.STAGE_RENDER_UTM_PCA):
-        assert seen[stage]["worker_idle_seconds"] is None
+        assert seen[stage]["worker"].idle_seconds == 900
 
 
 def test_launch_workers_passes_the_idle_timeout() -> None:

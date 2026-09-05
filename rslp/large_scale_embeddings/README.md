@@ -330,11 +330,20 @@ It exits when every tile has a marker.
             --store_path gs://BUCKET/PREFIX/embeddings.zarr \
             --completed_path_template 'gs://BUCKET/PREFIX/s2_{year}_completed/' \
             --queue_name USER/QUEUE \
-            --checkpoint_path /weka/dfive-default/helios/checkpoints/... \
-            --image_name USER/IMAGE \
-            --cluster '["ai2/jupiter","ai2/ceres"]' \
-            --geojson_fname data/large_scale_embeddings/aois/initial_regions.geojson \
-            --job_size 8192 --num_workers 8
+            --model.checkpoint_path /weka/dfive-default/helios/checkpoints/... \
+            --worker.image_name USER/IMAGE \
+            --worker.cluster '["ai2/jupiter","ai2/ceres"]' \
+            --worker.num_workers 8 \
+            --aoi.geojson_fname data/large_scale_embeddings/aois/initial_regions.geojson \
+            --aoi.job_size 8192
+
+Its options are grouped into config objects, so they are namespaced on the command
+line: `--model.*` (checkpoint and patch/window/overlap/compile/batch settings),
+`--worker.*` (image, cluster, count, priority, credentials), `--cycle.*` (loop pacing),
+`--aoi.*` (the ground to cover) and `--pca.*` (paths for the render stages). The five
+required values are `--inputs`, `--years`, `--store_path`,
+`--completed_path_template` and `--queue_name`, plus `--model.checkpoint_path`,
+`--worker.image_name` and `--worker.cluster`.
 
 Run it as a cheap CPU Beaker job, not from a workstation: it must outlive any single
 login session, and a laptop-side loop dies with the session (or silently hangs -- the
