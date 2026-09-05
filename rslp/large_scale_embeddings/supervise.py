@@ -330,8 +330,8 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
             )
         )
     elif stage == STAGE_RENDER_UTM_PCA:
-        # Step 3 enumerates from step 1's markers, so it needs no model settings and no
-        # land or wedge filtering: the source markers already name what exists.
+        # Enumerated from the predict markers, so this needs no model settings and no
+        # land or wedge filtering: the markers already name what exists.
         remaining.extend(
             get_render_jobs(
                 store_path=kwargs["store_path"],
@@ -579,7 +579,7 @@ def supervise(
         image_name: the Beaker image the workers run.
         cluster: Beaker clusters to schedule workers on.
         stage: which step to drive. "predict" writes embeddings and needs GPUs;
-            "render_pca" writes the derived false-color layer from step 1's markers and
+            "render_pca" writes the derived false-color layer from the predict markers and
             needs none. Both are idempotent and marker-driven, so the same shallow-queue
             and worker-top-up loop gives both the same resilience.
         artifact_path: the fitted PCA artifact. Required for the render_pca stage.

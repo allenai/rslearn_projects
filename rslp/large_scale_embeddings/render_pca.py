@@ -1,10 +1,10 @@
-"""Step 3 of the embedding flow: render the false-color pyramid.
+"""Render the false-color pyramid from the written embeddings.
 
 ``predict`` writes the int8 embeddings, ``fit_pca`` fits a global basis on exactly the
 data it will be applied to, and this module reads the embeddings back and writes the
 multiscale ``pca_rgb`` pyramid into a separate store.
 
-It is separate from step 1 because the basis cannot exist until step 1 has produced data
+It is separate from ``predict`` because the basis cannot exist until there is data
 to fit on, and because it is cheap: no model, no GPU, just a read, three dot products
 per pixel, and a write, so it runs on ordinary CPU workers.
 
@@ -17,8 +17,8 @@ and reads a bounded number of chunks at any extent. Every level keeps one shard 
 window footprint, so a window is still a whole object owned by a single writer and
 concurrent renders of disjoint windows need no locking.
 
-Work is enumerated from step 1's completion markers, each of which lists exactly the
-windows that were written, so this stage covers precisely step 1's output.
+Work is enumerated from ``predict``'s completion markers, each of which lists exactly
+the windows that were written, so this stage covers precisely that output.
 """
 
 import json
@@ -45,9 +45,9 @@ logger = get_logger(__name__)
 
 
 def pca_marker_name(source_fname: UPath) -> str:
-    """Build this step's marker name for a step 1 marker, unique across years.
+    """Build this stage's marker name for a predict marker, unique across years.
 
-    The source's parent directory must be part of the name. Step 1 puts the year in the
+    The source's parent directory must be part of the name. ``predict`` puts the year in the
     *directory* (completed_2022/, completed_2023/, ...) and gives every year the same
     file name for a given block, so keying only on the file name collapses all years
     onto one marker: the first year written makes every later year look already done and
@@ -57,7 +57,7 @@ def pca_marker_name(source_fname: UPath) -> str:
     enumeration can compute it without opening every source marker.
 
     Args:
-        source_fname: the step 1 marker being rendered.
+        source_fname: the predict marker being rendered.
 
     Returns:
         the marker file name for this unit of work.
@@ -66,11 +66,11 @@ def pca_marker_name(source_fname: UPath) -> str:
 
 
 def get_pca_marker_fname(completed_path: str, source_fname: UPath) -> UPath:
-    """Locate this step's completion marker for a given step 1 marker.
+    """Locate this stage's completion marker for a given predict marker.
 
     Args:
-        completed_path: the directory holding step 3's markers.
-        source_fname: the step 1 marker being rendered.
+        completed_path: the directory holding this stage's markers.
+        source_fname: the predict marker being rendered.
 
     Returns:
         the marker path for this unit of work.
@@ -96,8 +96,8 @@ def render_pca_pipeline(
     Args:
         store_path: the GeoZarr store holding the embeddings. Opened read-only.
         pca_store_path: the sibling store to write the false-color pyramid into.
-        artifact_path: the fitted global PCA artifact from step 2.
-        source_marker: path to the step 1 completion marker naming the windows to
+        artifact_path: the fitted global PCA artifact from ``fit_pca``.
+        source_marker: path to the predict completion marker naming the windows to
             render.
         completed_path: directory for this step's own completion markers.
         patch_size: the encoder patch size used when the embeddings were written.
@@ -193,13 +193,13 @@ def get_render_jobs(
     patch_size: int = 1,
     max_level: int = DEFAULT_PCA_MAX_LEVEL,
 ) -> list[list[str]]:
-    """Build one job per step 1 marker that has not yet been rendered.
+    """Build one job per predict marker that has not yet been rendered.
 
     Args:
         store_path: the GeoZarr store holding the embeddings.
         pca_store_path: the sibling store to write the pyramid into.
         artifact_path: the fitted global PCA artifact.
-        source_completed_paths: step 1 marker directories, one per reference year.
+        source_completed_paths: predict marker directories, one per reference year.
         completed_path: directory for this step's markers.
         patch_size: the encoder patch size used when the embeddings were written.
         max_level: deepest pyramid level to write.
@@ -257,7 +257,7 @@ def write_render_jobs(
     patch_size: int = 1,
     max_level: int = DEFAULT_PCA_MAX_LEVEL,
 ) -> None:
-    """Enqueue step 3 jobs on a Beaker queue.
+    """Enqueue render_pca jobs on a Beaker queue.
 
     The artifact must already exist: rendering against a missing or refitted basis would
     produce pixels that do not match the rest of the store.
@@ -265,8 +265,8 @@ def write_render_jobs(
     Args:
         store_path: the GeoZarr store holding the embeddings.
         pca_store_path: the sibling store to write the pyramid into.
-        artifact_path: the fitted global PCA artifact from step 2.
-        source_completed_paths: step 1 marker directories, one per reference year.
+        artifact_path: the fitted global PCA artifact from ``fit_pca``.
+        source_completed_paths: predict marker directories, one per reference year.
         completed_path: directory for this step's markers.
         queue_name: the Beaker queue to write job entries to.
         patch_size: the encoder patch size used when the embeddings were written.
@@ -307,7 +307,7 @@ def annotate_pca_store(
     """Record the basis provenance onto the pca store's arrays.
 
     The RGB pixels are meaningless without knowing which basis produced them, so the
-    artifact metadata is copied onto every pyramid level. Run once after step 2.
+    artifact metadata is copied onto every pyramid level. Run once after ``fit_pca``.
 
     Args:
         pca_store_path: the pca store to annotate.

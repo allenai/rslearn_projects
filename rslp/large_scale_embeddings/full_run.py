@@ -102,16 +102,16 @@ def run_all(
         inputs: which input variant to use.
         years: reference years to produce; the order must match the store time axis.
         store_path: the embeddings GeoZarr store.
-        completed_path_template: step 1 marker directory containing ``{year}``.
+        completed_path_template: ``predict`` marker directory containing ``{year}``.
         queue_name: the Beaker queue to drive.
         checkpoint_path: the OlmoEarth checkpoint.
         image_name: the Beaker image for the workers.
         cluster: Beaker clusters to schedule workers on.
         model_url: URL reference to the encoder model, recorded in the store.
         source_data: URLs of the source datasets, recorded in the store.
-        artifact_path: where step 2 writes the fitted basis.
+        artifact_path: where ``fit_pca`` writes the fitted basis.
         pca_store_path: the sibling store for the false-colour pyramid.
-        pca_completed_path: step 3 marker directory.
+        pca_completed_path: ``render_pca`` marker directory.
         zone_numbers: UTM zones to create; defaults to all of 1-60.
         matryoshka_dims: prefix widths the model supports, recorded in the store.
         max_level: deepest pyramid level to write.
@@ -120,7 +120,7 @@ def run_all(
         skip_pca: stop after predict. For a run whose only product is embeddings.
         skip_web_pca: stop after annotate, leaving the display pyramid unbuilt.
         web_store_path: the web-mercator PCA store. Defaults beside the UTM one.
-        web_completed_path: marker directory for step 5. Defaults beside the store.
+        web_completed_path: ``render_web_pca`` marker directory. Defaults beside the store.
         web_min_zoom: shallowest zoom to build.
         web_max_zoom: deepest zoom, warped directly from the UTM store.
         supervise_kwargs: forwarded verbatim to :func:`supervise`, so this never
@@ -251,7 +251,7 @@ def run_all(
         pca_completed_path.rstrip("/") + "_web/"
     )
 
-    # Step 5: the display pyramid. One supervise stage per zoom, deepest first, because
+    # The display pyramid. One supervise stage per zoom, deepest first, because
     # a coarse shard is built from the four below it and those must already exist.
     # Zoom order is the dependency, so this is a sequence rather than one flat stage.
     logger.info("step 5/5: render_web_pca (zooms %d..%d)", web_min_zoom, web_max_zoom)

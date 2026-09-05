@@ -1,19 +1,22 @@
 """Global quantized OlmoEarth embedding inference.
 
-The forward flow is three ordered steps:
+The forward flow, each stage depending on the one before it:
 
-1. ``predict`` writes int8 embeddings into the GeoZarr archive (``write_jobs`` or
-   ``supervise`` enqueues the work).
-2. ``fit_pca`` samples that archive and fits the global false-color basis, so the
-   basis reflects exactly the data it will be applied to.
-3. ``render_pca`` reads the embeddings back and writes the ``pca_rgb`` layer
-   (``write_render_jobs`` enqueues the work). CPU only, no model.
-4. ``render_web_pca`` warps that layer into a single web-mercator pyramid for display.
-   The UTM pyramid keeps ``shard == one prediction window`` at every level, so object
-   count for a view never falls however far you zoom out, and a view spanning two zones
-   cannot be drawn at all. This stage fixes both. CPU only, no model.
+``predict``
+    Writes int8 embeddings into the GeoZarr archive (``write_jobs`` or ``supervise``
+    enqueues the work).
+``fit_pca``
+    Samples that archive and fits the global false-color basis, so the basis reflects
+    exactly the data it will be applied to.
+``render_pca``
+    Reads the embeddings back and writes the ``pca_rgb`` layer (``write_render_jobs``
+    enqueues the work). CPU only, no model.
+``render_web_pca``
+    Warps that layer into a single web-mercator pyramid for display. The UTM pyramid
+    keeps ``shard == one prediction window`` at every level, so object count for a view
+    never falls however far you zoom out and a view spanning two zones cannot be drawn
+    at all. This stage fixes both. CPU only, no model.
 """
-
 from .full_run import launch_run_all, run_all
 from .pca import fit_pca
 from .predict_pipeline import predict_pipeline
