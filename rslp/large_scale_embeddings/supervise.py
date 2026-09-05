@@ -417,8 +417,6 @@ def _run_cycle(kwargs: dict[str, Any], result: Any, launched: Any = None) -> Non
             },
             extra_env_secrets={
                 "DATASETS_API_TOKEN": kwargs["datasets_token_secret"],
-                # .get so a caller passing a partial config still launches; these have
-                # module defaults and are only overridden to point at other secrets.
                 "AWS_ACCESS_KEY_ID": kwargs.get(
                     "aws_key_id_secret", DEFAULT_AWS_KEY_ID_SECRET
                 ),
@@ -687,8 +685,6 @@ def supervise(
         "epsg_code": epsg_code,
         "wgs84_bounds": wgs84_bounds,
         "worker_idle_seconds": worker_idle_seconds,
-        # Overwritten before every cycle from the parent's launch ledger. Packed here
-        # so the dict really does carry everything the cycle reads.
         "claim_stale_seconds": claim_stale_seconds,
         "stage": stage,
         "artifact_path": artifact_path,

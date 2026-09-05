@@ -84,7 +84,6 @@ def worker_pipeline(
             requested workflows. This is to just delete all the messages in a topic.
     """
 
-    # Callback to run the workflow indicated in the message.
     def process_message(json_data: dict[str, Any]) -> None:
         logger.debug("worker received message %s", json_data)
         rslp_project = json_data["project"]
@@ -196,8 +195,6 @@ def launch_workers(
         BeakerEnvVar(name=env_name, secret=secret_name)
         for env_name, secret_name in extra_env_secrets.items()
     ]
-    # Loop-invariant, and resolving the Beaker token secret costs an API call, so build
-    # it once rather than once per worker.
     base_env_vars = get_base_env_vars(use_weka_prefix=False)
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         for _ in tqdm.tqdm(range(num_workers)):
