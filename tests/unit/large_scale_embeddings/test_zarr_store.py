@@ -274,7 +274,6 @@ def test_recorded_metadata_names_the_current_release() -> None:
     from rslp.large_scale_embeddings import zarr_store as zs
 
     assert zs.DEFAULT_MODEL_URL == "https://huggingface.co/allenai/OlmoEarth-v1_3-Base"
-    assert zs.DEFAULT_BUILD_VERSION == "1.3.0"
     # The narrowest listed width is the one the band chunk is sized for, so a reader
     # truncating to it pays one chunk rather than two.
     assert min(zs.DEFAULT_MATRYOSHKA_DIMS) == zs.DEFAULT_BAND_CHUNK
@@ -291,3 +290,34 @@ def test_source_data_follows_the_input_variant() -> None:
         assert any("sentinel-2" in url for url in urls), inputs
         assert any("sentinel-1" in url for url in urls) == ("s1" in tokens), inputs
         assert any("landsat" in url for url in urls) == ("landsat" in tokens), inputs
+
+
+def test_build_version_describes_the_code_not_the_model() -> None:
+    """`geoemb:build_version` is the software's version, not the encoder's.
+
+    The convention defines it as "version of the software that built this store", and
+    the encoder is already named by `geoemb:model`, so putting a model release here is
+    both wrong and redundant. It briefly said "1.3.0", which is the encoder.
+
+    What it should carry is enough to identify the code: a throughput regression was
+    left unattributable because the image's rslearn and olmoearth_pretrain versions
+    appeared nowhere in the archive.
+    """
+    from rslp.large_scale_embeddings import zarr_store as zs
+
+    value = zs.build_version()
+    assert "rslearn_projects" in value
+    for name, _local, _image in zs.BUILD_COMPONENTS:
+        assert name in value, f"{name} is not identified in build_version"
+    assert zs.DEFAULT_MODEL_URL not in value, "the model belongs in geoemb:model"
+    assert value != "1.3.0"
+
+
+def test_build_version_never_raises() -> None:
+    """It is metadata: an unavailable git or missing package must not fail a run."""
+    from rslp.large_scale_embeddings import zarr_store as zs
+
+    assert zs._git_commit("/nonexistent/path") is None
+    assert zs._installed_version("no-such-distribution-xyz") is None
+    # A component we cannot identify degrades to a placeholder rather than blowing up.
+    assert isinstance(zs.build_version(), str)

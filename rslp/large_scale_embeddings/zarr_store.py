@@ -19,6 +19,10 @@ expressible with the convention's scalar/array scale objects, so it is described
 a custom ``method`` plus a ``link`` to the formula (see the project README).
 """
 
+import importlib.metadata
+import pathlib
+import subprocess  # nosec: only ever run with a fixed argv and no shell
+
 import numpy as np
 import zarr
 from rslearn.utils.geometry import PixelBounds, Projection
@@ -118,9 +122,76 @@ ZARR_CONVENTIONS = [GEOEMB_CONVENTION, SPATIAL_CONVENTION, PROJ_CONVENTION]
 # stale, so live stores carry a model URL that names the wrong release.
 DEFAULT_MODEL_URL = "https://huggingface.co/allenai/OlmoEarth-v1_3-Base"
 
-# Version of this archive, recorded as geoemb:build_version. Tracks the encoder release
-# the store was built for, so a reader can tell two vintages apart.
-DEFAULT_BUILD_VERSION = "1.3.0"
+# Source repositories whose versions identify the code that produced a store, mapped to
+# where the vendored checkout sits both locally and inside the image.
+BUILD_COMPONENTS = (
+    ("rslearn", "docker_build/rslearn", "/opt/rslearn"),
+    ("olmoearth_pretrain", "docker_build/olmoearth_pretrain", "/opt/olmoearth_pretrain"),
+)
+
+
+def _git_commit(*candidates: str) -> str | None:
+    """Short commit of the first candidate path that is a git checkout.
+
+    Args:
+        candidates: paths to try, in order.
+
+    Returns:
+        the short commit, or None if none of the paths is a checkout.
+    """
+    for path in candidates:
+        if not pathlib.Path(path, ".git").exists():
+            continue
+        try:
+            out = subprocess.run(  # nosec: fixed argv, no shell
+                ["git", "-C", path, "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=True,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        return out.stdout.strip() or None
+    return None
+
+
+def _installed_version(name: str) -> str | None:
+    """Version of an installed distribution, or None if it is not installed."""
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def build_version() -> str:
+    """Identify the software that built a store, for geoemb:build_version.
+
+    The convention defines this as the version of the software, not of the model: the
+    encoder is already named by geoemb:model, so repeating its release here is both
+    wrong and redundant. What is worth recording is the code, precisely enough to tell
+    two runs apart -- a throughput regression was once left unattributable because the
+    image's rslearn and olmoearth_pretrain versions were nowhere in the archive.
+
+    Commits are only available when running from a checkout, which init_store does;
+    ``.dockerignore`` excludes ``.git`` so the image has none. Inside the image this
+    falls back to installed distribution versions, and to "unknown" if even that fails.
+
+    Returns:
+        a string naming this repository and each vendored dependency.
+    """
+    project = _installed_version("rslearn_projects") or "0"
+    commit = _git_commit(".")
+    parts = [f"rslearn_projects {project}" + (f"+{commit}" if commit else "")]
+    for name, local_path, image_path in BUILD_COMPONENTS:
+        version = _git_commit(local_path, image_path) or _installed_version(name)
+        parts.append(f"{name} {version or 'unknown'}")
+    return "; ".join(parts)
+
+
+# Recorded as geoemb:build_version. Resolved once at import so every store written by
+# one process agrees, and so a caller can still override it.
+DEFAULT_BUILD_VERSION = build_version()
 
 # Prefix widths the encoder is trained to emit. A distilled checkpoint trains
 # embeddings[..., :d] to stand alone for each d, so a reader may truncate to any listed
