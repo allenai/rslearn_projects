@@ -33,7 +33,6 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
 from rslearn.utils.mp import star_imap_unordered
-from rslearn.utils.raster_array import RasterArray, RasterMetadata
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from shapely import box as shapely_box
 from upath import UPath
@@ -314,55 +313,12 @@ def _read_window_embeddings(
     return embeddings
 
 
-def _write_debug_geotiff(
-    window: Window, embeddings: np.ndarray, debug_geotiff_path: str, patch_size: int
-) -> None:
-    """Write a window's embeddings to an uncompressed GeoTIFF for debugging.
-
-    Args:
-        window: the window being written.
-        embeddings: the int8 embedding array of shape (band, height, width).
-        debug_geotiff_path: the directory to write the GeoTIFF to.
-        patch_size: the encoder patch size; the embeddings are at 1/patch_size of the
-            window resolution, so the GeoTIFF is georeferenced at that resolution.
-    """
-    # The embedding raster is at 1/patch_size of the window resolution.
-    out_projection = Projection(
-        window.projection.crs,
-        window.projection.x_resolution * patch_size,
-        window.projection.y_resolution * patch_size,
-    )
-    out_bounds = (
-        window.bounds[0] // patch_size,
-        window.bounds[1] // patch_size,
-        window.bounds[2] // patch_size,
-        window.bounds[3] // patch_size,
-    )
-    out_fname = get_output_fname(debug_geotiff_path, window.projection, window.bounds)
-    raster_format = GeotiffRasterFormat(
-        always_enable_tiling=True,
-        block_size=512,
-        geotiff_options={"compress": "none"},
-    )
-    raster_format.encode_raster(
-        out_fname.parent,
-        out_projection,
-        out_bounds,
-        RasterArray(
-            chw_array=embeddings,
-            metadata=RasterMetadata(nodata_value=NODATA_VALUE),
-        ),
-        fname=out_fname.name,
-    )
-
-
 def _write_window_by_name(
     ds_path: UPath,
     window_name: str,
     store_path: str,
     time_index: int,
     patch_size: int,
-    debug_geotiff_path: str | None,
 ) -> None:
     """Load one window from the scratch dataset and write its embeddings to the store.
 
@@ -376,7 +332,6 @@ def _write_window_by_name(
         store_path: the GeoZarr store path.
         time_index: the index into the store's time axis for this reference year.
         patch_size: the encoder patch size.
-        debug_geotiff_path: if set, also write an uncompressed GeoTIFF here.
     """
     dataset = Dataset(ds_path)
     windows = dataset.load_windows(groups=[PREDICTION_GROUP], names=[window_name])
@@ -395,8 +350,6 @@ def _write_window_by_name(
         embeddings=embeddings,
         patch_size=patch_size,
     )
-    if debug_geotiff_path is not None:
-        _write_debug_geotiff(window, embeddings, debug_geotiff_path, patch_size)
 
 
 def predict_pipeline(
@@ -415,7 +368,6 @@ def predict_pipeline(
     batch_size: int | None = None,
     scratch_path: str | None = None,
     upload_workers: int = 16,
-    debug_geotiff_path: str | None = None,
 ) -> None:
     """Compute quantized OlmoEarth embeddings over one tile.
 
@@ -453,7 +405,6 @@ def predict_pipeline(
             temporary directory is used and deleted when the tile is done.
         upload_workers: number of worker processes for writing the per-crop
             embeddings.
-        debug_geotiff_path: if set, also write an uncompressed GeoTIFF per crop here
             (for debugging small runs).
     """
     if PATCH_SIZE % patch_size != 0:
@@ -494,7 +445,6 @@ def predict_pipeline(
                 compile_model=compile_model,
                 batch_size=batch_size,
                 upload_workers=upload_workers,
-                debug_geotiff_path=debug_geotiff_path,
             )
     else:
         _process_tile(
@@ -513,7 +463,6 @@ def predict_pipeline(
             compile_model=compile_model,
             batch_size=batch_size,
             upload_workers=upload_workers,
-            debug_geotiff_path=debug_geotiff_path,
         )
 
 
@@ -533,7 +482,6 @@ def _process_tile(
     compile_model: bool,
     batch_size: int | None,
     upload_workers: int,
-    debug_geotiff_path: str | None,
 ) -> None:
     """Process one tile using the given scratch dataset path.
 
@@ -559,7 +507,6 @@ def _process_tile(
             speed, never the embeddings.
         upload_workers: number of worker processes for writing the per-crop
             embeddings.
-        debug_geotiff_path: if set, also write an uncompressed GeoTIFF per crop here.
     """
     # Initialize an rslearn dataset in scratch from the predict dataset config.
     dataset_config_fname = DATASET_CONFIG_FNAME.format(inputs=inputs.value)
@@ -642,7 +589,6 @@ def _process_tile(
                     "store_path": store_path,
                     "time_index": time_index,
                     "patch_size": patch_size,
-                    "debug_geotiff_path": debug_geotiff_path,
                 }
             )
             written.append(crop_offset)

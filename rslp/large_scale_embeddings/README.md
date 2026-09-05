@@ -69,8 +69,8 @@ settings:
         {variant}_ps1_ws16_overlap4/
           embeddings.zarr        int8 embeddings, one array per UTM zone
           pca_v1.zarr            uint8 false-color pyramid, same zone layout
-          completed_{year}/      step 1 markers
-          pca_completed_{year}/  step 3 markers
+          completed_{year}/      predict markers
+          pca_completed_{year}/  render_pca markers
 
 `embeddings.zarr` is named for its contents rather than its inputs, since the input
 variant already appears in the path above it and does not need restating.
@@ -200,8 +200,7 @@ tile). `time_range` is `(T, T)` where T is the reference timestamp; the dataset 
 derives the twelve monthly mosaics over the year following T. `time_index` is the
 index of this year in the store's time axis (0 for the first year in `--years`). By
 default the scratch rslearn dataset is placed in a temporary directory and deleted;
-pass `--scratch_path /path/to/scratch/` to keep it for debugging, and
-`--debug_geotiff_path /path/` to also write per-window GeoTIFFs for inspection.
+pass `--scratch_path /path/to/scratch/` to keep it for debugging.
 
 
 Running at Scale
