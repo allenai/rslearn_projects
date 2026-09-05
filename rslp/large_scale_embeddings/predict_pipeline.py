@@ -61,16 +61,9 @@ class EmbeddingInputs(Enum):
 
     S2 = "s2"
     S2_S1 = "s2_s1"
-    # Sentinel-2 plus monthly Landsat, using the model's 128-dim student head rather
-    # than its 768-dim teacher. The student is selected by an environment variable,
-    # which leaves no trace in the output path, so the variant name is what separates
-    # the two stores.
+    # Landsat added, through the model's 128-dim student head.
     S2_LANDSAT_DISTILLED = "s2_landsat_distilled"
-    # The 2026-09-01 release candidate
-    # (regbtl_v1_2_gdyn_d768_proj128lin_sup768_w1_newsamp_psuniform_stunorm_mlpgram1),
-    # which adds Sentinel-1 to the distilled variant's inputs. Sentinel-1 and Landsat
-    # are both best-effort, so a window with only Sentinel-2 is still embedded; only
-    # the modality mix changes, not the output shape.
+    # The above plus Sentinel-1. Both S1 and Landsat are best-effort.
     S2_S1_LANDSAT_DISTILLED = "s2_s1_landsat_distilled"
 
 
