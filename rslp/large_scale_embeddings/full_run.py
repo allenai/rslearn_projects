@@ -45,7 +45,11 @@ from rslp.large_scale_embeddings.supervise import (
     supervise,
 )
 from rslp.large_scale_embeddings.write_jobs import get_jobs, init_store
-from rslp.large_scale_embeddings.zarr_store import init_pca_store
+from rslp.large_scale_embeddings.zarr_store import (
+    DEFAULT_MODEL_URL,
+    init_pca_store,
+    source_data_for,
+)
 from rslp.log_utils import get_logger
 from rslp.utils.beaker import (
     DEFAULT_BUDGET,
@@ -97,8 +101,9 @@ def run_all(
     model: ModelConfig,
     worker: WorkerConfig,
     pca: PcaConfig,
-    model_url: str,
-    source_data: list[str],
+
+    model_url: str = DEFAULT_MODEL_URL,
+    source_data: list[str] | None = None,
     cycle: CycleConfig | None = None,
     aoi: AoiConfig | None = None,
     matryoshka_dims: list[int] | None = None,
@@ -121,7 +126,8 @@ def run_all(
         pca: the derived-layer paths. `artifact_path`, `store_path` and
             `completed_path` are required unless `skip_pca` is set.
         model_url: URL reference to the encoder model, recorded in the store.
-        source_data: URLs of the source datasets, recorded in the store.
+            Defaults to the released encoder these embeddings come from.
+        source_data: URLs of the source datasets. Derived from `inputs` if unset.
         cycle: loop pacing for the predict and render stages. See `CycleConfig`.
         aoi: the ground to cover. See `AoiConfig`.
         matryoshka_dims: prefix widths the model supports, recorded in the store.
@@ -139,6 +145,7 @@ def run_all(
     """
     cycle = cycle or CycleConfig()
     aoi = aoi or AoiConfig()
+    source_data = source_data or source_data_for(inputs.value)
     completed_paths = [completed_path_template.format(year=year) for year in years]
 
     logger.info("step 0/5: ensuring the store exists at %s", store_path)

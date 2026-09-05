@@ -113,6 +113,45 @@ PROJ_CONVENTION = {
 }
 ZARR_CONVENTIONS = [GEOEMB_CONVENTION, SPATIAL_CONVENTION, PROJ_CONVENTION]
 
+# The released encoder these embeddings come from, recorded as geoemb:model. Defaulted
+# rather than passed per invocation: it was retyped on every init_store call and went
+# stale, so live stores carry a model URL that names the wrong release.
+DEFAULT_MODEL_URL = "https://huggingface.co/allenai/OlmoEarth-v1_3-Base"
+
+# Version of this archive, recorded as geoemb:build_version. Tracks the encoder release
+# the store was built for, so a reader can tell two vintages apart.
+DEFAULT_BUILD_VERSION = "1.3.0"
+
+# Prefix widths the encoder is trained to emit. A distilled checkpoint trains
+# embeddings[..., :d] to stand alone for each d, so a reader may truncate to any listed
+# width; 64 is the narrowest and is what DEFAULT_BAND_CHUNK matches.
+DEFAULT_MATRYOSHKA_DIMS = [128, 64]
+
+# Source datasets per input variant, recorded as geoemb:source_data. Keyed by the
+# EmbeddingInputs value so a store cannot claim inputs it was not built from.
+SOURCE_DATA_URLS = {
+    "s2": "https://sentinel.esa.int/web/sentinel/missions/sentinel-2",
+    "s1": "https://sentinel.esa.int/web/sentinel/missions/sentinel-1",
+    "landsat": "https://www.usgs.gov/landsat-missions",
+}
+
+def source_data_for(inputs: str) -> list[str]:
+    """The source-dataset URLs an input variant is built from.
+
+    Derived from the variant name rather than kept as a second list, so a new variant
+    cannot ship claiming the wrong inputs. The name is a `_`-separated set of modality
+    tokens, e.g. ``s2_s1_landsat_distilled``.
+
+    Args:
+        inputs: an `EmbeddingInputs` value, e.g. ``"s2_landsat_distilled"``.
+
+    Returns:
+        the URLs to record as geoemb:source_data, in modality order.
+    """
+    tokens = set(inputs.split("_"))
+    return [url for name, url in SOURCE_DATA_URLS.items() if name in tokens]
+
+
 # Default URL documenting the signed-power quantization/dequantization formula.
 DEFAULT_QUANTIZATION_LINK = (
     "https://github.com/allenai/rslearn_projects/blob/master/"
@@ -250,7 +289,7 @@ def init_store(
     tile_size: int,
     dimensions: int,
     gsd: float | None = None,
-    build_version: str = "0.0.1",
+    build_version: str = DEFAULT_BUILD_VERSION,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     shard_size: int = DEFAULT_SHARD_SIZE,
     band_chunk: int = DEFAULT_BAND_CHUNK,
@@ -416,7 +455,7 @@ def init_pca_store(
     resolution: float,
     tile_size: int,
     gsd: float | None = None,
-    build_version: str = "0.0.1",
+    build_version: str = DEFAULT_BUILD_VERSION,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     shard_size: int = DEFAULT_SHARD_SIZE,
     max_level: int = DEFAULT_PCA_MAX_LEVEL,

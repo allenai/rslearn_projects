@@ -260,3 +260,34 @@ def test_init_store_rejects_band_chunk_that_does_not_divide(tmp_path: Path) -> N
             shard_size=512,
             chunk_size=256,
         )
+
+
+def test_recorded_metadata_names_the_current_release() -> None:
+    """The store's geoemb metadata must describe the encoder that actually ran.
+
+    `model_url`, `source_data` and `build_version` used to be retyped on every
+    init_store invocation, so they drifted: the France store records
+    ``OlmoEarth-v1_2-Small`` and ``build_version 0.0.1`` when it was built from the v1.3
+    release candidate with Sentinel-1 and Landsat. Nothing reads those fields during a
+    run, so nothing caught it. Defaults are what stop it recurring.
+    """
+    from rslp.large_scale_embeddings import zarr_store as zs
+
+    assert zs.DEFAULT_MODEL_URL == "https://huggingface.co/allenai/OlmoEarth-v1_3-Base"
+    assert zs.DEFAULT_BUILD_VERSION == "1.3.0"
+    # The narrowest listed width is the one the band chunk is sized for, so a reader
+    # truncating to it pays one chunk rather than two.
+    assert min(zs.DEFAULT_MATRYOSHKA_DIMS) == zs.DEFAULT_BAND_CHUNK
+
+
+def test_source_data_follows_the_input_variant() -> None:
+    """A store must not claim source datasets its inputs did not include."""
+    from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
+    from rslp.large_scale_embeddings.zarr_store import source_data_for
+
+    for inputs in EmbeddingInputs:
+        urls = source_data_for(inputs.value)
+        tokens = set(inputs.value.split("_"))
+        assert any("sentinel-2" in url for url in urls), inputs
+        assert any("sentinel-1" in url for url in urls) == ("s1" in tokens), inputs
+        assert any("landsat" in url for url in urls) == ("landsat" in tokens), inputs

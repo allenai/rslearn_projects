@@ -388,13 +388,14 @@ def write_jobs(
 def init_store(
     store_path: str,
     years: list[int],
-    model_url: str,
-    source_data: list[str],
+    inputs: EmbeddingInputs = EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+    model_url: str = zarr_store.DEFAULT_MODEL_URL,
+    source_data: list[str] | None = None,
     zone_numbers: list[int] | None = None,
     patch_size: int = 1,
     band_chunk: int = zarr_store.DEFAULT_BAND_CHUNK,
     matryoshka_dims: list[int] | None = None,
-    build_version: str = "0.0.1",
+    build_version: str = zarr_store.DEFAULT_BUILD_VERSION,
     zstd_level: int = zarr_store.DEFAULT_ZSTD_LEVEL,
     overwrite: bool = False,
 ) -> None:
@@ -406,8 +407,11 @@ def init_store(
     Args:
         store_path: the GeoZarr store path or URL to create.
         years: the annual reference years, defining the time axis.
+        inputs: the input variant the store will hold, used to record which source
+            datasets it was built from.
         model_url: URL reference to the encoder model (e.g. a HuggingFace repo).
-        source_data: URLs of the source datasets.
+            Defaults to the released encoder these embeddings come from.
+        source_data: URLs of the source datasets. Derived from `inputs` if unset.
         zone_numbers: the UTM zone numbers to create; defaults to all of 1-60.
         patch_size: the encoder patch size; the store grid is at 1/patch_size of the
             input resolution, so it must match the patch_size used by write_jobs.
@@ -434,12 +438,20 @@ def init_store(
         zone_numbers=zone_numbers,
         years=years,
         model_url=model_url,
-        source_data=source_data,
+        source_data=(
+            source_data
+            if source_data is not None
+            else zarr_store.source_data_for(inputs.value)
+        ),
         resolution=output_resolution,
         tile_size=output_tile_size,
         dimensions=EMBEDDING_DIM,
         band_chunk=band_chunk,
-        matryoshka_dims=matryoshka_dims,
+        matryoshka_dims=(
+            matryoshka_dims
+            if matryoshka_dims is not None
+            else zarr_store.DEFAULT_MATRYOSHKA_DIMS
+        ),
         chunk_size=min(zarr_store.DEFAULT_CHUNK_SIZE, output_shard_size),
         shard_size=output_shard_size,
         zstd_level=zstd_level,

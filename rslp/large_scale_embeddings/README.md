@@ -180,8 +180,7 @@ tile:
     python -m rslp.main large_scale_embeddings init_store \
         --store_path gs://BUCKET/PREFIX/embeddings.zarr \
         --years '[2024]' \
-        --model_url https://huggingface.co/allenai/OlmoEarth-v1_2-Small \
-        --source_data '["https://sentinel.esa.int/web/sentinel/missions/sentinel-2"]' \
+        --inputs S2 \
         --zone_numbers '[10]'
 
     python -m rslp.main large_scale_embeddings predict \
@@ -261,8 +260,12 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
         python -m rslp.main large_scale_embeddings init_store \
             --store_path gs://BUCKET/PREFIX/embeddings.zarr \
             --years '[2021, 2022, 2023, 2024, 2025]' \
-            --model_url https://huggingface.co/allenai/OlmoEarth-v1_2-Small \
-            --source_data '["https://sentinel.esa.int/web/sentinel/missions/sentinel-2"]'
+            --inputs S2
+
+   `--model_url`, `--source_data`, `--matryoshka_dims` and `--build_version` describe
+   the encoder in the store's `geoemb:` metadata. They default to the current release
+   and to the source datasets `--inputs` implies, so pass them only to record something
+   other than that.
 
 3. Write jobs to a Beaker queue for one reference year, one job per uncompleted tile
    (the year's time index is derived from the store's time axis):
@@ -508,7 +511,7 @@ read was ever measured, which is the shape that punishes a large spatial chunk h
     python -m rslp.main large_scale_embeddings bench_build_variants \
         --source_store_path gs://BUCKET/.../embeddings.zarr \
         --out_prefix gs://BUCKET/bench/chunking_v1 \
-        --model_url https://huggingface.co/allenai/OlmoEarth-v1_2-Small \
+        --model_url https://huggingface.co/allenai/OlmoEarth-v1_3-Base \
         --source_data '["https://sentinel.esa.int/web/sentinel/missions/sentinel-2"]'
 
     python -m rslp.main large_scale_embeddings bench_measure \
