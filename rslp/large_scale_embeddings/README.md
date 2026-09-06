@@ -509,26 +509,24 @@ needs them to check for markers, and an unauthenticated bucket read fails on the
 completion check before it reports a count.
 
 
-Chunk shape: the open question and how to close it
---------------------------------------------------
+Chunk shape
+-----------
 
-The store fixes three geometry parameters and only one of them rests on evidence.
+The store fixes three geometry parameters, and all three are now measured. See
+`CHUNKING.md` for the full table and the reasoning; the short version is that
+`DEFAULT_CHUNK_SIZE = 256`, `DEFAULT_BAND_CHUNK = 64` and `DEFAULT_ZSTD_LEVEL = 3` are
+the right choices and no change is needed.
 
 `DEFAULT_SHARD_SIZE = 2048` is not a tuning parameter at all. One prediction window
 writes exactly one object, which is what keeps concurrent writers on disjoint objects
 and needs no locking. It moves only if the write path does.
 
-`DEFAULT_BAND_CHUNK = 64` is well grounded, but only in bytes: it is the width the
-2026-09-01 release candidate is trained to emit, so one chunk is one usable vector, and
-a finer split costs a range request per extra sub-chunk because zarr does not coalesce
-adjacent ranges. What other depths cost in requests and index size has been computed,
-never measured.
+The other two are chosen once and for good: zarr cannot re-chunk an array in place, so
+changing them means rewriting every object. Re-run the benchmark before creating a store
+if the embedding dimensionality changes, if the trained Matryoshka width moves off 64, or
+if the dominant access pattern stops being the AOI read the measurements assume.
 
-`DEFAULT_CHUNK_SIZE = 256` is the weak one. It came from a single comparison against
-512 on a single access pattern. 128 and 1024 were never tried, and no transect-shaped
-read was ever measured, which is the shape that punishes a large spatial chunk hardest.
-
-`tools/bench_chunking.py` closes this. Two commands:
+`tools/bench_chunking.py` is what produced them. Two commands:
 
     python -m rslp.main large_scale_embeddings bench_build_variants \
         --source_store_path gs://BUCKET/.../embeddings.zarr \
