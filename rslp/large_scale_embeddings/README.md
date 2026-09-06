@@ -64,7 +64,7 @@ Store Layout on Disk
 Two sibling stores per run, under a prefix that records the checkpoint and the model
 settings:
 
-    gs://BUCKET/geozarr_{aoi}_{years}_{date}/
+    gs://BUCKET/{prefix}/
       {checkpoint}/
         {variant}_ps1_ws16_overlap4/
           embeddings.zarr        int8 embeddings, one array per UTM zone
@@ -74,6 +74,24 @@ settings:
 
 `embeddings.zarr` is named for its contents rather than its inputs, since the input
 variant already appears in the path above it and does not need restating.
+
+There are two rules for `{prefix}`, because there are two kinds of store.
+
+A **scoped run** -- one region, built once, kept for comparison -- uses
+`geozarr_{aoi}_{years}_{date}`, e.g. `geozarr_kenya_2022_2024_20260826`. Every part of
+the name is settled the moment it is created, so nothing in it can drift.
+
+A **long-lived archive** uses `geozarr_{aoi}_v{n}`, e.g. `geozarr_global_v1`. Both the
+date and the year range would age here: the store accumulates regions over months, and
+the time axis can be extended (resize the array, extend the `time` coordinate, then
+re-consolidate), which would leave a year range in the path contradicting the data. A
+version is the only component that changes when someone means it to. Bump it for a change
+that makes the store incompatible -- chunk geometry, dimensionality, quantization -- not
+for adding regions or years. A new checkpoint needs no bump either, since the checkpoint
+is already a path segment below. The years remain discoverable where they are
+authoritative: the `time` coordinate and the `geoemb:` metadata.
+
+Nothing parses these paths; the convention is for people reading the bucket.
 
 The PCA output is a **separate store**, not another array inside the embeddings store,
 for two reasons. Refitting the basis invalidates every rendered pixel while leaving the
