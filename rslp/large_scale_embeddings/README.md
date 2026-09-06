@@ -78,18 +78,33 @@ variant already appears in the path above it and does not need restating.
 There are two rules for `{prefix}`, because there are two kinds of store.
 
 A **scoped run** -- one region, built once, kept for comparison -- uses
-`geozarr_{aoi}_{years}_{date}`, e.g. `geozarr_kenya_2022_2024_20260826`. Every part of
-the name is settled the moment it is created, so nothing in it can drift.
+`geozarr_{aoi}_{years}_{date}/{checkpoint}/{variant}/`, e.g.
+`geozarr_kenya_2022_2024_20260826/`. Every part of the name is settled the moment it is
+created, so nothing in it can drift.
 
-A **long-lived archive** uses `geozarr_{aoi}_v{n}`, e.g. `geozarr_global_v1`. Both the
-date and the year range would age here: the store accumulates regions over months, and
-the time axis can be extended (resize the array, extend the `time` coordinate, then
-re-consolidate), which would leave a year range in the path contradicting the data. A
-version is the only component that changes when someone means it to. Bump it for a change
-that makes the store incompatible -- chunk geometry, dimensionality, quantization -- not
-for adding regions or years. A new checkpoint needs no bump either, since the checkpoint
-is already a path segment below. The years remain discoverable where they are
-authoritative: the `time` coordinate and the `geoemb:` metadata.
+A **long-lived archive** replaces all of that with two independent versions:
+
+    geozarr_global_v{model}/          the encoder release, e.g. v1.3
+      v{store}/                       the archive format, e.g. v1
+        README.md                     provenance the store cannot carry itself
+        {variant}_ps1_ws16_overlap4/
+          embeddings.zarr
+          completed_{year}/
+
+Neither a date nor a year range works for an archive that is built over months: the
+store accumulates regions, and the time axis can be extended (resize the array, extend
+the `time` coordinate, then re-consolidate), which would leave a year range in the path
+contradicting the data. The years stay discoverable where they are authoritative, in the
+`time` coordinate and the `geoemb:` metadata.
+
+The two versions move for different reasons and neither implies the other:
+
+- `v{model}` moves when the encoder does. A different checkpoint produces different
+  embeddings, so it gets its own prefix rather than mixing into this one. There is no
+  checkpoint path segment here, which means the checkpoint is recorded *only* in
+  `geoemb:model`, `geoemb:build_version` and that `README.md` -- write them all.
+- `v{store}` moves when a reader that can open the store would stop being able to:
+  chunk geometry, dimensionality, quantization. Adding regions or years does not move it.
 
 Nothing parses these paths; the convention is for people reading the bucket.
 
