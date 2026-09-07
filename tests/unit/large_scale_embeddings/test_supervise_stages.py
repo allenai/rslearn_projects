@@ -20,7 +20,7 @@ sup = importlib.import_module("rslp.large_scale_embeddings.supervise")
 
 def _base_kwargs(**overrides: object) -> dict:
     kwargs: dict[str, object] = {
-        "inputs": EmbeddingInputs.S2,
+        "inputs": EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
         "years": [2024],
         "store_path": "gs://bucket/s2.zarr",
         "completed_path_template": "gs://bucket/s2_{year}_completed/",
@@ -193,7 +193,7 @@ def _render_cycle_config(
 ) -> sup.SuperviseConfig:
     """A complete render-stage config for _run_cycle, with overrides applied."""
     config = sup.SuperviseConfig(
-        inputs=EmbeddingInputs.S2,
+        inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
         years=[2024, 2025],
         store_path="gs://bucket/s2.zarr",
         completed_path_template="gs://bucket/s2_{year}_completed/",

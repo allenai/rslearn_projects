@@ -7,27 +7,25 @@ writes them to a GeoZarr store following the geoemb embeddings-zarr-convention
 
 - 10 m/pixel (at the default `--patch_size 1`; in general patch_size x 10 m/pixel),
   in the appropriate UTM projection for each location.
-- 128-dimensional, L2-normalized, and quantized to int8 (see Quantization below).
+- 128-dimensional and quantized to int8 (see Quantization below).
 - Computed from one year of input imagery starting at a user-provided reference
   timestamp; multiple reference years form the store's time axis.
 
-There are three input variants (`EmbeddingInputs`), which produce different embeddings
-and so must be written to different stores:
+There is one input variant (`EmbeddingInputs`), `S2_S1_LANDSAT_DISTILLED`: twelve
+monthly Sentinel-2 L2A mosaics, twelve monthly Sentinel-1 RTC mosaics (converted from
+linear intensities to dB), and twelve monthly Landsat 8/9 Collection 2 Level-1 mosaics,
+using the 11 bands the encoder's `landsat` modality defines (`B8` at 15 m, then
+`B1`-`B7`, `B9`-`B11` at 30 m, all resampled onto the window grid), through the model's
+128-dim student head. S1 and Landsat are best-effort.
 
-- `S2`: twelve monthly Sentinel-2 L2A mosaics.
-- `S2_S1`: the above, plus twelve monthly Sentinel-1 RTC mosaics (converted from
-  linear intensities to dB).
-- `S2_LANDSAT_DISTILLED`: the Sentinel-2 mosaics plus twelve monthly Landsat 8/9
-  Collection 2 Level-1 mosaics, using the 11 bands the encoder's `landsat` modality
-  defines (`B8` at 15 m, then `B1`-`B7`, `B9`-`B11` at 30 m, all resampled onto the
-  window grid), through the model's 128-dim student head. Landsat is sourced from a
-  **requester-pays** GCS bucket, so the reading project is billed; see the operational
-  envelope below.
+Landsat is sourced from a **requester-pays** GCS bucket, so the reading project is
+billed; see the operational envelope below. A different variant would produce different
+embeddings and would belong in a different store.
 
-The secondary modality is best-effort in both mixed variants: where it is unavailable
-the embeddings are computed from Sentinel-2 alone. Sentinel-2 coverage is required.
+Where a best-effort modality is unavailable the embeddings are computed from what is
+present. Sentinel-2 coverage is required.
 
-Each variant has an rslearn dataset config and a model config in
+The variant has an rslearn dataset config and a model config in
 `data/large_scale_embeddings/`, named `{variant}.json` and `{variant}.yaml`. Imagery
 comes from the OlmoEarth Datasets sources.
 
@@ -44,10 +42,8 @@ interrupted and resumed.
 2. **`fit_pca`** samples the archive just written and fits the global false-color
    basis, so the basis reflects exactly the data it will be applied to. Single process,
    reads about one inner chunk per sampled window rather than a pass over the archive.
-   A basis fitted on one region does not transfer: measured on real blocks, a
-   Washington-fitted basis captured 69.5% of Washington's variance but only 3.0% of
-   Ukraine's, and per-region normalization bounds were nearly disjoint. Sampling is
-   therefore stratified across every UTM zone with data.
+   A basis fitted on one region does not transfer, so sampling is stratified across
+   every UTM zone with data.
 3. **`render_pca`** reads the embeddings back and writes the multiscale `pca_rgb`
    pyramid into the sibling pca store, created once with `init_pca_store`. CPU only, no
    model, so it schedules without competing for GPU capacity. Enqueue with
@@ -108,20 +104,18 @@ The two versions move for different reasons and neither implies the other:
 
 Nothing parses these paths; the convention is for people reading the bucket.
 
-The PCA output is a **separate store**, not another array inside the embeddings store,
-for two reasons. Refitting the basis invalidates every rendered pixel while leaving the
-embeddings valid, so the derived layer needs its own lifecycle; putting the basis version
-in the store name (`pca_v1`) lets a re-render land beside the old one and cut over
-atomically instead of leaving the layer half-rendered and unservable. And the two want
-different storage classes: the embeddings are cold, while the RGB layer is read often and
-Nearline charges per read.
+The PCA output is a **separate store**, for two reasons. Refitting the basis
+invalidates every rendered pixel while leaving the embeddings valid, so putting the
+basis version in the store name (`pca_v1`) lets a re-render land beside the old one and
+cut over atomically. And the two want different storage classes: the embeddings are
+cold, while the RGB layer is read often.
 
 The pca store holds a multiscale pyramid, `pca_rgb` at level 0 plus `pca_rgb_2`,
 `pca_rgb_4` and so on, listed in the `geoemb:multiscales` attribute. That is what makes
 the store directly servable from a public bucket with no tile server: a client picks a
-level by zoom and reads roughly a constant number of chunks at any extent. Reading a
-1600x900 view from the level-0 array alone would need 24 chunks at z14 but 1,296 at z11
-and over a million at z6. The pyramid costs 33% more bytes.
+level by zoom and reads roughly a constant number of chunks at any extent, where the
+level-0 array alone would need orders of magnitude more as the extent widens. The
+pyramid costs 33% more bytes.
 
 Every level keeps one shard per source window footprint (2048 px at level 0, 1024 at
 level 1, and so on), so a window stays a whole object owned by a single writer and
@@ -144,10 +138,14 @@ can process jobs with differing settings):
   mitigate embedding seams at crop boundaries. Must be a multiple of patch_size.
 - `--compile_model` (default `true`): whether to compile the encoder transformer
   blocks.
+- `--output_scale` (default `1.0`): divisor applied to the head's features before
+  quantization, so LayerNorm-scale coordinates land inside the quantizer's [-1, 1]
+  range. Measure it per checkpoint from the head's `quantize diagnostics` log line,
+  and record it in the store (see Quantization).
 
-Note that the checkpoint and the patch/window/overlap sizes all affect the resulting
-embeddings, so each combination must use its own `store`/`completed_path` (like the
-input variants).
+Note that the checkpoint, the patch/window/overlap sizes and the output scale all
+affect the resulting embeddings, so each combination must use its own
+`store`/`completed_path` (like the input variants).
 
 
 Output Store
@@ -213,11 +211,11 @@ tile:
     python -m rslp.main large_scale_embeddings init_store \
         --store_path gs://BUCKET/PREFIX/embeddings.zarr \
         --years '[2024]' \
-        --inputs S2 \
+        --inputs S2_S1_LANDSAT_DISTILLED \
         --zone_numbers '[10]'
 
     python -m rslp.main large_scale_embeddings predict \
-        --inputs S2 \
+        --inputs S2_S1_LANDSAT_DISTILLED \
         --projection_json '{"crs": "EPSG:32610", "x_resolution": 10, "y_resolution": -10}' \
         --bounds '[32768, -557056, 65536, -524288]' \
         --time_range '["2024-01-01T00:00:00+00:00", "2024-01-01T00:00:00+00:00"]' \
@@ -271,8 +269,9 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
    of which that checkpoint's config still carries.
 
    Validate a new image end-to-end before a long run: S2 -> forward pass -> int8
-   GeoZarr write, then check that the dequantized per-pixel L2 norm is ~= 1.0. That
-   catches a config-incompatible checkpoint and a broken write path in one pass.
+   GeoZarr write, then check the head's `quantize diagnostics` log line reports a
+   clipped fraction near zero. That catches a config-incompatible checkpoint, a broken
+   write path, and an `output_scale` that no longer suits the checkpoint.
 
    Because that pairing needs a specific olmoearth_pretrain commit, and the patched
    rslearn it runs with is not on a branch, this run's image is built from local
@@ -293,7 +292,7 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
         python -m rslp.main large_scale_embeddings init_store \
             --store_path gs://BUCKET/PREFIX/embeddings.zarr \
             --years '[2021, 2022, 2023, 2024, 2025]' \
-            --inputs S2
+            --inputs S2_S1_LANDSAT_DISTILLED
 
    `--model_url`, `--source_data`, `--matryoshka_dims` and `--build_version` describe
    the encoder in the store's `geoemb:` metadata. They default to the current release
@@ -304,7 +303,7 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
    (the year's time index is derived from the store's time axis):
 
         python -m rslp.main large_scale_embeddings write_jobs \
-            --inputs S2 \
+            --inputs S2_S1_LANDSAT_DISTILLED \
             --timestamp '2025-01-01T00:00:00+00:00' \
             --store_path gs://BUCKET/PREFIX/embeddings.zarr \
             --completed_path gs://BUCKET/PREFIX/s2_2025_completed/ \
@@ -361,7 +360,7 @@ markers, top the queue up only if it is running shallow, and refill the worker p
 It exits when every tile has a marker.
 
         python -m rslp.main large_scale_embeddings supervise \
-            --inputs S2 \
+            --inputs S2_S1_LANDSAT_DISTILLED \
             --years '[2024, 2025]' \
             --store_path gs://BUCKET/PREFIX/embeddings.zarr \
             --completed_path_template 'gs://BUCKET/PREFIX/s2_{year}_completed/' \
@@ -482,19 +481,28 @@ comparable across `job_size` values.
 Quantization
 ------------
 
-Embeddings are L2-normalized and then quantized following the AlphaEarth signed-power
-scheme (see `model.py`): `quantized = round(sign(x) * |x|^0.5 * 127.5)` clipped to
-[-127, 127], with -128 reserved for nodata. This is recorded in the store's
-`geoemb:quantization` metadata with `method: "signed_power"`. To recover approximate
-float embeddings:
+Embeddings are divided by `output_scale` and then quantized following the AlphaEarth
+signed-power scheme (see `model.py`): `quantized = round(sign(x) * |x|^0.5 * 127.5)`
+clipped to [-127, 127], with -128 reserved for nodata.
+
+L2 normalization is off, because it discards vector magnitude and the evals score
+slightly worse with it on. That leaves the scheme's [-1, 1] assumption to satisfy some
+other way: the model's head ends in a LayerNorm, whose coordinates sit at std ~1, right
+where the scheme clips (`QUANTIZE_CLIP_THRESHOLD`, 0.992). Dividing by a global
+constant first moves them inside the range, and the head logs the clipped fraction so a
+mismatched scale is visible rather than silent.
+
+Both are recorded in the store's `geoemb:quantization` metadata: `method:
+"signed_power"` and the constant as a scalar `scale`. To recover approximate float
+embeddings:
 
 ```python
 import numpy as np
 
 
-def dequantize(v: np.ndarray) -> np.ndarray:
+def dequantize(v: np.ndarray, output_scale: float) -> np.ndarray:
     x = v.astype(np.float32) / 127.5
-    return np.sign(x) * np.abs(x) ** 2.0
+    return np.sign(x) * np.abs(x) ** 2.0 * output_scale
 ```
 
 Pixels where all Sentinel-2 mosaics are empty are set to -128 in all bands.

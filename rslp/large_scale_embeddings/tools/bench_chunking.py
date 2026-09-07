@@ -593,7 +593,7 @@ def build_variants(
                 source_data=(
                     source_data
                     if source_data is not None
-                    else source_data_for(EmbeddingInputs.S2_LANDSAT_DISTILLED.value)
+                    else source_data_for(EmbeddingInputs.S2_S1_LANDSAT_DISTILLED.value)
                 ),
                 resolution=10,
                 tile_size=32768,

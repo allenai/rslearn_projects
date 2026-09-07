@@ -77,6 +77,7 @@ def get_jobs(
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
+    output_scale: float = 1.0,
     batch_size: int | None = None,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
@@ -108,6 +109,7 @@ def get_jobs(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        output_scale: divide the head's features by this before quantizing.
         batch_size: crops per batch, or None to keep the config's value. Lower it
             for tiles whose full monthly input stack will not fit in GPU memory.
         epsg_code: limit tasks to the zone of this UTM EPSG code (326NN or 327NN both
@@ -296,6 +298,8 @@ def get_jobs(
             str(overlap_size),
             "--compile_model",
             "true" if compile_model else "false",
+            "--output_scale",
+            str(output_scale),
             *(["--batch_size", str(batch_size)] if batch_size is not None else []),
         ]
         jobs.append(cur_args)
@@ -314,6 +318,7 @@ def write_jobs(
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
+    output_scale: float = 1.0,
     batch_size: int | None = None,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
@@ -343,6 +348,7 @@ def write_jobs(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        output_scale: divide the head's features by this before quantizing.
         batch_size: crops per batch, or None to keep the config's value. Lower it
             for tiles whose full monthly input stack will not fit in GPU memory.
         epsg_code: limit tasks to the zone of this UTM EPSG code; default all zones.
@@ -372,6 +378,7 @@ def write_jobs(
         window_size=window_size,
         overlap_size=overlap_size,
         compile_model=compile_model,
+        output_scale=output_scale,
         batch_size=batch_size,
         epsg_code=epsg_code,
         wgs84_bounds=wgs84_bounds,

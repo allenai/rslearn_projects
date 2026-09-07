@@ -146,6 +146,7 @@ class ModelConfig:
     window_size: int = 16
     overlap_size: int = 4
     compile_model: bool = True
+    output_scale: float = 1.0
     # Crops per batch, or None to keep the model config's value. The GPU-memory knob:
     # batching groups independent crops, so it changes footprint and speed, not output.
     batch_size: int | None = None
@@ -494,6 +495,7 @@ def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> No
                     window_size=config.model.window_size,
                     overlap_size=config.model.overlap_size,
                     compile_model=config.model.compile_model,
+                    output_scale=config.model.output_scale,
                     batch_size=config.model.batch_size,
                     epsg_code=config.aoi.epsg_code,
                     wgs84_bounds=config.aoi.wgs84_bounds,

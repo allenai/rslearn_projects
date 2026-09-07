@@ -57,11 +57,8 @@ logger = get_logger(__name__)
 class EmbeddingInputs(Enum):
     """Which input modalities the embeddings are computed from."""
 
-    S2 = "s2"
-    S2_S1 = "s2_s1"
-    # Landsat added, through the model's 128-dim student head.
-    S2_LANDSAT_DISTILLED = "s2_landsat_distilled"
-    # The above plus Sentinel-1. Both S1 and Landsat are best-effort.
+    # Sentinel-2, Sentinel-1 and Landsat 8/9, through the model's 128-dim student
+    # head. S1 and Landsat are best-effort.
     S2_S1_LANDSAT_DISTILLED = "s2_s1_landsat_distilled"
 
 
@@ -123,6 +120,7 @@ def _get_model_extra_args(
     window_size: int,
     overlap_size: int,
     compile_model: bool,
+    output_scale: float,
     batch_size: int | None,
 ) -> list[str]:
     """Get the extra arguments to pass to rslearn model predict.
@@ -140,6 +138,7 @@ def _get_model_extra_args(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        output_scale: divide the head's features by this before quantizing.
         batch_size: crops per batch, or None to keep the config's value. This is the
             GPU-memory knob: batching only groups independent crops, so changing it
             affects footprint and speed, never the embeddings.
@@ -157,6 +156,10 @@ def _get_model_extra_args(
     encoder[0]["init_args"]["patch_size"] = patch_size
     encoder[0]["init_args"]["compile_model"] = compile_model
 
+    # Set the quantization scale on the head (the first and only decoder entry).
+    decoder = model_config["model"]["init_args"]["model"]["init_args"]["decoder"]
+    decoder[0]["init_args"]["output_scale"] = output_scale
+
     # Set the merger options on the RslearnWriter callback (the first and only
     # callback entry). The merger operates at the output resolution, which is
     # 1/patch_size of the input resolution.
@@ -168,6 +171,8 @@ def _get_model_extra_args(
     return [
         "--model.init_args.model.init_args.encoder",
         json.dumps(encoder),
+        "--model.init_args.model.init_args.decoder",
+        json.dumps(decoder),
         "--trainer.callbacks",
         json.dumps(callbacks),
         "--data.init_args.default_config.crop_size",
@@ -364,6 +369,7 @@ def predict_pipeline(
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
+    output_scale: float = 1.0,
     batch_size: int | None = None,
     scratch_path: str | None = None,
     upload_workers: int = 16,
@@ -397,6 +403,7 @@ def predict_pipeline(
         overlap_size: overlap in pixels between adjacent crops, to mitigate embedding
             seams at crop boundaries.
         compile_model: whether to compile the encoder transformer blocks.
+        output_scale: divide the head's features by this before quantizing.
         batch_size: crops per batch, or None to keep the config's value. Lower it for
             a tile whose input stack will not fit in GPU memory.
         scratch_path: optional directory to store the scratch rslearn dataset in
@@ -442,6 +449,7 @@ def predict_pipeline(
                 window_size=window_size,
                 overlap_size=overlap_size,
                 compile_model=compile_model,
+                output_scale=output_scale,
                 batch_size=batch_size,
                 upload_workers=upload_workers,
             )
@@ -460,6 +468,7 @@ def predict_pipeline(
             window_size=window_size,
             overlap_size=overlap_size,
             compile_model=compile_model,
+            output_scale=output_scale,
             batch_size=batch_size,
             upload_workers=upload_workers,
         )
@@ -479,6 +488,7 @@ def _process_tile(
     window_size: int,
     overlap_size: int,
     compile_model: bool,
+    output_scale: float,
     batch_size: int | None,
     upload_workers: int,
 ) -> None:
@@ -500,6 +510,7 @@ def _process_tile(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        output_scale: divide the head's features by this before quantizing.
         batch_size: crops per batch, or None to keep the config's value. Lower it
             for a tile whose full monthly input stack will not fit in GPU memory;
             batching groups independent crops, so this changes footprint and
@@ -565,6 +576,7 @@ def _process_tile(
                     window_size=window_size,
                     overlap_size=overlap_size,
                     compile_model=compile_model,
+                    output_scale=output_scale,
                     batch_size=batch_size,
                 ),
             )

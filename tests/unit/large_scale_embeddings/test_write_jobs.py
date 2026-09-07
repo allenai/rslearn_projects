@@ -21,7 +21,7 @@ TIMESTAMP = datetime(2025, 1, 1, tzinfo=UTC)
 def test_get_jobs_wgs84_bounds(tmp_path: pathlib.Path) -> None:
     """Jobs limited by wgs84_bounds cover the right zones and tiles."""
     jobs = get_jobs(
-        inputs=EmbeddingInputs.S2,
+        inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
         timestamp=TIMESTAMP,
         store_path=str(tmp_path / "out"),
         completed_path=str(tmp_path / "completed"),
@@ -39,7 +39,7 @@ def test_get_jobs_wgs84_bounds(tmp_path: pathlib.Path) -> None:
     seen_bounds: list[tuple[int, list[int]]] = []
     for job in jobs:
         args = dict(zip(job[0::2], job[1::2]))
-        assert args["--inputs"] == "S2"
+        assert args["--inputs"] == "S2_S1_LANDSAT_DISTILLED"
         assert args["--time_range"] == json.dumps(
             [TIMESTAMP.isoformat(), TIMESTAMP.isoformat()]
         )
@@ -97,7 +97,7 @@ def test_get_jobs_geojson(tmp_path: pathlib.Path) -> None:
         json.dump(feature_collection, f)
 
     jobs = get_jobs(
-        inputs=EmbeddingInputs.S2,
+        inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
         timestamp=TIMESTAMP,
         store_path=str(tmp_path / "out"),
         completed_path=str(tmp_path / "completed"),

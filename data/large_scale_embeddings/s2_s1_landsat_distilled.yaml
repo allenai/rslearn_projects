@@ -7,58 +7,42 @@ model:
         encoder:
           - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
-              # The OlmoEarth checkpoint to compute embeddings with. This variant is
-              # for the *distilled* release candidate, whose teacher is 768-dim and
-              # whose student is 128-dim, e.g.
-              # /weka/dfive-default/olmoearth_pretrain/checkpoints/gabrielt/regbtl_v1_2_gdyn_d768_proj128lin_sup768_w1_newsamp_psuniform_stunorm_mlpgram1/step667200.
-              # This placeholder is always overridden by the prediction pipeline
-              # (--checkpoint_path).
+              # Overridden by the prediction pipeline (--checkpoint_path).
               checkpoint_path: /path/to/checkpoint_dir
-              # Read the 128-dim distilled student rather than the 768-dim teacher.
-              # Both heads are in the model output and the teacher is the default, so
-              # this is what selects the student. Set here rather than through the
-              # OE_PROJECTED_REGISTER_DIM environment variable so it lands in the model
-              # config, and therefore in the archive's provenance: an env var would
-              # leave nothing in the finished store recording which head wrote it.
-              #
-              # The first 64 dims are a trained Matryoshka prefix, so consumers can read
-              # embeddings[..., :64] directly; the store's band chunking makes that cost
-              # proportionally fewer bytes.
+              # Selects the 128-dim distilled student over the 768-dim teacher, which
+              # is the default. Set here rather than via OE_PROJECTED_REGISTER_DIM so
+              # it lands in the archive's provenance. The first 64 dims are a trained
+              # Matryoshka prefix, so consumers can read embeddings[..., :64].
               projected_register_dim: 128
-              # patch_size 1 yields one 128-dimensional embedding per 10 m pixel.
-              # Overridden by the prediction pipeline (--patch_size).
+              # One embedding per 10 m pixel. Overridden by the pipeline
+              # (--patch_size).
               patch_size: 1
               embedding_size: 128
-              # Output the register bottleneck latents (one per patch in dynamic-grid
-              # mode) rather than the encoder patch tokens. Required by
-              # projected_register_dim above: the student only exists under the
-              # bottleneck.
+              # Required by projected_register_dim: the student only exists under the
+              # register bottleneck.
               use_register_bottleneck_output: true
-              # Normalize inputs inside the encoder. Sentinel-1 is converted to
-              # decibels by the Sentinel1ToDecibels transform below first, since the
-              # normalization stats expect dB.
+              # The normalization stats expect dB, hence Sentinel1ToDecibels below.
               normalize: true
               autocast_dtype: bfloat16
-              # Use the actual mosaic timestamps (from the materialized layer
-              # metadata) rather than dummy monthly timestamps. This also pads
-              # samples with differing numbers of mosaics so they can be batched
-              # together.
+              # Use the real mosaic timestamps, and pad samples whose mosaic counts
+              # differ so they can be batched together.
               use_legacy_timestamps: false
-              # Whether to compile the encoder transformer blocks (the register
-              # bottleneck stays eager). Inference uses fixed-size crops so
-              # recompilations are limited to the few distinct batch/timestep
-              # shapes. Overridden by the prediction pipeline (--compile_model).
+              # Overridden by the prediction pipeline (--compile_model).
               compile_model: true
         decoder:
-          # L2-normalizes each pixel's embedding and quantizes it to int8 using the
-          # AlphaEarth-style power scheme (-128 is reserved for nodata).
+          # Quantizes each embedding to int8 with the AlphaEarth power scheme (-128
+          # is reserved for nodata). L2 normalization is off because it discards
+          # magnitude, which the evals score on; output_scale brings the coordinates
+          # into the quantizer's [-1, 1] range instead. Both overridden by the
+          # pipeline (--output_scale).
           - class_path: rslp.large_scale_embeddings.model.QuantizedEmbeddingHead
             init_args:
-              l2_normalize: true
+              l2_normalize: false
+              output_scale: 1.0
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    # Overridden by the prediction pipeline via --data.init_args.path.
+    # Overridden by the prediction pipeline (--data.init_args.path).
     path: placeholder
     inputs:
       sentinel2_l2a:
@@ -77,8 +61,7 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
-        # Sentinel-1 is best-effort: windows missing it are still processed without
-        # it, matching how Landsat is treated below.
+        # Best-effort: windows missing it are still processed without it.
         required: false
       landsat:
         data_type: "raster"
@@ -88,36 +71,29 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
-        # Landsat is best-effort: windows missing it are still processed with
-        # Sentinel-2 alone, matching how Sentinel-1 is treated in the s2_s1 variant.
+        # Best-effort: windows missing it are still processed without it.
         required: false
     task:
-      # Inference-only task: no targets/loss; writes the head's int8 output.
+      # Inference-only: no targets or loss; writes the head's int8 output.
       class_path: rslearn.train.tasks.embedding.EmbeddingTask
-    # Crops are tiny (e.g. 16x16) so a large batch size is needed for throughput.
-    # Tune per GPU along with num_workers.
+    # Crops are tiny, so throughput needs a large batch. Tune with num_workers per GPU.
     batch_size: 256
     num_workers: 16
     default_config:
-      # The size of the crops the model operates on (much bigger fails with the 12
-      # monthly inputs at patch_size=1 due to GPU memory constraints). Overridden
-      # by the prediction pipeline (--window_size).
+      # Much bigger fails on GPU memory with the 12 monthly inputs at patch_size 1.
+      # Overridden by the prediction pipeline (--window_size).
       crop_size: 16
       transforms:
-        # The Sentinel-1 RTC source delivers linear intensities; convert to dB as
-        # expected by the OlmoEarth normalization stats.
+        # The Sentinel-1 RTC source delivers linear intensities.
         - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
           init_args:
             selectors: ["sentinel1"]
-            # Sentinel-1 is optional (required: false above), so skip samples
-            # where it is missing.
+            # Sentinel-1 is optional, per required: false above.
             skip_missing: true
     predict_config:
       load_all_crops: true
-      # Overlap adjacent crops to mitigate embedding seams at crop boundaries; the
-      # RasterMerger below trims half the overlap from each crop when merging.
-      # Must match the RasterMerger overlap_pixels (times patch_size). Overridden
-      # by the prediction pipeline (--overlap_size).
+      # Mitigates embedding seams at crop boundaries; the RasterMerger trims half the
+      # overlap from each crop. Overridden by the pipeline (--overlap_size).
       overlap_pixels: 4
       skip_targets: true
 trainer:
@@ -130,16 +106,13 @@ trainer:
         merger:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
-            # Must match the encoder patch_size. Overridden by the prediction
-            # pipeline (--patch_size).
+            # Must match the encoder patch_size. Overridden by the pipeline.
             downsample_factor: 1
-            # Must be the predict_config overlap_pixels divided by the encoder
-            # patch_size (the merger operates at the output resolution).
-            # Overridden by the prediction pipeline.
+            # predict_config overlap_pixels divided by patch_size, since the merger
+            # operates at the output resolution. Overridden by the pipeline.
             overlap_pixels: 4
-    # Turns a silent job into a legible one: without it the only progress signal is
-    # Lightning's progress bar, which reaches a container log every twenty or thirty
-    # minutes, and silence in between is indistinguishable from a deadlock.
+    # Lightning's progress bar reaches a container log only every 20-30 minutes, so
+    # without this a healthy job is indistinguishable from a deadlocked one.
     - class_path: rslp.large_scale_embeddings.model.PredictHeartbeat
       init_args:
         every_n_batches: 50

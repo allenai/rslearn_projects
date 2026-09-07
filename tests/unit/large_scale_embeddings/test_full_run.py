@@ -35,7 +35,7 @@ def _stub_paths(monkeypatch: pytest.MonkeyPatch, *, exists: bool) -> None:
 
 
 COMMON: dict[str, Any] = {
-    "inputs": EmbeddingInputs.S2,
+    "inputs": EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
     "years": [2024],
     "store_path": "gs://bucket/embeddings.zarr",
     "completed_path_template": "gs://bucket/completed_{year}/",

@@ -4,7 +4,7 @@ The quantization scheme matches the power-based int8 scheme used for AlphaEarth
 Foundations embeddings (Brown et al. 2025, section S8.1) and by
 olmoearth_pretrain.evals.embedding_transforms: values are compressed with a signed
 square root, scaled to the int8 range, and rounded. The value -128 is never produced
-by the quantizer; it is reserved as the nodata value in the output GeoTIFFs.
+by the quantizer; it is reserved as the store's nodata value.
 """
 
 import time
@@ -21,6 +21,10 @@ logger = get_logger(__name__)
 
 QUANTIZE_POWER = 2.0
 QUANTIZE_SCALE = 127.5
+
+# Coordinates above this saturate. AEF's unit-L2 vectors sit far below it; LayerNorm
+# output (per-coordinate std ~ 1) lands on top of it, hence output_scale.
+QUANTIZE_CLIP_THRESHOLD = (127.0 / QUANTIZE_SCALE) ** QUANTIZE_POWER
 
 # Reserved nodata value for the int8 output rasters. quantize_embeddings clamps to
 # [-127, 127] so it never emits this value.
@@ -57,26 +61,56 @@ def dequantize_embeddings(quantized: torch.Tensor) -> torch.Tensor:
 
 
 class QuantizedEmbeddingHead(Predictor):
-    """Head that L2-normalizes and int8-quantizes a feature map.
+    """Head that scales and int8-quantizes a feature map.
 
     Like rslearn.train.tasks.embedding.EmbeddingHead, but the output is an int8
     tensor suitable for writing to an int8 raster layer. Use with EmbeddingTask.
+
+    L2 normalization is off because it discards magnitude, which carries signal, so
+    `output_scale` is what satisfies the quantizer's [-1, 1] assumption instead.
     """
 
-    def __init__(self, l2_normalize: bool = True, epsilon: float = 1e-8):
+    def __init__(
+        self,
+        l2_normalize: bool = False,
+        output_scale: float = 1.0,
+        epsilon: float = 1e-8,
+        log_every_n_batches: int = 200,
+    ):
         """Create a new QuantizedEmbeddingHead.
 
         Args:
-            l2_normalize: whether to L2-normalize each spatial position's embedding
-                vector (across the channel dimension) before quantization. The
-                power-based quantization scheme assumes values roughly in [-1, 1], so
-                this should be enabled unless the model already outputs unit-norm
-                embeddings.
+            l2_normalize: L2-normalize each position's vector across the channel
+                dimension. Lossy; prefer output_scale.
+            output_scale: divide features by this before quantizing. Record it in the
+                store's `geoemb:quantization` scale so a reader can undo it.
             epsilon: minimum norm to avoid division by zero.
+            log_every_n_batches: how often to log the clipped fraction.
         """
         super().__init__()
         self.l2_normalize = l2_normalize
+        self.output_scale = output_scale
         self.epsilon = epsilon
+        self.log_every_n_batches = log_every_n_batches
+        self._batches = 0
+
+    def _log_clipping(self, features: torch.Tensor) -> None:
+        """Log the clipped fraction, so a bad output_scale is visible not silent."""
+        self._batches += 1
+        if self._batches % self.log_every_n_batches != 1:
+            return
+        with torch.no_grad():
+            clipped = (features.abs() > QUANTIZE_CLIP_THRESHOLD).float().mean().item()
+            std = features.std().item()
+            largest = features.abs().max().item()
+        logger.info(
+            "quantize diagnostics: coord std %.4f, max |coord| %.4f, "
+            "clipped fraction %.5f (threshold %.4f)",
+            std,
+            largest,
+            clipped,
+            QUANTIZE_CLIP_THRESHOLD,
+        )
 
     def forward(
         self,
@@ -108,6 +142,9 @@ class QuantizedEmbeddingHead(Predictor):
             features = features / features.norm(dim=1, keepdim=True).clamp(
                 min=self.epsilon
             )
+        if self.output_scale != 1.0:
+            features = features / self.output_scale
+        self._log_clipping(features)
 
         return ModelOutput(
             outputs=quantize_embeddings(features),
@@ -118,14 +155,9 @@ class QuantizedEmbeddingHead(Predictor):
 class PredictHeartbeat(Callback):
     """Log prediction progress periodically, so a slow job is not mistaken for a hung one.
 
-    Lightning's progress bar writes with carriage returns and reaches a container log
-    only when it flushes, which for these jobs is once every twenty or thirty minutes.
-    Between flushes a healthy job is indistinguishable from a deadlocked one, so log
-    silence cannot be used as a stall signal. A timestamped line at a known interval
-    can: if the interval passes with no line, the job really is stuck.
-
-    Logged rather than printed, so it carries the timestamp and logger name the rest of
-    the pipeline's output has.
+    Lightning's progress bar reaches a container log only every 20-30 minutes, so
+    silence between flushes cannot be used as a stall signal. A timestamped line at a
+    known interval can: if the interval passes with no line, the job really is stuck.
     """
 
     def __init__(
@@ -133,10 +165,8 @@ class PredictHeartbeat(Callback):
     ) -> None:
         """Set the heartbeat interval.
 
-        Whichever bound is reached first triggers a line, because batch time varies by
-        more than an order of magnitude with crop size and modality count: a batch
-        interval alone goes quiet on slow batches, and a time interval alone floods the
-        log on fast ones.
+        Whichever bound is reached first triggers a line, since batch time varies by
+        orders of magnitude with crop size and modality count.
 
         Args:
             every_n_batches: log at least this often in batches.
