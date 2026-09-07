@@ -22,8 +22,8 @@ logger = get_logger(__name__)
 QUANTIZE_POWER = 2.0
 QUANTIZE_SCALE = 127.5
 
-# Coordinates above this saturate. AEF's unit-L2 vectors sit far below it; LayerNorm
-# output (per-coordinate std ~ 1) lands on top of it, hence output_scale.
+# Coordinates above this saturate. AEF's unit-L2 vectors and this checkpoint's head
+# (measured std 0.23) sit below it; a head at per-coordinate std ~ 1 would not.
 QUANTIZE_CLIP_THRESHOLD = (127.0 / QUANTIZE_SCALE) ** QUANTIZE_POWER
 
 # Reserved nodata value for the int8 output rasters. quantize_embeddings clamps to
@@ -66,14 +66,14 @@ class QuantizedEmbeddingHead(Predictor):
     Like rslearn.train.tasks.embedding.EmbeddingHead, but the output is an int8
     tensor suitable for writing to an int8 raster layer. Use with EmbeddingTask.
 
-    L2 normalization is off because it discards magnitude, which carries signal, so
-    `output_scale` is what satisfies the quantizer's [-1, 1] assumption instead.
+    L2 normalization is off because it discards magnitude, which carries signal. The
+    head's own LayerNorm already leaves coordinates inside the quantizer's [-1, 1]
+    assumption, so nothing further is needed; the diagnostic below checks that.
     """
 
     def __init__(
         self,
         l2_normalize: bool = False,
-        output_scale: float = 1.0,
         epsilon: float = 1e-8,
         log_every_n_batches: int = 200,
     ):
@@ -81,35 +81,48 @@ class QuantizedEmbeddingHead(Predictor):
 
         Args:
             l2_normalize: L2-normalize each position's vector across the channel
-                dimension. Lossy; prefer output_scale.
-            output_scale: divide features by this before quantizing. Record it in the
-                store's `geoemb:quantization` scale so a reader can undo it.
+                dimension. Discards magnitude, which the evals score on.
             epsilon: minimum norm to avoid division by zero.
-            log_every_n_batches: how often to log the clipped fraction.
+            log_every_n_batches: how often to log the round-trip diagnostic.
         """
         super().__init__()
         self.l2_normalize = l2_normalize
-        self.output_scale = output_scale
         self.epsilon = epsilon
         self.log_every_n_batches = log_every_n_batches
         self._batches = 0
 
     def _log_clipping(self, features: torch.Tensor) -> None:
-        """Log the clipped fraction, so a bad output_scale is visible not silent."""
-        self._batches += 1
-        if self._batches % self.log_every_n_batches != 1:
+        """Log the quantizer round trip, so a geometry mismatch is visible not silent.
+
+        The scheme assumes coordinates roughly in [-1, 1]; a checkpoint whose head
+        emits a different scale clips instead, which costs cosine fidelity and
+        nothing else would report it.
+        """
+        # Offset by one so the first batch always logs, for any interval.
+        if (self._batches % self.log_every_n_batches) != 0:
+            self._batches += 1
             return
+        self._batches += 1
         with torch.no_grad():
             clipped = (features.abs() > QUANTIZE_CLIP_THRESHOLD).float().mean().item()
             std = features.std().item()
             largest = features.abs().max().item()
+            # dim=1 is the embedding axis of the BCHW map, so this is the per-pixel
+            # round trip a consumer of the store would see.
+            cos = torch.nn.functional.cosine_similarity(
+                dequantize_embeddings(quantize_embeddings(features)), features, dim=1
+            )
+            cos_mean, cos_min = cos.mean().item(), cos.min().item()
         logger.info(
             "quantize diagnostics: coord std %.4f, max |coord| %.4f, "
-            "clipped fraction %.5f (threshold %.4f)",
+            "clipped fraction %.5f (threshold %.4f), round trip cosine "
+            "mean %.6f min %.6f",
             std,
             largest,
             clipped,
             QUANTIZE_CLIP_THRESHOLD,
+            cos_mean,
+            cos_min,
         )
 
     def forward(
@@ -142,8 +155,6 @@ class QuantizedEmbeddingHead(Predictor):
             features = features / features.norm(dim=1, keepdim=True).clamp(
                 min=self.epsilon
             )
-        if self.output_scale != 1.0:
-            features = features / self.output_scale
         self._log_clipping(features)
 
         return ModelOutput(

@@ -352,7 +352,6 @@ def _require_no_predict_jobs(
             window_size=model.window_size,
             overlap_size=model.overlap_size,
             compile_model=model.compile_model,
-            output_scale=model.output_scale,
             geojson_fname=aoi.geojson_fname,
             epsg_code=aoi.epsg_code,
             wgs84_bounds=aoi.wgs84_bounds,

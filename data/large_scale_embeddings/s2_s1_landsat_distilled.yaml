@@ -32,13 +32,11 @@ model:
         decoder:
           # Quantizes each embedding to int8 with the AlphaEarth power scheme (-128
           # is reserved for nodata). L2 normalization is off because it discards
-          # magnitude, which the evals score on; output_scale brings the coordinates
-          # into the quantizer's [-1, 1] range instead. Both overridden by the
-          # pipeline (--output_scale).
+          # magnitude, which the evals score on; the head's LayerNorm already leaves
+          # coordinates inside the scheme's [-1, 1] range.
           - class_path: rslp.large_scale_embeddings.model.QuantizedEmbeddingHead
             init_args:
               l2_normalize: false
-              output_scale: 1.0
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:

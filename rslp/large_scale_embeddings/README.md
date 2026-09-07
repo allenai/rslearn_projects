@@ -138,14 +138,10 @@ can process jobs with differing settings):
   mitigate embedding seams at crop boundaries. Must be a multiple of patch_size.
 - `--compile_model` (default `true`): whether to compile the encoder transformer
   blocks.
-- `--output_scale` (default `1.0`): divisor applied to the head's features before
-  quantization, so LayerNorm-scale coordinates land inside the quantizer's [-1, 1]
-  range. Measure it per checkpoint from the head's `quantize diagnostics` log line,
-  and record it in the store (see Quantization).
 
-Note that the checkpoint, the patch/window/overlap sizes and the output scale all
-affect the resulting embeddings, so each combination must use its own
-`store`/`completed_path` (like the input variants).
+Note that the checkpoint and the patch/window/overlap sizes all affect the resulting
+embeddings, so each combination must use its own `store`/`completed_path` (like the
+input variants).
 
 
 Output Store
@@ -271,7 +267,7 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
    Validate a new image end-to-end before a long run: S2 -> forward pass -> int8
    GeoZarr write, then check the head's `quantize diagnostics` log line reports a
    clipped fraction near zero. That catches a config-incompatible checkpoint, a broken
-   write path, and an `output_scale` that no longer suits the checkpoint.
+   write path, and a checkpoint whose head geometry no longer suits the quantizer.
 
    Because that pairing needs a specific olmoearth_pretrain commit, and the patched
    rslearn it runs with is not on a branch, this run's image is built from local
@@ -481,28 +477,32 @@ comparable across `job_size` values.
 Quantization
 ------------
 
-Embeddings are divided by `output_scale` and then quantized following the AlphaEarth
-signed-power scheme (see `model.py`): `quantized = round(sign(x) * |x|^0.5 * 127.5)`
-clipped to [-127, 127], with -128 reserved for nodata.
+Embeddings are quantized following the AlphaEarth signed-power scheme (see
+`model.py`): `quantized = round(sign(x) * |x|^0.5 * 127.5)` clipped to [-127, 127],
+with -128 reserved for nodata. This is recorded in the store's `geoemb:quantization`
+metadata with `method: "signed_power"`.
 
-L2 normalization is off, because it discards vector magnitude and the evals score
-slightly worse with it on. That leaves the scheme's [-1, 1] assumption to satisfy some
-other way: the model's head ends in a LayerNorm, whose coordinates sit at std ~1, right
-where the scheme clips (`QUANTIZE_CLIP_THRESHOLD`, 0.992). Dividing by a global
-constant first moves them inside the range, and the head logs the clipped fraction so a
-mismatched scale is visible rather than silent.
+The model output is quantized as emitted, with no L2 normalization: normalizing
+discards vector magnitude, which the evals score on, and it is not needed to satisfy
+the scheme's [-1, 1] assumption. The head ends in a LayerNorm whose learned gain leaves
+coordinates at std ~0.23 against a clip threshold of 0.992 (`QUANTIZE_CLIP_THRESHOLD`),
+measured over Australian windows: clipping under 1e-4, round-trip cosine 0.99996. The
+head logs those figures every 200 batches, so a checkpoint whose geometry differs shows
+up rather than silently clipping.
 
-Both are recorded in the store's `geoemb:quantization` metadata: `method:
-"signed_power"` and the constant as a scalar `scale`. To recover approximate float
-embeddings:
+Normalizing would also cost precision, not just magnitude. Unit-norm coordinates
+quantize to a typical code of +/-38 out of 127, against +/-62 as emitted, so the
+unnormalized path uses about 0.7 more of the 8 bits.
+
+To recover approximate float embeddings:
 
 ```python
 import numpy as np
 
 
-def dequantize(v: np.ndarray, output_scale: float) -> np.ndarray:
+def dequantize(v: np.ndarray) -> np.ndarray:
     x = v.astype(np.float32) / 127.5
-    return np.sign(x) * np.abs(x) ** 2.0 * output_scale
+    return np.sign(x) * np.abs(x) ** 2.0
 ```
 
 Pixels where all Sentinel-2 mosaics are empty are set to -128 in all bands.
