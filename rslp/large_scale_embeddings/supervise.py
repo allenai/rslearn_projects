@@ -255,8 +255,6 @@ def _state_name(entry: Any) -> str:
         return "UNKNOWN"
 
 
-
-
 def _entry_job_key(entry: Any) -> tuple[str, ...] | None:
     """The job an entry runs, as its argument list.
 
@@ -325,9 +323,7 @@ def _stage_marker_paths(config: SuperviseConfig) -> list[str]:
     """
     if config.stage == STAGE_RENDER_UTM_PCA:
         return [config.pca.completed_path]
-    return [
-        config.completed_path_template.format(year=year) for year in config.years
-    ]
+    return [config.completed_path_template.format(year=year) for year in config.years]
 
 
 def _any_completion_markers(config: SuperviseConfig) -> bool:

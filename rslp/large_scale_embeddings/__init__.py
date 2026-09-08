@@ -17,6 +17,7 @@ The forward flow, each stage depending on the one before it:
     never falls however far you zoom out and a view spanning two zones cannot be drawn
     at all. This stage fixes both. CPU only, no model.
 """
+
 from rslp.large_scale_embeddings.full_run import launch_run_all, run_all
 from rslp.large_scale_embeddings.pca import fit_pca
 from rslp.large_scale_embeddings.predict_pipeline import predict_pipeline

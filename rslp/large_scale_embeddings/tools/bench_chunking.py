@@ -214,6 +214,7 @@ def _counting_store_class() -> Any:
     Returns:
         a Store subclass that records every range request made through it.
     """
+
     class CountingStore(zarr.abc.store.Store):  # type: ignore[misc]
         """Wraps a zarr store and records every range request made through it.
 

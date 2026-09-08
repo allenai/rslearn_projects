@@ -23,16 +23,16 @@ def test_no_read_starts_on_a_chunk_boundary() -> None:
     """
     block_px = BLOCK_SHARDS * DEFAULT_SHARD_SIZE
     for pattern in access_patterns(block_px):
-        assert pattern["y"] % DEFAULT_SHARD_SIZE != 0, (
-            f"{pattern['name']} shard-aligned"
-        )
+        assert (
+            pattern["y"] % DEFAULT_SHARD_SIZE != 0
+        ), f"{pattern['name']} shard-aligned"
         for chunk in SPATIAL_CHUNKS:
-            assert pattern["y"] % chunk != 0, (
-                f"{pattern['name']} aligns to {chunk} in y"
-            )
-            assert pattern["x"] % chunk != 0, (
-                f"{pattern['name']} aligns to {chunk} in x"
-            )
+            assert (
+                pattern["y"] % chunk != 0
+            ), f"{pattern['name']} aligns to {chunk} in y"
+            assert (
+                pattern["x"] % chunk != 0
+            ), f"{pattern['name']} aligns to {chunk} in x"
 
 
 def test_every_read_fits_inside_the_copied_block() -> None:
@@ -40,12 +40,12 @@ def test_every_read_fits_inside_the_copied_block() -> None:
     block_px = BLOCK_SHARDS * DEFAULT_SHARD_SIZE
     for pattern in access_patterns(block_px):
         assert pattern["y"] >= 0 and pattern["x"] >= 0, pattern["name"]
-        assert pattern["y"] + pattern["h"] <= block_px, (
-            f"{pattern['name']} overruns in y"
-        )
-        assert pattern["x"] + pattern["w"] <= block_px, (
-            f"{pattern['name']} overruns in x"
-        )
+        assert (
+            pattern["y"] + pattern["h"] <= block_px
+        ), f"{pattern['name']} overruns in y"
+        assert (
+            pattern["x"] + pattern["w"] <= block_px
+        ), f"{pattern['name']} overruns in x"
 
 
 def test_the_aoi_pattern_straddles_four_shards() -> None:

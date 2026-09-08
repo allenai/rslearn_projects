@@ -269,7 +269,9 @@ def test_termination_releases_the_in_flight_entry() -> None:
 
     assert len(sent) == 1, "the in-flight entry was not released"
     assert sent[0]["entry_id"] == "entry-abc"
-    assert sent[0].get("rejection"), "must reject, not mark done: the work is unfinished"
+    assert sent[0].get(
+        "rejection"
+    ), "must reject, not mark done: the work is unfinished"
 
 
 def test_termination_with_no_entry_is_harmless() -> None:

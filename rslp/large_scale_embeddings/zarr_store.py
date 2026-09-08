@@ -126,7 +126,11 @@ DEFAULT_MODEL_URL = "https://huggingface.co/allenai/OlmoEarth-v1_3-Base"
 # where the vendored checkout sits both locally and inside the image.
 BUILD_COMPONENTS = (
     ("rslearn", "docker_build/rslearn", "/opt/rslearn"),
-    ("olmoearth_pretrain", "docker_build/olmoearth_pretrain", "/opt/olmoearth_pretrain"),
+    (
+        "olmoearth_pretrain",
+        "docker_build/olmoearth_pretrain",
+        "/opt/olmoearth_pretrain",
+    ),
 )
 
 
@@ -205,6 +209,7 @@ SOURCE_DATA_URLS = {
     "s1": "https://sentinel.esa.int/web/sentinel/missions/sentinel-1",
     "landsat": "https://www.usgs.gov/landsat-missions",
 }
+
 
 def source_data_for(inputs: str) -> list[str]:
     """The source-dataset URLs an input variant is built from.

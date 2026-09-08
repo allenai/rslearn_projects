@@ -102,7 +102,6 @@ def run_all(
     model: ModelConfig,
     worker: WorkerConfig,
     pca: PcaConfig,
-
     model_url: str = DEFAULT_MODEL_URL,
     source_data: list[str] | None = None,
     cycle: CycleConfig | None = None,
@@ -283,9 +282,7 @@ def run_all(
         seconds=WEB_CYCLE_SECONDS,
         pending_per_worker=WEB_PENDING_PER_WORKER,
     )
-    web_worker = replace(
-        worker, gpus=render_gpus, idle_seconds=WEB_WORKER_IDLE_SECONDS
-    )
+    web_worker = replace(worker, gpus=render_gpus, idle_seconds=WEB_WORKER_IDLE_SECONDS)
 
     for zoom in range(web_max_zoom, web_min_zoom - 1, -1):
         supervise(

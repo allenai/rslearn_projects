@@ -26,9 +26,7 @@ def _base_kwargs(**overrides: object) -> dict:
         "completed_path_template": "gs://bucket/s2_{year}_completed/",
         "queue_name": "user/queue",
         "model": sup.ModelConfig(checkpoint_path="/weka/ckpt"),
-        "worker": sup.WorkerConfig(
-            image_name="user/image", cluster=["ai2/cluster"]
-        ),
+        "worker": sup.WorkerConfig(image_name="user/image", cluster=["ai2/cluster"]),
         "cycle": sup.CycleConfig(max_cycles=0),
     }
     kwargs.update(overrides)

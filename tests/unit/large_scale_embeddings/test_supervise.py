@@ -92,9 +92,9 @@ def test_workers_are_named_so_a_run_can_count_its_own() -> None:
     mine = mod.worker_name_prefix("user/queue-a")
     theirs = mod.worker_name_prefix("user/queue-b")
     assert mine != theirs
-    assert not mine.startswith(theirs) and not theirs.startswith(mine), (
-        "one queue's prefix matches another's, so their worker counts would collide"
-    )
+    assert not mine.startswith(theirs) and not theirs.startswith(
+        mine
+    ), "one queue's prefix matches another's, so their worker counts would collide"
     assert "/" not in mine, "a Beaker experiment name cannot contain a slash"
 
 

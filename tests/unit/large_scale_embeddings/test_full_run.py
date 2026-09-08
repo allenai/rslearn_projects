@@ -211,9 +211,9 @@ def test_run_all_takes_no_open_kwargs() -> None:
     import inspect
 
     kinds = [p.kind for p in inspect.signature(run_all_mod.run_all).parameters.values()]
-    assert inspect.Parameter.VAR_KEYWORD not in kinds, (
-        "run_all accepts **kwargs again, so supervise's options will leak into its CLI"
-    )
+    assert (
+        inspect.Parameter.VAR_KEYWORD not in kinds
+    ), "run_all accepts **kwargs again, so supervise's options will leak into its CLI"
 
 
 def test_skip_web_pca_stops_after_annotate(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -272,9 +272,12 @@ def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
 
     run_all_mod.run_all(
-        **{**COMMON, "worker": WorkerConfig(
-            image_name="user/image", cluster=["ai2/jupiter"], gpus=1
-        )}
+        **{
+            **COMMON,
+            "worker": WorkerConfig(
+                image_name="user/image", cluster=["ai2/jupiter"], gpus=1
+            ),
+        }
     )
     assert ("predict", 1) in seen
     assert ("render_utm_pca", 0) in seen
@@ -372,7 +375,10 @@ def test_web_tuning_does_not_reach_the_other_stages(
         assert seen[stage]["cycle"].seconds == 900
         assert seen[stage]["cycle"].pending_per_worker == 3
         assert seen[stage]["cycle"].seconds != run_all_mod.WEB_CYCLE_SECONDS
-        assert seen[stage]["cycle"].pending_per_worker != run_all_mod.WEB_PENDING_PER_WORKER
+        assert (
+            seen[stage]["cycle"].pending_per_worker
+            != run_all_mod.WEB_PENDING_PER_WORKER
+        )
 
 
 def test_web_stage_ignores_a_leaked_cycle_seconds(
