@@ -210,7 +210,7 @@ def check_zone_agreement(
         for z in (zone_a, zone_b)
     }
 
-    def read(zone: str, lon: float, lat: float):
+    def read(zone: str, lon: float, lat: float) -> np.ndarray | None:
         x, y = transformers[zone].transform(lon, lat)
         col, row = int(x // RESOLUTION), int((9502720 - y) // RESOLUTION)
         raw = np.asarray(arrays[zone][time_index, :dims, row, col]).astype(np.float32)

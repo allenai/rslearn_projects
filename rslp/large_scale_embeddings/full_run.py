@@ -40,6 +40,7 @@ from rslp.large_scale_embeddings.supervise import (
     ModelConfig,
     PcaConfig,
     WorkerConfig,
+    require_config,
     supervise,
 )
 from rslp.large_scale_embeddings.supervise import (
@@ -188,17 +189,25 @@ def run_all(
         logger.info("skip_pca set; stopping after predict")
         return
 
-    logger.info("step 2/5: fit_pca -> %s", pca.artifact_path)
+    # Narrowed once, here: PcaConfig holds these as optional because the predict stage
+    # never sets them, but every step from here on needs all three.
+    artifact_path = require_config(pca.artifact_path, "pca.artifact_path", "run_all")
+    pca_store_path = require_config(pca.store_path, "pca.store_path", "run_all")
+    pca_completed_path = require_config(
+        pca.completed_path, "pca.completed_path", "run_all"
+    )
+
+    logger.info("step 2/5: fit_pca -> %s", artifact_path)
     fit_pca(
         store_path=store_path,
         completed_paths=completed_paths,
-        artifact_path=pca.artifact_path,
+        artifact_path=artifact_path,
     )
 
-    logger.info("step 3/5: render_pca into %s", pca.store_path)
-    if not UPath(pca.store_path).exists():
+    logger.info("step 3/5: render_pca into %s", pca_store_path)
+    if not UPath(pca_store_path).exists():
         init_pca_store(
-            pca_store_path=pca.store_path,
+            pca_store_path=pca_store_path,
             zone_numbers=aoi.zone_numbers or list(range(1, 61)),
             years=years,
             model_url=model_url,
@@ -222,10 +231,10 @@ def run_all(
     )
     remaining = get_render_jobs(
         store_path=store_path,
-        pca_store_path=pca.store_path,
-        artifact_path=pca.artifact_path,
+        pca_store_path=pca_store_path,
+        artifact_path=artifact_path,
         source_completed_paths=completed_paths,
-        completed_path=pca.completed_path,
+        completed_path=pca_completed_path,
         patch_size=model.patch_size,
         max_level=pca.max_level,
     )
@@ -237,8 +246,8 @@ def run_all(
 
     logger.info("step 4/5: annotate_pca_store")
     annotate_pca_store(
-        pca_store_path=pca.store_path,
-        artifact_path=pca.artifact_path,
+        pca_store_path=pca_store_path,
+        artifact_path=artifact_path,
         zone_numbers=aoi.zone_numbers,
         max_level=pca.max_level,
     )
@@ -249,14 +258,11 @@ def run_all(
     # Siblings of the UTM pyramid by default, so a run needs no extra paths to gain a
     # display layer. The version lives in the name, as it does for pca_v1.zarr, so a
     # rebuild can be staged beside the old one.
-    # Siblings of the UTM pyramid by default, so a run needs no extra paths to gain a
-    # display layer. The version lives in the name, as it does for pca_v1.zarr, so a
-    # rebuild can be staged beside the old one.
-    web_store_path = pca.web_store_path or pca.store_path.replace(
+    web_store_path = pca.web_store_path or pca_store_path.replace(
         "pca_v1.zarr", "pca_web_v1.zarr"
     )
     web_completed_path = pca.web_completed_path or (
-        pca.completed_path.rstrip("/") + "_web/"
+        pca_completed_path.rstrip("/") + "_web/"
     )
 
     # The display pyramid. One supervise stage per zoom, deepest first, because
@@ -269,7 +275,7 @@ def run_all(
             years=years,
             min_zoom=web_min_zoom,
             max_zoom=web_max_zoom,
-            source_store_path=pca.store_path,
+            source_store_path=pca_store_path,
         )
     else:
         logger.info("web store already exists; leaving it as is")
@@ -305,7 +311,7 @@ def run_all(
             ),
         )
         outstanding = get_web_jobs(
-            source_store_path=pca.store_path,
+            source_store_path=pca_store_path,
             web_store_path=web_store_path,
             completed_path=web_completed_path,
             zoom=zoom,

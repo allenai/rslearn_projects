@@ -260,7 +260,7 @@ def test_termination_releases_the_in_flight_entry() -> None:
     sent: list[dict] = []
 
     class _Tx:
-        def send(self, entry_id, **kwargs):
+        def send(self, entry_id: str | None, **kwargs: Any) -> None:
             sent.append({"entry_id": entry_id, **kwargs})
 
     handler = _release_on_termination(_Tx(), {"entry_id": "entry-abc"})
@@ -281,7 +281,7 @@ def test_termination_with_no_entry_is_harmless() -> None:
     from rslp.common.worker import _release_on_termination
 
     class _Tx:
-        def send(self, entry_id, **kwargs):
+        def send(self, entry_id: str | None, **kwargs: Any) -> None:
             raise AssertionError("nothing should be sent when no entry is in flight")
 
     handler = _release_on_termination(_Tx(), {"entry_id": None})

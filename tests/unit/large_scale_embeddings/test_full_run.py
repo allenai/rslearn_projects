@@ -52,6 +52,11 @@ COMMON: dict[str, Any] = {
 }
 
 
+def _with(**overrides: Any) -> dict[str, Any]:
+    """COMMON plus overrides, typed so a spread literal keeps its Any values."""
+    return {**COMMON, **overrides}
+
+
 def test_predict_shortfall_stops_the_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     """Blocks left unpredicted must abort before fit_pca runs."""
     fitted: list[str] = []
@@ -272,12 +277,11 @@ def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
 
     run_all_mod.run_all(
-        **{
-            **COMMON,
-            "worker": WorkerConfig(
+        **_with(
+            worker=WorkerConfig(
                 image_name="user/image", cluster=["ai2/jupiter"], gpus=1
-            ),
-        }
+            )
+        )
     )
     assert ("predict", 1) in seen
     assert ("render_utm_pca", 0) in seen
@@ -316,14 +320,13 @@ def test_caller_can_override_a_gdal_default(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
 
     run_all_mod.run_all(
-        **{
-            **COMMON,
-            "worker": WorkerConfig(
+        **_with(
+            worker=WorkerConfig(
                 image_name="user/image",
                 cluster=["ai2/jupiter"],
                 env_vars={"GS_USER_PROJECT": "other-project"},
-            ),
-        },
+            )
+        ),
         skip_pca=True,
     )
     assert seen[0]["GS_USER_PROJECT"] == "other-project"

@@ -139,7 +139,8 @@ def test_workers_always_get_the_gdal_billing_project() -> None:
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     assert "GS_USER_PROJECT" in mod.DEFAULT_WORKER_ENV_VARS
 
-    for env in (None, {}, {"SOMETHING_ELSE": "1"}):
+    envs: list[dict[str, str] | None] = [None, {}, {"SOMETHING_ELSE": "1"}]
+    for env in envs:
         worker = mod.WorkerConfig(image_name="i", cluster=["c"], env_vars=env)
         assert worker.env_vars["GS_USER_PROJECT"], (
             f"env_vars={env!r} produced a WorkerConfig with no billing project, so "

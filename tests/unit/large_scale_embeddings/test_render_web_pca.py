@@ -1,5 +1,7 @@
 """Tests for the web-mercator reprojection grid and cascade."""
 
+import pathlib
+
 import numpy as np
 import pytest
 
@@ -96,7 +98,7 @@ def test_web_shards_for_source_lands_near_the_source() -> None:
     assert hit, f"centre {wx},{wy} fell outside every returned shard {sorted(got)}"
 
 
-def test_downsample_averages_and_ignores_nodata(tmp_path) -> None:
+def test_downsample_averages_and_ignores_nodata(tmp_path: pathlib.Path) -> None:
     """Averaging must skip nodata, or coastlines darken as they coarsen."""
     import zarr
 
@@ -118,7 +120,7 @@ def test_downsample_averages_and_ignores_nodata(tmp_path) -> None:
     assert list(out) == [100, 100, 100]
 
 
-def test_downsample_of_empty_writes_nothing(tmp_path) -> None:
+def test_downsample_of_empty_writes_nothing(tmp_path: pathlib.Path) -> None:
     """An empty region must not be written, so unused shards never materialise."""
     import zarr
 
@@ -128,7 +130,7 @@ def test_downsample_of_empty_writes_nothing(tmp_path) -> None:
     assert rw.downsample_shard(g, 12, 0, 5, 5) == 0
 
 
-def test_init_rejects_an_inverted_zoom_range(tmp_path) -> None:
+def test_init_rejects_an_inverted_zoom_range(tmp_path: pathlib.Path) -> None:
     """A silently empty pyramid would be much harder to notice than an error."""
     with pytest.raises(ValueError, match="below min_zoom"):
         rw.init_web_store(

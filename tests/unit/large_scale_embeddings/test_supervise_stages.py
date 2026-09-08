@@ -6,11 +6,15 @@ cover the validation and the enumeration branch without touching Beaker.
 """
 
 import importlib
+import pathlib
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 from typing_extensions import Self
 
 from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
+from rslp.large_scale_embeddings.supervise import SuperviseConfig
 
 # The package re-exports the workflow functions under their module names, so
 # `from rslp.large_scale_embeddings import supervise` yields the function. Import the
@@ -186,9 +190,7 @@ def _install_cycle_fakes(
     return recorded
 
 
-def _render_cycle_config(
-    num_workers: int = 2, **overrides: object
-) -> sup.SuperviseConfig:
+def _render_cycle_config(num_workers: int = 2, **overrides: object) -> SuperviseConfig:
     """A complete render-stage config for _run_cycle, with overrides applied."""
     config = sup.SuperviseConfig(
         inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
@@ -399,7 +401,9 @@ def test_stage_marker_paths_render_uses_the_pca_path() -> None:
     assert paths == ["gs://bucket/pca_done/"]
 
 
-def test_any_completion_markers_true_when_a_marker_exists(tmp_path) -> None:
+def test_any_completion_markers_true_when_a_marker_exists(
+    tmp_path: pathlib.Path,
+) -> None:
     done = tmp_path / "done_2024"
     done.mkdir()
     (done / "EPSG:32610_0_0.json").write_text("{}")
@@ -412,7 +416,9 @@ def test_any_completion_markers_true_when_a_marker_exists(tmp_path) -> None:
     )
 
 
-def test_any_completion_markers_false_for_missing_and_empty_dirs(tmp_path) -> None:
+def test_any_completion_markers_false_for_missing_and_empty_dirs(
+    tmp_path: pathlib.Path,
+) -> None:
     # 2023's directory does not exist at all; 2024's exists but is empty. Neither is
     # evidence of work, so a zero remaining count really does mean nothing matched.
     (tmp_path / "done_2024").mkdir()
@@ -441,39 +447,41 @@ class _InlineProcess:
     supervise loop under test while letting the fake cycle be a closure.
     """
 
-    def __init__(self, target, args):
+    def __init__(self, target: Callable[..., Any], args: tuple[Any, ...]) -> None:
         self._target, self._args = target, args
         self.exitcode = 0
 
-    def start(self):
+    def start(self) -> None:
         try:
             self._target(*self._args)
         except Exception:  # noqa: BLE001 - mirrors a real cycle crashing for any reason
             self.exitcode = 1
 
-    def join(self, timeout=None):
+    def join(self, timeout: float | None = None) -> None:
         return None
 
-    def is_alive(self):
+    def is_alive(self) -> bool:
         return False
 
-    def terminate(self):
+    def terminate(self) -> None:
         return None
 
-    def kill(self):
+    def kill(self) -> None:
         return None
 
 
 class _Shared:
-    def __init__(self, value):
+    def __init__(self, value: Any) -> None:
         self.value = value
 
 
 class _InlineContext:
-    def Value(self, _typecode, init):
+    def Value(self, _typecode: str, init: Any) -> "_Shared":
         return _Shared(init)
 
-    def Process(self, target, args):
+    def Process(
+        self, target: Callable[..., Any], args: tuple[Any, ...]
+    ) -> "_InlineProcess":
         return _InlineProcess(target, args)
 
 
@@ -492,7 +500,7 @@ def test_supervise_raises_after_repeated_cycle_failures(
     _inline(monkeypatch)
     calls = {"n": 0}
 
-    def never_reports(config, result, launched=None):
+    def never_reports(config: Any, result: Any, launched: Any = None) -> None:
         # Leave result at _NO_RESULT, as a crashed or killed cycle does.
         calls["n"] += 1
 
@@ -511,7 +519,7 @@ def test_a_reporting_cycle_resets_the_failure_streak(
     script = [None, None, 4, None, None]
     seen = {"i": 0}
 
-    def scripted(config, result, launched=None):
+    def scripted(config: Any, result: Any, launched: Any = None) -> None:
         val = script[seen["i"] % len(script)]
         seen["i"] += 1
         if val is not None:
@@ -578,7 +586,9 @@ def test_entry_job_key_tolerates_a_malformed_payload() -> None:
     assert sup._entry_job_key(Broken()) is None
 
 
-def test_pending_and_fresh_claims_count_as_in_flight(monkeypatch) -> None:
+def test_pending_and_fresh_claims_count_as_in_flight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(sup, "_state_name", lambda e: e.status.state)
     now = 10_000
     entries = [
@@ -594,7 +604,9 @@ def test_pending_and_fresh_claims_count_as_in_flight(monkeypatch) -> None:
     assert ("job", "d") not in keys, "a finished entry says nothing about pending work"
 
 
-def test_a_claim_without_a_timestamp_is_treated_as_live(monkeypatch) -> None:
+def test_a_claim_without_a_timestamp_is_treated_as_live(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Re-offering a job that is genuinely being worked costs one duplicate; wrongly
     # skipping one costs the whole run, so the unknown case errs toward live.
     monkeypatch.setattr(sup, "_state_name", lambda e: e.status.state)

@@ -32,7 +32,11 @@ import math
 import re
 import urllib.parse
 import urllib.request
-import xml.dom.minidom
+
+# The response parsed with this is GCS's own ListObjectsV2 XML, fetched over a
+# hardcoded https URL below, so the untrusted-XML attacks B408/B318 warn about do
+# not apply. Kept over defusedxml to avoid a dependency for one listing call.
+import xml.dom.minidom  # nosec B408
 from typing import Any
 
 import fsspec
@@ -515,15 +519,17 @@ def source_shard_positions(store_url: str, zone: str) -> set[tuple[int, int]]:
     prefix = f"{root}/{zone}/pca_rgb/c/"
 
     out: set[tuple[int, int]] = set()
-    token = None
+    token: str | None = None
     for _ in range(200):
         url = (
             f"https://storage.googleapis.com/{bucket}?list-type=2"
             f"&prefix={urllib.parse.quote(prefix)}&max-keys=1000"
             + (f"&continuation-token={urllib.parse.quote(token)}" if token else "")
         )
-        with urllib.request.urlopen(url, timeout=90) as resp:
-            doc = xml.dom.minidom.parseString(resp.read())
+        # The scheme is the literal https above, not caller-supplied, so B310's
+        # file:/custom-scheme concern does not apply.
+        with urllib.request.urlopen(url, timeout=90) as resp:  # nosec B310
+            doc = xml.dom.minidom.parseString(resp.read())  # nosec B318
         for node in doc.getElementsByTagName("Key"):
             if not node.firstChild:
                 continue

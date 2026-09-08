@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from multiprocessing.sharedctypes import Synchronized
-from typing import Any
+from typing import Any, TypeVar
 
 from beaker import (
     Beaker,
@@ -242,6 +242,33 @@ class SuperviseConfig:
     pca: PcaConfig
 
 
+_T = TypeVar("_T")
+
+
+def require_config(value: _T | None, field: str, context: str) -> _T:
+    """Read a config value the caller cannot run without.
+
+    PcaConfig and AoiConfig hold their fields as optional because the predict stage
+    never sets them. The render stages need them, and passing the optional straight
+    through would surface as an obscure failure deep in the job enumerator, so read
+    them through this instead and name the missing field.
+
+    Args:
+        value: the configured value, possibly None.
+        field: the field's name, for the error message.
+        context: the stage or step requiring it, for the error message.
+
+    Returns:
+        the value, narrowed to non-None.
+
+    Raises:
+        ValueError: if the value was never set.
+    """
+    if value is None:
+        raise ValueError(f"{context} requires {field} to be set")
+    return value
+
+
 def _state_name(entry: Any) -> str:
     """Get the state enum name for a queue entry (PENDING/CLAIMED/COMPLETED)."""
     status = entry.status
@@ -322,7 +349,11 @@ def _stage_marker_paths(config: SuperviseConfig) -> list[str]:
         one path per marker directory the stage is responsible for.
     """
     if config.stage == STAGE_RENDER_UTM_PCA:
-        return [config.pca.completed_path]
+        return [
+            require_config(
+                config.pca.completed_path, "pca.completed_path", config.stage
+            )
+        ]
     return [config.completed_path_template.format(year=year) for year in config.years]
 
 
@@ -438,12 +469,20 @@ def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> No
         # global and almost entirely empty, so listing what exists beats probing it.
         remaining.extend(
             get_web_jobs(
-                source_store_path=config.pca.store_path,
-                web_store_path=config.pca.web_store_path,
-                completed_path=config.pca.web_completed_path,
-                zoom=config.pca.web_zoom,
+                source_store_path=require_config(
+                    config.pca.store_path, "pca.store_path", stage
+                ),
+                web_store_path=require_config(
+                    config.pca.web_store_path, "pca.web_store_path", stage
+                ),
+                completed_path=require_config(
+                    config.pca.web_completed_path, "pca.web_completed_path", stage
+                ),
+                zoom=require_config(config.pca.web_zoom, "pca.web_zoom", stage),
                 years=years,
-                zone_numbers=config.aoi.zone_numbers,
+                zone_numbers=require_config(
+                    config.aoi.zone_numbers, "aoi.zone_numbers", stage
+                ),
                 base_zoom=config.pca.web_base_zoom,
                 source_url=config.pca.store_url,
             )
@@ -454,12 +493,18 @@ def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> No
         remaining.extend(
             get_render_jobs(
                 store_path=config.store_path,
-                pca_store_path=config.pca.store_path,
-                artifact_path=config.pca.artifact_path,
+                pca_store_path=require_config(
+                    config.pca.store_path, "pca.store_path", stage
+                ),
+                artifact_path=require_config(
+                    config.pca.artifact_path, "pca.artifact_path", stage
+                ),
                 source_completed_paths=[
                     config.completed_path_template.format(year=year) for year in years
                 ],
-                completed_path=config.pca.completed_path,
+                completed_path=require_config(
+                    config.pca.completed_path, "pca.completed_path", stage
+                ),
                 patch_size=config.model.patch_size,
                 max_level=config.pca.max_level,
             )
