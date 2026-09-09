@@ -439,3 +439,123 @@ def test_annotation_survives_consolidated_metadata(tmp_path: Path) -> None:
         attrs = dict(group[name].attrs)
         assert attrs.get("geoemb:pca_components") == pca.PCA_N_COMPONENTS, name
         assert "do not use these bands as features" in attrs["geoemb:pca_note"], name
+
+
+def test_render_maps_source_year_onto_the_pca_store_axis(tmp_path: Path) -> None:
+    """A derived store need not share the source's time axis.
+
+    The marker's time_index addresses the source store, whose axis spans every year the
+    archive declares. A pca store built for one year has a single slot, so writing at
+    the source index raised "index out of bounds for dimension with length 1" and every
+    render job failed. The year is the stable identifier, so translate through it.
+    """
+    source_years = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+    source_index = source_years.index(2025)
+    store_path = str(tmp_path / "s2.zarr")
+    zs.init_store(
+        store_path=store_path,
+        zone_numbers=[ZONE],
+        years=source_years,
+        model_url=MODEL_URL,
+        source_data=SOURCE_DATA,
+        resolution=RESOLUTION,
+        tile_size=TILE_SIZE,
+        dimensions=DIMS,
+        chunk_size=CHUNK,
+        shard_size=SHARD,
+    )
+    pca_store_path = str(tmp_path / "pca_v1.zarr")
+    zs.init_pca_store(
+        pca_store_path=pca_store_path,
+        zone_numbers=[ZONE],
+        years=[2025],
+        model_url=MODEL_URL,
+        source_data=SOURCE_DATA,
+        resolution=RESOLUTION,
+        tile_size=TILE_SIZE,
+        chunk_size=CHUNK,
+        shard_size=SHARD,
+        max_level=MAX_LEVEL,
+    )
+    _, (origin_x, origin_y), _ = get_zone_grid(ZONE, RESOLUTION, TILE_SIZE)
+    rng = np.random.default_rng(11)
+    bx0, by0 = origin_x, origin_y + 2 * SHARD
+    floats = _unit_vectors(rng, SHARD * SHARD, DIMS)
+    block = np.asarray(quantize_embeddings(torch.from_numpy(floats))).T.reshape(
+        DIMS, SHARD, SHARD
+    )
+    zs.write_window_region(
+        store_path, ZONE, (bx0, by0, bx0 + SHARD, by0 + SHARD), source_index, block
+    )
+
+    source_completed = tmp_path / "s2_2025_completed"
+    source_completed.mkdir()
+    source_marker = source_completed / f"EPSG:{EPSG}_{bx0}_{by0}.json"
+    with source_marker.open("w") as f:
+        json.dump(
+            {
+                "projection": PROJECTION,
+                "bounds": [bx0, by0, bx0 + SHARD, by0 + SHARD],
+                "time_index": source_index,
+                "written": [[bx0, by0]],
+                "skipped_no_data": [],
+                "skipped_longitude": [],
+                "num_filtered_crops": 0,
+            },
+            f,
+        )
+    artifact_path = str(tmp_path / "pca_artifact")
+    pca.fit_pca(
+        store_path=store_path,
+        completed_paths=[str(source_completed)],
+        artifact_path=artifact_path,
+        blocks_per_zone=3,
+        pixels_per_block=4_000,
+        chunk_size=CHUNK,
+        seed=5,
+    )
+
+    render_pca.render_pca_pipeline(
+        store_path=store_path,
+        pca_store_path=pca_store_path,
+        artifact_path=artifact_path,
+        source_marker=str(source_marker),
+        completed_path=str(tmp_path / "pca_2025_completed"),
+        max_level=MAX_LEVEL,
+    )
+
+    # Written at the pca store's own index for 2025, which is 0, not the source's 8.
+    group = zarr.open_group(pca_store_path, path=zs.zone_group_name(ZONE), mode="r")
+    rgb = np.asarray(
+        group[zs.pca_level_array_name(0)][
+            0, :, by0 - origin_y : by0 - origin_y + SHARD, 0:SHARD
+        ]
+    )
+    assert rgb.any(), "nothing was written at the pca store's index for 2025"
+
+
+def test_render_rejects_a_year_absent_from_the_pca_store(tmp_path: Path) -> None:
+    """Naming the missing year beats an opaque out-of-bounds error deep in zarr."""
+    run = _build_run(tmp_path, n_windows=1)
+    other_pca = str(tmp_path / "pca_other.zarr")
+    zs.init_pca_store(
+        pca_store_path=other_pca,
+        zone_numbers=[ZONE],
+        years=[1999],
+        model_url=MODEL_URL,
+        source_data=SOURCE_DATA,
+        resolution=RESOLUTION,
+        tile_size=TILE_SIZE,
+        chunk_size=CHUNK,
+        shard_size=SHARD,
+        max_level=MAX_LEVEL,
+    )
+    with pytest.raises(ValueError, match="not on the pca store's time axis"):
+        render_pca.render_pca_pipeline(
+            store_path=run["store_path"],
+            pca_store_path=other_pca,
+            artifact_path=run["artifact_path"],
+            source_marker=run["source_marker"],
+            completed_path=run["completed_path"],
+            max_level=MAX_LEVEL,
+        )

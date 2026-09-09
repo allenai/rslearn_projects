@@ -34,6 +34,7 @@ from rslp.large_scale_embeddings.pca import PcaArtifact, build_pyramid, project_
 from rslp.large_scale_embeddings.zarr_store import (
     DEFAULT_PCA_MAX_LEVEL,
     EMBEDDINGS_ARRAY,
+    get_store_years,
     pca_level_array_name,
     write_pca_window_levels,
     zone_group_name,
@@ -133,6 +134,19 @@ def render_pca_pipeline(
     embeddings_array = group[EMBEDDINGS_ARRAY]
     window_size = embeddings_array.shards[2]
 
+    # The marker's time_index addresses the source store's axis. A derived store has
+    # its own axis, covering only the years it was built for, so that index does not
+    # carry over: a single-year pca store has one slot while the source may have nine.
+    # Translate through the year itself, which is the only stable identifier.
+    source_year = int(np.asarray(group["time"][time_index]))
+    pca_years = get_store_years(pca_store_path, storage_options=storage_options)
+    if source_year not in pca_years:
+        raise ValueError(
+            f"source year {source_year} (index {time_index}) is not on the pca store's "
+            f"time axis {pca_years}; recreate {pca_store_path} covering that year"
+        )
+    dest_time_index = pca_years.index(source_year)
+
     rendered: list[list[int]] = []
     empty: list[list[int]] = []
     for x, y in written:
@@ -152,7 +166,7 @@ def render_pca_pipeline(
             pca_store_path=pca_store_path,
             zone_number=zone_number,
             window_bounds=(x, y, x + window_size, y + window_size),
-            time_index=time_index,
+            time_index=dest_time_index,
             levels=build_pyramid(rgb, max_level),
             patch_size=patch_size,
             storage_options=storage_options,
