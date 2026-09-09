@@ -121,6 +121,17 @@ if __name__ == "__main__":
         groups[lb].append(row)
 
     print(f"Total rows: {len(rows)}, skipped (no gt_length): {skipped_no_length}")
+
+    # --- Overall length confusion matrix ---
+    gt_length, pred_length = [], []
+    for row in rows:
+        if row["gt_length"] == "" or row["pred_length"] == "":
+            continue
+        gt_length.append(bucketize(float(row["gt_length"]), args.length_buckets))
+        pred_length.append(bucketize(float(row["pred_length"]), args.length_buckets))
+    if gt_length:
+        print_confusion_matrix(gt_length, pred_length, length_names, "Length (overall)")
+
     for lb_idx in sorted(groups):
         group = groups[lb_idx]
         length_label = length_names[lb_idx]

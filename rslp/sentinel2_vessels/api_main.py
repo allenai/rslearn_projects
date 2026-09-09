@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import Enum
@@ -32,6 +33,9 @@ SENTINEL2_PORT = int(os.getenv("SENTINEL2_PORT", 5555))
 
 # Set up the logger
 logger = get_logger(__name__)
+
+# Serializes GPU inference so a single worker only ever runs one prediction at a time.
+_inference_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -203,9 +207,7 @@ async def home() -> dict:
     summary="Get Vessel Detections from Sentinel-2",
     description="Returns vessel detections from Sentinel-2.",
 )
-async def get_detections(
-    info: Sentinel2Request, response: Response
-) -> Sentinel2Response:
+def get_detections(info: Sentinel2Request, response: Response) -> Sentinel2Response:
     """Returns vessel detections for a given request.
 
     Args:
@@ -238,7 +240,7 @@ async def get_detections(
 
     try:
         logger.info("Processing request with input data.")
-        with time_operation(TimerOperations.TotalInferenceTime):
+        with _inference_lock, time_operation(TimerOperations.TotalInferenceTime):
             vessel_detections = predict_pipeline(
                 tasks=[task],
                 scratch_path=scratch_path,

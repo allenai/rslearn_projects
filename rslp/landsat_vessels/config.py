@@ -25,19 +25,15 @@ AWS_DATASET_CONFIG = str(
     _REPO_ROOT / "data/landsat_vessels/predict_dataset_config_aws.json"
 )
 
-# Extract Landsat bands from local config file.
-# LANDSAT_BANDS covers the 7-band `landsat` layer used by the detector.
-# LANDSAT_ALL_BAND_NAMES is the full set needed by the classifier and attribute models
-# (via `landsat_allbands`), and is also used for scene zip extraction so all bands are
-# available to every pipeline stage.
+# All Landsat bands required by the prediction pipeline. The detector and classifier
+# only use a subset, but the attribute model reads the full band stack via the
+# landsat_allbands layer, so every band must be provided. It is also used for scene zip
+# extraction so all bands are available to every pipeline stage.
 with open(LOCAL_FILES_DATASET_CONFIG) as f:
     json_data = json.load(f)
-LANDSAT_BANDS = [
-    band["bands"][0] for band in json_data["layers"][LANDSAT_LAYER_NAME]["band_sets"]
+LANDSAT_ALLBANDS = json_data["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["band_sets"][0][
+    "bands"
 ]
-LANDSAT_ALL_BAND_NAMES = json_data["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["band_sets"][
-    0
-]["bands"]
 
 # Model config
 # Detector: config_detector.yaml (score_threshold=0.7).

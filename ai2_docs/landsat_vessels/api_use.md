@@ -94,19 +94,23 @@ Once the API server is running, you can send requests to the `/detections` endpo
 
 3. Fetch Unzipped Landsat Scene from Local or GCS Storage:
 
-    Provide the image_files dictionary to specify paths to individual band files of the unzipped Landsat scene, either locally or in a GCS bucket.
+    Provide the image_files dictionary to specify paths to individual band files of the unzipped Landsat scene, either locally or in a GCS bucket. All bands `B1` through `B11` must be provided: the detector and classifier only use `B2`-`B8`, but the vessel attribute model (which always runs) requires the full band stack, so omitting any band will cause the request to error.
 
     Payload Example:
     ```json
     {
         "image_files": {
+            "B1": "path/to/B1.TIF",
             "B2": "path/to/B2.TIF",
             "B3": "path/to/B3.TIF",
             "B4": "path/to/B4.TIF",
             "B5": "path/to/B5.TIF",
             "B6": "path/to/B6.TIF",
             "B7": "path/to/B7.TIF",
-            "B8": "path/to/B8.TIF"
+            "B8": "path/to/B8.TIF",
+            "B9": "path/to/B9.TIF",
+            "B10": "path/to/B10.TIF",
+            "B11": "path/to/B11.TIF"
         }
     }
     ```

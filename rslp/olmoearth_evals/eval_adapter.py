@@ -1,6 +1,7 @@
 """Adapter for evaluation tasks."""
 
 import os
+from types import ModuleType
 from typing import Any
 
 import torch
@@ -13,21 +14,29 @@ from rslearn.train.transforms.transform import Transform
 
 import rslp.olmoearth_evals.aef as aef
 import rslp.olmoearth_evals.anysat as anysat
-import rslp.olmoearth_evals.clay as clay
 import rslp.olmoearth_evals.croma as croma
 import rslp.olmoearth_evals.dinov3 as dinov3
 import rslp.olmoearth_evals.galileo as galileo
 import rslp.olmoearth_evals.olmoearth as olmoearth
-import rslp.olmoearth_evals.olmoearth_swin_base as olmoearth_swin_base
 import rslp.olmoearth_evals.panopticon as panopticon
 import rslp.olmoearth_evals.presto as presto
 import rslp.olmoearth_evals.prithvi as prithvi
 import rslp.olmoearth_evals.satlaspretrain as satlaspretrain
-import rslp.olmoearth_evals.terramind as terramind
+
+# clay and terramind import terratorch (an optional dependency), so guard them:
+# if terratorch is not installed, these models are simply unavailable and any
+# other model (e.g. olmoearth) still works.
+clay: ModuleType | None
+terramind: ModuleType | None
+try:
+    import rslp.olmoearth_evals.clay as clay
+    import rslp.olmoearth_evals.terramind as terramind
+except ImportError:
+    clay = None
+    terramind = None
 
 modules_by_model_id = {
     "anysat": anysat,
-    "clay": clay,
     "croma": croma,
     "croma_large": croma,
     "dinov3": dinov3,
@@ -37,16 +46,28 @@ modules_by_model_id = {
     "olmoearth_tiny": olmoearth,
     "olmoearth_large": olmoearth,
     "olmoearth_random": olmoearth,
-    "olmoearth_swin_base": olmoearth_swin_base,
-    "olmoearth_swin_base_temporal_attention": olmoearth_swin_base,
+    "olmoearth_v1_nano": olmoearth,
+    "olmoearth_v1_tiny": olmoearth,
+    "olmoearth_v1_base": olmoearth,
+    "olmoearth_v1_large": olmoearth,
+    "olmoearth_v1_1_nano": olmoearth,
+    "olmoearth_v1_1_tiny": olmoearth,
+    "olmoearth_v1_1_base": olmoearth,
+    "olmoearth_v1_2_nano": olmoearth,
+    "olmoearth_v1_2_tiny": olmoearth,
+    "olmoearth_v1_2_small": olmoearth,
+    "olmoearth_v1_2_base": olmoearth,
     "panopticon": panopticon,
     "presto": presto,
     "prithvi": prithvi,
     "satlaspretrain": satlaspretrain,
-    "terramind": terramind,
-    "terramind_large": terramind,
     "aef": aef,
 }
+if clay is not None:
+    modules_by_model_id["clay"] = clay
+if terramind is not None:
+    modules_by_model_id["terramind"] = terramind
+    modules_by_model_id["terramind_large"] = terramind
 
 # Task key used in MultiTask for eval configs; target rasters live under target/<key>/...
 EVAL_TASK_KEY = "eval_task"

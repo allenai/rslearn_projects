@@ -1,0 +1,141 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -1.67,
+              48.58
+            ],
+            [
+              -0.08,
+              48.58
+            ],
+            [
+              -0.08,
+              49.69
+            ],
+            [
+              -1.67,
+              49.69
+            ],
+            [
+              -1.67,
+              48.58
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "description": "PASTIS / PASTIS-R patches in Sentinel-2 tile T30UXV (Brittany, France), with margin.",
+        "name": "pastis_t30uxv"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              4.22,
+              43.21
+            ],
+            [
+              5.66,
+              43.21
+            ],
+            [
+              5.66,
+              44.29
+            ],
+            [
+              4.22,
+              44.29
+            ],
+            [
+              4.22,
+              43.21
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "description": "PASTIS / PASTIS-R patches in Sentinel-2 tile T31TFJ (Provence, France), with margin.",
+        "name": "pastis_t31tfj"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              4.25,
+              45.89
+            ],
+            [
+              5.78,
+              45.89
+            ],
+            [
+              5.78,
+              46.99
+            ],
+            [
+              4.25,
+              46.99
+            ],
+            [
+              4.25,
+              45.89
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "description": "PASTIS / PASTIS-R patches in Sentinel-2 tile T31TFM (Burgundy, France), with margin.",
+        "name": "pastis_t31tfm"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              6.23,
+              47.68
+            ],
+            [
+              7.83,
+              47.68
+            ],
+            [
+              7.83,
+              48.8
+            ],
+            [
+              6.23,
+              48.8
+            ],
+            [
+              6.23,
+              47.68
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "description": "PASTIS / PASTIS-R patches in Sentinel-2 tile T32ULU (Alsace, France), with margin.",
+        "name": "pastis_t32ulu"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}
