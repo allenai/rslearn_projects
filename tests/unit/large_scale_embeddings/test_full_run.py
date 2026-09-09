@@ -482,3 +482,44 @@ def test_launch_workers_passes_the_idle_timeout() -> None:
     assert "idle_timeout" in inspect.signature(launch_workers).parameters
     source = inspect.getsource(launch_workers)
     assert '"--idle_timeout"' in source
+
+
+def test_existing_pca_artifact_is_not_refit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resuming must not silently reinterpret rgb that is already written.
+
+    The basis defines what every rendered pixel means, so a refit partway through a
+    flow invalidates everything rendered so far. Keep the artifact unless asked.
+    """
+    seen: list[str] = []
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: seen.append("fit"))
+    _stub_paths(monkeypatch, exists=True)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "supervise", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+
+    run_all_mod.run_all(
+        **_with(
+            pca=PcaConfig(
+                artifact_path="gs://bucket/basis",
+                store_path="gs://bucket/pca_v1.zarr",
+                completed_path="gs://bucket/pca_completed/",
+            )
+        ),
+        skip_web_pca=True,
+    )
+    assert seen == [], "an existing artifact was refit without being asked"
+
+    run_all_mod.run_all(
+        **_with(
+            pca=PcaConfig(
+                artifact_path="gs://bucket/basis",
+                store_path="gs://bucket/pca_v1.zarr",
+                completed_path="gs://bucket/pca_completed/",
+            )
+        ),
+        skip_web_pca=True,
+        refit_pca=True,
+    )
+    assert seen == ["fit"], "refit_pca did not force a refit"

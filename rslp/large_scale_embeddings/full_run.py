@@ -109,6 +109,7 @@ def run_all(
     aoi: AoiConfig | None = None,
     matryoshka_dims: list[int] | None = None,
     render_gpus: int = 0,
+    refit_pca: bool = False,
     skip_pca: bool = False,
     skip_web_pca: bool = False,
     web_min_zoom: int = 8,
@@ -132,6 +133,10 @@ def run_all(
         cycle: loop pacing for the predict and render stages. See `CycleConfig`.
         aoi: the ground to cover. See `AoiConfig`.
         matryoshka_dims: prefix widths the model supports, recorded in the store.
+        refit_pca: refit the basis even when the artifact already exists. Off by
+            default: a refit is only safe before any rgb is written, since the basis
+            defines what the pixels mean, and re-running a partly finished flow would
+            otherwise silently reinterpret everything already rendered.
         render_gpus: GPUs for the render stages. They need none; a nonzero value is
             only for saturated clusters that count slots in GPUs.
         skip_pca: stop after predict. For a run whose only product is embeddings.
@@ -198,11 +203,17 @@ def run_all(
     )
 
     logger.info("step 2/5: fit_pca -> %s", artifact_path)
-    fit_pca(
-        store_path=store_path,
-        completed_paths=completed_paths,
-        artifact_path=artifact_path,
-    )
+    if UPath(artifact_path).exists() and not refit_pca:
+        # The basis defines what every rendered pixel means, so refitting after any
+        # rgb exists reinterprets it. Resuming a flow must not do that silently; pass
+        # refit_pca to force it.
+        logger.info("pca artifact already exists; keeping it (pass refit_pca to refit)")
+    else:
+        fit_pca(
+            store_path=store_path,
+            completed_paths=completed_paths,
+            artifact_path=artifact_path,
+        )
 
     logger.info("step 3/5: render_pca into %s", pca_store_path)
     if not UPath(pca_store_path).exists():
