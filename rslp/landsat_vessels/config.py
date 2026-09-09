@@ -1,6 +1,15 @@
 """This module contains the configuration for the Landsat Vessel Detection pipeline."""
 
 import json
+from pathlib import Path
+
+# Config paths are anchored to the repository root rather than the process cwd. This
+# module reads one of them at import time, and importing it is no longer only something
+# the pipeline does from the repo root: a training config that references
+# rslp.landsat_vessels.transforms pulls this module in through the package __init__ while
+# jsonargparse has chdir'd into the config file's own directory, which made the relative
+# read fail.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Landsat config
 LANDSAT_LAYER_NAME = "landsat"
@@ -9,8 +18,12 @@ OUTPUT_LAYER_NAME = "output"
 LANDSAT_RESOLUTION = 15
 
 # Data config
-LOCAL_FILES_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config.json"
-AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
+LOCAL_FILES_DATASET_CONFIG = str(
+    _REPO_ROOT / "data/landsat_vessels/predict_dataset_config.json"
+)
+AWS_DATASET_CONFIG = str(
+    _REPO_ROOT / "data/landsat_vessels/predict_dataset_config_aws.json"
+)
 
 # Extract Landsat bands from local config file.
 # LANDSAT_BANDS covers the 7-band `landsat` layer used by the detector.
@@ -27,10 +40,15 @@ LANDSAT_ALL_BAND_NAMES = json_data["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["band_
 ]["bands"]
 
 # Model config
-DETECT_MODEL_CONFIG = "data/landsat_vessels/config_detector.yaml"
-CLASSIFY_MODEL_CONFIG = "data/landsat_vessels/config_classifier_20260616.yaml"
+# Detector: config_detector.yaml (score_threshold=0.7).
+# Classifier: Run-d layer-decay model (olmoearth_base_layerdecay_20260908d), deployed at
+# positive_class_threshold=0.99. Together this is the det0.7 / cls0.99 operating point.
+DETECT_MODEL_CONFIG = str(_REPO_ROOT / "data/landsat_vessels/config_detector.yaml")
+CLASSIFY_MODEL_CONFIG = str(
+    _REPO_ROOT / "data/landsat_vessels/config_classifier_20260908d.yaml"
+)
 CLASSIFY_WINDOW_SIZE = 64
-ATTRIBUTE_MODEL_CONFIG = "data/landsat_vessel_attribute/config.yaml"
+ATTRIBUTE_MODEL_CONFIG = str(_REPO_ROOT / "data/landsat_vessel_attribute/config.yaml")
 ATTRIBUTE_WINDOW_SIZE = 128
 
 # Filter config

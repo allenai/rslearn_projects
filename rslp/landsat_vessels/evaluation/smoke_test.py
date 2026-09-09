@@ -17,7 +17,7 @@ SCENES = [
         [0, 10],
         "Mostly islands with some ice",
     ),
-    ("LC09_L1TP_193030_20241104_20241104_02_T1", [20, 50], "Some vessels"),
+    ("LC09_L1TP_193030_20241104_20241104_02_T1", [20, 100], "Some vessels"),
 ]
 
 ALREADY_RAN: dict[str, tuple[int, int]] = {}
