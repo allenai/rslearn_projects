@@ -1,5 +1,6 @@
 """Unit tests for rslp.swin_pretrain.dataset."""
 
+import random
 from datetime import datetime, timezone
 from typing import Any
 
@@ -144,6 +145,13 @@ class TestCollateFunction:
 
     def test_temporal_subset(self) -> None:
         """Verify that we get different timesteps but they are always in order."""
+        # CollateFunction draws the temporal subset from the global `random` module.
+        # Seed it so this test is deterministic: previously it relied on unseeded
+        # randomness over only 8 iterations, so ~2% of runs every sampled subset
+        # happened to start at timestep 0 and the ">= 2 distinct first timesteps"
+        # assertion failed (assert 1 >= 2). Seeding removes that flakiness while still
+        # exercising the randomization.
+        random.seed(0)
         min_size = 8
         max_size = 8
         patch_size = 8
@@ -155,7 +163,7 @@ class TestCollateFunction:
         )
         first_timesteps_set = set()
         num_timesteps_set = set()
-        for _ in range(8):
+        for _ in range(16):
             batch = [
                 self.make_example(
                     height=TILE_SIZE,
