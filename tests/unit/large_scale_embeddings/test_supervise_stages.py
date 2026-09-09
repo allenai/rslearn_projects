@@ -103,12 +103,17 @@ def test_predict_stage_needs_no_pca_arguments() -> None:
 
 
 class _FakeQueueApi:
-    """A queue with nothing in it."""
+    """A queue with nothing in it and no workers registered."""
 
     def get(self, name: str) -> object:
         return object()
 
     def list_entries(self, queue: object) -> list:
+        return []
+
+    def list_workers(self, queue: object) -> list:
+        # The pool is counted from live registrations plus workloads that have not
+        # started; these tests care about stage dispatch, not pool size.
         return []
 
 

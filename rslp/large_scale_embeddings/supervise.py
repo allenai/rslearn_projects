@@ -123,6 +123,17 @@ DEFAULT_AWS_SECRET_KEY_SECRET = "AWS_SECRET_ACCESS_KEY"  # nosec
 # a blind top-up generates. Size it well above one job's runtime.
 DEFAULT_CLAIM_STALE_SECONDS = int(timedelta(minutes=90).total_seconds())
 
+# How long a queue worker's heartbeat is trusted before it is presumed dead.
+#
+# A worker registers with the queue at start and the Beaker SDK refreshes the
+# registration from a background thread, so the heartbeat keeps ticking through a job
+# that runs for tens of minutes. It stops when the process dies or its channel thread
+# does, which is how a worker ends up alive to Beaker but never claiming again. Counting
+# those toward the pool strands the run: launches are capped by outstanding work, so once
+# the dead count reaches the outstanding count the supervisor launches nothing and the
+# last jobs are never claimed. Generous next to the heartbeat interval (seconds).
+WORKER_HEARTBEAT_STALE_SECONDS = int(timedelta(minutes=5).total_seconds())
+
 # GDAL environment every worker needs, merged in below so it cannot be forgotten.
 #
 # GS_USER_PROJECT is required for the Landsat reads: rasterio_session_for_path honours
@@ -390,25 +401,40 @@ def worker_name_prefix(queue_name: str) -> str:
     return "worker_" + queue_name.replace("/", "-")
 
 
-def _count_workers(beaker: Any, workspace: Any, name_prefix: str) -> int:
-    """Count this run's workers that exist and have not finalized.
+def _count_workers(
+    beaker: Any,
+    workspace: Any,
+    name_prefix: str,
+    queue: Any = None,
+    now: float | None = None,
+) -> int:
+    """Count this run's workers that can still claim work.
 
-    Beaker knows a worker exists the moment its experiment is created, so this counts
-    one that is still pulling its image just as it counts one mid-job. Deriving the
-    count from queue heartbeats instead undercounts for the whole of container start,
-    which is minutes for a large image, and the pool overshoots by however many cycles
-    that takes.
+    Two things have to be counted, and neither alone is enough. A worker still pulling
+    its 17 GB image has not registered with the queue yet, so counting registrations
+    alone undercounts for the whole of container start and the pool overshoots by
+    however many cycles that takes. A worker whose process or channel thread has died
+    stays unfinalized to Beaker indefinitely, so counting workloads alone overcounts
+    and, because launches are capped by outstanding work, eventually strands the run:
+    once the dead count reaches the outstanding count nothing is launched and the last
+    jobs are never claimed.
+
+    So: workloads that have not started yet, plus registrations whose heartbeat is
+    fresh. A started worker registers within seconds, so the two barely overlap.
 
     Args:
         beaker: an open Beaker client.
         workspace: the workspace to search.
         name_prefix: the prefix from `worker_name_prefix`.
+        queue: the queue whose worker registrations to read. Without it this falls back
+            to counting unfinalized workloads, which is the old behaviour.
+        now: current unix time, passed in so this stays testable.
 
     Returns:
-        the number of live or starting workers belonging to this run.
+        the number of workers that are starting or demonstrably alive.
     """
-    return sum(
-        1
+    workloads = [
+        workload
         for workload in beaker.workload.list(
             workspace=workspace,
             author=beaker.user.get(),
@@ -419,7 +445,30 @@ def _count_workers(beaker: Any, workspace: Any, name_prefix: str) -> int:
         if getattr(getattr(workload, "experiment", None), "name", "").startswith(
             name_prefix
         )
-    )
+    ]
+    if queue is None:
+        return len(workloads)
+
+    starting = 0
+    for workload in workloads:
+        try:
+            job = beaker.workload.get_latest_job(workload)
+        except Exception:
+            # Unknown state: count it, so a listing hiccup cannot cause a launch storm.
+            starting += 1
+            continue
+        if job is None or not job.status.HasField("started"):
+            starting += 1
+
+    now = time.time() if now is None else now
+    fresh = 0
+    for worker in beaker.queue.list_workers(queue):
+        heartbeat = getattr(worker, "heartbeat", None)
+        if heartbeat is None or not heartbeat.seconds:
+            continue
+        if now - heartbeat.seconds < WORKER_HEARTBEAT_STALE_SECONDS:
+            fresh += 1
+    return starting + fresh
 
 
 def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> None:
@@ -455,6 +504,8 @@ def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> No
             beaker,
             beaker.workspace.get(DEFAULT_WORKSPACE),
             worker_name_prefix(queue_name),
+            queue=queue,
+            now=now,
         )
     pending = counts.get("PENDING", 0)
     logger.info("queue=%s workers=%d", counts, live)

@@ -161,3 +161,114 @@ def test_an_explicit_worker_env_var_still_wins() -> None:
         image_name="i", cluster=["c"], env_vars={"GS_USER_PROJECT": "other-project"}
     )
     assert worker.env_vars["GS_USER_PROJECT"] == "other-project"
+
+
+class _FakeStatus:
+    def __init__(self, started: bool) -> None:
+        self._started = started
+
+    def HasField(self, name: str) -> bool:  # noqa: N802 - mirrors the protobuf API
+        return name == "started" and self._started
+
+
+class _FakeJob:
+    def __init__(self, started: bool) -> None:
+        self.status = _FakeStatus(started)
+
+
+class _FakeExperiment:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _FakeWorkload:
+    def __init__(self, name: str, started: bool) -> None:
+        self.experiment = _FakeExperiment(name)
+        self._started = started
+
+
+class _FakeHeartbeat:
+    def __init__(self, seconds: int) -> None:
+        self.seconds = seconds
+
+
+class _FakeQueueWorker:
+    def __init__(self, seconds: int) -> None:
+        self.heartbeat = _FakeHeartbeat(seconds)
+
+
+class _FakeBeaker:
+    """Just enough of the client for _count_workers."""
+
+    def __init__(self, workloads: list, heartbeats: list[int]) -> None:
+        self._workloads = workloads
+        self._heartbeats = heartbeats
+        outer = self
+
+        class _WorkloadSvc:
+            def list(self, **kwargs: object) -> list:
+                return outer._workloads
+
+            def get_latest_job(self, workload: _FakeWorkload) -> _FakeJob:
+                return _FakeJob(workload._started)
+
+        class _QueueSvc:
+            def list_workers(self, queue: object) -> list:
+                return [_FakeQueueWorker(s) for s in outer._heartbeats]
+
+        class _UserSvc:
+            def get(self) -> str:
+                return "me"
+
+        self.workload = _WorkloadSvc()
+        self.queue = _QueueSvc()
+        self.user = _UserSvc()
+
+
+def test_a_worker_that_stopped_heartbeating_does_not_count() -> None:
+    """A dead worker must not hold a slot, or the run strands itself.
+
+    Launches are capped by outstanding work. A worker whose process died stays
+    unfinalized to Beaker forever, so counting it means that once the dead count
+    reaches the outstanding count the supervisor launches nothing and the last jobs are
+    never claimed. That is exactly how the web pyramid deadlocked at a 16-shard zoom.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    now = 1_000_000.0
+    # Twenty workloads Beaker still calls live, none of them heartbeating.
+    workloads = [_FakeWorkload(f"{prefix}_{i}", started=True) for i in range(20)]
+    beaker = _FakeBeaker(workloads, heartbeats=[])
+    assert (
+        mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 0
+    ), "dead workers still count, so the pool will strand the last jobs"
+
+
+def test_a_starting_worker_still_counts() -> None:
+    """Container start takes minutes; without this the pool overshoots every cycle."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    now = 1_000_000.0
+    workloads = [_FakeWorkload(f"{prefix}_{i}", started=False) for i in range(5)]
+    beaker = _FakeBeaker(workloads, heartbeats=[])
+    assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 5
+
+
+def test_a_busy_worker_counts_via_its_heartbeat() -> None:
+    """The SDK refreshes the registration from a background thread.
+
+    So a worker stays fresh through a job that runs for tens of minutes, and must keep
+    its slot rather than being relaunched alongside itself.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    now = 1_000_000.0
+    workloads = [_FakeWorkload(f"{prefix}_{i}", started=True) for i in range(3)]
+    beaker = _FakeBeaker(workloads, heartbeats=[int(now) - 10] * 3)
+    assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 3
