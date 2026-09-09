@@ -1,0 +1,137 @@
+{
+  "layers": {
+    "label": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "no_change",
+        "deforestation",
+        "urban_expansion",
+        "construction_mining",
+        "from_water",
+        "to_water",
+        "urban_erosion",
+        "new_crop_field",
+        "wetland_loss",
+        "forest_regrowth"
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "band_sets": [
+        {
+          "bands": [
+            "class"
+          ],
+          "dtype": "uint8"
+        }
+      ],
+      "type": "raster"
+    },
+    "sentinel2_historical": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "duration": "480d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 8,
+          "min_matches": 1,
+          "per_period_mosaic_reverse_time_order": false,
+          "period_duration": "60d",
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "-720d"
+      },
+      "type": "raster"
+    },
+    "sentinel2_recent": {
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "duration": "60d",
+        "ingest": false,
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "query": {
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:10"
+        },
+        "query_config": {
+          "max_matches": 4,
+          "min_matches": 1,
+          "space_mode": "MOSAIC"
+        },
+        "time_offset": "0d"
+      },
+      "type": "raster"
+    }
+  },
+  "window_data_storage": {
+    "class_path": "rslearn.dataset.window_data_storage.per_layer.PerLayerStorageFactory"
+  }
+}

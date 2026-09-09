@@ -1,0 +1,10 @@
+model:
+  init_args:
+    optimizer:
+      class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
+      init_args:
+        lr: 0.0001
+        layer_decay_rate: 0.65
+        num_layers: 12
+        encoder_prefix: model.encoder
+run_name: opt_lr1e-4_decay0.65_ufnone

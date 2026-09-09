@@ -1,0 +1,18 @@
+model:
+  init_args:
+    optimizer:
+      class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
+      init_args:
+        lr: 0.0001
+        layer_decay_rate: 1.0
+        num_layers: 12
+        encoder_prefix: model.encoder
+trainer:
+  callbacks+:
+  - class_path: rslearn.models.olmoearth_pretrain.optimizer.SimpleFreeze
+    init_args:
+      module_selector:
+      - model
+      - encoder
+      unfreeze_at_epoch: 10000
+run_name: opt_lr1e-4_frozen

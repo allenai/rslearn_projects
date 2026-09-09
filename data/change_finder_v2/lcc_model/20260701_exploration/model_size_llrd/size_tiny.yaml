@@ -1,0 +1,16 @@
+model:
+  init_args:
+    model:
+      init_args:
+        encoder:
+          init_args:
+            model_id: OLMOEARTH_V1_2_TINY
+        embedding_dim: 192
+        decoder_stages:
+          - [[192, 3]]
+          - [[192, 3]]
+          - [[128, 3]]
+    optimizer:
+      init_args:
+        num_layers: 12
+run_name: size_llrd_tiny

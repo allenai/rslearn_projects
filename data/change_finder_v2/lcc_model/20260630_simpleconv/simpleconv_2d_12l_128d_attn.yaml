@@ -1,0 +1,17 @@
+model:
+  init_args:
+    model:
+      class_path: rslp.change_finder_v2.lcc_model.model_simpleconv.SimpleConvChangeModel
+      init_args:
+        conv_type: 2d
+        num_conv_layers: 12
+        embedding_dim: 128
+        head_type: attn
+        num_temporal_selfattn_layers: 0
+        num_classes_binary: 3
+        num_classes_src: 13
+        num_classes_dst: 13
+        num_timesteps: 20
+        in_channels: 12
+        binary_loss_weight: 2.0
+run_name: simpleconv_2d_12l_128d_attn

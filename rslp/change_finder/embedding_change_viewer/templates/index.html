@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Embedding Change Viewer</title>
+<style>
+  :root { --tile-size: 384px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; }
+  a { color: #64b5f6; }
+
+  #top-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #16213e; border-bottom: 1px solid #333; flex-wrap: wrap; }
+  #top-bar button { font-size: 14px; padding: 4px 8px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  #top-bar button:hover { background: #1a5276; }
+  #top-bar button.active { background: #1565c0; border-color: #64b5f6; }
+  #ex-count { font-size: 13px; color: #aaa; }
+
+  #nav-bar { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #16213e; border-bottom: 1px solid #333; }
+  #nav-bar button { font-size: 14px; padding: 4px 12px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  #nav-bar button:hover { background: #1a5276; }
+  #nav-bar button:disabled { opacity: 0.4; cursor: default; }
+  #nav-info { font-size: 14px; }
+
+  #info-bar { padding: 8px 16px; font-size: 13px; background: #1a1a2e; border-bottom: 1px solid #333; display: flex; gap: 24px; flex-wrap: wrap; }
+  #info-bar .coord { font-family: monospace; user-select: all; background: #0f3460; padding: 2px 6px; border-radius: 3px; }
+
+  .section-label { padding: 8px 16px 4px; font-size: 13px; font-weight: 600; color: #90caf9; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  #year-selector { display: flex; gap: 4px; padding: 4px 16px; flex-wrap: wrap; }
+  #year-selector button { font-size: 13px; padding: 3px 10px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  #year-selector button.active { background: #1565c0; border-color: #64b5f6; }
+
+  #sentinel-grid { display: flex; gap: 4px; padding: 4px 16px; overflow-x: auto; }
+  .s2-col { text-align: center; }
+  .image-stack { position: relative; width: var(--tile-size); height: var(--tile-size); background: #111; border: 1px solid #333; overflow: hidden; }
+  .image-stack img { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .image-stack .overlay-image { position: absolute; inset: 0; pointer-events: none; }
+  .s2-col .s2-date { font-size: 11px; color: #aaa; margin-top: 2px; }
+
+  #mask-row { padding: 4px 16px; }
+
+  .empty-msg { color: #888; font-style: italic; padding: 16px; }
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <button id="btn-overlay">Overlay: off (a)</button>
+  <span id="ex-count"></span>
+</div>
+
+<div id="nav-bar">
+  <button id="btn-prev">&larr; Prev</button>
+  <span id="nav-info">Loading...</span>
+  <button id="btn-next">Next &rarr;</button>
+</div>
+
+<div id="info-bar">
+  <span>Lat/Lon: <span class="coord" id="coord-text">&mdash;</span></span>
+  <span>Window: <span id="window-info">&mdash;</span></span>
+</div>
+
+<div class="section-label">Sentinel-2 Imagery</div>
+<div id="year-selector"></div>
+<div id="sentinel-grid"></div>
+
+<div class="section-label">Change Mask</div>
+<div id="mask-row"></div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
