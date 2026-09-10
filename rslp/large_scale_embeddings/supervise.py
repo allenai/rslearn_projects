@@ -123,6 +123,14 @@ DEFAULT_AWS_SECRET_KEY_SECRET = "AWS_SECRET_ACCESS_KEY"  # nosec
 # a blind top-up generates. Size it well above one job's runtime.
 DEFAULT_CLAIM_STALE_SECONDS = int(timedelta(minutes=90).total_seconds())
 
+# How long after creation a worker counts without having registered with the queue.
+#
+# Covers the whole of container start: pulling a 17 GB image, then importing torch and
+# the rslp stack before the queue registration happens. Counting only registrations
+# inside this window would relaunch a worker that is merely still starting, and the pool
+# would overshoot num_workers by however many cycles a start takes.
+WORKER_STARTUP_GRACE_SECONDS = int(timedelta(minutes=15).total_seconds())
+
 # How long a queue worker's heartbeat is trusted before it is presumed dead.
 #
 # A worker registers with the queue at start and the Beaker SDK refreshes the
@@ -419,8 +427,12 @@ def _count_workers(
     once the dead count reaches the outstanding count nothing is launched and the last
     jobs are never claimed.
 
-    So: workloads that have not started yet, plus registrations whose heartbeat is
-    fresh. A started worker registers within seconds, so the two barely overlap.
+    So: workloads young enough to still be starting, plus registrations whose heartbeat
+    is fresh. A young worker that has already registered is counted twice, which leaves
+    the pool a little under target for one cycle. That is the safe direction to err:
+    counting a started-but-not-yet-registered worker as absent relaunches it and
+    overshoots num_workers. Both inputs come from listings, so this costs two calls
+    rather than one per worker.
 
     Args:
         beaker: an open Beaker client.
@@ -449,18 +461,16 @@ def _count_workers(
     if queue is None:
         return len(workloads)
 
+    now = time.time() if now is None else now
     starting = 0
     for workload in workloads:
-        try:
-            job = beaker.workload.get_latest_job(workload)
-        except Exception:
-            # Unknown state: count it, so a listing hiccup cannot cause a launch storm.
+        created = getattr(getattr(workload, "experiment", None), "created", None)
+        if created is None or not getattr(created, "seconds", 0):
+            # Unknown age: count it, so a listing hiccup cannot cause a launch storm.
             starting += 1
-            continue
-        if job is None or not job.status.HasField("started"):
+        elif now - created.seconds < WORKER_STARTUP_GRACE_SECONDS:
             starting += 1
 
-    now = time.time() if now is None else now
     fresh = 0
     for worker in beaker.queue.list_workers(queue):
         heartbeat = getattr(worker, "heartbeat", None)

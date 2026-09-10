@@ -163,28 +163,20 @@ def test_an_explicit_worker_env_var_still_wins() -> None:
     assert worker.env_vars["GS_USER_PROJECT"] == "other-project"
 
 
-class _FakeStatus:
-    def __init__(self, started: bool) -> None:
-        self._started = started
-
-    def HasField(self, name: str) -> bool:  # noqa: N802 - mirrors the protobuf API
-        return name == "started" and self._started
-
-
-class _FakeJob:
-    def __init__(self, started: bool) -> None:
-        self.status = _FakeStatus(started)
+class _FakeSeconds:
+    def __init__(self, seconds: int) -> None:
+        self.seconds = seconds
 
 
 class _FakeExperiment:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, created: int) -> None:
         self.name = name
+        self.created = _FakeSeconds(created)
 
 
 class _FakeWorkload:
-    def __init__(self, name: str, started: bool) -> None:
-        self.experiment = _FakeExperiment(name)
-        self._started = started
+    def __init__(self, name: str, created: int) -> None:
+        self.experiment = _FakeExperiment(name, created)
 
 
 class _FakeHeartbeat:
@@ -205,12 +197,21 @@ class _FakeBeaker:
         self._heartbeats = heartbeats
         outer = self
 
+        class _FakeJobStatus:
+            def HasField(self, name: str) -> bool:  # noqa: N802 - protobuf API
+                # Every workload here has started. Counting by started-ness alone is
+                # what left the overshoot hole, so the fake has to model it.
+                return name == "started"
+
+        class _FakeJob:
+            status = _FakeJobStatus()
+
         class _WorkloadSvc:
             def list(self, **kwargs: object) -> list:
                 return outer._workloads
 
-            def get_latest_job(self, workload: _FakeWorkload) -> _FakeJob:
-                return _FakeJob(workload._started)
+            def get_latest_job(self, workload: object) -> object:
+                return _FakeJob()
 
         class _QueueSvc:
             def list_workers(self, queue: object) -> list:
@@ -239,7 +240,8 @@ def test_a_worker_that_stopped_heartbeating_does_not_count() -> None:
     prefix = "worker_patrickj-q"
     now = 1_000_000.0
     # Twenty workloads Beaker still calls live, none of them heartbeating.
-    workloads = [_FakeWorkload(f"{prefix}_{i}", started=True) for i in range(20)]
+    old = int(now) - 7200  # created two hours ago, well past the startup grace
+    workloads = [_FakeWorkload(f"{prefix}_{i}", old) for i in range(20)]
     beaker = _FakeBeaker(workloads, heartbeats=[])
     assert (
         mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 0
@@ -253,7 +255,7 @@ def test_a_starting_worker_still_counts() -> None:
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     prefix = "worker_patrickj-q"
     now = 1_000_000.0
-    workloads = [_FakeWorkload(f"{prefix}_{i}", started=False) for i in range(5)]
+    workloads = [_FakeWorkload(f"{prefix}_{i}", int(now) - 60) for i in range(5)]
     beaker = _FakeBeaker(workloads, heartbeats=[])
     assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 5
 
@@ -269,6 +271,27 @@ def test_a_busy_worker_counts_via_its_heartbeat() -> None:
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     prefix = "worker_patrickj-q"
     now = 1_000_000.0
-    workloads = [_FakeWorkload(f"{prefix}_{i}", started=True) for i in range(3)]
+    workloads = [_FakeWorkload(f"{prefix}_{i}", int(now) - 7200) for i in range(3)]
     beaker = _FakeBeaker(workloads, heartbeats=[int(now) - 10] * 3)
     assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 3
+
+
+def test_a_started_worker_counts_before_it_registers() -> None:
+    """The overshoot hole: started, but not yet on the queue.
+
+    A worker registers only after importing torch and the rslp stack, so there is a
+    window of tens of seconds where it is running and heartbeating nothing. Treating
+    that as absent relaunches it, and a fresh 128-worker pool overshoots by however
+    many are inside the window when the cycle samples.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    now = 1_000_000.0
+    # Created a minute ago: image pulled, container up, registration not in yet.
+    workloads = [_FakeWorkload(f"{prefix}_{i}", int(now) - 60) for i in range(128)]
+    beaker = _FakeBeaker(workloads, heartbeats=[])
+    assert (
+        mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 128
+    ), "a starting worker reads as absent, so the pool will overshoot num_workers"
