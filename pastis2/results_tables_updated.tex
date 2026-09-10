@@ -103,8 +103,9 @@
     \begin{tabular}{l|cccc}
         Method & $X=10$ & $X=25$ & $X=100$ & $X=1000$\\
         \hline
-        OlmoEarth probe (d128\_wideread ckpt) & \cellcolor{colorone!25}\textbf{25.65} & 25.46 & \cellcolor{colorone!25}\textbf{26.50} & \cellcolor{colorone!25}\textbf{30.35}\\
-        OlmoEarth v1.2 FT & 23.38 & \cellcolor{colorone!25}\textbf{26.27} & 26.22 & 29.11\\
+        OlmoEarth v1.3 (64d) & 14.43 & 23.53 & 27.74 & 27.78\\
+        OlmoEarth v1.3 (128d) & \cellcolor{colorone!25}\textbf{25.06} & \cellcolor{colorone!25}\textbf{29.53} & \cellcolor{colorone!25}\textbf{30.25} & \cellcolor{colorone!25}\textbf{34.71}\\
+        OlmoEarth v1.2 FT & 23.38 & 26.27 & 26.22 & 29.11\\
         AEF / GSE & $11.44\pm1.51$ & $13.39\pm0.51$ & $13.51\pm0.24$ & $20.16\pm1.57$\\
         TESSERAv2 & $15.73\pm1.08$ & $16.96\pm0.53$ & $17.98\pm0.04$ & $25.41\pm1.17$\\
         \hline
@@ -116,10 +117,10 @@
     \caption{Few-shot transfer to \planteur: train on all of \pastis plus $X$
     labeled pixels per \planteur class, evaluate on the 443-window test split.
     Metric is mIoU (points, $\times 100$). The pure $X=0$ transfer point is
-    reported separately in Table~\ref{tab:planteur-zeroshot}. NOTE: the frozen
-    \olmoearth probe row here uses the earlier d128\_wideread checkpoint, not the
-    d768\_proj128lin checkpoint used in Tables~\ref{tab:planteur-443}
-    and~\ref{tab:planteur-loio}; the two are not directly comparable.}
+    reported separately in Table~\ref{tab:planteur-zeroshot}. Probe rows use the
+    d768\_proj128lin checkpoint with best-of-8 learning rates, the same protocol
+    as Tables~\ref{tab:planteur-443} and~\ref{tab:planteur-loio}.}
+
     \label{tab:planteur-fewshot}
 \end{table*}
 
@@ -130,9 +131,13 @@
     \begin{tabular}{ll|cccc}
         Model & Arm & $X=10$ & $X=25$ & $X=100$ & $X=1000$\\
         \hline
-        OlmoEarth probe & all \pastis & 25.65 & 25.46 & 26.50 & 30.35\\
-        OlmoEarth probe & balanced & 18.73 & 20.59 & 25.47 & 28.77\\
-        OlmoEarth probe & \planteur only & 17.31 & 19.56 & 23.04 & 28.20\\
+        OlmoEarth v1.3 (64d) & all \pastis & 14.43 & 23.53 & 27.74 & 27.78\\
+        OlmoEarth v1.3 (64d) & balanced & 26.54 & 25.28 & 27.05 & 28.90\\
+        OlmoEarth v1.3 (64d) & \planteur only & 22.82 & 21.76 & 25.09 & 28.56\\
+        \hline
+        OlmoEarth v1.3 (128d) & all \pastis & 25.06 & 29.53 & 30.25 & 34.71\\
+        OlmoEarth v1.3 (128d) & balanced & 27.11 & 25.22 & 27.92 & 29.78\\
+        OlmoEarth v1.3 (128d) & \planteur only & 22.57 & 21.82 & 25.89 & 29.58\\
         \hline
         \olmoearth FT & all \pastis & 23.38 & 26.27 & 26.22 & 29.11\\
         \olmoearth FT & balanced & 29.25 & 23.58 & 29.75 & 31.05\\
