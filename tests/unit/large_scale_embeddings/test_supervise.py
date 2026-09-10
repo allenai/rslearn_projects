@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_every_supervise_option_reaches_the_cycle() -> None:
     """Each `supervise` parameter must be forwarded into the config the cycle reads.
 
@@ -295,3 +298,86 @@ def test_a_started_worker_counts_before_it_registers() -> None:
     assert (
         mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 128
     ), "a starting worker reads as absent, so the pool will overshoot num_workers"
+
+
+def test_metrics_are_off_by_default() -> None:
+    """No project configured must mean no wandb import and no network call."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    assert mod.CycleConfig().wandb_project is None
+    m = mod._Metrics(None, "run", {})
+    m.log(1, {"jobs/remaining": 5})
+    m.finish()
+
+
+def test_a_broken_metrics_sink_cannot_stop_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A month-long run must not die because a metrics backend is unreachable.
+
+    An expired key, an outage or a missing package all arrive as an exception from
+    wandb. Each one has to degrade to not logging, because the supervisor is the only
+    thing keeping the run alive.
+    """
+    import importlib
+    import sys
+    import types
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    broken = types.ModuleType("wandb")
+
+    def explode(**kwargs: object) -> object:
+        raise RuntimeError("no network")
+
+    broken.init = explode  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "wandb", broken)
+    m = mod._Metrics("some-project", "run", {"a": 1})
+    assert m._run is None, "a failed init must leave an inert sink"
+    m.log(1, {"jobs/remaining": 5})  # must not raise
+    m.finish()
+
+    # A sink that initialises but then fails on log must also go inert, not raise.
+    class _Run:
+        def log(self, *a: object, **k: object) -> None:
+            raise RuntimeError("dropped")
+
+        def finish(self) -> None:
+            raise RuntimeError("dropped")
+
+    working = types.ModuleType("wandb")
+    working.init = lambda **kwargs: _Run()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "wandb", working)
+    m2 = mod._Metrics("some-project", "run", {})
+    assert m2._run is not None
+    m2.log(1, {"jobs/remaining": 5})
+    assert m2._run is None, "a failed log must disable further logging"
+    m2.finish()
+
+
+def test_unmeasured_metrics_are_dropped_not_zeroed() -> None:
+    """A killed cycle has no job count; logging 0 would draw a false cliff."""
+    import importlib
+    import sys
+    import types
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    sent: list[dict] = []
+
+    class _Run:
+        def log(self, values: dict, step: int | None = None) -> None:
+            sent.append(values)
+
+        def finish(self) -> None:
+            pass
+
+    fake = types.ModuleType("wandb")
+    fake.init = lambda **kwargs: _Run()  # type: ignore[attr-defined]
+    sys.modules["wandb"] = fake
+    try:
+        m = mod._Metrics("p", "r", {})
+        m.log(1, {"jobs/remaining": None, "queue/pending": 12})
+    finally:
+        del sys.modules["wandb"]
+    assert sent == [{"queue/pending": 12}]

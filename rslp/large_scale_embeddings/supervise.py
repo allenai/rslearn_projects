@@ -153,6 +153,59 @@ DEFAULT_WORKER_ENV_VARS = {
 }
 
 
+class _Metrics:
+    """Pushes one point per cycle to Weights & Biases, or nowhere.
+
+    Every number here was previously only available by parsing container logs, which
+    is how a seven-hour scheduling wait got read as a throughput collapse and a
+    24-of-128 worker sample got read as an exact parked count. A time series makes
+    those mistakes visible instead of plausible.
+
+    Logging must never take the run down: a bad key, an outage or a missing package
+    all end up as one warning and a no-op sink. The supervisor is the thing keeping a
+    month-long run alive.
+    """
+
+    def __init__(self, project: str | None, name: str, config: dict) -> None:
+        self._run = None
+        if not project:
+            return
+        try:
+            import wandb
+
+            self._run = wandb.init(
+                project=project, name=name, config=config, reinit=False
+            )
+            logger.info(
+                "logging cycle metrics to wandb project %s as %s", project, name
+            )
+        except Exception:
+            # Deliberately broad: any failure here must degrade to not logging.
+            logger.warning(
+                "wandb init failed; continuing without metrics", exc_info=True
+            )
+            self._run = None
+
+    def log(self, step: int, values: dict) -> None:
+        """Log one cycle's metrics, dropping any that were not measured."""
+        if self._run is None:
+            return
+        try:
+            self._run.log({k: v for k, v in values.items() if v is not None}, step=step)
+        except Exception:
+            logger.warning("wandb log failed; continuing", exc_info=True)
+            self._run = None
+
+    def finish(self) -> None:
+        """Close the run, ignoring failures: the work is already done by here."""
+        if self._run is None:
+            return
+        try:
+            self._run.finish()
+        except Exception:
+            logger.debug("wandb finish failed; ignoring", exc_info=True)
+
+
 @dataclass
 class ModelConfig:
     """What the encoder is and how it is run.
@@ -208,6 +261,9 @@ class CycleConfig:
     claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS
     pending_per_worker: int = PENDING_PER_WORKER
     max_cycles: int | None = None
+    # Weights & Biases project for per-cycle metrics, or None to log nowhere. The API
+    # key is already mounted on every job by get_base_env_vars.
+    wandb_project: str | None = None
 
 
 @dataclass
@@ -481,7 +537,12 @@ def _count_workers(
     return starting + fresh
 
 
-def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> None:
+def _run_cycle(
+    config: SuperviseConfig,
+    result: Any,
+    launched: Any = None,
+    stats: Any = None,
+) -> None:
     """Run one supervision cycle, reporting the remaining job count via `result`.
 
     This runs in a child process so the parent can kill it if a Beaker RPC hangs. It
@@ -491,6 +552,9 @@ def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> No
     Args:
         config: the run configuration.
         result: shared int the remaining-job count is written to.
+        stats: shared int array (pending, claimed, completed, rejected, workers) the
+            cycle's queue and pool counts are written to. The parent logs them, since
+            a cycle killed for overrunning its budget still has numbers worth keeping.
         launched: shared int the number of workers launched is written to, so the
             parent can carry it into the next cycle's liveness count.
     """
@@ -518,6 +582,12 @@ def _run_cycle(config: SuperviseConfig, result: Any, launched: Any = None) -> No
             now=now,
         )
     pending = counts.get("PENDING", 0)
+    if stats is not None:
+        stats[0] = pending
+        stats[1] = counts.get("CLAIMED", 0)
+        stats[2] = counts.get("COMPLETED", 0)
+        stats[3] = counts.get("REJECTED", 0)
+        stats[4] = live
     logger.info("queue=%s workers=%d", counts, live)
 
     # Recompute what is left directly from the completion markers. This doubles as the
@@ -811,6 +881,21 @@ def supervise(
     seen_work = False
     consecutive_failures = 0
     cycle_number = 0
+    total = None
+    metrics = _Metrics(
+        cycle.wandb_project,
+        f"{config.stage}-{config.queue_name.split('/')[-1]}",
+        {
+            "stage": config.stage,
+            "queue": config.queue_name,
+            "years": config.years,
+            "store_path": config.store_path,
+            "num_workers": config.worker.num_workers,
+            "job_size": config.aoi.job_size,
+            "cluster": config.worker.cluster,
+            "image": config.worker.image_name,
+        },
+    )
 
     while cycle.max_cycles is None or cycle_number < cycle.max_cycles:
         cycle_number += 1
@@ -818,7 +903,8 @@ def supervise(
         # type code makes it a Synchronized[int].
         result: Synchronized[int] = ctx.Value("i", _NO_RESULT)  # type: ignore[assignment]
         launched: Synchronized[int] = ctx.Value("i", 0)  # type: ignore[assignment]
-        proc = ctx.Process(target=_run_cycle, args=(config, result, launched))
+        stats = ctx.Array("i", 5)
+        proc = ctx.Process(target=_run_cycle, args=(config, result, launched, stats))
         started = time.time()
         proc.start()
         proc.join(cycle.budget_seconds)
@@ -836,6 +922,38 @@ def supervise(
                 proc.join(30)
         elapsed = int(time.time() - started)
         remaining = result.value
+        pending, claimed, completed, rejected, live = (
+            stats[0],
+            stats[1],
+            stats[2],
+            stats[3],
+            stats[4],
+        )
+        # The denominator is the first cycle's count: it is the only cycle that has
+        # seen the whole job list, so later cycles can be expressed as a fraction.
+        if remaining != _NO_RESULT and total is None:
+            total = remaining + completed
+        metrics.log(
+            cycle_number,
+            {
+                "cycle/seconds": elapsed,
+                "cycle/killed": int(remaining == _NO_RESULT),
+                "jobs/remaining": None if remaining == _NO_RESULT else remaining,
+                "jobs/done": None
+                if total is None or remaining == _NO_RESULT
+                else total - remaining,
+                "jobs/fraction_done": None
+                if not total or remaining == _NO_RESULT
+                else (total - remaining) / total,
+                "queue/pending": pending,
+                "queue/claimed": claimed,
+                "queue/completed": completed,
+                "queue/rejected": rejected,
+                "pool/workers": live,
+                "pool/launched": launched.value,
+                "pool/shortfall": config.worker.num_workers - live,
+            },
+        )
 
         if remaining == _NO_RESULT:
             # Killed, crashed, or otherwise did not report. Nothing to conclude about
@@ -872,6 +990,7 @@ def supervise(
                     "store_path and completed_path_template are correct"
                 )
             logger.info("all tiles have completion markers; run complete")
+            metrics.finish()
             return
         else:
             consecutive_failures = 0
@@ -885,4 +1004,5 @@ def supervise(
 
         time.sleep(cycle.seconds)
 
+    metrics.finish()
     logger.info("reached max_cycles=%d; exiting", cycle_number)

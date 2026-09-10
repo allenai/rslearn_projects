@@ -484,6 +484,10 @@ class _InlineContext:
     def Value(self, _typecode: str, init: Any) -> "_Shared":
         return _Shared(init)
 
+    def Array(self, _typecode: str, size: int) -> list[int]:
+        # The real one is a shared ctypes array; the cycle only indexes and lists it.
+        return [0] * size
+
     def Process(
         self, target: Callable[..., Any], args: tuple[Any, ...]
     ) -> "_InlineProcess":
@@ -505,7 +509,9 @@ def test_supervise_raises_after_repeated_cycle_failures(
     _inline(monkeypatch)
     calls = {"n": 0}
 
-    def never_reports(config: Any, result: Any, launched: Any = None) -> None:
+    def never_reports(
+        config: Any, result: Any, launched: Any = None, stats: Any = None
+    ) -> None:
         # Leave result at _NO_RESULT, as a crashed or killed cycle does.
         calls["n"] += 1
 
@@ -524,7 +530,9 @@ def test_a_reporting_cycle_resets_the_failure_streak(
     script = [None, None, 4, None, None]
     seen = {"i": 0}
 
-    def scripted(config: Any, result: Any, launched: Any = None) -> None:
+    def scripted(
+        config: Any, result: Any, launched: Any = None, stats: Any = None
+    ) -> None:
         val = script[seen["i"] % len(script)]
         seen["i"] += 1
         if val is not None:
