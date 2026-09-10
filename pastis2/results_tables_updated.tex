@@ -1,0 +1,300 @@
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l|c}
+        Method & mIoU\\
+        \hline
+        OlmoEarth v1.3 (64d) & 0.3105\\
+        OlmoEarth v1.3 (128d) & 0.3422\\
+        AEF / GSE & 0.2771\\
+        TESSERAv2 & 0.3424\\
+        \olmoearth \pastis-FT $\rightarrow$ \planteur probe & 0.1604\\
+        \hline
+        UTAE (from scratch; invsqrt+focal) & 0.3736\\
+        TSViT (from scratch; focal $\gamma=2$) & 0.3645\\
+        \hline
+        OlmoEarth v1.2 FT & \cellcolor{colorone!25}\textbf{0.4207}\\
+    \end{tabular}
+    \caption{\planteur (443-window test split). Metric is mIoU over 8 classes
+    (higher is better); the \olmoearth v1.2 FT entry is its best input
+    configuration (S1+S2). Best is highlighted.}
+    \label{tab:planteur-443}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l|ccccc}
+        & S2 & S1 & S1+S2 & S2+LS & S1+S2+LS\\
+        \hline
+        OlmoEarth v1.3 (64d) & 31.05 & 22.08 & 31.51 & 31.21 & 31.27\\
+        OlmoEarth v1.3 (128d) & 34.22 & 23.84 & 34.85 & 34.48 & 34.92\\
+        \hline
+        OlmoEarth v1.2 FT & 41.98 & 31.77 & \cellcolor{colorone!25}\textbf{42.07} & 41.34 & 41.47\\
+    \end{tabular}
+    \caption{\olmoearth input ablations on the 443-window \planteur test split.
+    Metric is mIoU (points, $\times 100$). LS denotes Landsat auxiliary inputs.}
+    \label{tab:planteur-443-olmoearth-inputs}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{ll|ccccc|c}
+        Model & Inputs & R\'eunion & Guadeloupe & Martinique & Guyane & Mayotte & mean\\
+        \hline
+        OlmoEarth v1.3 (64d) & S2 & 20.81 & 26.69 & 28.51 & 12.88 & 12.42 & 20.26\\
+        OlmoEarth v1.3 (64d) & S1 & 16.01 & 20.93 & 19.27 & 11.34 & 12.40 & 15.99\\
+        OlmoEarth v1.3 (64d) & S1+S2 & 21.68 & 27.52 & 27.75 & 12.86 & 12.54 & 20.47\\
+        OlmoEarth v1.3 (64d) & S2+LS & 24.78 & 26.77 & 26.73 & 12.38 & 12.70 & 20.67\\
+        OlmoEarth v1.3 (64d) & S1+S2+LS & 23.93 & 27.01 & 27.13 & 12.51 & 12.87 & 20.69\\
+        \hline
+        OlmoEarth v1.3 (128d) & S2 & 22.96 & 29.46 & 29.82 & 12.81 & 12.45 & 21.50\\
+        OlmoEarth v1.3 (128d) & S1 & 17.10 & 21.43 & 21.10 & 11.40 & 12.40 & 16.69\\
+        OlmoEarth v1.3 (128d) & S1+S2 & 25.30 & 29.53 & 30.30 & 13.09 & 12.52 & 22.15\\
+        OlmoEarth v1.3 (128d) & S2+LS & 25.89 & 28.63 & 29.26 & 12.41 & 12.75 & 21.79\\
+        OlmoEarth v1.3 (128d) & S1+S2+LS & 26.43 & 28.77 & 29.85 & 12.71 & 13.13 & 22.18\\
+        \hline
+        OlmoEarth v1.2 FT & S2 & 20.46 & 33.87 & 34.33 & 16.91 & 12.50 & 23.61\\
+        OlmoEarth v1.2 FT & S1 & 15.66 & 23.98 & 24.22 & 12.57 & 12.07 & 17.70\\
+        OlmoEarth v1.2 FT & S1+S2 & 22.00 & 34.30 & 34.90 & 16.95 & 12.49 & 24.13\\
+        OlmoEarth v1.2 FT & S2+LS & 22.01 & 34.25 & 39.19 & 15.82 & 12.42 & 24.74\\
+        OlmoEarth v1.2 FT & S1+S2+LS & 24.64 & 33.08 & 40.54 & 15.99 & 12.55 & 25.36\\
+        \hline
+    \end{tabular}
+    \caption{Leave-one-island-out (LOIO) input ablations for \olmoearth. Metric is
+    mIoU on the held-out island (points, $\times 100$). LS denotes Landsat.}
+    \label{tab:planteur-loio-olmoearth-inputs}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{3pt}
+    \begin{tabular}{ll|cccccc}
+        Model & Variant & R\'eunion & Guadeloupe & Martinique & Guyane & Mayotte & mean\\
+        \hline
+        OlmoEarth v1.3 & 64d & 20.81 & 26.69 & 28.51 & 12.88 & 12.42 & 20.26\\
+        OlmoEarth v1.3 & 128d & \textbf{22.96} & 29.46 & 29.82 & 12.81 & 12.45 & 21.50\\
+        TESSERAv2 & precomputed & 12.09 & 28.79 & 29.67 & 12.36 & 12.44 & 19.07\\
+        AEF / GSE & precomputed & 9.91 & 23.08 & 20.77 & 12.83 & 12.42 & 15.80\\
+        \hline
+        UTAE & from scratch & 17.82 & 29.74 & 28.83 & 11.68 & 12.90 & 20.19\\
+        TSViT & from scratch & 21.33 & 27.60 & 27.83 & 12.81 & \textbf{13.37} & 20.59\\
+        \hline
+        OlmoEarth v1.2 FT & -- & 20.46 & \cellcolor{colorone!25}\textbf{33.87} & \cellcolor{colorone!25}\textbf{34.33} & \cellcolor{colorone!25}\textbf{16.91} & 12.50 & 23.61\\
+        \olmoearth \pastis-FT & probe & 9.40 & 10.95 & 11.90 & 10.69 & 12.40 & 11.07\\
+        Trivial & -- & 9.33 & 10.17 & 10.18 & 10.33 & 12.42 & 10.49\\
+    \end{tabular}
+    \caption{\planteur leave-one-island-out (LOIO), Sentinel-2 inputs. Metric is
+    mIoU on the held-out island; mean is across the 5 folds. Best per column in
+    bold. The \pastis-FT $\rightarrow$ probe row is the cross-region transfer
+    setting: an encoder fine-tuned on \pastis and probed without adaptation.}
+    \label{tab:planteur-loio}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l|cccc}
+        Method & $X=10$ & $X=25$ & $X=100$ & $X=1000$\\
+        \hline
+        OlmoEarth probe (d128\_wideread ckpt) & \cellcolor{colorone!25}\textbf{25.65} & 25.46 & \cellcolor{colorone!25}\textbf{26.50} & \cellcolor{colorone!25}\textbf{30.35}\\
+        OlmoEarth v1.2 FT & 23.38 & \cellcolor{colorone!25}\textbf{26.27} & 26.22 & 29.11\\
+        AEF / GSE & $11.44\pm1.51$ & $13.39\pm0.51$ & $13.51\pm0.24$ & $20.16\pm1.57$\\
+        TESSERAv2 & $15.73\pm1.08$ & $16.96\pm0.53$ & $17.98\pm0.04$ & $25.41\pm1.17$\\
+        \hline
+        UTAE (from scratch) & 13.11 & 12.97 & 12.49 & 23.64\\
+        TSViT (from scratch) & 14.10 & 12.87 & 14.67 & 21.42\\
+        \hline
+        Trivial (all Background) & 10.07 & 10.07 & 10.07 & 10.07\\
+    \end{tabular}
+    \caption{Few-shot transfer to \planteur: train on all of \pastis plus $X$
+    labeled pixels per \planteur class, evaluate on the 443-window test split.
+    Metric is mIoU (points, $\times 100$). The pure $X=0$ transfer point is
+    reported separately in Table~\ref{tab:planteur-zeroshot}. NOTE: the frozen
+    \olmoearth probe row here uses the earlier d128\_wideread checkpoint, not the
+    d768\_proj128lin checkpoint used in Tables~\ref{tab:planteur-443}
+    and~\ref{tab:planteur-loio}; the two are not directly comparable.}
+    \label{tab:planteur-fewshot}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{ll|cccc}
+        Model & Arm & $X=10$ & $X=25$ & $X=100$ & $X=1000$\\
+        \hline
+        OlmoEarth probe & all \pastis & 25.65 & 25.46 & 26.50 & 30.35\\
+        OlmoEarth probe & balanced & 18.73 & 20.59 & 25.47 & 28.77\\
+        OlmoEarth probe & \planteur only & 17.31 & 19.56 & 23.04 & 28.20\\
+        \hline
+        \olmoearth FT & all \pastis & 23.38 & 26.27 & 26.22 & 29.11\\
+        \olmoearth FT & balanced & 29.25 & 23.58 & 29.75 & 31.05\\
+        \olmoearth FT & \planteur only & 24.94 & 23.36 & 30.59 & 30.80\\
+        \hline
+        UTAE & all \pastis & 13.11 & 12.97 & 12.49 & 23.64\\
+        UTAE & balanced & 3.42 & 5.57 & 8.04 & 21.67\\
+        UTAE & \planteur only & 3.69 & 8.32 & 12.80 & 19.78\\
+        \hline
+        TSViT & all \pastis & 14.10 & 12.87 & 14.67 & 21.42\\
+        TSViT & balanced & 9.17 & 8.02 & 8.82 & 20.15\\
+        TSViT & \planteur only & 2.62 & 3.19 & 10.16 & 19.98\\
+        \hline
+        \tesseravtwo & all \pastis & $15.73\pm1.08$ & $16.96\pm0.53$ & $17.98\pm0.04$ & $25.41\pm1.17$\\
+        \tesseravtwo & balanced & $17.84\pm2.46$ & $18.74\pm1.33$ & $23.37\pm0.72$ & $26.74\pm0.67$\\
+        \tesseravtwo & \planteur only & $15.92\pm1.35$ & $18.30\pm1.23$ & $21.90\pm0.39$ & $27.14\pm0.83$\\
+        \hline
+        \aef / GSE & all \pastis & $11.44\pm1.51$ & $13.39\pm0.51$ & $13.51\pm0.24$ & $20.16\pm1.57$\\
+        \aef / GSE & balanced & $17.23\pm0.70$ & $18.26\pm0.92$ & $21.84\pm0.77$ & $23.89\pm0.33$\\
+        \aef / GSE & \planteur only & $16.04\pm0.68$ & $17.39\pm0.54$ & $21.13\pm0.33$ & $24.07\pm0.45$\\
+        \hline
+        Trivial & -- & 10.07 & 10.07 & 10.07 & 10.07\\
+    \end{tabular}
+    \caption{Class-balancing control for few-shot transfer: all of \pastis, a
+    class-balanced \pastis+\planteur subset, and \planteur-only training. Metric is
+    \planteur test mIoU (points, $\times 100$).}
+    \label{tab:planteur-fewshot-class-balance}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l|ccccc}
+        Model & baseline & inv & invsqrt & focal $\gamma=2$ & invsqrt+focal\\
+        \hline
+        U-TAE & 34.47 & 27.56 & 36.40 & 34.46 & \textbf{37.36}\\
+        TSViT & 35.35 & 27.55 & 35.76 & \textbf{36.45} & 34.48\\
+        OlmoEarth v1.3 (64d) & \textbf{31.05} & -- & 29.50 & -- & --\\
+        OlmoEarth v1.3 (128d) & 34.22 & -- & \textbf{34.60} & -- & --\\
+        \olmoearth v1.2 FT & \textbf{41.98} & -- & 41.52 & -- & --\\
+        \hline
+        Trivial (all Background) & 10.07 & -- & -- & -- & --\\
+    \end{tabular}
+    \caption{Class-weighting and focal-loss ablations on \planteur (443-window test
+    split). Metric is mIoU-8 (points, $\times 100$); best per row in bold.
+    Dashes are configurations not run for that model.}
+    \label{tab:planteur-loss-ablations}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{3pt}
+    \begin{tabular}{l|cccccccccccc}
+        Probe & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12\\
+        \hline
+        OlmoEarth v1.3 (64d) & 23.84 & 25.92 & 27.27 & 27.80 & 28.60 & 29.01 & 29.51 & 29.64 & 29.91 & 30.42 & 30.63 & 31.05\\
+        OlmoEarth v1.3 (128d) & 26.38 & 28.85 & 30.34 & 31.00 & 31.90 & 32.49 & 33.19 & 33.55 & 33.56 & 33.91 & 34.02 & 34.22\\
+    \end{tabular}
+    \caption{Temporal ablation for the \olmoearth v1.3 probe on \planteur:
+    mIoU-8 (points, $\times 100$) as a function of the first $N$ monthly mosaics.}
+    \label{tab:planteur-temporal-ablation}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l|cccc}
+        Probe & $w=1$ & $w=4$ & $w=8$ & $w=16$\\
+        \hline
+        OlmoEarth v1.3 (64d) & 26.27 & 29.96 & 30.98 & 31.05\\
+        OlmoEarth v1.3 (128d) & 28.46 & 32.40 & 33.73 & 34.22\\
+    \end{tabular}
+    \caption{Spatial-context ablation on the 443-window \planteur test split:
+    \olmoearth v1.3 probe at window size $w$ ($w=1$ is purely per-pixel). Metric
+    is mIoU-8 (points, $\times 100$).}
+    \label{tab:planteur-window-size-ablation}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{ll|ccccc|c}
+        Probe & $w$ & R\'eunion & Guadeloupe & Martinique & Guyane & Mayotte & mean\\
+        \hline
+        OlmoEarth v1.3 (64d) & 1 & 16.86 & 21.25 & 22.37 & 11.13 & 12.33 & 16.79\\
+        OlmoEarth v1.3 (64d) & 4 & 18.93 & 25.98 & 26.56 & 12.33 & 12.42 & 19.24\\
+        OlmoEarth v1.3 (64d) & 8 & 20.00 & 26.56 & 28.09 & 12.87 & 12.42 & 19.99\\
+        OlmoEarth v1.3 (64d) & 16 & 20.81 & 26.69 & 28.51 & 12.88 & 12.42 & 20.26\\
+        \hline
+        OlmoEarth v1.3 (128d) & 1 & 16.79 & 23.13 & 22.38 & 11.12 & 12.33 & 17.15\\
+        OlmoEarth v1.3 (128d) & 4 & 20.05 & 28.03 & 27.25 & 12.33 & 12.53 & 20.04\\
+        OlmoEarth v1.3 (128d) & 8 & 22.08 & 28.91 & 29.06 & 12.78 & 12.54 & 21.07\\
+        OlmoEarth v1.3 (128d) & 16 & 22.96 & 29.46 & 29.82 & 12.81 & 12.45 & 21.50\\
+        \hline
+    \end{tabular}
+    \caption{Spatial-context ablation under leave-one-island-out transfer.
+    Sentinel-2 inputs; metric is mIoU on the held-out island (points,
+    $\times 100$).}
+    \label{tab:planteur-loio-window-size}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l|ccc}
+        Setting & mIoU-8 & trop-4 & accuracy\\
+        \hline
+        U-TAE, trained on PASTIS only & 13.59 & 0.00 & 78.55\%\\
+        TSViT, trained on PASTIS only & 13.18 & 0.00 & 76.03\%\\
+        OlmoEarth v1.2 PASTIS-FT → PLANTEUR probe & 16.04 & 10.08 & 83.73\%\\
+        Trivial (all Background) & 10.07 & 0.00 & 80.60\%\\
+    \end{tabular}
+    \caption{Zero-shot / cross-region transfer to \planteur (443-window test
+    split). trop-4 is mIoU restricted to the four tropical classes (Sugarcane,
+    Banana, Pineapple, Trop.\ tuber). Both fully supervised models trained on
+    \pastis alone score exactly 0 on the tropical classes.}
+    \label{tab:planteur-zeroshot}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l|c|ccccc}
+        & 443 & \multicolumn{5}{c}{LOIO (S2, held-out island)}\\
+        Model & S2 & R\'eunion & Guadeloupe & Martinique & Guyane & Mayotte\\
+        \hline
+        OlmoEarth v1.3 (64d) & -- & 18.16 & 27.64 & 29.40 & 4.62 & 0.00\\
+        OlmoEarth v1.3 (128d) & -- & 23.65 & 29.98 & 32.11 & 4.73 & 0.05\\
+        OlmoEarth v1.2 FT & 39.42 & 13.77 & 37.14 & 36.95 & 5.77 & 0.03\\
+        UTAE (from scratch) & -- & 10.88 & 31.64 & 30.68 & 1.65 & 1.05\\
+        \olmoearth \pastis-FT $\rightarrow$ probe & 10.08 & 0.02 & 0.08 & 3.32 & 0.28 & 0.00\\
+        \hline
+        Trivial (all Background) & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00\\
+    \end{tabular}
+    \caption{Tropical-class performance (trop-4: mIoU over Sugarcane, Banana,
+    Pineapple, Trop.\ tuber). mIoU-8 can look respectable while trop-4 is near
+    zero, because Background dominates the label distribution; Mayotte is the
+    clearest case.}
+    \label{tab:planteur-trop4}
+\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l|cccc}
+        Island & test windows & test pixels & Background \% & Trivial mIoU\\
+        \hline
+        R\'eunion & 172 & 2,805,239 & 71.02\% & 8.88\\
+        Guadeloupe & 69 & 1,130,352 & 85.99\% & 10.75\\
+        Martinique & 58 & 950,272 & 84.20\% & 10.52\\
+        Guyane & 80 & 1,301,548 & 78.83\% & 9.85\\
+        Mayotte & 64 & 1,043,953 & 99.45\% & 14.21\\
+    \end{tabular}
+    \caption{Per-island composition of the 443-window test split. Mayotte's
+    99.45\% Background share explains both its high trivial baseline and why
+    small gains over that baseline there should not be read as learning.}
+    \label{tab:planteur-perisland}
+\end{table*}
