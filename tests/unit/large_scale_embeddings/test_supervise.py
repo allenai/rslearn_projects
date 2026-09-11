@@ -178,8 +178,10 @@ class _FakeExperiment:
 
 
 class _FakeWorkload:
-    def __init__(self, name: str, created: int) -> None:
+    def __init__(self, name: str, created: int, status: int = 0) -> None:
         self.experiment = _FakeExperiment(name, created)
+        # 4 == running in Beaker's workload status enum; 0 stands in for "not started".
+        self.status = status
 
 
 class _FakeHeartbeat:
@@ -381,3 +383,41 @@ def test_unmeasured_metrics_are_dropped_not_zeroed() -> None:
     finally:
         del sys.modules["wandb"]
     assert sent == [{"queue/pending": 12}]
+
+
+def test_a_running_worker_is_not_counted_twice() -> None:
+    """Registration follows container start by seconds, so both signals see it.
+
+    Counting a young *running* worker as "starting" as well as counting its heartbeat
+    inflates the pool by a whole launch batch: a measured scale-up to 256 reported 384
+    workers against 291 real ones, and a supervisor that believes it is over target
+    will not backfill until the batch ages out of the startup window.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    now = 1_000_000.0
+    # 128 workers launched a minute ago, all already running and all heartbeating.
+    workloads = [
+        _FakeWorkload(f"{prefix}_{i}", int(now) - 60, status=4) for i in range(128)
+    ]
+    beaker = _FakeBeaker(workloads, heartbeats=[int(now) - 10] * 128)
+    assert (
+        mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 128
+    ), "a young running worker is counted by both signals, so the pool is overstated"
+
+
+def test_a_queued_worker_still_counts_while_it_starts() -> None:
+    """Not yet running means not yet registered, so nothing else is counting it."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    now = 1_000_000.0
+    # status 2 == queued: scheduled but not executing, so no heartbeat exists yet.
+    workloads = [
+        _FakeWorkload(f"{prefix}_{i}", int(now) - 60, status=2) for i in range(10)
+    ]
+    beaker = _FakeBeaker(workloads, heartbeats=[])
+    assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 10

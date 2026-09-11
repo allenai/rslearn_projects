@@ -123,6 +123,11 @@ DEFAULT_AWS_SECRET_KEY_SECRET = "AWS_SECRET_ACCESS_KEY"  # nosec
 # a blind top-up generates. Size it well above one job's runtime.
 DEFAULT_CLAIM_STALE_SECONDS = int(timedelta(minutes=90).total_seconds())
 
+# Workload states in which a worker is already running, and so has registered with the
+# queue and is represented by its heartbeat. Counting these as "starting" as well
+# double-counts a whole launch batch for the length of the startup grace.
+RUNNING_WORKLOAD_STATUSES = frozenset({4, 5, 6})  # running, stopping, uploading_results
+
 # How long after creation a worker counts without having registered with the queue.
 #
 # Covers the whole of container start: pulling a 17 GB image, then importing torch and
@@ -483,12 +488,13 @@ def _count_workers(
     once the dead count reaches the outstanding count nothing is launched and the last
     jobs are never claimed.
 
-    So: workloads young enough to still be starting, plus registrations whose heartbeat
-    is fresh. A young worker that has already registered is counted twice, which leaves
-    the pool a little under target for one cycle. That is the safe direction to err:
-    counting a started-but-not-yet-registered worker as absent relaunches it and
-    overshoots num_workers. Both inputs come from listings, so this costs two calls
-    rather than one per worker.
+    So: registrations whose heartbeat is fresh, plus workloads that cannot have
+    registered yet because they have not started running. Registration happens within
+    seconds of the container starting, so a running worker is already counted by its
+    heartbeat and must not be counted again -- doing so inflated the count by a whole
+    launch batch, 128 on one measured scale-up, and the pool then refuses to backfill
+    until those age out of the window. Both inputs come from listings, so this costs
+    two calls rather than one per worker.
 
     Args:
         beaker: an open Beaker client.
@@ -520,6 +526,9 @@ def _count_workers(
     now = time.time() if now is None else now
     starting = 0
     for workload in workloads:
+        if getattr(workload, "status", None) in RUNNING_WORKLOAD_STATUSES:
+            # Already running, so it has registered and its heartbeat speaks for it.
+            continue
         created = getattr(getattr(workload, "experiment", None), "created", None)
         if created is None or not getattr(created, "seconds", 0):
             # Unknown age: count it, so a listing hiccup cannot cause a launch storm.
