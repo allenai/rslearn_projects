@@ -128,13 +128,15 @@ DEFAULT_CLAIM_STALE_SECONDS = int(timedelta(minutes=90).total_seconds())
 # double-counts a whole launch batch for the length of the startup grace.
 RUNNING_WORKLOAD_STATUSES = frozenset({4, 5, 6})  # running, stopping, uploading_results
 
-# How long after creation a worker counts without having registered with the queue.
+# Workload states in which a worker has been created but cannot have registered yet.
 #
-# Covers the whole of container start: pulling a 17 GB image, then importing torch and
-# the rslp stack before the queue registration happens. Counting only registrations
-# inside this window would relaunch a worker that is merely still starting, and the pool
-# would overshoot num_workers by however many cycles a start takes.
-WORKER_STARTUP_GRACE_SECONDS = int(timedelta(minutes=15).total_seconds())
+# These count no matter how old they are. A saturated GPU cluster leaves a worker queued
+# for hours -- 118 minutes median, 316 at the tail, measured while scaling to 256 -- and
+# aging it out of the count makes the supervisor believe it is short, launch more, and
+# queue those too. That storm put 240 phantom requests on the cluster before anyone
+# noticed, because queued workers hold no GPU and throughput looked fine.
+PENDING_WORKLOAD_STATUSES = frozenset({1, 2, 3, 10})  # submitted, queued, initializing,
+# ready_to_start
 
 # How long a queue worker's heartbeat is trusted before it is presumed dead.
 #
@@ -488,8 +490,8 @@ def _count_workers(
     once the dead count reaches the outstanding count nothing is launched and the last
     jobs are never claimed.
 
-    So: registrations whose heartbeat is fresh, plus workloads that cannot have
-    registered yet because they have not started running. Registration happens within
+    So: registrations whose heartbeat is fresh, plus workloads that have not started
+    running yet and therefore cannot have registered. Registration happens within
     seconds of the container starting, so a running worker is already counted by its
     heartbeat and must not be counted again -- doing so inflated the count by a whole
     launch batch, 128 on one measured scale-up, and the pool then refuses to backfill
@@ -526,14 +528,13 @@ def _count_workers(
     now = time.time() if now is None else now
     starting = 0
     for workload in workloads:
-        if getattr(workload, "status", None) in RUNNING_WORKLOAD_STATUSES:
+        status = getattr(workload, "status", None)
+        if status in RUNNING_WORKLOAD_STATUSES:
             # Already running, so it has registered and its heartbeat speaks for it.
             continue
-        created = getattr(getattr(workload, "experiment", None), "created", None)
-        if created is None or not getattr(created, "seconds", 0):
-            # Unknown age: count it, so a listing hiccup cannot cause a launch storm.
-            starting += 1
-        elif now - created.seconds < WORKER_STARTUP_GRACE_SECONDS:
+        if status in PENDING_WORKLOAD_STATUSES or status is None:
+            # Created but not running: waiting on the cluster, or on a 17 GB image
+            # pull. Either way nothing else is counting it, and it will run eventually.
             starting += 1
 
     fresh = 0

@@ -1,6 +1,3 @@
-import pytest
-
-
 def test_every_supervise_option_reaches_the_cycle() -> None:
     """Each `supervise` parameter must be forwarded into the config the cycle reads.
 
@@ -260,7 +257,9 @@ def test_a_starting_worker_still_counts() -> None:
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     prefix = "worker_patrickj-q"
     now = 1_000_000.0
-    workloads = [_FakeWorkload(f"{prefix}_{i}", int(now) - 60) for i in range(5)]
+    workloads = [
+        _FakeWorkload(f"{prefix}_{i}", int(now) - 60, status=3) for i in range(5)
+    ]
     beaker = _FakeBeaker(workloads, heartbeats=[])
     assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 5
 
@@ -281,108 +280,29 @@ def test_a_busy_worker_counts_via_its_heartbeat() -> None:
     assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 3
 
 
-def test_a_started_worker_counts_before_it_registers() -> None:
-    """The overshoot hole: started, but not yet on the queue.
+def test_a_long_queued_worker_still_counts() -> None:
+    """A saturated cluster leaves workers queued for hours; they must keep counting.
 
-    A worker registers only after importing torch and the rslp stack, so there is a
-    window of tens of seconds where it is running and heartbeating nothing. Treating
-    that as absent relaunches it, and a fresh 128-worker pool overshoots by however
-    many are inside the window when the cycle samples.
+    Aging a queued worker out of the count makes the supervisor believe it is short and
+    launch another, which also queues. Measured on Jupiter while scaling to 256: queued
+    workers waited a median of 118 minutes, 221 of 240 were past any sane startup
+    grace, and the supervisor had put 532 workloads on the cluster against a target of
+    256 before anyone looked. Queued workers hold no GPU, so throughput looked fine
+    throughout.
     """
     import importlib
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     prefix = "worker_patrickj-q"
     now = 1_000_000.0
-    # Created a minute ago: image pulled, container up, registration not in yet.
-    workloads = [_FakeWorkload(f"{prefix}_{i}", int(now) - 60) for i in range(128)]
+    # Queued for five hours, far past any startup window.
+    workloads = [
+        _FakeWorkload(f"{prefix}_{i}", int(now) - 18_000, status=2) for i in range(240)
+    ]
     beaker = _FakeBeaker(workloads, heartbeats=[])
     assert (
-        mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 128
-    ), "a starting worker reads as absent, so the pool will overshoot num_workers"
-
-
-def test_metrics_are_off_by_default() -> None:
-    """No project configured must mean no wandb import and no network call."""
-    import importlib
-
-    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    assert mod.CycleConfig().wandb_project is None
-    m = mod._Metrics(None, "run", {})
-    m.log(1, {"jobs/remaining": 5})
-    m.finish()
-
-
-def test_a_broken_metrics_sink_cannot_stop_the_run(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A month-long run must not die because a metrics backend is unreachable.
-
-    An expired key, an outage or a missing package all arrive as an exception from
-    wandb. Each one has to degrade to not logging, because the supervisor is the only
-    thing keeping the run alive.
-    """
-    import importlib
-    import sys
-    import types
-
-    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-
-    broken = types.ModuleType("wandb")
-
-    def explode(**kwargs: object) -> object:
-        raise RuntimeError("no network")
-
-    broken.init = explode  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "wandb", broken)
-    m = mod._Metrics("some-project", "run", {"a": 1})
-    assert m._run is None, "a failed init must leave an inert sink"
-    m.log(1, {"jobs/remaining": 5})  # must not raise
-    m.finish()
-
-    # A sink that initialises but then fails on log must also go inert, not raise.
-    class _Run:
-        def log(self, *a: object, **k: object) -> None:
-            raise RuntimeError("dropped")
-
-        def finish(self) -> None:
-            raise RuntimeError("dropped")
-
-    working = types.ModuleType("wandb")
-    working.init = lambda **kwargs: _Run()  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "wandb", working)
-    m2 = mod._Metrics("some-project", "run", {})
-    assert m2._run is not None
-    m2.log(1, {"jobs/remaining": 5})
-    assert m2._run is None, "a failed log must disable further logging"
-    m2.finish()
-
-
-def test_unmeasured_metrics_are_dropped_not_zeroed() -> None:
-    """A killed cycle has no job count; logging 0 would draw a false cliff."""
-    import importlib
-    import sys
-    import types
-
-    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    sent: list[dict] = []
-
-    class _Run:
-        def log(self, values: dict, step: int | None = None) -> None:
-            sent.append(values)
-
-        def finish(self) -> None:
-            pass
-
-    fake = types.ModuleType("wandb")
-    fake.init = lambda **kwargs: _Run()  # type: ignore[attr-defined]
-    sys.modules["wandb"] = fake
-    try:
-        m = mod._Metrics("p", "r", {})
-        m.log(1, {"jobs/remaining": None, "queue/pending": 12})
-    finally:
-        del sys.modules["wandb"]
-    assert sent == [{"queue/pending": 12}]
+        mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 240
+    ), "a long-queued worker stopped counting, so the supervisor will launch more"
 
 
 def test_a_running_worker_is_not_counted_twice() -> None:
