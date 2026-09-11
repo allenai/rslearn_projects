@@ -9,6 +9,7 @@ ninety minutes.
 """
 
 import contextlib
+import time
 from collections.abc import Iterator
 from queue import Empty as QueueEmpty
 from typing import Any
@@ -16,6 +17,10 @@ from typing import Any
 import pytest
 
 from rslp.common import worker as worker_mod
+
+# Captured before any test patches worker_mod.time.sleep, so the fakes here can wait on
+# real elapsed time while the worker's own retry sleeps stay instant.
+real_sleep = time.sleep
 
 
 class FakeTx:
@@ -269,9 +274,9 @@ def test_termination_releases_the_in_flight_entry() -> None:
 
     assert len(sent) == 1, "the in-flight entry was not released"
     assert sent[0]["entry_id"] == "entry-abc"
-    assert sent[0].get(
-        "rejection"
-    ), "must reject, not mark done: the work is unfinished"
+    assert sent[0].get("rejection"), (
+        "must reject, not mark done: the work is unfinished"
+    )
 
 
 def test_termination_with_no_entry_is_harmless() -> None:
@@ -287,3 +292,111 @@ def test_termination_with_no_entry_is_harmless() -> None:
     handler = _release_on_termination(_Tx(), {"entry_id": None})
     with pytest.raises(SystemExit):
         handler(signal.SIGTERM, None)
+
+
+class _HangingChannel:
+    """A channel whose teardown blocks, like a wedged SDK streaming thread.
+
+    The real worker_channel closes by joining its streaming thread with no timeout. On
+    a real run that join never returned for 50 of 192 workers, each of which kept an
+    H100 while unable to claim any further work.
+    """
+
+    def __init__(self, tx: Any, rx: Any, block_seconds: float) -> None:
+        """Set up the channel.
+
+        Args:
+            tx: the sender to yield.
+            rx: the receiver to yield.
+            block_seconds: how long __exit__ blocks, standing in for the stuck join.
+        """
+        self._tx, self._rx = tx, rx
+        self._block_seconds = block_seconds
+
+    def __enter__(self) -> tuple[Any, Any]:
+        """Hand back the sender and receiver.
+
+        Returns:
+            the (tx, rx) pair.
+        """
+        return self._tx, self._rx
+
+    def __exit__(self, *exc: object) -> None:
+        """Block, the way a join on a wedged thread does.
+
+        Args:
+            exc: exception info, unused.
+        """
+        real_sleep(self._block_seconds)
+
+
+def test_a_hung_channel_teardown_forces_the_worker_to_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker whose channel will not close must not sit on its GPU forever.
+
+    Without the watchdog the worker finishes its job, writes its marker, then blocks in
+    the SDK's teardown. Beaker still sees it as running, so the slot is held and the
+    supervisor's pool quietly fills with workers that never claim again.
+    """
+    exits: list[int] = []
+    monkeypatch.setattr(worker_mod, "SHUTDOWN_GRACE_SECONDS", 0.05)
+    monkeypatch.setattr(worker_mod.os, "_exit", lambda code: exits.append(code))
+    _run_worker(monkeypatch, block_seconds=0.6)
+    assert exits == [1], "the watchdog must force the process out of a stuck teardown"
+
+
+def test_a_clean_shutdown_does_not_force_an_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The watchdog must be cancelled when the channel closes normally.
+
+    A timer left armed would kill a healthy worker, so this is what keeps the fix from
+    being worse than the bug.
+    """
+    exits: list[int] = []
+    monkeypatch.setattr(worker_mod, "SHUTDOWN_GRACE_SECONDS", 0.05)
+    monkeypatch.setattr(worker_mod.os, "_exit", lambda code: exits.append(code))
+    _run_worker(monkeypatch, block_seconds=0.0)
+    real_sleep(0.2)
+    assert exits == [], "a worker that shut down cleanly must not be killed"
+
+
+def _run_worker(monkeypatch: pytest.MonkeyPatch, block_seconds: float) -> FakeTx:
+    """Run worker_pipeline against a channel that blocks for `block_seconds` on close.
+
+    Args:
+        monkeypatch: pytest's patcher.
+        block_seconds: how long the channel teardown blocks.
+
+    Returns:
+        the fake sender, so callers can assert on what was answered.
+    """
+    tx, rx = FakeTx(), FakeRx([["e1"]])
+
+    class FakeQueueClient:
+        def get(self, name: str) -> object:
+            return object()
+
+        def create_worker(self, queue: Any) -> object:
+            return object()
+
+        def worker_channel(self, queue: Any, w: Any) -> _HangingChannel:
+            return _HangingChannel(tx, rx, block_seconds)
+
+    class FakeBeaker:
+        queue = FakeQueueClient()
+
+        @classmethod
+        def from_env(cls, **_: Any) -> Any:
+            @contextlib.contextmanager
+            def cm() -> Iterator[Any]:
+                yield cls()
+
+            return cm()
+
+    monkeypatch.setattr(worker_mod, "Beaker", FakeBeaker)
+    monkeypatch.setattr(worker_mod, "pb2_to_dict", lambda d: d)
+    monkeypatch.setattr(worker_mod, "run_workflow", lambda *a, **k: None)
+    worker_mod.worker_pipeline(queue_name="test/queue", idle_timeout=1)
+    return tx

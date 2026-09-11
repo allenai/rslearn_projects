@@ -1,8 +1,10 @@
 """Worker to process jobs in a list of jobs."""
 
+import os
 import shutil
 import signal
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -39,6 +41,17 @@ MAX_JOB_HOURS = 4
 
 # How much of a failure's text to keep in an entry's rejection reason.
 REJECTION_CHARS = 500
+
+# How long to allow the queue channel to shut down before forcing the process out.
+#
+# The Beaker SDK's worker_channel closes by joining its streaming thread with no
+# timeout. That thread can get stuck in the bidirectional stream it manages (a state
+# its own source notes: "we stop sending or receiving new streaming messages"), and
+# then the join never returns. The worker has finished its job and written its marker
+# by that point, so it looks alive to Beaker, holds its GPU, and never claims again:
+# 50 of 192 workers ended up that way over 37 hours of a global run. Exiting hard is
+# safe here because everything durable is already written.
+SHUTDOWN_GRACE_SECONDS = 120
 
 # Minimum runtime to request for a worker, which is what makes its job *allocated*
 # rather than unallocated. The scheduler treats anything at or under five minutes as
@@ -101,6 +114,34 @@ def _release_on_termination(
     return handler
 
 
+def _force_exit_after(seconds: int) -> threading.Timer:
+    """Start a daemon timer that hard-exits the process after `seconds`.
+
+    Used to bound the queue channel's shutdown, which can block forever. os._exit is
+    deliberate: sys.exit only raises in the calling thread, which is exactly the thread
+    already stuck inside the join we are trying to escape.
+
+    Args:
+        seconds: how long to wait before forcing the exit.
+
+    Returns:
+        the started timer, so a caller that shuts down cleanly can cancel it.
+    """
+
+    def bail() -> None:
+        logger.error(
+            "queue channel shutdown exceeded %d seconds; forcing exit so the worker "
+            "does not hold its GPU while unable to claim work",
+            seconds,
+        )
+        os._exit(1)
+
+    timer = threading.Timer(seconds, bail)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
 def worker_pipeline(
     queue_name: str,
     retries: int = 3,
@@ -142,56 +183,70 @@ def worker_pipeline(
         logger.info("listening for messages on %s", queue_name)
 
         consecutive_errors = 0
+        watchdog: threading.Timer | None = None
         with beaker.queue.worker_channel(queue, worker) as (tx, rx):
             in_flight: dict[str, str | None] = {"entry_id": None}
             signal.signal(signal.SIGTERM, _release_on_termination(tx, in_flight))
-            while True:
-                try:
-                    batch = rx.rx.get(block=True, timeout=idle_timeout)
-                except QueueEmpty:
-                    break
-
-                for worker_input in batch:
-                    entry_id = worker_input.metadata.entry_id
-                    entry_input = pb2_to_dict(worker_input.input)
-                    in_flight["entry_id"] = entry_id
-                    logger.info("processing entry %s", entry_id)
-
+            try:
+                while True:
                     try:
-                        if not flush_messages:
-                            process_message(entry_input)
-                        tx.send(entry_id, done=True)
-                        in_flight["entry_id"] = None
-                        consecutive_errors = 0
-                    except Exception as e:
-                        consecutive_errors += 1
-                        logger.error(
-                            "encountered error while processing message %s: %s (%d/%d consecutive errors)",
-                            entry_input,
-                            e,
-                            consecutive_errors,
-                            retries,
-                        )
-                        # Release the claim: Beaker never releases one on its own, so an
-                        # unanswered entry stays CLAIMED and its job counts as in flight
-                        # until the claim goes stale. REJECTED does not, so the
-                        # supervisor re-enqueues on its next cycle.
+                        batch = rx.rx.get(block=True, timeout=idle_timeout)
+                    except QueueEmpty:
+                        break
+
+                    for worker_input in batch:
+                        entry_id = worker_input.metadata.entry_id
+                        entry_input = pb2_to_dict(worker_input.input)
+                        in_flight["entry_id"] = entry_id
+                        logger.info("processing entry %s", entry_id)
+
                         try:
-                            tx.send(
-                                entry_id,
-                                rejection=f"{type(e).__name__}: {e}"[:REJECTION_CHARS],
+                            if not flush_messages:
+                                process_message(entry_input)
+                            tx.send(entry_id, done=True)
+                            in_flight["entry_id"] = None
+                            consecutive_errors = 0
+                        except Exception as e:
+                            consecutive_errors += 1
+                            logger.error(
+                                "encountered error while processing message %s: %s (%d/%d consecutive errors)",
+                                entry_input,
+                                e,
+                                consecutive_errors,
+                                retries,
                             )
-                        except Exception:
-                            # Not worth losing the run over: the entry just goes stale.
-                            logger.exception("could not reject entry %s", entry_id)
-                        if consecutive_errors >= retries:
-                            raise
-                        time.sleep(
-                            min(
-                                retry_sleep * 2 ** (consecutive_errors - 1),
-                                max_retry_sleep,
+                            # Release the claim: Beaker never releases one on its own, so an
+                            # unanswered entry stays CLAIMED and its job counts as in flight
+                            # until the claim goes stale. REJECTED does not, so the
+                            # supervisor re-enqueues on its next cycle.
+                            try:
+                                tx.send(
+                                    entry_id,
+                                    rejection=f"{type(e).__name__}: {e}"[
+                                        :REJECTION_CHARS
+                                    ],
+                                )
+                            except Exception:
+                                # Not worth losing the run over: the entry just goes stale.
+                                logger.exception("could not reject entry %s", entry_id)
+                            if consecutive_errors >= retries:
+                                raise
+                            time.sleep(
+                                min(
+                                    retry_sleep * 2 ** (consecutive_errors - 1),
+                                    max_retry_sleep,
+                                )
                             )
-                        )
+            finally:
+                # The channel teardown that follows joins a thread that can be stuck
+                # in the SDK's bidirectional stream, which would hang the worker with
+                # its GPU held. Everything durable is written by now, so bound it.
+                watchdog = _force_exit_after(SHUTDOWN_GRACE_SECONDS)
+
+        # Reaching here means the teardown returned, so the channel closed cleanly and
+        # the watchdog has nothing left to guard.
+        if watchdog is not None:
+            watchdog.cancel()
 
 
 def launch_workers(
