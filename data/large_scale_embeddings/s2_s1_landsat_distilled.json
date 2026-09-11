@@ -108,6 +108,9 @@
         "init_args": {
           "cache_dir": "cache/olmoearth_datasets",
           "harmonize": true,
+          "provider_excludes": [
+            "AWS_SENTINEL_2_L2A_COGS"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
