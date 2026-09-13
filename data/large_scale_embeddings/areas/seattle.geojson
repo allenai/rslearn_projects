@@ -1,0 +1,39 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -122.55,
+              47.4
+            ],
+            [
+              -122.1,
+              47.4
+            ],
+            [
+              -122.1,
+              47.8
+            ],
+            [
+              -122.55,
+              47.8
+            ],
+            [
+              -122.55,
+              47.4
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "name": "Seattle",
+        "note": "Smoke-test AOI: Puget Sound, urban core, Lake Washington, foothills"
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

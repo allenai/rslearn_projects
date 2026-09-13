@@ -1,0 +1,39 @@
+{
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          [
+            [
+              -112.9,
+              40.15
+            ],
+            [
+              -111.45,
+              40.15
+            ],
+            [
+              -111.45,
+              41.4
+            ],
+            [
+              -112.9,
+              41.4
+            ],
+            [
+              -112.9,
+              40.15
+            ]
+          ]
+        ],
+        "type": "Polygon"
+      },
+      "properties": {
+        "name": "wasatch_front",
+        "note": "Great Salt Lake and Utah Lake plus the Salt Lake City, Ogden and Provo metros and the Wasatch crest. Chosen as an end-to-end proving ground: within about 120 km it holds a hypersaline lake with a rapidly retreating shoreline, a large freshwater lake alongside it, playa, desert, three distinct urban areas, irrigated agriculture, one of the largest open-pit mines on earth at Bingham Canyon, and alpine snow and rock above 3000 m. Utah's low cloud cover keeps the twelve monthly optical mosaics well populated, and the Great Salt Lake's decline gives an unambiguous multi-year change signal that the freshwater lake does not share."
+      },
+      "type": "Feature"
+    }
+  ],
+  "type": "FeatureCollection"
+}

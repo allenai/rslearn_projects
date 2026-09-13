@@ -1,7 +1,10 @@
 """Worker to process jobs in a list of jobs."""
 
+import os
 import shutil
+import signal
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -24,7 +27,6 @@ from rslp.log_utils import get_logger
 from rslp.main import run_workflow
 from rslp.utils.beaker import (
     DEFAULT_BUDGET,
-    DEFAULT_MIN_RUNTIME,
     DEFAULT_WORKSPACE,
     WekaMount,
     create_gcp_credentials_mount,
@@ -36,6 +38,28 @@ logger = get_logger(__name__)
 # Maximum expected duration of a job in hours. We use this to limit how long we care
 # about a pending claim that hasn't completed yet.
 MAX_JOB_HOURS = 4
+
+# How much of a failure's text to keep in an entry's rejection reason.
+REJECTION_CHARS = 500
+
+# How long to allow the queue channel to shut down before forcing the process out.
+#
+# The Beaker SDK's worker_channel closes by joining its streaming thread with no
+# timeout. That thread can get stuck in the bidirectional stream it manages (a state
+# its own source notes: "we stop sending or receiving new streaming messages"), and
+# then the join never returns. The worker has finished its job and written its marker
+# by that point, so it looks alive to Beaker, holds its GPU, and never claims again:
+# 50 of 192 workers ended up that way over 37 hours of a global run. Exiting hard is
+# safe here because everything durable is already written.
+SHUTDOWN_GRACE_SECONDS = 120
+
+# Minimum runtime to request for a worker, which is what makes its job *allocated*
+# rather than unallocated. The scheduler treats anything at or under five minutes as
+# unallocated, and unallocated jobs only run when no allocated job wants the slot, so a
+# worker without this is preempted by allocated work whatever its priority. Set it to
+# roughly one job: long enough to finish a unit of work, short enough to be placed
+# quickly, since a shorter request fits the allocation grid sooner.
+DEFAULT_WORKER_MIN_RUNTIME = timedelta(minutes=45)
 
 
 def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
@@ -55,10 +79,74 @@ def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
     return cleanup_signal_handler
 
 
+def _release_on_termination(
+    tx: Any, current: dict[str, str | None]
+) -> Callable[[int, Any], None]:
+    """Make a SIGTERM handler that hands the in-flight entry back to the queue.
+
+    Beaker sends SIGTERM about five minutes before it kills a preempted job. Without
+    this the entry stays CLAIMED and nothing may touch it until the claim goes stale,
+    which is `claim_stale_seconds` later; rejecting it means the supervisor re-offers
+    the job on its next cycle instead. The work itself is still lost, since a job is
+    only marked complete once every window in it is written.
+
+    Args:
+        tx: the queue worker channel to send the rejection on.
+        current: single-key dict holding the entry id being processed, or None.
+
+    Returns:
+        a handler to pass to signal.signal.
+    """
+
+    def handler(signo: int, stack_frame: Any) -> None:
+        entry_id = current.get("entry_id")
+        logger.error(
+            "caught signal %d; releasing entry %s back to the queue", signo, entry_id
+        )
+        if entry_id is not None:
+            try:
+                tx.send(entry_id, rejection=f"worker terminated by signal {signo}")
+            except Exception:
+                # The job is going away regardless; the entry just goes stale instead.
+                logger.exception("could not release entry %s", entry_id)
+        sys.exit(1)
+
+    return handler
+
+
+def _force_exit_after(seconds: int) -> threading.Timer:
+    """Start a daemon timer that hard-exits the process after `seconds`.
+
+    Used to bound the queue channel's shutdown, which can block forever. os._exit is
+    deliberate: sys.exit only raises in the calling thread, which is exactly the thread
+    already stuck inside the join we are trying to escape.
+
+    Args:
+        seconds: how long to wait before forcing the exit.
+
+    Returns:
+        the started timer, so a caller that shuts down cleanly can cancel it.
+    """
+
+    def bail() -> None:
+        logger.error(
+            "queue channel shutdown exceeded %d seconds; forcing exit so the worker "
+            "does not hold its GPU while unable to claim work",
+            seconds,
+        )
+        os._exit(1)
+
+    timer = threading.Timer(seconds, bail)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
 def worker_pipeline(
     queue_name: str,
     retries: int = 3,
     retry_sleep: int = 60,
+    max_retry_sleep: int = 600,
     idle_timeout: int = 10,
     flush_messages: bool = False,
 ) -> None:
@@ -69,18 +157,19 @@ def worker_pipeline(
 
     Args:
         queue_name: the name of the Beaker queue.
-        retries: retry for this many consecutive errors before terminating. A "retry"
-            may run a different job than the one that originally caused failure. This
-            ensures workers will complete most of the jobs before they terminate due to
-            errors.
-        retry_sleep: sleep for this many seconds between retries. Sleeping helps in
-            case there is an error due to rate limiting.
+        retries: terminate after this many errors in a row, so a worker gives up when
+            it is failing systematically but not on a few scattered bad jobs. A "retry"
+            may run a different job than the one that failed. The count resets on every
+            success.
+        retry_sleep: base seconds to sleep after an error, doubled per consecutive
+            error, since a worker failing repeatedly is usually failing for a reason
+            that outlasts one entry.
+        max_retry_sleep: cap on that doubling.
         idle_timeout: seconds before we terminate if there is no activity.
         flush_messages: whether to just flesh messages without actually running the
             requested workflows. This is to just delete all the messages in a topic.
     """
 
-    # Callback to run the workflow indicated in the message.
     def process_message(json_data: dict[str, Any]) -> None:
         logger.debug("worker received message %s", json_data)
         rslp_project = json_data["project"]
@@ -94,37 +183,70 @@ def worker_pipeline(
         logger.info("listening for messages on %s", queue_name)
 
         consecutive_errors = 0
+        watchdog: threading.Timer | None = None
         with beaker.queue.worker_channel(queue, worker) as (tx, rx):
-            while True:
-                try:
-                    batch = rx.rx.get(block=True, timeout=idle_timeout)
-                except QueueEmpty:
-                    break
-
-                for worker_input in batch:
-                    entry_id = worker_input.metadata.entry_id
-                    entry_input = pb2_to_dict(worker_input.input)
-                    logger.info("processing entry %s", entry_id)
-
+            in_flight: dict[str, str | None] = {"entry_id": None}
+            signal.signal(signal.SIGTERM, _release_on_termination(tx, in_flight))
+            try:
+                while True:
                     try:
-                        if not flush_messages:
-                            process_message(entry_input)
-                        tx.send(entry_id, done=True)
-                    except Exception as e:
-                        # TODO: does the entry go back in queue if we didn't reply to it with tx.send?
-                        # This code below is pretty much copied from the Pub/Sub processing code.
-                        # Maybe it's fine if it goes away to be honest, some tasks just don't work.
-                        logger.error(
-                            "encountered error while processing message %s: %s (%d/%d consecutive errors)",
-                            entry_input,
-                            e,
-                            consecutive_errors,
-                            retries,
-                        )
-                        consecutive_errors += 1
-                        if consecutive_errors >= retries:
-                            raise
-                        time.sleep(retry_sleep)
+                        batch = rx.rx.get(block=True, timeout=idle_timeout)
+                    except QueueEmpty:
+                        break
+
+                    for worker_input in batch:
+                        entry_id = worker_input.metadata.entry_id
+                        entry_input = pb2_to_dict(worker_input.input)
+                        in_flight["entry_id"] = entry_id
+                        logger.info("processing entry %s", entry_id)
+
+                        try:
+                            if not flush_messages:
+                                process_message(entry_input)
+                            tx.send(entry_id, done=True)
+                            in_flight["entry_id"] = None
+                            consecutive_errors = 0
+                        except Exception as e:
+                            consecutive_errors += 1
+                            logger.error(
+                                "encountered error while processing message %s: %s (%d/%d consecutive errors)",
+                                entry_input,
+                                e,
+                                consecutive_errors,
+                                retries,
+                            )
+                            # Release the claim: Beaker never releases one on its own, so an
+                            # unanswered entry stays CLAIMED and its job counts as in flight
+                            # until the claim goes stale. REJECTED does not, so the
+                            # supervisor re-enqueues on its next cycle.
+                            try:
+                                tx.send(
+                                    entry_id,
+                                    rejection=f"{type(e).__name__}: {e}"[
+                                        :REJECTION_CHARS
+                                    ],
+                                )
+                            except Exception:
+                                # Not worth losing the run over: the entry just goes stale.
+                                logger.exception("could not reject entry %s", entry_id)
+                            if consecutive_errors >= retries:
+                                raise
+                            time.sleep(
+                                min(
+                                    retry_sleep * 2 ** (consecutive_errors - 1),
+                                    max_retry_sleep,
+                                )
+                            )
+            finally:
+                # The channel teardown that follows joins a thread that can be stuck
+                # in the SDK's bidirectional stream, which would hang the worker with
+                # its GPU held. Everything durable is written by now, so bound it.
+                watchdog = _force_exit_after(SHUTDOWN_GRACE_SECONDS)
+
+        # Reaching here means the teardown returned, so the channel closed cleanly and
+        # the watchdog has nothing left to guard.
+        if watchdog is not None:
+            watchdog.cancel()
 
 
 def launch_workers(
@@ -138,7 +260,10 @@ def launch_workers(
     weka_mounts: list[WekaMount] = [],
     extra_env_vars: dict[str, str] | None = None,
     extra_env_secrets: dict[str, str] | None = None,
-    min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
+    idle_timeout: int | None = None,
+    name_prefix: str = "worker",
+    min_runtime: timedelta = DEFAULT_WORKER_MIN_RUNTIME,
+    auto_resume: bool = True,
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -156,8 +281,18 @@ def launch_workers(
         extra_env_secrets: additional environment variables to set on each worker from
             Beaker secrets, mapping environment variable name to the name of the Beaker
             secret (in the target workspace) to read its value from.
-        min_runtime: how long to protect each (preemptible) worker job from
-            preemption.
+        idle_timeout: seconds a worker waits for new work before exiting. Left unset,
+            the worker's own default applies. Raise it when a supervisor refills the
+            queue on a cycle, so a worker does not quit the moment the queue drains and
+            have to pay container start again.
+        name_prefix: prefix for each worker's experiment name. Pass a value unique to
+            the run so its launcher can count its own workers by name; the default
+            makes every run's workers indistinguishable.
+        min_runtime: how long the scheduler should let a worker run before it may be
+            preempted. Above five minutes the job counts as allocated; at or below it
+            the job is unallocated and yields to any allocated work.
+        auto_resume: whether Beaker replaces the job when it is preempted. Without it a
+            preempted worker is simply gone.
     """
     if extra_env_vars is None:
         extra_env_vars = {}
@@ -171,10 +306,10 @@ def launch_workers(
         BeakerEnvVar(name=env_name, secret=secret_name)
         for env_name, secret_name in extra_env_secrets.items()
     ]
+    base_env_vars = get_base_env_vars(use_weka_prefix=False)
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         for _ in tqdm.tqdm(range(num_workers)):
-            env_vars = get_base_env_vars(use_weka_prefix=False)
-            env_vars += extra_beaker_env_vars
+            env_vars = base_env_vars + extra_beaker_env_vars
 
             datasets = [create_gcp_credentials_mount()]
             datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
@@ -190,11 +325,17 @@ def launch_workers(
                     "worker",
                     "--queue_name",
                     queue_name,
+                    *(
+                        []
+                        if idle_timeout is None
+                        else ["--idle_timeout", str(idle_timeout)]
+                    ),
                 ],
                 constraints=BeakerConstraints(
                     cluster=cluster,
                 ),
                 min_runtime=min_runtime,
+                auto_resume=auto_resume,
                 datasets=datasets,
                 env_vars=env_vars,
                 resources=BeakerTaskResources(
@@ -202,7 +343,7 @@ def launch_workers(
                 ),
             )
             unique_id = str(uuid.uuid4())[0:8]
-            beaker.experiment.create(name=f"worker_{unique_id}", spec=spec)
+            beaker.experiment.create(name=f"{name_prefix}_{unique_id}", spec=spec)
 
 
 def write_jobs(
