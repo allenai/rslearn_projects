@@ -27,7 +27,7 @@ The deployed operating point is detector 0.7 / classifier 0.99: the lower detect
 
 ## Round 1 Annotations
 
-The `v1.0.0` classifier adds a round-1 re-annotation pass focused on hard negatives: ~2,000 labelled crops (~1,600 hard negatives / ~360 positives) drawn from the detector's own output on T1/T2 scenes sampled across the Skylight marine-regions ROI, spanning ~2.5 years (Jan 2024 – May 2026), with one scene per WRS-2 path/row to prevent split leakage. See `rslp/landsat_vessels/annotations/README.md` for the full process.
+The `v1.0.0` classifier adds a round-1 re-annotation pass focused on hard negatives: ~2,000 labelled crops (~1,600 hard negatives / ~360 positives) drawn from the detector's own output on RT/T1/T2 scenes sampled across the Skylight marine-regions ROI, spanning ~2.5 years (Jan 2024 – May 2026), with one scene per WRS-2 path/row to prevent split leakage. See `rslp/landsat_vessels/annotations/README.md` for the full process.
 
 ---
 
