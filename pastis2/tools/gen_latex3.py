@@ -176,3 +176,31 @@ w(r"""    \end{tabular}
 \end{table*}""")
 open(f"{P2}/results_tables_updated.tex","a").write("\n".join(out)+"\n")
 print(f"  appended part 3 ({len(out)} lines)")
+
+# ---- PASTIS-fine-tuning control (NEW: the one-variable before/after) ----
+out2=[]; w2=out2.append
+w2(r"""
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l|cc|cc|c}
+        & \multicolumn{2}{c|}{pretrained base} & \multicolumn{2}{c|}{after \pastis FT} & \\
+        Split & mIoU-8 & trop-4 & mIoU-8 & trop-4 & $\Delta$ mIoU\\
+        \hline""")
+for r in D.get("ftcontrol", []):
+    b, f_, dl = r["cells"]
+    w2(f"        {r['model']} & {b['v']:.2f} & {b['t']:.2f} & {f_['v']:.2f} & "
+       f"{f_['t']:.2f} & {dl['v']:+.2f}\\\\")
+w2(r"""    \end{tabular}
+    \caption{Effect of \pastis fine-tuning, isolated. The SAME pretrained encoder
+    (\texttt{trope\_mixed/step667200}) is probed as-is and again after fine-tuning
+    on \pastis; probe configuration, tasks and test data are identical, so only the
+    checkpoint differs. Fine-tuning on metropolitan France costs 18--22 mIoU on the
+    three learnable splits and collapses tropical-class performance (trop-4) from
+    32--36 to 0.08--3.32. The loss tracks how much signal there was to lose: Mayotte,
+    already at its trivial floor, is unchanged. Metric in points ($\times 100$).}
+    \label{tab:planteur-ft-control}
+\end{table*}""")
+open(f"{P2}/results_tables_updated.tex","a").write("\n".join(out2)+"\n")
+print(f"  appended the FT-control table ({len(out2)} lines)")

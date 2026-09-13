@@ -303,3 +303,28 @@
     small gains over that baseline there should not be read as learning.}
     \label{tab:planteur-perisland}
 \end{table*}
+
+\begin{table*}[t]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l|cc|cc|c}
+        & \multicolumn{2}{c|}{pretrained base} & \multicolumn{2}{c|}{after \pastis FT} & \\
+        Split & mIoU-8 & trop-4 & mIoU-8 & trop-4 & $\Delta$ mIoU\\
+        \hline
+        443 test split & 36.63 & 34.77 & 16.04 & 10.08 & -20.59\\
+        LOIO Réunion & 14.68 & 7.27 & 9.40 & 0.02 & -5.28\\
+        LOIO Guadeloupe & 32.55 & 35.52 & 10.95 & 0.08 & -21.60\\
+        LOIO Martinique & 30.11 & 32.60 & 11.90 & 3.32 & -18.21\\
+        LOIO Guyane & 13.35 & 5.15 & 10.69 & 0.28 & -2.66\\
+        LOIO Mayotte & 12.50 & 0.04 & 12.40 & 0.00 & -0.10\\
+    \end{tabular}
+    \caption{Effect of \pastis fine-tuning, isolated. The SAME pretrained encoder
+    (\texttt{trope\_mixed/step667200}) is probed as-is and again after fine-tuning
+    on \pastis; probe configuration, tasks and test data are identical, so only the
+    checkpoint differs. Fine-tuning on metropolitan France costs 18--22 mIoU on the
+    three learnable splits and collapses tropical-class performance (trop-4) from
+    32--36 to 0.08--3.32. The loss tracks how much signal there was to lose: Mayotte,
+    already at its trivial floor, is unchanged. Metric in points ($\times 100$).}
+    \label{tab:planteur-ft-control}
+\end{table*}
