@@ -2,6 +2,7 @@
 
 import os
 from dataclasses import dataclass
+from datetime import timedelta
 from functools import cache
 
 from beaker import BeakerDataMount, BeakerDataSource, BeakerEnvVar, BeakerImageSource
@@ -14,6 +15,9 @@ logger = get_logger(__name__)
 
 DEFAULT_WORKSPACE = "ai2/earth-systems"
 DEFAULT_BUDGET = "ai2/atec-olmoearth"
+# Default preemption protection duration for Beaker jobs. 8 hours is the maximum
+# allowed on most clusters.
+DEFAULT_MIN_RUNTIME = timedelta(hours=8)
 
 # Fallback secret holding a Beaker token shared across the project.
 SHARED_BEAKER_TOKEN_SECRET = "RSLP_BEAKER_TOKEN"  # nosec

@@ -1,7 +1,7 @@
 """Launch a Beaker job that executes one or more rslp workflows."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from beaker import (
     Beaker,
@@ -15,6 +15,7 @@ from beaker.exceptions import BeakerImageNotFound
 from rslp.log_utils import get_logger
 from rslp.utils.beaker import (
     DEFAULT_BUDGET,
+    DEFAULT_MIN_RUNTIME,
     DEFAULT_WORKSPACE,
     WekaMount,
     create_gcp_credentials_mount,
@@ -56,7 +57,7 @@ def launch_job(
     task_specific_env_vars: list[BeakerEnvVar] = [],
     budget: str = DEFAULT_BUDGET,
     workspace: str = DEFAULT_WORKSPACE,
-    preemptible: bool = True,
+    min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
     weka_mounts: list[WekaMount] = [],
 ) -> None:
     """Launch a Beaker job to run an rslp workflow or an arbitrary command.
@@ -89,7 +90,8 @@ def launch_job(
             to the Beaker job.
         budget: the Beaker budget.
         workspace: the Beaker workspace.
-        preemptible: whether to make the Beaker job preemptible.
+        min_runtime: how long to protect the (preemptible) Beaker job from
+            preemption.
         weka_mounts: list of weka mounts for Beaker job.
     """
     if command is None:
@@ -143,7 +145,7 @@ def launch_job(
             env_vars=base_env_vars + task_specific_env_vars,
             datasets=datasets,
             resources={"gpuCount": gpu_count, "sharedMemory": shared_memory},
-            preemptible=preemptible,
+            min_runtime=min_runtime,
         )
         current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         experiment_name = f"{task_name}_{task_uuid}_{current_time}"
