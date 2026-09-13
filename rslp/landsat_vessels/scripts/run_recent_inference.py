@@ -54,9 +54,12 @@ from typing import Any
 import yaml
 from PIL import Image, ImageDraw, ImageFont
 
+# Import the predict_pipeline module explicitly (rather than fetching it from
+# sys.modules) so this script works regardless of whether the landsat_vessels package
+# __init__ imports predict_pipeline eagerly. We patch DETECT_MODEL_CONFIG /
+# CLASSIFY_MODEL_CONFIG on this module object in shard mode.
+import rslp.landsat_vessels.predict_pipeline as _landsat_mod
 from rslp.utils.mp import init_mp
-
-_landsat_mod = sys.modules["rslp.landsat_vessels.predict_pipeline"]
 
 CSV_FIELDS = [
     "scene_id",
