@@ -539,14 +539,20 @@ def _capacity_target(
         )
         return max(live, worker.capacity_min_workers)
 
-    target = int(worker.capacity_fraction * (available + live))
+    # `available` is in slots and the answer is in workers, so the two only coincide
+    # while a worker holds one GPU. Dividing keeps a multi-GPU stage from launching
+    # `gpus` times too many, which is the launch storm the ceiling exists to prevent.
+    slots_per_worker = max(1, worker.gpus)
+    target = int(worker.capacity_fraction * (available / slots_per_worker + live))
     target = max(worker.capacity_min_workers, min(target, worker.num_workers))
     # Shrinking is immediate, growing is capped. See CAPACITY_MAX_STEP.
     capped = min(target, live + CAPACITY_MAX_STEP)
     logger.info(
-        "capacity target %d (%d free slot(s) + %d live, fraction %.2f, ceiling %d)",
+        "capacity target %d worker(s) (%d free slot(s) at %d gpu(s) each + %d live, "
+        "fraction %.2f, ceiling %d)",
         capped,
         available,
+        slots_per_worker,
         live,
         worker.capacity_fraction,
         worker.num_workers,

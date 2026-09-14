@@ -590,3 +590,33 @@ def test_nothing_is_released_when_the_pool_is_within_target() -> None:
     beaker = _ReleaseBeaker(waiting)
     assert mod._release_surplus_workers(beaker, object(), prefix, surplus=0) == 0
     assert beaker.cancelled == []
+
+
+def test_capacity_converts_slots_to_workers_for_a_multi_gpu_stage() -> None:
+    """Free capacity is reported in GPU slots; the target is a worker count.
+
+    They coincide only while a worker holds one GPU. Without the conversion a stage
+    asking for 4 GPUs would launch four times the pool it is entitled to, which is
+    exactly the overshoot the ceiling exists to prevent.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    # live has to be high enough that the +32 growth cap does not mask the difference:
+    # from a standing start both the right and the wrong arithmetic clamp to the same
+    # step. 400 free slots at 4 GPUs each is 100 workers of room, plus 300 held is 400,
+    # and three quarters of that is 300. Treating slots as workers would give
+    # 0.75 * 700, which the growth cap would clamp to 332.
+    worker = _worker_cfg(mod, capacity_fraction=0.75, gpus=4, num_workers=1024)
+    got = mod._capacity_target(_FakeCapacityBeaker(available=400), worker, live=300)
+    assert got == 300, f"slots were treated as workers for a 4-GPU stage, got {got}"
+
+
+def test_capacity_is_unchanged_for_a_single_gpu_stage() -> None:
+    """The conversion must be a no-op at one GPU per worker, the common case."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = _worker_cfg(mod, capacity_fraction=0.5, gpus=1, num_workers=512)
+    got = mod._capacity_target(_FakeCapacityBeaker(available=100), worker, live=100)
+    assert got == 100, f"single-GPU sizing changed, got {got}"
