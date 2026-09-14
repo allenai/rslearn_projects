@@ -110,6 +110,7 @@ def run_all(
     matryoshka_dims: list[int] | None = None,
     render_gpus: int = 0,
     refit_pca: bool = False,
+    skip_predict: bool = False,
     skip_pca: bool = False,
     skip_web_pca: bool = False,
     web_min_zoom: int = 8,
@@ -139,6 +140,10 @@ def run_all(
             otherwise silently reinterpret everything already rendered.
         render_gpus: GPUs for the render stages. They need none; a nonzero value is
             only for saturated clusters that count slots in GPUs.
+        skip_predict: assume the embeddings already exist and go straight to the
+            derived stages. Use this to (re)build PCA over a region that predict has
+            already finished; the caller is asserting predict is complete, since the
+            usual check is skipped along with the stage.
         skip_pca: stop after predict. For a run whose only product is embeddings.
         skip_web_pca: stop after annotate, leaving the display pyramid unbuilt.
         web_min_zoom: shallowest zoom to build.
@@ -168,27 +173,32 @@ def run_all(
             patch_size=model.patch_size,
         )
 
-    logger.info("step 1/5: predict")
-    supervise(
-        inputs=inputs,
-        years=years,
-        store_path=store_path,
-        completed_path_template=completed_path_template,
-        queue_name=queue_name,
-        model=model,
-        worker=worker,
-        stage=STAGE_PREDICT,
-        cycle=cycle,
-        aoi=aoi,
-    )
-    _require_no_predict_jobs(
-        inputs=inputs,
-        years=years,
-        store_path=store_path,
-        completed_paths=completed_paths,
-        model=model,
-        aoi=aoi,
-    )
+    if skip_predict:
+        # The check below enumerates against the aoi, so it cannot stand in for the
+        # stage when the caller is covering ground no single aoi describes.
+        logger.info("step 1/5: predict skipped (skip_predict)")
+    else:
+        logger.info("step 1/5: predict")
+        supervise(
+            inputs=inputs,
+            years=years,
+            store_path=store_path,
+            completed_path_template=completed_path_template,
+            queue_name=queue_name,
+            model=model,
+            worker=worker,
+            stage=STAGE_PREDICT,
+            cycle=cycle,
+            aoi=aoi,
+        )
+        _require_no_predict_jobs(
+            inputs=inputs,
+            years=years,
+            store_path=store_path,
+            completed_paths=completed_paths,
+            model=model,
+            aoi=aoi,
+        )
 
     if skip_pca:
         logger.info("skip_pca set; stopping after predict")

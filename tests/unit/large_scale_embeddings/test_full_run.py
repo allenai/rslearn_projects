@@ -523,3 +523,33 @@ def test_existing_pca_artifact_is_not_refit(monkeypatch: pytest.MonkeyPatch) -> 
         refit_pca=True,
     )
     assert seen == ["fit"], "refit_pca did not force a refit"
+
+
+def test_skip_predict_runs_no_predict_stage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """skip_predict must drive the derived stages without enumerating predict work.
+
+    Without it, rebuilding PCA over finished ground means running the predict stage
+    against an aoi, and no single aoi describes two regions on opposite sides of the
+    globe: the enumeration would sweep in every unbuilt zone between them and launch
+    a world's worth of inference.
+    """
+    stages: list[str] = []
+    checked: list[str] = []
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod, "supervise", lambda **kw: stages.append(kw["stage"])
+    )
+    _stub_paths(monkeypatch, exists=True)
+    monkeypatch.setattr(
+        run_all_mod, "get_jobs", lambda **kw: checked.append("enumerated") or []
+    )
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+
+    run_all_mod.run_all(**_with(skip_predict=True, skip_web_pca=True))
+
+    assert "predict" not in stages, "skip_predict must not drive the predict stage"
+    assert checked == [], "skip_predict must not enumerate predict work either"
+    assert stages, "the render stage must still run"
