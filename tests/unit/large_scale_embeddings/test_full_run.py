@@ -541,9 +541,12 @@ def test_skip_predict_runs_no_predict_stage(monkeypatch: pytest.MonkeyPatch) -> 
         run_all_mod, "supervise", lambda **kw: stages.append(kw["stage"])
     )
     _stub_paths(monkeypatch, exists=True)
-    monkeypatch.setattr(
-        run_all_mod, "get_jobs", lambda **kw: checked.append("enumerated") or []
-    )
+
+    def _record_enumeration(**kw: object) -> list[str]:
+        checked.append("enumerated")
+        return []
+
+    monkeypatch.setattr(run_all_mod, "get_jobs", _record_enumeration)
     monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
     monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
