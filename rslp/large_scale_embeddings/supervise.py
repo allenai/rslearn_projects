@@ -158,6 +158,11 @@ WORKER_HEARTBEAT_STALE_SECONDS = int(timedelta(minutes=5).total_seconds())
 # a worker exits on its own once the queue runs dry.
 CAPACITY_MAX_STEP = 32
 
+# How many scheduled jobs to scan when totalling an allocation's usage. A busy cluster
+# runs several hundred; this is sized well above that so the total is not silently
+# truncated into an underestimate, which would read as free allocation and over-launch.
+ALLOCATION_JOB_LIMIT = 5000
+
 # GDAL environment every worker needs, merged in below so it cannot be forgotten.
 #
 # GS_USER_PROJECT is required for the Landsat reads: rasterio_session_for_path honours
@@ -271,8 +276,14 @@ class WorkerConfig:
     # requests no GPU the number measures a resource the stage does not consume, and
     # sizing against it would be sizing against noise.
     capacity_fraction: float | None = None
-    # Floor for a capacity-sized pool, so a momentarily full cluster cannot park the run
-    # at zero workers and leave nothing to make progress when slots free up again.
+    # The organisation's GPU slot allocation on `cluster`. Required alongside
+    # capacity_fraction. Passed in rather than hardcoded because it is an agreement
+    # between teams, not a property of the code, and it changes without warning.
+    capacity_slots: int | None = None
+    # Whose jobs count against that allocation. Defaults to the run's own workspace.
+    capacity_workspace: str | None = None
+    # Floor for a capacity-sized pool, so a momentarily full allocation cannot park the
+    # run at zero workers and leave nothing to make progress when slots free up again.
     capacity_min_workers: int = 8
 
     def __post_init__(self) -> None:
@@ -493,23 +504,65 @@ def worker_name_prefix(queue_name: str) -> str:
     return "worker_" + queue_name.replace("/", "-")
 
 
+def _allocated_slots_in_use(
+    beaker: Any,
+    worker: "WorkerConfig",
+    workspace_id: str,
+    live: int,
+) -> int:
+    """GPU slots the workspace holds on `worker.cluster`, excluding this run's own pool.
+
+    The allocation is shared with everyone else in the workspace, so what this run may
+    take is the allocation minus what colleagues are already holding. Our own workers
+    are subtracted back out: counting them would make scaling up shrink our own
+    headroom, and the pool would ratchet itself to zero.
+
+    Args:
+        beaker: an open Beaker client.
+        worker: the pool configuration.
+        workspace_id: the workspace whose jobs count against the allocation.
+        live: this run's workers, starting or alive.
+
+    Returns:
+        slots held by everyone else in the workspace, never below zero.
+    """
+    total = 0
+    for name in worker.cluster:
+        for job in beaker.job.list(
+            scheduled_on_cluster=beaker.cluster.get(name),
+            scheduled=True,
+            finalized=False,
+            limit=ALLOCATION_JOB_LIMIT,
+        ):
+            if job.workspace_id == workspace_id:
+                total += job.container_spec.resource_request.gpu_count
+    # `live` includes workers that have not been scheduled yet, so they are not in the
+    # sum above; clamping keeps that from reading as negative usage by other people.
+    return max(0, total - live * worker.gpus)
+
+
 def _capacity_target(
     beaker: Any,
     worker: "WorkerConfig",
     live: int,
 ) -> int:
-    """How many workers to aim for, sized from what the cluster actually has free.
+    """How many workers to aim for, sized from the organisation's own allocation.
 
     Returns `worker.num_workers` unchanged unless `capacity_fraction` is set and the
-    stage requests GPUs. Beaker reports occupancy only in GPU slots, so for a CPU-only
-    stage the reading describes a resource the stage never occupies and holding the
-    configured number is the honest behaviour.
+    stage requests GPUs. Beaker reports usage only in GPU slots, so for a CPU-only stage
+    the reading describes a resource the stage never occupies and holding the configured
+    number is the honest behaviour.
 
-    The fraction is taken of free slots *plus* the pool already held. Free slots alone
-    would be a feedback loop pointing the wrong way: our own running workers are counted
-    as occupied, so scaling up shrinks the number the target is computed from and the
-    pool ratchets itself toward zero. What the run could hold is what it does hold plus
-    what nobody has taken.
+    Two bounds apply, and the tighter wins. `capacity_fraction` of the allocation is the
+    share this run takes when nothing else is running, leaving the rest for colleagues
+    who have not launched yet. The allocation minus what colleagues hold right now is
+    what is actually left. On a quiet workspace the fraction binds; on a busy one the
+    remainder does.
+
+    Cluster-wide occupancy is deliberately not consulted. The allocation is what the
+    organisation may use, and other teams' jobs neither grant nor remove that
+    entitlement; letting a saturated cluster shrink the pool would forfeit capacity the
+    run is owed, and priority exists to resolve the contention.
 
     Args:
         beaker: an open Beaker client.
@@ -518,43 +571,51 @@ def _capacity_target(
 
     Returns:
         the number of workers to aim for this cycle.
+
+    Raises:
+        ValueError: if capacity sizing is on but no allocation was given.
     """
     if worker.capacity_fraction is None or worker.gpus <= 0:
         return worker.num_workers
-
-    try:
-        available = sum(
-            beaker.cluster.get(
-                name, include_cluster_occupancy=True
-            ).cluster_occupancy.slot_counts.available
-            for name in worker.cluster
+    if worker.capacity_slots is None:
+        raise ValueError(
+            "worker.capacity_slots is required when worker.capacity_fraction is set: "
+            "sizing against an allocation needs to know how large it is"
         )
+
+    workspace_id = worker.capacity_workspace or DEFAULT_WORKSPACE
+    try:
+        workspace_id = beaker.workspace.get(workspace_id).id
+        others = _allocated_slots_in_use(beaker, worker, workspace_id, live)
     except Exception:
-        # Sizing blind is worse than not resizing: num_workers is a ceiling in this
-        # mode and may be far above what is free, so falling back to it could dump a
-        # launch onto a full cluster. Hold the pool where it is and try again next
-        # cycle, which costs one cycle of growth and nothing else.
+        # Sizing blind is worse than not resizing: the ceiling may be far above what is
+        # left, so guessing could dump a launch onto an allocation colleagues are using.
+        # Hold the pool where it is and try again next cycle.
         logger.exception(
-            "could not read cluster occupancy; holding the pool at %d", live
+            "could not read allocation usage; holding the pool at %d", live
         )
         return max(live, worker.capacity_min_workers)
 
-    # `available` is in slots and the answer is in workers, so the two only coincide
-    # while a worker holds one GPU. Dividing keeps a multi-GPU stage from launching
-    # `gpus` times too many, which is the launch storm the ceiling exists to prevent.
+    share = worker.capacity_fraction * worker.capacity_slots
+    remaining = worker.capacity_slots - others
+    target_slots = max(0.0, min(share, float(remaining)))
+    # Slots to workers: they coincide only while a worker holds one GPU.
     slots_per_worker = max(1, worker.gpus)
-    target = int(worker.capacity_fraction * (available / slots_per_worker + live))
+    target = int(target_slots / slots_per_worker)
     target = max(worker.capacity_min_workers, min(target, worker.num_workers))
     # Shrinking is immediate, growing is capped. See CAPACITY_MAX_STEP.
     capped = min(target, live + CAPACITY_MAX_STEP)
     logger.info(
-        "capacity target %d worker(s) (%d free slot(s) at %d gpu(s) each + %d live, "
-        "fraction %.2f, ceiling %d)",
+        "capacity target %d worker(s): allocation %d slot(s), %d held by others, "
+        "share %.2f -> %d, remaining -> %d, %d gpu(s)/worker, %d live, ceiling %d",
         capped,
-        available,
+        worker.capacity_slots,
+        others,
+        worker.capacity_fraction,
+        int(share),
+        remaining,
         slots_per_worker,
         live,
-        worker.capacity_fraction,
         worker.num_workers,
     )
     return capped

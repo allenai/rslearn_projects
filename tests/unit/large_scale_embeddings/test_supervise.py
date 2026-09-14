@@ -343,127 +343,154 @@ def test_a_queued_worker_still_counts_while_it_starts() -> None:
     assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 10
 
 
-class _FakeSlotCounts:
-    def __init__(self, available: int) -> None:
-        self.available = available
+class _FakeJob:
+    def __init__(self, workspace_id: str, gpus: int) -> None:
+        self.workspace_id = workspace_id
+
+        class _RR:
+            gpu_count = gpus
+
+        class _CS:
+            resource_request = _RR()
+
+        self.container_spec = _CS()
 
 
-class _FakeOccupancy:
-    def __init__(self, available: int) -> None:
-        self.slot_counts = _FakeSlotCounts(available)
-
-
-class _FakeCluster:
-    def __init__(self, available: int) -> None:
-        self.cluster_occupancy = _FakeOccupancy(available)
-
-
-class _FakeClusterClient:
-    def __init__(self, available: int | Exception) -> None:
-        self._available = available
-        self.calls: list[str] = []
-
-    def get(self, name: str, include_cluster_occupancy: bool = False) -> _FakeCluster:
-        self.calls.append(name)
-        if isinstance(self._available, Exception):
-            raise self._available
-        return _FakeCluster(self._available)
+class _FakeWs:
+    def __init__(self, wid: str) -> None:
+        self.id = wid
 
 
 class _FakeCapacityBeaker:
-    def __init__(self, available: int | Exception) -> None:
-        self.cluster = _FakeClusterClient(available)
+    """Just enough of the client for _capacity_target under allocation sizing."""
+
+    def __init__(self, jobs: list | Exception, ws_id: str = "WS") -> None:
+        outer = self
+        self.cluster_calls: list[str] = []
+
+        class _ClusterSvc:
+            def get(self, name: str, include_cluster_occupancy: bool = False) -> object:
+                outer.cluster_calls.append(name)
+                return object()
+
+        class _JobSvc:
+            def list(self, **kw: object) -> list:
+                if isinstance(jobs, Exception):
+                    raise jobs
+                return jobs
+
+        class _WsSvc:
+            def get(self, name: str) -> _FakeWs:
+                return _FakeWs(ws_id)
+
+        self.cluster = _ClusterSvc()
+        self.job = _JobSvc()
+        self.workspace = _WsSvc()
 
 
 def _worker_cfg(mod, **kw):  # type: ignore[no-untyped-def]
-    base = dict(image_name="i", cluster=["ai2/jupiter"], num_workers=512, gpus=1)
+    base = dict(
+        image_name="i",
+        cluster=["ai2/jupiter"],
+        num_workers=512,
+        gpus=1,
+        capacity_slots=352,
+    )
     base.update(kw)
     return mod.WorkerConfig(**base)
 
 
-def test_a_cpu_stage_is_never_sized_from_gpu_occupancy() -> None:
-    """Beaker reports occupancy only in GPU slots, with no cpu accounting anywhere.
+def test_a_cpu_stage_is_never_sized_from_the_gpu_allocation() -> None:
+    """A stage that requests no GPU occupies none of the allocation.
 
-    A stage that requests no GPU occupies none of those slots, so the reading describes
-    a resource it does not consume. Sizing the render pool against it would be sizing
-    against a number that moves with other teams' GPU jobs and not with anything this
-    stage does.
+    Sizing it against GPU slots would size it against a number it does not move.
     """
     import importlib
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     worker = _worker_cfg(mod, gpus=0, num_workers=128, capacity_fraction=0.75)
-    beaker = _FakeCapacityBeaker(available=900)
-    assert (
-        mod._capacity_target(beaker, worker, live=128) == 128
-    ), "a cpu-only stage was resized from GPU slot availability"
-    assert beaker.cluster.calls == [], "occupancy was read for a stage that has no GPUs"
+    beaker = _FakeCapacityBeaker(jobs=[])
+    assert mod._capacity_target(beaker, worker, live=128) == 128
+    assert beaker.cluster_calls == [], "allocation was read for a stage with no GPUs"
 
 
-def test_capacity_counts_the_pool_it_already_holds() -> None:
-    """Free slots alone is a feedback loop pointing the wrong way.
+def test_other_teams_on_the_cluster_do_not_shrink_our_allocation() -> None:
+    """The allocation is an entitlement, not a share of whatever is left over.
 
-    Our own running workers show as occupied, so taking a fraction of `available` makes
-    scaling up shrink the number the target is computed from, and the pool ratchets
-    toward zero. The capacity a run could hold is what it holds plus what is free.
-    """
-    import importlib
-
-    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    worker = _worker_cfg(mod, capacity_fraction=0.5)
-    # 100 free, 100 already ours: half of 200 is 100, not half of 100.
-    got = mod._capacity_target(_FakeCapacityBeaker(available=100), worker, live=100)
-    assert got == 100, f"expected the held pool to count toward capacity, got {got}"
-
-
-def test_capacity_growth_is_capped_per_cycle() -> None:
-    """A cluster that drains suddenly must not trigger a launch of that size.
-
-    Chasing the spot value is how 240 phantom requests reached the cluster once already.
-    """
-    import importlib
-
-    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    worker = _worker_cfg(mod, capacity_fraction=0.75)
-    got = mod._capacity_target(_FakeCapacityBeaker(available=900), worker, live=8)
-    assert (
-        got == 8 + mod.CAPACITY_MAX_STEP
-    ), f"growth was not capped at {mod.CAPACITY_MAX_STEP} per cycle, got {got}"
-
-
-def test_capacity_shrinks_without_a_cap() -> None:
-    """Giving capacity back is always safe, so only growth is rate-limited."""
-    import importlib
-
-    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    worker = _worker_cfg(mod, capacity_fraction=0.75, capacity_min_workers=8)
-    got = mod._capacity_target(_FakeCapacityBeaker(available=0), worker, live=256)
-    assert got == 192, f"expected an immediate drop to 0.75*256, got {got}"
-
-
-def test_capacity_never_exceeds_the_configured_ceiling() -> None:
-    """num_workers stays a hard ceiling when capacity sizing is on."""
-    import importlib
-
-    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    worker = _worker_cfg(mod, capacity_fraction=0.75, num_workers=64)
-    got = mod._capacity_target(_FakeCapacityBeaker(available=900), worker, live=64)
-    assert got == 64, f"the ceiling was exceeded, got {got}"
-
-
-def test_capacity_holds_the_pool_when_occupancy_cannot_be_read() -> None:
-    """Falling back to num_workers would dump a launch onto a full cluster.
-
-    In this mode num_workers is a ceiling, not a target, and may be far above what is
-    free. Holding costs one cycle of growth; guessing costs the cluster.
+    Another org saturating jupiter neither grants nor removes what earth-systems may
+    use, so their jobs must not appear in the arithmetic at all. Sizing against
+    cluster-wide free slots would forfeit capacity the run is owed.
     """
     import importlib
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     worker = _worker_cfg(mod, capacity_fraction=0.75, num_workers=512)
-    beaker = _FakeCapacityBeaker(available=RuntimeError("beaker is down"))
-    got = mod._capacity_target(beaker, worker, live=100)
-    assert got == 100, f"expected the pool to hold at 100 on a failed read, got {got}"
+    # 900 GPUs held by a different workspace; ours holds nothing.
+    foreign = [_FakeJob("SOMEONE_ELSE", 1) for _ in range(900)]
+    got = mod._capacity_target(_FakeCapacityBeaker(jobs=foreign), worker, live=232)
+    assert got == 264, f"another org's usage changed our target, got {got} (want 264)"
+
+
+def test_the_fraction_of_the_allocation_is_the_ceiling() -> None:
+    """0.75 of 352 is 264, and an idle workspace does not get more than that."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = _worker_cfg(mod, capacity_fraction=0.75, num_workers=512)
+    got = mod._capacity_target(_FakeCapacityBeaker(jobs=[]), worker, live=240)
+    assert got == 264, f"expected the 0.75 x 352 ceiling, got {got}"
+
+
+def test_colleagues_in_the_same_workspace_reduce_what_is_left() -> None:
+    """The allocation is shared, so their usage is the tighter of the two bounds."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = _worker_cfg(mod, capacity_fraction=0.75, num_workers=512)
+    # 200 held by colleagues plus 200 of ours. Ours is subtracted back out, so others
+    # are 200 and the remainder is 152, tighter than the 264 ceiling. live is high
+    # enough that the +32 growth cap does not mask the difference: ignoring colleagues
+    # would give 264, which the cap would show as 232.
+    jobs = [_FakeJob("WS", 1) for _ in range(400)]
+    got = mod._capacity_target(_FakeCapacityBeaker(jobs=jobs), worker, live=200)
+    assert got == 152, f"colleagues' usage was ignored, got {got} (want 352-200)"
+
+
+def test_our_own_pool_does_not_count_against_our_headroom() -> None:
+    """Otherwise scaling up shrinks the number the target is computed from.
+
+    Our workers sit in the same workspace as everyone else's, so without subtracting
+    them the pool ratchets itself toward zero as it grows.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = _worker_cfg(mod, capacity_fraction=0.75, num_workers=512)
+    ours = [_FakeJob("WS", 1) for _ in range(264)]
+    got = mod._capacity_target(_FakeCapacityBeaker(jobs=ours), worker, live=264)
+    assert got == 264, f"our own pool ate our headroom, got {got}"
+
+
+def test_capacity_needs_to_know_how_big_the_allocation_is() -> None:
+    """Sizing against an allocation without its size would be sizing against nothing."""
+    import importlib
+
+    import pytest as _pytest
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = _worker_cfg(mod, capacity_fraction=0.75, capacity_slots=None)
+    with _pytest.raises(ValueError, match="capacity_slots"):
+        mod._capacity_target(_FakeCapacityBeaker(jobs=[]), worker, live=0)
+
+
+def test_capacity_holds_the_pool_when_usage_cannot_be_read() -> None:
+    """Guessing could dump a launch onto an allocation colleagues are using."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = _worker_cfg(mod, capacity_fraction=0.75, num_workers=512)
+    beaker = _FakeCapacityBeaker(jobs=RuntimeError("beaker is down"))
+    assert mod._capacity_target(beaker, worker, live=100) == 100
 
 
 def test_a_static_pool_is_untouched_by_default() -> None:
@@ -472,9 +499,25 @@ def test_a_static_pool_is_untouched_by_default() -> None:
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     worker = _worker_cfg(mod, num_workers=128)
-    beaker = _FakeCapacityBeaker(available=900)
+    beaker = _FakeCapacityBeaker(jobs=[])
     assert mod._capacity_target(beaker, worker, live=4) == 128
-    assert beaker.cluster.calls == [], "occupancy was read for a static pool"
+    assert beaker.cluster_calls == [], "allocation was read for a static pool"
+
+
+def test_capacity_converts_slots_to_workers_for_a_multi_gpu_stage() -> None:
+    """The allocation is in GPU slots; the target is a worker count.
+
+    They coincide only while a worker holds one GPU. Without the conversion a stage
+    asking for 4 GPUs would launch four times the pool the allocation permits.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    # 0.75 * 352 = 264 slots at 4 GPUs each is 66 workers. live is high enough that the
+    # growth cap does not mask the difference.
+    worker = _worker_cfg(mod, capacity_fraction=0.75, gpus=4, num_workers=1024)
+    got = mod._capacity_target(_FakeCapacityBeaker(jobs=[]), worker, live=60)
+    assert got == 66, f"slots were treated as workers for a 4-GPU stage, got {got}"
 
 
 class _ReleaseBeaker:
@@ -590,33 +633,3 @@ def test_nothing_is_released_when_the_pool_is_within_target() -> None:
     beaker = _ReleaseBeaker(waiting)
     assert mod._release_surplus_workers(beaker, object(), prefix, surplus=0) == 0
     assert beaker.cancelled == []
-
-
-def test_capacity_converts_slots_to_workers_for_a_multi_gpu_stage() -> None:
-    """Free capacity is reported in GPU slots; the target is a worker count.
-
-    They coincide only while a worker holds one GPU. Without the conversion a stage
-    asking for 4 GPUs would launch four times the pool it is entitled to, which is
-    exactly the overshoot the ceiling exists to prevent.
-    """
-    import importlib
-
-    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    # live has to be high enough that the +32 growth cap does not mask the difference:
-    # from a standing start both the right and the wrong arithmetic clamp to the same
-    # step. 400 free slots at 4 GPUs each is 100 workers of room, plus 300 held is 400,
-    # and three quarters of that is 300. Treating slots as workers would give
-    # 0.75 * 700, which the growth cap would clamp to 332.
-    worker = _worker_cfg(mod, capacity_fraction=0.75, gpus=4, num_workers=1024)
-    got = mod._capacity_target(_FakeCapacityBeaker(available=400), worker, live=300)
-    assert got == 300, f"slots were treated as workers for a 4-GPU stage, got {got}"
-
-
-def test_capacity_is_unchanged_for_a_single_gpu_stage() -> None:
-    """The conversion must be a no-op at one GPU per worker, the common case."""
-    import importlib
-
-    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    worker = _worker_cfg(mod, capacity_fraction=0.5, gpus=1, num_workers=512)
-    got = mod._capacity_target(_FakeCapacityBeaker(available=100), worker, live=100)
-    assert got == 100, f"single-GPU sizing changed, got {got}"
