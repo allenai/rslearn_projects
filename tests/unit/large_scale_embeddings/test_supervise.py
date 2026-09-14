@@ -475,3 +475,118 @@ def test_a_static_pool_is_untouched_by_default() -> None:
     beaker = _FakeCapacityBeaker(available=900)
     assert mod._capacity_target(beaker, worker, live=4) == 128
     assert beaker.cluster.calls == [], "occupancy was read for a static pool"
+
+
+class _ReleaseBeaker:
+    """Just enough of the client for _release_surplus_workers."""
+
+    def __init__(self, workloads: list, fail: bool = False) -> None:
+        outer = self
+        self.cancelled: list = []
+
+        class _WorkloadSvc:
+            def list(self, **kwargs: object) -> list:
+                return workloads
+
+            # Annotated None, not list: inside this class body the name `list` is
+            # the method above, not the builtin.
+            def cancel(self, *w: object) -> None:
+                if fail:
+                    raise RuntimeError("beaker said no")
+                outer.cancelled.extend(w)
+
+        class _UserSvc:
+            def get(self) -> str:
+                return "me"
+
+        self.workload = _WorkloadSvc()
+        self.user = _UserSvc()
+
+
+def test_a_running_worker_is_never_cancelled_to_free_capacity() -> None:
+    """A running worker owns a claimed job and there is no intra-job checkpointing.
+
+    Killing one throws away up to a whole unit of work, and the claim it leaves behind
+    is not released for 90 minutes. Freeing capacity must never cost work: only workers
+    that have not started yet are fair game.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    running = [_FakeWorkload(f"{prefix}_r{i}", 1000 + i, status=4) for i in range(10)]
+    beaker = _ReleaseBeaker(running)
+    freed = mod._release_surplus_workers(beaker, object(), prefix, surplus=6)
+    assert freed == 0, "running workers were cancelled, losing claimed work"
+    assert beaker.cancelled == [], "a running worker was cancelled"
+
+
+def test_surplus_queued_workers_are_released() -> None:
+    """Declining to launch more is not enough; the surplus has to be given back."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    waiting = [_FakeWorkload(f"{prefix}_w{i}", 1000 + i, status=2) for i in range(10)]
+    beaker = _ReleaseBeaker(waiting)
+    assert mod._release_surplus_workers(beaker, object(), prefix, surplus=4) == 4
+    assert len(beaker.cancelled) == 4
+
+
+def test_the_newest_queued_workers_are_released_first() -> None:
+    """The tail of a launch burst is the surplus; the oldest are about to start."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    waiting = [_FakeWorkload(f"{prefix}_w{i}", 1000 + i, status=2) for i in range(6)]
+    beaker = _ReleaseBeaker(waiting)
+    mod._release_surplus_workers(beaker, object(), prefix, surplus=2)
+    names = sorted(w.experiment.name for w in beaker.cancelled)
+    assert names == [
+        f"{prefix}_w4",
+        f"{prefix}_w5",
+    ], f"released the wrong ones: {names}"
+
+
+def test_releasing_only_touches_this_runs_workers() -> None:
+    """The workspace is shared. Cancelling someone else's job would be unforgivable."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    others = [
+        _FakeWorkload(f"worker_someone-else_{i}", 2000 + i, status=2) for i in range(5)
+    ]
+    mine = [_FakeWorkload(f"{prefix}_w{i}", 1000 + i, status=2) for i in range(2)]
+    beaker = _ReleaseBeaker(others + mine)
+    mod._release_surplus_workers(beaker, object(), prefix, surplus=5)
+    names = {w.experiment.name for w in beaker.cancelled}
+    assert names == {f"{prefix}_w0", f"{prefix}_w1"}, f"cancelled foreign work: {names}"
+
+
+def test_a_failed_cancel_is_not_fatal() -> None:
+    """The pool being over target is not an emergency; the next cycle tries again."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    waiting = [_FakeWorkload(f"{prefix}_w{i}", 1000 + i, status=2) for i in range(4)]
+    assert (
+        mod._release_surplus_workers(
+            _ReleaseBeaker(waiting, fail=True), object(), prefix, 3
+        )
+        == 0
+    )
+
+
+def test_nothing_is_released_when_the_pool_is_within_target() -> None:
+    """No surplus, no cancellation."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    waiting = [_FakeWorkload(f"{prefix}_w{i}", 1000 + i, status=2) for i in range(4)]
+    beaker = _ReleaseBeaker(waiting)
+    assert mod._release_surplus_workers(beaker, object(), prefix, surplus=0) == 0
+    assert beaker.cancelled == []

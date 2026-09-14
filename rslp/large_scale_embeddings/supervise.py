@@ -554,6 +554,89 @@ def _capacity_target(
     return capped
 
 
+def _release_surplus_workers(
+    beaker: Any,
+    workspace: Any,
+    name_prefix: str,
+    surplus: int,
+) -> int:
+    """Give capacity back by cancelling workers that have not started yet.
+
+    Sizing the pool to the cluster is only half of staying inside an allocation. The
+    launch path only ever adds, so when the cluster fills and the target drops the
+    surplus would sit there until it aged out on idle timeout, which is 15 minutes of
+    holding slots someone else is waiting for.
+
+    Only workers still waiting to start are cancelled, newest first. A running worker
+    owns a claimed job and there is no intra-job checkpointing, so killing one throws
+    away up to a whole unit of work; a queued one holds nothing and costs nothing to
+    drop. That also targets exactly the case that matters, a burst of queued launches
+    that would otherwise land later and overshoot the allocation all at once.
+
+    The rest of the surplus is left to drain on its own: `target_pending` falls with the
+    target, so the queue stops being refilled to a depth the larger pool needs and the
+    extra workers idle out without losing work.
+
+    Args:
+        beaker: an open Beaker client.
+        workspace: the workspace to search.
+        name_prefix: the prefix from `worker_name_prefix`.
+        surplus: how many workers over target the pool is.
+
+    Returns:
+        the number of workers actually cancelled.
+    """
+    if surplus <= 0:
+        return 0
+
+    waiting = [
+        workload
+        for workload in beaker.workload.list(
+            workspace=workspace,
+            author=beaker.user.get(),
+            finalized=False,
+            workload_type=BeakerWorkloadType.experiment,
+            limit=WORKER_LIST_LIMIT,
+        )
+        if getattr(getattr(workload, "experiment", None), "name", "").startswith(
+            name_prefix
+        )
+        and getattr(workload, "status", None) in PENDING_WORKLOAD_STATUSES
+    ]
+    if not waiting:
+        logger.info(
+            "%d worker(s) over target but none are still waiting to start; "
+            "letting the surplus drain on idle timeout rather than killing work",
+            surplus,
+        )
+        return 0
+
+    # Newest first: the least likely to be moments away from starting, and the most
+    # likely to be the tail of a launch burst that has not landed yet.
+    waiting.sort(
+        key=lambda w: getattr(getattr(w, "experiment", None), "created", None)
+        and w.experiment.created.seconds
+        or 0,
+        reverse=True,
+    )
+    doomed = waiting[:surplus]
+    try:
+        beaker.workload.cancel(*doomed)
+    except Exception:
+        # Not fatal: the pool is over target, not broken, and the next cycle tries
+        # again. Launching is already capped by the target, so nothing compounds.
+        logger.exception("could not cancel %d surplus worker(s)", len(doomed))
+        return 0
+    logger.info(
+        "cancelled %d queued worker(s) to stay within the capacity target "
+        "(%d over, %d were still waiting to start)",
+        len(doomed),
+        surplus,
+        len(waiting),
+    )
+    return len(doomed)
+
+
 def _count_workers(
     beaker: Any,
     workspace: Any,
@@ -662,9 +745,10 @@ def _run_cycle(
             counts[name] = counts.get(name, 0) + 1
         now = time.time()
         in_flight = _in_flight_job_keys(entries, now, config.cycle.claim_stale_seconds)
+        workspace = beaker.workspace.get(DEFAULT_WORKSPACE)
         live = _count_workers(
             beaker,
-            beaker.workspace.get(DEFAULT_WORKSPACE),
+            workspace,
             worker_name_prefix(queue_name),
             queue=queue,
             now=now,
@@ -672,6 +756,17 @@ def _run_cycle(
         # Resolved here rather than from config because capacity sizing needs both the
         # live count and a Beaker client. Static runs get config.worker.num_workers.
         num_workers = _capacity_target(beaker, config.worker, live)
+        # Staying inside an allocation means giving capacity back, not just declining
+        # to take more. Only done when capacity sizing is on: a static pool sits a few
+        # over target routinely, because a worker that has exited stays unfinalized for
+        # a while, and cancelling on that would fight its own bookkeeping.
+        if config.worker.capacity_fraction is not None and live > num_workers:
+            live -= _release_surplus_workers(
+                beaker,
+                workspace,
+                worker_name_prefix(queue_name),
+                live - num_workers,
+            )
     # How deep to keep the queue. The default assumes long jobs. A stage of short jobs
     # needs much more: a worker drains its few entries and then idles until the next
     # cycle, making the cycle interval the throughput ceiling.
