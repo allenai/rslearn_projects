@@ -149,6 +149,15 @@ PENDING_WORKLOAD_STATUSES = frozenset({1, 2, 3, 10})  # submitted, queued, initi
 # last jobs are never claimed. Generous next to the heartbeat interval (seconds).
 WORKER_HEARTBEAT_STALE_SECONDS = int(timedelta(minutes=5).total_seconds())
 
+# Most a capacity-sized pool may grow in one cycle.
+#
+# Cluster availability swings by hundreds of slots as other teams' jobs land and finish,
+# and a controller that chased the spot value would answer a transient dip in occupancy
+# with a launch of that size. That is how 240 phantom requests reached the cluster once
+# already. Growth is capped and shrink is not: giving capacity back is always safe, and
+# a worker exits on its own once the queue runs dry.
+CAPACITY_MAX_STEP = 32
+
 # GDAL environment every worker needs, merged in below so it cannot be forgotten.
 #
 # GS_USER_PROJECT is required for the Landsat reads: rasterio_session_for_path honours
@@ -253,6 +262,18 @@ class WorkerConfig:
     datasets_token_secret: str = DEFAULT_DATASETS_TOKEN_SECRET
     aws_key_id_secret: str = DEFAULT_AWS_KEY_ID_SECRET
     aws_secret_key_secret: str = DEFAULT_AWS_SECRET_KEY_SECRET
+    # Fraction of the cluster's schedulable GPU slots to hold, or None to keep the pool
+    # fixed at num_workers. When set, num_workers becomes the ceiling rather than the
+    # target and the pool tracks what the cluster actually has free.
+    #
+    # Only honoured for a GPU stage. Beaker reports occupancy in GPU slots and nothing
+    # else -- there is no cpu or memory accounting at any level -- so for a stage that
+    # requests no GPU the number measures a resource the stage does not consume, and
+    # sizing against it would be sizing against noise.
+    capacity_fraction: float | None = None
+    # Floor for a capacity-sized pool, so a momentarily full cluster cannot park the run
+    # at zero workers and leave nothing to make progress when slots free up again.
+    capacity_min_workers: int = 8
 
     def __post_init__(self) -> None:
         """Merge the GDAL defaults so a caller cannot drop them by passing env_vars."""
@@ -472,6 +493,67 @@ def worker_name_prefix(queue_name: str) -> str:
     return "worker_" + queue_name.replace("/", "-")
 
 
+def _capacity_target(
+    beaker: Any,
+    worker: "WorkerConfig",
+    live: int,
+) -> int:
+    """How many workers to aim for, sized from what the cluster actually has free.
+
+    Returns `worker.num_workers` unchanged unless `capacity_fraction` is set and the
+    stage requests GPUs. Beaker reports occupancy only in GPU slots, so for a CPU-only
+    stage the reading describes a resource the stage never occupies and holding the
+    configured number is the honest behaviour.
+
+    The fraction is taken of free slots *plus* the pool already held. Free slots alone
+    would be a feedback loop pointing the wrong way: our own running workers are counted
+    as occupied, so scaling up shrinks the number the target is computed from and the
+    pool ratchets itself toward zero. What the run could hold is what it does hold plus
+    what nobody has taken.
+
+    Args:
+        beaker: an open Beaker client.
+        worker: the pool configuration.
+        live: workers currently starting or demonstrably alive.
+
+    Returns:
+        the number of workers to aim for this cycle.
+    """
+    if worker.capacity_fraction is None or worker.gpus <= 0:
+        return worker.num_workers
+
+    try:
+        available = sum(
+            beaker.cluster.get(
+                name, include_cluster_occupancy=True
+            ).cluster_occupancy.slot_counts.available
+            for name in worker.cluster
+        )
+    except Exception:
+        # Sizing blind is worse than not resizing: num_workers is a ceiling in this
+        # mode and may be far above what is free, so falling back to it could dump a
+        # launch onto a full cluster. Hold the pool where it is and try again next
+        # cycle, which costs one cycle of growth and nothing else.
+        logger.exception(
+            "could not read cluster occupancy; holding the pool at %d", live
+        )
+        return max(live, worker.capacity_min_workers)
+
+    target = int(worker.capacity_fraction * (available + live))
+    target = max(worker.capacity_min_workers, min(target, worker.num_workers))
+    # Shrinking is immediate, growing is capped. See CAPACITY_MAX_STEP.
+    capped = min(target, live + CAPACITY_MAX_STEP)
+    logger.info(
+        "capacity target %d (%d free slot(s) + %d live, fraction %.2f, ceiling %d)",
+        capped,
+        available,
+        live,
+        worker.capacity_fraction,
+        worker.num_workers,
+    )
+    return capped
+
+
 def _count_workers(
     beaker: Any,
     workspace: Any,
@@ -562,18 +644,14 @@ def _run_cycle(
     Args:
         config: the run configuration.
         result: shared int the remaining-job count is written to.
-        stats: shared int array (pending, claimed, completed, rejected, workers) the
+        stats: shared int array (pending, claimed, completed, rejected, workers,
+            worker_target) the
             cycle's queue and pool counts are written to. The parent logs them, since
             a cycle killed for overrunning its budget still has numbers worth keeping.
         launched: shared int the number of workers launched is written to, so the
             parent can carry it into the next cycle's liveness count.
     """
     queue_name = config.queue_name
-    num_workers = config.worker.num_workers
-    # How deep to keep the queue. The default assumes long jobs. A stage of short jobs
-    # needs much more: a worker drains its few entries and then idles until the next
-    # cycle, making the cycle interval the throughput ceiling.
-    target_pending = num_workers * config.cycle.pending_per_worker
 
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         queue = beaker.queue.get(queue_name)
@@ -591,6 +669,13 @@ def _run_cycle(
             queue=queue,
             now=now,
         )
+        # Resolved here rather than from config because capacity sizing needs both the
+        # live count and a Beaker client. Static runs get config.worker.num_workers.
+        num_workers = _capacity_target(beaker, config.worker, live)
+    # How deep to keep the queue. The default assumes long jobs. A stage of short jobs
+    # needs much more: a worker drains its few entries and then idles until the next
+    # cycle, making the cycle interval the throughput ceiling.
+    target_pending = num_workers * config.cycle.pending_per_worker
     pending = counts.get("PENDING", 0)
     if stats is not None:
         stats[0] = pending
@@ -598,6 +683,7 @@ def _run_cycle(
         stats[2] = counts.get("COMPLETED", 0)
         stats[3] = counts.get("REJECTED", 0)
         stats[4] = live
+        stats[5] = num_workers
     logger.info("queue=%s workers=%d", counts, live)
 
     # Recompute what is left directly from the completion markers. This doubles as the
@@ -913,7 +999,7 @@ def supervise(
         # type code makes it a Synchronized[int].
         result: Synchronized[int] = ctx.Value("i", _NO_RESULT)  # type: ignore[assignment]
         launched: Synchronized[int] = ctx.Value("i", 0)  # type: ignore[assignment]
-        stats = ctx.Array("i", 5)
+        stats = ctx.Array("i", 6)
         proc = ctx.Process(target=_run_cycle, args=(config, result, launched, stats))
         started = time.time()
         proc.start()
@@ -932,12 +1018,13 @@ def supervise(
                 proc.join(30)
         elapsed = int(time.time() - started)
         remaining = result.value
-        pending, claimed, completed, rejected, live = (
+        pending, claimed, completed, rejected, live, worker_target = (
             stats[0],
             stats[1],
             stats[2],
             stats[3],
             stats[4],
+            stats[5],
         )
         # The denominator is the first cycle's count: it is the only cycle that has
         # seen the whole job list, so later cycles can be expressed as a fraction.
@@ -961,7 +1048,12 @@ def supervise(
                 "queue/rejected": rejected,
                 "pool/workers": live,
                 "pool/launched": launched.value,
-                "pool/shortfall": config.worker.num_workers - live,
+                # Against the target the cycle actually resolved, which is not
+                # config.worker.num_workers once capacity sizing is on: there that
+                # value is a ceiling, and differencing against it would report a
+                # shortfall for a pool that is exactly the size it meant to be.
+                "pool/shortfall": worker_target - live,
+                "pool/target": worker_target,
             },
         )
 
