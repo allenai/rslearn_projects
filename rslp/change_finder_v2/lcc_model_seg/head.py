@@ -5,9 +5,10 @@ prediction outputs (per-pixel softmax) are identical, so ``SegmentationTask``
 metrics, ``process_output`` and prediction writing are unaffected. Only the loss
 aggregation differs.
 
-The balanced loss matches the ``lcc_model`` approach
-(``_balanced_transition_loss`` in ``rslp.change_finder_v2.lcc_model.model_20260618``):
-within each sample we average the cross-entropy within each present class, then
+The balanced loss follows the per-sample balancing used by the ``lcc_model``
+binary loss (``ChangeModel._balanced_binary_loss`` in
+``rslp.change_finder_v2.lcc_model.model``), generalized to many classes: within
+each sample we average the cross-entropy within each present class, then
 average across classes, then average across samples in the batch. This keeps a
 dominant class (e.g. ``no_change`` with 100 points) from swamping a rare
 transition class (e.g. 1 ``deforestation`` point).

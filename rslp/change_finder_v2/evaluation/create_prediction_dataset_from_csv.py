@@ -13,7 +13,8 @@ config_predict.json layers derive:
 After running this, materialize and predict as usual:
     rslearn dataset prepare     --root <ds> --workers 32
     rslearn dataset materialize --root <ds> --workers 128
-    rslearn model predict --config data/change_finder_v2/lcc_model/config_predict.yaml \
+    rslearn model predict \
+        --config data/change_finder_v2/lcc_model/config_bp_abs_season_qdrop_predict.yaml \
         --data.init_args.path=<ds>
 """
 

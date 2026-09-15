@@ -1,41 +1,66 @@
-"""DualPassChangeModel: two OlmoEarth forward passes + per-task conv decoders.
+"""LCC change model: two-pass OlmoEarth encoding with per-timestep token heads.
 
-Architecture:
-- Input: sentinel2_l2a with 20 timesteps (produced by FrequentOptionSampler)
-- Split into pass1 (first 10) and pass2 (last 10)
-- Shared OlmoEarth encoder processes each pass separately
-- Features concatenated along channel dim → (2*embedding_dim)ch at 1/patch_size res
-- Per-task convolutional decoder defined by configurable stages: each stage is a
-  list of (out_channels, kernel_size) convs, with a 2x upsample inserted before
-  every stage after the first and a 1x1 head producing the per-task logits.
+Input is ``sentinel2_l2a`` with ``num_timesteps`` images (16 quarterly + 4 frequent
+= 20, built by ``transforms.StackSampler``). The encoder runs with
+``token_pooling=False`` so per-timestep tokens are preserved.
+
+Encoding is always done in two passes: the stack is split at ``num_pass1`` into a
+historical half and a recent half, both halves are encoded in a single batched
+encoder call (``2B`` samples of ``num_pass1`` / ``num_timesteps - num_pass1``
+images), and the resulting tokens are concatenated back along time to give
+``(B, C, H, W, num_timesteps)`` features. Encoder attention is quadratic in the
+token count, so two 10-image passes cost about half the attention FLOPs of one
+20-image pass; the price is that tokens from the two halves do not attend to each
+other inside the encoder.
+
+Downstream heads all operate on the concatenated per-timestep tokens:
+
+- ``season_embed``: optionally add a month-of-year (sin/cos) embedding to each
+  timestep token so seasonal differences between mosaics are explainable by
+  covariates instead of being read as change.
+- ``temporal_depth > 0``: optionally contextualize the T tokens at each spatial
+  location with a small temporal transformer (optionally with a learned
+  positional embedding over the T chronological slots, ``temporal_pos_enc``).
+- ``temporal_aggregation``: how tokens are pooled over time into the feature
+  consumed by the pre/post change-category heads (and, in ``binary_mode="mean"``,
+  the binary/src/dst heads): ``"mean"``, ``"diff"`` (last minus first timestep),
+  or ``"attn"`` (learned attention pooling).
+- ``binary_mode``:
+    * ``"mean"``: the binary change head is a conv decoder on the pooled feature.
+    * ``"breakpoint"``: a learned changepoint scan. For every split t the
+      before-mean A_t and after-mean B_t are compared via |B_t - A_t| by a shared
+      scorer; evidence is max-pooled over splits. src is decoded from the
+      split-attention-weighted before feature and dst from the weighted after
+      feature, so "change" can only be expressed as before-vs-after dissimilarity
+      at some breakpoint and src/dst look at the correct sides of it.
+- start/end timestamps: a per-token linear logit over the T timesteps, upsampled
+  to full resolution, trained with cross-entropy at change pixels.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from rslearn.models.olmoearth_pretrain.model import OlmoEarth
-from rslearn.train.model_context import (
-    ModelContext,
-    ModelOutput,
-    RasterImage,
-    SampleMetadata,
-)
+from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 
-from .sliding_window import SlidingWindowEvalMixin
 from .timestamp_encoding import timestamps_to_days
-
-INPUT_KEY = "sentinel2_l2a"
-NUM_PASS1 = 10
-DEBUG_PRINT_BINARY_CHANGE_ERRORS = False
-DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_POSITIVE = 0.9
-DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_NEGATIVE = 0.5
+from .transforms import INPUT_KEY
 
 # A stage is a list of (out_channels, kernel_size) conv specs.
 StageSpec = list[tuple[int, int]]
+
+# Fixed logit for the (never-supervised) nodata channel of the breakpoint binary head.
+NODATA_LOGIT = -10.0
+
+# Hidden width of the shared breakpoint split scorer and the conv stages of the
+# 1-channel evidence decoder (which must upsample as many times as decoder_stages).
+BREAKPOINT_HIDDEN = 256
+BREAKPOINT_EVIDENCE_STAGES: list[StageSpec] = [[(256, 3)], [(128, 3)], [(64, 3)]]
 
 
 def _make_decoder(
@@ -66,18 +91,8 @@ def _make_decoder(
     return nn.Sequential(*layers)
 
 
-class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
-    """Two-pass encoder with per-task convolutional decoders.
-
-    The model expects ``sentinel2_l2a`` with 20 timesteps. It splits into
-    pass1 (first 10) and pass2 (last 10), runs the shared OlmoEarth encoder
-    on each, concatenates features, then runs per-task conv decoders that
-    upsample the 1/patch_size features back to full resolution. The decoder
-    shape (channels, conv layers, and number of upsamples) is set by
-    ``decoder_stages`` and must be configured to match the encoder: the number
-    of upsamples (``len(decoder_stages) - 1``) should equal ``log2(patch_size)``
-    and ``embedding_dim`` should match the encoder's embedding size.
-    """
+class ChangeModel(nn.Module):
+    """Two-pass OlmoEarth encoder with per-task decoders over per-timestep tokens."""
 
     def __init__(
         self,
@@ -85,181 +100,367 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
         num_classes_binary: int = 3,
         num_classes_src: int = 13,
         num_classes_dst: int = 13,
-        num_classes_pre_change: int = 7,
+        num_classes_pre_change: int = 11,
         num_classes_post_change: int = 15,
-        num_classes_same_change: int = 6,
-        num_timestamps: int = 20,
+        num_timesteps: int = 20,
+        num_pass1: int = 10,
         embedding_dim: int = 768,
         decoder_stages: list[StageSpec] | None = None,
-        binary_loss_weight: float = 1.0,
-        num_passes: int = 2,
-        num_pass1: int = NUM_PASS1,
-        eval_crop_size: int | None = None,
-        eval_overlap: int = 0,
+        binary_loss_weight: float = 2.0,
+        binary_mode: str = "mean",
+        temporal_aggregation: str = "mean",
+        season_embed: bool = False,
+        temporal_depth: int = 0,
+        temporal_heads: int = 8,
+        dim_feedforward: int = 2048,
+        temporal_pos_enc: bool = False,
     ):
-        """Initialize the LCC multi-task model.
+        """Initialize the LCC change model.
 
         Args:
-            encoder: the shared OlmoEarth encoder.
-            num_classes_binary: number of classes for the binary change task.
+            encoder: the OlmoEarth encoder. Must be configured with
+                ``token_pooling=False`` so per-token features are returned.
+            num_classes_binary: number of classes for the binary change task
+                (3: nodata/no_change/change).
             num_classes_src: number of source land cover classes.
             num_classes_dst: number of destination land cover classes.
-            num_timestamps: number of timestamp outputs.
-            embedding_dim: per-pass encoder embedding size. The decoder input is
-                ``2 * embedding_dim`` (the two passes concatenated). Must match the
-                encoder (e.g. 768 for BASE, 192 for TINY, 128 for NANO).
-            decoder_stages: per-task decoder definition (see ``_make_decoder``). The
-                number of 2x upsamples is ``len(decoder_stages) - 1`` and must equal
-                ``log2(encoder.patch_size)`` so outputs are full resolution. Required;
-                must be specified in the model config.
-            binary_loss_weight: multiplier applied to the binary change loss before
-                it is summed with the other task losses.
-            num_passes: number of encoder passes (1 or 2). With 1, all images are
-                encoded in a single pass and the decoder input is ``embedding_dim``.
-                With 2, the stack is split at ``num_pass1`` into a historical and a
-                recent pass whose features are concatenated (``2 * embedding_dim``).
-            num_pass1: number of leading images in pass1 (only used when
-                ``num_passes == 2``); the remaining images form pass2.
-            eval_crop_size: if set, in eval mode the model tiles inputs larger
-                than this size into overlapping ``eval_crop_size`` crops, runs
-                each through the normal forward, and stitches the predictions
-                back together (see ``SlidingWindowEvalMixin``). Used to evaluate
-                every config over an identical window for comparable metrics.
-            eval_overlap: pixels shared between adjacent sliding-window tiles.
+            num_classes_pre_change: number of pre_change_category classes
+                (including nodata and "none", and the merged same_change
+                categories; see tasks.MERGED_PRE_SAME_CATEGORY_NAMES).
+            num_classes_post_change: number of post_change_category classes
+                (including nodata and "none").
+            num_timesteps: number of input timesteps in ``sentinel2_l2a`` (20).
+            num_pass1: number of leading images encoded in the first pass; the
+                remaining ``num_timesteps - num_pass1`` form the second pass. Equal
+                halves are fastest (unequal halves force the encoder's masked
+                path).
+            embedding_dim: per-token encoder embedding size (768 for BASE).
+            decoder_stages: per-task conv decoder definition (see _make_decoder).
+                The number of 2x upsamples (len - 1) must equal log2(patch_size)
+                so outputs are full resolution. Required.
+            binary_loss_weight: multiplier applied to the binary change loss.
+            binary_mode: ``"mean"`` or ``"breakpoint"`` (see module docstring).
+            temporal_aggregation: ``"mean"``, ``"diff"``, or ``"attn"`` pooling of
+                the per-timestep tokens into the segmentation feature.
+            season_embed: add month-of-year embeddings to the tokens.
+            temporal_depth: number of temporal transformer layers (0 disables).
+            temporal_heads: attention heads of the temporal transformer.
+            dim_feedforward: FFN hidden size of the temporal transformer.
+            temporal_pos_enc: add a learned positional embedding over the T
+                chronological slots before the temporal transformer. Requires
+                ``temporal_depth > 0``.
         """
         super().__init__()
-        if num_passes not in (1, 2):
-            raise ValueError(f"num_passes must be 1 or 2, got {num_passes}")
-        self.eval_crop_size = eval_crop_size
-        self.eval_overlap = eval_overlap
-        self.encoder = encoder
-        self.embedding_dim = embedding_dim
-        self.num_timestamps = num_timestamps
-        self.binary_loss_weight = binary_loss_weight
-        self.num_passes = num_passes
-        self.num_pass1 = num_pass1
-
         if decoder_stages is None:
             raise ValueError("decoder_stages must be specified")
+        if not 0 < num_pass1 < num_timesteps:
+            raise ValueError(
+                f"num_pass1 must be in (0, {num_timesteps}), got {num_pass1}"
+            )
+        if binary_mode not in ("mean", "breakpoint"):
+            raise ValueError(f"unknown binary_mode {binary_mode!r}")
+        if temporal_aggregation not in ("mean", "diff", "attn"):
+            raise ValueError(f"unknown temporal_aggregation {temporal_aggregation!r}")
+        if temporal_pos_enc and temporal_depth <= 0:
+            raise ValueError("temporal_pos_enc requires temporal_depth > 0")
 
-        concat_dim = embedding_dim * num_passes
-
-        self.decoder_binary = _make_decoder(
-            concat_dim, decoder_stages, num_classes_binary
-        )
-        self.decoder_src = _make_decoder(concat_dim, decoder_stages, num_classes_src)
-        self.decoder_dst = _make_decoder(concat_dim, decoder_stages, num_classes_dst)
-        self.decoder_pre_change = _make_decoder(
-            concat_dim, decoder_stages, num_classes_pre_change
-        )
-        self.decoder_post_change = _make_decoder(
-            concat_dim, decoder_stages, num_classes_post_change
-        )
-        self.decoder_same_change = _make_decoder(
-            concat_dim, decoder_stages, num_classes_same_change
-        )
-        self.decoder_timestamps = _make_decoder(
-            concat_dim, decoder_stages, num_timestamps
-        )
+        self.encoder = encoder
+        self.embedding_dim = embedding_dim
+        self.num_timesteps = num_timesteps
+        self.num_pass1 = num_pass1
+        self.binary_loss_weight = binary_loss_weight
+        self.binary_mode = binary_mode
+        self.temporal_aggregation = temporal_aggregation
+        self.season_embed = season_embed
 
         self.num_classes_binary = num_classes_binary
         self.num_classes_src = num_classes_src
         self.num_classes_dst = num_classes_dst
         self.num_classes_pre_change = num_classes_pre_change
         self.num_classes_post_change = num_classes_post_change
-        self.num_classes_same_change = num_classes_same_change
 
-    def _run_encoder(
-        self, raster_images: list[RasterImage], metadatas: list[SampleMetadata]
-    ) -> torch.Tensor:
-        """Run OlmoEarth on a list of RasterImages, return BCHW feature tensor."""
-        inputs = [{"sentinel2_l2a": img} for img in raster_images]
-        sub_context = ModelContext(inputs=inputs, metadatas=metadatas)
-        feature_maps = self.encoder(sub_context)
-        return feature_maps.feature_maps[0]
+        # Optional month-of-year embedding added to every token.
+        if season_embed:
+            self.month_mlp = nn.Sequential(
+                nn.Linear(2, embedding_dim // 4),
+                nn.ReLU(inplace=True),
+                nn.Linear(embedding_dim // 4, embedding_dim),
+            )
 
-    def _combine_features(
-        self, feat1: torch.Tensor, feat2: torch.Tensor
-    ) -> torch.Tensor:
-        """Combine the two encoder-pass features into the decoder input.
+        # Optional temporal transformer over the T tokens at each spatial location.
+        if temporal_depth > 0:
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=embedding_dim,
+                nhead=temporal_heads,
+                dim_feedforward=dim_feedforward,
+                batch_first=True,
+            )
+            self.temporal_encoder: nn.TransformerEncoder | None = nn.TransformerEncoder(
+                encoder_layer, num_layers=temporal_depth
+            )
+            if temporal_pos_enc:
+                self.temporal_pos: nn.Parameter | None = nn.Parameter(
+                    torch.randn(1, num_timesteps, embedding_dim) * 0.02
+                )
+            else:
+                self.temporal_pos = None
+        else:
+            self.temporal_encoder = None
+            self.temporal_pos = None
 
-        Default concatenates along the channel dim, giving ``2 * embedding_dim``
-        channels. Subclasses may override to change the decoder input (e.g. add a
-        difference channel group or apply cross-pass attention); the decoders must
-        be built with a matching input dimension.
+        # Learned attention pooling over time (temporal_aggregation="attn").
+        if temporal_aggregation == "attn":
+            self.time_pool = nn.Linear(embedding_dim, 1)
+
+        # Binary change pathway.
+        if binary_mode == "mean":
+            self.decoder_binary = _make_decoder(
+                embedding_dim, decoder_stages, num_classes_binary
+            )
+        else:
+            # Shared scorer applied to |after - before| at every split.
+            self.split_proj = nn.Sequential(
+                nn.Conv2d(embedding_dim, BREAKPOINT_HIDDEN, kernel_size=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(BREAKPOINT_HIDDEN, BREAKPOINT_HIDDEN, kernel_size=1),
+                nn.ReLU(inplace=True),
+            )
+            # Scalar per-split score for the split-attention over breakpoints
+            # (used to pick the before/after aggregates for src/dst).
+            self.split_score = nn.Conv2d(BREAKPOINT_HIDDEN, 1, kernel_size=1)
+            if len(BREAKPOINT_EVIDENCE_STAGES) != len(decoder_stages):
+                raise ValueError(
+                    "decoder_stages must have "
+                    f"{len(BREAKPOINT_EVIDENCE_STAGES)} stages for binary_mode="
+                    f"'breakpoint', got {len(decoder_stages)}"
+                )
+            self.evidence_decoder = _make_decoder(
+                BREAKPOINT_HIDDEN, BREAKPOINT_EVIDENCE_STAGES, 1
+            )
+
+        # Segmentation decoders on the (pooled or breakpoint-weighted) feature.
+        self.decoder_src = _make_decoder(embedding_dim, decoder_stages, num_classes_src)
+        self.decoder_dst = _make_decoder(embedding_dim, decoder_stages, num_classes_dst)
+        self.decoder_pre_change = _make_decoder(
+            embedding_dim, decoder_stages, num_classes_pre_change
+        )
+        self.decoder_post_change = _make_decoder(
+            embedding_dim, decoder_stages, num_classes_post_change
+        )
+
+        # Per-token timestamp heads producing one logit per timestep.
+        self.start_head = nn.Linear(embedding_dim, 1)
+        self.end_head = nn.Linear(embedding_dim, 1)
+
+    # ------------------------------------------------------------------
+    # Feature extraction
+    # ------------------------------------------------------------------
+
+    def _per_timestep_features(self, context: ModelContext) -> torch.Tensor:
+        """Encode the stack in two passes and return (B, C, H, W, T) tokens.
+
+        Each sample's ``sentinel2_l2a`` is split at ``num_pass1``; the historical
+        halves of all samples followed by the recent halves of all samples are
+        encoded in one batched encoder call, and the per-timestep tokens are
+        concatenated back along time in chronological order.
         """
-        return torch.cat([feat1, feat2], dim=1)
+        n = self.num_pass1
+        pass1_inputs: list[dict[str, Any]] = []
+        pass2_inputs: list[dict[str, Any]] = []
+        for inp in context.inputs:
+            image: RasterImage = inp[INPUT_KEY]
+            if image.image.shape[1] != self.num_timesteps:
+                raise ValueError(
+                    f"expected {self.num_timesteps} timesteps in {INPUT_KEY}, got "
+                    f"{image.image.shape[1]}"
+                )
+            ts = image.timestamps
+            pass1_inputs.append(
+                {
+                    INPUT_KEY: RasterImage(
+                        image=image.image[:, :n], timestamps=ts[:n] if ts else None
+                    )
+                }
+            )
+            pass2_inputs.append(
+                {
+                    INPUT_KEY: RasterImage(
+                        image=image.image[:, n:], timestamps=ts[n:] if ts else None
+                    )
+                }
+            )
 
-    def _forward_core(
+        batch_size = len(context.inputs)
+        sub_context = ModelContext(
+            inputs=pass1_inputs + pass2_inputs,
+            metadatas=list(context.metadatas) * 2,
+        )
+        tokens = self.encoder(sub_context).feature_maps[0]  # (2B, C, H, W, T_max)
+        # Preserve anything the encoder recorded (e.g. tokens-in-batch).
+        context.context_dict.update(sub_context.context_dict)
+
+        # With unequal halves the encoder pads the shorter half with missing
+        # tokens at the end, so slice each half to its real length.
+        feat1 = tokens[:batch_size, ..., :n]
+        feat2 = tokens[batch_size:, ..., : self.num_timesteps - n]
+        return torch.cat([feat1, feat2], dim=-1)
+
+    def _month_embedding(
+        self, context: ModelContext, T: int, ref: torch.Tensor
+    ) -> torch.Tensor:
+        """Build (B, C, 1, 1, T) month-of-year embeddings from input timestamps."""
+        rows = []
+        for input_dict in context.inputs:
+            image = input_dict.get(INPUT_KEY)
+            feats = torch.zeros(T, 2)
+            if isinstance(image, RasterImage) and image.timestamps is not None:
+                for t, (t0, t1) in enumerate(image.timestamps[:T]):
+                    mid = t0 + (t1 - t0) / 2
+                    frac = (mid.month - 1 + (mid.day - 1) / 31.0) / 12.0
+                    feats[t, 0] = math.sin(2 * math.pi * frac)
+                    feats[t, 1] = math.cos(2 * math.pi * frac)
+            rows.append(feats)
+        months = torch.stack(rows, dim=0).to(device=ref.device, dtype=ref.dtype)
+        emb = self.month_mlp(months)  # (B, T, C)
+        return emb.permute(0, 2, 1)[:, :, None, None, :]  # (B, C, 1, 1, T)
+
+    def _apply_temporal_encoder(self, feature: torch.Tensor) -> torch.Tensor:
+        """Run the temporal transformer over the T tokens at each location."""
+        assert self.temporal_encoder is not None
+        b, c, h, w, t = feature.shape
+        x = feature.permute(0, 2, 3, 4, 1).reshape(b * h * w, t, c)
+        if self.temporal_pos is not None:
+            x = x + self.temporal_pos
+        x = self.temporal_encoder(x)
+        return x.reshape(b, h, w, t, c).permute(0, 4, 1, 2, 3)
+
+    def _pool_time(self, feature: torch.Tensor) -> torch.Tensor:
+        """Aggregate (B, C, H, W, T) tokens over time -> (B, C, H, W)."""
+        if self.temporal_aggregation == "diff":
+            return feature[..., -1] - feature[..., 0]
+        if self.temporal_aggregation == "attn":
+            b, c, h, w, t = feature.shape
+            tokens = feature.permute(0, 2, 3, 4, 1).reshape(b * h * w, t, c)
+            weights = torch.softmax(self.time_pool(tokens), dim=1)  # (N, T, 1)
+            pooled = (tokens * weights).sum(dim=1)  # (N, C)
+            return pooled.reshape(b, h, w, c).permute(0, 3, 1, 2)
+        return feature.mean(dim=-1)
+
+    def _breakpoint_features(
+        self, feature: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Changepoint scan over the T timesteps.
+
+        Args:
+            feature: (B, C, H, W, T) per-timestep tokens.
+
+        Returns:
+            (evidence_feat, src_feat, dst_feat): max-pooled per-split hidden
+            features (B, hidden, H, W) and the split-attention-weighted
+            before/after aggregates (B, C, H, W).
+        """
+        B, C, H, W, T = feature.shape
+        S = T - 1
+        cums = feature.cumsum(dim=-1)  # (B, C, H, W, T)
+        total = cums[..., -1:]
+        counts = torch.arange(1, T, device=feature.device, dtype=feature.dtype)
+        before = cums[..., :-1] / counts  # (B, C, H, W, S) mean of images [0, t]
+        after = (total - cums[..., :-1]) / (T - counts)  # mean of images (t, T)
+        con = (after - before).abs()
+
+        # Shared scorer over all splits: fold S into the batch dimension.
+        con = con.permute(0, 4, 1, 2, 3).reshape(B * S, C, H, W)
+        hidden = self.split_proj(con)  # (B*S, hidden, H, W)
+        scores = self.split_score(hidden)  # (B*S, 1, H, W)
+        hidden = hidden.reshape(B, S, -1, H, W)
+        scores = scores.reshape(B, S, H, W)
+
+        evidence_feat = hidden.max(dim=1).values
+        w = F.softmax(scores, dim=1)  # (B, S, H, W)
+        w = w.permute(0, 2, 3, 1).unsqueeze(1)  # (B, 1, H, W, S)
+        src_feat = (before * w).sum(dim=-1)
+        dst_feat = (after * w).sum(dim=-1)
+        return evidence_feat, src_feat, dst_feat
+
+    # ------------------------------------------------------------------
+    # Forward
+    # ------------------------------------------------------------------
+
+    def forward(
         self,
         context: ModelContext,
         targets: list[dict[str, Any]] | None = None,
     ) -> ModelOutput:
-        """Forward pass with two encoder calls and per-task decoders.
+        """Forward pass.
 
         Args:
-            context: ModelContext with ``sentinel2_l2a`` RasterImage (20 timesteps).
-            targets: optional target dicts with "binary", "src", "dst", "timestamps" keys.
+            context: ModelContext with ``sentinel2_l2a`` RasterImage (num_timesteps).
+            targets: optional target dicts with "binary", "src", "dst",
+                "pre_change", "post_change", "timestamps" keys.
 
         Returns:
             ModelOutput with per-task outputs and losses.
         """
-        if self.num_passes == 1:
-            full_images: list[RasterImage] = [inp[INPUT_KEY] for inp in context.inputs]
-            concat = self._run_encoder(full_images, context.metadatas)
+        feature = self._per_timestep_features(context)  # (B, C, H, W, T)
+
+        if self.season_embed:
+            feature = feature + self._month_embedding(
+                context, feature.shape[-1], feature
+            )
+        if self.temporal_encoder is not None:
+            feature = self._apply_temporal_encoder(feature)
+
+        pooled = self._pool_time(feature)  # (B, C, H, W)
+
+        if self.binary_mode == "mean":
+            logits_binary = self.decoder_binary(pooled)
+            src_in = pooled
+            dst_in = pooled
         else:
-            pass1_images: list[RasterImage] = []
-            pass2_images: list[RasterImage] = []
-            for inp in context.inputs:
-                combined: RasterImage = inp[INPUT_KEY]
-                p1_img = combined.image[:, : self.num_pass1, :, :]
-                p2_img = combined.image[:, self.num_pass1 :, :, :]
-                p1_ts = (
-                    combined.timestamps[: self.num_pass1]
-                    if combined.timestamps
-                    else None
-                )
-                p2_ts = (
-                    combined.timestamps[self.num_pass1 :]
-                    if combined.timestamps
-                    else None
-                )
-                pass1_images.append(RasterImage(image=p1_img, timestamps=p1_ts))
-                pass2_images.append(RasterImage(image=p2_img, timestamps=p2_ts))
+            bp_feat, src_in, dst_in = self._breakpoint_features(feature)
+            evidence = self.evidence_decoder(bp_feat)  # (B, 1, H', W')
+            logits_binary = torch.cat(
+                [
+                    torch.full_like(evidence, NODATA_LOGIT),
+                    torch.zeros_like(evidence),
+                    evidence,
+                ],
+                dim=1,
+            )
 
-            feat1 = self._run_encoder(pass1_images, context.metadatas)
-            feat2 = self._run_encoder(pass2_images, context.metadatas)
-
-            # Combine the two passes into the decoder input. Default concatenates
-            # along the channel dim: (B, 2*embedding_dim, H/4, W/4). Subclasses may
-            # override.
-            concat = self._combine_features(feat1, feat2)
-
-        # Per-task decoders: (B, 1536, H/4, W/4) -> (B, C, H, W)
-        logits_binary = self.decoder_binary(concat)
-        logits_src = self.decoder_src(concat)
-        logits_dst = self.decoder_dst(concat)
+        logits_src = self.decoder_src(src_in)
+        logits_dst = self.decoder_dst(dst_in)
         change_logits = {
-            "pre_change": self.decoder_pre_change(concat),
-            "post_change": self.decoder_post_change(concat),
-            "same_change": self.decoder_same_change(concat),
+            "pre_change": self.decoder_pre_change(pooled),
+            "post_change": self.decoder_post_change(pooled),
         }
-        logits_ts = self.decoder_timestamps(concat)
+
+        # Per-token timestamp logits over T, upsampled to full resolution.
+        xt = feature.permute(0, 2, 3, 4, 1)  # (B, H, W, T, C)
+        start_logits = self.start_head(xt).squeeze(-1).permute(0, 3, 1, 2)  # (B,T,H,W)
+        end_logits = self.end_head(xt).squeeze(-1).permute(0, 3, 1, 2)
+        scale = self.encoder.patch_size
+        start_logits = F.interpolate(
+            start_logits, scale_factor=scale, mode="bilinear", align_corners=False
+        )
+        end_logits = F.interpolate(
+            end_logits, scale_factor=scale, mode="bilinear", align_corners=False
+        )
 
         losses: dict[str, torch.Tensor] = {}
-        outputs: list[dict[str, Any]] = [{} for _ in context.inputs]
-
         if targets is not None:
             losses["binary_cls"] = self.binary_loss_weight * self._balanced_binary_loss(
                 logits_binary, targets
             )
             losses["src_cls"] = self._seg_loss(logits_src, targets, "src")
             losses["dst_cls"] = self._seg_loss(logits_dst, targets, "dst")
-            for name, logits_cat in change_logits.items():
+            for name, logits in change_logits.items():
                 if name in targets[0]:
-                    losses[f"{name}_cls"] = self._seg_loss(logits_cat, targets, name)
-            losses["timestamps_bce"] = self._timestamp_loss(logits_ts, targets)
+                    losses[f"{name}_cls"] = self._seg_loss(logits, targets, name)
+            losses["start_ce"] = self._timestamp_ce(start_logits, targets, "start")
+            losses["end_ce"] = self._timestamp_ce(end_logits, targets, "end")
 
+        outputs: list[dict[str, Any]] = []
         for i in range(len(context.inputs)):
             ts_image = context.inputs[i].get(INPUT_KEY)
             timestep_days = (
@@ -267,105 +468,28 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
                 if isinstance(ts_image, RasterImage) and ts_image.timestamps is not None
                 else None
             )
-            outputs[i] = {
-                "binary": F.softmax(logits_binary[i], dim=0),
-                "src": F.softmax(logits_src[i], dim=0),
-                "dst": F.softmax(logits_dst[i], dim=0),
-                **{
-                    name: F.softmax(change_logits[name][i], dim=0)
-                    for name in change_logits
-                },
-                "timestamps": torch.sigmoid(logits_ts[i]),
-                "timestep_days": timestep_days,
-            }
-
-        if (
-            DEBUG_PRINT_BINARY_CHANGE_ERRORS
-            and targets is not None
-            and not self.training
-        ):
-            self._debug_print_binary_change_errors(context, targets, outputs)
+            outputs.append(
+                {
+                    "binary": F.softmax(logits_binary[i], dim=0),
+                    "src": F.softmax(logits_src[i], dim=0),
+                    "dst": F.softmax(logits_dst[i], dim=0),
+                    **{
+                        name: F.softmax(change_logits[name][i], dim=0)
+                        for name in change_logits
+                    },
+                    "timestamps": {
+                        "start": F.softmax(start_logits[i], dim=0),
+                        "end": F.softmax(end_logits[i], dim=0),
+                    },
+                    "timestep_days": timestep_days,
+                }
+            )
 
         return ModelOutput(outputs=outputs, loss_dict=losses)
 
-    def _debug_print_binary_change_errors(
-        self,
-        context: ModelContext,
-        targets: list[dict[str, Any]],
-        outputs: list[dict[str, Any]],
-    ) -> None:
-        """Print windows with binary change mistakes at the debug threshold."""
-        for output, target, metadata in zip(
-            outputs, targets, context.metadatas, strict=True
-        ):
-            labels = target["binary"]["classes"].get_hw_tensor().long()
-            valid = target["binary"]["valid"].get_hw_tensor() > 0
-            binary_probs = output["binary"]
-            change_prob = binary_probs[2]
-
-            positive = valid & (labels == 2)
-            negative = valid & (labels == 1)
-            false_negative = positive & ~(
-                change_prob >= DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_NEGATIVE
-            )
-            false_positive = negative & (
-                change_prob >= DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_POSITIVE
-            )
-
-            num_false_negative = int(false_negative.sum().item())
-            num_false_positive = int(false_positive.sum().item())
-            if num_false_negative == 0 and num_false_positive == 0:
-                continue
-
-            num_positive = int(positive.sum().item())
-            num_negative = int(negative.sum().item())
-            binary_probs_cpu = binary_probs.detach().cpu()
-            crop_x0, crop_y0, _, _ = metadata.crop_bounds
-
-            def sample_error_pixel(mask: torch.Tensor) -> dict[str, Any] | None:
-                error_pixels = mask.nonzero(as_tuple=False)
-                if error_pixels.shape[0] == 0:
-                    return None
-                sample_idx = int(
-                    torch.randint(
-                        error_pixels.shape[0],
-                        (1,),
-                        device=error_pixels.device,
-                    ).item()
-                )
-                row, col = error_pixels[sample_idx].detach().cpu().tolist()
-                row = int(row)
-                col = int(col)
-                return {
-                    "row": row,
-                    "col": col,
-                    "window_x": crop_x0 + col,
-                    "window_y": crop_y0 + row,
-                    "change_prob": round(float(binary_probs_cpu[2, row, col]), 6),
-                    "binary_probs": [
-                        round(float(prob), 6)
-                        for prob in binary_probs_cpu[:, row, col].tolist()
-                    ],
-                }
-
-            sample_false_negative = sample_error_pixel(false_negative)
-            sample_false_positive = sample_error_pixel(false_positive)
-
-            print(
-                "[LCC binary error debug] "
-                f"window={metadata.window_group}/{metadata.window_name} "
-                f"crop={metadata.crop_idx + 1}/{metadata.num_crops_in_window} "
-                f"crop_bounds={metadata.crop_bounds} "
-                f"positive_pixels={num_positive} "
-                f"negative_pixels={num_negative} "
-                f"false_negative_pixels={num_false_negative} "
-                f"false_positive_pixels={num_false_positive} "
-                f"threshold_fp={DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_POSITIVE} "
-                f"threshold_fp={DEBUG_BINARY_CHANGE_THRESHOLD_FALSE_NEGATIVE} "
-                f"sample_false_negative={sample_false_negative} "
-                f"sample_false_positive={sample_false_positive}",
-                flush=True,
-            )
+    # ------------------------------------------------------------------
+    # Losses
+    # ------------------------------------------------------------------
 
     def _seg_loss(
         self,
@@ -396,10 +520,7 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
 
         For each sample, the loss is the mean over its change points plus the
         mean over its no-change points (each group divided by its own point
-        count). If a sample only has one of the two groups, its loss is just the
-        mean over that group. Every sample with any valid points contributes
-        equally to the final loss (mean over such samples), regardless of how
-        many points it has.
+        count). Every sample with any valid points contributes equally.
         """
         labels = torch.stack(
             [t["binary"]["classes"].get_hw_tensor() for t in targets], dim=0
@@ -425,26 +546,24 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
         pos_mean = (loss_flat * change_mask).sum(dim=1) / pos_count.clamp(min=1)
         neg_mean = (loss_flat * nochange_mask).sum(dim=1) / neg_count.clamp(min=1)
 
-        # Per-sample loss: sum of whichever group means are present. Where a
-        # group is absent its mean is zeroed out so it does not contribute.
         sample_loss = pos_mean * has_pos + neg_mean * has_neg  # (B,)
         has_any = has_pos | has_neg
         return sample_loss[has_any].mean()
 
-    def _timestamp_loss(
+    def _timestamp_ce(
         self,
         logits: torch.Tensor,
         targets: list[dict[str, Any]],
+        key: str,
     ) -> torch.Tensor:
-        """Compute masked BCE loss for timestamp binary classifications.
+        """Masked cross-entropy over the T timesteps for the start/end boundary.
 
-        targets["timestamps"]["classes"] is a RasterImage with shape (num_ts, 1, H, W)
-        targets["timestamps"]["valid"] is a RasterImage with shape (1, 1, H, W)
+        ``logits`` is (B, T, H, W); the target is the per-pixel timestep index
+        (B, H, W). Loss is averaged over valid (change) pixels only.
         """
-        # classes: (B, num_ts, H, W) - multi-channel binary targets
-        classes = torch.stack(
-            [t["timestamps"]["classes"].image[:, 0, :, :] for t in targets], dim=0
-        ).float()
+        idx = torch.stack(
+            [t["timestamps"][key].get_hw_tensor() for t in targets], dim=0
+        ).long()
         valid = torch.stack(
             [t["timestamps"]["valid"].get_hw_tensor() for t in targets], dim=0
         ).bool()
@@ -452,8 +571,5 @@ class DualPassChangeModel(SlidingWindowEvalMixin, nn.Module):
         if not valid.any():
             return torch.tensor(0.0, device=logits.device, requires_grad=True)
 
-        # Expand valid mask to match timestamp channels
-        valid_expanded = valid.unsqueeze(1).expand_as(logits)
-
-        loss = F.binary_cross_entropy_with_logits(logits, classes, reduction="none")
-        return (loss * valid_expanded).sum() / valid_expanded.sum()
+        loss = F.cross_entropy(logits, idx, reduction="none")  # (B, H, W)
+        return (loss * valid).sum() / valid.sum()

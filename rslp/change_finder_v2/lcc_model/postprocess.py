@@ -99,7 +99,7 @@ LC_CLASS_NAMES = [
 # output_change layer in config.json (class layout [nodata, none, <options...>]).
 # The pre_change head is the merged pre+same head: the former same_change
 # categories are appended after the pre categories (see
-# SinglePassMultiTask merge_same_into_pre).
+# tasks.LCCMultiTask / MERGED_PRE_SAME_CATEGORY_NAMES).
 PRE_CHANGE_BANDS = [
     "pre_change_nodata",
     "pre_change_none",

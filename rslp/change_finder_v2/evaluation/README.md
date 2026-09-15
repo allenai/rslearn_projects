@@ -95,7 +95,7 @@ python -m rslp.change_finder_v2.evaluation.create_prediction_dataset_from_csv \
 rslearn dataset prepare     --root "$EVAL_DS" --workers 32
 rslearn dataset materialize --root "$EVAL_DS" --workers 128
 rslearn model predict \
-    --config data/change_finder_v2/lcc_model/config_predict.yaml \
+    --config data/change_finder_v2/lcc_model/config_bp_abs_season_qdrop_predict.yaml \
     --data.init_args.path="$EVAL_DS"
 ```
 

@@ -2,7 +2,7 @@ model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     model:
-      class_path: rslp.change_finder_v2.lcc_model.model_fable_20260710.FableChangeModel
+      class_path: rslp.change_finder_v2.lcc_model.model.ChangeModel
       init_args:
         encoder:
           class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
@@ -16,8 +16,8 @@ model:
         num_classes_dst: 13
         num_classes_pre_change: 11
         num_classes_post_change: 15
-        num_classes_same_change: null
         num_timesteps: 20
+        num_pass1: 10
         embedding_dim: 768
         decoder_stages:
           - [[768, 3]]
@@ -25,7 +25,6 @@ model:
           - [[128, 3]]
         binary_loss_weight: 2.0
         binary_mode: breakpoint
-        contrast: abs
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
@@ -48,7 +47,7 @@ data:
         load_all_layers: true
         load_all_item_groups: true
     task:
-      class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassMultiTask
+      class_path: rslp.change_finder_v2.lcc_model.tasks.LCCMultiTask
       init_args:
         annotations_path: unused_in_predict_mode
         input_mapping:
@@ -97,7 +96,7 @@ data:
       overlap_pixels: 16
       skip_targets: true
       transforms:
-        - class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassPredictBuilder
+        - class_path: rslp.change_finder_v2.lcc_model.transforms.PredictStackBuilder
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
           init_args:
             band_names:
@@ -108,6 +107,6 @@ trainer:
       init_args:
         output_layer: output_change
         selector: []
-project_name: 2026_08_25_lcc
+project_name: 2026_09_15_lcc
 run_name: bp_abs_qdrop
 management_dir: ${RSLP_PREFIX}/projects

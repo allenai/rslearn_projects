@@ -266,12 +266,12 @@ rslearn dataset materialize --root "$PREDICT_DS" --workers 128
 
 ```bash
 rslearn model predict \
-    --config data/change_finder_v2/lcc_model/config_predict.yaml \
+    --config data/change_finder_v2/lcc_model/config_bp_abs_season_qdrop_predict.yaml \
     --data.init_args.path="$PREDICT_DS"
 ```
 
-The `PredictPassBuilder` transform takes the quarterly + frequent inputs and
-builds pass1/pass2 without needing annotations or multiple frequent options.
+The `PredictStackBuilder` transform takes the quarterly + frequent inputs and
+builds the 20-image stack without needing annotations or multiple frequent options.
 
 #### Output
 

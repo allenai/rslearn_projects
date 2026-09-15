@@ -2,7 +2,7 @@ model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     model:
-      class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassChangeModel
+      class_path: rslp.change_finder_v2.lcc_model.model.ChangeModel
       init_args:
         encoder:
           class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
@@ -16,8 +16,8 @@ model:
         num_classes_dst: 13
         num_classes_pre_change: 11
         num_classes_post_change: 15
-        num_classes_same_change: null
         num_timesteps: 20
+        num_pass1: 10
         embedding_dim: 768
         decoder_stages:
           - [[768, 3]]
@@ -160,10 +160,9 @@ data:
         is_target: true
         dtype: INT32
     task:
-      class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassMultiTask
+      class_path: rslp.change_finder_v2.lcc_model.tasks.LCCMultiTask
       init_args:
         annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260811/lcc_annotations.json
-        merge_same_into_pre: true
         input_mapping:
           binary:
             label_binary: targets
@@ -191,15 +190,15 @@ data:
                 average: "micro"
               other_metrics:
                 accuracy:
-                  class_path: rslp.change_finder_v2.lcc_model.model_singlepass.BalancedBinaryMetric
+                  class_path: rslp.change_finder_v2.lcc_model.tasks.BalancedBinaryMetric
                   init_args:
                     metric: accuracy
                 auroc:
-                  class_path: rslp.change_finder_v2.lcc_model.model_singlepass.BalancedBinaryMetric
+                  class_path: rslp.change_finder_v2.lcc_model.tasks.BalancedBinaryMetric
                   init_args:
                     metric: auroc
                 prauc:
-                  class_path: rslp.change_finder_v2.lcc_model.model_singlepass.BalancedBinaryMetric
+                  class_path: rslp.change_finder_v2.lcc_model.tasks.BalancedBinaryMetric
                   init_args:
                     metric: prauc
           src:
@@ -276,7 +275,7 @@ data:
     default_config:
       crop_size: 64
       transforms:
-        - class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassSampler
+        - class_path: rslp.change_finder_v2.lcc_model.transforms.StackSampler
           init_args:
             deterministic: true
         - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
@@ -285,7 +284,7 @@ data:
               sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
     train_config:
       transforms:
-        - class_path: rslp.change_finder_v2.lcc_model.model_singlepass.SinglePassSampler
+        - class_path: rslp.change_finder_v2.lcc_model.transforms.StackSampler
           init_args:
             deterministic: false
         - class_path: rslearn.train.transforms.flip.Flip
@@ -327,6 +326,6 @@ trainer:
       init_args:
         monitor: val_binary/auroc
         mode: max
-project_name: 2026_08_25_lcc
+project_name: 2026_09_15_lcc
 run_name: pass20_v1_2_diff_00
 management_dir: ${RSLP_PREFIX}/projects
