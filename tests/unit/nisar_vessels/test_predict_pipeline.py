@@ -12,8 +12,9 @@ from rslp.nisar_vessels import predict_pipeline as pipeline
 from rslp.nisar_vessels.hdf5 import GranuleGrid
 from rslp.vessels import VesselDetection, VesselDetectionSource
 
-# Somewhere in the Pacific, well away from any marine infrastructure.
-OPEN_WATER_LON, OPEN_WATER_LAT = -140.0, 30.0
+# Somewhere in the Pacific, well away from any marine infrastructure. Whole degrees so
+# detections can be placed by integer column/row against a degree-resolution projection.
+OPEN_WATER_LON, OPEN_WATER_LAT = -140, 30
 
 
 def _grid(epsg_code: int = 32610) -> GranuleGrid:
