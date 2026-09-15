@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from enum import StrEnum
 
 import uvicorn
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict
 
 from rslp.log_utils import get_logger
@@ -132,12 +132,11 @@ async def home() -> dict:
     summary="Get Vessel Detections from NISAR",
     description="Returns vessel detections from NISAR imagery.",
 )
-async def get_detections(info: NisarRequest, response: Response) -> NisarResponse:
+async def get_detections(info: NisarRequest) -> NisarResponse:
     """Returns vessel detections for a given request.
 
     Args:
         info: NisarRequest object containing the request data.
-        response: FastAPI Response object to manage the response state.
 
     Returns:
         NisarResponse: Response object with status and predictions.

@@ -5,6 +5,8 @@ with a request: resolving the score threshold, and turning the request into a
 PredictionTask.
 """
 
+from http import HTTPStatus
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -37,20 +39,23 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> dict:
 
 def _call(payload: dict) -> dict:
     resp = client.post("/detections", json=payload)
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     body = resp.json()
     assert body["status"] == "success", body.get("error_message")
     return body
 
 
 def test_home() -> None:
-    assert client.get("/").status_code == 200
+    assert client.get("/").status_code == HTTPStatus.OK
 
 
 def test_h5_path_is_required() -> None:
     # Unlike Sentinel-1 there is no scene_id fallback: the sidecar has no data source of
     # its own, so a request without a granule cannot be served at all.
-    assert client.post("/detections", json={}).status_code == 422
+    assert (
+        client.post("/detections", json={}).status_code
+        == HTTPStatus.UNPROCESSABLE_ENTITY
+    )
 
 
 def test_request_becomes_a_prediction_task(captured: dict) -> None:
@@ -140,7 +145,7 @@ def test_pipeline_error_becomes_an_error_response(
 
     resp = client.post("/detections", json={"h5_path": H5_PATH})
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     body = resp.json()
     assert body["status"] == "error"
     assert "HVHV" in body["error_message"]
