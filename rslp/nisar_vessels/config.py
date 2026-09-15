@@ -21,9 +21,10 @@ NISAR_PORT = int(os.getenv("NISAR_PORT", "5555"))
 # Default detector score threshold, overridable per request via the API.
 NISAR_SCORE_THRESHOLD = float(os.getenv("NISAR_SCORE_THRESHOLD", "0.7"))
 
-# Distance threshold for the near marine infrastructure filter in km
-# (0.2 km = 200 m if unset).
-INFRA_DISTANCE_THRESHOLD_KM = float(os.getenv("NISAR_INFRA_DISTANCE_KM", "0.2"))
+# Distance threshold for the near marine infrastructure filter, in km. GCOV is terrain
+# corrected, so a detection's position is good to roughly a pixel and the filter needs
+# no slack for geolocation error beyond the 50 m used for other geocoded imagery.
+INFRA_DISTANCE_THRESHOLD_KM = float(os.getenv("NISAR_INFRA_DISTANCE_KM", "0.05"))
 
 # GeoJSON of marine infrastructure that detections are filtered against. rslp.utils.filter
 # reads MARINE_INFRA_PATH from the environment, falling back to a public URL.

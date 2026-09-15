@@ -169,7 +169,7 @@ All environment variables are read in `rslp/nisar_vessels/config.py`:
 | --- | --- | --- |
 | `NISAR_HOST` / `NISAR_PORT` | `0.0.0.0` / `5555` | Where the server binds. |
 | `NISAR_SCORE_THRESHOLD` | `0.7` | Detector threshold, overridable per request. |
-| `NISAR_INFRA_DISTANCE_KM` | `0.2` | Radius for dropping detections on marine infrastructure. |
+| `NISAR_INFRA_DISTANCE_KM` | `0.05` | Radius for dropping detections on marine infrastructure. |
 | `MARINE_INFRA_PATH` | public GeoJSON URL | The marine infrastructure to filter against. |
 | `RSLEARN_NUM_DATA_LOADER_WORKERS` | `4` | Data loader workers during prediction. |
 | `NISAR_MATERIALIZE_WORKERS` | `32` | Workers used to prepare and materialize. |
