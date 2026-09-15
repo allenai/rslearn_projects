@@ -22,6 +22,8 @@ from rslp.nisar_vessels.config import (
     MARINE_INFRA_PATH,
     NUM_DATA_LOADER_WORKERS,
     NUM_MATERIALIZE_WORKERS,
+    PREDICT_CROP_SIZE,
+    PREDICT_OVERLAP_PIXELS,
 )
 from rslp.nisar_vessels.hdf5 import GranuleGrid, granule_to_geotiff
 from rslp.nisar_vessels.prom_metrics import TimerOperations, time_operation
@@ -70,12 +72,6 @@ CROP_DECIBEL_RANGE = (-35.0, 5.0)
 # Matches the epsilon in rslearn's Sentinel1ToDecibels, so a zero or filled pixel lands
 # at -60 dB rather than negative infinity.
 DECIBEL_EPSILON = 1e-6
-
-# Crop size the detector tiles the scene into, overriding the config's training-time
-# value: a scene is far larger than a training window, and larger tiles mean fewer
-# forward passes. The overlap only has to exceed a vessel's footprint.
-PREDICT_CROP_SIZE = 512
-PREDICT_OVERLAP_PIXELS = 64
 
 
 @dataclass(frozen=True)

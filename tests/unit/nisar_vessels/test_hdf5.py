@@ -2,6 +2,7 @@
 
 import pathlib
 
+import h5py
 import numpy as np
 import pytest
 import rasterio
@@ -10,6 +11,7 @@ from rslp.nisar_vessels import hdf5
 from tests.utils.nisar_granule import (
     EPSG_CODE,
     FILL_VALUE,
+    GCOV_GROUP,
     GCOV_GROUP_FREQUENCY_B,
     HEIGHT,
     WIDTH,
@@ -170,8 +172,43 @@ def test_grid_too_small_to_derive_resolution_raises(tmp_path: pathlib.Path) -> N
     h5_path = tmp_path / "granule.h5"
     write_granule(h5_path, width=1, height=1)
 
-    with pytest.raises(ValueError, match="at least two coordinates per axis"):
+    with pytest.raises(ValueError, match="at least two x coordinates"):
         hdf5.granule_to_geotiff(str(h5_path), BANDS, str(tmp_path / "granule.tif"))
+
+
+@pytest.mark.parametrize("axis", ["x", "y"])
+def test_irregular_grid_spacing_raises(axis: str, tmp_path: pathlib.Path) -> None:
+    """A grid whose coordinates are not evenly spaced is rejected.
+
+    One affine transform can only describe a regular grid. Deriving a resolution from
+    the first two coordinates of an irregular one would succeed and put every pixel, and
+    so every detection, in the wrong place.
+    """
+    h5_path = tmp_path / "granule.h5"
+    write_granule(h5_path)
+
+    # Nudge one coordinate well past the tolerance, leaving the rest evenly spaced.
+    dataset_name = "xCoordinates" if axis == "x" else "yCoordinates"
+    with h5py.File(h5_path, "a") as granule:
+        coordinates = granule[f"{GCOV_GROUP}/{dataset_name}"]
+        coordinates[len(coordinates) // 2] += X_RESOLUTION / 2
+
+    with pytest.raises(ValueError, match=f"irregular {axis} grid"):
+        hdf5.granule_to_geotiff(str(h5_path), BANDS, str(tmp_path / "granule.tif"))
+
+
+def test_float_noise_in_coordinates_is_tolerated(tmp_path: pathlib.Path) -> None:
+    """Spacing that wobbles at float precision is still a regular grid."""
+    h5_path = tmp_path / "granule.h5"
+    write_granule(h5_path)
+
+    with h5py.File(h5_path, "a") as granule:
+        coordinates = granule[f"{GCOV_GROUP}/xCoordinates"]
+        coordinates[len(coordinates) // 2] += X_RESOLUTION * 1e-9
+
+    grid = hdf5.granule_to_geotiff(str(h5_path), BANDS, str(tmp_path / "granule.tif"))
+
+    assert grid.x_resolution == pytest.approx(X_RESOLUTION)
 
 
 def test_south_up_grid_keeps_its_orientation(tmp_path: pathlib.Path) -> None:

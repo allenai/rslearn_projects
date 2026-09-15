@@ -43,6 +43,11 @@ BLOCK_ROWS = 1024
 # windows out of this file rather than the whole thing at once.
 GEOTIFF_BLOCK_SIZE = 512
 
+# How far a coordinate spacing may drift from the first one, as a fraction of it, before
+# the grid is rejected as irregular. Loose enough for float64 noise in the coordinate
+# datasets, tight enough that any real irregularity is metres wide and gets caught.
+GRID_SPACING_TOLERANCE = 1e-3
+
 
 @dataclasses.dataclass(frozen=True)
 class GranuleGrid:
@@ -122,25 +127,17 @@ def read_grid(group: h5py.Group, band: str) -> GranuleGrid:
         ValueError: if the grid is too small to derive a resolution from, or the band is
             not a 2-D raster.
     """
-    x_dataset = group[X_COORDINATES_DATASET]
-    y_dataset = group[Y_COORDINATES_DATASET]
-    if x_dataset.shape[0] < 2 or y_dataset.shape[0] < 2:
-        raise ValueError(
-            f"Band {band} needs at least two coordinates per axis to derive a "
-            f"resolution, got {x_dataset.shape[0]}x{y_dataset.shape[0]}"
-        )
-
-    # Evenly spaced, so two coordinates suffice; the full arrays are hundreds of KB.
-    x_coordinates = x_dataset[:2]
-    y_coordinates = y_dataset[:2]
-
     shape = group[band].shape
     if len(shape) != 2:
         raise ValueError(f"Expected band {band} to be a 2-D raster, got shape {shape}")
     height, width = shape
 
-    x_resolution = float(x_coordinates[1] - x_coordinates[0])
-    y_resolution = float(y_coordinates[1] - y_coordinates[0])
+    # Read the coordinate datasets whole. They are a few hundred KB against a multi-GB
+    # granule, and the spacing has to be checked across all of them: a single affine
+    # transform can only describe a regular grid, and an irregular one would otherwise
+    # pass through silently and put every detection in the wrong place.
+    x_center, x_resolution = _axis_geometry(group[X_COORDINATES_DATASET][:], band, "x")
+    y_center, y_resolution = _axis_geometry(group[Y_COORDINATES_DATASET][:], band, "y")
     epsg_code = int(group[PROJECTION_DATASET].attrs[EPSG_CODE_ATTRIBUTE])
 
     return GranuleGrid(
@@ -148,11 +145,48 @@ def read_grid(group: h5py.Group, band: str) -> GranuleGrid:
         x_resolution=x_resolution,
         y_resolution=y_resolution,
         # The coordinate datasets give pixel centers; a transform needs the corner.
-        x_origin=float(x_coordinates[0]) - x_resolution / 2,
-        y_origin=float(y_coordinates[0]) - y_resolution / 2,
+        x_origin=x_center - x_resolution / 2,
+        y_origin=y_center - y_resolution / 2,
         width=width,
         height=height,
     )
+
+
+def _axis_geometry(
+    coordinates: npt.NDArray[np.floating], band: str, axis: str
+) -> tuple[float, float]:
+    """Derive one axis's first pixel center and spacing, checking the grid is regular.
+
+    Args:
+        coordinates: the axis's full coordinate array, holding pixel centers.
+        band: the band the axis belongs to, for error messages.
+        axis: the axis name, for error messages.
+
+    Returns:
+        the first pixel center and the signed spacing.
+
+    Raises:
+        ValueError: if the axis has fewer than two coordinates, or its spacing is not
+            constant.
+    """
+    if coordinates.shape[0] < 2:
+        raise ValueError(
+            f"Band {band} needs at least two {axis} coordinates to derive a resolution, "
+            f"got {coordinates.shape[0]}"
+        )
+
+    spacings = np.diff(coordinates)
+    resolution = float(spacings[0])
+    if not np.allclose(
+        spacings, resolution, rtol=0, atol=abs(resolution) * GRID_SPACING_TOLERANCE
+    ):
+        raise ValueError(
+            f"Band {band} has an irregular {axis} grid: spacing runs from "
+            f"{spacings.min()} to {spacings.max()}, expected a constant {resolution}. "
+            "A single affine transform cannot describe it."
+        )
+
+    return float(coordinates[0]), resolution
 
 
 def read_fill_value(group: h5py.Group, band: str) -> float | None:
