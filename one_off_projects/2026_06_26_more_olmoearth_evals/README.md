@@ -7,7 +7,7 @@ all using a new pre/post change-classification task type (`change_classify`):
    OlmoEarth encoder separately on the pre-change and post-change image stacks and
    classify the driver from the combined embedding. Uses the existing forest loss
    dataset; no new dataset is created.
-2. **`lcc_deforestation`** — tree → X change, derived from `change_finder_v2` v2
+2. **`lcc_deforestation`** — tree → X change, derived from `rslp.olmoearth_lcc` v2
    annotations.
 3. **`lcc_urban_expansion`** — X → urban/built-up change, derived from the same
    annotations.
