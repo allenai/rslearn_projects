@@ -21,6 +21,7 @@ Example:
 import argparse
 import hashlib
 import os
+import re
 import shutil
 from datetime import datetime, timedelta
 from typing import Any
@@ -193,7 +194,8 @@ def create_window(
 
     # Include a portion of the task ID in the window name in case task names are not
     # unique within the project.
-    window_name = f"{task['name']}_{task['id'][:8]}".replace(" ", "_")
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", task["name"])
+    window_name = f"{safe_name}_{task['id'][:8]}"
     split = get_split(window_name)
 
     window = Window(
@@ -209,9 +211,9 @@ def create_window(
             task_name=task["name"],
             task_status=task["status"],
         ),
+        data_factory=dataset.window_data_storage_factory,
     )
     window.save()
-    window._data = dataset.window_data_storage_factory.create(window)
 
     # Write the label layer with one point feature per annotation.
     features = []
