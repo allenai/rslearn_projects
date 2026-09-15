@@ -1,0 +1,133 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_2_BASE
+              patch_size: 4
+              use_legacy_timestamps: false
+        decoder:
+          # Window classification with max pooling over the whole feature map,
+          # followed by a single linear layer.
+          - class_path: rslearn.models.pooling_decoder.PoolingDecoder
+            init_args:
+              in_channels: 768
+              out_channels: 7
+          - class_path: rslearn.train.tasks.classification.ClassificationHead
+    optimizer:
+      class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
+      init_args:
+        lr: 0.0001
+        layer_decay_rate: 0.8
+        num_layers: 12
+        encoder_prefix: model.encoder.0
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 2
+        min_lr: 0
+        cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/monocrop_classifier/20260914/
+    inputs:
+      sentinel2_l2a:
+        data_type: raster
+        layers: [sentinel2_l2a]
+        bands: [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      targets:
+        data_type: vector
+        layers: [label_vector]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.classification.ClassificationTask
+      init_args:
+        property_name: class_name
+        # The label_vector layer already merges soybean into the renamed
+        # mennonites_soybean slot, matching the segmentation configs that use
+        # class_id_mapping {7: 2}. nodata (0) is never a label; it is kept so
+        # class indices and the confusion matrix axes line up with the
+        # segmentation model's PerWindowConfusionMatrix.
+        classes: [nodata, mennonites_nonsoybean, soybean, oil_palm, other_agriculture, pastures, rice]
+        # Micro-average so val_accuracy is the fraction of windows predicted
+        # correctly, comparable to val_window_accuracy of the segmentation
+        # model.
+        metric_kwargs:
+          average: micro
+        prob_property: probs
+        enable_confusion_matrix: true
+    batch_size: 4
+    num_workers: 16
+    default_config:
+      crop_size: 128
+    train_config:
+      tags:
+        split: train
+      transforms:
+        - class_path: rslp.forest_loss_driver.monocrop_classifier.transforms.PostLossMonthSampler
+        - class_path: rslearn.train.transforms.flip.Flip
+          init_args:
+            image_selectors: [sentinel2_l2a]
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+    val_config:
+      tags:
+        split: val
+      transforms:
+        - class_path: rslp.forest_loss_driver.monocrop_classifier.transforms.PostLossMonthSampler
+          init_args:
+            num_post_months: 6
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+    test_config:
+      tags:
+        split: val
+      transforms:
+        - class_path: rslp.forest_loss_driver.monocrop_classifier.transforms.PostLossMonthSampler
+          init_args:
+            num_post_months: ${MONOCROP_NUM_POST_MONTHS}
+            default_num_post_months: 6
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+    predict_config:
+      groups: [predict]
+      crop_size: 128
+      load_all_crops: true
+      skip_targets: true
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: epoch
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        monitor: val_accuracy
+        mode: max
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: output_vector
+project_name: 20260914_monocrop_classifier
+run_name: olmoearth_v1_2_base_classify_pool
+management_dir: ${RSLP_PREFIX}/projects
