@@ -173,16 +173,15 @@ All environment variables are read in `rslp/nisar_vessels/config.py`:
 | `MARINE_INFRA_PATH` | public GeoJSON URL | The marine infrastructure to filter against. |
 | `RSLEARN_NUM_DATA_LOADER_WORKERS` | `4` | Data loader workers during prediction. |
 | `NISAR_MATERIALIZE_WORKERS` | `32` | Workers used to prepare and materialize. |
-| `NISAR_PREDICT_CROP_SIZE` | `512` | Tile size the detector runs over at inference. |
-| `NISAR_PREDICT_OVERLAP_PIXELS` | `64` | Overlap between adjacent tiles. |
+| `NISAR_PREDICT_CROP_SIZE` | `128` | Tile size the detector runs over at inference. |
+| `NISAR_PREDICT_OVERLAP_PIXELS` | `16` | Overlap between adjacent tiles. |
 
-The detector was trained on 128 pixel crops, and inference tiles the scene at 512 by
-default. A scene is orders of magnitude larger than a training window, so the bigger
-tile cuts the number of forward passes by roughly 16x, and the backbone is fully
-convolutional, so a vessel occupies the same pixels either way. That reasoning has not
-been checked against a trained model on real scenes. Before launch, run a few scenes at
-both sizes and compare the detections; if they diverge, set `NISAR_PREDICT_CROP_SIZE`
-back to 128 rather than editing the image.
+The tiling defaults match the crops the detector trained on, so inference sees what
+training saw. Raising the tile size is tempting since it means fewer forward passes, but
+it does not reduce total compute: the overlap fraction is the same either way (16/128
+and 64/512 are both 12.5%), so only per-crop overhead is saved. Raise
+`NISAR_PREDICT_CROP_SIZE` only if profiling shows that overhead matters, and compare
+detections against the default before deploying the change.
 
 ### Building the image
 

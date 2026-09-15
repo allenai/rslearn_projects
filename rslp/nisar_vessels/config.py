@@ -38,10 +38,9 @@ NUM_DATA_LOADER_WORKERS = int(os.getenv("RSLEARN_NUM_DATA_LOADER_WORKERS", "4"))
 # carries a single granule, so this only parallelizes across the bands of one window.
 NUM_MATERIALIZE_WORKERS = int(os.getenv("NISAR_MATERIALIZE_WORKERS", "32"))
 
-# How the detector tiles a scene at inference time, overriding the training-time crop
-# size in the model config. A scene is orders of magnitude larger than a training window,
-# so bigger tiles mean far fewer forward passes, and the overlap only has to exceed a
-# vessel's footprint. These have not been compared against the training crop size on real
-# scenes yet, so they are env-tunable: see the README before changing the defaults.
-PREDICT_CROP_SIZE = int(os.getenv("NISAR_PREDICT_CROP_SIZE", "512"))
-PREDICT_OVERLAP_PIXELS = int(os.getenv("NISAR_PREDICT_OVERLAP_PIXELS", "64"))
+# How the detector tiles a scene at inference time. These match what the model trained
+# on, so inference sees what training saw. A larger tile means fewer forward passes but
+# not less compute, since the overlap fraction stays the same, so it only saves per-crop
+# overhead.
+PREDICT_CROP_SIZE = int(os.getenv("NISAR_PREDICT_CROP_SIZE", "128"))
+PREDICT_OVERLAP_PIXELS = int(os.getenv("NISAR_PREDICT_OVERLAP_PIXELS", "16"))
