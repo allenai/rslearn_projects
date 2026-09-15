@@ -337,9 +337,8 @@ def predict_pipeline(
     Given a NISAR granule, the pipeline produces the vessel detections. Specifically, it
     outputs a list of the vessel detection locations along with crops of each detection.
 
-    Unlike the Sentinel-1 pipeline this is a plain detector rather than a change
-    detector, so no historical scene is needed, and there is no attribute model to run
-    afterwards.
+    This is a plain detector rather than a change detector, so a granule is all it
+    needs, and it predicts no vessel attributes.
 
     Args:
         tasks: prediction tasks to execute.
@@ -402,9 +401,7 @@ def _build_predictions_and_crops(
     """Filter the detections and save a crop image per band for each one.
 
     The crops are read straight back out of the scene window that the detector already
-    ran on, rather than materialized into their own windows the way sentinel1_vessels
-    does. Sentinel-1 needs those windows anyway to feed its attribute model; without one
-    there is nothing to gain from a second materialize pass.
+    ran on, so no second materialize pass is needed.
 
     Args:
         detections: the detections from the detector.

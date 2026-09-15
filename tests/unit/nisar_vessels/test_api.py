@@ -50,8 +50,8 @@ def test_home() -> None:
 
 
 def test_h5_path_is_required() -> None:
-    # Unlike Sentinel-1 there is no scene_id fallback: the sidecar has no data source of
-    # its own, so a request without a granule cannot be served at all.
+    # The sidecar has no data source of its own, so a request without a granule cannot
+    # be served at all.
     assert (
         client.post("/detections", json={}).status_code
         == HTTPStatus.UNPROCESSABLE_ENTITY

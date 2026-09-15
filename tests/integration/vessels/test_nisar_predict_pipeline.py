@@ -184,9 +184,8 @@ def test_crops_are_written_for_a_detection(
 ) -> None:
     """A detection's crop is a CROP_WINDOW_SIZE 8-bit PNG per band, keyed hh/hv.
 
-    Sentinel-1 gets its crops from the windows it materializes for the attribute model;
-    NISAR has no attribute model, so the crops are sliced back out of the scene window
-    and that read is worth covering on its own.
+    The crops are sliced back out of the scene window rather than materialized on their
+    own, so that read is worth covering directly.
     """
     ds_path = UPath(tmp_path / "scratch")
     ds_path.mkdir(parents=True)
@@ -221,8 +220,8 @@ def test_crop_at_the_scene_edge_is_still_written(
 ) -> None:
     """A detection near the edge gets a full-size crop, padded with nodata.
 
-    Sentinel-1 has to drop these, because a crop window that runs off the scene never
-    materializes. Reading from the scene window instead means they survive.
+    A crop window running off the scene edge would never materialize on its own, so
+    reading from the scene window is what keeps these detections reportable.
     """
     ds_path = UPath(tmp_path / "scratch")
     ds_path.mkdir(parents=True)

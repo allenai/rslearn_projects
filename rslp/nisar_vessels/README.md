@@ -121,9 +121,8 @@ Predictions are written to the `output` layer of each window.
 ## 5. Prediction service
 
 `rslp/nisar_vessels/api_main.py` is a FastAPI server that runs the detector over one
-granule per request, modelled on `rslp/sentinel1_vessels`. It is deployed as a sidecar
-next to the Skylight sat service, which downloads the granule to a shared volume and
-posts its path:
+granule per request. It is deployed as a sidecar next to the Skylight sat service, which
+downloads the granule to a shared volume and posts its path:
 
     curl -X POST localhost:5555/detections -H 'Content-Type: application/json' -d '{
         "h5_path": "/shared/NISAR_L2_GCOV_..._20260101T000312_20260101T000347.h5",
@@ -135,9 +134,9 @@ The response holds one entry per detection (`rslp.vessels.VesselDetectionDict`),
 `source: "nisar"`, the position in both pixel and lon/lat coordinates, the detector
 score, and `crop_fnames` keyed `hh` and `hv`.
 
-Unlike Sentinel-1 there is no `scene_id` mode: the service has no data source of its
-own, so a granule is the only way to give it imagery. Detections are labelled with a
-`scene_id` taken from the granule filename.
+A granule is the only way to give the service imagery, since it has no data source of
+its own to look one up with. Detections are labelled with a `scene_id` taken from the
+granule filename.
 
 The same pipeline is available as a workflow:
 
@@ -159,8 +158,8 @@ Two details there are load-bearing, both so inference sees what training saw:
   bilinear default, which is what materialized the training dataset.
 
 Detection crops are read straight back out of the scene window rather than materialized
-into their own windows the way `sentinel1_vessels` does; Sentinel-1 needs those windows
-for its attribute model, and NISAR has no attribute model to feed.
+into windows of their own, so a detection close to the scene edge still gets a crop,
+padded with nodata.
 
 ### Configuration
 
