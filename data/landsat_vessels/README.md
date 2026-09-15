@@ -26,3 +26,4 @@ Dataset Versions
 - 20250206: same as classifier dataset 20240905 and detector dataset 20240924, but we
   add resampling_method=nearest to the dataset configuration file so the dataset needed
   to be materialized from scratch.
+- 20250624: same as classifier dataset 20240905, but add all landsat bands.

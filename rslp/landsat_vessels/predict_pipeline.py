@@ -1,4 +1,13 @@
-"""Landsat vessel prediction pipeline."""
+"""Landsat vessel prediction pipeline.
+
+Operating point (see rslp.landsat_vessels.config):
+- Detector: config_detector.yaml, score_threshold=0.7.
+- Classifier: Run-d layer-decay model (olmoearth_base_layerdecay_20260908d),
+  positive_class_threshold=0.99.
+A detection is kept only when the detector score is >=0.7 AND the classifier's
+P(correct) is >=0.99. Both thresholds live in the model configs, so this pipeline and
+the FastAPI service (api_main.py) inherit them automatically.
+"""
 
 import json
 import os
@@ -9,6 +18,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import rasterio
+import yaml
 from PIL import Image
 from rasterio.enums import Resampling
 from rslearn.const import WGS84_PROJECTION
@@ -79,6 +89,15 @@ class SceneData:
     # Optional Item -- if provided, we write the layer metadatas (items.json) in the
     # window to skip prepare step so that the correct item is always read.
     item: Item | None = None
+
+
+@dataclass
+class PipelineResult:
+    """Result of the prediction pipeline with per-stage detection counts."""
+
+    detections: list[VesselDetection]
+    detector_count: int = 0
+    classifier_count: int = 0
 
 
 def get_vessel_detections(
@@ -185,6 +204,34 @@ def get_vessel_detections(
     return detections
 
 
+def _classifier_config_for_predict() -> str:
+    """Write a classifier config whose input reads the predict-time Landsat layer.
+
+    The training config reads the classifier's 11-band input from the "landsat" layer,
+    matching how the training dataset (dataset_20250624) stores all bands. In the
+    predict pipeline those 11 bands are materialized under LANDSAT_ALLBANDS_LAYER_NAME
+    instead (the "landsat" layer here is the detector's 7-band layer, saved empty for
+    classifier windows), so we override the input layer to LANDSAT_ALLBANDS_LAYER_NAME
+    for prediction only. Returns the path to a temporary patched config; the caller is
+    responsible for removing it.
+    """
+    with open(CLASSIFY_MODEL_CONFIG) as f:
+        cfg = yaml.safe_load(f)
+    inputs = cfg["data"]["init_args"]["inputs"]
+    if LANDSAT_LAYER_NAME not in inputs:
+        raise KeyError(
+            f"expected classifier config to have an input named "
+            f"'{LANDSAT_LAYER_NAME}', got {list(inputs)}"
+        )
+    inputs[LANDSAT_LAYER_NAME]["layers"] = [LANDSAT_ALLBANDS_LAYER_NAME]
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yaml", prefix="classifier_predict_", delete=False
+    )
+    yaml.safe_dump(cfg, tmp)
+    tmp.close()
+    return tmp.name
+
+
 def run_classifier(
     ds_path: UPath,
     detections: list[VesselDetection],
@@ -231,13 +278,12 @@ def run_classifier(
         if scene_data.item:
             window.save_layer_datas(
                 {
-                    LANDSAT_LAYER_NAME: WindowLayerData(
-                        LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
+                        LANDSAT_ALLBANDS_LAYER_NAME,
+                        [[scene_data.item.serialize()]],
                     ),
                     # Empty layer data so it doesn't go through ingest/materialize.
-                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
-                        LANDSAT_ALLBANDS_LAYER_NAME, []
-                    ),
+                    LANDSAT_LAYER_NAME: WindowLayerData(LANDSAT_LAYER_NAME, []),
                 }
             )
 
@@ -257,25 +303,39 @@ def run_classifier(
 
     # Verify that no window is unmaterialized.
     for window in windows:
-        if not window.is_layer_completed(LANDSAT_LAYER_NAME):
+        if not window.is_layer_completed(LANDSAT_ALLBANDS_LAYER_NAME):
             raise ValueError(f"window {window.name} does not have materialized Landsat")
 
-    # Run classification model.
-    run_model_predict(
-        CLASSIFY_MODEL_CONFIG,
-        ds_path,
-        groups=[group],
-        extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
-    )
+    # Run classification model. The classifier input is materialized under
+    # LANDSAT_ALLBANDS_LAYER_NAME here rather than the "landsat" layer the training
+    # config reads from, so predict against a patched config (see helper docstring).
+    classify_config = _classifier_config_for_predict()
+    try:
+        run_model_predict(
+            classify_config,
+            ds_path,
+            groups=[group],
+            extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+        )
+    finally:
+        os.remove(classify_config)
 
-    # Read the results.
+    # Read the results. Every detection gets the classifier verdict recorded in its
+    # metadata (used by annotation exports); only "correct" ones are returned.
     good_detections = []
     for detection, window in zip(detections, windows):
         layer_dir = window.get_layer_dir(OUTPUT_LAYER_NAME)
         features = GeojsonVectorFormat().decode_vector(
             layer_dir, window.projection, window.bounds
         )
-        category = features[0].properties["label"]
+        properties = features[0].properties
+        category = properties["label"]
+        detection.metadata["classifier_label"] = category
+        if "prob" in properties:
+            # Written when the classifier config sets prob_property; a list of
+            # per-class probabilities in the config's class order, which is
+            # ["correct", "incorrect"].
+            detection.metadata["classifier_prob_correct"] = float(properties["prob"][0])
         if category == "correct":
             good_detections.append(detection)
 
@@ -384,9 +444,8 @@ def download_and_unzip_scene(
         extract_to: the path to the extraction directory.
     """
     remote_zip_upath = UPath(remote_zip_path)
-    with remote_zip_upath.open("rb") as f:
-        with open(local_zip_path, "wb") as f_out:
-            shutil.copyfileobj(f, f_out)
+    with remote_zip_upath.open("rb") as f, open(local_zip_path, "wb") as f_out:
+        shutil.copyfileobj(f, f_out)
     shutil.unpack_archive(local_zip_path, extract_to)
     print(f"unzipped {local_zip_path} to {extract_to}")
 
@@ -565,7 +624,8 @@ def predict_pipeline(
     scratch_path: str | None = None,
     crop_path: str | None = None,
     geojson_path: str | None = None,
-) -> list[VesselDetection]:
+    include_rejected: bool = False,
+) -> PipelineResult:
     """Run the Landsat vessel prediction pipeline.
 
     This inputs a Landsat scene (consisting of per-band GeoTIFFs) and produces the
@@ -583,6 +643,9 @@ def predict_pipeline(
         scratch_path: directory to use to store temporary dataset.
         crop_path: path to write the vessel crop images.
         geojson_path: path to write vessel detections as GeoJSON file.
+        include_rejected: also keep detections the classifier rejected in the
+            outputs (each with classifier_label / classifier_prob_correct set).
+            Used for annotation exports; production callers should leave this off.
     """
     if scratch_path is None:
         tmp_scratch_dir = tempfile.TemporaryDirectory()
@@ -607,13 +670,23 @@ def predict_pipeline(
     # Run pipeline.
     with time_operation(TimerOperations.GetVesselDetections):
         detections = get_vessel_detections(ds_path, scene_data)
+    detector_count = len(detections)
+    logger.info("detector candidates: %d", detector_count)
+
+    all_candidates = detections
     with time_operation(TimerOperations.RunClassifier):
-        detections = run_classifier(
+        good_detections = run_classifier(
             ds_path, detections=detections, scene_data=scene_data
         )
+    classifier_count = len(good_detections)
+    logger.info("after classifier: %d", classifier_count)
 
     with time_operation(TimerOperations.RunAttributeModel):
-        run_attribute_model(ds_path, detections=detections, scene_data=scene_data)
+        run_attribute_model(ds_path, detections=good_detections, scene_data=scene_data)
+
+    # run_classifier records the verdict on every candidate's metadata, so for
+    # annotation exports we can carry the rejected ones through as well.
+    detections = all_candidates if include_rejected else good_detections
 
     with time_operation(TimerOperations.BuildPredictionsAndCrops):
         detections = _build_predictions_and_crops(detections, crop_path)
@@ -621,10 +694,12 @@ def predict_pipeline(
     if json_path:
         json_upath = UPath(json_path)
         with json_upath.open("w") as f:
-            json.dump([d.to_dict() for d in detections], f)
+            json.dump([_detection_record(d) for d in detections], f)
 
     if geojson_path:
         geojson_features = [d.to_feature() for d in detections]
+        for feature, detection in zip(geojson_features, detections):
+            feature["properties"] = _detection_record(detection)
         geojson_upath = UPath(geojson_path)
         with geojson_upath.open("w") as f:
             json.dump(
@@ -636,7 +711,26 @@ def predict_pipeline(
                 f,
             )
 
-    return detections
+    return PipelineResult(
+        detections=detections,
+        detector_count=detector_count,
+        classifier_count=classifier_count,
+    )
+
+
+def _detection_record(detection: VesselDetection) -> dict:
+    """Serialize a detection plus the classifier verdict from its metadata.
+
+    The classifier fields live in detection.metadata (which holds non-serializable
+    objects and is not part of VesselDetectionDict), so they are added explicitly
+    here rather than in the shared vessels module.
+    """
+    record = dict(detection.to_dict())
+    record["classifier_label"] = detection.metadata.get("classifier_label")
+    record["classifier_prob_correct"] = detection.metadata.get(
+        "classifier_prob_correct"
+    )
+    return record
 
 
 def _build_predictions_and_crops(
@@ -678,25 +772,32 @@ def _write_detection_crop(
     crop_window: Window = detection.metadata["crop_window"]
     if crop_window is None:
         raise ValueError("Crop window is None")
-    for band in ["B2", "B3", "B4", "B8"]:
-        raster_dir = crop_window.get_raster_dir(LANDSAT_LAYER_NAME, [band])
 
-        # Use nearest neighbor resampling to reduce blur effect.
-        # This means B2/B3/B4 (the RGB bands) are resampled to 15 m/pixel using nearest
-        # neighbor resampling.
-        raster_format = GeotiffRasterFormat()
-        image = raster_format.decode_raster(
+    # The crop window is the classifier window, which materializes the 11-band
+    # landsat_allbands layer (raw uint16 DN, one multi-band geotiff); the 7-band
+    # "landsat" layer is empty for these windows. Read the bands we need from it
+    # and apply the same 5000-17000 DN -> 0-255 remap the detector's uint8 layer
+    # uses (see the landsat layer's remap in predict_dataset_config.json).
+    raster_dir = crop_window.get_raster_dir(
+        LANDSAT_ALLBANDS_LAYER_NAME, LANDSAT_ALLBANDS
+    )
+    # Use nearest neighbor resampling to reduce blur effect. This means B2/B3/B4
+    # (the RGB bands) are resampled to 15 m/pixel using nearest neighbor resampling.
+    array = (
+        GeotiffRasterFormat()
+        .decode_raster(
             raster_dir,
             crop_window.projection,
             crop_window.bounds,
             resampling=Resampling.nearest,
-        ).get_chw_array()
-        if image.shape[0] != 1:
-            raise ValueError(
-                f"expected single-band image for {band} but got {image.shape[0]} bands"
-            )
-
-        images[band] = image[0, :, :]
+        )
+        .get_chw_array()
+    )
+    for band in ["B2", "B3", "B4", "B8"]:
+        raw = array[LANDSAT_ALLBANDS.index(band)].astype(np.float32)
+        images[band] = np.clip((raw - 5000.0) * 255.0 / 12000.0, 0, 255).astype(
+            np.uint8
+        )
 
     # Apply simple pan-sharpening for the RGB.
     # This is just linearly scaling RGB bands to add up to B8, which is captured at
