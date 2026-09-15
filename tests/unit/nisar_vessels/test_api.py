@@ -64,10 +64,24 @@ def test_request_becomes_a_prediction_task(captured: dict) -> None:
     (task,) = captured["tasks"]
     assert task.h5_path == H5_PATH
     assert task.crop_path == "/shared/crops"
+
+
+def test_scene_id_defaults_to_the_granule_filename(captured: dict) -> None:
+    """A caller with only a path gets a usable scene ID without supplying one."""
+    _call({"h5_path": H5_PATH})
+
+    (task,) = captured["tasks"]
     assert (
         task.get_scene_id()
         == "NISAR_L2_GCOV_009_055_A_014_4005_DHDH_A_20260101T000312_20260101T000347"
     )
+
+
+def test_scene_id_can_be_set_by_the_request(captured: dict) -> None:
+    _call({"h5_path": H5_PATH, "scene_id": "some-other-granule"})
+
+    (task,) = captured["tasks"]
+    assert task.get_scene_id() == "some-other-granule"
 
 
 def test_scratch_path_is_passed_through(captured: dict) -> None:

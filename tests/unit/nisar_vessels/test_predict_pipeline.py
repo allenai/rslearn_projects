@@ -31,10 +31,16 @@ def _grid(epsg_code: int = 32610) -> GranuleGrid:
 # --- PredictionTask ---
 
 
-def test_scene_id_comes_from_the_granule_filename() -> None:
+def test_scene_id_falls_back_to_the_granule_filename() -> None:
     task = pipeline.PredictionTask(h5_path="/shared/granules/NISAR_L2_GCOV_009.h5")
 
     assert task.get_scene_id() == "NISAR_L2_GCOV_009"
+
+
+def test_scene_id_override_wins() -> None:
+    task = pipeline.PredictionTask(h5_path="/shared/x.h5", scene_id="granule-name")
+
+    assert task.get_scene_id() == "granule-name"
 
 
 def test_prediction_task_is_frozen() -> None:

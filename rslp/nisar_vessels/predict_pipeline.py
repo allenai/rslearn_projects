@@ -86,12 +86,15 @@ class PredictionTask:
         h5_path: local path of the NISAR HDF5 granule to detect vessels in. This is
             the only way the sidecar can be given imagery; it has no data source of its
             own to look a granule up with.
+        scene_id: the granule name. Defaults to the filename of h5_path, so a caller
+            that only has a path does not have to supply one.
         json_path: optional path to write the JSON of vessel detections.
         crop_path: optional path to write the vessel crop images.
         geojson_path: optional path to write GeoJSON of detections.
     """
 
     h5_path: str
+    scene_id: str | None = None
     json_path: str | None = None
     crop_path: str | None = None
     geojson_path: str | None = None
@@ -100,9 +103,12 @@ class PredictionTask:
         """Get the granule name for this task.
 
         Returns:
-            the granule filename without its extension. The sat service names the
-            downloaded file after the granule, so the stem is the granule name.
+            the scene ID the caller gave, otherwise the granule filename without its
+            extension. The sat service names the downloaded file after the granule, so
+            the stem is the granule name.
         """
+        if self.scene_id is not None:
+            return self.scene_id
         return UPath(self.h5_path).stem
 
 

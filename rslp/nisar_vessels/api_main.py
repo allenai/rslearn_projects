@@ -82,6 +82,7 @@ class NisarRequest(BaseModel):
         h5_path: path of the NISAR HDF5 granule to detect vessels in. The caller must
             have already placed the granule somewhere this service can read it; the
             service has no data source of its own to look a granule up with.
+        scene_id: Optional; the granule name. Defaults to the filename of h5_path.
         crop_path: Optional; path to save the cropped images.
         scratch_path: Optional; scratch path to save the rslearn dataset.
         score_threshold: Optional; override the detector's score threshold for this
@@ -89,6 +90,7 @@ class NisarRequest(BaseModel):
     """
 
     h5_path: str
+    scene_id: str | None = None
     crop_path: str | None = None
     scratch_path: str | None = None
     score_threshold: float | None = None
@@ -147,6 +149,7 @@ async def get_detections(info: NisarRequest) -> NisarResponse:
 
     task = PredictionTask(
         h5_path=info.h5_path,
+        scene_id=info.scene_id,
         crop_path=info.crop_path,
     )
 
