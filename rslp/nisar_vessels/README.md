@@ -117,3 +117,76 @@ added back to the dataset as negative examples):
         --data.init_args.task.init_args.tasks.detect.init_args.score_threshold=0.1
 
 Predictions are written to the `output` layer of each window.
+
+## 5. Prediction service
+
+`rslp/nisar_vessels/api_main.py` is a FastAPI server that runs the detector over one
+granule per request. It is deployed as a sidecar next to the Skylight sat service, which
+downloads the granule to a shared volume and posts its path:
+
+    curl -X POST localhost:5555/detections -H 'Content-Type: application/json' -d '{
+        "h5_path": "/shared/NISAR_L2_GCOV_..._20260101T000312_20260101T000347.h5",
+        "crop_path": "/shared/crops",
+        "scratch_path": "/shared/scratch"
+    }'
+
+The response holds one entry per detection (`rslp.vessels.VesselDetectionDict`), with
+`source: "nisar"`, the position in both pixel and lon/lat coordinates, the detector
+score, and `crop_fnames` keyed `hh` and `hv`.
+
+A granule is the only way to give the service imagery, since it has no data source of
+its own to look one up with. Detections are labelled with `scene_id`, which the request
+may set and which otherwise falls back to the granule filename.
+
+The same pipeline is available as a workflow:
+
+    python -m rslp.main nisar_vessels predict --tasks '[{"h5_path": "...", "json_path": "..."}]' --score_threshold 0.7
+
+### How a granule becomes a window
+
+GDAL cannot georeference the HDF5 datasets inside a granule, so `hdf5.py` reads the grid
+with h5py (the `xCoordinates`/`yCoordinates`/`projection` datasets that sit alongside the
+bands) and writes the HHHH and HVHV bands out as one GeoTIFF. That GeoTIFF is then an
+ordinary `LocalFiles` raster layer, configured by `data/nisar_vessels/config_predict.json`.
+
+Two details there are load-bearing, both so inference sees what training saw:
+
+- The window is created in the UTM/UPS zone of the scene centroid at 10 m/pixel, the
+  same way `create_dataset` builds training windows. GCOV is already geocoded, but not
+  necessarily in that zone, and is posted at 10 m or 20 m.
+- `config_predict.json` sets no `resampling_method`, so the layer inherits rslearn's
+  bilinear default, which is what materialized the training dataset.
+
+Detection crops are read straight back out of the scene window rather than materialized
+into windows of their own, so a detection close to the scene edge still gets a crop,
+padded with nodata.
+
+### Configuration
+
+All environment variables are read in `rslp/nisar_vessels/config.py`:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NISAR_HOST` / `NISAR_PORT` | `0.0.0.0` / `5555` | Where the server binds. |
+| `NISAR_SCORE_THRESHOLD` | `0.7` | Detector threshold, overridable per request. |
+| `NISAR_INFRA_DISTANCE_KM` | `0.05` | Radius for dropping detections on marine infrastructure. |
+| `MARINE_INFRA_PATH` | public GeoJSON URL | The marine infrastructure to filter against. |
+| `RSLEARN_NUM_DATA_LOADER_WORKERS` | `4` | Data loader workers during prediction. |
+| `NISAR_MATERIALIZE_WORKERS` | `32` | Workers used to prepare and materialize. |
+| `NISAR_PREDICT_CROP_SIZE` | `128` | Tile size the detector runs over at inference. |
+| `NISAR_PREDICT_OVERLAP_PIXELS` | `16` | Overlap between adjacent tiles. |
+
+The tiling defaults match the crops the detector trained on, so inference sees what
+training saw. Raising the tile size is tempting since it means fewer forward passes, but
+it does not reduce total compute: the overlap fraction is the same either way (16/128
+and 64/512 are both 12.5%), so only per-crop overhead is saved. Raise
+`NISAR_PREDICT_CROP_SIZE` only if profiling shows that overhead matters, and compare
+detections against the default before deploying the change.
+
+### Building the image
+
+    docker compose -f rslp/nisar_vessels/docker-compose.yaml build
+
+The Dockerfile downloads the detector checkpoint to the path implied by
+`project_name`/`run_name` in `DETECT_MODEL_CONFIG`. No NISAR checkpoint has been
+published yet, so that URL is a TODO and the image will not build until a run is chosen.
