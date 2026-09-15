@@ -556,3 +556,56 @@ def test_skip_predict_runs_no_predict_stage(monkeypatch: pytest.MonkeyPatch) -> 
     assert "predict" not in stages, "skip_predict must not drive the predict stage"
     assert checked == [], "skip_predict must not enumerate predict work either"
     assert stages, "the render stage must still run"
+
+
+def test_skip_render_pca_reaches_the_display_pyramid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A finished region must still be able to build its display layer.
+
+    The render stage enumerates every marker in the shared predict directory with no
+    zone filter, so once a second region starts building it never runs out of work and
+    the run can never advance to annotate or the web pyramid. Skipping it is what lets
+    a region that is already rendered reach its visualization.
+    """
+    stages: list[str] = []
+    enumerated: list[str] = []
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod, "supervise", lambda **kw: stages.append(kw["stage"])
+    )
+    _stub_paths(monkeypatch, exists=True)
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
+
+    def _render_enumeration(**kw: object) -> list[str]:
+        enumerated.append("render")
+        return ["a-block-from-another-region"]
+
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", _render_enumeration)
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+
+    run_all_mod.run_all(
+        **_with(skip_predict=True, skip_render_pca=True, skip_web_pca=True)
+    )
+
+    assert "render_utm_pca" not in stages, "the render stage was driven anyway"
+    assert (
+        enumerated == []
+    ), "render work was enumerated; another region's blocks would block the run"
+
+
+def test_skip_render_pca_refuses_when_there_is_nothing_rendered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Annotating a store that does not exist would fail obscurely, deep in zarr."""
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "supervise", lambda **kw: None)
+    _stub_paths(monkeypatch, exists=False)
+    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
+
+    with pytest.raises(RuntimeError, match="skip_render_pca"):
+        run_all_mod.run_all(
+            **_with(skip_predict=True, skip_render_pca=True, skip_web_pca=True)
+        )

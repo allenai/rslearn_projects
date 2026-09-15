@@ -111,6 +111,7 @@ def run_all(
     render_gpus: int = 0,
     refit_pca: bool = False,
     skip_predict: bool = False,
+    skip_render_pca: bool = False,
     skip_pca: bool = False,
     skip_web_pca: bool = False,
     web_min_zoom: int = 8,
@@ -144,6 +145,11 @@ def run_all(
             derived stages. Use this to (re)build PCA over a region that predict has
             already finished; the caller is asserting predict is complete, since the
             usual check is skipped along with the stage.
+        skip_render_pca: assume the utm pca pyramid is already rendered and go straight
+            to annotate and the display pyramid. The render stage enumerates from the
+            shared predict marker directory with no zone filter, so once another region
+            is being built it never runs out of work; this is how a finished region
+            still reaches its display layer.
         skip_pca: stop after predict. For a run whose only product is embeddings.
         skip_web_pca: stop after annotate, leaving the display pyramid unbuilt.
         web_min_zoom: shallowest zoom to build.
@@ -226,6 +232,11 @@ def run_all(
         )
 
     logger.info("step 3/5: render_pca into %s", pca_store_path)
+    if skip_render_pca and not UPath(pca_store_path).exists():
+        raise RuntimeError(
+            f"skip_render_pca was set but {pca_store_path} does not exist; there is "
+            "nothing to annotate or build a display pyramid from"
+        )
     if not UPath(pca_store_path).exists():
         init_pca_store(
             pca_store_path=pca_store_path,
@@ -237,33 +248,38 @@ def run_all(
             tile_size=32768,
             max_level=pca.max_level,
         )
-    supervise(
-        inputs=inputs,
-        years=years,
-        store_path=store_path,
-        completed_path_template=completed_path_template,
-        queue_name=queue_name,
-        model=model,
-        worker=replace(worker, gpus=render_gpus),
-        stage=STAGE_RENDER_UTM_PCA,
-        cycle=cycle,
-        aoi=aoi,
-        pca=pca,
-    )
-    remaining = get_render_jobs(
-        store_path=store_path,
-        pca_store_path=pca_store_path,
-        artifact_path=artifact_path,
-        source_completed_paths=completed_paths,
-        completed_path=pca_completed_path,
-        patch_size=model.patch_size,
-        max_level=pca.max_level,
-    )
-    if remaining:
-        raise RuntimeError(
-            f"render_pca finished with {len(remaining)} block(s) unrendered; "
-            "not annotating a partly-rendered store"
+    if skip_render_pca:
+        # The check below enumerates every marker in the shared directory, so like the
+        # stage itself it cannot stand in for a region once a second one is building.
+        logger.info("step 3/5: render_pca skipped (skip_render_pca)")
+    else:
+        supervise(
+            inputs=inputs,
+            years=years,
+            store_path=store_path,
+            completed_path_template=completed_path_template,
+            queue_name=queue_name,
+            model=model,
+            worker=replace(worker, gpus=render_gpus),
+            stage=STAGE_RENDER_UTM_PCA,
+            cycle=cycle,
+            aoi=aoi,
+            pca=pca,
         )
+        remaining = get_render_jobs(
+            store_path=store_path,
+            pca_store_path=pca_store_path,
+            artifact_path=artifact_path,
+            source_completed_paths=completed_paths,
+            completed_path=pca_completed_path,
+            patch_size=model.patch_size,
+            max_level=pca.max_level,
+        )
+        if remaining:
+            raise RuntimeError(
+                f"render_pca finished with {len(remaining)} block(s) unrendered; "
+                "not annotating a partly-rendered store"
+            )
 
     logger.info("step 4/5: annotate_pca_store")
     annotate_pca_store(
