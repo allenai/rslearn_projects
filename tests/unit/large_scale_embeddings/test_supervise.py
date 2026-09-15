@@ -367,6 +367,7 @@ class _FakeCapacityBeaker:
     def __init__(self, jobs: list | Exception, ws_id: str = "WS") -> None:
         outer = self
         self.cluster_calls: list[str] = []
+        self.job_list_kwargs: list[dict] = []
 
         class _ClusterSvc:
             def get(self, name: str, include_cluster_occupancy: bool = False) -> object:
@@ -375,6 +376,7 @@ class _FakeCapacityBeaker:
 
         class _JobSvc:
             def list(self, **kw: object) -> list:
+                outer.job_list_kwargs.append(dict(kw))
                 if isinstance(jobs, Exception):
                     raise jobs
                 return jobs
@@ -633,3 +635,28 @@ def test_nothing_is_released_when_the_pool_is_within_target() -> None:
     beaker = _ReleaseBeaker(waiting)
     assert mod._release_surplus_workers(beaker, object(), prefix, surplus=0) == 0
     assert beaker.cancelled == []
+
+
+def test_queued_allocation_requests_count_against_the_ceiling() -> None:
+    """A colleague's queued job is a claim on the allocation, not free capacity.
+
+    It has not been placed on a node yet, so a scheduled-only filter misses it, and
+    this pool would take slots someone is already waiting for. Eligibility is the
+    looser predicate and can overcount a job that lists several clusters, which is the
+    safe direction for a ceiling we are trying not to exceed.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = _worker_cfg(mod, capacity_fraction=0.75, num_workers=512)
+    beaker = _FakeCapacityBeaker(jobs=[])
+    mod._capacity_target(beaker, worker, live=0)
+
+    assert beaker.job_list_kwargs, "no job listing was made"
+    kw = beaker.job_list_kwargs[0]
+    assert (
+        "elegible_for_cluster" in kw
+    ), f"queued requests are not counted; filter was {sorted(kw)}"
+    assert (
+        "scheduled" not in kw
+    ), "a scheduled-only filter excludes queued claims on the allocation"

@@ -524,13 +524,19 @@ def _allocated_slots_in_use(
         live: this run's workers, starting or alive.
 
     Returns:
-        slots held by everyone else in the workspace, never below zero.
+        slots held or queued for by everyone else in the workspace, never below zero.
     """
     total = 0
     for name in worker.cluster:
+        # Eligible, not scheduled: a colleague's queued job has not been placed on a
+        # node yet, but it is a claim on the allocation and will take slots the moment
+        # any free up. Counting only what is running lets this pool take capacity
+        # someone is already waiting for. Eligibility is the looser predicate -- a job
+        # listing several clusters counts against each -- so this can overcount when
+        # such a job lands elsewhere. That is the safe direction for a ceiling you are
+        # trying not to exceed.
         for job in beaker.job.list(
-            scheduled_on_cluster=beaker.cluster.get(name),
-            scheduled=True,
+            elegible_for_cluster=beaker.cluster.get(name),
             finalized=False,
             limit=ALLOCATION_JOB_LIMIT,
         ):
