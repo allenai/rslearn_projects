@@ -216,6 +216,9 @@ def create_window(
     # Write the label layer with one point feature per annotation.
     features = []
     for annotation in annotations:
+        if annotation["geom_wkt"] is None:
+            logger.warning("skipping annotation %s with no geometry", annotation["id"])
+            continue
         annotation_shp = shapely.from_wkt(annotation["geom_wkt"])
         features.append(
             Feature(
