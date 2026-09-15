@@ -13,16 +13,24 @@ from typing import Any
 import shapely
 import shapely.geometry
 from rslearn.dataset import Dataset, Window
+from rslearn.utils.geometry import WGS84_PROJECTION, STGeometry
 from upath import UPath
 
 from .create_dataset import (
+    LABEL_LAYER,
     MAX_POST_MONTHS,
     PERIOD_DAYS,
     get_window_geometry,
     parse_datetime,
+    rasterize_label,
+    write_label,
 )
 
 PREDICT_GROUP = "predict"
+# Prediction windows have no class label; the label raster instead stores the
+# binary event footprint (any nonzero value), which models like MaskedPool use
+# as a mask.
+FOOTPRINT_VALUE = 1
 SOURCE_PROPERTY_KEYS = (
     "tif_fname",
     "center_pixel",
@@ -76,7 +84,9 @@ def create_prediction_dataset(
 ) -> dict[str, Any]:
     """Create one prediction window per forest loss event polygon."""
     dataset = Dataset(UPath(ds_path))
-    existing_names = {window.name for window in dataset.load_windows(groups=[group])}
+    existing_windows = {
+        window.name: window for window in dataset.load_windows(groups=[group])
+    }
     outcome_counts: Counter[str] = Counter()
 
     for feature in features:
@@ -91,11 +101,26 @@ def create_prediction_dataset(
         event_time = parse_datetime(properties["oe_start_time"])
 
         name = feature_window_name(properties, geometry)
-        if name in existing_names:
-            outcome_counts["existing"] += 1
+        if name in existing_windows:
+            window = existing_windows[name]
+            if window.is_layer_completed(LABEL_LAYER):
+                outcome_counts["existing"] += 1
+                continue
+            # Backfill the event footprint for windows created before the label
+            # layer was written for prediction windows.
+            projected_geometry = (
+                STGeometry(WGS84_PROJECTION, geometry, time_range=None)
+                .to_projection(window.projection)
+                .shp
+            )
+            footprint = rasterize_label(
+                projected_geometry, window.bounds, FOOTPRINT_VALUE
+            )
+            write_label(window, dataset, footprint)
+            outcome_counts["repaired"] += 1
             continue
 
-        projection, bounds, _ = get_window_geometry(geometry)
+        projection, bounds, projected_geometry = get_window_geometry(geometry)
         # Prediction omits PostLossMonthSampler, so the window covers only the 12
         # post-loss periods: the un-sampled stack is exactly the 12-month elapsed
         # view from training, which uses zero pre-loss frames.
@@ -121,7 +146,9 @@ def create_prediction_dataset(
             data_factory=dataset.window_data_storage_factory,
         )
         window.save()
-        existing_names.add(name)
+        footprint = rasterize_label(projected_geometry, bounds, FOOTPRINT_VALUE)
+        write_label(window, dataset, footprint)
+        existing_windows[name] = window
         outcome_counts["created"] += 1
 
     return {"outcomes": dict(sorted(outcome_counts.items()))}

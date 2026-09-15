@@ -18,6 +18,7 @@ import shapely
 import shapely.affinity
 from rasterio.features import rasterize
 from rslearn.dataset import Dataset, Window
+from rslearn.utils.feature import Feature
 from rslearn.utils.geometry import WGS84_PROJECTION, Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.raster_array import RasterArray
@@ -34,6 +35,7 @@ MAX_POST_MONTHS = POST_EVENT_DAYS // PERIOD_DAYS
 DEFAULT_IMAGERY_CUTOFF = datetime.fromisoformat("2026-08-27T00:00:00+00:00")
 LABEL_LAYER = "label"
 LABEL_BAND = "label"
+LABEL_VECTOR_LAYER = "label_vector"
 
 CLASS_NAMES = (
     "nodata",
@@ -46,6 +48,20 @@ CLASS_NAMES = (
     "soybean",
 )
 CLASS_TO_ID = {name: class_id for class_id, name in enumerate(CLASS_NAMES)}
+# The window-classification (vector) label bakes in the soybean merge that the
+# segmentation configs express via class_id_mapping: soybean (7) is merged into
+# the mennonites_soybean slot (2), which is renamed to "soybean". The raster
+# label keeps the raw class IDs.
+MERGED_CLASS_NAMES = (
+    "nodata",
+    "mennonites_nonsoybean",
+    "soybean",
+    "oil_palm",
+    "other_agriculture",
+    "pastures",
+    "rice",
+)
+MERGED_CLASS_ID_MAPPING = {CLASS_TO_ID["soybean"]: CLASS_TO_ID["mennonites_soybean"]}
 ACCEPTED_CONFIDENCE = frozenset({"high", "medium", "low"})
 REJECTED_STATUSES = frozenset({"rejected"})
 
@@ -247,6 +263,34 @@ def write_label(window: Window, dataset: Dataset, label: np.ndarray) -> None:
     window.mark_layer_completed(LABEL_LAYER)
 
 
+def write_vector_label(
+    window: Window,
+    dataset: Dataset,
+    record: SelectedAnnotation,
+    projected_geometry: shapely.Geometry,
+) -> None:
+    """Write the window-classification vector label and mark it complete.
+
+    The feature stores the merged class (soybean merged into the renamed
+    mennonites_soybean slot) under class_name/class_id, plus the raw class for
+    provenance.
+    """
+    merged_class_id = MERGED_CLASS_ID_MAPPING.get(record.class_id, record.class_id)
+    feature = Feature(
+        STGeometry(window.projection, projected_geometry, time_range=None),
+        {
+            "class_name": MERGED_CLASS_NAMES[merged_class_id],
+            "class_id": merged_class_id,
+            "raw_class_name": record.class_name,
+            "raw_class_id": record.class_id,
+        },
+    )
+    vector_format = dataset.layers[LABEL_VECTOR_LAYER].instantiate_vector_format()
+    with window.data.open_layer_writer(LABEL_VECTOR_LAYER) as writer:
+        writer.write_vector(vector_format, [feature])
+    window.mark_layer_completed(LABEL_VECTOR_LAYER)
+
+
 def create_window(
     record: SelectedAnnotation,
     dataset: Dataset,
@@ -268,20 +312,25 @@ def create_window(
         for key, expected in expected_options.items():
             if window.options.get(key) != expected:
                 raise ValueError(f"existing window {group}/{name} has mismatched {key}")
-        if not window.is_layer_completed(LABEL_LAYER):
-            projected_geometry = (
-                STGeometry(
-                    WGS84_PROJECTION,
-                    record.geometry,
-                    time_range=None,
-                )
-                .to_projection(window.projection)
-                .shp
+        needs_raster = not window.is_layer_completed(LABEL_LAYER)
+        needs_vector = not window.is_layer_completed(LABEL_VECTOR_LAYER)
+        if not needs_raster and not needs_vector:
+            return window, "existing"
+        projected_geometry = (
+            STGeometry(
+                WGS84_PROJECTION,
+                record.geometry,
+                time_range=None,
             )
+            .to_projection(window.projection)
+            .shp
+        )
+        if needs_raster:
             label = rasterize_label(projected_geometry, window.bounds, record.class_id)
             write_label(window, dataset, label)
-            return window, "repaired"
-        return window, "existing"
+        if needs_vector:
+            write_vector_label(window, dataset, record, projected_geometry)
+        return window, "repaired"
 
     projection, bounds, projected_geometry = get_window_geometry(record.geometry)
     time_range = (
@@ -316,6 +365,7 @@ def create_window(
     window.save()
     label = rasterize_label(projected_geometry, bounds, record.class_id)
     write_label(window, dataset, label)
+    write_vector_label(window, dataset, record, projected_geometry)
     return window, "created"
 
 

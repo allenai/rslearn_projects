@@ -24,6 +24,19 @@
       ],
       "type": "raster"
     },
+    "label_vector": {
+      "class_names": [
+        "nodata",
+        "mennonites_nonsoybean",
+        "soybean",
+        "oil_palm",
+        "other_agriculture",
+        "pastures",
+        "rice"
+      ],
+      "class_property_name": "class_name",
+      "type": "vector"
+    },
     "output": {
       "band_sets": [
         {
@@ -34,6 +47,9 @@
         }
       ],
       "type": "raster"
+    },
+    "output_vector": {
+      "type": "vector"
     },
     "sentinel2_l2a": {
       "band_sets": [
