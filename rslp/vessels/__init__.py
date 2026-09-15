@@ -17,6 +17,7 @@ class VesselDetectionSource(str, Enum):
     LANDSAT = "landsat"
     SENTINEL2 = "sentinel2"
     SENTINEL1 = "sentinel1"
+    NISAR = "nisar"
 
 
 class VesselAttributes(TypedDict):

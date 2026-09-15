@@ -1,0 +1,29 @@
+{
+  "layers": {
+    "label": {
+      "type": "vector"
+    },
+    "nisar": {
+      "band_sets": [
+        {
+          "bands": [
+            "HHHH",
+            "HVHV"
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "data_source": {
+        "class_path": "rslearn.data_sources.local_files.LocalFiles",
+        "init_args": {
+          "raster_item_specs": "PLACEHOLDER",
+          "src_dir": "PLACEHOLDER"
+        }
+      },
+      "type": "raster"
+    },
+    "output": {
+      "type": "vector"
+    }
+  }
+}
