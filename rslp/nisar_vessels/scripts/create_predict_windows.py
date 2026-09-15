@@ -129,7 +129,7 @@ def get_scenes(
         cur += SEARCH_QUERY_CHUNK
 
     scenes: dict[str, dict[str, Any]] = {}
-    with multiprocessing.Pool(min(workers, len(chunks))) as pool:
+    with multiprocessing.Pool(workers) as pool:
         outputs = pool.imap_unordered(_search_chunk, chunks)
         for records in tqdm.tqdm(outputs, total=len(chunks), desc="Searching scenes"):
             for scene in records:

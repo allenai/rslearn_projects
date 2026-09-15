@@ -2,12 +2,16 @@
 
 import os
 from dataclasses import dataclass
+from datetime import timedelta
 
 from beaker import BeakerDataMount, BeakerDataSource, BeakerEnvVar, BeakerImageSource
 from beaker.client import Beaker
 
 DEFAULT_WORKSPACE = "ai2/earth-systems"
 DEFAULT_BUDGET = "ai2/atec-olmoearth"
+# Default preemption protection duration for Beaker jobs. 8 hours is the maximum
+# allowed on most clusters.
+DEFAULT_MIN_RUNTIME = timedelta(hours=8)
 
 
 @dataclass
