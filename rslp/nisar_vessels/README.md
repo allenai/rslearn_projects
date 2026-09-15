@@ -136,8 +136,8 @@ The response holds one entry per detection (`rslp.vessels.VesselDetectionDict`),
 score, and `crop_fnames` keyed `hh` and `hv`.
 
 Unlike Sentinel-1 there is no `scene_id` mode: the service has no data source of its
-own, so a granule is the only way to give it imagery. `scene_id` may still be passed to
-label the detections, and otherwise defaults to the granule filename.
+own, so a granule is the only way to give it imagery. Detections are labelled with a
+`scene_id` taken from the granule filename.
 
 The same pipeline is available as a workflow:
 

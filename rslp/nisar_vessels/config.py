@@ -26,8 +26,7 @@ NISAR_SCORE_THRESHOLD = float(os.getenv("NISAR_SCORE_THRESHOLD", "0.7"))
 INFRA_DISTANCE_THRESHOLD_KM = float(os.getenv("NISAR_INFRA_DISTANCE_KM", "0.2"))
 
 # GeoJSON of marine infrastructure that detections are filtered against. rslp.utils.filter
-# already reads MARINE_INFRA_PATH from the environment and otherwise falls back to a
-# public URL; it is named here so every knob this service has lives in one place.
+# reads MARINE_INFRA_PATH from the environment, falling back to a public URL.
 MARINE_INFRA_PATH = DEFAULT_INFRA_PATH
 
 # Number of workers the rslearn data loader uses during prediction.

@@ -39,13 +39,8 @@ from rslp.vessels import VesselDetection, VesselDetectionSource
 
 logger = get_logger(__name__)
 
-# Layer name for the NISAR image in which we want to detect vessels.
 NISAR_LAYER_NAME = "nisar"
-
-# Name of layer containing the output.
 OUTPUT_LAYER_NAME = "output"
-
-# Group that the per-scene detection windows are created in.
 WINDOW_GROUP = "detector_predict"
 
 DATASET_CONFIG = "data/nisar_vessels/config_predict.json"
@@ -61,17 +56,15 @@ RESOLUTION = 10
 # H-transmit (POLE "DH") acquisition carries.
 BAND_NAMES = ["HHHH", "HVHV"]
 
-# Band name to the key it appears under in VesselDetection.crop_fnames. These must match
-# NISAR_HH_CROP_KEY / NISAR_HV_CROP_KEY in the Skylight sat service, which reads the
-# crops back out of the response by name.
+# Band name to the key it appears under in VesselDetection.crop_fnames. The sat service
+# reads the crops back out of the response by these names.
 CROP_KEYS = {"HHHH": "hh", "HVHV": "hv"}
 
-# Side length of the crop image saved per detection, in pixels (so 1.28 km at 10 m).
+# Crop side length in pixels, i.e. 1.28 km at 10 m.
 CROP_WINDOW_SIZE = 128
 
-# Crop images are 8-bit PNGs, so the backscatter has to be stretched to 0-255. GCOV
-# carries gamma-0 in linear power, which is converted to decibels first (as in training)
-# and then stretched over the range vessels and open water actually occupy.
+# Display range for the crops, covering where vessels and open water actually sit. GCOV
+# carries gamma-0 in linear power, so it is converted to decibels first, as in training.
 CROP_DECIBEL_RANGE = (-35.0, 5.0)
 
 # Matches the epsilon in rslearn's Sentinel1ToDecibels, so a zero or filled pixel lands
@@ -93,14 +86,12 @@ class PredictionTask:
         h5_path: local path of the NISAR HDF5 granule to detect vessels in. This is
             the only way the sidecar can be given imagery; it has no data source of its
             own to look a granule up with.
-        scene_id: the granule name, defaulting to the filename of h5_path.
         json_path: optional path to write the JSON of vessel detections.
         crop_path: optional path to write the vessel crop images.
         geojson_path: optional path to write GeoJSON of detections.
     """
 
     h5_path: str
-    scene_id: str | None = None
     json_path: str | None = None
     crop_path: str | None = None
     geojson_path: str | None = None
@@ -109,12 +100,9 @@ class PredictionTask:
         """Get the granule name for this task.
 
         Returns:
-            the caller-provided scene ID, or the granule filename without its extension.
-            The sat service names the downloaded file after the granule, so the stem is
-            the granule name.
+            the granule filename without its extension. The sat service names the
+            downloaded file after the granule, so the stem is the granule name.
         """
-        if self.scene_id is not None:
-            return self.scene_id
         return UPath(self.h5_path).stem
 
 
@@ -454,7 +442,7 @@ def _build_predictions_and_crops(
 def _write_crops(
     detection: VesselDetection, window: Window, crop_upath: UPath
 ) -> dict[str, UPath]:
-    """Save one 8-bit PNG crop per band around a detection.
+    """Save one PNG crop per band around a detection.
 
     Args:
         detection: the detection to crop around.
@@ -490,7 +478,7 @@ def _write_crops(
 
 
 def _to_uint8(band_image: np.ndarray) -> np.ndarray:
-    """Stretch linear backscatter to an 8-bit image for display.
+    """Stretch linear backscatter over the display range.
 
     Args:
         band_image: one band of a crop, in linear power.
