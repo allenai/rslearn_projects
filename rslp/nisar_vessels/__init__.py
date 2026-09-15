@@ -1,16 +1,12 @@
 """NISAR vessel detection."""
 
-# Imported under different names than the modules they come from: binding a function to
-# the same name as its module shadows the module on this package, so that
-# `rslp.nisar_vessels.predict_pipeline` would be the function rather than the module.
+# Aliased so it does not shadow the module of the same name on this package.
 from .predict_pipeline import predict_pipeline as predict
-from .scripts.create_dataset import create_dataset as create_dataset_workflow
-from .scripts.create_predict_windows import (
-    create_predict_windows as create_predict_windows_workflow,
-)
+from .scripts.create_dataset import create_dataset
+from .scripts.create_predict_windows import create_predict_windows
 
 workflows = {
-    "create_dataset": create_dataset_workflow,
-    "create_predict_windows": create_predict_windows_workflow,
+    "create_dataset": create_dataset,
+    "create_predict_windows": create_predict_windows,
     "predict": predict,
 }
