@@ -234,15 +234,12 @@ class TestDistanceNmsFunction:
     def test_no_detections(self) -> None:
         assert distance_nms(np.zeros((0, 2)), np.zeros(0), self.THRESHOLD) == []
 
-    def test_single_detection_survives(self) -> None:
-        assert self._keep([(5.0, 5.0)], [0.5]) == [0]
-
-    def test_close_pair_keeps_the_higher_score(self) -> None:
-        assert self._keep([(100.0, 100.0), (103.0, 102.0)], [0.4, 0.9]) == [1]
-
-    def test_order_does_not_decide_the_winner(self) -> None:
-        """Whichever tile reported first, the better-scoring detection is the survivor."""
-        assert self._keep([(100.0, 100.0), (103.0, 102.0)], [0.9, 0.4]) == [0]
+    @pytest.mark.parametrize(("scores", "winner"), [([0.4, 0.9], 1), ([0.9, 0.4], 0)])
+    def test_close_pair_keeps_the_higher_score(
+        self, scores: list[float], winner: int
+    ) -> None:
+        """The better score wins whichever tile reported it first."""
+        assert self._keep([(100.0, 100.0), (103.0, 102.0)], scores) == [winner]
 
     def test_distant_pair_both_survive(self) -> None:
         assert sorted(self._keep([(0.0, 0.0), (500.0, 500.0)], [0.9, 0.8])) == [0, 1]
@@ -254,12 +251,10 @@ class TestDistanceNmsFunction:
     def test_threshold_is_inclusive(self) -> None:
         assert self._keep([(0.0, 0.0), (0.0, 10.0)], [0.9, 0.8]) == [0]
 
-    def test_equal_scores_are_broken_deterministically(self) -> None:
-        """Ties must not depend on input order, or reruns disagree."""
-        forward = self._keep([(0.0, 0.0), (2.0, 2.0)], [0.7, 0.7])
-        backward = self._keep([(2.0, 2.0), (0.0, 0.0)], [0.7, 0.7])
-
-        assert len(forward) == len(backward) == 1
+    def test_equal_scores_keep_the_lower_index(self) -> None:
+        """Ties resolve by index, so a rerun over the same input agrees with itself."""
+        assert self._keep([(0.0, 0.0), (2.0, 2.0)], [0.7, 0.7]) == [0]
+        assert self._keep([(2.0, 2.0), (0.0, 0.0)], [0.7, 0.7]) == [0]
 
     def test_suppression_does_not_chain(self) -> None:
         """B is near A and C is near B, but C is far from A, so C is not suppressed."""
