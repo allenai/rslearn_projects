@@ -187,6 +187,10 @@ detections against the default before deploying the change.
 
     docker compose -f rslp/nisar_vessels/docker-compose.yaml build
 
+CI publishes the image to GHCR as `allenai/nisar-vessel-detection` when a
+`nisar_vessels_v*` tag is pushed (see `.github/workflows/nisar_vessel.yaml`), matching
+how the other vessel services are released.
+
 The Dockerfile downloads the detector checkpoint to the path implied by
 `project_name`/`run_name` in `DETECT_MODEL_CONFIG`, so the two move together: pointing
 the service at a different run means updating the config and the Dockerfile path.
