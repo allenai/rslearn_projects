@@ -21,10 +21,9 @@ NISAR_PORT = int(os.getenv("NISAR_PORT", "5555"))
 # Default detector score threshold, overridable per request via the API.
 NISAR_SCORE_THRESHOLD = float(os.getenv("NISAR_SCORE_THRESHOLD", "0.7"))
 
-# Distance threshold for the near marine infrastructure filter, in km. Measured over the
-# 20260828 predict set: detections landing on known platforms peak 10-20 m from them and
-# 87% are inside 50 m, with a gap before the next ones at 100 m or beyond, which sit in
-# busy platform fields and are plausibly moored vessels rather than the structures.
+# Distance threshold for the near marine infrastructure filter, in km. Measured on the
+# 20260828 predict set: detections nearest the infra layer cluster 10-20 m out, with
+# nothing between 70 and 100 m.
 INFRA_DISTANCE_THRESHOLD_KM = float(os.getenv("NISAR_INFRA_DISTANCE_KM", "0.05"))
 
 # GeoJSON of marine infrastructure that detections are filtered against. rslp.utils.filter
@@ -39,19 +38,14 @@ NUM_DATA_LOADER_WORKERS = int(os.getenv("RSLEARN_NUM_DATA_LOADER_WORKERS", "4"))
 NUM_MATERIALIZE_WORKERS = int(os.getenv("NISAR_MATERIALIZE_WORKERS", "32"))
 
 # Side length, in pixels, of the tiles a scene is split into for detection. Materializing
-# a window builds the whole thing in memory as float32, so this rather than the granule
-# size sets peak usage: 4096 works out to ~134 MB for the two bands. Granule area varies
-# by more than 4x across bandwidth modes, so sizing to the largest scene seen so far only
-# moves the cliff.
+# a window holds it in memory as float32, so this, not the granule, sets peak usage:
+# 4096 is ~134 MB for the two bands.
 SCENE_TILE_SIZE = int(os.getenv("NISAR_SCENE_TILE_SIZE", "4096"))
 
-# Overlap between adjacent scene tiles, so a vessel sitting on a seam falls fully inside
-# at least one tile. Only has to exceed a vessel's footprint, which is ~15 pixels.
+# Overlap between adjacent scene tiles, so a vessel on a seam falls fully inside one of
+# them. Only has to exceed a vessel's ~15 pixel footprint.
 SCENE_TILE_OVERLAP = int(os.getenv("NISAR_SCENE_TILE_OVERLAP", "64"))
 
-# How the detector tiles a scene at inference time. These match what the model trained
-# on, so inference sees what training saw. A larger tile means fewer forward passes but
-# not less compute, since the overlap fraction stays the same, so it only saves per-crop
-# overhead.
+# How the detector crops each window at inference time, matching what it trained on.
 PREDICT_CROP_SIZE = int(os.getenv("NISAR_PREDICT_CROP_SIZE", "128"))
 PREDICT_OVERLAP_PIXELS = int(os.getenv("NISAR_PREDICT_OVERLAP_PIXELS", "16"))

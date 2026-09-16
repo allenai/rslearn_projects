@@ -31,7 +31,7 @@ from rslp.nisar_vessels.config import (
 from rslp.nisar_vessels.hdf5 import GranuleGrid, granule_to_geotiff
 from rslp.nisar_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.filter import NearInfraFilter
-from rslp.utils.nms import distance_nms
+from rslp.utils.nms import DEFAULT_DISTANCE_THRESHOLD, distance_nms
 from rslp.utils.rslearn import (
     ApplyWindowsArgs,
     IngestArgs,
@@ -52,14 +52,12 @@ WINDOW_GROUP = "detector_predict"
 DATASET_CONFIG = "data/nisar_vessels/config_predict.json"
 DETECT_MODEL_CONFIG = "data/nisar_vessels/config_satlas.yaml"
 
-# Resolution of the windows the detector runs on. GCOV granules are posted at 10 m or
-# 20 m, and the training windows were all built at 10 m/pixel, so everything is
-# resampled to 10 m here too.
+# Resolution of the windows the detector runs on. GCOV is posted at 10 m or 20 m; the
+# training windows were all 10 m/pixel.
 RESOLUTION = 10
 
-# The GCOV diagonal covariance terms the detector reads, in the order the model expects
-# them. HHHH and HVHV are the HH and HV backscatter intensities, which every dual-pol
-# H-transmit (POLE "DH") acquisition carries.
+# The HH and HV backscatter intensities, in the order the model expects. Every dual-pol
+# H-transmit (POLE "DH") acquisition carries them.
 BAND_NAMES = ["HHHH", "HVHV"]
 
 # Band name to the key it appears under in VesselDetection.crop_fnames. The sat service
@@ -77,10 +75,10 @@ CROP_DECIBEL_RANGE = (-35.0, 5.0)
 # at -60 dB rather than negative infinity.
 DECIBEL_EPSILON = 1e-6
 
-# Detections this far apart, in pixels, are treated as the same vessel seen from two
-# overlapping scene tiles. Matches the distance threshold the model config's merger uses
-# to combine detections across the crops within a single window.
-DEDUPE_DISTANCE_PIXELS = 10
+# Detections this far apart, in pixels, are the same vessel seen from two tiles. The
+# merger in DETECT_MODEL_CONFIG has to agree, or a pair is merged within a window and
+# kept across tiles.
+DEDUPE_DISTANCE_PIXELS = DEFAULT_DISTANCE_THRESHOLD
 
 
 @dataclass(frozen=True)
@@ -252,8 +250,8 @@ def tile_scene_bounds(
 def _tile_starts(low: int, high: int, tile_size: int, overlap: int) -> list[int]:
     """Get the tile start offsets covering one axis.
 
-    The last tile is flush against the far edge rather than clipped, so every tile is
-    full size and the final one simply overlaps its neighbour more than the rest.
+    The last tile sits flush against the far edge rather than being clipped, so no tile
+    comes out smaller than the crops the detector reads.
 
     Args:
         low: the first coordinate on this axis.
@@ -277,10 +275,8 @@ def materialize_scenes(
 ) -> list[tuple[int, Window]]:
     """Create a window per scene tile and materialize the NISAR imagery into each.
 
-    Scenes are split into tiles rather than materialized whole: rslearn builds a
-    window's raster as a single in-memory array, so one window per granule makes peak
-    memory scale with the granule, which is unbounded. Tiling caps it at the tile size
-    no matter how large the scene is.
+    Tiles rather than whole scenes, because rslearn builds a window's raster as one
+    in-memory array, so a whole-granule window makes peak memory follow the granule.
 
     Args:
         ds_path: the dataset path, already configured by :func:`setup_dataset`.
@@ -335,10 +331,8 @@ def materialize_scenes(
     with time_operation(TimerOperations.MaterializeDataset):
         materialize_dataset(ds_path, materialize_pipeline_args)
 
-    # A scene's bounds are a rectangle around its footprint, so once the granule is
-    # reprojected into the detector's zone the corners can fall outside it entirely and
-    # those tiles never materialize. Drop them rather than fail the whole scene, and
-    # delete the window so the detector does not try to read a missing layer.
+    # Scene bounds are a rectangle around the footprint, so corner tiles can fall outside
+    # it and never materialize. Drop those rather than fail the scene.
     materialized: list[tuple[int, Window]] = []
     for scene_idx, window in tiles:
         if window.is_layer_completed(NISAR_LAYER_NAME):
@@ -424,13 +418,9 @@ def get_vessel_detections(
 def dedupe_detections(detections: list[VesselDetection]) -> list[VesselDetection]:
     """Suppress repeat detections of one vessel found in two overlapping tiles.
 
-    Tiles overlap so a vessel on a seam falls fully inside at least one of them, which
-    means anything in the overlap band is detected twice. All tiles of a scene share its
-    projection, so their pixel coordinates are directly comparable.
-
-    Runs the same distance NMS the merger uses to combine detections across the crops
-    within one window, so the two stages cannot disagree about what counts as the same
-    vessel.
+    Runs the same distance NMS the merger applies across crops within a window, so the
+    two stages cannot disagree. The best-scoring view wins, which is the one from the
+    tile that saw the whole vessel.
 
     Args:
         detections: the detections from every tile.
@@ -573,9 +563,9 @@ def _write_crops(
 ) -> dict[str, UPath]:
     """Save one PNG crop per band around a detection.
 
-    Crops come from the scene's GeoTIFF rather than the tile window the detection was
-    found in, so a detection near a tile seam still gets a full crop instead of one half
-    filled with nodata. The read is a windowed one, so it costs the crop, not the scene.
+    Read from the scene's GeoTIFF rather than the tile it was found in, so a detection
+    near a seam gets a full crop. The read is windowed, so it costs the crop, not the
+    scene.
 
     Args:
         detection: the detection to crop around.

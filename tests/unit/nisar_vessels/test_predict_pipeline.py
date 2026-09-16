@@ -6,6 +6,7 @@ import pathlib
 
 import numpy as np
 import pytest
+import yaml
 from rasterio.crs import CRS
 from rslearn.utils.geometry import Projection
 from upath import UPath
@@ -368,3 +369,21 @@ def test_seam_duplicate_resolves_to_the_tile_that_saw_the_whole_vessel() -> None
 
     assert (kept.col, kept.row) == (104, 103)
     assert kept.score == 0.88
+
+
+def test_dedupe_threshold_matches_the_configured_merger() -> None:
+    """The model config's merger and cross-tile suppression must use one threshold.
+
+    They are set in different files, so a change to one silently desyncs the other.
+    """
+    with open(pipeline.DETECT_MODEL_CONFIG) as f:
+        config = yaml.safe_load(f)
+    mergers = [
+        callback["init_args"]["merger"]["init_args"]
+        for callback in config["trainer"]["callbacks"]
+        if "merger" in callback.get("init_args", {})
+    ]
+
+    assert mergers, "no prediction writer with a merger in the model config"
+    for merger in mergers:
+        assert merger["distance_threshold"] == pipeline.DEDUPE_DISTANCE_PIXELS
