@@ -149,7 +149,16 @@ with h5py (the `xCoordinates`/`yCoordinates`/`projection` datasets that sit alon
 bands) and writes the HHHH and HVHV bands out as one GeoTIFF. That GeoTIFF is then an
 ordinary `LocalFiles` raster layer, configured by `data/nisar_vessels/config_predict.json`.
 
-Two details there are load-bearing, both so inference sees what training saw:
+The scene is then split into `NISAR_SCENE_TILE_SIZE` tiles, one rslearn window each,
+rather than materialized as a single window covering the granule. rslearn builds a
+window's raster as one in-memory array, so a whole-granule window makes peak memory
+scale with the granule: at 10 m/pixel a large GCOV scene is over a gigapixel, which is
+~9.4 GB for the two bands as float32, and area varies more than 4x across bandwidth
+modes. Tiling caps it at the tile size regardless of scene size. Tiles overlap so a
+vessel on a seam falls fully inside one of them, and detections in the overlap band are
+deduplicated afterwards.
+
+Two further details are load-bearing, both so inference sees what training saw:
 
 - The window is created in the UTM/UPS zone of the scene centroid at 10 m/pixel, the
   same way `create_dataset` builds training windows. GCOV is already geocoded, but not
@@ -157,9 +166,10 @@ Two details there are load-bearing, both so inference sees what training saw:
 - `config_predict.json` sets no `resampling_method`, so the layer inherits rslearn's
   bilinear default, which is what materialized the training dataset.
 
-Detection crops are read straight back out of the scene window rather than materialized
-into windows of their own, so a detection close to the scene edge still gets a crop,
-padded with nodata.
+Detection crops are read straight back out of the scene GeoTIFF rather than materialized
+into windows of their own, or cut from the tile the detection was found in. That read is
+windowed, so it costs the crop rather than the scene, and a detection next to a tile seam
+still gets a full crop instead of one half filled with nodata.
 
 ### Configuration
 
@@ -175,10 +185,16 @@ so the service's settings stay in one place):
 | `MARINE_INFRA_PATH` | Satlas marine GeoJSON URL | The marine infrastructure to filter against. |
 | `RSLEARN_NUM_DATA_LOADER_WORKERS` | `4` | Data loader workers during prediction. |
 | `NISAR_MATERIALIZE_WORKERS` | `32` | Workers used to prepare and materialize. |
+| `NISAR_SCENE_TILE_SIZE` | `4096` | Tile the scene is split into for materialization. |
+| `NISAR_SCENE_TILE_OVERLAP` | `64` | Overlap between adjacent scene tiles. |
 | `NISAR_PREDICT_CROP_SIZE` | `128` | Tile size the detector runs over at inference. |
 | `NISAR_PREDICT_OVERLAP_PIXELS` | `16` | Overlap between adjacent tiles. |
 
-The tiling defaults match the crops the detector trained on, so inference sees what
+`NISAR_SCENE_TILE_SIZE` sets peak memory during materialization: 4096 works out to
+about 134 MB for the two bands as float32. Raising it raises the ceiling proportionally
+to its square, so a node memory limit should be set with the chosen tile in mind.
+
+The crop tiling defaults match the crops the detector trained on, so inference sees what
 training saw. Raising the tile size is tempting since it means fewer forward passes, but
 it does not reduce total compute: the overlap fraction is the same either way (16/128
 and 64/512 are both 12.5%), so only per-crop overhead is saved. Raise

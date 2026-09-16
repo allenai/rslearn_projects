@@ -1,5 +1,6 @@
 """Unit tests for the pieces of the NISAR prediction pipeline that need no model."""
 
+import itertools
 import json
 import pathlib
 
@@ -56,7 +57,7 @@ def test_prediction_task_is_frozen() -> None:
 
 def test_scene_data_is_placed_on_the_detector_grid() -> None:
     """A granule's footprint comes back in a UTM/UPS zone at the detector resolution."""
-    scene_data = pipeline._get_scene_data("granule", _grid())
+    scene_data = pipeline._get_scene_data("granule", _grid(), "/scratch/granule.tif")
 
     assert scene_data.scene_id == "granule"
     assert scene_data.projection.x_resolution == pipeline.RESOLUTION
@@ -75,7 +76,9 @@ def test_scene_data_reprojects_a_granule_from_another_zone() -> None:
     windows used, so the footprint is re-derived from the centroid rather than trusted.
     """
     # Same easting/northing, but declared in UTM zone 11N instead of 10N.
-    scene_data = pipeline._get_scene_data("granule", _grid(epsg_code=32611))
+    scene_data = pipeline._get_scene_data(
+        "granule", _grid(epsg_code=32611), "/scratch/granule.tif"
+    )
 
     assert scene_data.projection.crs.to_epsg() == 32611
     minx, miny, maxx, maxy = scene_data.bounds
@@ -194,3 +197,111 @@ def test_detection_on_marine_infrastructure_is_dropped(
     )
 
     assert kept is far_away
+
+
+# --- Scene tiling ---
+
+
+def test_small_scene_is_a_single_tile() -> None:
+    """A scene that already fits the tile size is not split."""
+    bounds = (0, 0, 1000, 800)
+
+    assert pipeline.tile_scene_bounds(bounds, 4096, 64) == [bounds]
+
+
+def test_tiles_cover_the_whole_scene() -> None:
+    """Every pixel of the scene falls inside at least one tile."""
+    bounds = (0, 0, 10000, 7000)
+
+    tiles = pipeline.tile_scene_bounds(bounds, 4096, 64)
+
+    assert min(t[0] for t in tiles) == bounds[0]
+    assert min(t[1] for t in tiles) == bounds[1]
+    assert max(t[2] for t in tiles) == bounds[2]
+    assert max(t[3] for t in tiles) == bounds[3]
+
+
+def test_no_tile_exceeds_the_tile_size() -> None:
+    """The tile size is the memory bound, so nothing may come out larger."""
+    tiles = pipeline.tile_scene_bounds((0, 0, 10000, 7000), 4096, 64)
+
+    assert tiles
+    for minx, miny, maxx, maxy in tiles:
+        assert maxx - minx <= 4096
+        assert maxy - miny <= 4096
+
+
+def test_tile_count_grows_with_scene_not_memory() -> None:
+    """A scene 4x the area yields ~4x the tiles, each still one tile's worth of memory.
+
+    This is the property the whole change exists for: peak memory follows the tile size,
+    not the granule, which is unbounded.
+    """
+    small = pipeline.tile_scene_bounds((0, 0, 8192, 8192), 4096, 64)
+    large = pipeline.tile_scene_bounds((0, 0, 16384, 16384), 4096, 64)
+
+    assert len(large) > len(small)
+    assert max(t[2] - t[0] for t in large) == max(t[2] - t[0] for t in small)
+
+
+def test_adjacent_tiles_overlap() -> None:
+    """Neighbouring tiles share a band, so a vessel on a seam is whole in one of them."""
+    tiles = pipeline.tile_scene_bounds((0, 0, 10000, 4096), 4096, 64)
+    row = sorted({(t[0], t[2]) for t in tiles})
+
+    assert len(row) > 1
+    for (_, first_maxx), (second_minx, _) in itertools.pairwise(row):
+        assert first_maxx - second_minx >= 64
+
+
+def test_offset_bounds_are_tiled_from_their_origin() -> None:
+    """Scene bounds are negative in y, so tiling must not assume it starts at zero."""
+    bounds = (50000, -420000, 58000, -412000)
+
+    tiles = pipeline.tile_scene_bounds(bounds, 4096, 64)
+
+    assert min(t[0] for t in tiles) == bounds[0]
+    assert min(t[1] for t in tiles) == bounds[1]
+    assert max(t[2] for t in tiles) == bounds[2]
+    assert max(t[3] for t in tiles) == bounds[3]
+
+
+# --- Cross-tile dedup ---
+
+
+def _scored(task_idx: int, col: int, row: int, score: float) -> VesselDetection:
+    return VesselDetection(
+        source=VesselDetectionSource.NISAR,
+        col=col,
+        row=row,
+        projection=Projection(CRS.from_epsg(32610), 10, -10),
+        score=score,
+        metadata={"task_idx": task_idx},
+    )
+
+
+def test_duplicate_across_tiles_keeps_the_best_score() -> None:
+    """The same vessel seen from two overlapping tiles collapses to one detection."""
+    detections = [_scored(0, 100, 100, 0.6), _scored(0, 102, 101, 0.9)]
+
+    kept = pipeline.dedupe_detections(detections)
+
+    assert len(kept) == 1
+    assert kept[0].score == 0.9
+
+
+def test_distinct_vessels_are_both_kept() -> None:
+    detections = [_scored(0, 100, 100, 0.9), _scored(0, 400, 400, 0.8)]
+
+    assert len(pipeline.dedupe_detections(detections)) == 2
+
+
+def test_same_position_in_different_scenes_is_not_deduped() -> None:
+    """Tiles only overlap within a scene, so identical coordinates elsewhere are real."""
+    detections = [_scored(0, 100, 100, 0.9), _scored(1, 100, 100, 0.8)]
+
+    assert len(pipeline.dedupe_detections(detections)) == 2
+
+
+def test_dedupe_of_nothing_is_nothing() -> None:
+    assert pipeline.dedupe_detections([]) == []

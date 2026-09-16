@@ -38,6 +38,17 @@ NUM_DATA_LOADER_WORKERS = int(os.getenv("RSLEARN_NUM_DATA_LOADER_WORKERS", "4"))
 # carries a single granule, so this only parallelizes across the bands of one window.
 NUM_MATERIALIZE_WORKERS = int(os.getenv("NISAR_MATERIALIZE_WORKERS", "32"))
 
+# Side length, in pixels, of the tiles a scene is split into for detection. Materializing
+# a window builds the whole thing in memory as float32, so this rather than the granule
+# size sets peak usage: 4096 works out to ~134 MB for the two bands. Granule area varies
+# by more than 4x across bandwidth modes, so sizing to the largest scene seen so far only
+# moves the cliff.
+SCENE_TILE_SIZE = int(os.getenv("NISAR_SCENE_TILE_SIZE", "4096"))
+
+# Overlap between adjacent scene tiles, so a vessel sitting on a seam falls fully inside
+# at least one tile. Only has to exceed a vessel's footprint, which is ~15 pixels.
+SCENE_TILE_OVERLAP = int(os.getenv("NISAR_SCENE_TILE_OVERLAP", "64"))
+
 # How the detector tiles a scene at inference time. These match what the model trained
 # on, so inference sees what training saw. A larger tile means fewer forward passes but
 # not less compute, since the overlap fraction stays the same, so it only saves per-crop

@@ -24,6 +24,8 @@ from rslp.nisar_vessels.config import (
     NUM_MATERIALIZE_WORKERS,
     PREDICT_CROP_SIZE,
     PREDICT_OVERLAP_PIXELS,
+    SCENE_TILE_OVERLAP,
+    SCENE_TILE_SIZE,
 )
 from rslp.nisar_vessels.hdf5 import GranuleGrid, granule_to_geotiff
 from rslp.nisar_vessels.prom_metrics import TimerOperations, time_operation
@@ -73,6 +75,11 @@ CROP_DECIBEL_RANGE = (-35.0, 5.0)
 # at -60 dB rather than negative infinity.
 DECIBEL_EPSILON = 1e-6
 
+# Detections this far apart, in pixels, are treated as the same vessel seen from two
+# overlapping scene tiles. Matches the distance threshold the model config's merger uses
+# to combine detections across the crops within a single window.
+DEDUPE_DISTANCE_PIXELS = 10
+
 
 @dataclass(frozen=True)
 class PredictionTask:
@@ -110,17 +117,21 @@ class PredictionTask:
 
 @dataclass(frozen=True)
 class SceneData:
-    """Where in the world one scene's detection window sits.
+    """Where in the world one scene sits, and where its imagery was staged.
 
     Args:
         scene_id: the granule name.
-        projection: the projection the window is created in.
-        bounds: the window's bounds in that projection.
+        projection: the projection the scene's windows are created in.
+        bounds: the whole scene's bounds in that projection.
+        geotiff_path: the GeoTIFF the granule was converted to. Crops are read back from
+            here rather than from a tile, so a detection near a tile seam still gets a
+            full crop.
     """
 
     scene_id: str
     projection: Projection
     bounds: PixelBounds
+    geotiff_path: str
 
 
 def setup_dataset(ds_path: UPath, tasks: list[PredictionTask]) -> list[SceneData]:
@@ -160,7 +171,7 @@ def setup_dataset(ds_path: UPath, tasks: list[PredictionTask]) -> list[SceneData
                 "name": scene_id,
             }
         )
-        scene_datas.append(_get_scene_data(scene_id, grid))
+        scene_datas.append(_get_scene_data(scene_id, grid, str(geotiff_path)))
 
     layer_cfg = ds_cfg["layers"][NISAR_LAYER_NAME]["data_source"]["init_args"]
     layer_cfg["raster_item_specs"] = item_specs
@@ -171,7 +182,7 @@ def setup_dataset(ds_path: UPath, tasks: list[PredictionTask]) -> list[SceneData
     return scene_datas
 
 
-def _get_scene_data(scene_id: str, grid: GranuleGrid) -> SceneData:
+def _get_scene_data(scene_id: str, grid: GranuleGrid, geotiff_path: str) -> SceneData:
     """Place a granule's footprint on the grid the detector runs on.
 
     GCOV is already geocoded, but not necessarily in the UTM/UPS zone the training
@@ -181,6 +192,7 @@ def _get_scene_data(scene_id: str, grid: GranuleGrid) -> SceneData:
     Args:
         scene_id: the granule name.
         grid: the grid the granule's bands are sampled on.
+        geotiff_path: the GeoTIFF the granule was converted to.
 
     Returns:
         the SceneData for this granule.
@@ -209,38 +221,100 @@ def _get_scene_data(scene_id: str, grid: GranuleGrid) -> SceneData:
             math.ceil(maxx),
             math.ceil(maxy),
         ),
+        geotiff_path=geotiff_path,
     )
 
 
-def materialize_scenes(ds_path: UPath, scene_datas: list[SceneData]) -> list[Window]:
-    """Create one window per scene and materialize the NISAR imagery into it.
+def tile_scene_bounds(
+    bounds: PixelBounds, tile_size: int, overlap: int
+) -> list[PixelBounds]:
+    """Split a scene's bounds into overlapping tiles of at most tile_size.
+
+    Args:
+        bounds: the whole scene's bounds.
+        tile_size: the side length of each tile in pixels.
+        overlap: how much adjacent tiles share, so a vessel on a seam falls fully inside
+            at least one of them.
+
+    Returns:
+        the tile bounds, row-major.
+    """
+    minx, miny, maxx, maxy = bounds
+    return [
+        (x, y, min(x + tile_size, maxx), min(y + tile_size, maxy))
+        for y in _tile_starts(miny, maxy, tile_size, overlap)
+        for x in _tile_starts(minx, maxx, tile_size, overlap)
+    ]
+
+
+def _tile_starts(low: int, high: int, tile_size: int, overlap: int) -> list[int]:
+    """Get the tile start offsets covering one axis.
+
+    The last tile is flush against the far edge rather than clipped, so every tile is
+    full size and the final one simply overlaps its neighbour more than the rest.
+
+    Args:
+        low: the first coordinate on this axis.
+        high: one past the last coordinate on this axis.
+        tile_size: the side length of each tile in pixels.
+        overlap: how much adjacent tiles share.
+
+    Returns:
+        the start offset of each tile.
+    """
+    if high - low <= tile_size:
+        return [low]
+    stride = tile_size - overlap
+    starts = list(range(low, high - tile_size, stride))
+    starts.append(high - tile_size)
+    return starts
+
+
+def materialize_scenes(
+    ds_path: UPath, scene_datas: list[SceneData]
+) -> list[tuple[int, Window]]:
+    """Create a window per scene tile and materialize the NISAR imagery into each.
+
+    Scenes are split into tiles rather than materialized whole: rslearn builds a
+    window's raster as a single in-memory array, so one window per granule makes peak
+    memory scale with the granule, which is unbounded. Tiling caps it at the tile size
+    no matter how large the scene is.
 
     Args:
         ds_path: the dataset path, already configured by :func:`setup_dataset`.
         scene_datas: the SceneDatas to create windows for.
 
     Returns:
-        the created windows, in the same order as scene_datas.
+        (scene index, window) for every tile, so detections can be traced back to the
+        scene they came from.
 
     Raises:
         ValueError: if a window's NISAR layer could not be materialized.
     """
     dataset = Dataset(ds_path)
-    windows: list[Window] = []
+    tiles: list[tuple[int, Window]] = []
     for scene_idx, scene_data in enumerate(scene_datas):
-        window = Window(
-            storage=dataset.storage,
-            group=WINDOW_GROUP,
-            name=str(scene_idx),
-            projection=scene_data.projection,
-            bounds=scene_data.bounds,
-            # A granule is a single acquisition and the detector needs no other imagery,
-            # so there is nothing for a time range to select between.
-            time_range=None,
-            data_factory=dataset.window_data_storage_factory,
+        tile_bounds = tile_scene_bounds(
+            scene_data.bounds, SCENE_TILE_SIZE, SCENE_TILE_OVERLAP
         )
-        window.save()
-        windows.append(window)
+        logger.info(
+            f"Split scene {scene_data.scene_id} into {len(tile_bounds)} tile(s) "
+            f"of up to {SCENE_TILE_SIZE}px"
+        )
+        for tile_idx, bounds in enumerate(tile_bounds):
+            window = Window(
+                storage=dataset.storage,
+                group=WINDOW_GROUP,
+                name=f"{scene_idx}_{tile_idx}",
+                projection=scene_data.projection,
+                bounds=bounds,
+                # A granule is a single acquisition and the detector needs no other
+                # imagery, so there is nothing for a time range to select between.
+                time_range=None,
+                data_factory=dataset.window_data_storage_factory,
+            )
+            window.save()
+            tiles.append((scene_idx, window))
 
     logger.info("Materialize dataset for NISAR vessel detection")
     apply_windows_args = ApplyWindowsArgs(
@@ -259,38 +333,37 @@ def materialize_scenes(ds_path: UPath, scene_datas: list[SceneData]) -> list[Win
     with time_operation(TimerOperations.MaterializeDataset):
         materialize_dataset(ds_path, materialize_pipeline_args)
 
-    for window, scene_data in zip(windows, scene_datas):
+    for scene_idx, window in tiles:
         if not window.is_layer_completed(NISAR_LAYER_NAME):
             raise ValueError(
                 f"window {window.name} does not have the NISAR layer completed for "
-                f"scene {scene_data.scene_id}"
+                f"scene {scene_datas[scene_idx].scene_id}"
             )
 
-    return windows
+    return tiles
 
 
 def get_vessel_detections(
     ds_path: UPath,
     scene_datas: list[SceneData],
     score_threshold: float,
-) -> tuple[list[VesselDetection], list[Window]]:
+) -> list[VesselDetection]:
     """Apply the vessel detector.
 
     The caller is responsible for setting up the dataset configuration that will obtain
     the NISAR images.
 
     Args:
-        ds_path: the dataset path that will be populated with a new window per scene to
-            apply the detector.
+        ds_path: the dataset path that will be populated with the tile windows to apply
+            the detector to.
         scene_datas: the SceneDatas to apply the detector on.
         score_threshold: override the detector's configured score threshold for this
             run, so callers can raise or lower the cutoff without editing the config.
 
     Returns:
-        the detections, and the window each scene was materialized into. Detections
-        record which scene they came from in their task_idx metadata.
+        the detections, recording the scene each came from in their task_idx metadata.
     """
-    windows = materialize_scenes(ds_path, scene_datas)
+    tiles = materialize_scenes(ds_path, scene_datas)
 
     with time_operation(TimerOperations.RunModelPredict):
         extra_args = [
@@ -308,7 +381,7 @@ def get_vessel_detections(
         )
 
     detections: list[VesselDetection] = []
-    for task_idx, (window, scene_data) in enumerate(zip(windows, scene_datas)):
+    for scene_idx, window in tiles:
         features = window.data.read_vector(OUTPUT_LAYER_NAME, GeojsonVectorFormat())
         for feature in features:
             geometry = feature.geometry
@@ -319,14 +392,51 @@ def get_vessel_detections(
                     row=int(geometry.shp.centroid.y),
                     projection=geometry.projection,
                     score=feature.properties["score"],
-                    scene_id=scene_data.scene_id,
-                    # We use this metadata to keep track of which window/scene each
-                    # detection came from.
-                    metadata={"task_idx": task_idx},
+                    scene_id=scene_datas[scene_idx].scene_id,
+                    # We use this metadata to keep track of which scene each detection
+                    # came from.
+                    metadata={"task_idx": scene_idx},
                 )
             )
 
-    return detections, windows
+    return dedupe_detections(detections)
+
+
+def dedupe_detections(detections: list[VesselDetection]) -> list[VesselDetection]:
+    """Drop repeat detections of one vessel found in two overlapping tiles.
+
+    Tiles overlap so that a vessel on a seam is fully inside at least one of them, which
+    means anything in the overlap band is detected twice. All tiles of a scene share its
+    projection, so their pixel coordinates are directly comparable.
+
+    Args:
+        detections: the detections from every tile.
+
+    Returns:
+        the detections with near-duplicates from the same scene removed, keeping the
+        highest scoring of each group.
+    """
+    kept: list[VesselDetection] = []
+    kept_by_scene: dict[int, list[VesselDetection]] = {}
+    # Highest scoring first, so the survivor of each duplicate pair is the best one.
+    for detection in sorted(detections, key=lambda d: d.score, reverse=True):
+        scene_idx = detection.metadata["task_idx"]
+        neighbors = kept_by_scene.setdefault(scene_idx, [])
+        if any(
+            abs(detection.col - other.col) <= DEDUPE_DISTANCE_PIXELS
+            and abs(detection.row - other.row) <= DEDUPE_DISTANCE_PIXELS
+            for other in neighbors
+        ):
+            continue
+        neighbors.append(detection)
+        kept.append(detection)
+
+    if len(kept) < len(detections):
+        logger.info(
+            f"Dropped {len(detections) - len(kept)} detection(s) duplicated across "
+            "tile seams"
+        )
+    return kept
 
 
 def predict_pipeline(
@@ -365,12 +475,14 @@ def predict_pipeline(
         scene_datas = setup_dataset(ds_path, tasks)
 
     with time_operation(TimerOperations.GetVesselDetections):
-        detections, windows = get_vessel_detections(
+        detections = get_vessel_detections(
             ds_path, scene_datas, score_threshold=score_threshold
         )
 
     with time_operation(TimerOperations.BuildPredictionsAndCrops):
-        detections_by_task = _build_predictions_and_crops(detections, windows, tasks)
+        detections_by_task = _build_predictions_and_crops(
+            detections, scene_datas, tasks
+        )
 
     for task, task_detections in zip(tasks, detections_by_task):
         if task.json_path is not None:
@@ -397,17 +509,14 @@ def predict_pipeline(
 
 def _build_predictions_and_crops(
     detections: list[VesselDetection],
-    windows: list[Window],
+    scene_datas: list[SceneData],
     tasks: list[PredictionTask],
 ) -> list[list[VesselDetection]]:
     """Filter the detections and save a crop image per band for each one.
 
-    The crops are read straight back out of the scene window that the detector already
-    ran on, so no second materialize pass is needed.
-
     Args:
         detections: the detections from the detector.
-        windows: the scene window per task, indexed by a detection's task_idx.
+        scene_datas: the SceneData per task, indexed by a detection's task_idx.
         tasks: the prediction tasks, indexed by a detection's task_idx.
 
     Returns:
@@ -430,7 +539,7 @@ def _build_predictions_and_crops(
 
         if task.crop_path is not None:
             detection.crop_fnames = _write_crops(
-                detection, windows[task_idx], UPath(task.crop_path)
+                detection, scene_datas[task_idx], UPath(task.crop_path)
             )
 
         detections_by_task[task_idx].append(detection)
@@ -439,13 +548,17 @@ def _build_predictions_and_crops(
 
 
 def _write_crops(
-    detection: VesselDetection, window: Window, crop_upath: UPath
+    detection: VesselDetection, scene_data: SceneData, crop_upath: UPath
 ) -> dict[str, UPath]:
     """Save one PNG crop per band around a detection.
 
+    Crops come from the scene's GeoTIFF rather than the tile window the detection was
+    found in, so a detection near a tile seam still gets a full crop instead of one half
+    filled with nodata. The read is a windowed one, so it costs the crop, not the scene.
+
     Args:
         detection: the detection to crop around.
-        window: the scene window the detection was found in.
+        scene_data: the scene the detection was found in.
         crop_upath: the directory to write the crops to.
 
     Returns:
@@ -460,11 +573,19 @@ def _write_crops(
         detection.row + half_size,
     )
 
-    # Both bands live in a single band set, so one read returns the whole stack. Bounds
-    # that run off the edge of the scene are filled with the raster's nodata value.
-    image = window.data.read_raster(
-        NISAR_LAYER_NAME, BAND_NAMES, GeotiffRasterFormat(), bounds=bounds
-    ).get_chw_array()
+    # The GeoTIFF holds both bands, so one read returns the whole stack. Bounds that run
+    # off the edge of the scene are filled with the raster's nodata value.
+    geotiff_path = UPath(scene_data.geotiff_path)
+    image = (
+        GeotiffRasterFormat()
+        .decode_raster(
+            geotiff_path.parent,
+            scene_data.projection,
+            bounds,
+            fname=geotiff_path.name,
+        )
+        .get_chw_array()
+    )
 
     crop_fnames: dict[str, UPath] = {}
     for band_idx, band_name in enumerate(BAND_NAMES):
