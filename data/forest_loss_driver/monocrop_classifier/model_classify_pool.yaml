@@ -129,5 +129,5 @@ trainer:
       init_args:
         output_layer: output_vector
 project_name: 20260914_monocrop_classifier
-run_name: olmoearth_v1_2_base_classify_pool
+run_name: olmoearth_v1_2_base_classify_pool_01
 management_dir: ${RSLP_PREFIX}/projects
