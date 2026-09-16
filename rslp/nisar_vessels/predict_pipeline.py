@@ -3,6 +3,7 @@
 import json
 import math
 import tempfile
+from collections import defaultdict
 from dataclasses import dataclass
 
 import numpy as np
@@ -30,6 +31,7 @@ from rslp.nisar_vessels.config import (
 from rslp.nisar_vessels.hdf5 import GranuleGrid, granule_to_geotiff
 from rslp.nisar_vessels.prom_metrics import TimerOperations, time_operation
 from rslp.utils.filter import NearInfraFilter
+from rslp.utils.nms import distance_nms
 from rslp.utils.rslearn import (
     ApplyWindowsArgs,
     IngestArgs,
@@ -333,14 +335,31 @@ def materialize_scenes(
     with time_operation(TimerOperations.MaterializeDataset):
         materialize_dataset(ds_path, materialize_pipeline_args)
 
+    # A scene's bounds are a rectangle around its footprint, so once the granule is
+    # reprojected into the detector's zone the corners can fall outside it entirely and
+    # those tiles never materialize. Drop them rather than fail the whole scene, and
+    # delete the window so the detector does not try to read a missing layer.
+    materialized: list[tuple[int, Window]] = []
     for scene_idx, window in tiles:
-        if not window.is_layer_completed(NISAR_LAYER_NAME):
+        if window.is_layer_completed(NISAR_LAYER_NAME):
+            materialized.append((scene_idx, window))
+        else:
+            window.window_root.fs.rm(window.window_root.path, recursive=True)
+    if len(materialized) < len(tiles):
+        logger.info(
+            f"Dropped {len(tiles) - len(materialized)} tile(s) with no imagery, "
+            "outside the granule footprint"
+        )
+
+    covered = {scene_idx for scene_idx, _ in materialized}
+    for scene_idx, scene_data in enumerate(scene_datas):
+        if scene_idx not in covered:
             raise ValueError(
-                f"window {window.name} does not have the NISAR layer completed for "
-                f"scene {scene_datas[scene_idx].scene_id}"
+                f"scene {scene_data.scene_id} has no materialized tiles; its imagery "
+                "could not be read"
             )
 
-    return tiles
+    return materialized
 
 
 def get_vessel_detections(
@@ -403,39 +422,39 @@ def get_vessel_detections(
 
 
 def dedupe_detections(detections: list[VesselDetection]) -> list[VesselDetection]:
-    """Drop repeat detections of one vessel found in two overlapping tiles.
+    """Suppress repeat detections of one vessel found in two overlapping tiles.
 
-    Tiles overlap so that a vessel on a seam is fully inside at least one of them, which
+    Tiles overlap so a vessel on a seam falls fully inside at least one of them, which
     means anything in the overlap band is detected twice. All tiles of a scene share its
     projection, so their pixel coordinates are directly comparable.
+
+    Runs the same distance NMS the merger uses to combine detections across the crops
+    within one window, so the two stages cannot disagree about what counts as the same
+    vessel.
 
     Args:
         detections: the detections from every tile.
 
     Returns:
-        the detections with near-duplicates from the same scene removed, keeping the
-        highest scoring of each group.
+        the detections that survive suppression, highest scoring of each group kept.
     """
+    detections_by_scene: dict[int, list[VesselDetection]] = defaultdict(list)
+    for detection in detections:
+        detections_by_scene[detection.metadata["task_idx"]].append(detection)
+
     kept: list[VesselDetection] = []
-    kept_by_scene: dict[int, list[VesselDetection]] = {}
-    # Highest scoring first, so the survivor of each duplicate pair is the best one.
-    for detection in sorted(detections, key=lambda d: d.score, reverse=True):
-        scene_idx = detection.metadata["task_idx"]
-        neighbors = kept_by_scene.setdefault(scene_idx, [])
-        # Euclidean, matching how the merger combines detections across the crops
-        # within a window, so the two stages agree on what counts as the same vessel.
-        if any(
-            math.hypot(detection.col - other.col, detection.row - other.row)
-            <= DEDUPE_DISTANCE_PIXELS
-            for other in neighbors
-        ):
+    for scene_detections in detections_by_scene.values():
+        if len(scene_detections) <= 1:
+            kept.extend(scene_detections)
             continue
-        neighbors.append(detection)
-        kept.append(detection)
+        centers = np.array([[d.col, d.row] for d in scene_detections], dtype=float)
+        scores = np.array([d.score for d in scene_detections], dtype=float)
+        keep_indices = distance_nms(centers, scores, DEDUPE_DISTANCE_PIXELS)
+        kept.extend(scene_detections[i] for i in keep_indices)
 
     if len(kept) < len(detections):
         logger.info(
-            f"Dropped {len(detections) - len(kept)} detection(s) duplicated across "
+            f"Suppressed {len(detections) - len(kept)} detection(s) duplicated across "
             "tile seams"
         )
     return kept

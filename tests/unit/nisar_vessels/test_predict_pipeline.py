@@ -12,6 +12,7 @@ from upath import UPath
 
 from rslp.nisar_vessels import predict_pipeline as pipeline
 from rslp.nisar_vessels.hdf5 import GranuleGrid
+from rslp.utils.nms import distance_nms
 from rslp.vessels import VesselDetection, VesselDetectionSource
 
 # Somewhere in the Pacific, well away from any marine infrastructure. Whole degrees so
@@ -319,3 +320,35 @@ def test_dedupe_uses_the_same_distance_metric_as_the_merger() -> None:
     detections = [_scored(0, 100, 100, 0.9), _scored(0, 109, 109, 0.8)]
 
     assert len(pipeline.dedupe_detections(detections)) == 2
+
+
+def test_dedupe_keeps_the_higher_score_of_a_seam_pair() -> None:
+    """Suppression is by score, not by which tile happened to report first."""
+    detections = [_scored(0, 100, 100, 0.4), _scored(0, 103, 102, 0.95)]
+
+    ((kept),) = pipeline.dedupe_detections(detections)
+
+    assert kept.score == 0.95
+
+
+def test_dedupe_matches_the_merger_on_the_same_input() -> None:
+    """Cross-tile suppression and the in-window merger agree, since they share a pass.
+
+    They ran different distance metrics once; pinning them together stops that
+    recurring, which would merge a pair in one stage and keep it in the other.
+    """
+    positions = [(100, 100), (106, 106), (400, 400), (100, 112)]
+    scores = [0.9, 0.8, 0.7, 0.6]
+    detections = [
+        _scored(0, col, row, score)
+        for (col, row), score in zip(positions, scores, strict=True)
+    ]
+
+    kept = pipeline.dedupe_detections(detections)
+
+    expected = distance_nms(
+        np.array(positions, dtype=float),
+        np.array(scores, dtype=float),
+        pipeline.DEDUPE_DISTANCE_PIXELS,
+    )
+    assert {(d.col, d.row) for d in kept} == {positions[i] for i in expected}
