@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from rasterio.crs import CRS
 from rslearn.utils.geometry import Projection
+from upath import UPath
 
 from rslp.nisar_vessels import predict_pipeline as pipeline
 from rslp.nisar_vessels.hdf5 import GranuleGrid
@@ -57,7 +58,9 @@ def test_prediction_task_is_frozen() -> None:
 
 def test_scene_data_is_placed_on_the_detector_grid() -> None:
     """A granule's footprint comes back in a UTM/UPS zone at the detector resolution."""
-    scene_data = pipeline._get_scene_data("granule", _grid(), "/scratch/granule.tif")
+    scene_data = pipeline._get_scene_data(
+        "granule", _grid(), UPath("/scratch/granule.tif")
+    )
 
     assert scene_data.scene_id == "granule"
     assert scene_data.projection.x_resolution == pipeline.RESOLUTION
@@ -77,7 +80,7 @@ def test_scene_data_reprojects_a_granule_from_another_zone() -> None:
     """
     # Same easting/northing, but declared in UTM zone 11N instead of 10N.
     scene_data = pipeline._get_scene_data(
-        "granule", _grid(epsg_code=32611), "/scratch/granule.tif"
+        "granule", _grid(epsg_code=32611), UPath("/scratch/granule.tif")
     )
 
     assert scene_data.projection.crs.to_epsg() == 32611

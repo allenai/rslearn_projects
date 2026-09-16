@@ -131,7 +131,7 @@ class SceneData:
     scene_id: str
     projection: Projection
     bounds: PixelBounds
-    geotiff_path: str
+    geotiff_path: UPath
 
 
 def setup_dataset(ds_path: UPath, tasks: list[PredictionTask]) -> list[SceneData]:
@@ -171,7 +171,7 @@ def setup_dataset(ds_path: UPath, tasks: list[PredictionTask]) -> list[SceneData
                 "name": scene_id,
             }
         )
-        scene_datas.append(_get_scene_data(scene_id, grid, str(geotiff_path)))
+        scene_datas.append(_get_scene_data(scene_id, grid, geotiff_path))
 
     layer_cfg = ds_cfg["layers"][NISAR_LAYER_NAME]["data_source"]["init_args"]
     layer_cfg["raster_item_specs"] = item_specs
@@ -182,7 +182,7 @@ def setup_dataset(ds_path: UPath, tasks: list[PredictionTask]) -> list[SceneData
     return scene_datas
 
 
-def _get_scene_data(scene_id: str, grid: GranuleGrid, geotiff_path: str) -> SceneData:
+def _get_scene_data(scene_id: str, grid: GranuleGrid, geotiff_path: UPath) -> SceneData:
     """Place a granule's footprint on the grid the detector runs on.
 
     GCOV is already geocoded, but not necessarily in the UTM/UPS zone the training
@@ -577,14 +577,13 @@ def _write_crops(
 
     # The GeoTIFF holds both bands, so one read returns the whole stack. Bounds that run
     # off the edge of the scene are filled with the raster's nodata value.
-    geotiff_path = UPath(scene_data.geotiff_path)
     image = (
         GeotiffRasterFormat()
         .decode_raster(
-            geotiff_path.parent,
+            scene_data.geotiff_path.parent,
             scene_data.projection,
             bounds,
-            fname=geotiff_path.name,
+            fname=scene_data.geotiff_path.name,
         )
         .get_chw_array()
     )
