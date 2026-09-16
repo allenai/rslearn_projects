@@ -1,3 +1,8 @@
+# bp_abs_qdrop + change_category_input=breakpoint: the pre/post change-category
+# decoders read concat(before, after) of the split-attention-weighted breakpoint
+# aggregates (the same features src/dst decode from) instead of the temporal mean,
+# so they see both sides of the transition and share the binary head's notion of a
+# changepoint.
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -28,7 +33,7 @@ model:
             - 3
         binary_loss_weight: 2.0
         binary_mode: breakpoint
-        season_embed: true
+        change_category_input: breakpoint
     optimizer:
       class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
       init_args:
@@ -504,6 +509,7 @@ data:
       - class_path: rslp.olmoearth_lcc.lcc_model.transforms.StackSampler
         init_args:
           deterministic: false
+          quarterly_dropout: 0.25
       - class_path: rslearn.train.transforms.flip.Flip
         init_args:
           image_selectors:
@@ -556,5 +562,5 @@ trainer:
       monitor: val_binary/auroc
       mode: max
 project_name: 2026_09_16_lcc
-run_name: bp_abs_season
+run_name: bp_abs_qdrop_bpcat
 management_dir: ${RSLP_PREFIX}/projects

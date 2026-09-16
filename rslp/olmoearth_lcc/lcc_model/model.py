@@ -1,19 +1,21 @@
-"""LCC change model: two-pass OlmoEarth encoding with per-timestep token heads.
+"""LCC change model: OlmoEarth encoding with per-timestep token heads.
 
 Input is ``sentinel2_l2a`` with ``num_timesteps`` images (16 quarterly + 4 frequent
 = 20, built by ``transforms.StackSampler``). The encoder runs with
 ``token_pooling=False`` so per-timestep tokens are preserved.
 
-Encoding is always done in two passes: the stack is split at ``num_pass1`` into a
-historical half and a recent half, both halves are encoded in a single batched
-encoder call (``2B`` samples of ``num_pass1`` / ``num_timesteps - num_pass1``
-images), and the resulting tokens are concatenated back along time to give
-``(B, C, H, W, num_timesteps)`` features. Encoder attention is quadratic in the
-token count, so two 10-image passes cost about half the attention FLOPs of one
-20-image pass; the price is that tokens from the two halves do not attend to each
-other inside the encoder.
+By default encoding is done in two passes: the stack is split at ``num_pass1``
+into a historical half and a recent half, both halves are encoded in a single
+batched encoder call (``2B`` samples of ``num_pass1`` /
+``num_timesteps - num_pass1`` images), and the resulting tokens are concatenated
+back along time to give ``(B, C, H, W, num_timesteps)`` features. Encoder
+attention is quadratic in the token count, so two 10-image passes cost about half
+the attention FLOPs of one 20-image pass; the price is that tokens from the two
+halves do not attend to each other inside the encoder. With ``num_pass1=None``
+the whole stack is encoded in one pass instead, so every token can attend to
+every other, at roughly double the encoder attention cost and memory.
 
-Downstream heads all operate on the concatenated per-timestep tokens:
+Downstream heads all operate on the per-timestep tokens:
 
 - ``season_embed``: optionally add a month-of-year (sin/cos) embedding to each
   timestep token so seasonal differences between mosaics are explainable by
@@ -29,10 +31,21 @@ Downstream heads all operate on the concatenated per-timestep tokens:
     * ``"mean"``: the binary change head is a conv decoder on the pooled feature.
     * ``"breakpoint"``: a learned changepoint scan. For every split t the
       before-mean A_t and after-mean B_t are compared via |B_t - A_t| by a shared
-      scorer; evidence is max-pooled over splits. src is decoded from the
-      split-attention-weighted before feature and dst from the weighted after
-      feature, so "change" can only be expressed as before-vs-after dissimilarity
-      at some breakpoint and src/dst look at the correct sides of it.
+      scorer; evidence is max-pooled over splits, so "change" can only be
+      expressed as before-vs-after dissimilarity at some breakpoint. The scan
+      also yields split-attention-weighted before/after aggregates that the
+      other heads may consume (below).
+- ``src_dst_input``: which feature the src/dst land cover decoders read.
+  ``"pooled"`` uses the time-pooled feature for both; ``"breakpoint"`` decodes
+  src from the weighted before aggregate and dst from the weighted after
+  aggregate so each looks at the correct side of the breakpoint. ``"auto"``
+  (default) picks ``"breakpoint"`` iff ``binary_mode == "breakpoint"``.
+- ``change_category_input``: which feature the pre/post change-category
+  decoders read. ``"pooled"`` (default) uses the time-pooled feature;
+  ``"breakpoint"`` concatenates the weighted before and after aggregates so the
+  heads see both sides of the transition (a category is a before->after
+  transition, so a single side cannot separate e.g. "new_building" from "none"
+  in an already built-up area).
 - start/end timestamps: a per-token linear logit over the T timesteps, upsampled
   to full resolution, trained with cross-entropy at change pixels.
 """
@@ -103,7 +116,7 @@ class ChangeModel(nn.Module):
         num_classes_pre_change: int = 11,
         num_classes_post_change: int = 15,
         num_timesteps: int = 20,
-        num_pass1: int = 10,
+        num_pass1: int | None = 10,
         embedding_dim: int = 768,
         decoder_stages: list[StageSpec] | None = None,
         binary_loss_weight: float = 2.0,
@@ -114,6 +127,8 @@ class ChangeModel(nn.Module):
         temporal_heads: int = 8,
         dim_feedforward: int = 2048,
         temporal_pos_enc: bool = False,
+        src_dst_input: str = "auto",
+        change_category_input: str = "pooled",
     ):
         """Initialize the LCC change model.
 
@@ -133,7 +148,8 @@ class ChangeModel(nn.Module):
             num_pass1: number of leading images encoded in the first pass; the
                 remaining ``num_timesteps - num_pass1`` form the second pass. Equal
                 halves are fastest (unequal halves force the encoder's masked
-                path).
+                path). ``None`` encodes all ``num_timesteps`` images in a single
+                pass (see module docstring).
             embedding_dim: per-token encoder embedding size (768 for BASE).
             decoder_stages: per-task conv decoder definition (see _make_decoder).
                 The number of 2x upsamples (len - 1) must equal log2(patch_size)
@@ -149,13 +165,18 @@ class ChangeModel(nn.Module):
             temporal_pos_enc: add a learned positional embedding over the T
                 chronological slots before the temporal transformer. Requires
                 ``temporal_depth > 0``.
+            src_dst_input: ``"auto"``, ``"pooled"``, or ``"breakpoint"`` (see
+                module docstring). ``"breakpoint"`` requires
+                ``binary_mode="breakpoint"``.
+            change_category_input: ``"pooled"`` or ``"breakpoint"`` (see module
+                docstring). ``"breakpoint"`` requires ``binary_mode="breakpoint"``.
         """
         super().__init__()
         if decoder_stages is None:
             raise ValueError("decoder_stages must be specified")
-        if not 0 < num_pass1 < num_timesteps:
+        if num_pass1 is not None and not 0 < num_pass1 < num_timesteps:
             raise ValueError(
-                f"num_pass1 must be in (0, {num_timesteps}), got {num_pass1}"
+                f"num_pass1 must be None or in (0, {num_timesteps}), got {num_pass1}"
             )
         if binary_mode not in ("mean", "breakpoint"):
             raise ValueError(f"unknown binary_mode {binary_mode!r}")
@@ -163,6 +184,20 @@ class ChangeModel(nn.Module):
             raise ValueError(f"unknown temporal_aggregation {temporal_aggregation!r}")
         if temporal_pos_enc and temporal_depth <= 0:
             raise ValueError("temporal_pos_enc requires temporal_depth > 0")
+        if src_dst_input not in ("auto", "pooled", "breakpoint"):
+            raise ValueError(f"unknown src_dst_input {src_dst_input!r}")
+        if change_category_input not in ("pooled", "breakpoint"):
+            raise ValueError(f"unknown change_category_input {change_category_input!r}")
+        if src_dst_input == "auto":
+            src_dst_input = "breakpoint" if binary_mode == "breakpoint" else "pooled"
+        if src_dst_input == "breakpoint" and binary_mode != "breakpoint":
+            raise ValueError(
+                "src_dst_input='breakpoint' requires binary_mode='breakpoint'"
+            )
+        if change_category_input == "breakpoint" and binary_mode != "breakpoint":
+            raise ValueError(
+                "change_category_input='breakpoint' requires binary_mode='breakpoint'"
+            )
 
         self.encoder = encoder
         self.embedding_dim = embedding_dim
@@ -172,6 +207,8 @@ class ChangeModel(nn.Module):
         self.binary_mode = binary_mode
         self.temporal_aggregation = temporal_aggregation
         self.season_embed = season_embed
+        self.src_dst_input = src_dst_input
+        self.change_category_input = change_category_input
 
         self.num_classes_binary = num_classes_binary
         self.num_classes_src = num_classes_src
@@ -241,11 +278,17 @@ class ChangeModel(nn.Module):
         # Segmentation decoders on the (pooled or breakpoint-weighted) feature.
         self.decoder_src = _make_decoder(embedding_dim, decoder_stages, num_classes_src)
         self.decoder_dst = _make_decoder(embedding_dim, decoder_stages, num_classes_dst)
+        # The change-category decoders take concat(before, after) in breakpoint mode.
+        category_in_dim = (
+            2 * embedding_dim
+            if change_category_input == "breakpoint"
+            else embedding_dim
+        )
         self.decoder_pre_change = _make_decoder(
-            embedding_dim, decoder_stages, num_classes_pre_change
+            category_in_dim, decoder_stages, num_classes_pre_change
         )
         self.decoder_post_change = _make_decoder(
-            embedding_dim, decoder_stages, num_classes_post_change
+            category_in_dim, decoder_stages, num_classes_post_change
         )
 
         # Per-token timestamp heads producing one logit per timestep.
@@ -257,16 +300,14 @@ class ChangeModel(nn.Module):
     # ------------------------------------------------------------------
 
     def _per_timestep_features(self, context: ModelContext) -> torch.Tensor:
-        """Encode the stack in two passes and return (B, C, H, W, T) tokens.
+        """Encode the stack and return (B, C, H, W, T) per-timestep tokens.
 
-        Each sample's ``sentinel2_l2a`` is split at ``num_pass1``; the historical
-        halves of all samples followed by the recent halves of all samples are
-        encoded in one batched encoder call, and the per-timestep tokens are
-        concatenated back along time in chronological order.
+        With ``num_pass1=None`` the full stack is encoded in one encoder call.
+        Otherwise each sample's ``sentinel2_l2a`` is split at ``num_pass1``; the
+        historical halves of all samples followed by the recent halves of all
+        samples are encoded in one batched encoder call, and the per-timestep
+        tokens are concatenated back along time in chronological order.
         """
-        n = self.num_pass1
-        pass1_inputs: list[dict[str, Any]] = []
-        pass2_inputs: list[dict[str, Any]] = []
         for inp in context.inputs:
             image: RasterImage = inp[INPUT_KEY]
             if image.image.shape[1] != self.num_timesteps:
@@ -274,6 +315,16 @@ class ChangeModel(nn.Module):
                     f"expected {self.num_timesteps} timesteps in {INPUT_KEY}, got "
                     f"{image.image.shape[1]}"
                 )
+
+        if self.num_pass1 is None:
+            tokens = self.encoder(context).feature_maps[0]  # (B, C, H, W, T)
+            return tokens[..., : self.num_timesteps]
+
+        n = self.num_pass1
+        pass1_inputs: list[dict[str, Any]] = []
+        pass2_inputs: list[dict[str, Any]] = []
+        for inp in context.inputs:
+            image = inp[INPUT_KEY]
             ts = image.timestamps
             pass1_inputs.append(
                 {
@@ -414,10 +465,9 @@ class ChangeModel(nn.Module):
 
         if self.binary_mode == "mean":
             logits_binary = self.decoder_binary(pooled)
-            src_in = pooled
-            dst_in = pooled
+            before_feat = after_feat = None
         else:
-            bp_feat, src_in, dst_in = self._breakpoint_features(feature)
+            bp_feat, before_feat, after_feat = self._breakpoint_features(feature)
             evidence = self.evidence_decoder(bp_feat)  # (B, 1, H', W')
             logits_binary = torch.cat(
                 [
@@ -428,11 +478,23 @@ class ChangeModel(nn.Module):
                 dim=1,
             )
 
+        # Route the pooled or breakpoint-weighted features to the segmentation heads.
+        if self.src_dst_input == "breakpoint":
+            assert before_feat is not None and after_feat is not None
+            src_in, dst_in = before_feat, after_feat
+        else:
+            src_in = dst_in = pooled
+        if self.change_category_input == "breakpoint":
+            assert before_feat is not None and after_feat is not None
+            category_in = torch.cat([before_feat, after_feat], dim=1)  # (B, 2C, H, W)
+        else:
+            category_in = pooled
+
         logits_src = self.decoder_src(src_in)
         logits_dst = self.decoder_dst(dst_in)
         change_logits = {
-            "pre_change": self.decoder_pre_change(pooled),
-            "post_change": self.decoder_post_change(pooled),
+            "pre_change": self.decoder_pre_change(category_in),
+            "post_change": self.decoder_post_change(category_in),
         }
 
         # Per-token timestamp logits over T, upsampled to full resolution.

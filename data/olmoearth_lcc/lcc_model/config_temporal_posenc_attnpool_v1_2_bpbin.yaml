@@ -1,9 +1,9 @@
-# Two-pass tokens -> 1-layer temporal transformer with a learned positional
-# embedding over the 20 chronological slots, and learned attention pooling over
-# time for the segmentation heads. Ported from the former
-# tier3_temporal_posenc_attnpool.TemporalPosEncAttnPoolChangeModel onto
-# model.ChangeModel; unlike the original 2026_08_25 run this uses the merged
-# pre+same change-category head (11 classes) like every other config here.
+# temporal_posenc_attnpool_v1_2 with only the binary change head swapped to the
+# breakpoint scan (binary_mode=breakpoint) over the temporally contextualized
+# tokens. src_dst_input=pooled keeps src/dst on the attention-pooled feature (the
+# default in breakpoint mode would route them to the breakpoint before/after
+# aggregates), and pre/post also stay on the attention-pooled feature. The
+# start/end heads read the per-timestep contextualized tokens as before.
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -30,6 +30,8 @@ model:
           - [[256, 3]]
           - [[128, 3]]
         binary_loss_weight: 2.0
+        binary_mode: breakpoint
+        src_dst_input: pooled
         temporal_depth: 1
         temporal_heads: 8
         temporal_pos_enc: true
@@ -336,5 +338,5 @@ trainer:
         monitor: val_binary/auroc
         mode: max
 project_name: 2026_09_16_lcc
-run_name: temporal_posenc_attnpool_v1_2_00
+run_name: temporal_posenc_attnpool_v1_2_bpbin_00
 management_dir: ${RSLP_PREFIX}/projects

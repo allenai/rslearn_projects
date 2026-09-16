@@ -1,3 +1,6 @@
+# bp_abs_qdrop with a single encoder pass over all 20 images (num_pass1: null)
+# instead of two 10-image passes, so every token attends to every other inside the
+# encoder. Roughly doubles encoder attention memory; drop batch_size to 2 if it OOMs.
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -17,7 +20,7 @@ model:
         num_classes_pre_change: 11
         num_classes_post_change: 15
         num_timesteps: 20
-        num_pass1: 10
+        num_pass1: null
         embedding_dim: 768
         decoder_stages:
         - - - 768
@@ -28,7 +31,6 @@ model:
             - 3
         binary_loss_weight: 2.0
         binary_mode: breakpoint
-        season_embed: true
     optimizer:
       class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
       init_args:
@@ -504,6 +506,7 @@ data:
       - class_path: rslp.olmoearth_lcc.lcc_model.transforms.StackSampler
         init_args:
           deterministic: false
+          quarterly_dropout: 0.25
       - class_path: rslearn.train.transforms.flip.Flip
         init_args:
           image_selectors:
@@ -556,5 +559,5 @@ trainer:
       monitor: val_binary/auroc
       mode: max
 project_name: 2026_09_16_lcc
-run_name: bp_abs_season
+run_name: bp_abs_qdrop_1pass
 management_dir: ${RSLP_PREFIX}/projects

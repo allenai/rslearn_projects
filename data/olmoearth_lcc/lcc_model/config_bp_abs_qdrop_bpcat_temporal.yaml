@@ -1,3 +1,9 @@
+# bp_abs_qdrop_bpcat + a 1-layer temporal transformer (8 heads, learned positional
+# embedding over the 20 slots; same settings as temporal_posenc_attnpool_v1_2) applied
+# to the per-timestep encoder tokens before everything else. The breakpoint scan
+# (binary/src/dst/pre/post) and the start/end timestep heads therefore all read
+# temporally contextualized tokens. The time-pooled feature (temporal_aggregation) is
+# unused in this configuration since no head reads it.
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -28,7 +34,10 @@ model:
             - 3
         binary_loss_weight: 2.0
         binary_mode: breakpoint
-        season_embed: true
+        change_category_input: breakpoint
+        temporal_depth: 1
+        temporal_heads: 8
+        temporal_pos_enc: true
     optimizer:
       class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
       init_args:
@@ -504,6 +513,7 @@ data:
       - class_path: rslp.olmoearth_lcc.lcc_model.transforms.StackSampler
         init_args:
           deterministic: false
+          quarterly_dropout: 0.25
       - class_path: rslearn.train.transforms.flip.Flip
         init_args:
           image_selectors:
@@ -556,5 +566,5 @@ trainer:
       monitor: val_binary/auroc
       mode: max
 project_name: 2026_09_16_lcc
-run_name: bp_abs_season
+run_name: bp_abs_qdrop_bpcat_temporal
 management_dir: ${RSLP_PREFIX}/projects
