@@ -305,3 +305,14 @@ def test_same_position_in_different_scenes_is_not_deduped() -> None:
 
 def test_dedupe_of_nothing_is_nothing() -> None:
     assert pipeline.dedupe_detections([]) == []
+
+
+def test_dedupe_uses_the_same_distance_metric_as_the_merger() -> None:
+    """Two vessels a diagonal 13px apart are distinct, as the in-window merger sees it.
+
+    The merger combines crops within a window by Euclidean distance, so cross-tile
+    dedup has to agree or the same pair is merged in one place and kept in the other.
+    """
+    detections = [_scored(0, 100, 100, 0.9), _scored(0, 109, 109, 0.8)]
+
+    assert len(pipeline.dedupe_detections(detections)) == 2

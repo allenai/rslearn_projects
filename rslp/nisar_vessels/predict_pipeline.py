@@ -422,9 +422,11 @@ def dedupe_detections(detections: list[VesselDetection]) -> list[VesselDetection
     for detection in sorted(detections, key=lambda d: d.score, reverse=True):
         scene_idx = detection.metadata["task_idx"]
         neighbors = kept_by_scene.setdefault(scene_idx, [])
+        # Euclidean, matching how the merger combines detections across the crops
+        # within a window, so the two stages agree on what counts as the same vessel.
         if any(
-            abs(detection.col - other.col) <= DEDUPE_DISTANCE_PIXELS
-            and abs(detection.row - other.row) <= DEDUPE_DISTANCE_PIXELS
+            math.hypot(detection.col - other.col, detection.row - other.row)
+            <= DEDUPE_DISTANCE_PIXELS
             for other in neighbors
         ):
             continue
