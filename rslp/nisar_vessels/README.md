@@ -152,11 +152,10 @@ ordinary `LocalFiles` raster layer, configured by `data/nisar_vessels/config_pre
 The scene is then split into `NISAR_SCENE_TILE_SIZE` tiles, one rslearn window each,
 rather than materialized as a single window covering the granule. rslearn builds a
 window's raster as one in-memory array, so a whole-granule window makes peak memory
-scale with the granule: at 10 m/pixel a large GCOV scene is over a gigapixel, which is
-~9.4 GB for the two bands as float32, and area varies more than 4x across bandwidth
-modes. Tiling caps it at the tile size regardless of scene size. Tiles overlap so a
-vessel on a seam falls fully inside one of them, and detections in the overlap band are
-deduplicated afterwards.
+scale with the granule, and granule area varies widely across bandwidth modes. Tiling
+caps it at the tile regardless of scene size. Tiles overlap so a vessel on a seam falls
+fully inside one of them, and detections in the overlap band are deduplicated
+afterwards.
 
 Two further details are load-bearing, both so inference sees what training saw:
 
@@ -190,16 +189,13 @@ so the service's settings stay in one place):
 | `NISAR_PREDICT_CROP_SIZE` | `128` | Tile size the detector runs over at inference. |
 | `NISAR_PREDICT_OVERLAP_PIXELS` | `16` | Overlap between adjacent tiles. |
 
-`NISAR_SCENE_TILE_SIZE` sets peak memory during materialization: 4096 works out to
-about 134 MB for the two bands as float32. Raising it raises the ceiling proportionally
-to its square, so a node memory limit should be set with the chosen tile in mind.
+`NISAR_SCENE_TILE_SIZE` sets peak memory during materialization, growing with its
+square, so set the pod's memory limit with the chosen tile in mind.
 
-The crop tiling defaults match the crops the detector trained on, so inference sees what
-training saw. Raising the tile size is tempting since it means fewer forward passes, but
-it does not reduce total compute: the overlap fraction is the same either way (16/128
-and 64/512 are both 12.5%), so only per-crop overhead is saved. Raise
-`NISAR_PREDICT_CROP_SIZE` only if profiling shows that overhead matters, and compare
-detections against the default before deploying the change.
+The crop defaults match what the detector trained on. A larger crop means fewer forward
+passes but not less compute, since the overlap fraction stays the same, so raise
+`NISAR_PREDICT_CROP_SIZE` only if profiling shows per-crop overhead matters, and compare
+detections against the default first.
 
 ### Building the image
 

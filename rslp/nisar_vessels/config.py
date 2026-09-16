@@ -38,8 +38,7 @@ NUM_DATA_LOADER_WORKERS = int(os.getenv("RSLEARN_NUM_DATA_LOADER_WORKERS", "4"))
 NUM_MATERIALIZE_WORKERS = int(os.getenv("NISAR_MATERIALIZE_WORKERS", "32"))
 
 # Side length, in pixels, of the tiles a scene is split into for detection. Materializing
-# a window holds it in memory as float32, so this, not the granule, sets peak usage:
-# 4096 is ~134 MB for the two bands.
+# a window holds it in memory, so this, not the granule size, sets peak usage.
 SCENE_TILE_SIZE = int(os.getenv("NISAR_SCENE_TILE_SIZE", "4096"))
 
 # Overlap between adjacent scene tiles, so a vessel on a seam falls fully inside one of
