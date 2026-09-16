@@ -332,13 +332,13 @@ def materialize_scenes(
         materialize_dataset(ds_path, materialize_pipeline_args)
 
     # Scene bounds are a rectangle around the footprint, so corner tiles can fall outside
-    # it and never materialize. Drop those rather than fail the scene.
-    materialized: list[tuple[int, Window]] = []
-    for scene_idx, window in tiles:
-        if window.is_layer_completed(NISAR_LAYER_NAME):
-            materialized.append((scene_idx, window))
-        else:
-            window.window_root.fs.rm(window.window_root.path, recursive=True)
+    # it and never materialize. Drop those rather than fail the scene; the detector skips
+    # windows with missing inputs on its own, so they only need filtering out here.
+    materialized = [
+        (scene_idx, window)
+        for scene_idx, window in tiles
+        if window.is_layer_completed(NISAR_LAYER_NAME)
+    ]
     if len(materialized) < len(tiles):
         logger.info(
             f"Dropped {len(tiles) - len(materialized)} tile(s) with no imagery, "
