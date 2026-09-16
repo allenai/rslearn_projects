@@ -272,9 +272,12 @@ def test_large_scene_is_split_into_tiles(
     for scene_idx, window in tiles:
         assert scene_idx == 0
         assert window.is_layer_completed(pipeline.NISAR_LAYER_NAME)
+        # Absorbing a narrow remainder can push one tile past the nominal size, by
+        # less than a detector crop.
+        limit = 128 + pipeline.PREDICT_CROP_SIZE
         minx, miny, maxx, maxy = window.bounds
-        assert maxx - minx <= 128
-        assert maxy - miny <= 128
+        assert maxx - minx <= limit
+        assert maxy - miny <= limit
 
     # Every tile still reads back as real imagery, not an empty sliver.
     for _, window in tiles:

@@ -241,17 +241,20 @@ def tile_scene_bounds(
     """
     minx, miny, maxx, maxy = bounds
     return [
-        (x, y, min(x + tile_size, maxx), min(y + tile_size, maxy))
-        for y in _tile_starts(miny, maxy, tile_size, overlap)
-        for x in _tile_starts(minx, maxx, tile_size, overlap)
+        (x_start, y_start, x_end, y_end)
+        for y_start, y_end in _tile_spans(miny, maxy, tile_size, overlap)
+        for x_start, x_end in _tile_spans(minx, maxx, tile_size, overlap)
     ]
 
 
-def _tile_starts(low: int, high: int, tile_size: int, overlap: int) -> list[int]:
-    """Get the tile start offsets covering one axis.
+def _tile_spans(
+    low: int, high: int, tile_size: int, overlap: int
+) -> list[tuple[int, int]]:
+    """Get the (start, end) of each tile covering one axis.
 
-    The last tile sits flush against the far edge rather than being clipped, so no tile
-    comes out smaller than the crops the detector reads.
+    The last tile is clipped to the far edge rather than slid back to keep it full size,
+    which would duplicate most of a tile's worth of work. A remainder too narrow for the
+    detector's crops is absorbed into the preceding tile instead.
 
     Args:
         low: the first coordinate on this axis.
@@ -260,14 +263,25 @@ def _tile_starts(low: int, high: int, tile_size: int, overlap: int) -> list[int]
         overlap: how much adjacent tiles share.
 
     Returns:
-        the start offset of each tile.
+        each tile's start and end offset.
     """
     if high - low <= tile_size:
-        return [low]
+        return [(low, high)]
+
     stride = tile_size - overlap
-    starts = list(range(low, high - tile_size, stride))
-    starts.append(high - tile_size)
-    return starts
+    spans: list[tuple[int, int]] = []
+    start = low
+    while start < high:
+        end = min(start + tile_size, high)
+        spans.append((start, end))
+        if end >= high:
+            break
+        start += stride
+
+    if len(spans) > 1 and spans[-1][1] - spans[-1][0] < PREDICT_CROP_SIZE:
+        spans[-2] = (spans[-2][0], high)
+        spans.pop()
+    return spans
 
 
 def materialize_scenes(

@@ -236,6 +236,37 @@ def test_no_tile_exceeds_the_tile_size() -> None:
         assert maxy - miny <= 4096
 
 
+def test_last_tile_is_clipped_not_slid_back() -> None:
+    """Clipping the remainder avoids duplicating most of a tile's worth of work.
+
+    Sliding the final tile back to keep it full size made a 16380px axis cost 25% more
+    area at 2048, and over twice the scene at 8192.
+    """
+    tiles = pipeline.tile_scene_bounds((0, 0, 10000, 4096), 4096, 64)
+    widths = {t[2] - t[0] for t in tiles}
+
+    assert min(widths) < 4096
+
+
+def test_tiny_remainder_is_absorbed_into_its_neighbour() -> None:
+    """A remainder narrower than a detector crop would be useless on its own."""
+    # 8164 leaves a 100px remainder after two 4096 tiles at stride 4032.
+    tiles = pipeline.tile_scene_bounds((0, 0, 8164, 4096), 4096, 64)
+    widths = sorted({t[2] - t[0] for t in tiles})
+
+    assert min(widths) >= pipeline.PREDICT_CROP_SIZE
+    # Absorbing makes one tile wider than the nominal size, by under a crop's worth.
+    assert max(widths) < 4096 + pipeline.PREDICT_CROP_SIZE
+
+
+def test_no_tile_is_smaller_than_a_detector_crop() -> None:
+    """Across awkward scene sizes, no tile comes out too small to run the detector."""
+    for side in range(4100, 4400, 37):
+        tiles = pipeline.tile_scene_bounds((0, 0, side, side), 4096, 64)
+        smallest = min(min(t[2] - t[0], t[3] - t[1]) for t in tiles)
+        assert smallest >= pipeline.PREDICT_CROP_SIZE, f"side {side} gave {smallest}"
+
+
 def test_tile_count_grows_with_scene_not_memory() -> None:
     """A scene 4x the area yields ~4x the tiles, each still one tile's worth of memory.
 
