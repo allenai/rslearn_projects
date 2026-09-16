@@ -183,14 +183,17 @@ so the service's settings stay in one place):
 | `NISAR_INFRA_DISTANCE_KM` | `0.05` | Radius for dropping detections on marine infrastructure. |
 | `MARINE_INFRA_PATH` | Satlas marine GeoJSON URL | The marine infrastructure to filter against. |
 | `RSLEARN_NUM_DATA_LOADER_WORKERS` | `4` | Data loader workers during prediction. |
-| `NISAR_MATERIALIZE_WORKERS` | `32` | Workers used to prepare and materialize. |
-| `NISAR_SCENE_TILE_SIZE` | `8192` | Tile the scene is split into for materialization. |
+| `NISAR_PREPARE_WORKERS` | `32` | Workers used to prepare and ingest. |
+| `NISAR_MATERIALIZE_WORKERS` | `8` | Workers used to materialize. |
+| `NISAR_SCENE_TILE_SIZE` | `4096` | Tile the scene is split into for materialization. |
 | `NISAR_SCENE_TILE_OVERLAP` | `64` | Overlap between adjacent scene tiles. |
 | `NISAR_PREDICT_CROP_SIZE` | `128` | Tile size the detector runs over at inference. |
 | `NISAR_PREDICT_OVERLAP_PIXELS` | `16` | Overlap between adjacent tiles. |
 
-`NISAR_SCENE_TILE_SIZE` sets peak memory during materialization, growing with its
-square, so set the pod's memory limit with the chosen tile in mind.
+Peak memory during materialization is `NISAR_SCENE_TILE_SIZE` squared times
+`NISAR_MATERIALIZE_WORKERS`, since each worker is a process holding a whole tile. Raising
+either means lowering the other, and the pod's memory limit should be set against their
+product rather than the tile alone.
 
 The crop defaults match what the detector trained on. A larger crop means fewer forward
 passes but not less compute, since the overlap fraction stays the same, so raise

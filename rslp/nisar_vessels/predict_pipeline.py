@@ -23,6 +23,7 @@ from rslp.nisar_vessels.config import (
     MARINE_INFRA_PATH,
     NUM_DATA_LOADER_WORKERS,
     NUM_MATERIALIZE_WORKERS,
+    NUM_PREPARE_WORKERS,
     PREDICT_CROP_SIZE,
     PREDICT_OVERLAP_PIXELS,
     SCENE_TILE_OVERLAP,
@@ -329,17 +330,18 @@ def materialize_scenes(
             tiles.append((scene_idx, window))
 
     logger.info("Materialize dataset for NISAR vessel detection")
-    apply_windows_args = ApplyWindowsArgs(
+    prepare_args = ApplyWindowsArgs(group=WINDOW_GROUP, workers=NUM_PREPARE_WORKERS)
+    # Materialize gets its own, smaller worker count: each worker is a process holding a
+    # whole tile, so peak memory is the tile times the number of them running at once.
+    materialize_args = ApplyWindowsArgs(
         group=WINDOW_GROUP, workers=NUM_MATERIALIZE_WORKERS
     )
     materialize_pipeline_args = MaterializePipelineArgs(
         disabled_layers=[],
-        prepare_args=PrepareArgs(apply_windows_args=apply_windows_args),
-        ingest_args=IngestArgs(
-            ignore_errors=False, apply_windows_args=apply_windows_args
-        ),
+        prepare_args=PrepareArgs(apply_windows_args=prepare_args),
+        ingest_args=IngestArgs(ignore_errors=False, apply_windows_args=prepare_args),
         materialize_args=MaterializeArgs(
-            ignore_errors=False, apply_windows_args=apply_windows_args
+            ignore_errors=False, apply_windows_args=materialize_args
         ),
     )
     with time_operation(TimerOperations.MaterializeDataset):
