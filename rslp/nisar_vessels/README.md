@@ -132,7 +132,7 @@ downloads the granule to a shared volume and posts its path:
 
 The response holds one entry per detection (`rslp.vessels.VesselDetectionDict`), with
 `source: "nisar"`, the position in both pixel and lon/lat coordinates, the detector
-score, and `crop_fnames` keyed `hh` and `hv`.
+score, and, when `crop_path` is set, `crop_fnames` keyed `hh` and `hv`.
 
 A granule is the only way to give the service imagery, since it has no data source of
 its own to look one up with. Detections are labelled with `scene_id`, which the request
@@ -163,14 +163,16 @@ padded with nodata.
 
 ### Configuration
 
-All environment variables are read in `rslp/nisar_vessels/config.py`:
+Every knob is named in `rslp/nisar_vessels/config.py`, which reads all of them from the
+environment except `MARINE_INFRA_PATH` (read by `rslp.utils.filter` and re-exported here
+so the service's settings stay in one place):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `NISAR_HOST` / `NISAR_PORT` | `0.0.0.0` / `5555` | Where the server binds. |
 | `NISAR_SCORE_THRESHOLD` | `0.7` | Detector threshold, overridable per request. |
 | `NISAR_INFRA_DISTANCE_KM` | `0.05` | Radius for dropping detections on marine infrastructure. |
-| `MARINE_INFRA_PATH` | public GeoJSON URL | The marine infrastructure to filter against. |
+| `MARINE_INFRA_PATH` | Satlas marine GeoJSON URL | The marine infrastructure to filter against. |
 | `RSLEARN_NUM_DATA_LOADER_WORKERS` | `4` | Data loader workers during prediction. |
 | `NISAR_MATERIALIZE_WORKERS` | `32` | Workers used to prepare and materialize. |
 | `NISAR_PREDICT_CROP_SIZE` | `128` | Tile size the detector runs over at inference. |
