@@ -22,6 +22,7 @@ call cannot be interrupted in-process, so every cycle runs in a spawned child th
 terminates if it overruns its budget.
 """
 
+import json
 import multiprocessing
 import random
 import time
@@ -137,6 +138,12 @@ RUNNING_WORKLOAD_STATUSES = frozenset({4, 5, 6})  # running, stopping, uploading
 # noticed, because queued workers hold no GPU and throughput looked fine.
 PENDING_WORKLOAD_STATUSES = frozenset({1, 2, 3, 10})  # submitted, queued, initializing,
 # ready_to_start
+
+# Workload state of a worker that is up and claiming jobs, and so can be asked to
+# retire. Narrower than RUNNING_WORKLOAD_STATUSES on purpose: a worker that is already
+# stopping or uploading is on its way out and naming it in the drain list would shed
+# capacity that is about to come back anyway.
+DRAINABLE_WORKLOAD_STATUSES = frozenset({4})  # running
 
 # How long a queue worker's heartbeat is trusted before it is presumed dead.
 #
@@ -627,42 +634,80 @@ def _capacity_target(
     return capped
 
 
+def _drain_path(store_path: str, queue_name: str) -> str:
+    """Where the drain list for one run lives.
+
+    Keyed by queue rather than by store: several runs share one store, and each has to
+    retire its own workers.
+
+    Args:
+        store_path: the run's GeoZarr store.
+        queue_name: the Beaker queue name, e.g. "user/my-queue".
+
+    Returns:
+        the path to publish the drain list at.
+    """
+    slug = queue_name.replace("/", "-")
+    return f"{store_path.rstrip('/')}/worker_drain/{slug}.json"
+
+
+def _publish_drain_list(drain_path: str, worker_names: list[str]) -> None:
+    """Publish the workers that should retire once their current job is done.
+
+    Written every cycle, including empty, because the list is what workers read to
+    decide whether to stop. Leaving a stale non-empty list in place would keep retiring
+    workers after the surplus was gone.
+
+    Args:
+        drain_path: where to publish.
+        worker_names: experiment names of the workers to retire.
+    """
+    upath = UPath(drain_path)
+    upath.parent.mkdir(parents=True, exist_ok=True)
+    with upath.open("w") as f:
+        json.dump({"written": time.time(), "workers": worker_names}, f)
+
+
 def _release_surplus_workers(
     beaker: Any,
     workspace: Any,
     name_prefix: str,
     surplus: int,
+    drain_path: str | None = None,
 ) -> int:
-    """Give capacity back by cancelling workers that have not started yet.
+    """Give capacity back when the pool is over its target.
 
-    Sizing the pool to the cluster is only half of staying inside an allocation. The
-    launch path only ever adds, so when the cluster fills and the target drops the
-    surplus would sit there until it aged out on idle timeout, which is 15 minutes of
-    holding slots someone else is waiting for.
+    Two stages, because workers differ in what stopping them costs. A worker that has
+    not started holds nothing, so cancelling it is free and instant; that is the first
+    stage, and it targets exactly the case that matters most, a burst of queued
+    launches that would otherwise land later and overshoot all at once.
 
-    Only workers still waiting to start are cancelled, newest first. A running worker
-    owns a claimed job and there is no intra-job checkpointing, so killing one throws
-    away up to a whole unit of work; a queued one holds nothing and costs nothing to
-    drop. That also targets exactly the case that matters, a burst of queued launches
-    that would otherwise land later and overshoot the allocation all at once.
+    A running worker owns a claimed job and there is no intra-job checkpointing, so
+    cancelling one throws away up to a whole job. Instead the rest of the surplus is
+    published to a drain list, and each named worker stops itself after its current job
+    and before claiming the next. That costs no work and hands the GPU back within one
+    job, which is what keeps the pool responsive to demand from colleagues rather than
+    only when our own queue empties.
 
-    The rest of the surplus is left to drain on its own: `target_pending` falls with the
-    target, so the queue stops being refilled to a depth the larger pool needs and the
-    extra workers idle out without losing work.
+    The idle timeout is not a fallback for this. It only fires when no work is
+    available, and the queue is kept topped up to `target_pending` all run, so a
+    surplus worker mid-run never sees an empty queue and would hold its slot
+    indefinitely.
 
     Args:
         beaker: an open Beaker client.
         workspace: the workspace to search.
         name_prefix: the prefix from `worker_name_prefix`.
-        surplus: how many workers over target the pool is.
+        surplus: how many workers over target the pool is; may be zero, which still
+            republishes an empty drain list.
+        drain_path: where to publish the drain list, or None to only cancel.
 
     Returns:
-        the number of workers actually cancelled.
+        the number of workers cancelled, which is the capacity freed immediately.
+        Drained workers are not counted: they are still working.
     """
-    if surplus <= 0:
-        return 0
-
-    waiting = [
+    surplus = max(0, surplus)
+    workers = [
         workload
         for workload in beaker.workload.list(
             workspace=workspace,
@@ -674,40 +719,65 @@ def _release_surplus_workers(
         if getattr(getattr(workload, "experiment", None), "name", "").startswith(
             name_prefix
         )
-        and getattr(workload, "status", None) in PENDING_WORKLOAD_STATUSES
     ]
-    if not waiting:
-        logger.info(
-            "%d worker(s) over target but none are still waiting to start; "
-            "letting the surplus drain on idle timeout rather than killing work",
-            surplus,
-        )
-        return 0
 
-    # Newest first: the least likely to be moments away from starting, and the most
-    # likely to be the tail of a launch burst that has not landed yet.
-    waiting.sort(
-        key=lambda w: getattr(getattr(w, "experiment", None), "created", None)
-        and w.experiment.created.seconds
-        or 0,
-        reverse=True,
-    )
+    # Newest first. For the cancel stage that is the least likely to be moments away
+    # from starting and the most likely to be the tail of a launch burst that has not
+    # landed yet. For the drain stage the order is close to arbitrary, since when a
+    # workload was created says nothing about how far into its current job a worker is:
+    # it has run many jobs by then. Newest first is kept so that the most recently
+    # added capacity is the first given back.
+    def _created(workload: Any) -> int:
+        experiment = getattr(workload, "experiment", None)
+        created = getattr(experiment, "created", None)
+        return getattr(created, "seconds", 0) or 0
+
+    workers.sort(key=_created, reverse=True)
+    waiting = [
+        w for w in workers if getattr(w, "status", None) in PENDING_WORKLOAD_STATUSES
+    ]
+    running = [
+        w for w in workers if getattr(w, "status", None) in DRAINABLE_WORKLOAD_STATUSES
+    ]
+
+    cancelled = 0
     doomed = waiting[:surplus]
+    if doomed:
+        try:
+            beaker.workload.cancel(*doomed)
+            cancelled = len(doomed)
+            logger.info(
+                "cancelled %d queued worker(s) to stay within the capacity target "
+                "(%d over, %d were still waiting to start)",
+                cancelled,
+                surplus,
+                len(waiting),
+            )
+        except Exception:
+            # Not fatal: the pool is over target, not broken, and the next cycle tries
+            # again. Launching is already capped by the target, so nothing compounds.
+            logger.exception("could not cancel %d surplus worker(s)", len(doomed))
+
+    if drain_path is None:
+        return cancelled
+
+    draining = [w.experiment.name for w in running[: surplus - cancelled]]
     try:
-        beaker.workload.cancel(*doomed)
+        _publish_drain_list(drain_path, draining)
     except Exception:
-        # Not fatal: the pool is over target, not broken, and the next cycle tries
-        # again. Launching is already capped by the target, so nothing compounds.
-        logger.exception("could not cancel %d surplus worker(s)", len(doomed))
-        return 0
-    logger.info(
-        "cancelled %d queued worker(s) to stay within the capacity target "
-        "(%d over, %d were still waiting to start)",
-        len(doomed),
-        surplus,
-        len(waiting),
-    )
-    return len(doomed)
+        # The pool stays over target for a cycle; nothing is lost and the next cycle
+        # republishes.
+        logger.exception("could not publish the drain list to %s", drain_path)
+        return cancelled
+    if draining:
+        logger.info(
+            "asked %d running worker(s) to retire after their current job "
+            "(%d over target, %d cancelled while queued)",
+            len(draining),
+            surplus,
+            cancelled,
+        )
+    return cancelled
 
 
 def _count_workers(
@@ -808,6 +878,13 @@ def _run_cycle(
             parent can carry it into the next cycle's liveness count.
     """
     queue_name = config.queue_name
+    # Only meaningful when the pool is sized to the cluster: a static pool has no
+    # surplus to retire, and without a publisher the list would never be cleared.
+    drain_path = (
+        _drain_path(config.store_path, queue_name)
+        if config.worker.capacity_fraction is not None
+        else None
+    )
 
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         queue = beaker.queue.get(queue_name)
@@ -833,12 +910,16 @@ def _run_cycle(
         # to take more. Only done when capacity sizing is on: a static pool sits a few
         # over target routinely, because a worker that has exited stays unfinalized for
         # a while, and cancelling on that would fight its own bookkeeping.
-        if config.worker.capacity_fraction is not None and live > num_workers:
+        #
+        # Runs every cycle rather than only when over target, because the drain list
+        # has to be cleared once the surplus is gone, not just written when it appears.
+        if config.worker.capacity_fraction is not None:
             live -= _release_surplus_workers(
                 beaker,
                 workspace,
                 worker_name_prefix(queue_name),
                 live - num_workers,
+                drain_path=drain_path,
             )
     # How deep to keep the queue. The default assumes long jobs. A stage of short jobs
     # needs much more: a worker drains its few entries and then idles until the next
@@ -980,6 +1061,7 @@ def _run_cycle(
                 )
             ],
             idle_timeout=config.worker.idle_seconds,
+            drain_path=drain_path,
             name_prefix=worker_name_prefix(queue_name),
             extra_env_vars={
                 "OEDATASETS_API_URL": config.worker.datasets_api_url,

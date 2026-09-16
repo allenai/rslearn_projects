@@ -1,5 +1,6 @@
 """Worker to process jobs in a list of jobs."""
 
+import json
 import os
 import shutil
 import signal
@@ -22,6 +23,7 @@ from beaker import (
     BeakerTaskResources,
 )
 from beaker.utils import pb2_to_dict
+from upath import UPath
 
 from rslp.log_utils import get_logger
 from rslp.main import run_workflow
@@ -60,6 +62,16 @@ SHUTDOWN_GRACE_SECONDS = 120
 # roughly one job: long enough to finish a unit of work, short enough to be placed
 # quickly, since a shorter request fits the allocation grid sooner.
 DEFAULT_WORKER_MIN_RUNTIME = timedelta(minutes=45)
+
+# Environment variable carrying a worker's own experiment name, set at launch. Beaker
+# does not inject the experiment name, and the drain list names workers, so the worker
+# has to be told who it is.
+WORKER_NAME_ENV_VAR = "RSLP_WORKER_NAME"
+
+# Ignore a drain list older than this. The supervisor rewrites the list every cycle, so
+# a stale one means the supervisor is gone; without this the last list it wrote would
+# keep retiring workers until the pool emptied.
+DRAIN_STALE_SECONDS = 1800
 
 
 def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
@@ -142,6 +154,50 @@ def _force_exit_after(seconds: int) -> threading.Timer:
     return timer
 
 
+def _should_drain(drain_path: str, worker_name: str | None) -> bool:
+    """Whether this worker has been asked to retire.
+
+    Checked between jobs, never during one. A worker that is over the capacity target
+    still owns a claimed job and there is no intra-job checkpointing, so the only free
+    moment to stop is after one job is done and before the next is claimed. Retiring
+    there costs nothing and hands the GPU back within one job.
+
+    Never raises: a worker that cannot read the list keeps working. Failing to shrink
+    the pool is a much smaller problem than a transient storage error emptying it.
+
+    A worker that was never told its name cannot be named in the list, so it returns
+    early rather than reading the list once per job to learn nothing.
+
+    Args:
+        drain_path: the drain list the supervisor publishes.
+        worker_name: this worker's experiment name, or None if it was not told.
+
+    Returns:
+        whether this worker should exit.
+    """
+    if worker_name is None:
+        return False
+    try:
+        upath = UPath(drain_path)
+        if not upath.exists():
+            return False
+        with upath.open() as f:
+            published = json.load(f)
+        age = time.time() - float(published["written"])
+        if age > DRAIN_STALE_SECONDS:
+            logger.warning(
+                "ignoring drain list written %.0fs ago (over the %ds staleness "
+                "limit); assuming no supervisor is publishing it",
+                age,
+                DRAIN_STALE_SECONDS,
+            )
+            return False
+        return worker_name in published["workers"]
+    except Exception:
+        logger.exception("could not read drain list at %s; continuing", drain_path)
+        return False
+
+
 def worker_pipeline(
     queue_name: str,
     retries: int = 3,
@@ -149,6 +205,7 @@ def worker_pipeline(
     max_retry_sleep: int = 600,
     idle_timeout: int = 10,
     flush_messages: bool = False,
+    drain_path: str | None = None,
 ) -> None:
     """Start a worker to run jobs from a Pub/Sub subscription.
 
@@ -168,6 +225,8 @@ def worker_pipeline(
         idle_timeout: seconds before we terminate if there is no activity.
         flush_messages: whether to just flesh messages without actually running the
             requested workflows. This is to just delete all the messages in a topic.
+        drain_path: a list of worker names the supervisor wants to retire, checked
+            between jobs. Pass None to never retire early.
     """
 
     def process_message(json_data: dict[str, Any]) -> None:
@@ -184,11 +243,24 @@ def worker_pipeline(
 
         consecutive_errors = 0
         watchdog: threading.Timer | None = None
+        worker_name = os.environ.get(WORKER_NAME_ENV_VAR)
         with beaker.queue.worker_channel(queue, worker) as (tx, rx):
             in_flight: dict[str, str | None] = {"entry_id": None}
             signal.signal(signal.SIGTERM, _release_on_termination(tx, in_flight))
             try:
                 while True:
+                    # Before claiming, not after: holding no entry is what makes
+                    # stopping free.
+                    if drain_path is not None and _should_drain(
+                        drain_path, worker_name
+                    ):
+                        logger.info(
+                            "worker %s is on the drain list; exiting to hand back its "
+                            "slot",
+                            worker_name,
+                        )
+                        break
+
                     try:
                         batch = rx.rx.get(block=True, timeout=idle_timeout)
                     except QueueEmpty:
@@ -260,6 +332,7 @@ def launch_workers(
     weka_mounts: list[WekaMount] = [],
     extra_env_vars: dict[str, str] | None = None,
     extra_env_secrets: dict[str, str] | None = None,
+    drain_path: str | None = None,
     idle_timeout: int | None = None,
     name_prefix: str = "worker",
     min_runtime: timedelta = DEFAULT_WORKER_MIN_RUNTIME,
@@ -285,6 +358,8 @@ def launch_workers(
             the worker's own default applies. Raise it when a supervisor refills the
             queue on a cycle, so a worker does not quit the moment the queue drains and
             have to pay container start again.
+        drain_path: the drain list to pass to each worker, so the launcher can
+            retire workers by name without interrupting a job.
         name_prefix: prefix for each worker's experiment name. Pass a value unique to
             the run so its launcher can count its own workers by name; the default
             makes every run's workers indistinguishable.
@@ -309,7 +384,15 @@ def launch_workers(
     base_env_vars = get_base_env_vars(use_weka_prefix=False)
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         for _ in tqdm.tqdm(range(num_workers)):
-            env_vars = base_env_vars + extra_beaker_env_vars
+            # Named up front so the worker can be told its own name, which is how the
+            # drain list addresses it.
+            unique_id = str(uuid.uuid4())[0:8]
+            worker_name = f"{name_prefix}_{unique_id}"
+            env_vars = (
+                base_env_vars
+                + extra_beaker_env_vars
+                + [BeakerEnvVar(name=WORKER_NAME_ENV_VAR, value=worker_name)]
+            )
 
             datasets = [create_gcp_credentials_mount()]
             datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
@@ -330,6 +413,7 @@ def launch_workers(
                         if idle_timeout is None
                         else ["--idle_timeout", str(idle_timeout)]
                     ),
+                    *([] if drain_path is None else ["--drain_path", drain_path]),
                 ],
                 constraints=BeakerConstraints(
                     cluster=cluster,
@@ -342,8 +426,7 @@ def launch_workers(
                     gpu_count=gpus, shared_memory=shared_memory
                 ),
             )
-            unique_id = str(uuid.uuid4())[0:8]
-            beaker.experiment.create(name=f"{name_prefix}_{unique_id}", spec=spec)
+            beaker.experiment.create(name=worker_name, spec=spec)
 
 
 def write_jobs(

@@ -1,3 +1,6 @@
+from pathlib import Path
+
+
 def test_every_supervise_option_reaches_the_cycle() -> None:
     """Each `supervise` parameter must be forwarded into the config the cycle reads.
 
@@ -92,9 +95,9 @@ def test_workers_are_named_so_a_run_can_count_its_own() -> None:
     mine = mod.worker_name_prefix("user/queue-a")
     theirs = mod.worker_name_prefix("user/queue-b")
     assert mine != theirs
-    assert not mine.startswith(theirs) and not theirs.startswith(
-        mine
-    ), "one queue's prefix matches another's, so their worker counts would collide"
+    assert not mine.startswith(theirs) and not theirs.startswith(mine), (
+        "one queue's prefix matches another's, so their worker counts would collide"
+    )
     assert "/" not in mine, "a Beaker experiment name cannot contain a slash"
 
 
@@ -200,7 +203,7 @@ class _FakeBeaker:
         outer = self
 
         class _FakeJobStatus:
-            def HasField(self, name: str) -> bool:  # noqa: N802 - protobuf API
+            def HasField(self, name: str) -> bool:
                 # Every workload here has started. Counting by started-ness alone is
                 # what left the overshoot hole, so the fake has to model it.
                 return name == "started"
@@ -245,9 +248,9 @@ def test_a_worker_that_stopped_heartbeating_does_not_count() -> None:
     old = int(now) - 7200  # created two hours ago, well past the startup grace
     workloads = [_FakeWorkload(f"{prefix}_{i}", old) for i in range(20)]
     beaker = _FakeBeaker(workloads, heartbeats=[])
-    assert (
-        mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 0
-    ), "dead workers still count, so the pool will strand the last jobs"
+    assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 0, (
+        "dead workers still count, so the pool will strand the last jobs"
+    )
 
 
 def test_a_starting_worker_still_counts() -> None:
@@ -551,9 +554,10 @@ class _ReleaseBeaker:
 def test_a_running_worker_is_never_cancelled_to_free_capacity() -> None:
     """A running worker owns a claimed job and there is no intra-job checkpointing.
 
-    Killing one throws away up to a whole unit of work, and the claim it leaves behind
-    is not released for 90 minutes. Freeing capacity must never cost work: only workers
-    that have not started yet are fair game.
+    Killing one throws away up to a whole unit of work. The claim itself is handed
+    back promptly, since the worker rejects its in-flight entry on SIGTERM, but the
+    work done so far is gone. Freeing capacity immediately must never cost work: only
+    workers that have not started yet are fair game, and the rest are drained.
     """
     import importlib
 
@@ -654,9 +658,171 @@ def test_queued_allocation_requests_count_against_the_ceiling() -> None:
 
     assert beaker.job_list_kwargs, "no job listing was made"
     kw = beaker.job_list_kwargs[0]
-    assert (
-        "elegible_for_cluster" in kw
-    ), f"queued requests are not counted; filter was {sorted(kw)}"
-    assert (
-        "scheduled" not in kw
-    ), "a scheduled-only filter excludes queued claims on the allocation"
+    assert "elegible_for_cluster" in kw, (
+        f"queued requests are not counted; filter was {sorted(kw)}"
+    )
+    assert "scheduled" not in kw, (
+        "a scheduled-only filter excludes queued claims on the allocation"
+    )
+
+
+def _drain_list(path: str) -> list[str]:
+    """Read back what the supervisor published."""
+    import json
+
+    with open(path) as f:
+        return json.load(f)["workers"]
+
+
+def test_running_surplus_is_drained_rather_than_left_alone(tmp_path: Path) -> None:
+    """The whole point: a fully running pool over target has to shed something.
+
+    Cancelling cannot touch a running worker, so before the drain list the surplus just
+    sat there. The idle timeout is not a fallback, since it only fires on an empty
+    queue and the queue is kept topped up all run.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    running = [_FakeWorkload(f"{prefix}_r{i}", 1000 + i, status=4) for i in range(10)]
+    beaker = _ReleaseBeaker(running)
+    drain_path = str(tmp_path / "drain.json")
+
+    freed = mod._release_surplus_workers(
+        beaker, object(), prefix, surplus=3, drain_path=drain_path
+    )
+
+    assert freed == 0, "a running worker was cancelled"
+    assert beaker.cancelled == [], "a running worker was cancelled"
+    # Newest first: the most recently added capacity is the first given back.
+    assert _drain_list(drain_path) == [
+        f"{prefix}_r9",
+        f"{prefix}_r8",
+        f"{prefix}_r7",
+    ], "the surplus was not asked to retire"
+
+
+def test_cancelled_workers_count_against_the_drain(tmp_path: Path) -> None:
+    """Cancelling is free and instant, so it is spent first and the drain covers the rest.
+
+    Draining as many as the surplus on top of the cancellations would shed twice the
+    capacity asked for.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    workloads = [_FakeWorkload(f"{prefix}_w{i}", 2000 + i, status=2) for i in range(2)]
+    workloads += [
+        _FakeWorkload(f"{prefix}_r{i}", 1000 + i, status=4) for i in range(10)
+    ]
+    beaker = _ReleaseBeaker(workloads)
+    drain_path = str(tmp_path / "drain.json")
+
+    freed = mod._release_surplus_workers(
+        beaker, object(), prefix, surplus=5, drain_path=drain_path
+    )
+
+    assert freed == 2, "the queued workers were not cancelled"
+    drained = _drain_list(drain_path)
+    assert len(drained) == 3, f"shed {freed} + {len(drained)} for a surplus of 5"
+
+
+def test_drain_list_is_cleared_once_the_surplus_is_gone(tmp_path: Path) -> None:
+    """A stale list keeps retiring workers forever, emptying the pool.
+
+    This is why the release path runs every cycle rather than only when over target.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    running = [_FakeWorkload(f"{prefix}_r{i}", 1000 + i, status=4) for i in range(10)]
+    beaker = _ReleaseBeaker(running)
+    drain_path = str(tmp_path / "drain.json")
+
+    mod._release_surplus_workers(
+        beaker, object(), prefix, surplus=3, drain_path=drain_path
+    )
+    assert _drain_list(drain_path), "nothing was drained to begin with"
+
+    mod._release_surplus_workers(
+        beaker, object(), prefix, surplus=0, drain_path=drain_path
+    )
+    assert _drain_list(drain_path) == [], "the drain list was not cleared"
+
+
+def test_only_this_runs_workers_are_drained(tmp_path: Path) -> None:
+    """The workspace is shared; draining a colleague's worker would be sabotage."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    workloads = [_FakeWorkload(f"{prefix}_r{i}", 1000 + i, status=4) for i in range(3)]
+    workloads += [
+        _FakeWorkload(f"worker_someone-else_r{i}", 3000 + i, status=4) for i in range(5)
+    ]
+    beaker = _ReleaseBeaker(workloads)
+    drain_path = str(tmp_path / "drain.json")
+
+    mod._release_surplus_workers(
+        beaker, object(), prefix, surplus=4, drain_path=drain_path
+    )
+
+    drained = _drain_list(drain_path)
+    assert all(name.startswith(prefix) for name in drained), (
+        f"drained another run's workers: {drained}"
+    )
+
+
+def test_a_failed_publish_is_not_fatal(tmp_path: Path) -> None:
+    """The pool stays over target for a cycle; the next cycle republishes."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    running = [_FakeWorkload(f"{prefix}_r{i}", 1000 + i, status=4) for i in range(10)]
+    beaker = _ReleaseBeaker(running)
+    # A directory that cannot be created, so the publish raises.
+    drain_path = str(tmp_path / "file.txt" / "drain.json")
+    (tmp_path / "file.txt").write_text("not a directory")
+
+    freed = mod._release_surplus_workers(
+        beaker, object(), prefix, surplus=3, drain_path=drain_path
+    )
+    assert freed == 0, "a publish failure should not change what was cancelled"
+
+
+def test_drain_path_is_per_queue() -> None:
+    """Several runs share one store, and each has to retire only its own workers."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    conus = mod._drain_path("gs://bucket/store/", "patrickj/conus-2025")
+    au_af = mod._drain_path("gs://bucket/store", "patrickj/au-af-2025")
+    assert conus != au_af, "two runs sharing a store would fight over one drain list"
+    assert conus.startswith("gs://bucket/store/"), conus
+
+
+def test_a_stopping_worker_is_not_double_counted_as_starting() -> None:
+    """Stopping and uploading_results are running states, not pre-registration ones.
+
+    Such a worker has already registered, so its heartbeat speaks for it. Counting it
+    as "starting" as well double-counts it and the pool undershoots, which is what a
+    narrower RUNNING_WORKLOAD_STATUSES silently causes.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    assert {5, 6} <= mod.RUNNING_WORKLOAD_STATUSES, (
+        "stopping/uploading workers would be counted as starting"
+    )
+    prefix = "worker_patrickj-q"
+    now = 1_000_000.0
+    # Statuses 5 and 6: registered, heartbeat stale, on their way out.
+    workloads = [_FakeWorkload(f"{prefix}_a", int(now) - 60, status=5)]
+    workloads += [_FakeWorkload(f"{prefix}_b", int(now) - 60, status=6)]
+    beaker = _FakeBeaker(workloads, heartbeats=[])
+    got = mod._count_workers(beaker, object(), prefix, queue=object(), now=now)
+    assert got == 0, f"a stopping worker was counted as starting, got {got}"
