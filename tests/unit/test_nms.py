@@ -14,6 +14,61 @@ from upath import UPath
 from rslp.utils.nms import NMSDistanceMerger, distance_nms
 
 
+class TestDistanceNmsFunction:
+    THRESHOLD = 10
+
+    def _keep(
+        self, centers: list[tuple[float, float]], scores: list[float]
+    ) -> list[int]:
+        return distance_nms(
+            np.array(centers, dtype=float),
+            np.array(scores, dtype=float),
+            self.THRESHOLD,
+        )
+
+    def test_no_detections(self) -> None:
+        assert distance_nms(np.zeros((0, 2)), np.zeros(0), self.THRESHOLD) == []
+
+    @pytest.mark.parametrize(("scores", "winner"), [([0.4, 0.9], 1), ([0.9, 0.4], 0)])
+    def test_close_pair_keeps_the_higher_score(
+        self, scores: list[float], winner: int
+    ) -> None:
+        """The better score wins whichever tile reported it first."""
+        assert self._keep([(100.0, 100.0), (103.0, 102.0)], scores) == [winner]
+
+    def test_distant_pair_both_survive(self) -> None:
+        assert sorted(self._keep([(0.0, 0.0), (500.0, 500.0)], [0.9, 0.8])) == [0, 1]
+
+    def test_distance_is_euclidean_not_per_axis(self) -> None:
+        """A diagonal 12.7px apart exceeds the threshold, though each axis is under it."""
+        assert sorted(self._keep([(0.0, 0.0), (9.0, 9.0)], [0.9, 0.8])) == [0, 1]
+
+    def test_threshold_is_inclusive(self) -> None:
+        assert self._keep([(0.0, 0.0), (0.0, 10.0)], [0.9, 0.8]) == [0]
+
+    def test_equal_scores_keep_the_lower_index(self) -> None:
+        """Ties resolve by index, so a rerun over the same input agrees with itself."""
+        assert self._keep([(0.0, 0.0), (2.0, 2.0)], [0.7, 0.7]) == [0]
+        assert self._keep([(2.0, 2.0), (0.0, 0.0)], [0.7, 0.7]) == [0]
+
+    def test_suppression_does_not_chain(self) -> None:
+        """B is near A and C is near B, but C is far from A, so C is not suppressed."""
+        keep = self._keep([(0.0, 0.0), (8.0, 0.0), (16.0, 0.0)], [0.9, 0.5, 0.8])
+
+        assert sorted(keep) == [0, 2]
+
+    def test_indices_are_returned_from_the_given_set(self) -> None:
+        """Callers pass their own indices when suppressing a subset."""
+        keep = distance_nms(
+            np.array([(100.0, 100.0), (103.0, 102.0)]),
+            np.array([0.4, 0.9]),
+            self.THRESHOLD,
+            indices=np.array([7, 9]),
+        )
+
+        assert keep == [9]
+
+
 class TestDistanceNms:
     BOUNDS = (0, 0, 4, 4)
     PROJECTION = WGS84_PROJECTION
@@ -214,61 +269,3 @@ class TestDistanceNms:
         )
         # Expected: Box 3 kept (highest score); Box 0, Box 1, and Box 2 suppressed.
         assert set(merged_features) == {features[3]}
-
-
-class TestDistanceNmsFunction:
-    """Tests for the suppression pass itself, shared by the merger and by callers that
-    reduce detections across separately-predicted windows."""
-
-    THRESHOLD = 10
-
-    def _keep(
-        self, centers: list[tuple[float, float]], scores: list[float]
-    ) -> list[int]:
-        return distance_nms(
-            np.array(centers, dtype=float),
-            np.array(scores, dtype=float),
-            self.THRESHOLD,
-        )
-
-    def test_no_detections(self) -> None:
-        assert distance_nms(np.zeros((0, 2)), np.zeros(0), self.THRESHOLD) == []
-
-    @pytest.mark.parametrize(("scores", "winner"), [([0.4, 0.9], 1), ([0.9, 0.4], 0)])
-    def test_close_pair_keeps_the_higher_score(
-        self, scores: list[float], winner: int
-    ) -> None:
-        """The better score wins whichever tile reported it first."""
-        assert self._keep([(100.0, 100.0), (103.0, 102.0)], scores) == [winner]
-
-    def test_distant_pair_both_survive(self) -> None:
-        assert sorted(self._keep([(0.0, 0.0), (500.0, 500.0)], [0.9, 0.8])) == [0, 1]
-
-    def test_distance_is_euclidean_not_per_axis(self) -> None:
-        """A diagonal 12.7px apart exceeds the threshold, though each axis is under it."""
-        assert sorted(self._keep([(0.0, 0.0), (9.0, 9.0)], [0.9, 0.8])) == [0, 1]
-
-    def test_threshold_is_inclusive(self) -> None:
-        assert self._keep([(0.0, 0.0), (0.0, 10.0)], [0.9, 0.8]) == [0]
-
-    def test_equal_scores_keep_the_lower_index(self) -> None:
-        """Ties resolve by index, so a rerun over the same input agrees with itself."""
-        assert self._keep([(0.0, 0.0), (2.0, 2.0)], [0.7, 0.7]) == [0]
-        assert self._keep([(2.0, 2.0), (0.0, 0.0)], [0.7, 0.7]) == [0]
-
-    def test_suppression_does_not_chain(self) -> None:
-        """B is near A and C is near B, but C is far from A, so C is not suppressed."""
-        keep = self._keep([(0.0, 0.0), (8.0, 0.0), (16.0, 0.0)], [0.9, 0.5, 0.8])
-
-        assert sorted(keep) == [0, 2]
-
-    def test_indices_are_returned_from_the_given_set(self) -> None:
-        """Callers pass their own indices when suppressing a subset."""
-        keep = distance_nms(
-            np.array([(100.0, 100.0), (103.0, 102.0)]),
-            np.array([0.4, 0.9]),
-            self.THRESHOLD,
-            indices=np.array([7, 9]),
-        )
-
-        assert keep == [9]
