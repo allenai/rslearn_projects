@@ -352,3 +352,19 @@ def test_dedupe_matches_the_merger_on_the_same_input() -> None:
         pipeline.DEDUPE_DISTANCE_PIXELS,
     )
     assert {(d.col, d.row) for d in kept} == {positions[i] for i in expected}
+
+
+def test_seam_duplicate_resolves_to_the_tile_that_saw_the_whole_vessel() -> None:
+    """The winning detection brings its own position, not just its score.
+
+    A vessel truncated at a tile edge scores lower than the same vessel seen whole in the
+    neighbouring tile, so keeping the higher score also discards the truncated view's
+    offset center. That is what overlapping tiles buy.
+    """
+    truncated = _scored(0, 100, 100, 0.35)
+    whole = _scored(0, 104, 103, 0.88)
+
+    ((kept),) = pipeline.dedupe_detections([truncated, whole])
+
+    assert (kept.col, kept.row) == (104, 103)
+    assert kept.score == 0.88

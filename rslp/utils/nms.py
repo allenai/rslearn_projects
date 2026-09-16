@@ -24,8 +24,9 @@ def distance_nms(
 ) -> list[int]:
     """Apply distance-based non-maximum suppression over detection centers.
 
-    Greedily keeps detections in descending score order, eliminating any detection whose
-    center lies within distance_threshold of an already-kept, higher-scoring one.
+    Walks detections from lowest score upwards, eliminating any whose center lies within
+    distance_threshold of a higher-scoring one, so the best-scoring member of each
+    cluster survives. Returned indices are in ascending score order.
 
     Args:
         centers: (N, 2) array of (x, y) detection centers.
