@@ -188,5 +188,6 @@ detections against the default before deploying the change.
     docker compose -f rslp/nisar_vessels/docker-compose.yaml build
 
 The Dockerfile downloads the detector checkpoint to the path implied by
-`project_name`/`run_name` in `DETECT_MODEL_CONFIG`. No NISAR checkpoint has been
-published yet, so that URL is a TODO and the image will not build until a run is chosen.
+`project_name`/`run_name` in `DETECT_MODEL_CONFIG`, so the two move together: pointing
+the service at a different run means updating the config and the Dockerfile path.
+The deployed weights are the `data_20260828_satlas_02` run (0.749 val mAP).
