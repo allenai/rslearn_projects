@@ -135,7 +135,7 @@ The response holds one entry per detection (`rslp.vessels.VesselDetectionDict`),
 score, and, when `crop_path` is set, `crop_fnames` keyed `hh` and `hv`.
 
 A granule is the only way to give the service imagery, since it has no data source of
-its own to look one up with. Detections are labelled with `scene_id`, which the request
+its own to look one up with. Detections are labeled with `scene_id`, which the request
 may set and which otherwise falls back to the granule filename.
 
 The same pipeline is available as a workflow:

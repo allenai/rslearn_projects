@@ -214,6 +214,25 @@ def test_small_scene_is_a_single_tile() -> None:
     assert pipeline.tile_scene_bounds(bounds, 4096, 64) == [bounds]
 
 
+@pytest.mark.parametrize("overlap", [0, 16, 64])
+@pytest.mark.parametrize("side", [5000, 8164, 8192, 10000])
+def test_tiles_leave_no_gap(side: int, overlap: int) -> None:
+    """Every pixel is covered whatever the overlap, including none at all.
+
+    With no overlap the tiles abut exactly, so an off-by-one in the striding would leave
+    a strip of the scene unprocessed rather than merely duplicated.
+    """
+    tiles = pipeline.tile_scene_bounds((0, 0, side, side), 4096, overlap)
+
+    for axis in (0, 1):
+        spans = sorted({(t[axis], t[axis + 2]) for t in tiles})
+        cursor = 0
+        for start, end in spans:
+            assert start <= cursor, f"gap before {start} on axis {axis}"
+            cursor = max(cursor, end)
+        assert cursor == side
+
+
 def test_tiles_cover_the_whole_scene() -> None:
     """Every pixel of the scene falls inside at least one tile."""
     bounds = (0, 0, 10000, 7000)
@@ -248,7 +267,7 @@ def test_last_tile_is_clipped_not_slid_back() -> None:
     assert min(widths) < 4096
 
 
-def test_tiny_remainder_is_absorbed_into_its_neighbour() -> None:
+def test_tiny_remainder_is_absorbed_into_its_neighbor() -> None:
     """A remainder narrower than a detector crop would be useless on its own."""
     # 8164 leaves a 100px remainder after two 4096 tiles at stride 4032.
     tiles = pipeline.tile_scene_bounds((0, 0, 8164, 4096), 4096, 64)
@@ -390,7 +409,7 @@ def test_seam_duplicate_resolves_to_the_tile_that_saw_the_whole_vessel() -> None
     """The winning detection brings its own position, not just its score.
 
     A vessel truncated at a tile edge scores lower than the same vessel seen whole in the
-    neighbouring tile, so keeping the higher score also discards the truncated view's
+    neighboring tile, so keeping the higher score also discards the truncated view's
     offset center. That is what overlapping tiles buy.
     """
     truncated = _scored(0, 100, 100, 0.35)

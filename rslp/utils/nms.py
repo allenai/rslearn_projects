@@ -34,8 +34,8 @@ def distance_nms(
         distance_threshold: detections within this center distance are considered the
             same object.
         grid_size: cell size for the spatial index used to look up nearby centers.
-        indices: original indices for the rows of centers, defaulting to range(N).
-            Returned indices are drawn from this set.
+        indices: (N,) original indices for the rows of centers, defaulting to
+            range(N). Returned indices are drawn from this set.
 
     Returns:
         the indices of the detections to keep.

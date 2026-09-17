@@ -253,9 +253,10 @@ def _tile_spans(
 ) -> list[tuple[int, int]]:
     """Get the (start, end) of each tile covering one axis.
 
-    The last tile is clipped to the far edge rather than slid back to keep it full size,
-    which would duplicate most of a tile's worth of work. A remainder too narrow for the
-    detector's crops is absorbed into the preceding tile instead.
+    Tiles always run to high, whatever the overlap, so the axis is fully covered. The
+    last one is clipped to the edge rather than slid back to keep it full size, which
+    would duplicate most of a tile's worth of work. A remainder too narrow for the
+    detector's crops is absorbed by extending the tile before it.
 
     Args:
         low: the first coordinate on this axis.
@@ -279,6 +280,8 @@ def _tile_spans(
             break
         start += stride
 
+    # Absorb a remainder too narrow to run the detector on by growing its neighbor to
+    # the edge, rather than dropping it and leaving that strip unprocessed.
     if len(spans) > 1 and spans[-1][1] - spans[-1][0] < PREDICT_CROP_SIZE:
         spans[-2] = (spans[-2][0], high)
         spans.pop()

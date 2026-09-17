@@ -27,7 +27,7 @@ from tests.utils.nisar_granule import DUAL_POL_BANDS, write_granule
 
 # Open water in the English Channel. Deliberately not the WGS84_ITEM_BOUNDS the other
 # vessel tests share: that box straddles the UTM zone 30/31 boundary at longitude 0, so
-# a granule there is reprojected into the neighbouring zone and its window grows, which
+# a granule there is reprojected into the neighboring zone and its window grows, which
 # would make the exact window size asserted below meaningless.
 GRANULE_CENTER_LON, GRANULE_CENTER_LAT = -3.0, 50.0
 
