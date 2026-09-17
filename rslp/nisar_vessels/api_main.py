@@ -139,9 +139,6 @@ async def home() -> dict:
 def get_detections(info: NisarRequest) -> NisarResponse:
     """Returns vessel detections for a given request.
 
-    Deliberately sync: FastAPI runs a non-async handler in a worker thread, so the
-    prediction does not block the event loop and the health probe keeps answering.
-
     Args:
         info: NisarRequest object containing the request data.
 
