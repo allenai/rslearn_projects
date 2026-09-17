@@ -95,9 +95,9 @@ def test_workers_are_named_so_a_run_can_count_its_own() -> None:
     mine = mod.worker_name_prefix("user/queue-a")
     theirs = mod.worker_name_prefix("user/queue-b")
     assert mine != theirs
-    assert not mine.startswith(theirs) and not theirs.startswith(mine), (
-        "one queue's prefix matches another's, so their worker counts would collide"
-    )
+    assert not mine.startswith(theirs) and not theirs.startswith(
+        mine
+    ), "one queue's prefix matches another's, so their worker counts would collide"
     assert "/" not in mine, "a Beaker experiment name cannot contain a slash"
 
 
@@ -248,9 +248,9 @@ def test_a_worker_that_stopped_heartbeating_does_not_count() -> None:
     old = int(now) - 7200  # created two hours ago, well past the startup grace
     workloads = [_FakeWorkload(f"{prefix}_{i}", old) for i in range(20)]
     beaker = _FakeBeaker(workloads, heartbeats=[])
-    assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 0, (
-        "dead workers still count, so the pool will strand the last jobs"
-    )
+    assert (
+        mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 0
+    ), "dead workers still count, so the pool will strand the last jobs"
 
 
 def test_a_starting_worker_still_counts() -> None:
@@ -658,12 +658,12 @@ def test_queued_allocation_requests_count_against_the_ceiling() -> None:
 
     assert beaker.job_list_kwargs, "no job listing was made"
     kw = beaker.job_list_kwargs[0]
-    assert "elegible_for_cluster" in kw, (
-        f"queued requests are not counted; filter was {sorted(kw)}"
-    )
-    assert "scheduled" not in kw, (
-        "a scheduled-only filter excludes queued claims on the allocation"
-    )
+    assert (
+        "elegible_for_cluster" in kw
+    ), f"queued requests are not counted; filter was {sorted(kw)}"
+    assert (
+        "scheduled" not in kw
+    ), "a scheduled-only filter excludes queued claims on the allocation"
 
 
 def _drain_list(path: str) -> list[str]:
@@ -771,9 +771,9 @@ def test_only_this_runs_workers_are_drained(tmp_path: Path) -> None:
     )
 
     drained = _drain_list(drain_path)
-    assert all(name.startswith(prefix) for name in drained), (
-        f"drained another run's workers: {drained}"
-    )
+    assert all(
+        name.startswith(prefix) for name in drained
+    ), f"drained another run's workers: {drained}"
 
 
 def test_a_failed_publish_is_not_fatal(tmp_path: Path) -> None:
@@ -841,9 +841,9 @@ def test_a_stopping_worker_is_not_double_counted_as_starting() -> None:
     import importlib
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    assert {5, 6} <= mod.RUNNING_WORKLOAD_STATUSES, (
-        "stopping/uploading workers would be counted as starting"
-    )
+    assert (
+        {5, 6} <= mod.RUNNING_WORKLOAD_STATUSES
+    ), "stopping/uploading workers would be counted as starting"
     prefix = "worker_patrickj-q"
     now = 1_000_000.0
     # Statuses 5 and 6: registered, heartbeat stale, on their way out.
