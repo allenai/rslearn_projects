@@ -19,10 +19,12 @@ using the code in `landsat/existing_dataset_to_utm/`.
 
 The classifier can be trained like this:
 
-    rslearn model fit --config data/landsat_vessels/config_classifier.yaml
+    rslearn model fit --config data/landsat_vessels/config_classifier_20260908d.yaml
 
-The data collection process for the classifier is described in
-`one_off_projects/landsat/recheck_landsat_labels/README.md`.
+The current classifier is an OlmoEarth-base model (Run d) trained with round-1 annotations.
+The round-1 annotation and data-collection process is described in
+`rslp/landsat_vessels/annotations/README.md`, and the training experiments (runs a-g) are
+summarized in `rslp/landsat_vessels/README.md`.
 
 ---
 
@@ -101,20 +103,25 @@ This will launch multiple beaker jobs. Each job will evaluate the model on one w
 
 This will output the evaluation metrics, including precision, recall, and F1 score.
 
-### Scenario Checks
+### Scenario Checks (Smoke Test)
 
-1. Launch the prediction jobs for the scenario check scenes:
+The scenario checks are run as a smoke test over a fixed set of scenes covering different
+regions, failure modes (whitecaps, clouds, ice, islands), and true positives. The scenes
+and their expected detection-count ranges are defined in
+`rslp/landsat_vessels/evaluation/smoke_test.py`.
 
-    ```python
-    python rslp/landsat_vessels/job_launcher.py --zip_dir gs://rslearn-eai/projects/landsat_evaluation/scenario_checks/downloads/ --json_dir gs://rslearn-eai/projects/landsat_evaluation/scenario_checks/jsons/
-    ```
+Run the pipeline on those scenes and check the counts against the expected ranges across a
+detector x classifier threshold grid (prints a pass/fail matrix plus per-scene and total
+detection-count matrices):
 
-This will launch multiple beaker jobs. Each job will evaluate the model on one scene and save the results in the `jsons` directory.
+```python
+python -m rslp.landsat_vessels.evaluation.smoke_test_sweep_2d --classify_config data/landsat_vessels/config_classifier_20260908d.yaml --out_dir /tmp/smoke_sweep_2d
+```
 
-2. Check the results against the targets (expected results) at scene level:
+To visualize the predictions (per-scene overview + pan-sharpened detection crops):
 
-    ```python
-    python rslp/landsat_vessels/evaluation/scenario_checks.py
-    ```
+```python
+python -m rslp.landsat_vessels.evaluation.visualize_smoke_predictions --classify_config data/landsat_vessels/config_classifier_20260908d.yaml --det_thr 0.7 --cls_thr 0.99 --out_dir /tmp/smoke_vis
+```
 
-This will output the details of each scene (e.g. scene id, description, location, expected number of detections, actual number of detections), as well as the total number of passes and fails, and the success rate.
+See `rslp/landsat_vessels/README.md` for the latest smoke-test results and threshold sweep.
