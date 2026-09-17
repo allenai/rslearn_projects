@@ -1,6 +1,7 @@
 """API for NISAR Vessel Detection."""
 
 import tempfile
+import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import StrEnum
@@ -22,6 +23,9 @@ from rslp.utils.prometheus import setup_prom_metrics
 from rslp.vessels import VesselDetectionDict
 
 logger = get_logger(__name__)
+
+# Serializes GPU inference so a single worker only ever runs one prediction at a time.
+_inference_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -132,7 +136,7 @@ async def home() -> dict:
     summary="Get Vessel Detections from NISAR",
     description="Returns vessel detections from NISAR imagery.",
 )
-async def get_detections(info: NisarRequest) -> NisarResponse:
+def get_detections(info: NisarRequest) -> NisarResponse:
     """Returns vessel detections for a given request.
 
     Args:
@@ -162,7 +166,7 @@ async def get_detections(info: NisarRequest) -> NisarResponse:
 
     try:
         logger.info(f"Processing request for granule {info.h5_path}")
-        with time_operation(TimerOperations.TotalInferenceTime):
+        with _inference_lock, time_operation(TimerOperations.TotalInferenceTime):
             vessel_detections = predict_pipeline(
                 tasks=[task],
                 score_threshold=score_threshold,
