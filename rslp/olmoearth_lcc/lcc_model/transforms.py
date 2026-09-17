@@ -2,8 +2,9 @@
 
 - ``StackSampler`` (train/val): picks one of the materialized frequent options,
   takes the 16 most recent quarterly mosaics before it, and emits the 20-image
-  ``sentinel2_l2a`` stack plus per-pixel start/end timestep-index targets. It can
-  optionally drop quarterly mosaics at train time as augmentation.
+  ``sentinel2_l2a`` stack plus per-pixel start/end timestep-index targets (the
+  ``TS_START_KEY`` / ``TS_END_KEY`` segmentation-style tasks). It can optionally
+  drop quarterly mosaics at train time as augmentation.
 - ``PredictStackBuilder`` (predict): same stack from the single
   ``sentinel2_frequent_0`` layer, with no annotation or targets.
 - ``mark_negative_points_none``: labels negative (no-change) points as "none" for
@@ -26,6 +27,12 @@ FREQUENT_KEY_PREFIX = "sentinel2_frequent_"
 ANNOTATION_KEY = "_lcc_annotation"
 INPUT_KEY = "sentinel2_l2a"
 OUTPUT_KEY = "sentinel2_l2a"
+
+# Task names of the per-pixel start/end timestep-index targets. Each is a
+# segmentation-style ``{"classes", "valid"}`` target over the input timesteps, valid
+# only at change points.
+TS_START_KEY = "ts_start"
+TS_END_KEY = "ts_end"
 
 NUM_QUARTERLY = 16
 NUM_FREQUENT = 4
@@ -248,11 +255,11 @@ class StackSampler(Transform):
         else:
             valid_mask = torch.ones(H, W, dtype=torch.float32)
 
-        target_dict["timestamps"] = {
-            "start": RasterImage(image=start_map[None, None, :, :]),
-            "end": RasterImage(image=end_map[None, None, :, :]),
-            "valid": RasterImage(image=valid_mask[None, None, :, :]),
-        }
+        for key, idx_map in ((TS_START_KEY, start_map), (TS_END_KEY, end_map)):
+            target_dict[key] = {
+                "classes": RasterImage(image=idx_map[None, None, :, :]),
+                "valid": RasterImage(image=valid_mask.clone()[None, None, :, :]),
+            }
 
         # Mask dst loss when the latest frequent image is before post_change, since
         # the model can't predict destination land cover without post-change imagery.

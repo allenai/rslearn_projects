@@ -315,6 +315,12 @@ data:
             label_pre_change: targets
           post_change:
             label_post_change: targets
+          # ts_start/ts_end targets are produced by StackSampler; label_binary is a
+          # placeholder so SegmentationTask.process_inputs has something to read.
+          ts_start:
+            label_binary: targets
+          ts_end:
+            label_binary: targets
         tasks:
           binary:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
@@ -482,6 +488,37 @@ data:
               - settlement
               metric_kwargs:
                 average: micro
+          # Classes are the 20 input timestep indices; valid only at change points.
+          ts_start:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 20
+              metric_kwargs:
+                average: micro
+              other_metrics:
+                within1:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.TimestepToleranceAccuracy
+                  init_args:
+                    tolerance: 1
+                within2:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.TimestepToleranceAccuracy
+                  init_args:
+                    tolerance: 2
+          ts_end:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 20
+              metric_kwargs:
+                average: micro
+              other_metrics:
+                within1:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.TimestepToleranceAccuracy
+                  init_args:
+                    tolerance: 1
+                within2:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.TimestepToleranceAccuracy
+                  init_args:
+                    tolerance: 2
     batch_size: 4
     num_workers: 16
     use_in_memory_dataset: false
@@ -527,9 +564,10 @@ data:
           - target/pre_change/valid
           - target/post_change/classes
           - target/post_change/valid
-          - target/timestamps/start
-          - target/timestamps/end
-          - target/timestamps/valid
+          - target/ts_start/classes
+          - target/ts_start/valid
+          - target/ts_end/classes
+          - target/ts_end/valid
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:
@@ -564,6 +602,6 @@ trainer:
     init_args:
       monitor: val_binary/auroc
       mode: max
-project_name: 2026_09_16_lcc
+project_name: 2026_09_17_lcc
 run_name: bp_abs_qdrop_bpcat_1pass
 management_dir: ${RSLP_PREFIX}/projects

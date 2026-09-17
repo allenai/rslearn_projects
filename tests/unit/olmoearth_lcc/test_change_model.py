@@ -10,7 +10,11 @@ from rslearn.models.component import TokenFeatureMaps
 from rslearn.train.model_context import ModelContext, RasterImage
 
 from rslp.olmoearth_lcc.lcc_model.model import ChangeModel
-from rslp.olmoearth_lcc.lcc_model.transforms import INPUT_KEY
+from rslp.olmoearth_lcc.lcc_model.transforms import (
+    INPUT_KEY,
+    TS_END_KEY,
+    TS_START_KEY,
+)
 
 PATCH = 4
 DIM = 16
@@ -96,9 +100,12 @@ def _targets(batch_size: int) -> list[dict]:
                 "dst": seg(torch.full((CROP, CROP), 2, dtype=torch.long)),
                 "pre_change": seg(torch.ones(CROP, CROP, dtype=torch.long)),
                 "post_change": seg(torch.ones(CROP, CROP, dtype=torch.long)),
-                "timestamps": {
-                    "start": RasterImage(image=torch.full((1, 1, CROP, CROP), 8)),
-                    "end": RasterImage(image=torch.full((1, 1, CROP, CROP), 12)),
+                TS_START_KEY: {
+                    "classes": RasterImage(image=torch.full((1, 1, CROP, CROP), 8)),
+                    "valid": RasterImage(image=ts_valid[None, None]),
+                },
+                TS_END_KEY: {
+                    "classes": RasterImage(image=torch.full((1, 1, CROP, CROP), 12)),
                     "valid": RasterImage(image=ts_valid[None, None]),
                 },
             }
@@ -218,8 +225,8 @@ def test_forward_shapes_and_losses(kwargs: dict) -> None:
     assert o["dst"].shape == (13, CROP, CROP)
     assert o["pre_change"].shape == (11, CROP, CROP)
     assert o["post_change"].shape == (15, CROP, CROP)
-    assert o["timestamps"]["start"].shape == (T, CROP, CROP)
-    assert o["timestamps"]["end"].shape == (T, CROP, CROP)
+    assert o[TS_START_KEY].shape == (T, CROP, CROP)
+    assert o[TS_END_KEY].shape == (T, CROP, CROP)
     assert len(o["timestep_days"]) == T
     torch.testing.assert_close(
         o["binary"].sum(dim=0), torch.ones(CROP, CROP), atol=1e-5, rtol=0

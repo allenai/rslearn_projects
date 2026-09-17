@@ -2,13 +2,12 @@
 
 - ``LCCMultiTask``: injects per-window annotation metadata (consumed by
   ``transforms.StackSampler``), merges the same_change label raster into the
-  pre_change raster so a single head predicts both, adds start/end timestamp
-  accuracy metrics, and stacks the per-task outputs into the uint16 raster
-  consumed by ``postprocess``.
+  pre_change raster so a single head predicts both, and stacks the per-task
+  outputs into the uint16 raster consumed by ``postprocess``.
 - ``BalancedBinaryMetric``: sample-balanced accuracy / AUROC / PRAUC for the
   binary change task.
-- ``TimestampBoundaryAccuracy``: accuracy of the per-pixel start/end timestep
-  predictions at change pixels.
+- ``TimestepToleranceAccuracy``: accuracy of the per-pixel start/end timestep
+  predictions at change pixels, for the ``ts_start`` / ``ts_end`` tasks.
 - ``NegativeWindowMaxScore``: mean over negative-only crops of the max change
   probability anywhere in the crop (a hallucination proxy).
 """
@@ -23,18 +22,18 @@ import numpy as np
 import numpy.typing as npt
 import torch
 from rslearn.train.model_context import RasterImage, SampleMetadata
-from rslearn.train.tasks.multi_task import MetricWrapper, MultiTask
+from rslearn.train.tasks.multi_task import MultiTask
 from rslearn.train.tasks.task import Task
 from rslearn.utils import Feature
 from sklearn.metrics import average_precision_score, roc_auc_score
-from torchmetrics import Metric, MetricCollection
+from torchmetrics import Metric
 from torchmetrics.utilities import dim_zero_cat
 from typing_extensions import override
 from upath import UPath
 
 from .prepare import PRE_CHANGE_CATEGORY_NAMES, SAME_CHANGE_CATEGORY_NAMES
 from .timestamp_output import start_end_day_bands
-from .transforms import ANNOTATION_KEY
+from .transforms import ANNOTATION_KEY, TS_END_KEY, TS_START_KEY
 
 # Class names for the merged pre+same change-category head: the pre_change
 # classes followed by the same_change option classes (their nodata/none classes
@@ -167,23 +166,22 @@ class BalancedBinaryMetric(Metric):
         return torch.tensor(float(roc_auc_score(labels, scores, sample_weight=weights)))
 
 
-class TimestampBoundaryAccuracy(Metric):
-    """Accuracy of per-pixel start/end timestep predictions at change pixels.
+class TimestepToleranceAccuracy(Metric):
+    """Accuracy of a per-pixel timestep-index prediction within a tolerance.
 
-    Compares the argmax over T of the predicted boundary distribution against
-    the target timestep index, counting a prediction correct when the absolute
-    index difference is within ``tolerance``. Only valid (change) pixels count.
+    For use in ``SegmentationTask.other_metrics`` on the ``ts_start`` / ``ts_end``
+    tasks, whose classes are the input timestep indices. A prediction is correct
+    when the absolute difference between the argmax timestep and the target
+    timestep is at most ``tolerance``. Only valid (change) pixels count.
     """
 
-    def __init__(self, key: str, tolerance: int = 0) -> None:
+    def __init__(self, tolerance: int = 0) -> None:
         """Initialize counters.
 
         Args:
-            key: which boundary to score, "start" or "end".
             tolerance: max absolute timestep-index difference counted as correct.
         """
         super().__init__()
-        self.key = key
         self.tolerance = tolerance
         self.add_state(
             "correct", default=torch.tensor(0, dtype=torch.long), dist_reduce_fx="sum"
@@ -193,12 +191,10 @@ class TimestampBoundaryAccuracy(Metric):
         )
 
     @override
-    def update(
-        self, preds: list[dict[str, Any]], targets: list[dict[str, Any]]
-    ) -> None:
+    def update(self, preds: list[torch.Tensor], targets: list[dict[str, Any]]) -> None:
         for pred, target in zip(preds, targets):
-            pred_idx = pred[self.key].argmax(dim=0)  # (H, W)
-            target_idx = target[self.key].get_hw_tensor().to(pred_idx.device).long()
+            pred_idx = pred.argmax(dim=0)  # (H, W)
+            target_idx = target["classes"].get_hw_tensor().to(pred_idx.device).long()
             valid = target["valid"].get_hw_tensor().to(pred_idx.device) > 0
             within = (pred_idx - target_idx).abs() <= self.tolerance
             self.correct += (within & valid).sum()
@@ -260,11 +256,15 @@ class NegativeWindowMaxScore(Metric):
 
 
 class LCCMultiTask(MultiTask):
-    """MultiTask that injects per-window LCC annotations and start/end metrics.
+    """MultiTask that injects per-window LCC annotations.
 
     Annotations are loaded from a sidecar JSON written by the prepare script,
     keyed by "{group}/{name}". The injected metadata is consumed by
-    ``transforms.StackSampler`` to compute start/end timestamp targets.
+    ``transforms.StackSampler`` to compute the ``ts_start`` / ``ts_end`` timestep
+    targets. Those two tasks should be configured as ``SegmentationTask`` over the
+    input timesteps (with ``TimestepToleranceAccuracy`` in ``other_metrics``); their
+    ``input_mapping`` entries only need a placeholder label since StackSampler
+    overwrites the targets.
 
     The same_change label raster is merged into the pre_change raster so a
     single head predicts both (class layout ``MERGED_PRE_SAME_CATEGORY_NAMES``).
@@ -283,7 +283,7 @@ class LCCMultiTask(MultiTask):
 
         Args:
             tasks: map from task name to task object (binary, src, dst,
-                pre_change, post_change).
+                pre_change, post_change, ts_start, ts_end).
             input_mapping: per-task raw-input remapping.
             annotations_path: path to lcc_annotations.json sidecar.
         """
@@ -368,15 +368,14 @@ class LCCMultiTask(MultiTask):
                 (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
             )
 
-        timestamps = raw_output["timestamps"]
+        start_probs = raw_output[TS_START_KEY]
+        end_probs = raw_output[TS_END_KEY]
         timestep_days = raw_output.get("timestep_days")
         if timestep_days is not None:
-            day_bands = start_end_day_bands(
-                timestamps["start"], timestamps["end"], timestep_days
-            )
+            day_bands = start_end_day_bands(start_probs, end_probs, timestep_days)
             parts.append(day_bands.cpu().numpy().astype(np.uint16))
         else:
-            h, w = timestamps["start"].shape[-2:]
+            h, w = start_probs.shape[-2:]
             parts.append(np.zeros((2, h, w), dtype=np.uint16))
 
         for task_name in ("pre_change", "post_change"):
@@ -386,30 +385,3 @@ class LCCMultiTask(MultiTask):
             )
 
         return np.concatenate(parts, axis=0)
-
-    def get_metrics(self) -> MetricCollection:
-        """Get binary/src/dst metrics plus start/end timestamp accuracy."""
-        metrics = super().get_metrics()
-        metrics.add_metrics(
-            {
-                "timestamps/start_accuracy": MetricWrapper(
-                    "timestamps", TimestampBoundaryAccuracy("start", tolerance=0)
-                ),
-                "timestamps/end_accuracy": MetricWrapper(
-                    "timestamps", TimestampBoundaryAccuracy("end", tolerance=0)
-                ),
-                "timestamps/start_within1": MetricWrapper(
-                    "timestamps", TimestampBoundaryAccuracy("start", tolerance=1)
-                ),
-                "timestamps/end_within1": MetricWrapper(
-                    "timestamps", TimestampBoundaryAccuracy("end", tolerance=1)
-                ),
-                "timestamps/start_within2": MetricWrapper(
-                    "timestamps", TimestampBoundaryAccuracy("start", tolerance=2)
-                ),
-                "timestamps/end_within2": MetricWrapper(
-                    "timestamps", TimestampBoundaryAccuracy("end", tolerance=2)
-                ),
-            }
-        )
-        return metrics

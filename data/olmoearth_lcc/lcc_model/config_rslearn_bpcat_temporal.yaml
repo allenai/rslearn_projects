@@ -1,46 +1,184 @@
-# bp_abs_qdrop + change_category_input=breakpoint: the pre/post change-category
-# decoders read concat(before, after) of the split-attention-weighted breakpoint
-# aggregates (the same features src/dst decode from) instead of the temporal mean,
-# so they see both sides of the transition and share the binary head's notion of a
-# changepoint.
+# bp_abs_qdrop_bpcat_temporal + 1pass, expressed as an rslearn MultiTaskModel built
+# from generic rslearn components instead of rslp ChangeModel:
+#
+#   OlmoEarth(token_pooling=false)  -> per-timestep tokens (B, 768, H, W, 20)
+#   TemporalTransformer             -> 1 layer, 8 heads, learned pos over the 20 slots
+#   decoders                        -> binary (BreakpointScan evidence), src (before),
+#                                      dst (after), pre_change + post_change
+#                                      (before_after), ts_start + ts_end (tokens ->
+#                                      20-way timestep index)
+#
+# Unlike ChangeModel, each decoder has its own BreakpointScan (own scorer weights)
+# rather than one shared scan feeding binary/src/dst/pre/post.
+#
+# The encoder runs a single pass over all 20 images (num_pass1: null equivalent).
+# Roughly doubles encoder attention memory vs the two-pass variant; drop batch_size to
+# 2 if it OOMs.
+#
+# Training-only pieces come from rslp (StackSampler, LCCMultiTask annotation
+# injection, BalancedBinarySegmentationHead, TimestepToleranceAccuracy); none of them
+# carry parameters, so the checkpoint loads directly into the pure-rslearn
+# config_rslearn_bpcat_temporal_predict.yaml. The model block below must stay in sync
+# with that file.
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
     model:
-      class_path: rslp.olmoearth_lcc.lcc_model.model.ChangeModel
+      class_path: rslearn.models.multitask.MultiTaskModel
       init_args:
         encoder:
-          class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+        - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
           init_args:
             model_id: OLMOEARTH_V1_2_BASE
             patch_size: 4
             token_pooling: false
             use_legacy_timestamps: false
-        num_classes_binary: 3
-        num_classes_src: 13
-        num_classes_dst: 13
-        num_classes_pre_change: 11
-        num_classes_post_change: 15
-        num_timesteps: 20
-        num_pass1: 10
-        embedding_dim: 768
-        decoder_stages:
-        - - - 768
-            - 3
-        - - - 256
-            - 3
-        - - - 128
-            - 3
-        binary_loss_weight: 2.0
-        binary_mode: breakpoint
-        change_category_input: breakpoint
+        - class_path: rslearn.models.temporal_transformer.TemporalTransformer
+          init_args:
+            dim: 768
+            depth: 1
+            num_heads: 8
+            dim_feedforward: 2048
+            positional_embedding_num_tokens: 20
+        decoders:
+          binary:
+          - class_path: rslearn.models.breakpoint_scan.BreakpointScan
+            init_args:
+              in_dim: 768
+              output: EVIDENCE
+              hidden: 256
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 256, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 128, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 128, out_channels: 64, kernel_size: 3}
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 64
+              out_channels: 3
+              kernel_size: 1
+              activation: {class_path: torch.nn.Identity}
+          - class_path: rslp.olmoearth_lcc.lcc_model.components.BalancedBinarySegmentationHead
+          src:
+          - class_path: rslearn.models.breakpoint_scan.BreakpointScan
+            init_args:
+              in_dim: 768
+              output: BEFORE
+              hidden: 256
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 768, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 256, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 128, kernel_size: 3}
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 128
+              out_channels: 13
+              kernel_size: 1
+              activation: {class_path: torch.nn.Identity}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          dst:
+          - class_path: rslearn.models.breakpoint_scan.BreakpointScan
+            init_args:
+              in_dim: 768
+              output: AFTER
+              hidden: 256
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 768, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 256, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 128, kernel_size: 3}
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 128
+              out_channels: 13
+              kernel_size: 1
+              activation: {class_path: torch.nn.Identity}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          pre_change:
+          - class_path: rslearn.models.breakpoint_scan.BreakpointScan
+            init_args:
+              in_dim: 768
+              output: BEFORE_AFTER
+              hidden: 256
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 1536, out_channels: 768, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 256, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 128, kernel_size: 3}
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 128
+              out_channels: 11
+              kernel_size: 1
+              activation: {class_path: torch.nn.Identity}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          post_change:
+          - class_path: rslearn.models.breakpoint_scan.BreakpointScan
+            init_args:
+              in_dim: 768
+              output: BEFORE_AFTER
+              hidden: 256
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 1536, out_channels: 768, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 256, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 128, kernel_size: 3}
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 128
+              out_channels: 15
+              kernel_size: 1
+              activation: {class_path: torch.nn.Identity}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          ts_start:
+          - class_path: rslearn.models.tokens_to_channels.TokensToChannels
+            init_args: {in_dim: 768, out_dim: 1}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 4}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          ts_end:
+          - class_path: rslearn.models.tokens_to_channels.TokensToChannels
+            init_args: {in_dim: 768, out_dim: 1}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 4}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+        loss_weights:
+          binary: 2.0
     optimizer:
       class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
       init_args:
         lr: 0.0001
         layer_decay_rate: 0.65
         num_layers: 12
-        encoder_prefix: model.encoder
+        # OlmoEarth is the first encoder entry; the temporal transformer, breakpoint
+        # scan, and decoders fall outside the prefix and get the full LR.
+        encoder_prefix: model.encoder.0
     scheduler:
       class_path: rslearn.train.scheduler.PlateauScheduler
       init_args:
@@ -57,7 +195,7 @@ data:
         data_type: raster
         layers:
         - sentinel2_quarterly
-        bands:
+        bands: &s2_bands
         - B02
         - B03
         - B04
@@ -78,19 +216,7 @@ data:
         data_type: raster
         layers:
         - sentinel2_frequent_0
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
+        bands: *s2_bands
         passthrough: true
         dtype: FLOAT32
         load_all_layers: true
@@ -99,19 +225,7 @@ data:
         data_type: raster
         layers:
         - sentinel2_frequent_1
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
+        bands: *s2_bands
         passthrough: true
         dtype: FLOAT32
         load_all_layers: true
@@ -121,19 +235,7 @@ data:
         data_type: raster
         layers:
         - sentinel2_frequent_2
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
+        bands: *s2_bands
         passthrough: true
         dtype: FLOAT32
         load_all_layers: true
@@ -143,19 +245,7 @@ data:
         data_type: raster
         layers:
         - sentinel2_frequent_3
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
+        bands: *s2_bands
         passthrough: true
         dtype: FLOAT32
         load_all_layers: true
@@ -165,19 +255,7 @@ data:
         data_type: raster
         layers:
         - sentinel2_frequent_4
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
+        bands: *s2_bands
         passthrough: true
         dtype: FLOAT32
         load_all_layers: true
@@ -187,19 +265,7 @@ data:
         data_type: raster
         layers:
         - sentinel2_frequent_5
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
+        bands: *s2_bands
         passthrough: true
         dtype: FLOAT32
         load_all_layers: true
@@ -209,19 +275,7 @@ data:
         data_type: raster
         layers:
         - sentinel2_frequent_6
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
+        bands: *s2_bands
         passthrough: true
         dtype: FLOAT32
         load_all_layers: true
@@ -231,19 +285,7 @@ data:
         data_type: raster
         layers:
         - sentinel2_frequent_7
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
+        bands: *s2_bands
         passthrough: true
         dtype: FLOAT32
         load_all_layers: true
@@ -312,8 +354,10 @@ data:
             label_pre_change: targets
           post_change:
             label_post_change: targets
-          # ts_start/ts_end targets are produced by StackSampler; label_binary is a
-          # placeholder so SegmentationTask.process_inputs has something to read.
+          # ts_start/ts_end targets are produced by StackSampler (which needs the
+          # sampled stack to know the timestep indices). label_binary is only a
+          # placeholder so SegmentationTask.process_inputs has something to read;
+          # StackSampler overwrites both classes and valid.
           ts_start:
             label_binary: targets
           ts_end:
@@ -371,7 +415,7 @@ data:
               num_classes: 13
               nodata_value: 0
               enable_confusion_matrix: true
-              class_names:
+              class_names: &lc_class_names
               - nodata
               - bare
               - burnt
@@ -393,20 +437,7 @@ data:
               num_classes: 13
               nodata_value: 0
               enable_confusion_matrix: true
-              class_names:
-              - nodata
-              - bare
-              - burnt
-              - crops
-              - fallow/shifting cultivation
-              - grassland
-              - Lichen and moss
-              - shrub
-              - snow and ice
-              - tree
-              - urban/built-up
-              - water
-              - wetland (herbaceous)
+              class_names: *lc_class_names
               metric_kwargs:
                 average: micro
           pre_change:
@@ -417,7 +448,7 @@ data:
               enable_confusion_matrix: true
               enable_f1_metric: true
               report_metric_per_class: true
-              f1_metric_thresholds:
+              f1_metric_thresholds: &category_f1_thresholds
               - - 0.01
                 - 0.05
                 - 0.1
@@ -453,20 +484,7 @@ data:
               enable_confusion_matrix: true
               enable_f1_metric: true
               report_metric_per_class: true
-              f1_metric_thresholds:
-              - - 0.01
-                - 0.05
-                - 0.1
-                - 0.2
-                - 0.3
-                - 0.4
-                - 0.5
-                - 0.6
-                - 0.7
-                - 0.8
-                - 0.9
-                - 0.95
-                - 0.99
+              f1_metric_thresholds: *category_f1_thresholds
               class_names:
               - nodata
               - none
@@ -528,19 +546,7 @@ data:
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:
-            sentinel2_l2a:
-            - B02
-            - B03
-            - B04
-            - B08
-            - B05
-            - B06
-            - B07
-            - B8A
-            - B11
-            - B12
-            - B01
-            - B09
+            sentinel2_l2a: *s2_bands
     train_config:
       transforms:
       - class_path: rslp.olmoearth_lcc.lcc_model.transforms.StackSampler
@@ -568,19 +574,7 @@ data:
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:
-            sentinel2_l2a:
-            - B02
-            - B03
-            - B04
-            - B08
-            - B05
-            - B06
-            - B07
-            - B8A
-            - B11
-            - B12
-            - B01
-            - B09
+            sentinel2_l2a: *s2_bands
       tags:
         split: train
     val_config:
@@ -600,5 +594,5 @@ trainer:
       monitor: val_binary/auroc
       mode: max
 project_name: 2026_09_17_lcc
-run_name: bp_abs_qdrop_bpcat
+run_name: rslearn_bpcat_temporal
 management_dir: ${RSLP_PREFIX}/projects

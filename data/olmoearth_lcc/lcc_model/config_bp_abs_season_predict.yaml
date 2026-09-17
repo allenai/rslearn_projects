@@ -62,6 +62,10 @@ data:
             label_pre_change: targets
           post_change:
             label_post_change: targets
+          ts_start:
+            label_binary: targets
+          ts_end:
+            label_binary: targets
         tasks:
           binary:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
@@ -88,6 +92,14 @@ data:
             init_args:
               num_classes: 15
               nodata_value: 0
+          ts_start:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 20
+          ts_end:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 20
     batch_size: 8
     num_workers: 16
     predict_config:
@@ -108,6 +120,6 @@ trainer:
       init_args:
         output_layer: output_change
         selector: []
-project_name: 2026_09_16_lcc
+project_name: 2026_09_17_lcc
 run_name: bp_abs_season
 management_dir: ${RSLP_PREFIX}/projects

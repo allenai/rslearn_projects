@@ -178,8 +178,9 @@ Tasks (all per-pixel, loss masked to annotated points only):
 - `binary`: change classification (3 cls: nodata / no_change / change)
 - `src`: source land cover category (13 cls)
 - `dst`: destination land cover category (13 cls)
-- `timestamps`: per-image change-period membership (20 sigmoid outputs, one per
-  input image; target is 1 if image center time falls within [pre_change, post_change])
+- `pre_change` / `post_change`: change-category classification (11 / 15 cls)
+- `ts_start` / `ts_end`: index of the input timestep at which the change starts /
+  ends (20 cls, one per input image; supervised only at change points)
 
 #### Prerequisites
 

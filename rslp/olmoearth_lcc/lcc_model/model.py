@@ -46,8 +46,10 @@ Downstream heads all operate on the per-timestep tokens:
   heads see both sides of the transition (a category is a before->after
   transition, so a single side cannot separate e.g. "new_building" from "none"
   in an already built-up area).
-- start/end timestamps: a per-token linear logit over the T timesteps, upsampled
-  to full resolution, trained with cross-entropy at change pixels.
+- ``ts_start`` / ``ts_end``: a per-token linear logit over the T timesteps, upsampled
+  to full resolution, trained with cross-entropy at change pixels. These are
+  segmentation-style outputs/targets (T classes = timestep indices), matching the
+  ``SegmentationTask`` entries of the same names in the task config.
 """
 
 from __future__ import annotations
@@ -62,7 +64,7 @@ from rslearn.models.olmoearth_pretrain.model import OlmoEarth
 from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 
 from .timestamp_encoding import timestamps_to_days
-from .transforms import INPUT_KEY
+from .transforms import INPUT_KEY, TS_END_KEY, TS_START_KEY
 
 # A stage is a list of (out_channels, kernel_size) conv specs.
 StageSpec = list[tuple[int, int]]
@@ -447,7 +449,7 @@ class ChangeModel(nn.Module):
         Args:
             context: ModelContext with ``sentinel2_l2a`` RasterImage (num_timesteps).
             targets: optional target dicts with "binary", "src", "dst",
-                "pre_change", "post_change", "timestamps" keys.
+                "pre_change", "post_change", "ts_start", "ts_end" keys.
 
         Returns:
             ModelOutput with per-task outputs and losses.
@@ -519,8 +521,9 @@ class ChangeModel(nn.Module):
             for name, logits in change_logits.items():
                 if name in targets[0]:
                     losses[f"{name}_cls"] = self._seg_loss(logits, targets, name)
-            losses["start_ce"] = self._timestamp_ce(start_logits, targets, "start")
-            losses["end_ce"] = self._timestamp_ce(end_logits, targets, "end")
+            # Masked CE over the T timesteps, averaged over valid (change) pixels.
+            losses["start_ce"] = self._seg_loss(start_logits, targets, TS_START_KEY)
+            losses["end_ce"] = self._seg_loss(end_logits, targets, TS_END_KEY)
 
         outputs: list[dict[str, Any]] = []
         for i in range(len(context.inputs)):
@@ -539,10 +542,8 @@ class ChangeModel(nn.Module):
                         name: F.softmax(change_logits[name][i], dim=0)
                         for name in change_logits
                     },
-                    "timestamps": {
-                        "start": F.softmax(start_logits[i], dim=0),
-                        "end": F.softmax(end_logits[i], dim=0),
-                    },
+                    TS_START_KEY: F.softmax(start_logits[i], dim=0),
+                    TS_END_KEY: F.softmax(end_logits[i], dim=0),
                     "timestep_days": timestep_days,
                 }
             )
@@ -611,27 +612,3 @@ class ChangeModel(nn.Module):
         sample_loss = pos_mean * has_pos + neg_mean * has_neg  # (B,)
         has_any = has_pos | has_neg
         return sample_loss[has_any].mean()
-
-    def _timestamp_ce(
-        self,
-        logits: torch.Tensor,
-        targets: list[dict[str, Any]],
-        key: str,
-    ) -> torch.Tensor:
-        """Masked cross-entropy over the T timesteps for the start/end boundary.
-
-        ``logits`` is (B, T, H, W); the target is the per-pixel timestep index
-        (B, H, W). Loss is averaged over valid (change) pixels only.
-        """
-        idx = torch.stack(
-            [t["timestamps"][key].get_hw_tensor() for t in targets], dim=0
-        ).long()
-        valid = torch.stack(
-            [t["timestamps"]["valid"].get_hw_tensor() for t in targets], dim=0
-        ).bool()
-
-        if not valid.any():
-            return torch.tensor(0.0, device=logits.device, requires_grad=True)
-
-        loss = F.cross_entropy(logits, idx, reduction="none")  # (B, H, W)
-        return (loss * valid).sum() / valid.sum()
