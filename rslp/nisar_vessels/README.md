@@ -185,7 +185,7 @@ so the service's settings stay in one place):
 | `RSLEARN_NUM_DATA_LOADER_WORKERS` | `4` | Data loader workers during prediction. |
 | `NISAR_PREPARE_WORKERS` | `32` | Workers used to prepare and ingest. |
 | `NISAR_MATERIALIZE_WORKERS` | `8` | Workers used to materialize. |
-| `NISAR_SCENE_TILE_SIZE` | `4096` | Tile the scene is split into for materialization. |
+| `NISAR_SCENE_TILE_SIZE` | `2048` | Tile the scene is split into for materialization. |
 | `NISAR_SCENE_TILE_OVERLAP` | `64` | Overlap between adjacent scene tiles. |
 | `NISAR_PREDICT_CROP_SIZE` | `128` | Tile size the detector runs over at inference. |
 | `NISAR_PREDICT_OVERLAP_PIXELS` | `16` | Overlap between adjacent tiles. |
