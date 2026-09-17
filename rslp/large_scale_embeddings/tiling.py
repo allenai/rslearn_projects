@@ -14,7 +14,7 @@ module provides the filters that reduce the duplication to ~1.04x:
   their own zone's wedge, so areas covered by multiple zones' projected extents are
   only processed in the zone that owns them.
 - Ocean: we skip crops where every point sampled in a LAND_STEP_SIZE grid is ocean
-  according to the global_land_mask package.
+  according to the baked-in coverage mask (see coverage.py).
 """
 
 import functools
@@ -22,11 +22,12 @@ import math
 
 import numpy as np
 import shapely
-from global_land_mask import globe
 from pyproj import Transformer
 from rasterio.crs import CRS
 from rslearn.utils.geometry import PixelBounds, Projection
 from rslearn.utils.get_utm_ups_crs import get_wgs84_bounds
+
+from rslp.large_scale_embeddings.coverage import is_covered
 
 # Number of vertices to use when densifying the wedge meridian (north-south) and
 # parallel (east-west) edges. The meridian edges are curved in projected coordinates
@@ -34,12 +35,15 @@ from rslearn.utils.get_utm_ups_crs import get_wgs84_bounds
 NUM_MERIDIAN_VERTICES = 4096
 NUM_PARALLEL_VERTICES = 256
 
-# Step size in pixels of the grid of points sampled to decide whether each crop
-# contains land. We process a crop if at least one point sampled in a grid along this
-# step size intersects land, meaning we will capture islands that are at least this
-# large in both height and width (2.56 km at 10 m/pixel). The crop size must be a
-# multiple of this step size.
-LAND_STEP_SIZE = 256
+# Step size in pixels of the grid of points sampled to decide whether each crop is
+# inside the covered area. A crop is processed if at least one sampled point is covered.
+#
+# This must stay below the coverage mask's own cell size (926 m), or a feature the mask
+# does know about can still fall between sample points: at 64 px the spacing is 640 m,
+# so every mask cell contains at least one sample in each axis. The previous 256 px
+# (2.56 km) was nearly three times coarser than the data it queried, which is how 3 km
+# barrier islands went missing. The crop size must be a multiple of this step size.
+LAND_STEP_SIZE = 64
 
 # EPSG code base for northern-hemisphere WGS84 UTM zones (326NN).
 NORTH_EPSG_BASE = 32600
@@ -165,7 +169,7 @@ def list_kept_crops(
 
     The bounds are divided into a grid of crop_size x crop_size crops. A crop is kept
     if it intersects the zone's canonical wedge, and at least one point sampled in a
-    LAND_STEP_SIZE grid within the crop is land according to global_land_mask.
+    LAND_STEP_SIZE grid within the crop falls inside the coverage mask.
 
     Args:
         projection: the UTM projection (with negative y resolution).
@@ -204,11 +208,11 @@ def list_kept_crops(
     )
     transformer = _get_to_wgs84_transformer(projection.crs.to_epsg())
     lons, lats = transformer.transform(xs_m, ys_m)
-    # Wrap/clip into the domain expected by global_land_mask.
+    # Wrap/clip into the domain the mask lookup expects.
     lons = ((np.array(lons) + 180) % 360) - 180
     lats = np.clip(np.array(lats), -89.99, 89.99)
     # is_land is indexed [row, col] following the meshgrid above.
-    is_land = globe.is_land(lats, lons)
+    is_land = is_covered(lats, lons)
 
     kept: list[PixelBounds] = []
     for row_idx, row in enumerate(rows):

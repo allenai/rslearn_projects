@@ -81,6 +81,9 @@ PENDING_PER_WORKER = 3
 # gets killed. Cycles normally take well under a minute.
 DEFAULT_CYCLE_BUDGET_SECONDS = int(timedelta(minutes=10).total_seconds())
 
+# Where a supervisor caches its enumerated block list between cycles.
+DEFAULT_ENUMERATION_CACHE_DIR = "/tmp/rslp_enumeration_cache"  # noqa: S108
+
 # Minimum runtime to request for the supervisor. It is a cheap CPU job that should stay
 # up for the whole run, but a shorter request is placed sooner, and auto_resume brings it
 # back if it is preempted, so there is no reason to ask for the eight-hour maximum.
@@ -304,6 +307,14 @@ class CycleConfig:
 
     seconds: int = 180
     budget_seconds: int = DEFAULT_CYCLE_BUDGET_SECONDS
+    # Where to cache the enumerated block list, or None to re-enumerate every cycle.
+    #
+    # Each cycle runs in a fresh process, so nothing is cached in memory between them
+    # and the enumeration is paid again every time. That is seconds for a bounded run
+    # and minutes for a global one, against a cycle interval measured in minutes. A
+    # local path is right: the cache is derived data, rebuilt in one cycle if lost, and
+    # keyed on the coverage mask so it cannot outlive the thing it describes.
+    enumeration_cache_dir: str | None = DEFAULT_ENUMERATION_CACHE_DIR
     claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS
     pending_per_worker: int = PENDING_PER_WORKER
     max_cycles: int | None = None
@@ -1021,6 +1032,7 @@ def _run_cycle(
                     wgs84_bounds=config.aoi.wgs84_bounds,
                     geojson_fname=config.aoi.geojson_fname,
                     job_size=config.aoi.job_size,
+                    enumeration_cache_dir=config.cycle.enumeration_cache_dir,
                 )
             )
     result.value = len(remaining)

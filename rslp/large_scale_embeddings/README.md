@@ -315,10 +315,9 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
      map to zone NN).
    - `--wgs84_bounds '[-125.0, 45.0, -116.0, 49.0]'`: only tiles intersecting these
      WGS84 bounds.
-   - `--geojson_fname data/large_scale_embeddings/areas/initial_regions.geojson`: only
-     tiles intersecting a feature in the given WGS84 GeoJSON file (the included
-     `initial_regions.geojson` covers Washington, Montana, Ukraine, Thailand, and
-     points in Greenland and coastal Antarctica; 88 tiles).
+   - `--geojson_fname path/to/footprint.geojson`: only tiles intersecting a feature in
+     the given WGS84 GeoJSON file. Note this intersects with the coverage mask rather
+     than replacing it, so it can only narrow a run, never extend it.
    - `--count 10`: randomly sample this many tiles.
 
 4. Launch workers on Beaker (WEKA must be mounted for the checkpoint). The
@@ -365,7 +364,7 @@ It exits when every tile has a marker.
             --worker.image_name USER/IMAGE \
             --worker.cluster '["ai2/jupiter","ai2/ceres"]' \
             --worker.num_workers 8 \
-            --aoi.geojson_fname data/large_scale_embeddings/areas/initial_regions.geojson \
+            --aoi.wgs84_bounds '[-125.0, 45.0, -116.0, 49.0]' \
             --aoi.job_size 4096
 
 Its options are grouped into config objects, so they are namespaced on the command
@@ -508,29 +507,25 @@ def dequantize(v: np.ndarray) -> np.ndarray:
 Pixels where all Sentinel-2 mosaics are empty are set to -128 in all bands.
 
 
-Areas
------
+Coverage area
+-------------
 
-`data/large_scale_embeddings/areas/*.geojson` holds the run footprints. Each carries a `note`
-recording its source, its area, and whatever about its geometry will bite you.
+`data/large_scale_embeddings/coverage_mask.tif` defines the ground a run covers: a
+global 1/120 degree (about 926 m) raster, one bit per cell, baked into the image so
+workers share one read-only lookup. `coverage.py` loads and caches it.
 
-- `initial_regions.geojson`, the original multi-region run.
-- `kenya.geojson`, 590,902 km2, UTM 36 to 37, crosses the equator so southern windows
-  carry negative northing in the northern CRS the store uses.
-- `france.geojson`, 554,368 km2, UTM 30 to 32. The European counterpart to Kenya,
-  within 6% of it by enumerated job count (131 jobs against 124 at `job_size 8192`, one
-  year), so a run here is directly comparable. Two zone seams rather than Kenya's one,
-  and entirely north of the equator. The outline excludes the overseas departments,
-  which is what makes it usable: they would drag a run across both hemispheres and a
-  dozen more zones.
-- `france_southeast.geojson`, 114,260 km2, UTM 31 to 32, seam at lon 6. A validation
-  footprint rather than a coverage one: 29 jobs a year, so at 8 workers the queue drains
-  and refills several times and the supervisor's refill path is actually exercised, and
-  the run finishes in hours. Picked for terrain range, from the Camargue at sea level to
-  the Alps at 4,800 m, because flat uniform ground validates the plumbing but not the
-  model.
-- `seattle.geojson` and `wasatch_front.geojson`, small single-zone areas for smoke runs.
-- `pastis.geojson`, four small polygons in Normandy, inside the France footprint.
+It is the union of three things, and it is a strict superset of the land mask it
+replaced, so blocks already computed stay valid:
+
+- the previous `global_land_mask` land, kept wholesale as the floor;
+- GSHHG full-resolution shorelines (L1 land, L5 Antarctic ice front), rasterised with
+  ALL_TOUCHED, which is what recovers barrier islands, keys and atolls that the old
+  mask reported as ocean;
+- water with all three sensors present in at least 11 months of at least 7 of the years
+  2017 to 2025, measured against the datasets service rather than assumed.
+
+To limit a run to part of it, pass `--aoi.wgs84_bounds` or `--aoi.epsg_code`;
+`--aoi.geojson_fname` still works if you have a footprint of your own.
 
 Sizing a new area before committing to it is one call, and worth making:
 
@@ -542,13 +537,12 @@ Sizing a new area before committing to it is one call, and worth making:
         timestamp=datetime(2024, 1, 1, tzinfo=UTC), store_path='/tmp/x.zarr',
         completed_path='/tmp/c/', checkpoint_path='/weka/x', time_index=0,
         patch_size=1, window_size=16, overlap_size=4, compile_model=True,
-        batch_size=None, epsg_code=None, wgs84_bounds=None,
-        geojson_fname='data/large_scale_embeddings/areas/france.geojson', job_size=8192)))"
+        batch_size=None, epsg_code=None,
+        wgs84_bounds=(-5.0, 42.0, 8.0, 51.0), job_size=8192)))"
 
 Point `store_path` and `completed_path` at local paths, not a bucket: enumeration only
 needs them to check for markers, and an unauthenticated bucket read fails on the
 completion check before it reports a count.
-
 
 Chunk shape
 -----------

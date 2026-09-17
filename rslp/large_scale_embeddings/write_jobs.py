@@ -11,6 +11,7 @@ The tile size is fixed to 32768x32768 here; the prediction pipeline itself accep
 any tile size that is a multiple of PATCH_SIZE.
 """
 
+import hashlib
 import json
 import random
 from collections.abc import Generator
@@ -25,6 +26,7 @@ from upath import UPath
 
 import rslp.common.worker
 from rslp.large_scale_embeddings import zarr_store
+from rslp.large_scale_embeddings.coverage import COVERAGE_MASK_PATH
 from rslp.large_scale_embeddings.predict_pipeline import (
     EMBEDDING_DIM,
     PATCH_SIZE,
@@ -33,6 +35,7 @@ from rslp.large_scale_embeddings.predict_pipeline import (
     get_marker_fname,
 )
 from rslp.large_scale_embeddings.tiling import (
+    LAND_STEP_SIZE,
     UTM_MAX_LAT,
     UTM_MIN_LAT,
     bounds_intersect_wedge,
@@ -66,6 +69,103 @@ def enumerate_tiles_in_zone(zone_number: int) -> Generator[tuple[int, int], None
             yield (col, row)
 
 
+def _enumeration_cache_key(
+    job_size: int,
+    epsg_code: int | None,
+    wgs84_bounds: tuple[float, float, float, float] | None,
+    geojson_fname: str | None,
+) -> str:
+    """Identify one enumeration, so a stale cache can never be read as fresh.
+
+    Everything that changes which blocks come out goes into the key: the area
+    arguments, the block size, the sampling step, and the coverage mask itself by
+    size and mtime. Change the mask and the old cache is simply never found.
+
+    Args:
+        job_size: the pixel size of each block.
+        epsg_code: the single-zone restriction, if any.
+        wgs84_bounds: the bounding box restriction, if any.
+        geojson_fname: the footprint restriction, if any.
+
+    Returns:
+        a hex digest naming this enumeration.
+    """
+    try:
+        stat = COVERAGE_MASK_PATH.stat()
+        mask_id = f"{stat.st_size}:{int(stat.st_mtime)}"
+    except OSError:
+        mask_id = "missing"
+    parts = [
+        f"job_size={job_size}",
+        f"epsg={epsg_code}",
+        f"bounds={wgs84_bounds}",
+        f"geojson={geojson_fname}",
+        f"step={LAND_STEP_SIZE}",
+        f"mask={mask_id}",
+    ]
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
+def _read_enumeration_cache(
+    cache_dir: str, key: str
+) -> list[tuple[Projection, PixelBounds]] | None:
+    """Load a cached enumeration, or None if there is not a usable one.
+
+    Never raises: a corrupt or unreadable cache means re-enumerating, which is slow
+    but correct. Failing the cycle instead would be worse.
+
+    Args:
+        cache_dir: where caches live.
+        key: the key from `_enumeration_cache_key`.
+
+    Returns:
+        the cached block list, or None.
+    """
+    path = UPath(cache_dir) / f"enumeration_{key}.json"
+    try:
+        if not path.exists():
+            return None
+        with path.open() as f:
+            raw = json.load(f)
+        tasks = [
+            (Projection.deserialize(entry["projection"]), tuple(entry["bounds"]))
+            for entry in raw
+        ]
+        logger.info("Loaded %d tasks from enumeration cache %s", len(tasks), path)
+        return tasks
+    except Exception:
+        logger.exception("could not read enumeration cache %s; re-enumerating", path)
+        return None
+
+
+def _write_enumeration_cache(
+    cache_dir: str, key: str, tasks: list[tuple[Projection, PixelBounds]]
+) -> None:
+    """Store an enumeration for the next cycle to reuse.
+
+    Never raises: failing to cache costs time, not correctness.
+
+    Args:
+        cache_dir: where caches live.
+        key: the key from `_enumeration_cache_key`.
+        tasks: the enumerated blocks.
+    """
+    path = UPath(cache_dir) / f"enumeration_{key}.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w") as f:
+            json.dump(
+                [
+                    {"projection": projection.serialize(), "bounds": list(bounds)}
+                    for projection, bounds in tasks
+                ],
+                f,
+            )
+        logger.info("Cached %d tasks to %s", len(tasks), path)
+    except Exception:
+        logger.exception("could not write enumeration cache %s", path)
+
+
 def get_jobs(
     inputs: EmbeddingInputs,
     timestamp: datetime,
@@ -83,6 +183,7 @@ def get_jobs(
     geojson_fname: str | None = None,
     count: int | None = None,
     job_size: int = TILE_SIZE,
+    enumeration_cache_dir: str | None = None,
 ) -> list[list[str]]:
     """Get the prediction jobs (one per job_size block).
 
@@ -121,6 +222,12 @@ def get_jobs(
             more fixed overhead (model load and compile per job) but each finishes
             far sooner, which matters on preemptible workers: a job that outlives the
             gaps between preemptions never completes at all.
+        enumeration_cache_dir: directory to cache the enumerated block list in. The
+            enumeration is deterministic given the coverage mask and the area
+            arguments, but it is not cheap: sampling the mask finely enough to catch
+            a barrier island costs minutes across all 60 zones. A supervisor re-runs
+            it every cycle in a fresh process, so without a cache that price is paid
+            forever. Pass None to disable.
 
     Returns:
         a list of worker argument lists, one per job_size block.
@@ -129,6 +236,11 @@ def get_jobs(
         raise ValueError(f"job_size {job_size} must be a multiple of {PATCH_SIZE}")
     if TILE_SIZE % job_size != 0:
         raise ValueError(f"job_size {job_size} must divide TILE_SIZE {TILE_SIZE}")
+    cache_key = _enumeration_cache_key(job_size, epsg_code, wgs84_bounds, geojson_fname)
+    cached: list[tuple[Projection, PixelBounds]] | None = None
+    if enumeration_cache_dir is not None:
+        cached = _read_enumeration_cache(enumeration_cache_dir, cache_key)
+
     if epsg_code:
         zone_numbers = [epsg_code % 100]
     else:
@@ -144,8 +256,10 @@ def get_jobs(
         ]
 
     tasks: list[tuple[Projection, PixelBounds]] = []
-    for zone_number in tqdm.tqdm(
-        zone_numbers, desc="Enumerating tasks across UTM zones"
+    for zone_number in (
+        []
+        if cached is not None
+        else tqdm.tqdm(zone_numbers, desc="Enumerating tasks across UTM zones")
     ):
         projection, _, _ = get_zone_grid(zone_number, RESOLUTION, TILE_SIZE)
         wedge = get_zone_wedge(projection.crs, RESOLUTION)
@@ -248,6 +362,10 @@ def get_jobs(
                         continue
                     tasks.append((projection, sub_bounds))
 
+    if cached is not None:
+        tasks = cached
+    elif enumeration_cache_dir is not None:
+        _write_enumeration_cache(enumeration_cache_dir, cache_key, tasks)
     logger.info("Got %d total tasks", len(tasks))
 
     # Remove tasks where the completion marker already exists.

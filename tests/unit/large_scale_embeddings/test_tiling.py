@@ -78,8 +78,8 @@ def test_list_kept_crops_outside_wedge() -> None:
 def test_list_kept_crops_small_island(monkeypatch: pytest.MonkeyPatch) -> None:
     """An island smaller than a crop but >= LAND_STEP_SIZE is captured.
 
-    The land mask is mocked so that only one grid sample point in the interior of one
-    crop (away from all crop corners) is land; the crop must still be kept.
+    The coverage lookup is mocked so that only one grid sample point in the interior of
+    one crop (away from all crop corners) is covered; the crop must still be kept.
     """
     crop_size = 2048
     bounds = _pixel_bounds_around(530000, 5040000, 2 * crop_size)
@@ -93,12 +93,12 @@ def test_list_kept_crops_small_island(monkeypatch: pytest.MonkeyPatch) -> None:
     ).to_projection(WGS84_PROJECTION)
     island_lon, island_lat = island_geom.shp.x, island_geom.shp.y
 
-    # Land only within ~1 km of the island point, which is smaller than the
-    # LAND_STEP_SIZE spacing (2.56 km) so no other sample point registers as land.
-    def fake_is_land(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
+    # Covered only within ~1 km of the island point, so exactly one sample registers
+    # and the crop is kept on the strength of it.
+    def fake_is_covered(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
         return (np.abs(lat - island_lat) < 0.01) & (np.abs(lon - island_lon) < 0.01)
 
-    monkeypatch.setattr(tiling.globe, "is_land", fake_is_land)
+    monkeypatch.setattr(tiling, "is_covered", fake_is_covered)
 
     kept = list_kept_crops(PROJECTION_10N, bounds, crop_size)
     assert kept == [
