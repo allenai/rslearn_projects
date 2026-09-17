@@ -26,7 +26,7 @@ from upath import UPath
 
 import rslp.common.worker
 from rslp.large_scale_embeddings import zarr_store
-from rslp.large_scale_embeddings.coverage import COVERAGE_MASK_PATH
+from rslp.large_scale_embeddings.coverage import resolve_mask_path
 from rslp.large_scale_embeddings.predict_pipeline import (
     EMBEDDING_DIM,
     PATCH_SIZE,
@@ -91,7 +91,7 @@ def _enumeration_cache_key(
         a hex digest naming this enumeration.
     """
     try:
-        stat = COVERAGE_MASK_PATH.stat()
+        stat = resolve_mask_path().stat()
         mask_id = f"{stat.st_size}:{int(stat.st_mtime)}"
     except OSError:
         mask_id = "missing"

@@ -31,12 +31,33 @@ COVERAGE_RES_DEG = 1.0 / 120.0
 COVERAGE_HEIGHT = 21600
 COVERAGE_WIDTH = 43200
 
-COVERAGE_MASK_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "data"
-    / "large_scale_embeddings"
-    / "coverage_mask.tif"
-)
+# Repo-relative, matching DATASET_CONFIG_FNAME and friends. Resolved against the
+# working directory first, because that is how the image runs (WORKDIR is the repo
+# root), and only then against the source tree. Deriving it from __file__ alone breaks
+# when rslp is installed to site-packages, where there is no data/ beside it.
+COVERAGE_MASK_RELPATH = "data/large_scale_embeddings/coverage_mask.tif"
+
+
+def resolve_mask_path() -> Path:
+    """Find the coverage mask, whether running from a checkout or an install.
+
+    Returns:
+        the path to the mask.
+
+    Raises:
+        FileNotFoundError: if the mask is not beside the working directory or the
+            source tree, since silently proceeding would enumerate nothing.
+    """
+    candidates = [
+        Path.cwd() / COVERAGE_MASK_RELPATH,
+        Path(__file__).resolve().parents[2] / COVERAGE_MASK_RELPATH,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(
+        f"coverage mask not found; looked in {[str(c) for c in candidates]}"
+    )
 
 
 @functools.lru_cache(maxsize=1)
@@ -46,7 +67,7 @@ def _packed_mask() -> npt.NDArray[np.uint8]:
     Returns:
         the mask as one bit per cell, row-major from (90N, 180W).
     """
-    with rasterio.open(COVERAGE_MASK_PATH) as src:
+    with rasterio.open(resolve_mask_path()) as src:
         if (src.height, src.width) != (COVERAGE_HEIGHT, COVERAGE_WIDTH):
             raise ValueError(
                 f"coverage mask is {src.height}x{src.width}, expected "

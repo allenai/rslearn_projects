@@ -126,3 +126,32 @@ def test_corrupt_enumeration_cache_is_not_an_error(tmp_path) -> None:  # type: i
     wj = importlib.import_module("rslp.large_scale_embeddings.write_jobs")
     (tmp_path / "enumeration_bad.json").write_text("{not json")
     assert wj._read_enumeration_cache(str(tmp_path), "bad") is None
+
+
+def test_mask_resolves_when_rslp_is_installed_elsewhere(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """CI installs rslp to site-packages, where there is no data/ beside the module.
+
+    Deriving the path from __file__ alone resolved to site-packages and every test
+    touching the mask failed with RasterioIOError. The working directory is checked
+    first because that is what both CI and the image actually provide.
+    """
+    from rslp.large_scale_embeddings import coverage
+
+    monkeypatch.setattr(
+        coverage, "__file__", "/opt/conda/lib/python3.11/site-packages/rslp/x/y.py"
+    )
+    assert coverage.resolve_mask_path().exists()
+
+
+def test_missing_mask_raises_rather_than_enumerating_nothing(
+    monkeypatch, tmp_path
+) -> None:  # type: ignore[no-untyped-def]
+    """A silent miss would enumerate zero blocks and look like a finished run."""
+    import pytest
+
+    from rslp.large_scale_embeddings import coverage
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(coverage, "__file__", str(tmp_path / "a" / "b" / "c.py"))
+    with pytest.raises(FileNotFoundError):
+        coverage.resolve_mask_path()
