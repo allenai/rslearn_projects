@@ -135,7 +135,7 @@ The response holds one entry per detection (`rslp.vessels.VesselDetectionDict`),
 score, and, when `crop_path` is set, `crop_fnames` keyed `hh` and `hv`.
 
 A granule is the only way to give the service imagery, since it has no data source of
-its own to look one up with. Detections are labelled with `scene_id`, which the request
+its own to look one up with. Detections are labeled with `scene_id`, which the request
 may set and which otherwise falls back to the granule filename.
 
 The same pipeline is available as a workflow:
@@ -149,7 +149,15 @@ with h5py (the `xCoordinates`/`yCoordinates`/`projection` datasets that sit alon
 bands) and writes the HHHH and HVHV bands out as one GeoTIFF. That GeoTIFF is then an
 ordinary `LocalFiles` raster layer, configured by `data/nisar_vessels/config_predict.json`.
 
-Two details there are load-bearing, both so inference sees what training saw:
+The scene is then split into `NISAR_SCENE_TILE_SIZE` tiles, one rslearn window each,
+rather than materialized as a single window covering the granule. rslearn builds a
+window's raster as one in-memory array, so a whole-granule window makes peak memory
+scale with the granule, and granule area varies widely across bandwidth modes. Tiling
+caps it at the tile regardless of scene size. Tiles overlap so a vessel on a seam falls
+fully inside one of them, and detections in the overlap band are deduplicated
+afterwards.
+
+Two further details are load-bearing, both so inference sees what training saw:
 
 - The window is created in the UTM/UPS zone of the scene centroid at 10 m/pixel, the
   same way `create_dataset` builds training windows. GCOV is already geocoded, but not
@@ -157,9 +165,10 @@ Two details there are load-bearing, both so inference sees what training saw:
 - `config_predict.json` sets no `resampling_method`, so the layer inherits rslearn's
   bilinear default, which is what materialized the training dataset.
 
-Detection crops are read straight back out of the scene window rather than materialized
-into windows of their own, so a detection close to the scene edge still gets a crop,
-padded with nodata.
+Detection crops are read straight back out of the scene GeoTIFF rather than materialized
+into windows of their own, or cut from the tile the detection was found in. That read is
+windowed, so it costs the crop rather than the scene, and a detection next to a tile seam
+still gets a full crop instead of one half filled with nodata.
 
 ### Configuration
 
@@ -174,16 +183,22 @@ so the service's settings stay in one place):
 | `NISAR_INFRA_DISTANCE_KM` | `0.05` | Radius for dropping detections on marine infrastructure. |
 | `MARINE_INFRA_PATH` | Satlas marine GeoJSON URL | The marine infrastructure to filter against. |
 | `RSLEARN_NUM_DATA_LOADER_WORKERS` | `4` | Data loader workers during prediction. |
-| `NISAR_MATERIALIZE_WORKERS` | `32` | Workers used to prepare and materialize. |
+| `NISAR_PREPARE_WORKERS` | `32` | Workers used to prepare and ingest. |
+| `NISAR_MATERIALIZE_WORKERS` | `8` | Workers used to materialize. |
+| `NISAR_SCENE_TILE_SIZE` | `2048` | Tile the scene is split into for materialization. |
+| `NISAR_SCENE_TILE_OVERLAP` | `64` | Overlap between adjacent scene tiles. |
 | `NISAR_PREDICT_CROP_SIZE` | `128` | Tile size the detector runs over at inference. |
 | `NISAR_PREDICT_OVERLAP_PIXELS` | `16` | Overlap between adjacent tiles. |
 
-The tiling defaults match the crops the detector trained on, so inference sees what
-training saw. Raising the tile size is tempting since it means fewer forward passes, but
-it does not reduce total compute: the overlap fraction is the same either way (16/128
-and 64/512 are both 12.5%), so only per-crop overhead is saved. Raise
-`NISAR_PREDICT_CROP_SIZE` only if profiling shows that overhead matters, and compare
-detections against the default before deploying the change.
+Peak memory during materialization is `NISAR_SCENE_TILE_SIZE` squared times
+`NISAR_MATERIALIZE_WORKERS`, since each worker is a process holding a whole tile. Raising
+either means lowering the other, and the pod's memory limit should be set against their
+product rather than the tile alone.
+
+The crop defaults match what the detector trained on. A larger crop means fewer forward
+passes but not less compute, since the overlap fraction stays the same, so raise
+`NISAR_PREDICT_CROP_SIZE` only if profiling shows per-crop overhead matters, and compare
+detections against the default first.
 
 ### Building the image
 

@@ -27,7 +27,7 @@ from tests.utils.nisar_granule import DUAL_POL_BANDS, write_granule
 
 # Open water in the English Channel. Deliberately not the WGS84_ITEM_BOUNDS the other
 # vessel tests share: that box straddles the UTM zone 30/31 boundary at longitude 0, so
-# a granule there is reprojected into the neighbouring zone and its window grows, which
+# a granule there is reprojected into the neighboring zone and its window grows, which
 # would make the exact window size asserted below meaningless.
 GRANULE_CENTER_LON, GRANULE_CENTER_LAT = -3.0, 50.0
 
@@ -123,9 +123,10 @@ def test_granule_is_materialized_at_the_detector_resolution(
     task = pipeline.PredictionTask(h5_path=str(granule_path))
 
     (scene_data,) = pipeline.setup_dataset(ds_path, [task])
-    (window,) = pipeline.materialize_scenes(ds_path, [scene_data])
+    ((scene_idx, window),) = pipeline.materialize_scenes(ds_path, [scene_data])
 
     assert scene_data.scene_id == SCENE_ID
+    assert scene_idx == 0
     assert window.is_layer_completed(pipeline.NISAR_LAYER_NAME)
     # 128 granule pixels at 20 m is 256 window pixels at 10 m. The window is allowed
     # one pixel more per axis: the granule's corner rarely lands exactly on a window
@@ -191,18 +192,19 @@ def test_crops_are_written_for_a_detection(
     ds_path.mkdir(parents=True)
     task = pipeline.PredictionTask(h5_path=str(granule_path))
     (scene_data,) = pipeline.setup_dataset(ds_path, [task])
-    (window,) = pipeline.materialize_scenes(ds_path, [scene_data])
 
-    minx, miny, maxx, maxy = window.bounds
+    minx, miny, maxx, maxy = scene_data.bounds
     detection = VesselDetection(
         source=VesselDetectionSource.NISAR,
         col=(minx + maxx) // 2,
         row=(miny + maxy) // 2,
-        projection=window.projection,
+        projection=scene_data.projection,
         score=0.9,
     )
 
-    crop_fnames = pipeline._write_crops(detection, window, UPath(tmp_path / "crops"))
+    crop_fnames = pipeline._write_crops(
+        detection, scene_data, UPath(tmp_path / "crops")
+    )
 
     assert set(crop_fnames) == {"hh", "hv"}
     for crop_fname in crop_fnames.values():
@@ -221,25 +223,66 @@ def test_crop_at_the_scene_edge_is_still_written(
     """A detection near the edge gets a full-size crop, padded with nodata.
 
     A crop window running off the scene edge would never materialize on its own, so
-    reading from the scene window is what keeps these detections reportable.
+    reading from the scene GeoTIFF is what keeps these detections reportable.
     """
     ds_path = UPath(tmp_path / "scratch")
     ds_path.mkdir(parents=True)
     task = pipeline.PredictionTask(h5_path=str(granule_path))
     (scene_data,) = pipeline.setup_dataset(ds_path, [task])
-    (window,) = pipeline.materialize_scenes(ds_path, [scene_data])
 
-    minx, miny, _, _ = window.bounds
+    minx, miny, _, _ = scene_data.bounds
     detection = VesselDetection(
         source=VesselDetectionSource.NISAR,
         col=minx + 2,
         row=miny + 2,
-        projection=window.projection,
+        projection=scene_data.projection,
         score=0.9,
     )
 
-    crop_fnames = pipeline._write_crops(detection, window, UPath(tmp_path / "crops"))
+    crop_fnames = pipeline._write_crops(
+        detection, scene_data, UPath(tmp_path / "crops")
+    )
 
     assert set(crop_fnames) == {"hh", "hv"}
     for crop_fname in crop_fnames.values():
         assert crop_fname.exists()
+
+
+def test_large_scene_is_split_into_tiles(
+    granule_path: pathlib.Path, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scene larger than the tile size materializes as several bounded windows.
+
+    Peak memory during materialize follows the window size, so a granule bigger than the
+    tile must not end up in a single window however large it gets.
+    """
+    # The synthetic granule is 256px at 10m, so shrink the tile rather than build a
+    # multi-gigapixel fixture.
+    monkeypatch.setattr(pipeline, "SCENE_TILE_SIZE", 128)
+    monkeypatch.setattr(pipeline, "SCENE_TILE_OVERLAP", 16)
+
+    ds_path = UPath(tmp_path / "scratch")
+    ds_path.mkdir(parents=True)
+    task = pipeline.PredictionTask(h5_path=str(granule_path))
+    (scene_data,) = pipeline.setup_dataset(ds_path, [task])
+
+    tiles = pipeline.materialize_scenes(ds_path, [scene_data])
+
+    assert len(tiles) > 1
+    for scene_idx, window in tiles:
+        assert scene_idx == 0
+        assert window.is_layer_completed(pipeline.NISAR_LAYER_NAME)
+        # Absorbing a narrow remainder can push one tile past the nominal size, by
+        # less than a detector crop.
+        limit = 128 + pipeline.PREDICT_CROP_SIZE
+        minx, miny, maxx, maxy = window.bounds
+        assert maxx - minx <= limit
+        assert maxy - miny <= limit
+
+    # Every tile still reads back as real imagery, not an empty sliver.
+    for _, window in tiles:
+        image = window.data.read_raster(
+            pipeline.NISAR_LAYER_NAME, pipeline.BAND_NAMES, GeotiffRasterFormat()
+        ).get_chw_array()
+        assert image.shape[0] == len(pipeline.BAND_NAMES)
+        assert np.isfinite(image).any()
