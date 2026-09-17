@@ -637,18 +637,23 @@ def _capacity_target(
 def _drain_path(store_path: str, queue_name: str) -> str:
     """Where the drain list for one run lives.
 
+    Beside the store, never inside it. Everything under a `.zarr` prefix belongs to
+    that store's key space: a stray file there shows up in store listings and rides
+    along in any copy of the store. The drain list is run bookkeeping, so it sits next
+    to the store alongside the `completed_*` marker directories.
+
     Keyed by queue rather than by store: several runs share one store, and each has to
     retire its own workers.
 
     Args:
-        store_path: the run's GeoZarr store.
+        store_path: the run's GeoZarr store, e.g. ".../run/embeddings.zarr".
         queue_name: the Beaker queue name, e.g. "user/my-queue".
 
     Returns:
         the path to publish the drain list at.
     """
     slug = queue_name.replace("/", "-")
-    return f"{store_path.rstrip('/')}/worker_drain/{slug}.json"
+    return str(UPath(store_path.rstrip("/")).parent / "worker_drain" / f"{slug}.json")
 
 
 def _publish_drain_list(drain_path: str, worker_names: list[str]) -> None:

@@ -794,15 +794,41 @@ def test_a_failed_publish_is_not_fatal(tmp_path: Path) -> None:
     assert freed == 0, "a publish failure should not change what was cancelled"
 
 
+def test_drain_path_is_beside_the_store_not_inside_it() -> None:
+    """Everything under a .zarr prefix belongs to that store's key space.
+
+    The drain list is run bookkeeping, not store content. Written inside the store it
+    shows up in store listings and is copied along by any migration of the store, which
+    is exactly what happened on the first production run.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    store = "gs://bucket/run/embeddings.zarr"
+    got = mod._drain_path(store, "patrickj/q-2025")
+    assert ".zarr/" not in got, f"drain list was written inside the store: {got}"
+    assert got == "gs://bucket/run/worker_drain/patrickj-q-2025.json", got
+
+
+def test_drain_path_sits_alongside_the_completion_markers() -> None:
+    """The run directory is the common parent of the store and its marker dirs."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    got = mod._drain_path("gs://bucket/run/embeddings.zarr", "u/q")
+    assert got.startswith("gs://bucket/run/"), got
+
+
 def test_drain_path_is_per_queue() -> None:
     """Several runs share one store, and each has to retire only its own workers."""
     import importlib
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    conus = mod._drain_path("gs://bucket/store/", "patrickj/conus-2025")
-    au_af = mod._drain_path("gs://bucket/store", "patrickj/au-af-2025")
+    store = "gs://bucket/run/embeddings.zarr"
+    conus = mod._drain_path(store, "patrickj/conus-2025")
+    au_af = mod._drain_path(store, "patrickj/au-af-2025")
     assert conus != au_af, "two runs sharing a store would fight over one drain list"
-    assert conus.startswith("gs://bucket/store/"), conus
+    assert conus.startswith("gs://bucket/run/"), conus
 
 
 def test_a_stopping_worker_is_not_double_counted_as_starting() -> None:
