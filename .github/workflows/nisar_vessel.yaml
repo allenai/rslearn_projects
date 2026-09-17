@@ -1,0 +1,14 @@
+name: NISAR-Vessel-Detection
+
+on:
+  workflow_dispatch: # Manual trigger
+  push:
+    tags:
+      - "nisar_vessels_v*" # Trigger only when a version tag (e.g., nisar_vessels_v0.0.1) is pushed
+
+jobs:
+  build-and-push:
+    uses: ./.github/workflows/publish_project_docker_image.yaml
+    with:
+      rslp_project: "nisar_vessels"
+      image_name: "nisar-vessel-detection"
