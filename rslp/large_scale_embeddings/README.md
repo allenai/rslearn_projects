@@ -527,6 +527,10 @@ replaced, so blocks already computed stay valid:
 To limit a run to part of it, pass `--aoi.wgs84_bounds` or `--aoi.epsg_code`;
 `--aoi.geojson_fname` still works if you have a footprint of your own.
 
+`coverage_world.png` renders it over a coastline basemap: magenta is covered, and the
+land showing through uncovered is either outside the UTM grid (below 84S) or water the
+mask correctly excludes.
+
 Sizing a new area before committing to it is one call, and worth making:
 
     python -c "
