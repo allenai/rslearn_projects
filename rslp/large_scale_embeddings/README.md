@@ -179,9 +179,9 @@ same shard.
 
 To limit duplicated work where UTM zones overlap, tiles and windows are skipped unless
 they intersect their zone's canonical 6-degree longitude wedge, which spans the full
-UTM latitude range (see `tiling.py`). Windows that are entirely ocean (per
-`global_land_mask`) or too close to 0/180 longitude (where mosaics are unreliable) are
-also skipped.
+UTM latitude range (see `tiling.py`). Windows outside the coverage mask (see
+`coverage.py`) or touching the antimeridian (where mosaics are unreliable) are also
+skipped.
 
 When a tile finishes, a marker file `{crs}_{x}_{y}.json` is written to
 `completed_path` recording the tile's projection, bounds, time range, time index, and

@@ -7,9 +7,9 @@ running the model, and writing each window's embeddings into the GeoZarr store
 (see zarr_store.py). A per-tile marker file is written to completed_path once the
 tile is done, recording which crops were written and which were skipped.
 
-Windows that don't intersect the zone's canonical wedge or that are entirely ocean
-are skipped (see tiling.py). Embedding pixels where all Sentinel-2 mosaics are empty
-are set to the nodata value (-128).
+Windows that don't intersect the zone's canonical wedge or that fall outside the
+coverage mask are skipped (see tiling.py). Embedding pixels where all Sentinel-2
+mosaics are empty are set to the nodata value (-128).
 
 This module is tile-size-agnostic: it accepts any ``bounds`` whose extents are
 multiples of PATCH_SIZE. The fixed 32768x32768 tiling lives only in write_jobs.py.
@@ -212,11 +212,12 @@ def get_marker_fname(
 
 
 def _crop_crosses_bad_longitude(projection: Projection, bounds: PixelBounds) -> bool:
-    """Check whether a crop is too close to or crossing 0/180 longitude.
+    """Check whether a crop touches or crosses the antimeridian.
 
-    Mosaics for such crops are unreliable (items on the other side of the
-    antimeridian may be matched), so we skip them like the other scaled inference
-    pipelines do.
+    Mosaics for such crops are unreliable (items on the other side may be matched),
+    so we skip them like the other scaled inference pipelines do. Only 180 longitude
+    is a seam in WGS84: a crossing polygon's bounds widen to span most of the globe,
+    which is what the checks below detect. Crops at the prime meridian are kept.
 
     Args:
         projection: the UTM projection.
@@ -511,7 +512,7 @@ def _process_tile(
     shutil.copyfile(dataset_config_fname, ds_path / "config.json")
 
     # Determine which PATCH_SIZE crops to process (see tiling.py), and additionally
-    # skip crops too close to 0/180 longitude.
+    # skip crops touching the antimeridian.
     wedge = get_zone_wedge(projection.crs, projection.x_resolution)
     kept_crops = list_kept_crops(projection, bounds, PATCH_SIZE, wedge=wedge)
 
@@ -521,7 +522,7 @@ def _process_tile(
     for crop_bounds in kept_crops:
         if _crop_crosses_bad_longitude(projection, crop_bounds):
             logger.debug(
-                "skipping crop at %s because it is too close to 0/180 longitude",
+                "skipping crop at %s because it touches the antimeridian",
                 crop_bounds,
             )
             skipped_longitude.append([crop_bounds[0], crop_bounds[1]])
