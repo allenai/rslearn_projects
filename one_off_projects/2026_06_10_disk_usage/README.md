@@ -9,7 +9,9 @@ of directories and very high fan-out.
 2. `collapse.py` — single streaming pass that folds the JSONL into a bounded
    nested tree JSON.
 3. `app.py` — tiny Flask app that serves the collapsed tree as an interactive,
-   expandable tree list (like ncdu) in the browser.
+   expandable tree list (like ncdu) in the browser. Alternatively,
+   `text_report.py` renders the same tree as a plain-text report for when
+   hosting a web app is inconvenient.
 
 Stages are decoupled on purpose: the scan is the only slow/filesystem-bound part,
 so you run it once and then re-collapse / re-view with different thresholds
@@ -96,3 +98,45 @@ python one_off_projects/2026_06_10_disk_usage/app.py \
 
 The JSON is loaded once at startup and served verbatim from memory, so page
 loads are cheap. Open http://127.0.0.1:5000 to explore the tree.
+
+## 3b. Or, write a text report
+
+```bash
+python one_off_projects/2026_06_10_disk_usage/text_report.py \
+    --input collapsed.json \
+    --output report.txt \
+    --min_gb 1000
+```
+
+Renders the collapsed tree as an ncdu/`tree`-style listing with fixed-width size
+and percent-of-total columns, e.g.:
+
+```text
+     size    %tot  path
+   718 TB  100.0%  /weka/dfive-default
+   360 TB   50.2%  ├── helios
+   156 TB   21.7%  │   ├── dataset
+  45.8 TB    6.4%  │   │   ├── worldcover_sampling
+  12.7 TB    1.8%  │   │   │   ├── 10_sentinel2_l2a_monthly
+  33.1 TB    4.6%  │   │   │   └── (28 smaller folders)
+   ...
+   111 TB   15.4%  │   ├── dataset_creation
+  33.8 TB    4.7%  │   │   ├── worldcover_sampling
+  33.8 TB    4.7%  │   │   │   └── windows
+  33.8 TB    4.7%  │   │   │       ├── res_10  [collapsed]
+  33.4 MB    0.0%  │   │   │       └── (2 smaller folders)
+```
+
+- `--min_gb`: folders below this size (GiB) are not listed individually; each
+  parent instead gets one trailing `(N smaller folders)` line with their summed
+  size, so the listed children plus the remainder always add up to the parent.
+  This is what keeps the report short (on a 718 TB scan: ~2500 lines at 10 GB,
+  ~300 at 1 TB, ~90 at 10 TB). It should be at least `--collapse_gb`, since
+  smaller folders have no children in the JSON anyway.
+- `--output -` (the default) writes to stdout.
+- Tags mirror the web app: `[subtree]` means the scanner counted the whole
+  subtree as one total (full-scan or folded at `--max_depth`), `[collapsed]`
+  means `collapse.py` pruned the children, `[N err]` means scan errors.
+
+Re-rendering at a different `--min_gb` only reads the collapsed JSON, so it takes
+milliseconds.
