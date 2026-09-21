@@ -54,7 +54,7 @@ logger = get_logger(__name__)
 
 DATASET_CONFIG_FNAME = "data/olmoearth_lcc/lcc_model/config_predict.json"
 MODEL_CONFIG_FNAME = (
-    "data/olmoearth_lcc/lcc_model/config_bp_abs_season_qdrop_predict.yaml"
+    "data/olmoearth_lcc/lcc_model/config_bp_abs_qdrop_bpcat_1pass_predict.yaml"
 )
 
 # Per-window size. The tile size (passed via bounds) must be a multiple of this.

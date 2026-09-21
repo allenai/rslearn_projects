@@ -252,7 +252,7 @@ Training details:
 - crop_size: 64, batch_size: 8, 100 epochs max.
 
 The other `config_*.yaml` files in `data/olmoearth_lcc/lcc_model/` are variants that
-were tried along the way; `config_bp_abs_season_qdrop.yaml` (and its `_predict`
+were tried along the way; `config_bp_abs_qdrop_bpcat_1pass.yaml` (and its `_predict`
 counterpart) is the one used by the prediction pipeline.
 
 ---
@@ -325,7 +325,7 @@ rslearn dataset materialize --root "$PREDICT_DS" --workers 128
 
 ```bash
 rslearn model predict \
-    --config data/olmoearth_lcc/lcc_model/config_bp_abs_season_qdrop_predict.yaml \
+    --config data/olmoearth_lcc/lcc_model/config_bp_abs_qdrop_bpcat_1pass_predict.yaml \
     --data.init_args.path="$PREDICT_DS"
 ```
 
