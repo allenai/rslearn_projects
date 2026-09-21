@@ -96,5 +96,5 @@ def launch_weekly_job(
             auto_resume=True,
         )
         logger.info("Creating experiment %s: %s", task_name, " ".join(command))
-        experiment = beaker.experiment.create(name=task_name, spec=experiment_spec)
-        logger.info("Created experiment %s", experiment.id)
+        workload = beaker.experiment.create(name=task_name, spec=experiment_spec)
+        logger.info("Created experiment %s", beaker.workload.url(workload))
