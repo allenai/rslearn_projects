@@ -17,10 +17,13 @@ Stages are decoupled on purpose: the scan is the only slow/filesystem-bound part
 so you run it once and then re-collapse / re-view with different thresholds
 without rescanning.
 
+A weekly run of all three stages against `/weka/dfive-default` is automated via a
+GitHub Action + Beaker job; see [Weekly report](#weekly-report) below.
+
 ## 1. Scan the filesystem
 
 ```bash
-python one_off_projects/2026_06_10_disk_usage/disk_usage.py \
+python -m rslp.weka_disk_usage.disk_usage \
     --root /weka/dfive-default \
     --output disk_usage.jsonl \
     --workers 64
@@ -45,21 +48,20 @@ startup the scan resumes and appends to the JSONL (duplicates are harmless;
 ### Run the scan on Beaker
 
 The scan is the only slow, filesystem-bound stage, so it's the part worth running
-on a Beaker host that mounts weka directly. Use the common `beaker_launcher`
-workflow. Build a Beaker image that includes `rslearn_projects` per the
-instructions in `rslp/olmoearth_pretrain/README.md`, then assume the image (e.g.
-`YOUR_BEAKER_IMAGE`) is available.
-
-No GPU is needed. Mount the weka bucket and write the JSONL (and its checkpoint)
-to the mount so the output survives the job, then point `--command` at the scan
-script (the repo is the image's working directory):
+on a Beaker host that mounts weka directly. The easiest way is the weekly-report
+launcher described in [Weekly report](#weekly-report), which runs all three stages
+in one Beaker job and writes the outputs to weka. For an ad-hoc scan you can also
+use the common `beaker_launcher` workflow with the public
+`ghcr.io/allenai/rslearn_projects:latest` image. No GPU is needed. Mount the weka
+bucket and write the JSONL (and its checkpoint) to the mount so the output
+survives the job:
 
 ```bash
 python -m rslp.main common beaker_launcher \
-    --image YOUR_BEAKER_IMAGE \
+    --image ghcr.io/allenai/rslearn_projects:latest \
     --clusters '["ai2/jupiter"]' \
     --weka_mounts+='{"bucket_name": "dfive-default", "mount_path": "/weka/dfive-default"}' \
-    --command '["python", "one_off_projects/2026_06_10_disk_usage/disk_usage.py", "--root", "/weka/dfive-default", "--output", "/weka/dfive-default/tmp/disk_usage.jsonl", "--workers", "64"]'
+    --command '["python", "-m", "rslp.weka_disk_usage.disk_usage", "--root", "/weka/dfive-default", "--output", "/weka/dfive-default/tmp/disk_usage.jsonl", "--workers", "64"]'
 ```
 
 Since the JSONL lands on weka, the checkpoint does too, so a preempted job resumes
@@ -69,7 +71,7 @@ from `<output>.ckpt` on its next run. Afterwards run the cheap `collapse.py` and
 ## 2. Collapse into a bounded tree
 
 ```bash
-python one_off_projects/2026_06_10_disk_usage/collapse.py \
+python -m rslp.weka_disk_usage.collapse \
     --input disk_usage.jsonl \
     --output collapsed.json \
     --max_depth 10 \
@@ -91,7 +93,8 @@ rescanning.
 ## 3. View in the browser
 
 ```bash
-python one_off_projects/2026_06_10_disk_usage/app.py \
+pip install flask  # not part of the rslearn_projects requirements
+python -m rslp.weka_disk_usage.app \
     --input collapsed.json \
     --host 127.0.0.1 --port 5000
 ```
@@ -102,7 +105,7 @@ loads are cheap. Open http://127.0.0.1:5000 to explore the tree.
 ## 3b. Or, write a text report
 
 ```bash
-python one_off_projects/2026_06_10_disk_usage/text_report.py \
+python -m rslp.weka_disk_usage.text_report \
     --input collapsed.json \
     --output report.txt \
     --min_gb 1000
@@ -140,3 +143,60 @@ and percent-of-total columns, e.g.:
 
 Re-rendering at a different `--min_gb` only reads the collapsed JSON, so it takes
 milliseconds.
+
+## Weekly report
+
+The GitHub Action [`.github/workflows/weka_disk_usage.yaml`](../../.github/workflows/weka_disk_usage.yaml)
+runs every Saturday at 06:00 UTC (Friday 11 PM PDT / 10 PM PST) so a fresh report is
+ready by Monday morning. It does not build anything: it pulls the public
+`ghcr.io/allenai/rslearn_projects:latest` image (published from `master` by
+`build_test.yaml`) and runs the `launch_weekly_job` workflow inside it, which
+creates a Beaker experiment that also runs that image with the weka bucket mounted.
+
+The Beaker job runs the `weekly_report` workflow, i.e. all three stages in order,
+and writes:
+
+```text
+/weka/dfive-default/weka_disk_utilization/
+    YYYYMMDD_usage.jsonl      # disk_usage.py scan (one line per directory)
+    YYYYMMDD_collapsed.json   # collapse.py bounded tree
+    YYYYMMDD_report.txt       # text_report.py listing (folders >= 1 TB)
+```
+
+where `YYYYMMDD` is the UTC date the launcher ran (so the Saturday date for the
+scheduled run). Old reports are kept indefinitely for now.
+
+The job is preemptible (protected for the first 8 hours) with `auto_resume`. The
+scan checkpoints to `YYYYMMDD_usage.jsonl.ckpt` and resumes from it after a
+preemption; once the scan finishes a `YYYYMMDD_usage.jsonl.done` marker is written,
+so a restart after that point skips the scan and only re-runs the cheap collapse
+and report stages. The two workflows:
+
+- `launch_weekly_job` (run on the GitHub runner): picks the date, builds the Beaker
+  experiment spec, and submits it. Needs `BEAKER_TOKEN` (and `BEAKER_ADDR`), which
+  the Action takes from the repository secrets.
+- `weekly_report` (run inside the Beaker job): runs the three stages as
+  subprocesses and writes the files above.
+
+### Triggering manually
+
+Use the "Run workflow" button on the Action (optionally passing a `date` to
+control the output prefix), or launch from a machine with the Beaker environment
+variables configured:
+
+```bash
+python -m rslp.main weka_disk_usage launch_weekly_job            # today's PT date
+python -m rslp.main weka_disk_usage launch_weekly_job --date 20260925
+```
+
+The `weekly_report` workflow can also be run directly on any host that mounts
+weka, e.g. to regenerate a report into a different directory:
+
+```bash
+python -m rslp.main weka_disk_usage weekly_report \
+    --out_dir /weka/dfive-default/weka_disk_utilization \
+    --date 20260925
+```
+
+Re-running with the same `--out_dir`/`--date` after the scan finished only
+re-runs the collapse and report stages.
