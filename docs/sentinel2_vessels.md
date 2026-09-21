@@ -20,9 +20,9 @@ First, download the model checkpoint to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
     mkdir -p project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/
-    mkdir -p project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/
+    mkdir -p project_data/projects/2026_09_17_vessel_attribute_l1_01/sentinel2_l1/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/best.ckpt
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/best.ckpt
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_09_17_vessel_attribute_l1_01/sentinel2_l1/best.ckpt -O project_data/projects/2026_09_17_vessel_attribute_l1_01/sentinel2_l1/best.ckpt
 
 The easiest way to apply the model is using the prediction pipeline in
 `rslp/sentinel2_vessels/predict_pipeline.py`. It accepts a Sentinel-2 scene ID and
@@ -116,9 +116,9 @@ weights to be present in a directory based on the `RSLP_PREFIX` environment vari
 So download the model checkpoint:
 
     mkdir -p project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/
-    mkdir -p project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/
+    mkdir -p project_data/projects/2026_09_17_vessel_attribute_l1_01/sentinel2_l1/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/best.ckpt
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/checkpoints/best.ckpt -O project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/best.ckpt
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_09_17_vessel_attribute_l1_01/sentinel2_l1/best.ckpt -O project_data/projects/2026_09_17_vessel_attribute_l1_01/sentinel2_l1/best.ckpt
 
 Run the container:
 
