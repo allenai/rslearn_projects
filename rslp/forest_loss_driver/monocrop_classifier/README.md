@@ -1,54 +1,62 @@
 # Monocrop classifier
 
-This is a separate time-series segmentation model from the forest-loss driver
-classifier. It predicts the crop/land-use class inside an annotated forest-loss
-polygon using monthly Sentinel-2 imagery after the loss event.
+This is a separate time-series classification model from the forest-loss driver
+classifier. Given a forest loss event polygon and monthly Sentinel-2 imagery after
+the loss event, it predicts the crop/land-use class of the event.
+
+The dataset config and model config are in
+`data/forest_loss_driver/monocrop_classifier/`. The README there records the
+experiments (label hierarchy, frozen vs. LLRD fine-tuning, segmentation vs.
+classification, and pooling strategies) that led to `model_classify_pool.yaml`.
 
 ## Annotation filtering
 
-The source projects are Monocrop - Peru, Monocrop - Bolivia, and Monocrop -
-Ecuador. Use annotations that have:
+The default source projects (`DEFAULT_PROJECT_IDS` in `studio.py`) are Monocrop -
+Peru, Monocrop - Bolivia, and Monocrop - Ecuador; pass `--project-id` to
+`create_dataset.py` to use other projects, such as the phase-2 project populated
+by `scripts/phase2_upload_to_studio.py`. Use annotations that have:
 
 - a `monoculture_tag` in the confirmed class list;
 - `confidence` equal to `high`, `medium`, or `low`;
 - annotation status other than `rejected`;
 - a valid polygon and task event timestamp.
 
-The Studio inventory contained 542 annotations. The filtering accepts 536 metadata
-records: 535 approved and one pending. It excludes five rejected/unlabeled records
-and one approved record with missing confidence.
+Class IDs and filtering values are constants in `create_dataset.py`. The Studio
+labelset has eight raw classes; the label written to the dataset merges
+`soybean` into the `mennonites_soybean` slot (renamed `soybean`), giving the
+seven classes the model predicts:
 
-Class IDs and filtering values are constants in `create_dataset.py`:
+| ID | Raw Studio class | Dataset class |
+|---:|---|---|
+| 0 | nodata | nodata |
+| 1 | mennonites_nonsoybean | mennonites_nonsoybean |
+| 2 | mennonites_soybean | soybean |
+| 3 | oil_palm | oil_palm |
+| 4 | other_agriculture | other_agriculture |
+| 5 | pastures | pastures |
+| 6 | rice | rice |
+| 7 | soybean | soybean (merged into 2) |
 
-| ID | Class |
-|---:|---|
-| 0 | nodata |
-| 1 | mennonites_nonsoybean |
-| 2 | mennonites_soybean |
-| 3 | oil_palm |
-| 4 | other_agriculture |
-| 5 | pastures |
-| 6 | rice |
-| 7 | soybean |
-
-Class 0 is outside the annotation polygon and is masked from loss and metrics.
-The annotation polygon, rather than the larger enclosing Studio task polygon, is
-rasterized as the target.
+`nodata` is never a label; it is kept so class indices stay stable. Each window
+gets one feature in the `label_vector` layer whose geometry is the annotation
+polygon and whose `class_name`/`class_id` are the merged class, with
+`raw_class_name`/`raw_class_id` recording the Studio label.
 
 ## Create and materialize the dataset
 
 The source stack has 11 least-cloudy 30-day Sentinel-2 mosaics before the event
-and 1-12 complete periods after it. The default imagery cutoff is 2026-07-20. The
-cutoff determines the maximum usable post-loss month for each record, so all 536
-accepted records become windows even when fewer than 12 months have elapsed.
+and 1-12 complete periods after it. The default imagery cutoff is in
+`create_dataset.py` (`DEFAULT_IMAGERY_CUTOFF`). The cutoff determines the maximum
+usable post-loss month for each record, so records become windows even when
+fewer than 12 months have elapsed since the event.
 
 From the `rslearn_projects` repository:
 
 ```bash
-DS_PATH=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/monocrop_classifier_20260720/
+DS_PATH=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/monocrop_classifier/20260914/
 python -m rslp.forest_loss_driver.monocrop_classifier.create_dataset \
   --ds-path "$DS_PATH" \
-  --imagery-cutoff 2026-07-20T00:00:00Z
+  --imagery-cutoff 2026-08-27T00:00:00Z
 rslearn dataset prepare --root "$DS_PATH" --workers 32
 rslearn dataset materialize --root "$DS_PATH" --workers 32
 ```
@@ -58,86 +66,31 @@ groups in `sentinel2_l2a`. Each window stores `max_post_months` in its metadata,
 and dataset creation prints aggregate horizon counts. A missing interior month
 should be investigated instead of padded.
 
-## Tag windows
-
-rslearn tag filtering only supports exact key/value matches on `window.options`,
-so derived window subsets must be precomputed as options. `tag_windows.py` adds
-`class_group: soy` to windows whose class is `mennonites_soybean` or `soybean`
-and `class_group: other` to the rest; the soy-only experiment config references
-it with `tags: {class_group: soy}`. Boolean-looking tag values like `"true"`
-must be avoided because jsonargparse coerces them to Python booleans, which
-never match the string stored in window options. Country filtering needs no
-tagging because windows are already in per-country groups (`peru`, `bolivia`,
-`ecuador`).
-
-```bash
-python -m rslp.forest_loss_driver.monocrop_classifier.tag_windows \
-  --ds-path "$DS_PATH"
-```
-
-The script is idempotent and prints per-class-group tagged / already-tagged
-counts.
+Windows are in per-country groups (`peru`, `bolivia`, `ecuador`, ...) derived from
+the Studio project name, and the train/val split is assigned deterministically
+from the source event geometry and time.
 
 ## Train
 
-The training transform samples an elapsed month uniformly from 1 through the
-maximum available for that window and always sends 12 frames to
-OlmoEarth-v1.2-Base. An elapsed month `m` gives the model `12-m` pre-loss frames
-followed by the first `m` post-loss frames.
-
-Fully frozen encoder:
+The training transform (`PostLossMonthSampler`) samples an elapsed month
+uniformly from 1 through the maximum available for that window and always sends
+12 frames to OlmoEarth-v1.2-Base. An elapsed month `m` gives the model `12-m`
+pre-loss frames followed by the first `m` post-loss frames.
 
 ```bash
 rslearn model fit \
-  --config data/forest_loss_driver/monocrop_classifier/model_frozen.yaml
+  --config data/forest_loss_driver/monocrop_classifier/model_classify_pool.yaml
 ```
 
-Layer-wise learning-rate decay across the encoder:
+The model max-pools the OlmoEarth feature map over the whole window
+(`PoolingDecoder`) followed by a linear classification head, and fine-tunes the
+encoder with layer-wise learning-rate decay. Validation uses the six-month view;
+if a window has fewer than six post-loss months, the transform uses its maximum
+available month instead. `test_config` intentionally reuses the validation split.
 
-```bash
-rslearn model fit \
-  --config data/forest_loss_driver/monocrop_classifier/model_llrd.yaml
-```
-
-Both configs request the six-month view for validation. If a window has fewer than
-six post-loss months, the transform uses its maximum available month instead.
-`test_config` intentionally reuses the validation split.
-
-## Metrics
-
-`model_llrd.yaml` and the experiment variants report per-window rather than
-per-pixel metrics, defined in `metrics.py`. Each val/test sample is one full
-128x128 window whose valid (non-nodata) pixels share a single class, so each
-sample reduces to one prediction: the majority vote of the per-pixel argmax over
-valid pixels (ties break toward the lowest class ID). The logged metrics are
-`val_window_accuracy` / `test_window_accuracy` and a per-window confusion matrix
-in wandb. Checkpointing monitors `val_window_accuracy`. `model_frozen.yaml`
-still uses the original per-pixel metrics.
-
-## Experiment variants
-
-Three `model_llrd.yaml` variants change the training population or the class
-space. All share the same dataset, split assignment, and per-window metrics:
-
-| Config | Windows | Classes |
-|---|---|---|
-| `model_llrd_bolivia.yaml` | `groups: [bolivia]` | all 8 |
-| `model_llrd_bolivia_soy.yaml` | `groups: [bolivia]` + `class_group: soy` tag | 3: nodata, mennonites_soybean, soybean via `class_id_mapping: {2: 1, 7: 2}` |
-| `model_llrd_merged_soy.yaml` | all countries | 7: soybean merged into the mennonites_soybean slot via `class_id_mapping: {7: 2}` |
-
-`model_llrd_bolivia_soy.yaml` requires the tagging step above. Class remapping
-happens at train/eval time in `SegmentationTask.process_inputs`, so the label
-rasters on disk keep the original 8-class IDs; note that prediction outputs from
-the remapped configs are in the remapped class space.
-
-```bash
-rslearn model fit \
-  --config data/forest_loss_driver/monocrop_classifier/model_llrd_bolivia.yaml
-rslearn model fit \
-  --config data/forest_loss_driver/monocrop_classifier/model_llrd_bolivia_soy.yaml
-rslearn model fit \
-  --config data/forest_loss_driver/monocrop_classifier/model_llrd_merged_soy.yaml
-```
+`val_accuracy` is micro-averaged, so it is the fraction of windows predicted
+correctly, and a confusion matrix is logged to wandb. Checkpointing monitors
+`val_accuracy`.
 
 ## Test elapsed months
 
@@ -147,11 +100,11 @@ an eight-month test uses six months on a window whose maximum is six.
 
 ```bash
 MONOCROP_NUM_POST_MONTHS=1 rslearn model test \
-  --config data/forest_loss_driver/monocrop_classifier/model_llrd.yaml \
+  --config data/forest_loss_driver/monocrop_classifier/model_classify_pool.yaml \
   --ckpt_path /path/to/checkpoint.ckpt
 
 MONOCROP_NUM_POST_MONTHS=12 rslearn model test \
-  --config data/forest_loss_driver/monocrop_classifier/model_llrd.yaml \
+  --config data/forest_loss_driver/monocrop_classifier/model_classify_pool.yaml \
   --ckpt_path /path/to/checkpoint.ckpt
 ```
 
@@ -167,7 +120,7 @@ other properties (`tif_fname`, `center_pixel`, `oe_end_time`, `country`,
 `new_label`, `probs`, `area_ha`) are copied into `window.options` when present.
 
 ```bash
-DS_PATH=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/monocrop_classifier_predict_20260721/
+DS_PATH=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/monocrop_classifier/predict_20260721/
 python -m rslp.forest_loss_driver.monocrop_classifier.create_prediction_dataset \
   --geojson /path/to/polygons.geojson \
   --ds-path "$DS_PATH"
@@ -197,8 +150,15 @@ Prediction deliberately omits `PostLossMonthSampler`. Windows must be in group
 
 ```bash
 rslearn model predict \
-  --config data/forest_loss_driver/monocrop_classifier/model_llrd.yaml \
+  --config data/forest_loss_driver/monocrop_classifier/model_classify_pool.yaml \
   --data.init_args.path "$DS_PATH"
 ```
 
-The `RslearnWriter` callback writes the argmax class raster to the `output` layer.
+The `RslearnWriter` callback writes one feature per window to the `output_vector`
+layer with the predicted `class_name` and per-class `probs`.
+
+## Phase-2 annotation sampling
+
+`scripts/phase2_upload_to_studio.py` samples prediction windows per predicted
+class and uploads them as tasks to a new Studio project for the next annotation
+round. See its module docstring for details.

@@ -54,14 +54,11 @@ data:
       init_args:
         property_name: class_name
         # The label_vector layer already merges soybean into the renamed
-        # mennonites_soybean slot, matching the segmentation configs that use
-        # class_id_mapping {7: 2}. nodata (0) is never a label; it is kept so
-        # class indices and the confusion matrix axes line up with the
-        # segmentation model's PerWindowConfusionMatrix.
+        # mennonites_soybean slot (MERGED_CLASS_NAMES in create_dataset.py).
+        # nodata (0) is never a label; it is kept so class indices stay stable.
         classes: [nodata, mennonites_nonsoybean, soybean, oil_palm, other_agriculture, pastures, rice]
         # Micro-average so val_accuracy is the fraction of windows predicted
-        # correctly, comparable to val_window_accuracy of the segmentation
-        # model.
+        # correctly.
         metric_kwargs:
           average: micro
         prob_property: probs

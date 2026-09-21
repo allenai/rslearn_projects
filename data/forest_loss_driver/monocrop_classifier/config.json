@@ -1,29 +1,5 @@
 {
   "layers": {
-    "label": {
-      "band_sets": [
-        {
-          "bands": [
-            "label"
-          ],
-          "dtype": "uint8",
-          "format": {
-            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
-          }
-        }
-      ],
-      "class_names": [
-        "nodata",
-        "mennonites_nonsoybean",
-        "mennonites_soybean",
-        "oil_palm",
-        "other_agriculture",
-        "pastures",
-        "rice",
-        "soybean"
-      ],
-      "type": "raster"
-    },
     "label_vector": {
       "class_names": [
         "nodata",
@@ -36,17 +12,6 @@
       ],
       "class_property_name": "class_name",
       "type": "vector"
-    },
-    "output": {
-      "band_sets": [
-        {
-          "bands": [
-            "class"
-          ],
-          "dtype": "uint8"
-        }
-      ],
-      "type": "raster"
     },
     "output_vector": {
       "type": "vector"

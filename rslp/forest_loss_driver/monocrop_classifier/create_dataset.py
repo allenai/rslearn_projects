@@ -1,4 +1,4 @@
-"""Create the monocrop segmentation dataset from confirmed Studio annotations."""
+"""Create the monocrop classification dataset from confirmed Studio annotations."""
 
 from __future__ import annotations
 
@@ -12,16 +12,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import affine
-import numpy as np
 import shapely
-import shapely.affinity
-from rasterio.features import rasterize
 from rslearn.dataset import Dataset, Window
 from rslearn.utils.feature import Feature
 from rslearn.utils.geometry import WGS84_PROJECTION, Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
-from rslearn.utils.raster_array import RasterArray
 from upath import UPath
 
 from .studio import DEFAULT_PROJECT_IDS, StudioClient
@@ -33,10 +28,9 @@ POST_EVENT_DAYS = 360
 PERIOD_DAYS = 30
 MAX_POST_MONTHS = POST_EVENT_DAYS // PERIOD_DAYS
 DEFAULT_IMAGERY_CUTOFF = datetime.fromisoformat("2026-08-27T00:00:00+00:00")
-LABEL_LAYER = "label"
-LABEL_BAND = "label"
 LABEL_VECTOR_LAYER = "label_vector"
 
+# Raw class names used by the Studio monoculture_tag labelset.
 CLASS_NAMES = (
     "nodata",
     "mennonites_nonsoybean",
@@ -48,10 +42,10 @@ CLASS_NAMES = (
     "soybean",
 )
 CLASS_TO_ID = {name: class_id for class_id, name in enumerate(CLASS_NAMES)}
-# The window-classification (vector) label bakes in the soybean merge that the
-# segmentation configs express via class_id_mapping: soybean (7) is merged into
-# the mennonites_soybean slot (2), which is renamed to "soybean". The raster
-# label keeps the raw class IDs.
+# The label written to the dataset merges soybean (7) into the mennonites_soybean
+# slot (2), which is renamed to "soybean"; see data/forest_loss_driver/
+# monocrop_classifier/README.md for the label hierarchy experiments behind this.
+# nodata (0) is never a label but is kept so class indices stay stable.
 MERGED_CLASS_NAMES = (
     "nodata",
     "mennonites_nonsoybean",
@@ -224,46 +218,7 @@ def get_window_geometry(
     return projection, bounds, projected
 
 
-def rasterize_label(
-    geometry: shapely.Geometry,
-    bounds: tuple[int, int, int, int],
-    class_id: int,
-) -> np.ndarray:
-    """Rasterize one projected annotation polygon into window pixel coordinates."""
-    clip = shapely.box(*bounds)
-    clipped = geometry.intersection(clip)
-    if clipped.is_empty:
-        raise ValueError("annotation geometry does not overlap its centered window")
-    local = shapely.affinity.translate(
-        clipped,
-        xoff=-bounds[0],
-        yoff=-bounds[1],
-    )
-    return rasterize(
-        [(local, class_id)],
-        out_shape=(WINDOW_SIZE, WINDOW_SIZE),
-        transform=affine.Affine.identity(),
-        fill=0,
-        all_touched=True,
-        dtype=np.uint8,
-    )
-
-
-def write_label(window: Window, dataset: Dataset, label: np.ndarray) -> None:
-    """Write a pre-materialized label raster and mark it complete."""
-    band_set = dataset.layers[LABEL_LAYER].band_sets[0]
-    with window.data.open_layer_writer(LABEL_LAYER) as writer:
-        writer.write_raster(
-            band_set.bands,
-            band_set.instantiate_raster_format(),
-            window.projection,
-            window.bounds,
-            RasterArray(chw_array=label[np.newaxis, :, :]),
-        )
-    window.mark_layer_completed(LABEL_LAYER)
-
-
-def write_vector_label(
+def write_label(
     window: Window,
     dataset: Dataset,
     record: SelectedAnnotation,
@@ -312,9 +267,7 @@ def create_window(
         for key, expected in expected_options.items():
             if window.options.get(key) != expected:
                 raise ValueError(f"existing window {group}/{name} has mismatched {key}")
-        needs_raster = not window.is_layer_completed(LABEL_LAYER)
-        needs_vector = not window.is_layer_completed(LABEL_VECTOR_LAYER)
-        if not needs_raster and not needs_vector:
+        if window.is_layer_completed(LABEL_VECTOR_LAYER):
             return window, "existing"
         projected_geometry = (
             STGeometry(
@@ -325,11 +278,7 @@ def create_window(
             .to_projection(window.projection)
             .shp
         )
-        if needs_raster:
-            label = rasterize_label(projected_geometry, window.bounds, record.class_id)
-            write_label(window, dataset, label)
-        if needs_vector:
-            write_vector_label(window, dataset, record, projected_geometry)
+        write_label(window, dataset, record, projected_geometry)
         return window, "repaired"
 
     projection, bounds, projected_geometry = get_window_geometry(record.geometry)
@@ -363,9 +312,7 @@ def create_window(
         data_factory=dataset.window_data_storage_factory,
     )
     window.save()
-    label = rasterize_label(projected_geometry, bounds, record.class_id)
-    write_label(window, dataset, label)
-    write_vector_label(window, dataset, record, projected_geometry)
+    write_label(window, dataset, record, projected_geometry)
     return window, "created"
 
 

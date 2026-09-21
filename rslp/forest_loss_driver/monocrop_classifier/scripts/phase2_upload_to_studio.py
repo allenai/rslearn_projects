@@ -12,9 +12,11 @@ stratified sampling of the next annotation round:
    ``*.geojson``, e.g. the per-AOI outputs under
    ``.../20260622_monocrop_setup/new_per_aoi_outputs/``) are dropped, so
    already-covered areas are not annotated again.
-2. Each remaining prediction window is assigned a single predicted class: the
-   majority class of the ``output`` segmentation raster within the original event
-   polygon (rasterized the same way as training labels), excluding nodata (class 0).
+2. Each remaining prediction window is assigned the predicted class stored in
+   its ``output_vector`` layer by ``rslearn model predict`` (the ``class_name``
+   property written by ``ClassificationTask``). The phase-2 run used the earlier
+   segmentation model and took the majority class of its ``output`` raster within
+   the event polygon instead; see ``data/forest_loss_driver/monocrop_classifier/README.md``.
 3. Up to ``--per-class`` (default 100) windows are sampled per predicted class.
 4. The combined selection is shuffled (seeded) and uploaded as tasks to a *new*
    Studio project, named following the scheme of
@@ -66,14 +68,12 @@ from typing import Any
 import requests
 import shapely
 import tqdm
-from rslearn.dataset import Dataset
-from rslearn.utils.geometry import WGS84_PROJECTION, STGeometry
+from rslearn.dataset import Dataset, Window
 from upath import UPath
 
 from rslp.forest_loss_driver.monocrop_classifier.create_dataset import (
-    CLASS_NAMES,
+    MERGED_CLASS_NAMES,
     parse_datetime,
-    rasterize_label,
 )
 from rslp.forest_loss_driver.monocrop_classifier.create_prediction_dataset import (
     PREDICT_GROUP,
@@ -81,7 +81,9 @@ from rslp.forest_loss_driver.monocrop_classifier.create_prediction_dataset impor
     parse_feature_polygon,
 )
 
-OUTPUT_LAYER = "output"
+OUTPUT_LAYER = "output_vector"
+# Property written by ClassificationTask (property_name in the model config).
+CLASS_PROPERTY = "class_name"
 BASE_URL = "https://olmoearth.allenai.org/api/v1"
 DEFAULT_TIMEOUT = 30
 MAX_RETRIES = 3
@@ -176,88 +178,67 @@ def _init_worker(ds_path: str) -> None:
     _DATASET = Dataset(UPath(ds_path))
 
 
-def _get_predicted_class(args: tuple[str, str]) -> tuple[str, int | None, str]:
-    """Compute the majority predicted class within the event polygon.
-
-    Args:
-        args: (window_name, polygon_wkt) where the polygon is in WGS84.
+def _get_predicted_class(window: Window) -> tuple[str, str | None, str]:
+    """Read the predicted class of one window from its output_vector layer.
 
     Returns:
-        (window_name, class_id or None, outcome) where outcome is "ok" or the
+        (window_name, class_name or None, outcome) where outcome is "ok" or the
         reason the window was skipped.
     """
-    window_name, polygon_wkt = args
     assert _DATASET is not None
-    windows = _DATASET.load_windows(groups=[PREDICT_GROUP], names=[window_name])
-    if not windows:
-        return window_name, None, "missing_window"
-    window = windows[0]
     if not window.is_layer_completed(OUTPUT_LAYER):
-        return window_name, None, "no_output_layer"
-
-    band_set = _DATASET.layers[OUTPUT_LAYER].band_sets[0]
-    raster = window.data.read_raster(
+        return window.name, None, "no_output_layer"
+    features = window.data.read_vector(
         OUTPUT_LAYER,
-        band_set.bands,
-        band_set.instantiate_raster_format(),
+        _DATASET.layers[OUTPUT_LAYER].instantiate_vector_format(),
     )
-    array = raster.array
-    while array.ndim > 2:
-        array = array[0]
-
-    polygon = shapely.from_wkt(polygon_wkt)
-    projected = (
-        STGeometry(WGS84_PROJECTION, polygon, None).to_projection(window.projection).shp
-    )
-    try:
-        mask = rasterize_label(projected, window.bounds, 1)
-    except ValueError:
-        return window_name, None, "polygon_outside_window"
-
-    values = array[mask == 1]
-    values = values[values != 0]
-    if values.size == 0:
-        return window_name, None, "all_nodata"
-    counts = Counter(int(v) for v in values)
-    return window_name, counts.most_common(1)[0][0], "ok"
+    class_names = {
+        feature.properties[CLASS_PROPERTY]
+        for feature in features
+        if feature.properties and CLASS_PROPERTY in feature.properties
+    }
+    if len(class_names) != 1:
+        return window.name, None, "ambiguous_output"
+    class_name = class_names.pop()
+    if class_name not in MERGED_CLASS_NAMES:
+        return window.name, None, "unknown_class"
+    return window.name, class_name, "ok"
 
 
 def compute_predicted_classes(
     ds_path: str,
-    features: dict[str, tuple[dict[str, Any], shapely.Geometry]],
-    window_names: list[str],
+    windows: list[Window],
     workers: int,
-) -> tuple[dict[str, int], Counter[str]]:
+) -> tuple[dict[str, str], Counter[str]]:
     """Compute the predicted class for each window, in parallel."""
-    tasks = [(name, features[name][1].wkt) for name in window_names]
-    predicted: dict[str, int] = {}
+    predicted: dict[str, str] = {}
     outcomes: Counter[str] = Counter()
     with ProcessPoolExecutor(
         max_workers=workers, initializer=_init_worker, initargs=(ds_path,)
     ) as pool:
-        for window_name, class_id, outcome in tqdm.tqdm(
-            pool.map(_get_predicted_class, tasks, chunksize=8),
-            total=len(tasks),
-            desc="Computing predicted classes",
+        for window_name, class_name, outcome in tqdm.tqdm(
+            pool.map(_get_predicted_class, windows, chunksize=8),
+            total=len(windows),
+            desc="Reading predicted classes",
         ):
             outcomes[outcome] += 1
-            if class_id is not None:
-                predicted[window_name] = class_id
+            if class_name is not None:
+                predicted[window_name] = class_name
     return predicted, outcomes
 
 
 def sample_and_shuffle(
-    predicted: dict[str, int], per_class: int, seed: int
+    predicted: dict[str, str], per_class: int, seed: int
 ) -> list[str]:
     """Sample up to per_class windows per predicted class, then shuffle."""
     rng = random.Random(seed)
-    by_class: dict[int, list[str]] = {}
+    by_class: dict[str, list[str]] = {}
     for window_name in sorted(predicted):
         by_class.setdefault(predicted[window_name], []).append(window_name)
 
     selected: list[str] = []
-    for class_id in sorted(by_class):
-        names = by_class[class_id]
+    for class_name in sorted(by_class):
+        names = by_class[class_name]
         if len(names) > per_class:
             names = rng.sample(names, per_class)
         selected.extend(names)
@@ -549,7 +530,7 @@ def main() -> None:
     dataset = Dataset(UPath(args.ds_path))
     windows = dataset.load_windows(groups=[PREDICT_GROUP])
     print(f"Found {len(windows)} windows in group {PREDICT_GROUP}")
-    matched = [w.name for w in windows if w.name in features]
+    matched = [w for w in windows if w.name in features]
     if len(matched) < len(windows):
         print(
             f"Skipping {len(windows) - len(matched)} windows with no matching feature"
@@ -559,43 +540,39 @@ def main() -> None:
         tree = load_exclusion_tree(args.exclude_geojson)
         num_before = len(matched)
         matched = [
-            name
-            for name in matched
-            if len(tree.query(features[name][1], predicate="intersects")) == 0
+            w
+            for w in matched
+            if len(tree.query(features[w.name][1], predicate="intersects")) == 0
         ]
         print(
             f"Excluded {num_before - len(matched)} windows intersecting exclusion "
             f"features; {len(matched)} remain"
         )
 
-    predicted, outcomes = compute_predicted_classes(
-        args.ds_path, features, matched, args.workers
-    )
+    predicted, outcomes = compute_predicted_classes(args.ds_path, matched, args.workers)
     print(f"Prediction outcomes: {dict(sorted(outcomes.items()))}")
     class_counts = Counter(predicted.values())
     print("Predicted class counts:")
-    for class_id in sorted(class_counts):
-        print(f"  {CLASS_NAMES[class_id]}: {class_counts[class_id]}")
+    for class_name in sorted(class_counts):
+        print(f"  {class_name}: {class_counts[class_name]}")
 
     selected = sample_and_shuffle(predicted, args.per_class, args.seed)
     sampled_counts = Counter(predicted[name] for name in selected)
     print(f"Sampled {len(selected)} windows:")
-    for class_id in sorted(sampled_counts):
-        print(f"  {CLASS_NAMES[class_id]}: {sampled_counts[class_id]}")
+    for class_name in sorted(sampled_counts):
+        print(f"  {class_name}: {sampled_counts[class_name]}")
 
     planned = []
     for counter, window_name in enumerate(selected, start=1):
         properties, geometry = features[window_name]
-        class_id = predicted[window_name]
+        class_name = predicted[window_name]
         centroid = geometry.centroid
         date = parse_datetime(properties["oe_start_time"]).date().isoformat()
-        name = make_task_name(
-            counter, CLASS_NAMES[class_id], centroid.y, centroid.x, date
-        )
+        name = make_task_name(counter, class_name, centroid.y, centroid.x, date)
         attributes = {
             "window_name": window_name,
-            "predicted_class_id": class_id,
-            "predicted_class_name": CLASS_NAMES[class_id],
+            "predicted_class_id": MERGED_CLASS_NAMES.index(class_name),
+            "predicted_class_name": class_name,
             **{
                 key: properties[key]
                 for key in ATTRIBUTE_PROPERTY_KEYS

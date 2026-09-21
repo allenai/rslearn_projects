@@ -4,7 +4,6 @@ from pathlib import Path
 import yaml
 
 from rslp.forest_loss_driver.monocrop_classifier.create_dataset import (
-    CLASS_NAMES,
     LABEL_VECTOR_LAYER,
     MERGED_CLASS_NAMES,
 )
@@ -24,7 +23,6 @@ def test_dataset_config_matches_classes_and_monthly_stack() -> None:
     with (CONFIG_DIR / "config.json").open() as f:
         dataset_config = json.load(f)
 
-    assert dataset_config["layers"]["label"]["class_names"] == list(CLASS_NAMES)
     label_vector = dataset_config["layers"][LABEL_VECTOR_LAYER]
     assert label_vector["class_names"] == list(MERGED_CLASS_NAMES)
     assert label_vector["class_property_name"] == "class_name"

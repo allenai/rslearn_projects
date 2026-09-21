@@ -2,17 +2,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import shapely
 from rslearn.dataset import Dataset
 from upath import UPath
 
 from rslp.forest_loss_driver.monocrop_classifier.create_dataset import (
     CLASS_TO_ID,
+    LABEL_VECTOR_LAYER,
     SelectedAnnotation,
     assign_split,
     create_window,
-    rasterize_label,
     select_annotation,
 )
 
@@ -77,16 +76,6 @@ def test_select_annotation_rejects_rejected_or_missing_confidence() -> None:
     assert reason == "missing_confidence"
 
 
-def test_rasterize_label_masks_background() -> None:
-    geometry = shapely.box(60, 60, 68, 68)
-    label = rasterize_label(geometry, (0, 0, 128, 128), class_id=3)
-    assert label.shape == (128, 128)
-    assert label.dtype == np.uint8
-    assert set(np.unique(label)) == {0, 3}
-    assert label[64, 64] == 3
-    assert label[0, 0] == 0
-
-
 def test_create_window_writes_label_and_23_month_range(tmp_path: Path) -> None:
     config_path = Path("data/forest_loss_driver/monocrop_classifier/config.json")
     (tmp_path / "config.json").write_bytes(config_path.read_bytes())
@@ -100,8 +89,8 @@ def test_create_window_writes_label_and_23_month_range(tmp_path: Path) -> None:
         annotation_id="annotation",
         annotation_status="approved",
         confidence="low",
-        class_name="oil_palm",
-        class_id=CLASS_TO_ID["oil_palm"],
+        class_name="soybean",
+        class_id=CLASS_TO_ID["soybean"],
         event_time=datetime(2024, 1, 1, tzinfo=timezone.utc),
         geometry=geometry,
         source_identity="source",
@@ -114,18 +103,19 @@ def test_create_window_writes_label_and_23_month_range(tmp_path: Path) -> None:
     assert window.bounds[3] - window.bounds[1] == 128
     assert (window.time_range[1] - window.time_range[0]).days == 690
     assert window.options["split"] == assign_split("source")
-    assert window.is_layer_completed("label")
+    assert window.is_layer_completed(LABEL_VECTOR_LAYER)
 
-    band_set = dataset.layers["label"].band_sets[0]
-    raster = window.data.read_raster(
-        "label",
-        band_set.bands,
-        band_set.instantiate_raster_format(),
-        window.projection,
-        window.bounds,
-    ).get_chw_array()
-    assert raster.shape == (1, 128, 128)
-    assert set(np.unique(raster)) == {0, CLASS_TO_ID["oil_palm"]}
+    features = window.data.read_vector(
+        LABEL_VECTOR_LAYER,
+        dataset.layers[LABEL_VECTOR_LAYER].instantiate_vector_format(),
+    )
+    assert len(features) == 1
+    properties = features[0].properties
+    # soybean is merged into the mennonites_soybean slot, renamed to soybean.
+    assert properties["class_name"] == "soybean"
+    assert properties["class_id"] == CLASS_TO_ID["mennonites_soybean"]
+    assert properties["raw_class_name"] == "soybean"
+    assert properties["raw_class_id"] == CLASS_TO_ID["soybean"]
 
     existing, outcome = create_window(record, dataset)
     assert outcome == "existing"
