@@ -5,7 +5,9 @@ one tile (a part of a UTM zone) by creating PATCH_SIZE windows, materializing
 Sentinel-2 (and optionally Sentinel-1) mosaics from the OlmoEarth Datasets source,
 running the model, and writing each window's embeddings into the GeoZarr store
 (see zarr_store.py). A per-tile marker file is written to completed_path once the
-tile is done, recording which crops were written and which were skipped.
+tile is done, recording which crops were written and which were skipped. Alongside it,
+a provenance file naming the source scenes behind each window's mosaics is written to
+a sibling directory (see get_provenance_fname).
 
 Windows that don't intersect the zone's canonical wedge or that fall outside the
 coverage mask are skipped (see tiling.py). Embedding pixels where all Sentinel-2
@@ -70,6 +72,11 @@ PATCH_SIZE = 2048
 RESOLUTION = 10
 
 PREDICTION_GROUP = "predict"
+
+# Provenance is written to a sibling of the marker directory, derived by swapping this
+# prefix, so that adding it does not change the arguments already queued for a run.
+COMPLETED_DIR_PREFIX = "completed"
+PROVENANCE_DIR_PREFIX = "provenance"
 
 SENTINEL2_LAYER = "sentinel2_l2a"
 OUTPUT_LAYER = "output"
@@ -209,6 +216,69 @@ def get_marker_fname(
         the marker filename.
     """
     return UPath(completed_path) / f"{projection.crs!s}_{bounds[0]}_{bounds[1]}.json"
+
+
+def get_provenance_fname(marker_fname: UPath) -> UPath:
+    """Get the per-tile provenance filename for a tile's marker filename.
+
+    This lives in a sibling of the marker directory rather than inside it, so that the
+    supervisor's per-cycle listing of the markers does not have to walk it. The
+    basename matches the marker's, so the two join by name.
+
+    Args:
+        marker_fname: the tile's completion marker filename.
+
+    Returns:
+        the provenance filename.
+    """
+    completed_upath = marker_fname.parent
+    name = completed_upath.name
+    if name.startswith(COMPLETED_DIR_PREFIX):
+        name = PROVENANCE_DIR_PREFIX + name[len(COMPLETED_DIR_PREFIX) :]
+    else:
+        name = f"{name}_{PROVENANCE_DIR_PREFIX}"
+    return completed_upath.parent / name / marker_fname.name
+
+
+def _collect_provenance(windows: list[Window]) -> dict[str, dict]:
+    """Record the source scenes that fed each window's mosaics.
+
+    The items come from dataset prepare, and name the exact scenes, with their
+    capture times, that were composited into each monthly mosaic.
+
+    Args:
+        windows: the windows of this tile, after materialize.
+
+    Returns:
+        a dict from window name to layer name to the per-mosaic item groups.
+    """
+    provenance: dict[str, dict] = {}
+    for window in windows:
+        layers: dict[str, list[dict]] = {}
+        for layer_name, layer_data in window.load_layer_datas().items():
+            if layer_name == OUTPUT_LAYER:
+                continue
+            group_time_ranges = layer_data.group_time_ranges or [None] * len(
+                layer_data.serialized_item_groups
+            )
+            layers[layer_name] = [
+                {
+                    "time_range": (
+                        [
+                            group_time_range[0].isoformat(),
+                            group_time_range[1].isoformat(),
+                        ]
+                        if group_time_range is not None
+                        else None
+                    ),
+                    "items": items,
+                }
+                for items, group_time_range in zip(
+                    layer_data.serialized_item_groups, group_time_ranges, strict=True
+                )
+            ]
+        provenance[window.name] = layers
+    return provenance
 
 
 def _crop_crosses_bad_longitude(projection: Projection, bounds: PixelBounds) -> bool:
@@ -606,6 +676,24 @@ def _process_tile(
         )
     else:
         logger.info("no crops to process for this tile")
+
+    # Record the source scenes behind this tile's mosaics. Written before the marker so
+    # that a failure here leaves the tile unmarked, and so retried, rather than leaving
+    # a finished tile with no provenance.
+    provenance_fname = get_provenance_fname(marker_fname)
+    provenance_fname.parent.mkdir(parents=True, exist_ok=True)
+    with provenance_fname.open("w") as f:
+        json.dump(
+            {
+                "projection": projection.serialize(),
+                "bounds": list(bounds),
+                "time_range": [time_range[0].isoformat(), time_range[1].isoformat()],
+                "time_index": time_index,
+                "windows": _collect_provenance(windows),
+            },
+            f,
+        )
+    logger.info("wrote provenance file %s", provenance_fname)
 
     # Write the per-tile completion marker.
     marker = {
