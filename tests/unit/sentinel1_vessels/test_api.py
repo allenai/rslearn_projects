@@ -1,4 +1,4 @@
-"""Unit tests for the Sentinel-1 API request handling."""
+"""Unit tests for the Sentinel-1 vessel detection API."""
 
 import inspect
 
