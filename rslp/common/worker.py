@@ -280,10 +280,12 @@ def worker_pipeline(
                             consecutive_errors = 0
                         except Exception as e:
                             consecutive_errors += 1
-                            logger.error(
-                                "encountered error while processing message %s: %s (%d/%d consecutive errors)",
+                            # exc_info so the traceback survives: without it only the
+                            # exception's message reaches the logs, which is rarely
+                            # enough to locate a failure inside the model or dataset.
+                            logger.exception(
+                                "encountered error while processing message %s (%d/%d consecutive errors)",
                                 entry_input,
-                                e,
                                 consecutive_errors,
                                 retries,
                             )
