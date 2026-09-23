@@ -120,6 +120,34 @@ MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
 )
 
 
+# The encoder's mutually exclusive ways to say where the weights are.
+CHECKPOINT_ARGS = ("model_id", "model_path", "checkpoint_path")
+
+
+def _checkpoint_arg(checkpoint_path: str) -> str:
+    """Which OlmoEarth loader argument `checkpoint_path` should be passed as.
+
+    The encoder accepts exactly one of `model_id`, `model_path` or `checkpoint_path`,
+    and the right one is a property of the weights on disk, not of the caller: a
+    pre-training run writes a `model_and_optim` folder beside its config, while a
+    released bundle is a `config.json` and a `weights.pth`. Choosing here keeps one
+    `--checkpoint_path` option pointing at either, so queue entries already written
+    against the old layout stay valid when a run moves to a bundle.
+
+    Args:
+        checkpoint_path: the directory the run was given.
+
+    Returns:
+        "model_path" for a released bundle, "checkpoint_path" for a training
+        checkpoint.
+    """
+    return (
+        "model_path"
+        if (UPath(checkpoint_path) / "weights.pth").exists()
+        else "checkpoint_path"
+    )
+
+
 def _get_model_extra_args(
     model_config_fname: str,
     checkpoint_path: str,
@@ -157,7 +185,13 @@ def _get_model_extra_args(
     # Set the checkpoint path, patch size, and compilation flag on the OlmoEarth
     # encoder (the first and only encoder entry).
     encoder = model_config["model"]["init_args"]["model"]["init_args"]["encoder"]
-    encoder[0]["init_args"]["checkpoint_path"] = checkpoint_path
+    # The loader arguments are mutually exclusive, so the ones not chosen have to be
+    # cleared: the config file carries a placeholder for whichever it was written
+    # against, and leaving it beside the one set here fails the encoder's own check.
+    chosen = _checkpoint_arg(checkpoint_path)
+    for name in CHECKPOINT_ARGS:
+        encoder[0]["init_args"].pop(name, None)
+    encoder[0]["init_args"][chosen] = checkpoint_path
     encoder[0]["init_args"]["patch_size"] = patch_size
     encoder[0]["init_args"]["compile_model"] = compile_model
 

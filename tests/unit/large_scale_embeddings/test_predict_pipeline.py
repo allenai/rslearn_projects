@@ -96,3 +96,101 @@ def test_collect_provenance_without_group_time_ranges() -> None:
 def test_collect_provenance_window_without_items(tmp_path: pathlib.Path) -> None:
     """A window whose prepare found nothing contributes an empty entry, not an error."""
     assert _collect_provenance([FakeWindow("1_1", {})]) == {"1_1": {}}
+
+
+def test_a_released_bundle_is_loaded_as_model_path(tmp_path: pathlib.Path) -> None:
+    """A config.json + weights.pth bundle must be passed as model_path.
+
+    The encoder accepts exactly one of model_id/model_path/checkpoint_path, and only
+    the model_path loader understands a bundle. Passing a bundle as checkpoint_path
+    sends it down the distributed-checkpoint path, which looks for a model_and_optim
+    folder that a bundle does not have.
+    """
+    from rslp.large_scale_embeddings.predict_pipeline import _checkpoint_arg
+
+    bundle = tmp_path / "v1_3_release_v2"
+    bundle.mkdir()
+    (bundle / "config.json").write_text("{}")
+    (bundle / "weights.pth").write_bytes(b"")
+    assert _checkpoint_arg(str(bundle)) == "model_path"
+
+
+def test_a_training_checkpoint_is_loaded_as_checkpoint_path(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A pre-training checkpoint folder keeps the distributed loader."""
+    from rslp.large_scale_embeddings.predict_pipeline import _checkpoint_arg
+
+    ckpt = tmp_path / "step667200"
+    (ckpt / "model_and_optim").mkdir(parents=True)
+    (ckpt / "config.json").write_text("{}")
+    assert _checkpoint_arg(str(ckpt)) == "checkpoint_path"
+
+
+def test_only_one_loader_argument_survives(tmp_path: pathlib.Path) -> None:
+    """The unchosen loader arguments must be removed, not merely left unset.
+
+    The model config ships a placeholder for whichever loader it was written against.
+    Setting model_path beside that placeholder leaves two of the three set, and the
+    encoder rejects that outright -- so a bundle would fail at model construction.
+    """
+    import json as _json
+
+    import yaml as _yaml
+
+    from rslp.large_scale_embeddings.predict_pipeline import _get_model_extra_args
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "config.json").write_text("{}")
+    (bundle / "weights.pth").write_bytes(b"")
+
+    # A config file carrying the checkpoint_path placeholder, as ours does.
+    config = {
+        "model": {
+            "init_args": {
+                "model": {
+                    "init_args": {
+                        "encoder": [
+                            {
+                                "class_path": "rslearn.models.olmoearth_pretrain.model.OlmoEarth",
+                                "init_args": {
+                                    "checkpoint_path": "/path/to/checkpoint_dir",
+                                    "projected_register_dim": 128,
+                                },
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        "trainer": {
+            "callbacks": [
+                {"init_args": {"merger": {"init_args": {}}}},
+            ]
+        },
+    }
+    config_fname = tmp_path / "model.yaml"
+    with config_fname.open("w") as f:
+        _yaml.safe_dump(config, f)
+
+    args = _get_model_extra_args(
+        model_config_fname=str(config_fname),
+        checkpoint_path=str(bundle),
+        patch_size=1,
+        window_size=16,
+        overlap_size=4,
+        compile_model=True,
+        batch_size=None,
+    )
+    encoder = _json.loads(
+        args[args.index("--model.init_args.model.init_args.encoder") + 1]
+    )
+    init_args = encoder[0]["init_args"]
+    present = [
+        k for k in ("model_id", "model_path", "checkpoint_path") if k in init_args
+    ]
+    assert present == ["model_path"], f"expected only model_path, got {present}"
+    assert init_args["model_path"] == str(bundle)
+    # The unrelated settings must survive the rewrite.
+    assert init_args["projected_register_dim"] == 128
