@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import Enum
@@ -27,6 +28,9 @@ LANDSAT_PORT = int(os.getenv("LANDSAT_PORT", 5555))
 
 # Set up the logger
 logger = get_logger(__name__)
+
+# Serializes GPU inference so a single worker only ever runs one prediction at a time.
+_inference_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -162,7 +166,9 @@ async def home() -> dict:
     summary="Get Vessel Detections from Landsat",
     description="Returns vessel detections from Landsat.",
 )
-async def get_detections(info: LandsatRequest, response: Response) -> LandsatResponse:
+# Not async on purpose: FastAPI runs a sync handler in a worker thread, so the
+# prediction does not block the event loop and the health probe keeps answering.
+def get_detections(info: LandsatRequest, response: Response) -> LandsatResponse:
     """Returns vessel detections for a given request.
 
     Args:
@@ -182,7 +188,7 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
         )
     try:
         logger.info("Processing request with input data.")
-        with time_operation(TimerOperations.TotalInferenceTime):
+        with _inference_lock, time_operation(TimerOperations.TotalInferenceTime):
             detections = predict_pipeline(
                 scene_id=info.scene_id,
                 scene_zip_path=info.scene_zip_path,

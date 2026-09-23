@@ -207,6 +207,8 @@ async def home() -> dict:
     summary="Get Vessel Detections from Sentinel-2",
     description="Returns vessel detections from Sentinel-2.",
 )
+# Not async on purpose: FastAPI runs a sync handler in a worker thread, so the
+# prediction does not block the event loop and the health probe keeps answering.
 def get_detections(info: Sentinel2Request, response: Response) -> Sentinel2Response:
     """Returns vessel detections for a given request.
 
