@@ -1,0 +1,301 @@
+# Prediction config for config_rslearn_bpcat_notemporal.yaml using only rslearn
+# components (no rslp imports), so the checkpoint can be run by systems that depend on
+# rslearn alone (e.g. OlmoEarth Studio). Same as config_rslearn_bpcat_temporal_predict.yaml
+# but without the TemporalTransformer encoder entry: the OlmoEarth per-timestep tokens
+# feed the decoders directly.
+#
+# The model block is identical to the training config except that the binary head is
+# the plain SegmentationHead (the training-time BalancedBinarySegmentationHead only
+# changes the loss and has no parameters), so the training checkpoint loads directly.
+#
+# The Studio config in olmoearth_projects (olmoearth_run_data/olmoearth_lcc/) is derived
+# from this file; keep the model block in sync.
+#
+# Inputs: the dataset config (config_predict_rslearn.json) yields exactly 16 quarterly
+# mosaics (max_matches: 16 keeps the most recent periods) and 4 frequent images; the
+# Concatenate transform stacks them along time into the 20-image sentinel2_l2a input.
+#
+# Outputs: one RslearnWriter per head writes to its own layer (output_<task>). The five
+# probability heads write softmax probabilities scaled to 0..255 (uint8); ts_start and
+# ts_end write the argmax timestep index (0..19) of the predicted change start/end,
+# which maps to a date via the window time range and the layer time_offset/duration.
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+        - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          init_args:
+            model_id: OLMOEARTH_V1_2_BASE
+            patch_size: 4
+            token_pooling: false
+            use_legacy_timestamps: false
+        decoders:
+          binary:
+          - class_path: rslearn.models.breakpoint_scan.BreakpointScan
+            init_args:
+              in_dim: 768
+              output: EVIDENCE
+              hidden: 256
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 256, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 128, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 128, out_channels: 64, kernel_size: 3}
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 64
+              out_channels: 3
+              kernel_size: 1
+              activation: {class_path: torch.nn.Identity}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          src:
+          - class_path: rslearn.models.breakpoint_scan.BreakpointScan
+            init_args:
+              in_dim: 768
+              output: BEFORE
+              hidden: 256
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 768, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 256, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 128, kernel_size: 3}
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 128
+              out_channels: 13
+              kernel_size: 1
+              activation: {class_path: torch.nn.Identity}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          dst:
+          - class_path: rslearn.models.breakpoint_scan.BreakpointScan
+            init_args:
+              in_dim: 768
+              output: AFTER
+              hidden: 256
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 768, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 256, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 128, kernel_size: 3}
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 128
+              out_channels: 13
+              kernel_size: 1
+              activation: {class_path: torch.nn.Identity}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          pre_change:
+          - class_path: rslearn.models.breakpoint_scan.BreakpointScan
+            init_args:
+              in_dim: 768
+              output: BEFORE_AFTER
+              hidden: 256
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 1536, out_channels: 768, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 256, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 128, kernel_size: 3}
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 128
+              out_channels: 11
+              kernel_size: 1
+              activation: {class_path: torch.nn.Identity}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          post_change:
+          - class_path: rslearn.models.breakpoint_scan.BreakpointScan
+            init_args:
+              in_dim: 768
+              output: BEFORE_AFTER
+              hidden: 256
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 1536, out_channels: 768, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 768, out_channels: 256, kernel_size: 3}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 2}
+          - class_path: rslearn.models.conv.Conv
+            init_args: {in_channels: 256, out_channels: 128, kernel_size: 3}
+          - class_path: rslearn.models.conv.Conv
+            init_args:
+              in_channels: 128
+              out_channels: 15
+              kernel_size: 1
+              activation: {class_path: torch.nn.Identity}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          ts_start:
+          - class_path: rslearn.models.tokens_to_channels.TokensToChannels
+            init_args: {in_dim: 768, out_dim: 1}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 4}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          ts_end:
+          - class_path: rslearn.models.tokens_to_channels.TokensToChannels
+            init_args: {in_dim: 768, out_dim: 1}
+          - class_path: rslearn.models.upsample.Upsample
+            init_args: {scale_factor: 4}
+          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+        loss_weights:
+          binary: 2.0
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: ${PREDICT_DS}
+    inputs:
+      sentinel2_quarterly:
+        data_type: raster
+        layers: [sentinel2_quarterly]
+        bands: &s2_bands [B02, B03, B04, B08, B05, B06, B07, B8A, B11, B12, B01, B09]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_0:
+        data_type: raster
+        layers: [sentinel2_frequent_0]
+        bands: *s2_bands
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        # No label layers are read at prediction time; the mapping only names the tasks.
+        input_mapping:
+          binary: {}
+          src: {}
+          dst: {}
+          pre_change: {}
+          post_change: {}
+          ts_start: {}
+          ts_end: {}
+        tasks:
+          binary:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 3
+              output_probs: true
+              prob_scales: [255, 255, 255]
+          src:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 13
+              output_probs: true
+              prob_scales: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
+          dst:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 13
+              output_probs: true
+              prob_scales: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
+          pre_change:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 11
+              output_probs: true
+              prob_scales: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
+          post_change:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 15
+              output_probs: true
+              prob_scales: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
+          # Argmax timestep index of the predicted change start/end (single band).
+          ts_start:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 20
+          ts_end:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 20
+    batch_size: 8
+    num_workers: 16
+    predict_config:
+      groups: [predict]
+      crop_size: 64
+      load_all_crops: true
+      overlap_pixels: 16
+      skip_targets: true
+      transforms:
+      # 16 quarterly + 4 frequent images -> 20-image sentinel2_l2a stack, in time order.
+      - class_path: rslearn.train.transforms.concatenate.Concatenate
+        init_args:
+          selections:
+            sentinel2_quarterly: []
+            sentinel2_frequent_0: []
+          output_selector: sentinel2_l2a
+          concatenate_dim: TIME
+      - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+        init_args:
+          band_names:
+            sentinel2_l2a: *s2_bands
+trainer:
+  callbacks:
+  - class_path: rslearn.train.prediction_writer.RslearnWriter
+    init_args:
+      output_layer: output_binary
+      selector: [binary]
+      merger: &merger
+        class_path: rslearn.train.prediction_writer.RasterMerger
+        init_args:
+          overlap_pixels: 16
+  - class_path: rslearn.train.prediction_writer.RslearnWriter
+    init_args:
+      output_layer: output_src
+      selector: [src]
+      merger: *merger
+  - class_path: rslearn.train.prediction_writer.RslearnWriter
+    init_args:
+      output_layer: output_dst
+      selector: [dst]
+      merger: *merger
+  - class_path: rslearn.train.prediction_writer.RslearnWriter
+    init_args:
+      output_layer: output_pre_change
+      selector: [pre_change]
+      merger: *merger
+  - class_path: rslearn.train.prediction_writer.RslearnWriter
+    init_args:
+      output_layer: output_post_change
+      selector: [post_change]
+      merger: *merger
+  - class_path: rslearn.train.prediction_writer.RslearnWriter
+    init_args:
+      output_layer: output_ts_start
+      selector: [ts_start]
+      merger: *merger
+  - class_path: rslearn.train.prediction_writer.RslearnWriter
+    init_args:
+      output_layer: output_ts_end
+      selector: [ts_end]
+      merger: *merger
+project_name: 2026_09_17_lcc
+run_name: rslearn_bpcat_notemporal
+management_dir: ${RSLP_PREFIX}/projects

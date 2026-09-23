@@ -255,6 +255,23 @@ The other `config_*.yaml` files in `data/olmoearth_lcc/lcc_model/` are variants 
 were tried along the way; `config_bp_abs_qdrop_bpcat_1pass.yaml` (and its `_predict`
 counterpart) is the one used by the prediction pipeline.
 
+`config_rslearn_bpcat_notemporal.yaml` and `config_rslearn_bpcat_temporal.yaml` express
+the model with generic rslearn components (`BreakpointScan`, `TokensToChannels`,
+`TemporalTransformer`) instead of `rslp.olmoearth_lcc.lcc_model.model.ChangeModel`, so
+the checkpoints can be run by systems that depend on rslearn alone. Their `_predict`
+counterparts contain no `rslp` imports at all.
+
+#### OlmoEarth Studio (olmoearth_run)
+
+The Studio configs for the `rslearn_bpcat_notemporal` model live in olmoearth_projects
+under `olmoearth_run_data/olmoearth_lcc/`. `model.yaml` there is derived from
+`config_rslearn_bpcat_notemporal_predict.yaml` and `dataset.json` from
+`config_predict_rslearn.json`; keep the model blocks in sync when the model changes.
+Studio currently supports a single output per model, so only the `post_change` head
+(argmax class index) is written there; the other heads will be exposed once
+multi-output support is available. See the README in that directory for the time range
+semantics (`oe_start_time` is the reference date) and how to run it.
+
 ---
 
 ### Prediction
