@@ -876,7 +876,9 @@ class _FakeClusterBeaker:
         outer = self
 
         class _ClusterService:
-            def get(self, name: str, include_cluster_occupancy: bool = False):
+            def get(
+                self, name: str, include_cluster_occupancy: bool = False
+            ) -> "_FakeCluster":
                 assert include_cluster_occupancy, (
                     "occupancy is only populated when asked for; without the flag "
                     "every slot count reads zero and backfill silently does nothing"
@@ -900,7 +902,7 @@ def test_backfill_is_off_unless_asked_for() -> None:
 
     class _Exploding:
         @property
-        def cluster(self):
+        def cluster(self) -> None:
             raise AssertionError("cluster occupancy was read with backfill disabled")
 
     assert mod._backfill_target(_Exploding(), worker, 0, 0) == 0
@@ -956,7 +958,7 @@ def test_backfill_survives_an_unreadable_cluster() -> None:
     class _Broken:
         class cluster:
             @staticmethod
-            def get(name, include_cluster_occupancy=False):
+            def get(name: str, include_cluster_occupancy: bool = False) -> None:
                 raise RuntimeError("beaker is down")
 
     worker = mod.WorkerConfig(
@@ -1019,7 +1021,7 @@ def test_an_unreadable_cluster_holds_backfill_instead_of_dropping_it() -> None:
     class _Broken:
         class cluster:
             @staticmethod
-            def get(name, include_cluster_occupancy=False):
+            def get(name: str, include_cluster_occupancy: bool = False) -> None:
                 raise RuntimeError("beaker is down")
 
     worker = mod.WorkerConfig(
