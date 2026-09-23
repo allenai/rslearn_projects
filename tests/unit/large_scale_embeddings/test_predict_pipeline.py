@@ -128,11 +128,13 @@ def test_a_training_checkpoint_is_loaded_as_checkpoint_path(
 
 
 def test_only_one_loader_argument_survives(tmp_path: pathlib.Path) -> None:
-    """The unchosen loader arguments must be removed, not merely left unset.
+    """Exactly one loader argument may reach the encoder.
 
-    The model config ships a placeholder for whichever loader it was written against.
-    Setting model_path beside that placeholder leaves two of the three set, and the
-    encoder rejects that outright -- so a bundle would fail at model construction.
+    jsonargparse merges this block onto the config file's init_args rather than
+    replacing them, so anything left here is what the encoder sees on top of the file.
+    Two set is rejected outright, and nulling the unwanted ones does not work either:
+    they arrive as the string "None" and fail their own type check. Removal is the
+    only form that survives, which is why the config file names no loader at all.
     """
     import json as _json
 
@@ -155,7 +157,6 @@ def test_only_one_loader_argument_survives(tmp_path: pathlib.Path) -> None:
                             {
                                 "class_path": "rslearn.models.olmoearth_pretrain.model.OlmoEarth",
                                 "init_args": {
-                                    "checkpoint_path": "/path/to/checkpoint_dir",
                                     "projected_register_dim": 128,
                                 },
                             }
@@ -187,17 +188,10 @@ def test_only_one_loader_argument_survives(tmp_path: pathlib.Path) -> None:
         args[args.index("--model.init_args.model.init_args.encoder") + 1]
     )
     init_args = encoder[0]["init_args"]
-    set_args = [
-        k
-        for k in ("model_id", "model_path", "checkpoint_path")
-        if init_args.get(k) is not None
+    present = [
+        k for k in ("model_id", "model_path", "checkpoint_path") if k in init_args
     ]
-    assert set_args == ["model_path"], f"expected only model_path set, got {set_args}"
+    assert present == ["model_path"], f"expected only model_path, got {present}"
     assert init_args["model_path"] == str(bundle)
-    # Explicitly null, not absent: jsonargparse merges this block onto the config
-    # file's init_args, so a dropped key lets the file's own placeholder reappear and
-    # two loaders end up set, which the encoder rejects outright.
-    assert init_args["checkpoint_path"] is None
-    assert init_args["model_id"] is None
     # The unrelated settings must survive the rewrite.
     assert init_args["projected_register_dim"] == 128

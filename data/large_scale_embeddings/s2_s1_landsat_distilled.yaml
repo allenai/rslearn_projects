@@ -7,8 +7,12 @@ model:
         encoder:
           - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
             init_args:
-              # Overridden by the prediction pipeline (--checkpoint_path).
-              checkpoint_path: /path/to/checkpoint_dir
+              # Where the weights come from is set by the prediction pipeline
+              # (--checkpoint_path), which picks model_path for a released bundle and
+              # checkpoint_path for a training checkpoint. No placeholder is set here:
+              # the pipeline's block is merged onto these init_args rather than
+              # replacing them, so a placeholder would survive alongside the argument
+              # the pipeline chose and the encoder rejects having two of them set.
               # Selects the 128-dim distilled student over the 768-dim teacher, which
               # is the default. Set here rather than via OE_PROJECTED_REGISTER_DIM so
               # it lands in the archive's provenance. The first 64 dims are a trained
