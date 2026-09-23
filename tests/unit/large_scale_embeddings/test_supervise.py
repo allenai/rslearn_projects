@@ -997,14 +997,14 @@ def test_backfill_does_not_fight_its_own_workers() -> None:
         backfill_max_workers=1000,
     )
     # Cold start: 100 slots idle, pool holds only its allocated workers.
-    cold = mod._backfill_target(_FakeClusterBeaker({"ai2/jupiter": 100}), worker, 10, 10)
+    cold = mod._backfill_target(
+        _FakeClusterBeaker({"ai2/jupiter": 100}), worker, 10, 10
+    )
     assert cold == 100, f"expected to claim all 100 idle slots, got {cold}"
 
     # Those 100 are now running, so the cluster reports nothing idle. The target must
     # stay at 100, not collapse to zero.
-    warm = mod._backfill_target(
-        _FakeClusterBeaker({"ai2/jupiter": 0}), worker, 110, 10
-    )
+    warm = mod._backfill_target(_FakeClusterBeaker({"ai2/jupiter": 0}), worker, 110, 10)
     assert warm == 100, f"backfill collapsed to {warm} once its own workers were up"
 
 
