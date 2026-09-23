@@ -82,7 +82,7 @@ PENDING_PER_WORKER = 3
 DEFAULT_CYCLE_BUDGET_SECONDS = int(timedelta(minutes=10).total_seconds())
 
 # Where a supervisor caches its enumerated block list between cycles.
-DEFAULT_ENUMERATION_CACHE_DIR = "/tmp/rslp_enumeration_cache"  # noqa: S108
+DEFAULT_ENUMERATION_CACHE_DIR = "/tmp/rslp_enumeration_cache"
 
 # Minimum runtime to request for the supervisor. It is a cheap CPU job that should stay
 # up for the whole run, but a shorter request is placed sooner, and auto_resume brings it
@@ -172,6 +172,14 @@ CAPACITY_MAX_STEP = 32
 # runs several hundred; this is sized well above that so the total is not silently
 # truncated into an underestimate, which would read as free allocation and over-launch.
 ALLOCATION_JOB_LIMIT = 5000
+
+# Longest min_runtime a job may ask for and still count as unallocated.
+#
+# Beaker treats a job that wants more than this as a claim on an allocation. At or under
+# it the job is unallocated: it schedules only onto slots no allocation is holding, and
+# yields to allocated work the moment that work appears. That is exactly the bargain a
+# backfill worker wants, so this is a threshold to stay under, not a duration to tune.
+BACKFILL_MIN_RUNTIME = timedelta(minutes=5)
 
 # GDAL environment every worker needs, merged in below so it cannot be forgotten.
 #
@@ -295,6 +303,28 @@ class WorkerConfig:
     # Floor for a capacity-sized pool, so a momentarily full allocation cannot park the
     # run at zero workers and leave nothing to make progress when slots free up again.
     capacity_min_workers: int = 8
+    # Fraction of the cluster's idle GPU slots to take on top of the allocation, or None
+    # to stay inside the allocation.
+    #
+    # These workers run at `backfill_priority` with a min_runtime short enough to count
+    # as unallocated, so they occupy only slots no allocation is holding and are
+    # preempted as soon as allocated work wants them back. That makes them nearly free
+    # to take and unreliable to keep: a preempted worker loses its block, the queue
+    # re-offers it, and another worker picks it up. Worth it when the alternative is an
+    # idle cluster, which is why this is sized from what is actually idle.
+    #
+    # Below 1.0 so a pool sizing itself from the same reading as everyone else's does
+    # not converge on the same slots and thrash.
+    backfill_fraction: float | None = None
+    # Sanity bound on the backfill pool, not a policy limit: the point of backfill is to
+    # take whatever is going, so this is set well above any real cluster's slot count and
+    # exists only so a garbage occupancy reading cannot turn into a launch of that size.
+    # Growth is paced separately by CAPACITY_MAX_STEP, which is what keeps a genuine
+    # spike in free slots from arriving all at once.
+    backfill_max_workers: int = 512
+    # Priority for backfill workers. Must outrank nothing in particular: it only has to
+    # be a priority the run may use without spending allocation.
+    backfill_priority: str = "high"
 
     def __post_init__(self) -> None:
         """Merge the GDAL defaults so a caller cannot drop them by passing env_vars."""
@@ -645,6 +675,91 @@ def _capacity_target(
     return capped
 
 
+def _cluster_free_slots(beaker: Any, worker: "WorkerConfig") -> int:
+    """GPU slots on `worker.cluster` that no job currently holds.
+
+    This is the whole cluster, not the workspace's allocation: the point of backfill is
+    to use what the organisation is not entitled to but nobody else is using either.
+    Cordoned slots are already excluded from the reading.
+
+    Args:
+        beaker: an open Beaker client.
+        worker: the pool configuration.
+
+    Returns:
+        idle slots summed over every cluster in the pool's list.
+    """
+    total = 0
+    for name in worker.cluster:
+        occupancy = beaker.cluster.get(name, include_cluster_occupancy=True)
+        total += occupancy.cluster_occupancy.slot_counts.available
+    return max(0, total)
+
+
+def _backfill_target(
+    beaker: Any,
+    worker: "WorkerConfig",
+    live: int,
+    allocated: int,
+) -> int:
+    """How many unallocated workers to add on top of the allocated pool.
+
+    Sized from what the cluster has idle right now, because that is the only capacity an
+    unallocated job can actually get: it is admitted onto free slots and evicted when an
+    allocation wants them. Reading the allocation instead would size the pool from an
+    entitlement these workers deliberately do not use.
+
+    The pool's own backfill workers are added back before the fraction is applied. They
+    are sitting on the very slots being counted, so without this the reading falls by
+    exactly what was launched, the target collapses to zero, the surplus drain retires
+    them, the slots free up and the whole thing repeats -- a launch-and-kill loop that
+    costs a block every time round. Adding them back makes the steady state a fixed
+    point: once the idle slots are taken, the target equals the pool already holding
+    them and nothing moves.
+
+    Holds the pool where it is when the reading fails, rather than reporting zero.
+    Zero reads as "give it all back" to the surplus drain, so a momentary Beaker hiccup
+    would retire every backfill worker mid-block.
+
+    Args:
+        beaker: an open Beaker client.
+        worker: the pool configuration.
+        live: workers currently starting or demonstrably alive, both kinds.
+        allocated: this cycle's allocated-pool target.
+
+    Returns:
+        workers to run at backfill priority, possibly zero.
+    """
+    if worker.backfill_fraction is None or worker.gpus <= 0:
+        return 0
+    slots_per_worker = max(1, worker.gpus)
+    # Anything above the allocated target is already running as backfill.
+    held = max(0, live - allocated)
+    try:
+        free = _cluster_free_slots(beaker, worker)
+    except Exception:
+        logger.exception(
+            "could not read cluster occupancy; holding backfill at %d", held
+        )
+        return min(held, worker.backfill_max_workers)
+
+    target = int((free + held * slots_per_worker) * worker.backfill_fraction)
+    target //= slots_per_worker
+    target = min(target, worker.backfill_max_workers)
+    logger.info(
+        "backfill target %d worker(s): %d idle slot(s) on %s plus %d held by this pool, "
+        "fraction %.2f, %d gpu(s)/worker, ceiling %d",
+        target,
+        free,
+        ",".join(worker.cluster),
+        held,
+        worker.backfill_fraction,
+        slots_per_worker,
+        worker.backfill_max_workers,
+    )
+    return target
+
+
 def _drain_path(store_path: str, queue_name: str) -> str:
     """Where the drain list for one run lives.
 
@@ -921,7 +1036,15 @@ def _run_cycle(
         )
         # Resolved here rather than from config because capacity sizing needs both the
         # live count and a Beaker client. Static runs get config.worker.num_workers.
-        num_workers = _capacity_target(beaker, config.worker, live)
+        allocated_target = _capacity_target(beaker, config.worker, live)
+        # Backfill rides on top of the allocation rather than replacing part of it, so
+        # the run keeps every slot it is entitled to and adds whatever the cluster is
+        # wasting. Re-capped because each half is capped separately and the sum is not.
+        num_workers = min(
+            allocated_target
+            + _backfill_target(beaker, config.worker, live, allocated_target),
+            live + CAPACITY_MAX_STEP,
+        )
         # Staying inside an allocation means giving capacity back, not just declining
         # to take more. Only done when capacity sizing is on: a static pool sits a few
         # over target routinely, because a worker that has exited stays unfinalized for
@@ -1063,39 +1186,64 @@ def _run_cycle(
     # jobs is pure churn: each surplus worker starts, finds nothing to claim and exits.
     worker_target = min(num_workers, len(remaining))
     if live < worker_target:
-        rslp.common.worker.launch_workers(
-            image_name=config.worker.image_name,
-            queue_name=queue_name,
-            num_workers=worker_target - live,
-            cluster=config.worker.cluster,
-            gpus=config.worker.gpus,
-            shared_memory=config.worker.shared_memory,
-            priority=BeakerJobPriority[config.worker.priority],
-            weka_mounts=[
-                WekaMount(
-                    bucket_name=config.worker.weka_bucket,
-                    mount_path=config.worker.weka_mount_path,
-                )
-            ],
-            idle_timeout=config.worker.idle_seconds,
-            drain_path=drain_path,
-            name_prefix=worker_name_prefix(queue_name),
-            extra_env_vars={
-                "OEDATASETS_API_URL": config.worker.datasets_api_url,
-                **(config.worker.env_vars or {}),
-            },
-            extra_env_secrets={
-                "DATASETS_API_TOKEN": config.worker.datasets_token_secret,
-                "AWS_ACCESS_KEY_ID": config.worker.aws_key_id_secret,
-                "AWS_SECRET_ACCESS_KEY": config.worker.aws_secret_key_secret,
-            },
-        )
+
+        def launch(count: int, priority: str, min_runtime: timedelta) -> None:
+            """Launch `count` workers differing only in what may evict them."""
+            rslp.common.worker.launch_workers(
+                image_name=config.worker.image_name,
+                queue_name=queue_name,
+                num_workers=count,
+                cluster=config.worker.cluster,
+                gpus=config.worker.gpus,
+                shared_memory=config.worker.shared_memory,
+                priority=BeakerJobPriority[priority],
+                min_runtime=min_runtime,
+                weka_mounts=[
+                    WekaMount(
+                        bucket_name=config.worker.weka_bucket,
+                        mount_path=config.worker.weka_mount_path,
+                    )
+                ],
+                idle_timeout=config.worker.idle_seconds,
+                drain_path=drain_path,
+                name_prefix=worker_name_prefix(queue_name),
+                extra_env_vars={
+                    "OEDATASETS_API_URL": config.worker.datasets_api_url,
+                    **(config.worker.env_vars or {}),
+                },
+                extra_env_secrets={
+                    "DATASETS_API_TOKEN": config.worker.datasets_token_secret,
+                    "AWS_ACCESS_KEY_ID": config.worker.aws_key_id_secret,
+                    "AWS_SECRET_ACCESS_KEY": config.worker.aws_secret_key_secret,
+                },
+            )
+
+        # Spend the allocation before taking anything on loan. An allocated worker keeps
+        # its slot until the block is done; a backfill worker can lose it at any moment,
+        # so a slot the run is entitled to is worth more held allocated than unallocated.
         just_launched = worker_target - live
+        allocated = max(0, min(allocated_target, worker_target) - live)
+        allocated = min(allocated, just_launched)
+        if allocated:
+            launch(
+                allocated,
+                config.worker.priority,
+                rslp.common.worker.DEFAULT_WORKER_MIN_RUNTIME,
+            )
+        if just_launched - allocated:
+            launch(
+                just_launched - allocated,
+                config.worker.backfill_priority,
+                BACKFILL_MIN_RUNTIME,
+            )
         if launched is not None:
             launched.value = just_launched
         logger.info(
-            "launched %d worker(s) (target %d, %d existing, %d outstanding job(s))",
+            "launched %d worker(s), %d allocated and %d backfill (target %d, "
+            "%d existing, %d outstanding job(s))",
             just_launched,
+            allocated,
+            just_launched - allocated,
             worker_target,
             live,
             len(remaining),

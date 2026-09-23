@@ -852,3 +852,181 @@ def test_a_stopping_worker_is_not_double_counted_as_starting() -> None:
     beaker = _FakeBeaker(workloads, heartbeats=[])
     got = mod._count_workers(beaker, object(), prefix, queue=object(), now=now)
     assert got == 0, f"a stopping worker was counted as starting, got {got}"
+
+
+class _FakeSlotCounts:
+    def __init__(self, available: int) -> None:
+        self.available = available
+
+
+class _FakeOccupancy:
+    def __init__(self, available: int) -> None:
+        self.slot_counts = _FakeSlotCounts(available)
+
+
+class _FakeCluster:
+    def __init__(self, available: int) -> None:
+        self.cluster_occupancy = _FakeOccupancy(available)
+
+
+class _FakeClusterBeaker:
+    """Just enough Beaker to answer a cluster occupancy read."""
+
+    def __init__(self, available_by_cluster: dict[str, int]) -> None:
+        outer = self
+
+        class _ClusterService:
+            def get(self, name: str, include_cluster_occupancy: bool = False):
+                assert include_cluster_occupancy, (
+                    "occupancy is only populated when asked for; without the flag "
+                    "every slot count reads zero and backfill silently does nothing"
+                )
+                return _FakeCluster(outer._available[name])
+
+        self._available = available_by_cluster
+        self.cluster = _ClusterService()
+
+
+def test_backfill_is_off_unless_asked_for() -> None:
+    """A pool with no backfill_fraction must not touch the cluster at all.
+
+    Backfill takes slots outside the allocation, so it has to be opt-in: a run that
+    never configured it must behave exactly as before.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = mod.WorkerConfig(image_name="img", cluster=["ai2/jupiter"])
+
+    class _Exploding:
+        @property
+        def cluster(self):
+            raise AssertionError("cluster occupancy was read with backfill disabled")
+
+    assert mod._backfill_target(_Exploding(), worker, 0, 0) == 0
+
+
+def test_backfill_sizes_from_idle_slots_across_clusters() -> None:
+    """The target is the configured share of what is idle, summed over clusters."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    beaker = _FakeClusterBeaker({"ai2/jupiter": 100, "ai2/saturn": 20})
+    worker = mod.WorkerConfig(
+        image_name="img",
+        cluster=["ai2/jupiter", "ai2/saturn"],
+        backfill_fraction=0.5,
+        backfill_max_workers=1000,
+    )
+    # 120 idle slots, half of them, one GPU per worker.
+    assert mod._backfill_target(beaker, worker, 0, 0) == 60
+
+
+def test_backfill_respects_its_ceiling_and_gpus_per_worker() -> None:
+    """A briefly empty cluster must not turn into an unbounded launch."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    beaker = _FakeClusterBeaker({"ai2/jupiter": 800})
+    worker = mod.WorkerConfig(
+        image_name="img",
+        cluster=["ai2/jupiter"],
+        backfill_fraction=1.0,
+        backfill_max_workers=64,
+    )
+    assert mod._backfill_target(beaker, worker, 0, 0) == 64
+
+    # Two GPUs per worker halves how many workers the same slots buy.
+    worker = mod.WorkerConfig(
+        image_name="img",
+        cluster=["ai2/jupiter"],
+        gpus=2,
+        backfill_fraction=0.5,
+        backfill_max_workers=1000,
+    )
+    assert mod._backfill_target(beaker, worker, 0, 0) == 200
+
+
+def test_backfill_survives_an_unreadable_cluster() -> None:
+    """Losing the occupancy read costs backfill for a cycle, not the run."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    class _Broken:
+        class cluster:
+            @staticmethod
+            def get(name, include_cluster_occupancy=False):
+                raise RuntimeError("beaker is down")
+
+    worker = mod.WorkerConfig(
+        image_name="img", cluster=["ai2/jupiter"], backfill_fraction=0.5
+    )
+    assert mod._backfill_target(_Broken(), worker, 0, 0) == 0
+
+
+def test_backfill_workers_must_stay_unallocated() -> None:
+    """Over five minutes a job claims an allocation, which defeats backfill entirely."""
+    import importlib
+    from datetime import timedelta
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    assert mod.BACKFILL_MIN_RUNTIME <= timedelta(minutes=5), (
+        "a backfill worker asking for more than five minutes counts as allocated and "
+        "would consume the very allocation it is meant to leave alone"
+    )
+
+
+def test_backfill_does_not_fight_its_own_workers() -> None:
+    """The pool's own backfill workers must not read as the cluster filling up.
+
+    They occupy the very slots the target is computed from. Counting only what is idle
+    makes a full pool look like a target of zero, the surplus drain retires the workers,
+    the slots free, and the next cycle launches them again -- losing a block each time
+    round. The steady state has to be a fixed point instead.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = mod.WorkerConfig(
+        image_name="img",
+        cluster=["ai2/jupiter"],
+        backfill_fraction=1.0,
+        backfill_max_workers=1000,
+    )
+    # Cold start: 100 slots idle, pool holds only its allocated workers.
+    cold = mod._backfill_target(_FakeClusterBeaker({"ai2/jupiter": 100}), worker, 10, 10)
+    assert cold == 100, f"expected to claim all 100 idle slots, got {cold}"
+
+    # Those 100 are now running, so the cluster reports nothing idle. The target must
+    # stay at 100, not collapse to zero.
+    warm = mod._backfill_target(
+        _FakeClusterBeaker({"ai2/jupiter": 0}), worker, 110, 10
+    )
+    assert warm == 100, f"backfill collapsed to {warm} once its own workers were up"
+
+
+def test_an_unreadable_cluster_holds_backfill_instead_of_dropping_it() -> None:
+    """A failed occupancy read must not read as 'retire every backfill worker'.
+
+    The surplus drain acts on the returned target, so reporting zero would retire a
+    whole healthy pool mid-block over one transient Beaker error.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    class _Broken:
+        class cluster:
+            @staticmethod
+            def get(name, include_cluster_occupancy=False):
+                raise RuntimeError("beaker is down")
+
+    worker = mod.WorkerConfig(
+        image_name="img",
+        cluster=["ai2/jupiter"],
+        backfill_fraction=1.0,
+        backfill_max_workers=1000,
+    )
+    # 40 allocated, 100 backfill already running.
+    assert mod._backfill_target(_Broken(), worker, 140, 40) == 100
