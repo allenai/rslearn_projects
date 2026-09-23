@@ -187,10 +187,17 @@ def test_only_one_loader_argument_survives(tmp_path: pathlib.Path) -> None:
         args[args.index("--model.init_args.model.init_args.encoder") + 1]
     )
     init_args = encoder[0]["init_args"]
-    present = [
-        k for k in ("model_id", "model_path", "checkpoint_path") if k in init_args
+    set_args = [
+        k
+        for k in ("model_id", "model_path", "checkpoint_path")
+        if init_args.get(k) is not None
     ]
-    assert present == ["model_path"], f"expected only model_path, got {present}"
+    assert set_args == ["model_path"], f"expected only model_path set, got {set_args}"
     assert init_args["model_path"] == str(bundle)
+    # Explicitly null, not absent: jsonargparse merges this block onto the config
+    # file's init_args, so a dropped key lets the file's own placeholder reappear and
+    # two loaders end up set, which the encoder rejects outright.
+    assert init_args["checkpoint_path"] is None
+    assert init_args["model_id"] is None
     # The unrelated settings must survive the rewrite.
     assert init_args["projected_register_dim"] == 128

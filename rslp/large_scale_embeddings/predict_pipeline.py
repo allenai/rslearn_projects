@@ -185,13 +185,14 @@ def _get_model_extra_args(
     # Set the checkpoint path, patch size, and compilation flag on the OlmoEarth
     # encoder (the first and only encoder entry).
     encoder = model_config["model"]["init_args"]["model"]["init_args"]["encoder"]
-    # The loader arguments are mutually exclusive, so the ones not chosen have to be
-    # cleared: the config file carries a placeholder for whichever it was written
-    # against, and leaving it beside the one set here fails the encoder's own check.
+    # The loader arguments are mutually exclusive, so the ones not chosen are set to
+    # None rather than removed. The config file carries a placeholder for whichever it
+    # was written against, and jsonargparse merges this block onto that file's
+    # init_args instead of replacing them: a dropped key comes back from the file and
+    # two end up set, which the encoder rejects. An explicit null overrides it.
     chosen = _checkpoint_arg(checkpoint_path)
     for name in CHECKPOINT_ARGS:
-        encoder[0]["init_args"].pop(name, None)
-    encoder[0]["init_args"][chosen] = checkpoint_path
+        encoder[0]["init_args"][name] = checkpoint_path if name == chosen else None
     encoder[0]["init_args"]["patch_size"] = patch_size
     encoder[0]["init_args"]["compile_model"] = compile_model
 
