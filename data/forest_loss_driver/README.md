@@ -17,6 +17,11 @@ Dataset Versions
   layers (so that the timestamps appear for those layers in ES Studio).
 - 20250605: keep the Planet images but get 6 pre and 6 post Sentinel-2 L2A, Sentinel-1,
   and Landsat images from Planetary Computer and AWS.
+- 20260924_utm: rebuild the training dataset directly from the labels in OlmoEarth
+  Studio (`rslp/forest_loss_driver/create_dataset.py`) instead of syncing labels into
+  the old rslearn windows. Windows are 128x128 at 10 m/pixel in UTM rather than Web
+  Mercator, and only the Sentinel-2 L2A layers are kept. Adds the "Validatetest"
+  labels. See `20260924_utm/README.md`.
 
 
 Dataset Configurations
@@ -29,6 +34,10 @@ Dataset Configurations
   Studio. It also gets Planet Labs RGB images.
 - config_multimodal.json: this gets inputs that match what Helios can do, Sentinel-2 +
   Sentinel-1 + Landsat.
+- 20260924_utm/config.json: label layer plus the 4 least cloudy pre and 4 least cloudy
+  post Sentinel-2 L2A images (matching what the model reads) via the OlmoEarth
+  Datasets data source in olmoearth_run (same as the deployed inference pipeline),
+  for the UTM dataset built from Studio labels.
 
 
 Deployment Details

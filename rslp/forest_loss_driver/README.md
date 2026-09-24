@@ -20,6 +20,30 @@ driver in each window (forest loss alert).
 For a summary of the version history of dataset and model configuration files, see
 `data/forest_loss_driver/README.md`.
 
+## Build the Training Dataset from Studio
+
+The training dataset is built directly from the labels in OlmoEarth Studio. The Studio
+projects to include, along with their label hierarchies and the mapping to the flat set
+of categories the model predicts, are registered in `create_dataset.py`. The script
+creates one 128x128 window at 10 m/pixel (UTM) per labeled task, writes the `label`
+layer, and assigns the train/val split; the Sentinel-2 images are then materialized
+with the standard rslearn commands.
+
+```
+DS=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/20260924_utm/
+python -m rslp.forest_loss_driver.create_dataset --ds-path $DS
+rslearn dataset prepare --root $DS --workers 64 --retry-max-attempts 5 --retry-backoff-seconds 5
+rslearn dataset materialize --root $DS --workers 64 --ignore-errors --retry-max-attempts 5 --retry-backoff-seconds 5
+rslearn model fit --config data/forest_loss_driver/20260924_utm/config.yaml
+```
+
+Re-running the script after registering a new Studio project only creates the new
+windows, and prepare/materialize only fetch imagery for those. See
+`data/forest_loss_driver/20260924_utm/README.md` for details on the projects, label
+mapping, and split.
+
+The sections below describe how earlier rounds of annotation were set up.
+
 ## Adding Examples to ES Studio
 
 Here are the steps for adding forest loss driver classification tasks in Brazil and
@@ -65,28 +89,14 @@ the "Adding Examples" workflow above. We use that to prioritize what else to lab
 training a model on Peru examples + Brazil/Colombia, and then look at the output
 classes and probabilities.
 
-First we sync the labels from Studio. ACA proposed an updated label hierarchy for this
-project, but here we are mapping it back to our old hierarchy for compatibility with
-the Peru labels.
-
-```
-python -m rslp.forest_loss_driver.scripts.sync_labels_from_studio --project_id f56e41c6-83ab-4a7f-9b14-443391f9b2ba --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --remap_labels
-python -m rslp.forest_loss_driver.scripts.sync_labels_from_studio --project_id a493cba0-466f-4604-8359-c437b78f7009 --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --remap_labels
-```
-
-Create a combined dataset with the Peru labels. We use the multimodal config but really we just use Sentinel-2 images here.
-
-```
-mkdir /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/
-cp data/forest_loss_driver/config_multimodal.json /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/config.json
-rsync -av /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/windows/{20250428_brazil_phase1,20250428_colombia_phase1} /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/windows/
-rsync -av /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/20250605/windows/* /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/windows/
-# Re-materialize since the source dataset may have had different config.
-rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/ --workers 64 --disabled-layers pre_landsat,post_landsat,pre_sentinel1,post_sentinel1 --retry-max-attempts 5 --retry-backoff-seconds 5
-rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/ --workers 64 --disabled-layers pre_landsat,post_landsat,pre_sentinel1,post_sentinel1 --ignore-errors --retry-max-attempts 5 --retry-backoff-seconds 5
-# Assign split.
-python -m rslp.forest_loss_driver.scripts.assign_split /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/
-```
+Historically, the labels were synced from Studio back into the Web Mercator rslearn
+dataset that had been imported into Studio (with a `sync_labels_from_studio.py`
+script), the Brazil/Colombia windows were rsynced together with the Peru windows into
+`/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/combined/`,
+and a separate `assign_split.py` script set the train/val split. Both scripts have
+been removed: the training dataset is now built directly from Studio, see "Build the
+Training Dataset from Studio" below. The `combined` dataset remains on Weka as the
+historical dataset used by the `20251104` and `20260401_peru_phase2` model configs.
 
 Next we can train a model on the data.
 
