@@ -1032,3 +1032,86 @@ def test_an_unreadable_cluster_holds_backfill_instead_of_dropping_it() -> None:
     )
     # 40 allocated, 100 backfill already running.
     assert mod._backfill_target(_Broken(), worker, 140, 40) == 100
+
+
+def test_queued_backfill_workers_do_not_inflate_the_target() -> None:
+    """A worker that is not running holds no slot, so it must not count as capacity.
+
+    Counting queued workers adds capacity the pool does not have to an idle-slot reading
+    that has not fallen, so the target climbs by the launch size every cycle. That is
+    what produced a pool of ~460 workers that could never be placed, queued ahead of
+    this run's own jobs.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = mod.WorkerConfig(
+        image_name="img",
+        cluster=["ai2/jupiter"],
+        backfill_fraction=1.0,
+        backfill_max_workers=1000,
+    )
+    # The cluster is full: nothing idle. 40 allocated plus 30 running backfill hold
+    # slots; another 200 were launched but never placed.
+    beaker = _FakeClusterBeaker({"ai2/jupiter": 0})
+    running = 40 + 30
+    target = mod._backfill_target(beaker, worker, running, 40)
+    assert target == 30, (
+        f"expected the target to equal the 30 backfill workers actually placed, got "
+        f"{target}; queued workers must not be counted as held capacity"
+    )
+
+
+def test_backfill_target_is_a_fixed_point_once_slots_are_taken() -> None:
+    """Running backfill workers keep their own slots counted, so the pool holds steady."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = mod.WorkerConfig(
+        image_name="img",
+        cluster=["ai2/jupiter"],
+        backfill_fraction=1.0,
+        backfill_max_workers=1000,
+    )
+    # Cold: 100 idle slots, nothing held above the allocated pool.
+    cold = mod._backfill_target(
+        _FakeClusterBeaker({"ai2/jupiter": 100}), worker, 10, 10
+    )
+    assert cold == 100
+    # Warm: those 100 are running, so the cluster reports nothing idle and the target
+    # must stay where it is rather than collapsing.
+    warm = mod._backfill_target(_FakeClusterBeaker({"ai2/jupiter": 0}), worker, 110, 10)
+    assert warm == 100
+
+
+def test_backfill_is_sized_from_running_workers_not_the_live_count() -> None:
+    """The cycle must hand backfill sizing the running count, not starting + running.
+
+    The arithmetic inside `_backfill_target` is correct either way; what produced the
+    unplaceable pool was the call site passing the live count, which includes workers
+    that hold no slot. Assert the wiring, since that is what regressed.
+    """
+    import ast
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    tree = ast.parse(inspect.getsource(mod))
+
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_backfill_target"
+    ]
+    assert calls, "no call to _backfill_target found"
+    for call in calls:
+        # (beaker, worker, running, allocated)
+        assert len(call.args) >= 3, "unexpected _backfill_target signature"
+        third = call.args[2]
+        assert isinstance(third, ast.Name), f"expected a name, got {ast.dump(third)}"
+        assert third.id == "running", (
+            f"_backfill_target is being sized from '{third.id}'; it must be 'running', "
+            "or workers that were never placed inflate the target every cycle"
+        )

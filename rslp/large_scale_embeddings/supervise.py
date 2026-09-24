@@ -699,7 +699,7 @@ def _cluster_free_slots(beaker: Any, worker: "WorkerConfig") -> int:
 def _backfill_target(
     beaker: Any,
     worker: "WorkerConfig",
-    live: int,
+    running: int,
     allocated: int,
 ) -> int:
     """How many unallocated workers to add on top of the allocated pool.
@@ -709,13 +709,18 @@ def _backfill_target(
     allocation wants them. Reading the allocation instead would size the pool from an
     entitlement these workers deliberately do not use.
 
-    The pool's own backfill workers are added back before the fraction is applied. They
-    are sitting on the very slots being counted, so without this the reading falls by
-    exactly what was launched, the target collapses to zero, the surplus drain retires
+    The pool's own *running* backfill workers are added back before the fraction is
+    applied. They sit on the very slots being counted, so without this the reading falls
+    by exactly what was placed, the target collapses to zero, the surplus drain retires
     them, the slots free up and the whole thing repeats -- a launch-and-kill loop that
     costs a block every time round. Adding them back makes the steady state a fixed
     point: once the idle slots are taken, the target equals the pool already holding
     them and nothing moves.
+
+    Only running workers count. One that is still queued holds no slot, so counting it
+    would add capacity the pool does not have to a reading that has not fallen, and the
+    target would climb by the launch size every cycle until it hit the ceiling -- a pool
+    of jobs that can never be placed, queued ahead of this run's other work.
 
     Holds the pool where it is when the reading fails, rather than reporting zero.
     Zero reads as "give it all back" to the surplus drain, so a momentary Beaker hiccup
@@ -724,7 +729,7 @@ def _backfill_target(
     Args:
         beaker: an open Beaker client.
         worker: the pool configuration.
-        live: workers currently starting or demonstrably alive, both kinds.
+        running: workers demonstrably alive, both kinds. Excludes those still queued.
         allocated: this cycle's allocated-pool target.
 
     Returns:
@@ -733,8 +738,8 @@ def _backfill_target(
     if worker.backfill_fraction is None or worker.gpus <= 0:
         return 0
     slots_per_worker = max(1, worker.gpus)
-    # Anything above the allocated target is already running as backfill.
-    held = max(0, live - allocated)
+    # Anything running above the allocated target is already backfill, holding a slot.
+    held = max(0, running - allocated)
     try:
         free = _cluster_free_slots(beaker, worker)
     except Exception:
@@ -911,14 +916,18 @@ def _release_surplus_workers(
     return cancelled
 
 
-def _count_workers(
+def _count_worker_split(
     beaker: Any,
     workspace: Any,
     name_prefix: str,
     queue: Any = None,
     now: float | None = None,
-) -> int:
-    """Count this run's workers that can still claim work.
+) -> tuple[int, int]:
+    """Count this run's workers, split into those starting and those running.
+
+    The split matters for backfill sizing: a worker that has not been placed holds no
+    GPU slot, so counting it as capacity the pool already has makes the target grow by
+    whatever was launched but never scheduled, every cycle.
 
     Two things have to be counted, and neither alone is enough. A worker still pulling
     its 17 GB image has not registered with the queue yet, so counting registrations
@@ -962,7 +971,10 @@ def _count_workers(
         )
     ]
     if queue is None:
-        return len(workloads)
+        # No queue, so no heartbeats to tell running from starting. Report them all as
+        # starting: that keeps the live total right and leaves backfill sizing with
+        # nothing it can mistake for a held slot.
+        return len(workloads), 0
 
     now = time.time() if now is None else now
     starting = 0
@@ -983,7 +995,30 @@ def _count_workers(
             continue
         if now - heartbeat.seconds < WORKER_HEARTBEAT_STALE_SECONDS:
             fresh += 1
-    return starting + fresh
+    return starting, fresh
+
+
+def _count_workers(
+    beaker: Any,
+    workspace: Any,
+    name_prefix: str,
+    queue: Any = None,
+    now: float | None = None,
+) -> int:
+    """Total workers starting or demonstrably alive.
+
+    Args:
+        beaker: an open Beaker client.
+        workspace: the workspace to search.
+        name_prefix: the prefix from `worker_name_prefix`.
+        queue: the queue whose worker registrations to read.
+        now: current unix time, passed in so this stays testable.
+
+    Returns:
+        starting plus running.
+    """
+    starting, running = _count_worker_split(beaker, workspace, name_prefix, queue, now)
+    return starting + running
 
 
 def _run_cycle(
@@ -1027,13 +1062,14 @@ def _run_cycle(
         now = time.time()
         in_flight = _in_flight_job_keys(entries, now, config.cycle.claim_stale_seconds)
         workspace = beaker.workspace.get(DEFAULT_WORKSPACE)
-        live = _count_workers(
+        starting, running = _count_worker_split(
             beaker,
             workspace,
             worker_name_prefix(queue_name),
             queue=queue,
             now=now,
         )
+        live = starting + running
         # Resolved here rather than from config because capacity sizing needs both the
         # live count and a Beaker client. Static runs get config.worker.num_workers.
         allocated_target = _capacity_target(beaker, config.worker, live)
@@ -1042,7 +1078,7 @@ def _run_cycle(
         # wasting. Re-capped because each half is capped separately and the sum is not.
         num_workers = min(
             allocated_target
-            + _backfill_target(beaker, config.worker, live, allocated_target),
+            + _backfill_target(beaker, config.worker, running, allocated_target),
             live + CAPACITY_MAX_STEP,
         )
         # Staying inside an allocation means giving capacity back, not just declining
