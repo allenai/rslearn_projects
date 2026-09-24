@@ -33,6 +33,10 @@ model:
               use_legacy_timestamps: false
               # Overridden by the prediction pipeline (--compile_model).
               compile_model: true
+              # Prefer the cuDNN attention kernel, measured 21% faster than the
+              # defaults on H100 at this patch and window size, falling back where it
+              # is unsupported.
+              sdpa_backends: ["cudnn", "flash", "efficient", "math"]
         decoder:
           # Quantizes each embedding to int8 with the AlphaEarth power scheme (-128
           # is reserved for nodata). L2 normalization is off because it discards
