@@ -121,5 +121,5 @@ trainer:
       init_args:
         output_layer: output
 project_name: 20260924_forest_loss_driver_utm
-run_name: config_no_new_labels.yaml_01
+run_name: config_no_new_labels.yaml_02
 management_dir: ${RSLP_PREFIX}/projects
