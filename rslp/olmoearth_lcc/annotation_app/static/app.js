@@ -115,7 +115,11 @@
     post_change_category: document.getElementById("annot-post-change-category"),
     same_change_category: document.getElementById("annot-same-change-category"),
     fine_change_category: document.getElementById("annot-fine-change-category"),
-    description: document.getElementById("annot-description"),
+  };
+  const sampleForm = document.getElementById("sample-form");
+  const sampleInputs = {
+    anchor_date: document.getElementById("sample-anchor-date"),
+    description: document.getElementById("sample-description"),
   };
 
   function populateCategorySelect(select, categories) {
@@ -345,13 +349,18 @@
     setCategorySelect(annotInputs.post_change_category, pt.post_change_category);
     setCategorySelect(annotInputs.same_change_category, pt.same_change_category);
     setCategorySelect(annotInputs.fine_change_category, pt.fine_change_category);
-    annotInputs.description.value = pt.description || "";
     // Only show the legacy fine-category dropdown when the point already has a value.
     var fineField = document.getElementById("fine-change-category-field");
     if (fineField) {
       fineField.style.display = pt.fine_change_category ? "" : "none";
     }
     annotStatus.textContent = "";
+  }
+
+  function renderSample() {
+    var entry = currentEntry ? currentEntry.entry : {};
+    sampleInputs.anchor_date.value = entry.anchor_date || "";
+    sampleInputs.description.value = entry.description || "";
   }
 
   function renderEntry() {
@@ -362,6 +371,7 @@
       sentinelGrid.innerHTML = '<div class="empty-msg">No entry loaded</div>';
       setNavButtons();
       setPointButtons();
+      renderSample();
       renderAnnotation();
       return;
     }
@@ -378,17 +388,18 @@
     updateHash();
     renderYearButtons();
     renderSentinel();
+    renderSample();
     renderAnnotation();
   }
 
   // --- Navigation ---
   function loadEntry(idx, preserveState) {
-    if (idx < 0 || idx >= entriesList.length) return;
+    if (idx < 0 || idx >= entriesList.length) return Promise.resolve();
     currentIndex = idx;
     var prevYear = selectedYear;
     var prevPointIdx = selectedPointIdx;
     if (preserveState) overlayVersion++;
-    fetchJSON("/api/entry/" + idx).then(function (data) {
+    return fetchJSON("/api/entry/" + idx).then(function (data) {
       currentEntry = data;
       if (preserveState) {
         selectedYear = prevYear;
@@ -406,6 +417,7 @@
   }
 
   function changeEntry(delta) {
+    if (isSaving) return;
     var next = currentIndex + delta;
     if (next < 0 || next >= entriesList.length) return;
     loadEntry(next);
@@ -428,6 +440,9 @@
     if (pts.length === 0) return;
     var next = selectedPointIdx + delta;
     if (next < 0 || next >= pts.length) return;
+    // Keep typed-but-unsaved values for the point being left; they are written
+    // to disk with the next save.
+    commitPointForm();
     selectedPointIdx = next;
     overlayVersion++;
     setPointButtons();
@@ -481,113 +496,159 @@
     addPoint("add_negative", col, row);
   }
 
+  // --- Editing the working copy ---
+  // currentEntry.entry is a working copy of the entry. Every action edits it and
+  // then saves the whole entry via saveEntry(). Form values are copied into the
+  // working copy before each edit, so point actions also save typed values.
+
+  function setOrDelete(obj, field, value) {
+    if (value) {
+      obj[field] = value;
+    } else {
+      delete obj[field];
+    }
+  }
+
+  function commitPointForm() {
+    if (!currentEntry) return;
+    var pts = currentEntry.entry.positive_points || [];
+    if (pts.length === 0 || selectedPointIdx >= pts.length) return;
+    var pt = pts[selectedPointIdx];
+    for (var field in annotInputs) {
+      setOrDelete(pt, field, annotInputs[field].value.trim());
+    }
+  }
+
+  function commitForms() {
+    if (!currentEntry) return;
+    for (var field in sampleInputs) {
+      setOrDelete(currentEntry.entry, field, sampleInputs[field].value.trim());
+    }
+    commitPointForm();
+  }
+
   function addPoint(action, col, row) {
+    if (!currentEntry || isSaving) return;
+    setSaving(true);
     postJSON("/api/pixel_to_lonlat", {
       entry_idx: currentIndex,
       col: col,
       row: row,
     }).then(function (res) {
-      return postJSON("/api/update_points", {
-        entry_idx: currentIndex,
-        action: action,
-        lon: res.lon,
-        lat: res.lat,
-      });
-    }).then(function (res) {
-      if (res.ok) {
-        loadEntry(currentIndex, true);
+      commitForms();
+      var entry = currentEntry.entry;
+      var point = { lon: res.lon, lat: res.lat };
+      if (action === "add_positive") {
+        // New positive points start with the first positive point's annotation.
+        var existing = entry.positive_points || [];
+        if (existing.length > 0) {
+          for (var field in annotInputs) {
+            if (existing[0][field]) point[field] = existing[0][field];
+          }
+        }
+        entry.positive_points = existing.concat([point]);
+      } else {
+        entry.negative_points = (entry.negative_points || []).concat([point]);
       }
+      return saveEntry("Saved");
+    }).catch(function (err) {
+      setSaving(false);
+      showStatus("Error: " + (err.message || err), "err");
     });
   }
 
   function removePoint(action, pointIdx) {
-    postJSON("/api/update_points", {
-      entry_idx: currentIndex,
-      action: action,
-      point_idx: pointIdx,
-    }).then(function (res) {
-      if (res.ok) {
-        loadEntry(currentIndex, true);
-      }
-    });
+    if (!currentEntry || isSaving) return;
+    commitForms();
+    var key = action === "remove_positive" ? "positive_points" : "negative_points";
+    var pts = currentEntry.entry[key] || [];
+    if (pointIdx < 0 || pointIdx >= pts.length) return;
+    pts.splice(pointIdx, 1);
+    if (key === "positive_points" && pointIdx < selectedPointIdx) {
+      selectedPointIdx--;
+    }
+    saveEntry("Saved");
   }
 
   function makeSelectedNegative() {
-    if (!currentEntry) return;
+    if (!currentEntry || isSaving) return;
     var pts = currentEntry.entry.positive_points || [];
     if (pts.length === 0 || selectedPointIdx >= pts.length) return;
-    postJSON("/api/update_points", {
+    commitForms();
+    var pt = pts.splice(selectedPointIdx, 1)[0];
+    var negatives = currentEntry.entry.negative_points || [];
+    negatives.push({ lon: pt.lon, lat: pt.lat });
+    currentEntry.entry.negative_points = negatives;
+    saveEntry("Saved");
+  }
+
+  // --- Saving ---
+  function setSaving(saving) {
+    isSaving = saving;
+    btnSave.disabled = saving;
+    btnApplyAll.disabled = saving;
+    setNavButtons();
+  }
+
+  function showStatus(text, cls) {
+    annotStatus.textContent = text;
+    annotStatus.className = cls;
+  }
+
+  // Send the whole working copy to the server. Callers must commit the forms
+  // before editing the working copy, not after, since an edit can change which
+  // point the form belongs to.
+  function saveEntry(okMessage) {
+    setSaving(true);
+    showStatus("Saving...", "");
+    return postJSON("/api/save_entry", {
       entry_idx: currentIndex,
-      action: "make_negative",
-      point_idx: selectedPointIdx,
+      entry: currentEntry.entry,
     }).then(function (res) {
-      if (res.ok) {
-        loadEntry(currentIndex, true);
+      if (!res.ok) throw new Error(res.error || "save failed");
+      currentEntry = res;
+      var pts = currentEntry.entry.positive_points || [];
+      if (selectedPointIdx >= pts.length) {
+        selectedPointIdx = Math.max(0, pts.length - 1);
       }
+      overlayVersion++;
+      renderEntry();
+      showStatus(okMessage, "ok");
+    }).catch(function (err) {
+      // Resync with what the server has, so the overlay and hit-testing match.
+      var message = "Error: " + (err.message || err);
+      return loadEntry(currentIndex, true).then(function () {
+        showStatus(message, "err");
+      });
+    }).finally(function () {
+      setSaving(false);
     });
   }
 
-  // --- Annotation save ---
-  function saveAnnotation(evt) {
+  function saveAll(evt) {
     if (evt) evt.preventDefault();
-    applyAnnotation(false);
+    if (!currentEntry || isSaving) return;
+    commitForms();
+    saveEntry("Saved");
   }
 
   function applyAnnotationToAll() {
-    if (!currentEntry) return;
+    if (!currentEntry || isSaving) return;
     var pts = currentEntry.entry.positive_points || [];
+    if (pts.length === 0 || selectedPointIdx >= pts.length) return;
     if (pts.length > 1) {
       if (!window.confirm("Apply this metadata to all " + pts.length + " positive points?")) {
         return;
       }
     }
-    applyAnnotation(true);
-  }
-
-  function applyAnnotation(applyAll) {
-    if (!currentEntry) return;
-    var pts = currentEntry.entry.positive_points || [];
-    if (pts.length === 0 || selectedPointIdx >= pts.length) return;
-
-    isSaving = true;
-    btnSave.disabled = true;
-    btnApplyAll.disabled = true;
-    annotStatus.textContent = applyAll ? "Applying to all..." : "Saving...";
-    annotStatus.className = "";
-
-    postJSON("/api/update_annotation", {
-      entry_idx: currentIndex,
-      point_idx: selectedPointIdx,
-      apply_all: applyAll,
-      pre_change: annotInputs.pre_change.value.trim(),
-      first_date_change_noticeable: annotInputs.first_date_change_noticeable.value.trim(),
-      post_change: annotInputs.post_change.value.trim(),
-      stop_date: annotInputs.stop_date.value.trim(),
-      pre_category: annotInputs.pre_category.value.trim(),
-      post_category: annotInputs.post_category.value.trim(),
-      pre_change_category: annotInputs.pre_change_category.value.trim(),
-      post_change_category: annotInputs.post_change_category.value.trim(),
-      same_change_category: annotInputs.same_change_category.value.trim(),
-      fine_change_category: annotInputs.fine_change_category.value.trim(),
-      description: annotInputs.description.value.trim(),
-    }).then(function (res) {
-      if (res.ok) {
-        currentEntry.entry = res.entry;
-        renderAnnotation();
-        annotStatus.textContent = applyAll ? "Applied to all" : "Saved";
-        annotStatus.className = "ok";
-      } else {
-        annotStatus.textContent = "Error: " + (res.error || "save failed");
-        annotStatus.className = "err";
+    commitForms();
+    var source = pts[selectedPointIdx];
+    for (var i = 0; i < pts.length; i++) {
+      for (var field in annotInputs) {
+        setOrDelete(pts[i], field, source[field]);
       }
-    }).catch(function (err) {
-      annotStatus.textContent = "Error: " + err;
-      annotStatus.className = "err";
-    }).finally(function () {
-      isSaving = false;
-      btnSave.disabled = false;
-      btnApplyAll.disabled = false;
-    });
+    }
+    saveEntry("Applied to all");
   }
 
   // --- Toggle overlay ---
@@ -612,8 +673,9 @@
   btnPtPrev.addEventListener("click", function () { changePoint(-1); });
   btnPtNext.addEventListener("click", function () { changePoint(1); });
   btnPtMakeNegative.addEventListener("click", makeSelectedNegative);
-  annotForm.addEventListener("submit", saveAnnotation);
+  annotForm.addEventListener("submit", saveAll);
   btnApplyAll.addEventListener("click", applyAnnotationToAll);
+  sampleForm.addEventListener("submit", saveAll);
 
   document.addEventListener("keydown", function (e) {
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;

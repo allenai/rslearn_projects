@@ -36,6 +36,7 @@ one 128x128 spatial window:
   "window_name": "example_window",
   "group": "default",
   "time_range": ["2017-01-01T00:00:00+00:00", "2024-01-01T00:00:00+00:00"],
+  "description": "New subdivision replacing forest",
   "positive_points": [
     {
       "lon": 121.5, "lat": 14.6,
@@ -55,8 +56,14 @@ one 128x128 spatial window:
 
 - `positive_points`: locations where land cover change occurred.
 - `negative_points`: locations confirmed as no-change.
-- `time_range`: metadata indicating when negative points are valid (not used
-  for imagery fetching).
+- `time_range`: metadata indicating when negative points are valid. For samples
+  without positive points and without `anchor_date`, its midpoint is used as the
+  anchor date (see below).
+- `description` (optional): freeform notes on the sample.
+- `anchor_date` (optional, only used for samples without positive points): the
+  earliest date the input frequent block should end at; the prepare script's
+  earliest frequent option ends right after it and the others later. Falls back
+  to the `time_range` midpoint when unset.
 - Dates may be blank/missing if not yet annotated.
 - `pre_change`: the last date at which the location still appears in its pre-change
   state; `first_date_change_noticeable`: the first date at which the change starts
@@ -84,10 +91,6 @@ supervised at points that have at least one of these fields.
   mining, new_crop_structure, selective_logging, landslide, settlement.
 - `same_change_category` (disturbed but not permanently converted):
   agricultural_activity, wildfire, ice_motion, flooding.
-
-Positive points may also have an optional freeform `description` string with the
-annotator's notes on the change. Negative points never carry this field.
-
 ### Ten-Year Dataset
 
 The ten-year dataset has 128x128 windows (10 m/pixel, UTM) with ten `sentinel2_yN`
@@ -156,9 +159,15 @@ The UI:
 - Left-click on overlay to add a positive point; right-click to add negative.
 - Click existing points to remove them.
 - Iterate through positive points with the point navigator at the top.
+- Edit the sample-level `anchor_date` and `description` in the Sample section.
 - Edit annotation fields (pre_change, first_date_change_noticeable, post_change,
   the optional stop_date, pre_category, post_category, and the optional
   change-category fields) for the selected positive point.
+- Saving: the Save button writes the whole entry (Sample fields, the selected
+  point's fields, and all points). Adding, removing, or converting points and
+  "Apply to all" save immediately, including any typed-but-unsaved values.
+  Switching between points keeps typed values until the next save, but moving to
+  another entry discards them.
 - Click timestamps below images to copy them to clipboard.
 - Navigation: Prev/Next buttons to move between entries. URL hash tracks position.
 

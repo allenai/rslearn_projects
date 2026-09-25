@@ -15,6 +15,7 @@ import json
 import math
 import threading
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import rasterio
@@ -119,6 +120,31 @@ def _get_timestamps(
     return result
 
 
+# Entry fields that identify the window and must not be changed by a save.
+IMMUTABLE_ENTRY_FIELDS = ("group", "window_name", "projection", "bounds")
+
+
+def _validate_entry(old_entry: dict[str, Any], new_entry: Any) -> str | None:
+    """Check an entry sent by the frontend; return an error message or None."""
+    if not isinstance(new_entry, dict):
+        return "entry must be an object"
+    for field in IMMUTABLE_ENTRY_FIELDS:
+        if new_entry.get(field) != old_entry.get(field):
+            return f"{field} cannot be changed"
+    for key in ("positive_points", "negative_points"):
+        pts = new_entry.get(key, [])
+        if not isinstance(pts, list):
+            return f"{key} must be a list"
+        for pt in pts:
+            if not isinstance(pt, dict):
+                return f"{key} entries must be objects"
+            for coord in ("lon", "lat"):
+                val = pt.get(coord)
+                if isinstance(val, bool) or not isinstance(val, int | float):
+                    return f"{key} entries must have numeric lon/lat"
+    return None
+
+
 def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
     """Create the Flask annotation app."""
     v2_path = UPath(v2_json_path)
@@ -208,12 +234,8 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
             )
         return jsonify(result)
 
-    @app.route("/api/entry/<int:idx>")
-    def api_entry(idx: int) -> Response:
-        if idx < 0 or idx >= len(entries):
-            return Response("index out of range", status=404)
+    def _entry_payload(idx: int) -> dict[str, Any]:
         entry = entries[idx]
-        meta = entry_meta[idx]
 
         # Pre-compute pixel coords for all points so frontend can do hit-testing.
         projection = Projection.deserialize(entry["projection"])
@@ -232,117 +254,42 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
             col, row = _lonlat_to_pixel(pt["lon"], pt["lat"], projection, bounds)
             negative_pixels.append({"col": col, "row": row})
 
-        return jsonify(
-            {
-                "index": idx,
-                "entry": entry,
-                "meta": meta,
-                "positive_pixels": positive_pixels,
-                "negative_pixels": negative_pixels,
-            }
-        )
+        return {
+            "index": idx,
+            "entry": entry,
+            "meta": entry_meta[idx],
+            "positive_pixels": positive_pixels,
+            "negative_pixels": negative_pixels,
+        }
 
-    @app.route("/api/update_points", methods=["POST"])
-    def api_update_points() -> Response:
+    @app.route("/api/entry/<int:idx>")
+    def api_entry(idx: int) -> Response:
+        if idx < 0 or idx >= len(entries):
+            return Response("index out of range", status=404)
+        return jsonify(_entry_payload(idx))
+
+    @app.route("/api/save_entry", methods=["POST"])
+    def api_save_entry() -> Response | tuple[Response, int]:
+        """Replace an entry with the full entry sent by the frontend.
+
+        Returns the same payload as /api/entry so the frontend can re-render
+        without refetching.
+        """
         body = request.get_json(force=True, silent=True) or {}
         idx = body.get("entry_idx")
-        if idx is None or idx < 0 or idx >= len(entries):
+        if not isinstance(idx, int) or idx < 0 or idx >= len(entries):
             return jsonify({"ok": False, "error": "invalid entry_idx"}), 400
-
-        action = body.get("action")
-        with write_lock:
-            entry = entries[idx]
-            if action == "add_positive":
-                lon = body["lon"]
-                lat = body["lat"]
-                point = {"lon": lon, "lat": lat}
-                existing = entry.get("positive_points", [])
-                if existing:
-                    for field in (
-                        "pre_change",
-                        "first_date_change_noticeable",
-                        "post_change",
-                        "stop_date",
-                        "pre_category",
-                        "post_category",
-                        "fine_change_category",
-                        "pre_change_category",
-                        "post_change_category",
-                        "same_change_category",
-                        "description",
-                    ):
-                        if field in existing[0]:
-                            point[field] = existing[0][field]
-                entry.setdefault("positive_points", []).append(point)
-            elif action == "add_negative":
-                lon = body["lon"]
-                lat = body["lat"]
-                point = {"lon": lon, "lat": lat}
-                entry.setdefault("negative_points", []).append(point)
-            elif action == "remove_positive":
-                point_idx = body.get("point_idx")
-                pts = entry.get("positive_points", [])
-                if point_idx is not None and 0 <= point_idx < len(pts):
-                    pts.pop(point_idx)
-            elif action == "remove_negative":
-                point_idx = body.get("point_idx")
-                pts = entry.get("negative_points", [])
-                if point_idx is not None and 0 <= point_idx < len(pts):
-                    pts.pop(point_idx)
-            elif action == "make_negative":
-                point_idx = body.get("point_idx")
-                pts = entry.get("positive_points", [])
-                if point_idx is not None and 0 <= point_idx < len(pts):
-                    pt = pts.pop(point_idx)
-                    negative_point = {"lon": pt["lon"], "lat": pt["lat"]}
-                    entry.setdefault("negative_points", []).append(negative_point)
-            else:
-                return jsonify({"ok": False, "error": "unknown action"}), 400
-            _save_entries()
-
-        return jsonify({"ok": True, "entry": entries[idx]})
-
-    @app.route("/api/update_annotation", methods=["POST"])
-    def api_update_annotation() -> Response:
-        body = request.get_json(force=True, silent=True) or {}
-        idx = body.get("entry_idx")
-        point_idx = body.get("point_idx")
-        if idx is None or idx < 0 or idx >= len(entries):
-            return jsonify({"ok": False, "error": "invalid entry_idx"}), 400
-
-        apply_all = bool(body.get("apply_all"))
+        new_entry = body.get("entry")
+        error = _validate_entry(entries[idx], new_entry)
+        if error is not None:
+            return jsonify({"ok": False, "error": error}), 400
+        assert isinstance(new_entry, dict)
 
         with write_lock:
-            entry = entries[idx]
-            pts = entry.get("positive_points", [])
-            if point_idx is None or point_idx < 0 or point_idx >= len(pts):
-                return jsonify({"ok": False, "error": "invalid point_idx"}), 400
-
-            target_points = pts if apply_all else [pts[point_idx]]
-            for point in target_points:
-                for field in (
-                    "pre_change",
-                    "first_date_change_noticeable",
-                    "post_change",
-                    "stop_date",
-                    "pre_category",
-                    "post_category",
-                    "fine_change_category",
-                    "pre_change_category",
-                    "post_change_category",
-                    "same_change_category",
-                    "description",
-                ):
-                    val = body.get(field)
-                    if val is not None:
-                        if val == "":
-                            point.pop(field, None)
-                        else:
-                            point[field] = val
-
+            entries[idx] = new_entry
             _save_entries()
 
-        return jsonify({"ok": True, "entry": entries[idx]})
+        return jsonify({"ok": True, **_entry_payload(idx)})
 
     @app.route("/api/pixel_to_lonlat", methods=["POST"])
     def api_pixel_to_lonlat() -> Response:

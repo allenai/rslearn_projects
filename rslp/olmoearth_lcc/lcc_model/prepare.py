@@ -598,7 +598,8 @@ def _entry_has_complete_annotations(entry: dict[str, Any]) -> bool:
 
     Accepts entries with either:
     - At least one fully-annotated positive point (with dates and categories), OR
-    - No positive points but at least one negative point and a time_range field.
+    - No positive points but at least one negative point and an anchor_date or
+      time_range field.
     """
     for pt in entry.get("positive_points", []):
         if (
@@ -612,10 +613,24 @@ def _entry_has_complete_annotations(entry: dict[str, Any]) -> bool:
     if (
         not entry.get("positive_points")
         and entry.get("negative_points")
-        and entry.get("time_range")
+        and (entry.get("anchor_date") or entry.get("time_range"))
     ):
         return True
     return False
+
+
+def _negative_only_anchor(entry: dict[str, Any]) -> datetime:
+    """Get the anchor date for an entry without positive points.
+
+    The earliest frequent option ends right after this date. Uses the entry's
+    anchor_date if set, otherwise the midpoint of its time_range.
+    """
+    if entry.get("anchor_date"):
+        return _parse_date(entry["anchor_date"])
+    tr = entry["time_range"]
+    t_start = _parse_date(tr[0])
+    t_end = _parse_date(tr[1])
+    return t_start + (t_end - t_start) / 2
 
 
 def _get_window_wgs84_bounds(
@@ -704,12 +719,9 @@ def _process_entry(
         if not entry.get("negative_points"):
             raise ValueError("Entry has no positive or negative points")
         center_point = entry["negative_points"][0]
-        tr = entry["time_range"]
-        t_start = _parse_date(tr[0])
-        t_end = _parse_date(tr[1])
-        midpoint = t_start + (t_end - t_start) / 2
-        post_change = midpoint + gap
-        first_noticeable = midpoint + gap
+        anchor = _negative_only_anchor(entry)
+        post_change = anchor + gap
+        first_noticeable = anchor + gap
     else:
         center_point = ref_point
         post_change = _parse_date(ref_point["post_change"]) + gap
@@ -746,7 +758,7 @@ def _process_entry(
     sidecar_value: dict[str, Any]
     if ref_point is None:
         sidecar_value = {
-            "pre_change": midpoint.isoformat(),
+            "pre_change": anchor.isoformat(),
             "post_change": post_change.isoformat(),
             "first_noticeable": first_noticeable.isoformat(),
             "stop_date": None,

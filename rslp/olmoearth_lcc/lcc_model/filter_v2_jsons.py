@@ -7,7 +7,7 @@ Applies the same window-level rules as ``rslp.olmoearth_lcc.lcc_model.prepare``:
 - "Mixed" entries where some positive points have all three date fields and
   some don't are omitted.
 - Entries without complete annotations (no fully-annotated positive point, and
-  not a negative-only entry with a time_range) are omitted.
+  not a negative-only entry with an anchor_date or time_range) are omitted.
 - Duplicate group/window_name keys across all inputs are omitted (first
   occurrence wins, matching prepare.py).
 

@@ -32,7 +32,8 @@ def entry_has_complete_annotations(entry: dict[str, Any]) -> bool:
     Mirrors ``_entry_has_complete_annotations`` in the LCC model export. Accepts
     entries with either:
     - At least one fully-annotated positive point (with dates and categories), OR
-    - No positive points but at least one negative point and a time_range field.
+    - No positive points but at least one negative point and an anchor_date or
+      time_range field.
     """
     for pt in entry.get("positive_points", []):
         if (
@@ -46,7 +47,7 @@ def entry_has_complete_annotations(entry: dict[str, Any]) -> bool:
     if (
         not entry.get("positive_points")
         and entry.get("negative_points")
-        and entry.get("time_range")
+        and (entry.get("anchor_date") or entry.get("time_range"))
     ):
         return True
     return False
