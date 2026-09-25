@@ -5,7 +5,15 @@ forest loss event). It also incorporates the new "Validatetest" labels, where AC
 validated the outputs of the deployed model across Brazil, Peru, Bolivia, Colombia,
 and Ecuador.
 
-The model configuration is otherwise the same as `20260401_peru_phase2/config.yaml`.
+The model configuration is updated from `20260401_peru_phase2/config.yaml`:
+
+- OlmoEarth-v1.2-Base instead of v1-Base, with `use_legacy_timestamps: false` so the
+  actual Sentinel-2 acquisition dates are passed to the encoder.
+- `SimpleTimeSeries` uses `num_timesteps_per_forward_pass: 4` (the 4 pre images in one
+  forward pass and the 4 post images in another, features concatenated) instead of the
+  deprecated `image_channels`.
+- Layer-wise learning rate decay (`LayerDecayAdamW`, decay 0.65) instead of AdamW with a
+  freeze/unfreeze schedule, matching the monocrop classifier recipe.
 
 Note that the deployed inference pipeline in `olmoearth_projects` still creates Web
 Mercator windows; it will need to be updated to UTM to match this dataset.
