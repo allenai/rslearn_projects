@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 import torch
 from rslearn.models.component import FeatureMaps
 from rslearn.train.model_context import ModelContext, RasterImage
@@ -89,63 +90,50 @@ def _indexed_image(num: int, offset: float) -> torch.Tensor:
     return image
 
 
-def test_stack_sampler_pads_short_frequent_option() -> None:
-    """A 2-image option is padded to NUM_FREQUENT by duplicating its earliest image.
+def _weekly_frequent_ts(start: datetime) -> list[tuple[datetime, datetime]]:
+    return [
+        (start + timedelta(days=7 * i), start + timedelta(days=7 * i))
+        for i in range(NUM_FREQUENT)
+    ]
 
-    Quarterly images at/after the earliest frequent image are excluded, padding
-    timestamps sit strictly between the last quarterly and the first real frequent
-    image, and the timestep targets never point at padding slots.
-    """
+
+def test_stack_sampler_excludes_quarterly_after_earliest_frequent() -> None:
+    """Quarterly images at/after the earliest frequent image are not used."""
     input_dict, target_dict = _stack_inputs()
     q_ts = input_dict[QUARTERLY_KEY].timestamps
     # The frequent images start before the last quarterly mosaic, so it is dropped.
     f0 = q_ts[-1][0] - timedelta(days=5)
-    # Given most-recent-first, as the data source returns them.
-    f_ts = [(f0 + timedelta(days=20), f0 + timedelta(days=20)), (f0, f0)]
     input_dict[f"{FREQUENT_KEY_PREFIX}0"] = RasterImage(
-        image=_indexed_image(2, offset=100), timestamps=f_ts
+        image=_indexed_image(NUM_FREQUENT, offset=100),
+        timestamps=_weekly_frequent_ts(f0),
     )
-    input_dict[ANNOTATION_KEY]["post_change"] = f0 - timedelta(days=1)
 
-    input_dict, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    input_dict, _ = StackSampler(deterministic=True)(input_dict, target_dict)
     stack = input_dict[INPUT_KEY]
     assert stack.image.shape[1] == NUM_QUARTERLY + NUM_FREQUENT
     centers = _centers(stack.timestamps)
     assert all(a < b for a, b in zip(centers, centers[1:]))
     assert all(c < f0 for c in centers[:NUM_QUARTERLY])
     assert q_ts[-1][0] not in [ts[0] for ts in stack.timestamps]
-
-    # Real frequent images are last in chronological order; padding copies the
-    # earliest one (value 101 since input order was most-recent-first).
-    freq_values = stack.image[0, NUM_QUARTERLY:, 0, 0].tolist()
-    num_pad = NUM_FREQUENT - 2
-    assert freq_values == [101.0] * (num_pad + 1) + [100.0]
-
-    # post_change is just before the first real frequent image, so the end index
-    # is that image rather than one of the padding slots before it.
-    end_idx = target_dict[TS_END_KEY]["classes"].get_hw_tensor()[2, 3]
-    assert end_idx == NUM_QUARTERLY + num_pad
+    assert stack.image[0, NUM_QUARTERLY:, 0, 0].tolist() == [
+        100.0 + i for i in range(NUM_FREQUENT)
+    ]
 
 
-def test_predict_stack_builder_pads_and_dedupes() -> None:
-    """Prediction keeps the last 16 quarterly and pads deduped frequent images."""
+def test_predict_stack_builder_short_quarterly() -> None:
+    """Prediction pads a short quarterly layer with distinct older timestamps."""
+    num_q = NUM_QUARTERLY - 3
     q_ts = [
         (T0 + timedelta(days=90 * i), T0 + timedelta(days=90 * i + 1))
-        for i in range(NUM_QUARTERLY + 2)
-    ]
-    f0 = q_ts[-1][1] + timedelta(days=10)
-    f_ts = [
-        (f0 + timedelta(days=30), f0 + timedelta(days=30)),
-        # Same acquisition from an overlapping tile, a few seconds apart.
-        (f0 + timedelta(days=30, seconds=5), f0 + timedelta(days=30, seconds=5)),
-        (f0, f0),
+        for i in range(num_q)
     ]
     input_dict = {
         QUARTERLY_KEY: RasterImage(
-            image=_indexed_image(NUM_QUARTERLY + 2, offset=0), timestamps=q_ts
+            image=_indexed_image(num_q, offset=0), timestamps=q_ts
         ),
         f"{FREQUENT_KEY_PREFIX}0": RasterImage(
-            image=_indexed_image(3, offset=100), timestamps=f_ts
+            image=_indexed_image(NUM_FREQUENT, offset=100),
+            timestamps=_weekly_frequent_ts(q_ts[-1][1] + timedelta(days=10)),
         ),
     }
     input_dict, _ = PredictStackBuilder()(input_dict, {})
@@ -153,13 +141,30 @@ def test_predict_stack_builder_pads_and_dedupes() -> None:
     assert stack.image.shape[1] == NUM_QUARTERLY + NUM_FREQUENT
     centers = _centers(stack.timestamps)
     assert all(a < b for a, b in zip(centers, centers[1:]))
-    assert stack.image[0, :NUM_QUARTERLY, 0, 0].tolist() == [
-        float(i) for i in range(2, NUM_QUARTERLY + 2)
+    assert stack.image[0, :, 0, 0].tolist() == (
+        [0.0] * 3
+        + [float(i) for i in range(num_q)]
+        + [100.0 + i for i in range(NUM_FREQUENT)]
+    )
+
+
+def test_predict_stack_builder_rejects_wrong_frequent_count() -> None:
+    """The prediction frequent layer must have exactly NUM_FREQUENT images."""
+    q_ts = [
+        (T0 + timedelta(days=90 * i), T0 + timedelta(days=90 * i + 1))
+        for i in range(NUM_QUARTERLY)
     ]
-    num_pad = NUM_FREQUENT - 2
-    assert stack.image[0, NUM_QUARTERLY:, 0, 0].tolist() == [102.0] * (num_pad + 1) + [
-        100.0
-    ]
+    f_ts = _weekly_frequent_ts(q_ts[-1][1] + timedelta(days=10))[:-1]
+    input_dict = {
+        QUARTERLY_KEY: RasterImage(
+            image=_indexed_image(NUM_QUARTERLY, offset=0), timestamps=q_ts
+        ),
+        f"{FREQUENT_KEY_PREFIX}0": RasterImage(
+            image=_indexed_image(NUM_FREQUENT - 1, offset=100), timestamps=f_ts
+        ),
+    }
+    with pytest.raises(ValueError, match="timesteps"):
+        PredictStackBuilder()(input_dict, {})
 
 
 def _seg_targets(labels: torch.Tensor, valid: torch.Tensor) -> list[dict]:

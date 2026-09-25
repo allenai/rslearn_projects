@@ -1,9 +1,8 @@
 """Transforms that build the 22-image ``sentinel2_l2a`` stack for the LCC model.
 
 The stack is 16 quarterly mosaics followed by 6 frequent images. A frequent layer
-holds up to 6 of the most recent scenes in a 90-day block; when it has fewer, the
-earliest frequent image is duplicated (with fake timestamps between the last
-quarterly and the first real frequent image) to fill the 6 slots.
+holds the least-cloudy mosaic of each of the 6 most recent 7-day periods with
+imagery in a 90-day block.
 
 - ``StackSampler`` (train/val): picks one of the materialized frequent options,
   takes the 16 most recent quarterly mosaics before it, and emits the 22-image
@@ -47,87 +46,23 @@ NUM_FREQUENT_OPTIONS = 8
 # Spacing used for the fake timestamps assigned to padding (duplicated) images.
 QUARTERLY_PERIOD = timedelta(days=90)
 
-# Frequent images closer than this are the same acquisition (e.g. the same
-# datatake from overlapping MGRS tiles).
-SAME_ACQUISITION_TOLERANCE = timedelta(hours=1)
-
 # Change-category targets that receive a "none" label at negative points.
 CHANGE_CATEGORY_TASKS = ("pre_change", "post_change")
 
 
-def _change_index(
-    centers: list[datetime | None], target: datetime, is_start: bool
-) -> int:
+def _change_index(centers: list[datetime], target: datetime, is_start: bool) -> int:
     """Index of the timestep closest to a change boundary.
 
     For the start boundary, returns the latest center that is <= target (the
     last image before/at the change start). For the end boundary, returns the
-    earliest center that is >= target. Timesteps with a None center are never
-    selected. Defaults to the first/last index when no center satisfies the
-    condition.
+    earliest center that is >= target. Defaults to the first/last index when no
+    center satisfies the condition.
     """
     if is_start:
-        candidates = [i for i, c in enumerate(centers) if c is not None and c <= target]
+        candidates = [i for i, c in enumerate(centers) if c <= target]
         return candidates[-1] if candidates else 0
-    candidates = [i for i, c in enumerate(centers) if c is not None and c >= target]
+    candidates = [i for i, c in enumerate(centers) if c >= target]
     return candidates[0] if candidates else len(centers) - 1
-
-
-def _center(time_range: tuple[datetime, datetime]) -> datetime:
-    return time_range[0] + (time_range[1] - time_range[0]) / 2
-
-
-def _select_frequent(freq: RasterImage) -> RasterImage:
-    """Sort frequent images, drop duplicate acquisitions, keep the most recent.
-
-    At most NUM_FREQUENT images are kept, in chronological order.
-    """
-    if not freq.timestamps:
-        raise ValueError("Frequent images must have timestamps")
-    timestamps = freq.timestamps
-    order = sorted(range(len(timestamps)), key=lambda i: _center(timestamps[i]))
-    keep: list[int] = []
-    for i in order:
-        if keep and (
-            _center(timestamps[i]) - _center(timestamps[keep[-1]])
-            < SAME_ACQUISITION_TOLERANCE
-        ):
-            continue
-        keep.append(i)
-    keep = keep[-NUM_FREQUENT:]
-    return RasterImage(
-        image=freq.image[:, keep, :, :], timestamps=[timestamps[i] for i in keep]
-    )
-
-
-def _pad_frequent(freq: RasterImage, lower_bound: datetime) -> tuple[RasterImage, int]:
-    """Pad chronologically-sorted frequent images to exactly NUM_FREQUENT.
-
-    Prepends copies of the earliest image with fake timestamps evenly spaced
-    strictly between ``lower_bound`` (the last quarterly timestamp) and the
-    earliest real frequent timestamp, so the stack stays quarterly-then-frequent
-    in time and has no duplicate timestamps (the encoder sorts by timestamp and
-    rejects exact duplicates).
-
-    Returns the padded image and the number of padding images prepended.
-    """
-    assert freq.timestamps
-    deficit = NUM_FREQUENT - freq.image.shape[1]
-    if deficit <= 0:
-        return freq, 0
-    upper_bound = _center(freq.timestamps[0])
-    if lower_bound >= upper_bound:
-        lower_bound = upper_bound - QUARTERLY_PERIOD
-    step = (upper_bound - lower_bound) / (deficit + 1)
-    pad_ts = [(lower_bound + step * (k + 1),) * 2 for k in range(deficit)]
-    pad_img = freq.image[:, 0:1, :, :].repeat(1, deficit, 1, 1)
-    return (
-        RasterImage(
-            image=torch.cat([pad_img, freq.image], dim=1),
-            timestamps=pad_ts + list(freq.timestamps),
-        ),
-        deficit,
-    )
 
 
 def _build_quarterly_stack(
@@ -273,7 +208,7 @@ class StackSampler(Transform):
             if key not in input_dict:
                 continue
             freq_img = input_dict.pop(key)
-            if freq_img.image.shape[1] >= 1:
+            if freq_img.image.shape[1] == NUM_FREQUENT:
                 frequent_options.append(freq_img)
 
         if not frequent_options:
@@ -284,11 +219,13 @@ class StackSampler(Transform):
             opt_idx = 2 if len(frequent_options) > 2 else 0
         else:
             opt_idx = random.randrange(len(frequent_options))
-        chosen_frequent = _select_frequent(frequent_options[opt_idx])
-        assert chosen_frequent.timestamps
+        chosen_frequent = frequent_options[opt_idx]
+
+        if not chosen_frequent.timestamps:
+            raise ValueError("Frequent option must have timestamps")
 
         # Quarterly images end where the frequent images begin.
-        earliest_freq_ts = chosen_frequent.timestamps[0][0]
+        earliest_freq_ts = min(ts[0] for ts in chosen_frequent.timestamps)
 
         # Strict inequality so a quarterly scene captured exactly at the frequent
         # block start (the same Sentinel-2 scene) is not pulled in as a baseline
@@ -299,19 +236,13 @@ class StackSampler(Transform):
         # Take the most recent NUM_QUARTERLY candidates (consecutive, no skipping).
         valid_indices = valid_indices[-NUM_QUARTERLY:]
         q_img, q_ts = _build_quarterly_stack(quarterly, valid_indices)
-        padded_frequent, num_pad = _pad_frequent(chosen_frequent, _center(q_ts[-1]))
-        assert padded_frequent.timestamps
 
-        combined_img = torch.cat([q_img, padded_frequent.image], dim=1)
-        combined_ts = q_ts + padded_frequent.timestamps
+        combined_img = torch.cat([q_img, chosen_frequent.image], dim=1)
+        combined_ts = q_ts + chosen_frequent.timestamps
         input_dict[OUTPUT_KEY] = RasterImage(image=combined_img, timestamps=combined_ts)
 
         # Compute start/end timestamp index targets over the chronological steps.
-        # Frequent padding slots are excluded: they duplicate the first real
-        # frequent image but carry earlier fake timestamps.
-        centers: list[datetime | None] = [_center(ts) for ts in combined_ts]
-        for i in range(len(q_ts), len(q_ts) + num_pad):
-            centers[i] = None
+        centers = [ts[0] + (ts[1] - ts[0]) / 2 for ts in combined_ts]
         start_idx = _change_index(centers, pre_change, is_start=True)
         end_idx = _change_index(centers, post_change, is_start=False)
 
@@ -352,10 +283,10 @@ class StackSampler(Transform):
 class PredictStackBuilder(Transform):
     """Build sentinel2_l2a for prediction (no annotation, single frequent layer).
 
-    At prediction time there is one ``sentinel2_frequent_0`` layer with up to six
-    of the most recent scenes in [T - 90d, T], and no annotation sidecar. The
+    At prediction time there is one ``sentinel2_frequent_0`` layer with six
+    weekly least-cloudy mosaics from [T - 90d, T], and no annotation sidecar. The
     quarterly layer already ends at T - 90d, so this takes the last 16 quarterly
-    images as-is and concatenates 16 quarterly + 6 frequent (padded) = 22 into
+    images as-is and concatenates 16 quarterly + 6 frequent = 22 into
     ``sentinel2_l2a``, matching the 22-timestep stack the model is trained on.
     """
 
@@ -367,24 +298,24 @@ class PredictStackBuilder(Transform):
     def forward(
         self, input_dict: dict[str, Any], target_dict: dict[str, Any]
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Concatenate last 16 quarterly + 6 (padded) frequent into sentinel2_l2a."""
+        """Concatenate last 16 quarterly + 6 frequent into sentinel2_l2a."""
         quarterly: RasterImage = input_dict.pop(QUARTERLY_KEY)
         if quarterly.timestamps is None:
             raise ValueError("sentinel2_quarterly must have timestamps")
 
         frequent: RasterImage = input_dict.pop(f"{FREQUENT_KEY_PREFIX}0")
-        if frequent.image.shape[1] < 1:
-            raise ValueError("Expected prediction frequent layer to be non-empty")
-        frequent = _select_frequent(frequent)
+        if frequent.image.shape[1] != NUM_FREQUENT:
+            raise ValueError(
+                f"Expected prediction frequent layer to have {NUM_FREQUENT} "
+                f"timesteps, got {frequent.image.shape[1]}"
+            )
 
         T = quarterly.image.shape[1]
         indices = list(range(max(0, T - NUM_QUARTERLY), T))
         q_img, q_ts = _build_quarterly_stack(quarterly, indices)
-        padded_frequent, _ = _pad_frequent(frequent, _center(q_ts[-1]))
-        assert padded_frequent.timestamps
 
-        combined_img = torch.cat([q_img, padded_frequent.image], dim=1)
-        combined_ts = q_ts + padded_frequent.timestamps
+        combined_img = torch.cat([q_img, frequent.image], dim=1)
+        combined_ts = q_ts + (frequent.timestamps or [])
         input_dict[OUTPUT_KEY] = RasterImage(image=combined_img, timestamps=combined_ts)
 
         return input_dict, target_dict

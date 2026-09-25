@@ -4,7 +4,8 @@ This script takes one or more v2 annotation JSONs and creates an rslearn dataset
 - sentinel2_quarterly: WindowLayerData with quarterly mosaics (90-day periods);
   the least-cloudy mosaic is selected within each period
 - sentinel2_frequent_0..7: WindowLayerData with one 90-day block each, holding
-  up to six of the most recent scenes (cloud cover <= 50%) in that block
+  the least-cloudy mosaic of each of the six most recent 7-day periods in that
+  block that have imagery (blocks with fewer than six such periods are skipped)
 - label_binary, label_src, label_dst: Pre-rasterized point labels
 - label_pre_change, label_post_change, label_same_change: Pre-rasterized point
   labels for the pre/post/same change-category heads (class 1 = "none")
@@ -45,10 +46,7 @@ import shapely.geometry
 from rasterio.enums import Resampling
 from rslearn.config import LayerConfig, QueryConfig, SpaceMode
 from rslearn.data_sources import Item
-from rslearn.data_sources.utils import (
-    MatchedItemGroup,
-    match_candidate_items_to_window,
-)
+from rslearn.data_sources.utils import match_candidate_items_to_window
 from rslearn.dataset import Dataset, Window
 from rslearn.dataset.manage import retry
 from rslearn.dataset.window import WindowLayerData
@@ -62,7 +60,7 @@ COLLECTION = "sentinel-2-l2a"
 NUM_FREQUENT_OPTIONS = 8
 NUM_FREQUENT_IMAGES = 6
 FREQUENT_BLOCK_DURATION = timedelta(days=90)
-FREQUENT_MAX_CLOUD_COVER = 50
+FREQUENT_PERIOD = timedelta(days=7)
 # Deterministic options end this long after the annotation date so the block
 # covers that date.
 OPTION_MARGIN = timedelta(days=1)
@@ -256,18 +254,16 @@ QUARTERLY_QUERY_CONFIG = QueryConfig(
     per_period_mosaic_reverse_time_order=False,
 )
 
-# No period_duration: the matcher builds mosaics in the order the items are given,
-# so passing items sorted most-recent-first yields the most recent scenes. Extra
-# matches are requested so that duplicate acquisitions (the same datatake from
-# overlapping MGRS tiles) can be dropped while still keeping NUM_FREQUENT_IMAGES.
+# Walks back from the block end one 7-day period at a time, skipping periods with no
+# imagery, until NUM_FREQUENT_IMAGES periods have a mosaic; blocks with fewer are
+# rejected. Matches sentinel2_frequent_0 in the prediction dataset config.
 FREQUENT_QUERY_CONFIG = QueryConfig(
     space_mode=SpaceMode.MOSAIC,
-    max_matches=4 * NUM_FREQUENT_IMAGES,
-    min_matches=1,
+    max_matches=NUM_FREQUENT_IMAGES,
+    min_matches=NUM_FREQUENT_IMAGES,
+    period_duration=FREQUENT_PERIOD,
+    per_period_mosaic_reverse_time_order=False,
 )
-
-# Mosaics whose primary scenes are closer than this are the same acquisition.
-SAME_ACQUISITION_TOLERANCE = timedelta(hours=1)
 
 
 def _build_quarterly_layer_data(
@@ -327,11 +323,11 @@ def _build_frequent_layer_data(
 ) -> WindowLayerData | None:
     """Build WindowLayerData for one frequent option.
 
-    Selects up to NUM_FREQUENT_IMAGES mosaics from the 90-day block starting at
-    block_start, one per acquisition. Items must already be filtered to
-    FREQUENT_MAX_CLOUD_COVER and sorted most-recent-first so the MOSAIC matcher
-    picks the most recent scenes. The resulting groups are written in
-    chronological order. Returns None if the block has no usable scene.
+    Selects the least-cloudy mosaic in each of the NUM_FREQUENT_IMAGES most recent
+    7-day periods with imagery in the 90-day block starting at block_start, in
+    chronological order. Items must be sorted by cloud cover ascending so the
+    MOSAIC matcher sees the clearest candidates first within each period. Returns
+    None if fewer than NUM_FREQUENT_IMAGES periods have imagery.
     """
     rslearn_items = [
         Item(
@@ -354,28 +350,8 @@ def _build_frequent_layer_data(
     matched_groups = match_candidate_items_to_window(
         window_geom, rslearn_items, FREQUENT_QUERY_CONFIG
     )
-
-    # The first item of each mosaic is its primary scene and determines the
-    # materialized timestamp. Groups come most-recent-first.
-    def _group_time(group: MatchedItemGroup[Item]) -> datetime:
-        time_range = group.items[0].geometry.time_range
-        assert time_range is not None
-        return time_range[0]
-
-    kept_groups: list[MatchedItemGroup[Item]] = []
-    for group in matched_groups:
-        group_time = _group_time(group)
-        if any(
-            abs(group_time - _group_time(kept)) < SAME_ACQUISITION_TOLERANCE
-            for kept in kept_groups
-        ):
-            continue
-        kept_groups.append(group)
-        if len(kept_groups) == NUM_FREQUENT_IMAGES:
-            break
-    if not kept_groups:
+    if not matched_groups:
         return None
-    matched_groups = sorted(kept_groups, key=_group_time)
 
     serialized_groups = [
         [gi.serialize() for gi in group.items] for group in matched_groups
@@ -861,17 +837,11 @@ def _process_entry(
     layer_datas = window.load_layer_datas()
     layer_datas["sentinel2_quarterly"] = quarterly_data
 
-    recent_items = sorted(
-        (x for x in all_items if x["cloud_cover"] <= FREQUENT_MAX_CLOUD_COVER),
-        key=lambda x: x["collected_at"],
-        reverse=True,
-    )
-
     frequent_idx = 0
     for block_start in block_starts:
         layer_name = f"sentinel2_frequent_{frequent_idx}"
         freq_data = _build_frequent_layer_data(
-            recent_items, block_start, projection, bounds, layer_name
+            least_cloudy_items, block_start, projection, bounds, layer_name
         )
         if freq_data is not None:
             layer_datas[layer_name] = freq_data

@@ -101,17 +101,16 @@
             "PLANETARY_COMPUTER"
           ],
           "query": {
-            "cloud_cover": {
-              "lte": 50
-            },
-            "sort_by": "COLLECTED_AT",
-            "sort_direction": "DESC"
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
           },
           "timeout": "0:0:10"
         },
         "query_config": {
           "max_matches": 6,
-          "min_matches": 1,
+          "min_matches": 6,
+          "per_period_mosaic_reverse_time_order": false,
+          "period_duration": "7d",
           "space_mode": "MOSAIC"
         },
         "time_offset": "-90d"

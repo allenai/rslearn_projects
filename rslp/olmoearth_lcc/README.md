@@ -174,8 +174,8 @@ desktop app.
 The LCC (land cover change) model uses a dual-forward-pass architecture:
 
 - **Input**: 22 images: 16 quarterly mosaics followed by 6 frequent images (the
-  most recent scenes with cloud cover <= 50% in a 90-day block; when fewer are
-  available, the earliest one is duplicated to fill the 6 slots).
+  least-cloudy mosaic of each of the 6 most recent 7-day periods with imagery in
+  a 90-day block).
 - **Encoder**: OlmoEarth-v1-Base (shared weights, patch_size=4). Processes two
   sets of 11 images separately.
 - **Pass 1**: 11 quarterly images (historical baseline, ~2.75 years).
@@ -190,8 +190,7 @@ Tasks (all per-pixel, loss masked to annotated points only):
 - `dst`: destination land cover category (13 cls)
 - `pre_change` / `post_change`: change-category classification (11 / 15 cls)
 - `ts_start` / `ts_end`: index of the input timestep at which the change starts /
-  ends (22 cls, one per input image; supervised only at change points and never
-  pointing at a padding slot)
+  ends (22 cls, one per input image; supervised only at change points)
 
 #### Prerequisites
 
@@ -236,10 +235,13 @@ The prepare script:
   post_change, first_date_change_noticeable, pre_category, post_category present).
 - Skips windows that already exist in the dataset.
 - Skips duplicate `group`/`window_name` entries across the provided JSON inputs.
-- Creates 8 frequent-image options per window. Each option is a 90-day block
-  holding up to 6 of the most recent scenes with cloud cover <= 50% (one per
-  acquisition; at least one is required). Options are defined by where the
-  block ends: right after first_noticeable (+1 day), 15-60 days after
+- Creates up to 8 frequent-image options per window. Each option is a 90-day
+  block split into 7-day periods counted back from the block end (only full
+  periods, so the most recent 84 days); it holds the least-cloudy mosaic (no
+  cloud threshold) of each of the 6 most recent periods that have imagery, and
+  options with fewer than 6 such periods are skipped. This is the same matching
+  as the prediction config's `sentinel2_frequent_0`. Options are defined by where
+  the block ends: right after first_noticeable (+1 day), 15-60 days after
   first_noticeable, right after post_change (+1 day), and random later
   post-change contexts up to post_change + 2 years. Every block ends on/before
   min(2026-01-01, stop_date), where 2026-01-01 is the annotation cutoff and
@@ -264,8 +266,7 @@ Training details:
 - Optimizer: AdamW lr=1e-4 with ReduceLROnPlateau (factor=0.2, patience=2).
 - At each training step, one of 8 frequent-image options is randomly sampled.
   The 16 quarterly images preceding that option's earliest frequent image are
-  selected, the frequent images are padded to 6, and the 22-image stack is
-  split 11/11 across the two encoder passes.
+  selected, and the 22-image stack is split 11/11 across the two encoder passes.
 - Val/test uses option 2 deterministically.
 - Augmentation: random horizontal/vertical flips.
 - crop_size: 64, batch_size: 8, 100 epochs max.
@@ -301,9 +302,10 @@ semantics (`oe_start_time` is the reference date) and how to run it.
 For prediction, a separate dataset config handles imagery via rslearn's
 standard prepare/materialize pipeline (using OlmoEarth Datasets). The user
 creates windows with a single point-in-time timestamp T, set to the
-current/reference time you want to evaluate. The frequent stack is up to 6 of the
-most recent scenes with cloud cover <= 50% in the 90 days before T, and the
-quarterly mosaics come from the ~5 years before that 90-day block.
+current/reference time you want to evaluate. The frequent stack is the
+least-cloudy mosaic of each of the 6 most recent 7-day periods with imagery in the
+90 days before T, and the quarterly mosaics come from the ~5 years before that
+90-day block.
 
 #### 1. Create windows
 
@@ -330,14 +332,16 @@ derive their search ranges from this single timestamp:
 - `sentinel2_quarterly`: time_offset=-1890d, duration=1800d → searches
   [T-1890d, T-90d] for quarterly mosaics (ending where the frequent block
   starts); prediction uses the last 16.
-- `sentinel2_frequent_0`: time_offset=-90d, duration=90d, sorted by
-  collected_at descending with cloud_cover <= 50, max_matches=6, min_matches=1
-  → searches [T-90d, T] and returns up to 6 of the most recent scenes.
-  `PredictStackBuilder` pads to 6 when fewer are found.
+- `sentinel2_frequent_0`: time_offset=-90d, duration=90d, period_duration=7d,
+  sorted by cloud cover ascending, max_matches=6, min_matches=6 → searches
+  [T-90d, T] week by week from T backwards, skipping weeks with no imagery, and
+  returns the least-cloudy mosaic of each of the 6 most recent weeks with
+  imagery. Windows with fewer than 6 such weeks get no frequent layer and
+  therefore no prediction.
 
-The rslearn-only `config_predict_rslearn.json` has no padding step, so its
-frequent layer uses min_matches=6 and windows with fewer than 6 such scenes get
-no prediction.
+`config_predict_rslearn.json` uses the same frequent layer. Prediction windows
+(2048 px) combine multiple scenes within a week (e.g. across tile or swath edges)
+more often than the 128 px training windows do.
 
 Alternatively create windows from bounding boxes. These examples produce exactly
 32768x32768 tiles (256 windows of 2048x2048) by providing grid-aligned UTM

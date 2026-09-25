@@ -8,10 +8,10 @@
 #
 # Inputs: the dataset config (config_predict_rslearn.json) yields exactly 16 quarterly
 # mosaics (max_matches: 16 keeps the most recent periods) ending at T-90d and exactly 6
-# frequent images (the most recent scenes with cloud cover <= 50% in [T-90d, T]); the
-# Concatenate transform stacks them along time into the 22-image sentinel2_l2a input.
-# There is no padding here, so windows with fewer than 6 such scenes are rejected by
-# min_matches (the rslp PredictStackBuilder path pads instead).
+# frequent images (the least-cloudy mosaic of each of the 6 most recent 7-day periods
+# with imagery in [T-90d, T]); the Concatenate transform stacks them along time into
+# the 22-image sentinel2_l2a input. Windows with fewer than 6 such periods are
+# rejected by min_matches and get no prediction.
 #
 # Outputs: one RslearnWriter per head writes to its own layer (output_<task>). The five
 # probability heads write softmax probabilities scaled to 0..255 (uint8); ts_start and
