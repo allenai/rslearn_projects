@@ -1,0 +1,549 @@
+## OlmoEarth LCC: Land Cover Change
+
+OlmoEarth LCC (land cover change) detects recent land cover change from Sentinel-2
+time series. It inputs 16 quarterly images (to establish a historical baseline) and 4
+recent biweekly images (to detect changes soon after they occur) and predicts, per
+pixel, whether a land cover change occurred, the source and destination land cover
+categories, the start and end dates of the change, and a fine-grained change category.
+
+The model is trained on manually verified point annotations. See
+[dataset_readme.md](./dataset_readme.md) for how the different phases of the dataset
+were collected (the dataset is published at
+https://huggingface.co/datasets/allenai/olmoearth_lcc).
+
+Package layout:
+
+- `ten_year_dataset/`: create windows for the ten-year Sentinel-2 dataset used to
+  mine candidate changes.
+- `land_cover/`: train a per-pixel land cover model and apply it to the ten-year
+  dataset to find candidate change pixels (see its [README](./land_cover/README.md)).
+- `annotation_app/`: Flask UI for verifying and labeling points.
+- `annotation_scripts/`: per-phase scripts that produce candidate annotation JSONs.
+- `codex_tiles/`: Codex-generated 0.1x0.1 degree tiles with likely changes, and a
+  script to sample points from them.
+- `lcc_model/`: the LCC model, training dataset preparation, and (scaled) prediction.
+- `scripts/`: misc utilities.
+
+### Annotation Format
+
+The core data structure is a JSON file (list of dicts). Each entry represents
+one 128x128 spatial window:
+
+```json
+{
+  "projection": {"crs": "EPSG:32651", "x_resolution": 10, "y_resolution": -10},
+  "bounds": [0, 0, 128, 128],
+  "window_name": "example_window",
+  "group": "default",
+  "time_range": ["2017-01-01T00:00:00+00:00", "2024-01-01T00:00:00+00:00"],
+  "description": "New subdivision replacing forest",
+  "positive_points": [
+    {
+      "lon": 121.5, "lat": 14.6,
+      "pre_change": "2020-01-15",
+      "first_date_change_noticeable": "2020-04-27",
+      "post_change": "2020-07-15",
+      "pre_category": "tree",
+      "post_category": "urban/built-up",
+      "post_change_category": "new_building"
+    }
+  ],
+  "negative_points": [
+    {"lon": 121.51, "lat": 14.61}
+  ]
+}
+```
+
+- `positive_points`: locations where land cover change occurred.
+- `negative_points`: locations confirmed as no-change.
+- `time_range`: metadata indicating when negative points are valid. For samples
+  without positive points and without `anchor_date`, its midpoint is used as the
+  anchor date (see below).
+- `description` (optional): freeform notes on the sample.
+- `anchor_date` (optional, only used for samples without positive points): the
+  earliest date the input frequent block should end at; the prepare script's
+  earliest frequent option ends right after it and the others later. Falls back
+  to the `time_range` midpoint when unset.
+- Dates may be blank/missing if not yet annotated.
+- `pre_change`: the last date at which the location still appears in its pre-change
+  state; `first_date_change_noticeable`: the first date at which the change starts
+  to become noticeable; `post_change`: the first date at which the change appears
+  complete.
+- `stop_date` (optional, positive points only): imagery on/after this date must not
+  be used for training, e.g. because another unannotated change happens later. It
+  must be after `post_change`. When set, the training dataset only samples frequent
+  blocks that end on/before the earliest `stop_date` among the entry's points.
+
+Land cover categories (`pre_category` / `post_category`): nodata, bare, burnt, crops,
+fallow/shifting cultivation, grassland, Lichen and moss, shrub, snow and ice, tree,
+urban/built-up, water, wetland (herbaceous).
+
+Positive points may also carry fine-grained change-category fields. A point is
+annotated with one `pre_change_category` and/or one `post_change_category`, or one
+`same_change_category`. These were introduced partway through annotation, so some
+points have none of them; during training the change-category heads are only
+supervised at points that have at least one of these fields.
+
+- `pre_change_category` (what was removed or lost): deforestation, urban_erosion,
+  wetland_loss, water_contract, removed_crop_structure.
+- `post_change_category` (what appeared): vegetation_growth, new_building, new_road,
+  new_infrastructure, new_crop_field, new_aquafarm, site_clearing, water_expand,
+  mining, new_crop_structure, selective_logging, landslide, settlement.
+- `same_change_category` (disturbed but not permanently converted):
+  agricultural_activity, wildfire, ice_motion, flooding.
+### Ten-Year Dataset
+
+The ten-year dataset has 128x128 windows (10 m/pixel, UTM) with ten `sentinel2_yN`
+layers, each containing Sentinel-2 mosaics for one year (six per year). It is used to
+mine candidate changes by applying a land cover model to each year and comparing the
+predictions (see [land_cover/README.md](./land_cover/README.md)).
+
+- Dataset: `/weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408/`
+- Dataset config: `data/olmoearth_lcc/ten_year_dataset/config.json`
+
+Windows can be added with three workflows:
+
+```bash
+# Random land locations worldwide. Samples random (lat, lon) points, filters to land
+# with Sentinel-2 coverage (at least one image per 30-day period in the base window),
+# snaps to a 128px UTM grid, and saves the windows. Roughly 30% of samples survive
+# the ocean filter; coverage filtering removes additional points.
+python -m rslp.main olmoearth_lcc create_windows \
+    --ds_path /weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408/ \
+    --num_samples 50000 --workers 32
+
+# Random grid cells around ~1000 major world cities.
+python -m rslp.main olmoearth_lcc create_windows_urban \
+    --ds_path /weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408/ \
+    --group urban --samples_per_city 100 --workers 32
+
+# Random locations within a fixed set of sub-Saharan African countries.
+python -m rslp.main olmoearth_lcc create_windows_africa \
+    --ds_path /weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408/ \
+    --group africa --num_samples 50000 --workers 32
+```
+
+Then materialize the imagery with the standard rslearn pipeline:
+
+```bash
+rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408/ --workers 32
+rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408/ --workers 128
+```
+
+### Running the Annotation App
+
+The annotation app is a Flask web UI for browsing entries and labeling points.
+
+```bash
+# 1. Create the rslearn dataset windows (for imagery)
+mkdir -p /path/to/dataset/
+cp data/olmoearth_lcc/annotation_app/config.json /path/to/dataset/config.json
+python -m rslp.olmoearth_lcc.annotation_app.create_windows \
+    annotations.json \
+    /path/to/dataset/
+
+# 2. Materialize Sentinel-2 imagery
+rslearn dataset prepare --root /path/to/dataset/ --workers 32 --retry-max-attempts 5 --retry-backoff-seconds 5
+rslearn dataset materialize --root /path/to/dataset/ --workers 128 --retry-max-attempts 5 --retry-backoff-seconds 5
+
+# 3. Launch the annotation app
+python -m rslp.olmoearth_lcc.annotation_app.server \
+    --json annotations.json \
+    --ds-path /path/to/dataset/ \
+    --port 8080
+```
+
+The UI:
+- Displays up to 12 monthly Sentinel-2 images per year in a 2-row grid.
+- Toggle overlay to see positive (green) and negative (red) points.
+- Left-click on overlay to add a positive point; right-click to add negative.
+- Click existing points to remove them.
+- Iterate through positive points with the point navigator at the top.
+- Edit the sample-level `anchor_date` and `description` in the Sample section.
+- Edit annotation fields (pre_change, first_date_change_noticeable, post_change,
+  the optional stop_date, pre_category, post_category, and the optional
+  change-category fields) for the selected positive point.
+- Saving: the Save button writes the whole entry (Sample fields, the selected
+  point's fields, and all points). Adding, removing, or converting points and
+  "Apply to all" save immediately, including any typed-but-unsaved values.
+  Switching between points keeps typed values until the next save, but moving to
+  another entry discards them.
+- Click timestamps below images to copy them to clipboard.
+- Navigation: Prev/Next buttons to move between entries. URL hash tracks position.
+
+For high-resolution context, copy the window coordinates into the Google Earth
+desktop app.
+
+---
+
+### Model
+
+#### Architecture
+
+The LCC (land cover change) model uses a dual-forward-pass architecture:
+
+- **Input**: 22 images: 16 quarterly mosaics followed by 6 frequent images (the
+  least-cloudy mosaic of each of the 6 most recent 7-day periods with imagery in
+  a 90-day block).
+- **Encoder**: OlmoEarth-v1-Base (shared weights, patch_size=4). Processes two
+  sets of 11 images separately.
+- **Pass 1**: 11 quarterly images (historical baseline, ~2.75 years).
+- **Pass 2**: 5 quarterly images + 6 frequent images (recent conditions).
+- **Decoder**: Features from both passes concatenated (1536ch @ 1/4 res) →
+  shared 1x1 conv (768ch) → per-task linear heads reshaping to full resolution
+  via 4x4 patch prediction.
+
+Tasks (all per-pixel, loss masked to annotated points only):
+- `binary`: change classification (3 cls: nodata / no_change / change)
+- `src`: source land cover category (13 cls)
+- `dst`: destination land cover category (13 cls)
+- `pre_change` / `post_change`: change-category classification (11 / 15 cls)
+- `ts_start` / `ts_end`: index of the input timestep at which the change starts /
+  ends (22 cls, one per input image; supervised only at change points)
+
+#### Prerequisites
+
+The prepare and materialize steps use OlmoEarth Datasets for Sentinel-2 scene
+discovery and download. Install `olmoearth_run` and set the required env vars:
+
+```bash
+pip install -e /path/to/olmoearth_run
+export OEDATASETS_API_URL=https://datasets.olmoearth.allenai.org
+export DATASETS_API_TOKEN=<your-token>
+```
+
+#### Training Dataset Preparation
+
+The prepare script creates the training dataset from one or more v2 annotation
+JSONs.
+It queries the OlmoEarth Datasets API for both quarterly and frequent imagery,
+then rslearn materialize downloads the pixels.
+
+```bash
+OUT=/path/to/lcc_model_dataset/
+mkdir -p "$OUT"
+cp data/olmoearth_lcc/lcc_model/config.json "$OUT/config.json"
+python -m rslp.olmoearth_lcc.lcc_model.prepare \
+    --v2-json-paths annotations_a.json annotations_b.json \
+    --ds-path "$OUT"
+rslearn dataset materialize --root "$OUT" --workers 128 --retry-backoff-seconds 5 --retry-max-attempts 5 --no-use-initial-job
+```
+
+The prepare script is **idempotent**: windows that already exist are skipped, so
+you can re-run it after adding new annotations and only the new windows will be
+created. Then run `rslearn dataset materialize` again to download imagery for
+the new windows.
+
+Datasets prepared before the switch to 90-day frequent blocks (four 15-day
+periods, 20-image stack) are not compatible with the current model and cannot be
+upgraded in place (the idempotency check does not detect the old frequent
+layers), so prepare into a new dataset directory and retrain.
+
+The prepare script:
+- Only processes entries with fully annotated positive points (all of pre_change,
+  post_change, first_date_change_noticeable, pre_category, post_category present).
+- Skips windows that already exist in the dataset.
+- Skips duplicate `group`/`window_name` entries across the provided JSON inputs.
+- Creates up to 8 frequent-image options per window. Each option is a 90-day
+  block split into 7-day periods counted back from the block end (only full
+  periods, so the most recent 84 days); it holds the least-cloudy mosaic (no
+  cloud threshold) of each of the 6 most recent periods that have imagery, and
+  options with fewer than 6 such periods are skipped. This is the same matching
+  as the prediction config's `sentinel2_frequent_0`. Options are defined by where
+  the block ends: right after first_noticeable (+1 day), 15-60 days after
+  first_noticeable, right after post_change (+1 day), and random later
+  post-change contexts up to post_change + 2 years. Every block ends on/before
+  min(2026-01-01, stop_date), where 2026-01-01 is the annotation cutoff and
+  stop_date is the earliest optional per-point stop date.
+- Window time_range is derived from the annotations (no fixed 10-year range).
+- Rasterizes point labels into label_binary/label_src/label_dst layers.
+- Writes `lcc_annotations.json` sidecar for training-time annotation injection
+  (merges with existing sidecar on re-runs).
+
+`lcc_model/filter_v2_jsons.py` applies the same window-level rules as the prepare
+script to produce filtered copies of the annotation JSONs (e.g. for publishing).
+
+#### Training
+
+```bash
+rslearn model fit --config data/olmoearth_lcc/lcc_model/config_bp_abs_season_qdrop.yaml
+```
+
+Training details:
+- Encoder frozen for 10 epochs, then unfrozen with 10x lower LR (effective
+  encoder LR = 1e-5 vs decoder 1e-4).
+- Optimizer: AdamW lr=1e-4 with ReduceLROnPlateau (factor=0.2, patience=2).
+- At each training step, one of 8 frequent-image options is randomly sampled.
+  The 16 quarterly images preceding that option's earliest frequent image are
+  selected, and the 22-image stack is split 11/11 across the two encoder passes.
+- Val/test uses option 2 deterministically.
+- Augmentation: random horizontal/vertical flips.
+- crop_size: 64, batch_size: 8, 100 epochs max.
+
+The other `config_*.yaml` files in `data/olmoearth_lcc/lcc_model/` are variants that
+were tried along the way; `config_bp_abs_qdrop_bpcat_1pass.yaml` (and its `_predict`
+counterpart) is the one used by the prediction pipeline.
+
+`config_rslearn_bpcat_notemporal.yaml` and `config_rslearn_bpcat_temporal.yaml` express
+the model with generic rslearn components (`BreakpointScan`, `TokensToChannels`,
+`TemporalTransformer`) instead of `rslp.olmoearth_lcc.lcc_model.model.ChangeModel`, so
+the checkpoints can be run by systems that depend on rslearn alone. Their `_predict`
+counterparts contain no `rslp` imports at all.
+
+#### OlmoEarth Studio (olmoearth_run)
+
+The Studio configs for the `rslearn_bpcat_notemporal` model live in olmoearth_projects
+under `olmoearth_run_data/olmoearth_lcc/`. `model.yaml` there is derived from
+`config_rslearn_bpcat_notemporal_predict.yaml` and `dataset.json` from
+`config_predict_rslearn.json`; keep the model blocks in sync when the model changes.
+Those Studio configs have not yet been updated for the 22-image stack (6 frequent
+images from a 90-day block, quarterly ending at T-90d) and must be synced before
+deploying a model trained on it.
+Studio currently supports a single output per model, so only the `post_change` head
+(argmax class index) is written there; the other heads will be exposed once
+multi-output support is available. See the README in that directory for the time range
+semantics (`oe_start_time` is the reference date) and how to run it.
+
+---
+
+### Prediction
+
+For prediction, a separate dataset config handles imagery via rslearn's
+standard prepare/materialize pipeline (using OlmoEarth Datasets). The user
+creates windows with a single point-in-time timestamp T, set to the
+current/reference time you want to evaluate. The frequent stack is the
+least-cloudy mosaic of each of the 6 most recent 7-day periods with imagery in the
+90 days before T, and the quarterly mosaics come from the ~5 years before that
+90-day block.
+
+#### 1. Create windows
+
+```bash
+PREDICT_DS=/path/to/predict_dataset/
+mkdir -p "$PREDICT_DS"
+cp data/olmoearth_lcc/lcc_model/config_predict.json "$PREDICT_DS/config.json"
+
+# Create windows over an AOI. The time range is a single point in time: T, the
+# current/reference time. The frequent stack covers [T-90d, T].
+# Example: to evaluate current/reference time 2025-06-01, use T=2025-06-01.
+rslearn dataset add_windows \
+    --root "$PREDICT_DS" \
+    --group predict \
+    --fname aoi.geojson \
+    --src_crs EPSG:4326 \
+    --utm --resolution 10 --grid_size 2048 \
+    --start 2025-06-01T00:00:00+00:00 \
+    --end 2025-06-01T00:00:00+00:00
+```
+
+The `config_predict.json` layers use `time_offset` and `duration` so both layers
+derive their search ranges from this single timestamp:
+- `sentinel2_quarterly`: time_offset=-1890d, duration=1800d → searches
+  [T-1890d, T-90d] for quarterly mosaics (ending where the frequent block
+  starts); prediction uses the last 16.
+- `sentinel2_frequent_0`: time_offset=-90d, duration=90d, period_duration=7d,
+  sorted by cloud cover ascending, max_matches=6, min_matches=6 → searches
+  [T-90d, T] week by week from T backwards, skipping weeks with no imagery, and
+  returns the least-cloudy mosaic of each of the 6 most recent weeks with
+  imagery. Windows with fewer than 6 such weeks get no frequent layer and
+  therefore no prediction.
+
+`config_predict_rslearn.json` uses the same frequent layer. Prediction windows
+(2048 px) combine multiple scenes within a week (e.g. across tile or swath edges)
+more often than the 128 px training windows do.
+
+Alternatively create windows from bounding boxes. These examples produce exactly
+32768x32768 tiles (256 windows of 2048x2048) by providing grid-aligned UTM
+coordinates in meters directly via `--src_crs`:
+
+```bash
+# Seattle area (UTM 10N) - 327.68 km x 327.68 km tile
+rslearn dataset add_windows --root "$PREDICT_DS" --group predict \
+    --box=368640,5099520,696320,5427200 \
+    --src_crs EPSG:32610 --crs EPSG:32610 --resolution 10 \
+    --grid_size 2048 \
+    --start 2025-01-01T00:00:00+00:00 --end 2025-01-01T00:00:00+00:00
+
+# Doha area (UTM 39N) - 327.68 km x 327.68 km tile
+rslearn dataset add_windows --root "$PREDICT_DS" --group predict \
+    --box=389120,2621440,716800,2949120 \
+    --src_crs EPSG:32639 --crs EPSG:32639 --resolution 10 \
+    --grid_size 2048 \
+    --start 2025-01-01T00:00:00+00:00 --end 2025-01-01T00:00:00+00:00
+```
+
+#### 2. Prepare and materialize imagery
+
+```bash
+rslearn dataset prepare     --root "$PREDICT_DS" --workers 32
+rslearn dataset materialize --root "$PREDICT_DS" --workers 128
+```
+
+#### 3. Run prediction
+
+```bash
+rslearn model predict \
+    --config data/olmoearth_lcc/lcc_model/config_bp_abs_qdrop_bpcat_1pass_predict.yaml \
+    --data.init_args.path="$PREDICT_DS"
+```
+
+The `PredictStackBuilder` transform takes the quarterly + frequent inputs and
+builds the 22-image stack without needing annotations or multiple frequent options.
+
+#### Output
+
+Per-window output at `<window>/layers/output_change/<bandset>/geotiff.tif` (58 bands):
+- `binary`: 3-channel probability map (nodata / no_change / change)
+- `src`: 13-channel source category probabilities
+- `dst`: 13-channel destination category probabilities
+- `ts_pre_days` / `ts_post_days`: predicted pre/post change dates as integer days
+  since the timestamp epoch
+- `pre_change` / `post_change` / `same_change`: 7/14/6-channel change-category
+  probabilities (class layout [nodata, none, <options...>])
+
+#### 4. Postprocess: raster to GeoJSON
+
+Convert prediction rasters to GeoJSONs of change polygons. By default (with
+`--out_dir`) each worker job writes one GeoJSON per input raster, so features
+are not retained in memory across jobs; pass `--output` instead (or in
+addition) to merge all features into a single GeoJSON file.
+
+```bash
+python -m rslp.olmoearth_lcc.lcc_model.postprocess \
+    --dataset_path "$PREDICT_DS" \
+    --out_dir changes/ \
+    --min_pixels 10 \
+    --workers 32
+```
+
+With `--dataset_path`, `--out_dir` writes one `<window_name>.geojson` per
+prediction window, so polygons remain split at 2048-window boundaries and the
+files can be numerous.
+
+Alternatively, run over the merged 9-band summary rasters written by the scaled
+prediction pipeline (`--write_summary_raster`); each `*_summary.tif` tile is
+processed whole so polygons are not split at 2048-window boundaries (a full
+32768x32768 tile is ~10 GB in memory, so keep `--workers` low). Here
+`--out_dir` writes one `<tile>_summary.geojson` per tile:
+
+```bash
+python -m rslp.olmoearth_lcc.lcc_model.postprocess \
+    --summary_path /path/to/tile_outputs/ \
+    --out_dir changes/ \
+    --workers 4
+```
+
+Polygonization operates on the summary representation (`SUMMARY_BANDS`; full
+per-window rasters are converted on the fly via `summary_window_array`):
+- A pixel is a change pixel if its argmax pre or post change category is a real
+  category (not "none"). The pre head is the merged pre+same head, so the former
+  same-change categories (e.g. wildfire) count as pre categories.
+- Finds connected components separately for each unique (pre category, post
+  category) combination, so each polygon represents a single category combo.
+- Per polygon, majority-votes the src/dst land cover classes and the change
+  start/end months (dates are month granularity, first of the month).
+- Averages the binary change score over the polygon, and averages the
+  per-pixel argmax score of each head predicting a real category (one head
+  usually; two for combos like deforestation+mining).
+
+Each GeoJSON feature includes: `num_pixels`, `area_hectares` (10 m pixels =
+0.01 ha each, rounded to 2 decimals), `binary_change_score` and
+`category_change_score` (0-255 scale), `pre_change_category`,
+`post_change_category`, `src_class`, `src_class_idx`, `dst_class`,
+`dst_class_idx`, `pre_change_date`, `post_change_date`.
+
+---
+
+### Scaled Prediction (global tiled inference)
+
+To apply the LCC model at scale (e.g. globally), the world is divided into
+32768x32768 UTM tiles (10 m/pixel). Each tile, for a single reference timestamp,
+becomes one task that is written to a Beaker queue and processed by the
+`rslp.common` worker system. This is analogous to `rslp.satlas` but
+self-contained: it uses the OlmoEarth Datasets imagery source (no rtree index) and
+the LCC-specific pre/post-processing.
+
+Per-tile pipeline: create 2048x2048 windows -> materialize Sentinel-2 imagery ->
+run the model -> polygonize the `output_change` raster into a per-tile GeoJSON
+(`{EPSG}_{col}_{row}.geojson`). Optionally the full merged 57-band uint16 raster
+(`{EPSG}_{col}_{row}.tif`, with the per-category scores) and/or the compact 9-band
+uint8 summary raster (`{EPSG}_{col}_{row}_summary.tif`, consumed directly by
+olmoearth_lcc_viewer; see `postprocess.SUMMARY_BANDS`) are also written. Merging
+the per-tile GeoJSONs into a single layer and converting to vector tiles is
+handled separately (not yet implemented).
+
+The prediction pipeline accepts any tile size that is a multiple of 2048; only the
+job-writer fixes the tile size to 32768.
+
+#### 1. Enqueue tiles for a reference timestamp
+
+```bash
+python -m rslp.main olmoearth_lcc write_jobs \
+    --timestamp 2025-06-01T00:00:00+00:00 \
+    --out_path /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_outputs_20260529/ \
+    --queue_name favyen/lcc-prediction-queue
+```
+
+Optional flags:
+- `--epsg_code 32651`: restrict to one UTM zone.
+- `--wgs84_bounds '[-122.5, 47.0, -121.5, 48.0]'`: restrict to tiles intersecting a
+  WGS84 bounding box.
+- `--batch_size 4`: tiles per worker job.
+- `--count 100`: randomly sample at most this many tiles (for testing).
+- `--write_raster true`: also write the full merged 57-band uint16 raster per tile
+  (includes the per-category scores).
+- `--write_summary_raster true`: also write the compact 9-band uint8 summary
+  raster per tile (preferred at scale; the viewer consumes it directly).
+
+Tiles whose outputs already exist in `out_path` are skipped, so re-running resumes.
+
+#### 2. Launch workers
+
+The model's imagery source needs the OlmoEarth Datasets credentials, passed via
+`--extra_env_vars` (the `DATASETS_API_TOKEN` secret must exist in the
+`ai2/earth-systems` Beaker workspace). Start one worker first to warm caches, then
+scale up.
+
+```bash
+python -m rslp.main common launch \
+    --image_name favyen/rslp_image \
+    --queue_name favyen/lcc-prediction-queue \
+    --num_workers 50 --gpus 1 --shared_memory 256GiB \
+    --cluster '["ai2/jupiter", "ai2/neptune", "ai2/saturn"]' \
+    --weka_mounts '[{"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}]' \
+    --extra_env_vars '[{"name":"OEDATASETS_API_URL","value":"https://datasets.olmoearth.allenai.org"},{"name":"DATASETS_API_TOKEN","secret":"LCC_DATASETS_API_TOKEN"},{"name":"RSLP_PREFIX","value":"/weka/dfive-default/rslearn-eai"}]'
+```
+
+Each worker pulls tasks from the queue and runs the `predict_multi` workflow.
+
+#### Random 2048x2048 land tiles (diagnostic sampling)
+
+To get diverse predictions from random locations worldwide (useful for spotting
+model mispredictions and iterating on annotations), use `write_jobs_random_2048`.
+It samples random lat/lon points, snaps them to 2048-pixel-aligned UTM tiles, and
+keeps tiles where at least one corner is on land.
+
+```bash
+python -m rslp.main olmoearth_lcc write_jobs_random_2048 \
+    --start_time 2025-01-01T00:00:00+00:00 \
+    --end_time 2025-06-01T00:00:00+00:00 \
+    --out_path /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_outputs_20260529/ \
+    --queue_name favyen/lcc-prediction-queue \
+    --count 500
+```
+
+Each tile gets a randomly chosen reference timestamp between `start_time` and
+`end_time`.
+
+Arguments:
+- `--start_time` / `--end_time`: range from which to uniformly sample each tile's
+  reference timestamp.
+- `--count 500`: number of land tiles to enqueue.
+- `--batch_size 4`: tiles per worker job.
+- `--write_raster true`: also write the full merged 57-band uint16 raster per tile.
+- `--write_summary_raster true`: also write the compact 9-band uint8 summary
+  raster per tile.
+
+Launch workers the same way as for scaled prediction above. The
+`write_jobs_random_2048_china` and `write_jobs_random_2048_africa` workflows (in
+`annotation_scripts/phase03_random_tiles_china_africa/`) are regional variants.
