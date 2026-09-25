@@ -14,7 +14,9 @@ model:
                 init_args:
                   model_id: OLMOEARTH_V1_2_BASE
                   patch_size: 4
-                  use_legacy_timestamps: false
+                  # Some windows have duplicated Sentinel-2 timestamps (e.g. adjacent
+                  # tiles from the same pass), which the real-timestamp path rejects.
+                  use_legacy_timestamps: true
               # 4 pre images in one forward pass, 4 post images in another.
               num_timesteps_per_forward_pass: 4
               image_key: "sentinel2_l2a"

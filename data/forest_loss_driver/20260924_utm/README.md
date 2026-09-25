@@ -7,8 +7,9 @@ and Ecuador.
 
 The model configuration is updated from `20260401_peru_phase2/config.yaml`:
 
-- OlmoEarth-v1.2-Base instead of v1-Base, with `use_legacy_timestamps: false` so the
-  actual Sentinel-2 acquisition dates are passed to the encoder.
+- OlmoEarth-v1.2-Base instead of v1-Base. `use_legacy_timestamps` stays `true`
+  (dummy monthly timestamps) because some windows contain duplicated Sentinel-2
+  timestamps, which the real-timestamp path does not accept.
 - `SimpleTimeSeries` uses `num_timesteps_per_forward_pass: 4` (the 4 pre images in one
   forward pass and the 4 post images in another, features concatenated) instead of the
   deprecated `image_channels`.
