@@ -268,6 +268,7 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
                         "pre_change_category",
                         "post_change_category",
                         "same_change_category",
+                        "description",
                     ):
                         if field in existing[0]:
                             point[field] = existing[0][field]
@@ -328,6 +329,7 @@ def create_app(v2_json_path: str, ds_path_str: str) -> Flask:
                     "pre_change_category",
                     "post_change_category",
                     "same_change_category",
+                    "description",
                 ):
                     val = body.get(field)
                     if val is not None:

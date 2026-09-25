@@ -81,6 +81,9 @@ supervised at points that have at least one of these fields.
 - `same_change_category` (disturbed but not permanently converted):
   agricultural_activity, wildfire, ice_motion, flooding.
 
+Positive points may also have an optional freeform `description` string with the
+annotator's notes on the change. Negative points never carry this field.
+
 ### Ten-Year Dataset
 
 The ten-year dataset has 128x128 windows (10 m/pixel, UTM) with ten `sentinel2_yN`

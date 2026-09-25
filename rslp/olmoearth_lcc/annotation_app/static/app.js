@@ -114,6 +114,7 @@
     post_change_category: document.getElementById("annot-post-change-category"),
     same_change_category: document.getElementById("annot-same-change-category"),
     fine_change_category: document.getElementById("annot-fine-change-category"),
+    description: document.getElementById("annot-description"),
   };
 
   function populateCategorySelect(select, categories) {
@@ -342,6 +343,7 @@
     setCategorySelect(annotInputs.post_change_category, pt.post_change_category);
     setCategorySelect(annotInputs.same_change_category, pt.same_change_category);
     setCategorySelect(annotInputs.fine_change_category, pt.fine_change_category);
+    annotInputs.description.value = pt.description || "";
     // Only show the legacy fine-category dropdown when the point already has a value.
     var fineField = document.getElementById("fine-change-category-field");
     if (fineField) {
@@ -564,6 +566,7 @@
       post_change_category: annotInputs.post_change_category.value.trim(),
       same_change_category: annotInputs.same_change_category.value.trim(),
       fine_change_category: annotInputs.fine_change_category.value.trim(),
+      description: annotInputs.description.value.trim(),
     }).then(function (res) {
       if (res.ok) {
         currentEntry.entry = res.entry;

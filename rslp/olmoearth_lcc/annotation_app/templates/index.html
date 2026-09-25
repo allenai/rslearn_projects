@@ -38,6 +38,9 @@
   #annot-form input { font-size: 14px; padding: 4px 8px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; font-family: monospace; width: 130px; }
   #annot-form select { font-size: 14px; padding: 4px 8px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; width: 180px; height: 30px; }
   #annot-fine-change-category { width: 280px; }
+  #annot-form .annot-row { flex-basis: 100%; display: flex; align-items: flex-end; gap: 12px; }
+  #annot-form .annot-row .field { flex: 1; }
+  #annot-form textarea { font-size: 14px; padding: 4px 8px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; font-family: inherit; width: 100%; min-width: 300px; resize: vertical; }
   #annot-form button { font-size: 14px; padding: 6px 14px; background: #0f3460; color: #e0e0e0; border: 1px solid #555; border-radius: 4px; cursor: pointer; height: 30px; }
   #annot-form button:hover { background: #1a5276; }
   #annot-status { font-size: 13px; color: #aaa; align-self: center; }
@@ -124,9 +127,15 @@
     <span class="field-label">Fine category</span>
     <select id="annot-fine-change-category"></select>
   </div>
-  <button type="submit" id="btn-save">Save</button>
-  <button type="button" id="btn-apply-all">Apply to all</button>
-  <span id="annot-status"></span>
+  <div class="annot-row">
+    <div class="field">
+      <span class="field-label">Description</span>
+      <textarea id="annot-description" rows="2" placeholder="Freeform description of the change"></textarea>
+    </div>
+    <button type="submit" id="btn-save">Save</button>
+    <button type="button" id="btn-apply-all">Apply to all</button>
+    <span id="annot-status"></span>
+  </div>
 </form>
 
 <div class="section-label">Sentinel-2 Imagery</div>
