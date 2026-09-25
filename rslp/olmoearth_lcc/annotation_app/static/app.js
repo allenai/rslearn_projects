@@ -108,6 +108,7 @@
     pre_change: document.getElementById("annot-pre-change"),
     first_date_change_noticeable: document.getElementById("annot-first-noticeable"),
     post_change: document.getElementById("annot-post-change"),
+    stop_date: document.getElementById("annot-stop-date"),
     pre_category: document.getElementById("annot-pre-category"),
     post_category: document.getElementById("annot-post-category"),
     pre_change_category: document.getElementById("annot-pre-change-category"),
@@ -337,6 +338,7 @@
     annotInputs.pre_change.value = pt.pre_change || "";
     annotInputs.first_date_change_noticeable.value = pt.first_date_change_noticeable || "";
     annotInputs.post_change.value = pt.post_change || "";
+    annotInputs.stop_date.value = pt.stop_date || "";
     setCategorySelect(annotInputs.pre_category, pt.pre_category);
     setCategorySelect(annotInputs.post_category, pt.post_category);
     setCategorySelect(annotInputs.pre_change_category, pt.pre_change_category);
@@ -560,6 +562,7 @@
       pre_change: annotInputs.pre_change.value.trim(),
       first_date_change_noticeable: annotInputs.first_date_change_noticeable.value.trim(),
       post_change: annotInputs.post_change.value.trim(),
+      stop_date: annotInputs.stop_date.value.trim(),
       pre_category: annotInputs.pre_category.value.trim(),
       post_category: annotInputs.post_category.value.trim(),
       pre_change_category: annotInputs.pre_change_category.value.trim(),

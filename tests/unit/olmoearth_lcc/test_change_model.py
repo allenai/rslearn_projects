@@ -18,8 +18,8 @@ from rslp.olmoearth_lcc.lcc_model.transforms import (
 
 PATCH = 4
 DIM = 16
-T = 20
-NUM_PASS1 = 10
+T = 22
+NUM_PASS1 = 11
 CROP = 16
 
 
@@ -123,9 +123,9 @@ def test_two_pass_features_single_batched_call_and_ordering() -> None:
     assert feature.shape == (3, DIM, CROP // PATCH, CROP // PATCH, T)
     for b in range(3):
         sample_id = float(b + 1)
-        # First half: pass1 timesteps 0..9 of this sample.
+        # First half: pass1 timesteps 0..10 of this sample.
         expected1 = sample_id + torch.arange(NUM_PASS1) / 100
-        # Second half: pass2 timesteps 0..9 of this sample (indices restart).
+        # Second half: pass2 timesteps 0..10 of this sample (indices restart).
         expected2 = sample_id + torch.arange(T - NUM_PASS1) / 100
         torch.testing.assert_close(feature[b, 0, 0, 0, :NUM_PASS1], expected1)
         torch.testing.assert_close(feature[b, 0, 0, 0, NUM_PASS1:], expected2)

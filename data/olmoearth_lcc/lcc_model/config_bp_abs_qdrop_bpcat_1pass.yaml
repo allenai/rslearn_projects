@@ -1,5 +1,5 @@
-# bp_abs_qdrop_bpcat with a single encoder pass over all 20 images (num_pass1: null)
-# instead of two 10-image passes, so every token attends to every other inside the
+# bp_abs_qdrop_bpcat with a single encoder pass over all 22 images (num_pass1: null)
+# instead of two 11-image passes, so every token attends to every other inside the
 # encoder. Roughly doubles encoder attention memory; drop batch_size to 2 if it OOMs.
 #
 # As in bp_abs_qdrop_bpcat, change_category_input=breakpoint makes the pre/post
@@ -24,7 +24,7 @@ model:
         num_classes_dst: 13
         num_classes_pre_change: 11
         num_classes_post_change: 15
-        num_timesteps: 20
+        num_timesteps: 22
         num_pass1: null
         embedding_dim: 768
         decoder_stages:
@@ -488,11 +488,11 @@ data:
               - settlement
               metric_kwargs:
                 average: micro
-          # Classes are the 20 input timestep indices; valid only at change points.
+          # Classes are the 22 input timestep indices; valid only at change points.
           ts_start:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 20
+              num_classes: 22
               metric_kwargs:
                 average: micro
               other_metrics:
@@ -507,7 +507,7 @@ data:
           ts_end:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 20
+              num_classes: 22
               metric_kwargs:
                 average: micro
               other_metrics:

@@ -2,8 +2,8 @@
 
 Applies the same window-level rules as ``rslp.olmoearth_lcc.lcc_model.prepare``:
 - Entries with invalid positive-point date ordering (expected
-  pre_change < first_date_change_noticeable <= post_change) are omitted
-  (prepare.py raises on these).
+  pre_change < first_date_change_noticeable <= post_change < stop_date, with
+  stop_date optional) are omitted (prepare.py raises on these).
 - "Mixed" entries where some positive points have all three date fields and
   some don't are omitted.
 - Entries without complete annotations (no fully-annotated positive point, and
@@ -49,6 +49,8 @@ def _positive_point_dates_valid(entry: dict[str, Any]) -> bool:
         post_change = _parse_date(pt["post_change"])
         first_observable = _parse_date(pt["first_date_change_noticeable"])
         if pre_change >= first_observable or first_observable > post_change:
+            return False
+        if pt.get("stop_date") and _parse_date(pt["stop_date"]) <= post_change:
             return False
     return True
 

@@ -3,16 +3,16 @@
 # temporal reasoning after the encoder is each decoder's own BreakpointScan (or the
 # per-token linear in TokensToChannels for ts_start/ts_end).
 #
-#   OlmoEarth(token_pooling=false)  -> per-timestep tokens (B, 768, H, W, 20)
+#   OlmoEarth(token_pooling=false)  -> per-timestep tokens (B, 768, H, W, 22)
 #   decoders                        -> binary (BreakpointScan evidence), src (before),
 #                                      dst (after), pre_change + post_change
 #                                      (before_after), ts_start + ts_end (tokens ->
-#                                      20-way timestep index)
+#                                      22-way timestep index)
 #
 # Unlike ChangeModel, each decoder has its own BreakpointScan (own scorer weights)
 # rather than one shared scan feeding binary/src/dst/pre/post.
 #
-# The encoder runs a single pass over all 20 images (num_pass1: null equivalent).
+# The encoder runs a single pass over all 22 images (num_pass1: null equivalent).
 # Roughly doubles encoder attention memory vs the two-pass variant; drop batch_size to
 # 2 if it OOMs.
 #
@@ -498,11 +498,11 @@ data:
               - settlement
               metric_kwargs:
                 average: micro
-          # Classes are the 20 input timestep indices; valid only at change points.
+          # Classes are the 22 input timestep indices; valid only at change points.
           ts_start:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 20
+              num_classes: 22
               metric_kwargs:
                 average: micro
               other_metrics:
@@ -517,7 +517,7 @@ data:
           ts_end:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 20
+              num_classes: 22
               metric_kwargs:
                 average: micro
               other_metrics:

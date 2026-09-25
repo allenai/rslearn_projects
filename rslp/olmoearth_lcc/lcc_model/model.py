@@ -1,7 +1,7 @@
 """LCC change model: OlmoEarth encoding with per-timestep token heads.
 
-Input is ``sentinel2_l2a`` with ``num_timesteps`` images (16 quarterly + 4 frequent
-= 20, built by ``transforms.StackSampler``). The encoder runs with
+Input is ``sentinel2_l2a`` with ``num_timesteps`` images (16 quarterly + 6 frequent
+= 22, built by ``transforms.StackSampler``). The encoder runs with
 ``token_pooling=False`` so per-timestep tokens are preserved.
 
 By default encoding is done in two passes: the stack is split at ``num_pass1``
@@ -9,8 +9,8 @@ into a historical half and a recent half, both halves are encoded in a single
 batched encoder call (``2B`` samples of ``num_pass1`` /
 ``num_timesteps - num_pass1`` images), and the resulting tokens are concatenated
 back along time to give ``(B, C, H, W, num_timesteps)`` features. Encoder
-attention is quadratic in the token count, so two 10-image passes cost about half
-the attention FLOPs of one 20-image pass; the price is that tokens from the two
+attention is quadratic in the token count, so two 11-image passes cost about half
+the attention FLOPs of one 22-image pass; the price is that tokens from the two
 halves do not attend to each other inside the encoder. With ``num_pass1=None``
 the whole stack is encoded in one pass instead, so every token can attend to
 every other, at roughly double the encoder attention cost and memory.
@@ -117,8 +117,8 @@ class ChangeModel(nn.Module):
         num_classes_dst: int = 13,
         num_classes_pre_change: int = 11,
         num_classes_post_change: int = 15,
-        num_timesteps: int = 20,
-        num_pass1: int | None = 10,
+        num_timesteps: int = 22,
+        num_pass1: int | None = 11,
         embedding_dim: int = 768,
         decoder_stages: list[StageSpec] | None = None,
         binary_loss_weight: float = 2.0,
@@ -146,7 +146,7 @@ class ChangeModel(nn.Module):
                 categories; see tasks.MERGED_PRE_SAME_CATEGORY_NAMES).
             num_classes_post_change: number of post_change_category classes
                 (including nodata and "none").
-            num_timesteps: number of input timesteps in ``sentinel2_l2a`` (20).
+            num_timesteps: number of input timesteps in ``sentinel2_l2a`` (22).
             num_pass1: number of leading images encoded in the first pass; the
                 remaining ``num_timesteps - num_pass1`` form the second pass. Equal
                 halves are fastest (unequal halves force the encoder's masked

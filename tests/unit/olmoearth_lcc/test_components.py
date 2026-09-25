@@ -18,6 +18,7 @@ from rslp.olmoearth_lcc.lcc_model.transforms import (
     QUARTERLY_KEY,
     TS_END_KEY,
     TS_START_KEY,
+    PredictStackBuilder,
     StackSampler,
 )
 
@@ -26,7 +27,7 @@ T0 = datetime(2020, 1, 1, tzinfo=timezone.utc)
 
 
 def _stack_inputs() -> tuple[dict, dict]:
-    """Inputs with 16 quarterly + one 4-image frequent option and a binary target."""
+    """Inputs with 16 quarterly + one full frequent option and a binary target."""
     q_ts = [
         (T0 + timedelta(days=90 * i), T0 + timedelta(days=90 * i + 1))
         for i in range(NUM_QUARTERLY)
@@ -74,6 +75,91 @@ def test_stack_sampler_timestep_targets() -> None:
         assert classes[2, 3] == expected_idx
         # Only the change point is valid.
         assert valid.sum() == 1 and valid[2, 3] == 1
+
+
+def _centers(timestamps: list[tuple[datetime, datetime]]) -> list[datetime]:
+    return [t0 + (t1 - t0) / 2 for t0, t1 in timestamps]
+
+
+def _indexed_image(num: int, offset: float) -> torch.Tensor:
+    """Image whose timestep i is filled with offset + i (to track positions)."""
+    image = torch.zeros(3, num, CROP, CROP)
+    for i in range(num):
+        image[:, i] = offset + i
+    return image
+
+
+def test_stack_sampler_pads_short_frequent_option() -> None:
+    """A 2-image option is padded to NUM_FREQUENT by duplicating its earliest image.
+
+    Quarterly images at/after the earliest frequent image are excluded, padding
+    timestamps sit strictly between the last quarterly and the first real frequent
+    image, and the timestep targets never point at padding slots.
+    """
+    input_dict, target_dict = _stack_inputs()
+    q_ts = input_dict[QUARTERLY_KEY].timestamps
+    # The frequent images start before the last quarterly mosaic, so it is dropped.
+    f0 = q_ts[-1][0] - timedelta(days=5)
+    # Given most-recent-first, as the data source returns them.
+    f_ts = [(f0 + timedelta(days=20), f0 + timedelta(days=20)), (f0, f0)]
+    input_dict[f"{FREQUENT_KEY_PREFIX}0"] = RasterImage(
+        image=_indexed_image(2, offset=100), timestamps=f_ts
+    )
+    input_dict[ANNOTATION_KEY]["post_change"] = f0 - timedelta(days=1)
+
+    input_dict, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    stack = input_dict[INPUT_KEY]
+    assert stack.image.shape[1] == NUM_QUARTERLY + NUM_FREQUENT
+    centers = _centers(stack.timestamps)
+    assert all(a < b for a, b in zip(centers, centers[1:]))
+    assert all(c < f0 for c in centers[:NUM_QUARTERLY])
+    assert q_ts[-1][0] not in [ts[0] for ts in stack.timestamps]
+
+    # Real frequent images are last in chronological order; padding copies the
+    # earliest one (value 101 since input order was most-recent-first).
+    freq_values = stack.image[0, NUM_QUARTERLY:, 0, 0].tolist()
+    num_pad = NUM_FREQUENT - 2
+    assert freq_values == [101.0] * (num_pad + 1) + [100.0]
+
+    # post_change is just before the first real frequent image, so the end index
+    # is that image rather than one of the padding slots before it.
+    end_idx = target_dict[TS_END_KEY]["classes"].get_hw_tensor()[2, 3]
+    assert end_idx == NUM_QUARTERLY + num_pad
+
+
+def test_predict_stack_builder_pads_and_dedupes() -> None:
+    """Prediction keeps the last 16 quarterly and pads deduped frequent images."""
+    q_ts = [
+        (T0 + timedelta(days=90 * i), T0 + timedelta(days=90 * i + 1))
+        for i in range(NUM_QUARTERLY + 2)
+    ]
+    f0 = q_ts[-1][1] + timedelta(days=10)
+    f_ts = [
+        (f0 + timedelta(days=30), f0 + timedelta(days=30)),
+        # Same acquisition from an overlapping tile, a few seconds apart.
+        (f0 + timedelta(days=30, seconds=5), f0 + timedelta(days=30, seconds=5)),
+        (f0, f0),
+    ]
+    input_dict = {
+        QUARTERLY_KEY: RasterImage(
+            image=_indexed_image(NUM_QUARTERLY + 2, offset=0), timestamps=q_ts
+        ),
+        f"{FREQUENT_KEY_PREFIX}0": RasterImage(
+            image=_indexed_image(3, offset=100), timestamps=f_ts
+        ),
+    }
+    input_dict, _ = PredictStackBuilder()(input_dict, {})
+    stack = input_dict[INPUT_KEY]
+    assert stack.image.shape[1] == NUM_QUARTERLY + NUM_FREQUENT
+    centers = _centers(stack.timestamps)
+    assert all(a < b for a, b in zip(centers, centers[1:]))
+    assert stack.image[0, :NUM_QUARTERLY, 0, 0].tolist() == [
+        float(i) for i in range(2, NUM_QUARTERLY + 2)
+    ]
+    num_pad = NUM_FREQUENT - 2
+    assert stack.image[0, NUM_QUARTERLY:, 0, 0].tolist() == [102.0] * (num_pad + 1) + [
+        100.0
+    ]
 
 
 def _seg_targets(labels: torch.Tensor, valid: torch.Tensor) -> list[dict]:

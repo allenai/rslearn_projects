@@ -62,6 +62,10 @@ one 128x128 spatial window:
   state; `first_date_change_noticeable`: the first date at which the change starts
   to become noticeable; `post_change`: the first date at which the change appears
   complete.
+- `stop_date` (optional, positive points only): imagery on/after this date must not
+  be used for training, e.g. because another unannotated change happens later. It
+  must be after `post_change`. When set, the training dataset only samples frequent
+  blocks that end on/before the earliest `stop_date` among the entry's points.
 
 Land cover categories (`pre_category` / `post_category`): nodata, bare, burnt, crops,
 fallow/shifting cultivation, grassland, Lichen and moss, shrub, snow and ice, tree,
@@ -153,8 +157,8 @@ The UI:
 - Click existing points to remove them.
 - Iterate through positive points with the point navigator at the top.
 - Edit annotation fields (pre_change, first_date_change_noticeable, post_change,
-  pre_category, post_category, and the optional change-category fields) for the
-  selected positive point.
+  the optional stop_date, pre_category, post_category, and the optional
+  change-category fields) for the selected positive point.
 - Click timestamps below images to copy them to clipboard.
 - Navigation: Prev/Next buttons to move between entries. URL hash tracks position.
 
@@ -169,10 +173,13 @@ desktop app.
 
 The LCC (land cover change) model uses a dual-forward-pass architecture:
 
+- **Input**: 22 images: 16 quarterly mosaics followed by 6 frequent images (the
+  most recent scenes with cloud cover <= 50% in a 90-day block; when fewer are
+  available, the earliest one is duplicated to fill the 6 slots).
 - **Encoder**: OlmoEarth-v1-Base (shared weights, patch_size=4). Processes two
-  sets of 10 images separately.
-- **Pass 1**: 10 quarterly images (historical baseline, ~2.5 years).
-- **Pass 2**: 6 quarterly images + 4 frequent images (recent conditions).
+  sets of 11 images separately.
+- **Pass 1**: 11 quarterly images (historical baseline, ~2.75 years).
+- **Pass 2**: 5 quarterly images + 6 frequent images (recent conditions).
 - **Decoder**: Features from both passes concatenated (1536ch @ 1/4 res) →
   shared 1x1 conv (768ch) → per-task linear heads reshaping to full resolution
   via 4x4 patch prediction.
@@ -183,7 +190,8 @@ Tasks (all per-pixel, loss masked to annotated points only):
 - `dst`: destination land cover category (13 cls)
 - `pre_change` / `post_change`: change-category classification (11 / 15 cls)
 - `ts_start` / `ts_end`: index of the input timestep at which the change starts /
-  ends (20 cls, one per input image; supervised only at change points)
+  ends (22 cls, one per input image; supervised only at change points and never
+  pointing at a padding slot)
 
 #### Prerequisites
 
@@ -218,17 +226,24 @@ you can re-run it after adding new annotations and only the new windows will be
 created. Then run `rslearn dataset materialize` again to download imagery for
 the new windows.
 
+Datasets prepared before the switch to 90-day frequent blocks (four 15-day
+periods, 20-image stack) are not compatible with the current model and cannot be
+upgraded in place (the idempotency check does not detect the old frequent
+layers), so prepare into a new dataset directory and retrain.
+
 The prepare script:
 - Only processes entries with fully annotated positive points (all of pre_change,
   post_change, first_date_change_noticeable, pre_category, post_category present).
 - Skips windows that already exist in the dataset.
 - Skips duplicate `group`/`window_name` entries across the provided JSON inputs.
-- Creates 8 frequent-image options per window. Each option is four 15-day
-  periods with one least-cloudy mosaic per period; options vary where the
-  annotation dates fall within the frequent stack, including random later
-  post-change contexts up to post_change + 2 years. Every option is capped so
-  its 60-day frequent block ends on/before 2026-01-01 (the annotation cutoff),
-  so no imagery after that date is sampled.
+- Creates 8 frequent-image options per window. Each option is a 90-day block
+  holding up to 6 of the most recent scenes with cloud cover <= 50% (one per
+  acquisition; at least one is required). Options are defined by where the
+  block ends: right after first_noticeable (+1 day), 15-60 days after
+  first_noticeable, right after post_change (+1 day), and random later
+  post-change contexts up to post_change + 2 years. Every block ends on/before
+  min(2026-01-01, stop_date), where 2026-01-01 is the annotation cutoff and
+  stop_date is the earliest optional per-point stop date.
 - Window time_range is derived from the annotations (no fixed 10-year range).
 - Rasterizes point labels into label_binary/label_src/label_dst layers.
 - Writes `lcc_annotations.json` sidecar for training-time annotation injection
@@ -248,8 +263,9 @@ Training details:
   encoder LR = 1e-5 vs decoder 1e-4).
 - Optimizer: AdamW lr=1e-4 with ReduceLROnPlateau (factor=0.2, patience=2).
 - At each training step, one of 8 frequent-image options is randomly sampled.
-  The 16 quarterly images preceding that option's 60-day frequent block are
-  selected, then split 10/6 across the two encoder passes.
+  The 16 quarterly images preceding that option's earliest frequent image are
+  selected, the frequent images are padded to 6, and the 22-image stack is
+  split 11/11 across the two encoder passes.
 - Val/test uses option 2 deterministically.
 - Augmentation: random horizontal/vertical flips.
 - crop_size: 64, batch_size: 8, 100 epochs max.
@@ -270,6 +286,9 @@ The Studio configs for the `rslearn_bpcat_notemporal` model live in olmoearth_pr
 under `olmoearth_run_data/olmoearth_lcc/`. `model.yaml` there is derived from
 `config_rslearn_bpcat_notemporal_predict.yaml` and `dataset.json` from
 `config_predict_rslearn.json`; keep the model blocks in sync when the model changes.
+Those Studio configs have not yet been updated for the 22-image stack (6 frequent
+images from a 90-day block, quarterly ending at T-90d) and must be synced before
+deploying a model trained on it.
 Studio currently supports a single output per model, so only the `post_change` head
 (argmax class index) is written there; the other heads will be exposed once
 multi-output support is available. See the README in that directory for the time range
@@ -281,10 +300,10 @@ semantics (`oe_start_time` is the reference date) and how to run it.
 
 For prediction, a separate dataset config handles imagery via rslearn's
 standard prepare/materialize pipeline (using OlmoEarth Datasets). The user
-creates windows with a single point-in-time timestamp. Set this timestamp to 60
-days before the current/reference time you want to evaluate. Quarterly images are
-fetched before it, and the frequent stack covers the next 60 days as four 15-day
-periods with one least-cloudy mosaic per period.
+creates windows with a single point-in-time timestamp T, set to the
+current/reference time you want to evaluate. The frequent stack is up to 6 of the
+most recent scenes with cloud cover <= 50% in the 90 days before T, and the
+quarterly mosaics come from the ~5 years before that 90-day block.
 
 #### 1. Create windows
 
@@ -293,26 +312,32 @@ PREDICT_DS=/path/to/predict_dataset/
 mkdir -p "$PREDICT_DS"
 cp data/olmoearth_lcc/lcc_model/config_predict.json "$PREDICT_DS/config.json"
 
-# Create windows over an AOI. The time range is a single point in time: T.
-# Set T to current/reference time minus 60 days. The frequent stack covers
-# [T, T+60d], so changes in the last 15 days are in the fourth frequent period.
-# Example: to evaluate current/reference time 2025-06-01, use T=2025-04-02.
+# Create windows over an AOI. The time range is a single point in time: T, the
+# current/reference time. The frequent stack covers [T-90d, T].
+# Example: to evaluate current/reference time 2025-06-01, use T=2025-06-01.
 rslearn dataset add_windows \
     --root "$PREDICT_DS" \
     --group predict \
     --fname aoi.geojson \
     --src_crs EPSG:4326 \
     --utm --resolution 10 --grid_size 2048 \
-    --start 2025-04-02T00:00:00+00:00 \
-    --end 2025-04-02T00:00:00+00:00
+    --start 2025-06-01T00:00:00+00:00 \
+    --end 2025-06-01T00:00:00+00:00
 ```
 
 The `config_predict.json` layers use `time_offset` and `duration` so both layers
 derive their search ranges from this single timestamp:
-- `sentinel2_quarterly`: time_offset=-1800d, duration=1800d → searches
-  [T-1800d, T] for quarterly mosaics; prediction uses the last 16.
-- `sentinel2_frequent_0`: duration=60d, period_duration=15d → searches
-  [T, T+60d] and returns one least-cloudy mosaic for each 15-day period.
+- `sentinel2_quarterly`: time_offset=-1890d, duration=1800d → searches
+  [T-1890d, T-90d] for quarterly mosaics (ending where the frequent block
+  starts); prediction uses the last 16.
+- `sentinel2_frequent_0`: time_offset=-90d, duration=90d, sorted by
+  collected_at descending with cloud_cover <= 50, max_matches=6, min_matches=1
+  → searches [T-90d, T] and returns up to 6 of the most recent scenes.
+  `PredictStackBuilder` pads to 6 when fewer are found.
+
+The rslearn-only `config_predict_rslearn.json` has no padding step, so its
+frequent layer uses min_matches=6 and windows with fewer than 6 such scenes get
+no prediction.
 
 Alternatively create windows from bounding boxes. These examples produce exactly
 32768x32768 tiles (256 windows of 2048x2048) by providing grid-aligned UTM
@@ -350,7 +375,7 @@ rslearn model predict \
 ```
 
 The `PredictStackBuilder` transform takes the quarterly + frequent inputs and
-builds the 20-image stack without needing annotations or multiple frequent options.
+builds the 22-image stack without needing annotations or multiple frequent options.
 
 #### Output
 

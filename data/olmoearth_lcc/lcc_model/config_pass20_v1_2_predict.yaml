@@ -16,8 +16,8 @@ model:
         num_classes_dst: 13
         num_classes_pre_change: 11
         num_classes_post_change: 15
-        num_timesteps: 20
-        num_pass1: 10
+        num_timesteps: 22
+        num_pass1: 11
         embedding_dim: 768
         decoder_stages:
           - [[768, 3]]
@@ -93,11 +93,11 @@ data:
           ts_start:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 20
+              num_classes: 22
           ts_end:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 20
+              num_classes: 22
     batch_size: 8
     num_workers: 16
     predict_config:

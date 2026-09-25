@@ -3,15 +3,17 @@
 This script takes one or more v2 annotation JSONs and creates an rslearn dataset with:
 - sentinel2_quarterly: WindowLayerData with quarterly mosaics (90-day periods);
   the least-cloudy mosaic is selected within each period
-- sentinel2_frequent_0..7: WindowLayerData with four 15-day periods each; the
-  least-cloudy mosaic is selected within each period
+- sentinel2_frequent_0..7: WindowLayerData with one 90-day block each, holding
+  up to six of the most recent scenes (cloud cover <= 50%) in that block
 - label_binary, label_src, label_dst: Pre-rasterized point labels
 - label_pre_change, label_post_change, label_same_change: Pre-rasterized point
   labels for the pre/post/same change-category heads (class 1 = "none")
 
 The time range for each window covers all annotation-derived frequent blocks and
 enough preceding quarterly history. Frequent image options can extend up to
-post_change + 2 years, so some samples have the change further in the past.
+post_change + 2 years, so some samples have the change further in the past. No
+frequent block extends past IMAGE_CUTOFF or the earliest positive point's
+optional stop_date.
 
 Scene metadata is fetched from the OlmoEarth Datasets API. Required env vars:
 - OEDATASETS_API_URL: e.g. https://datasets.olmoearth.allenai.org
@@ -43,7 +45,10 @@ import shapely.geometry
 from rasterio.enums import Resampling
 from rslearn.config import LayerConfig, QueryConfig, SpaceMode
 from rslearn.data_sources import Item
-from rslearn.data_sources.utils import match_candidate_items_to_window
+from rslearn.data_sources.utils import (
+    MatchedItemGroup,
+    match_candidate_items_to_window,
+)
 from rslearn.dataset import Dataset, Window
 from rslearn.dataset.manage import retry
 from rslearn.dataset.window import WindowLayerData
@@ -55,11 +60,12 @@ from upath import UPath
 COLLECTION = "sentinel-2-l2a"
 
 NUM_FREQUENT_OPTIONS = 8
-NUM_FREQUENT_PERIODS = 4
-FREQUENT_PERIOD_DAYS = 15
-FREQUENT_PERIOD = timedelta(days=FREQUENT_PERIOD_DAYS)
-FREQUENT_BLOCK_DURATION = NUM_FREQUENT_PERIODS * FREQUENT_PERIOD
-FREQUENT_LAST_PERIOD_OFFSET = (NUM_FREQUENT_PERIODS - 1) * FREQUENT_PERIOD
+NUM_FREQUENT_IMAGES = 6
+FREQUENT_BLOCK_DURATION = timedelta(days=90)
+FREQUENT_MAX_CLOUD_COVER = 50
+# Deterministic options end this long after the annotation date so the block
+# covers that date.
+OPTION_MARGIN = timedelta(days=1)
 
 # Annotation was done using imagery up to this date, so no frequent option should
 # sample imagery after it (otherwise it could contain unannotated changes).
@@ -250,13 +256,18 @@ QUARTERLY_QUERY_CONFIG = QueryConfig(
     per_period_mosaic_reverse_time_order=False,
 )
 
+# No period_duration: the matcher builds mosaics in the order the items are given,
+# so passing items sorted most-recent-first yields the most recent scenes. Extra
+# matches are requested so that duplicate acquisitions (the same datatake from
+# overlapping MGRS tiles) can be dropped while still keeping NUM_FREQUENT_IMAGES.
 FREQUENT_QUERY_CONFIG = QueryConfig(
     space_mode=SpaceMode.MOSAIC,
-    max_matches=NUM_FREQUENT_PERIODS,
-    min_matches=NUM_FREQUENT_PERIODS,
-    period_duration=FREQUENT_PERIOD,
-    per_period_mosaic_reverse_time_order=False,
+    max_matches=4 * NUM_FREQUENT_IMAGES,
+    min_matches=1,
 )
+
+# Mosaics whose primary scenes are closer than this are the same acquisition.
+SAME_ACQUISITION_TOLERANCE = timedelta(hours=1)
 
 
 def _build_quarterly_layer_data(
@@ -316,9 +327,11 @@ def _build_frequent_layer_data(
 ) -> WindowLayerData | None:
     """Build WindowLayerData for one frequent option.
 
-    Selects one least-cloudy mosaic in each of four 15-day periods. Items must be
-    sorted by cloud cover ascending so the MOSAIC matcher sees the clearest
-    candidates first within each period.
+    Selects up to NUM_FREQUENT_IMAGES mosaics from the 90-day block starting at
+    block_start, one per acquisition. Items must already be filtered to
+    FREQUENT_MAX_CLOUD_COVER and sorted most-recent-first so the MOSAIC matcher
+    picks the most recent scenes. The resulting groups are written in
+    chronological order. Returns None if the block has no usable scene.
     """
     rslearn_items = [
         Item(
@@ -341,8 +354,28 @@ def _build_frequent_layer_data(
     matched_groups = match_candidate_items_to_window(
         window_geom, rslearn_items, FREQUENT_QUERY_CONFIG
     )
-    if len(matched_groups) < NUM_FREQUENT_PERIODS:
+
+    # The first item of each mosaic is its primary scene and determines the
+    # materialized timestamp. Groups come most-recent-first.
+    def _group_time(group: MatchedItemGroup[Item]) -> datetime:
+        time_range = group.items[0].geometry.time_range
+        assert time_range is not None
+        return time_range[0]
+
+    kept_groups: list[MatchedItemGroup[Item]] = []
+    for group in matched_groups:
+        group_time = _group_time(group)
+        if any(
+            abs(group_time - _group_time(kept)) < SAME_ACQUISITION_TOLERANCE
+            for kept in kept_groups
+        ):
+            continue
+        kept_groups.append(group)
+        if len(kept_groups) == NUM_FREQUENT_IMAGES:
+            break
+    if not kept_groups:
         return None
+    matched_groups = sorted(kept_groups, key=_group_time)
 
     serialized_groups = [
         [gi.serialize() for gi in group.items] for group in matched_groups
@@ -356,51 +389,49 @@ def _build_frequent_layer_data(
     )
 
 
-def _compute_frequent_block_starts(
+def _compute_frequent_block_ends(
     first_noticeable: datetime,
     post_change: datetime,
     window_name: str,
+    cutoff: datetime,
 ) -> list[datetime]:
-    """Compute 60-day frequent-image block starts for training options.
+    """Compute 90-day frequent-image block ends for training options.
+
+    Each option's block is [end - FREQUENT_BLOCK_DURATION, end]. Every end is
+    clamped to ``cutoff`` so no option samples imagery after it.
 
     Randomness is derived from window_name so results are deterministic per window.
     """
     rng = random.Random(hashlib.sha256(window_name.encode()).hexdigest())
 
-    block_starts: list[datetime] = []
+    block_ends: list[datetime] = []
 
-    # Option 0: first_noticeable starts the last 15-day frequent period.
-    block_starts.append(first_noticeable - FREQUENT_LAST_PERIOD_OFFSET)
+    # Option 0: the block ends right after first_noticeable.
+    block_ends.append(first_noticeable + OPTION_MARGIN)
 
-    # Option 1: first_noticeable starts one of the first three periods.
-    notice_period_idx = rng.randrange(NUM_FREQUENT_PERIODS - 1)
-    block_starts.append(first_noticeable - notice_period_idx * FREQUENT_PERIOD)
+    # Option 1: first_noticeable falls partway through the block.
+    block_ends.append(first_noticeable + timedelta(days=rng.randint(15, 60)))
 
-    # Option 2: post_change starts the last period, if it is meaningfully different.
-    has_option1 = (post_change - first_noticeable).days > 5
-    if has_option1:
-        block_starts.append(post_change - FREQUENT_LAST_PERIOD_OFFSET)
+    # Option 2: the block ends right after post_change, if meaningfully different.
+    if (post_change - first_noticeable).days > 5:
+        block_ends.append(post_change + OPTION_MARGIN)
 
-    # Remaining random options: sample the last-period start, then derive block start.
+    # Remaining random options: later post-change contexts up to post_change + 2y.
     random_start = first_noticeable + timedelta(days=60)
-    random_end = post_change + timedelta(days=730)
-    num_random = NUM_FREQUENT_OPTIONS - len(block_starts)
+    random_end = min(post_change + timedelta(days=730), cutoff)
+    num_random = NUM_FREQUENT_OPTIONS - len(block_ends)
 
     for _ in range(num_random):
         if random_end > random_start:
             days_range = (random_end - random_start).days
             random_offset = rng.randint(0, max(days_range, 1))
-            last_period_start = random_start + timedelta(days=random_offset)
+            block_ends.append(random_start + timedelta(days=random_offset))
         else:
-            last_period_start = random_start
-        block_starts.append(last_period_start - FREQUENT_LAST_PERIOD_OFFSET)
+            block_ends.append(random_start)
 
-    # Cap every option so its 60-day frequent block ends on/before IMAGE_CUTOFF;
-    # clamping the start is equivalent to clamping the block end.
-    max_block_start = IMAGE_CUTOFF - FREQUENT_BLOCK_DURATION
-    block_starts = [min(bs, max_block_start) for bs in block_starts]
+    block_ends = [min(end, cutoff) for end in block_ends]
 
-    return block_starts[:NUM_FREQUENT_OPTIONS]
+    return block_ends[:NUM_FREQUENT_OPTIONS]
 
 
 def _write_label_layer(
@@ -516,9 +547,10 @@ def _label_layers_match(
 def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
     """Validate date ordering of fully-annotated positive points.
 
-    Expected ordering is pre_change < first_observable <= post_change, where
-    first_observable is the first_date_change_noticeable field. Raises ValueError
-    on any positive point that violates this.
+    Expected ordering is pre_change < first_observable <= post_change < stop_date,
+    where first_observable is the first_date_change_noticeable field and
+    stop_date is optional. Raises ValueError on any positive point that violates
+    this.
     """
     for pt in entry.get("positive_points", []):
         if not (
@@ -539,6 +571,23 @@ def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
                 f"first_observable={pt['first_date_change_noticeable']}, "
                 f"post_change={pt['post_change']}"
             )
+        if pt.get("stop_date") and _parse_date(pt["stop_date"]) <= post_change:
+            raise ValueError(
+                f"Invalid stop_date for positive point in window "
+                f"{entry.get('group')}/{entry.get('window_name')}: "
+                f"expected post_change < stop_date, got "
+                f"post_change={pt['post_change']}, stop_date={pt['stop_date']}"
+            )
+
+
+def _get_stop_date(entry: dict[str, Any]) -> datetime | None:
+    """Get the earliest stop_date across the entry's positive points, if any."""
+    stop_dates = [
+        _parse_date(pt["stop_date"])
+        for pt in entry.get("positive_points", [])
+        if pt.get("stop_date")
+    ]
+    return min(stop_dates) if stop_dates else None
 
 
 POSITIVE_POINT_DATE_FIELDS = (
@@ -617,7 +666,7 @@ def _sidecar_dates_match(
         return False
     return all(
         existing_value.get(key) == new_value[key]
-        for key in ("pre_change", "post_change", "first_noticeable")
+        for key in ("pre_change", "post_change", "first_noticeable", "stop_date")
     )
 
 
@@ -714,12 +763,17 @@ def _process_entry(
         col, row = _lonlat_to_pixel(pt["lon"], pt["lat"], projection, bounds)
         positive_pixels.append({"col": col, "row": row})
 
+    stop_date = _get_stop_date(entry)
+    cutoff = IMAGE_CUTOFF if stop_date is None else min(IMAGE_CUTOFF, stop_date)
+
     sidecar_key = f"{window_group}/{window_name}"
+    sidecar_value: dict[str, Any]
     if ref_point is None:
         sidecar_value = {
             "pre_change": midpoint.isoformat(),
             "post_change": post_change.isoformat(),
             "first_noticeable": first_noticeable.isoformat(),
+            "stop_date": None,
             "positive_pixel_coords": [],
             "is_negative_only": True,
         }
@@ -728,6 +782,7 @@ def _process_entry(
             "pre_change": ref_point["pre_change"],
             "post_change": post_change.isoformat(),
             "first_noticeable": first_noticeable.isoformat(),
+            "stop_date": stop_date.isoformat() if stop_date is not None else None,
             "positive_pixel_coords": positive_pixels,
         }
 
@@ -755,11 +810,12 @@ def _process_entry(
         window_root.fs.rm(window_root.path, recursive=True)
         status = "recreated"
 
-    block_starts = _compute_frequent_block_starts(
-        first_noticeable, post_change, window_name
+    block_ends = _compute_frequent_block_ends(
+        first_noticeable, post_change, window_name, cutoff
     )
+    block_starts = [end - FREQUENT_BLOCK_DURATION for end in block_ends]
 
-    window_end = max(start + FREQUENT_BLOCK_DURATION for start in block_starts)
+    window_end = max(block_ends)
     window_start = min(start - timedelta(days=16 * 90) for start in block_starts)
     window_time_range = (window_start, window_end)
 
@@ -805,11 +861,17 @@ def _process_entry(
     layer_datas = window.load_layer_datas()
     layer_datas["sentinel2_quarterly"] = quarterly_data
 
+    recent_items = sorted(
+        (x for x in all_items if x["cloud_cover"] <= FREQUENT_MAX_CLOUD_COVER),
+        key=lambda x: x["collected_at"],
+        reverse=True,
+    )
+
     frequent_idx = 0
     for block_start in block_starts:
         layer_name = f"sentinel2_frequent_{frequent_idx}"
         freq_data = _build_frequent_layer_data(
-            least_cloudy_items, block_start, projection, bounds, layer_name
+            recent_items, block_start, projection, bounds, layer_name
         )
         if freq_data is not None:
             layer_datas[layer_name] = freq_data
