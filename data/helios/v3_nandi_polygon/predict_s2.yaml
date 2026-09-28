@@ -1,0 +1,53 @@
+# Sliding-window inference over large county windows.
+#
+# Compose on top of whichever model you trained, e.g.
+#   --config_paths+=data/helios/v3_nandi_polygon/common.yaml
+#   --config_paths+=data/helios/v3_nandi_polygon/finetune_s2.yaml
+#   --config_paths+=data/helios/v3_nandi_polygon/predict_s2.yaml
+# and run with mode=predict.
+#
+# This replaces the old workflow of tiling the county into 128x128 windows and
+# stitching the GeoTIFFs afterwards with merge_geotiff.py: RslearnWriter's RasterMerger
+# trims the overlap from each crop and writes one raster per (large) window.
+data:
+  init_args:
+    predict_config:
+      groups: ["nandi_county"]
+      load_all_crops: true
+      # Must match the training window size: the model was trained on 16x16 crops at
+      # patch_size 1, so this is the input size it expects.
+      crop_size: 16
+      # Adjacent crops share 4 pixels; the merger keeps the centre 12x12 of each crop.
+      # Costs ~78% more forward passes than no overlap, in exchange for no seam
+      # artifacts at crop boundaries. At patch_size 1 the model attends over the whole
+      # crop, so a pixel at a crop edge has less context than one at the centre --
+      # which is what the overlap buys back.
+      #
+      # Note this merging happens *within* a window only. Predictions are not blended
+      # across separate rslearn windows, so use large windows (1024 px here) to keep
+      # the un-overlapped border a negligible fraction of the map.
+      overlap_pixels: 4
+      skip_targets: true
+    # Leave both crop-dataset wrappers off so IterableAllCropsDataset is used: it reads
+    # each window from disk once and slices every crop out of memory. The map-style
+    # alternative re-reads 12 item groups x 3 band sets per crop, which at 16x16 crops
+    # is ~36 GeoTIFF reads to produce 256 pixels and is roughly 50x slower here.
+    # A 1024x1024 window is ~600 MB loaded, so this costs ~600 MB per data worker.
+    use_in_memory_dataset: false
+    use_map_all_crops_dataset: false
+    num_workers: 8
+    # No backward pass during inference, so push the batch well past the training size.
+    batch_size: 32
+trainer:
+  callbacks:
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: output
+        # The model is a MultiTaskModel, so its prediction is a dict keyed by task
+        # name. Without this selector the writer hands the merger a dict and fails
+        # with "'dict' object has no attribute 'shape'".
+        selector: ["segment"]
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            overlap_pixels: 4

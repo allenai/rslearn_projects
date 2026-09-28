@@ -1,0 +1,87 @@
+# Shared data/task definition for the Nandi polygon-window models.
+#
+# Windows are 16x16 at 10 m, created on a grid over the label polygons, with every
+# polygon that intersects a window burned into its label_raster. Pixels not covered by
+# a polygon centre are IGNORE_VALUE (255) and masked out of the loss and the metrics.
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/crop/kenya_nandi/20260921
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_item_groups: true
+        load_all_layers: true
+      targets:
+        data_type: "raster"
+        layers: ["label_raster"]
+        bands: ["class"]
+        is_target: true
+        dtype: INT32
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          segment:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 11
+              # Kept outside [0, num_classes) on purpose: the ignore pixels are masked
+              # out of loss and metrics without the model spending a logit on them.
+              nodata_value: 255
+              # Must match rslp/nandi/classes.py CLASS_NAMES, in order.
+              class_names:
+                - Maize
+                - Sugarcane
+                - Legumes
+                - Vegetables
+                - Coffee
+                - Tea
+                - Grassland
+                - Trees
+                - Shrubland
+                - Water
+                - Built-up
+              metric_kwargs:
+                average: "micro"
+              # Macro-averaged F1/precision/recall matter more than overall accuracy
+              # here: the pixel counts span 307 (Vegetables) to 7295 (Trees), so a
+              # micro average is dominated by the large classes.
+              # Reports OverallF1 (micro), AverageF1 (macro) and, via
+              # report_metric_per_class, ClasswiseF1 -- all from argmax predictions, so
+              # they are consistent with accuracy and mean_iou. Do not set `average` in
+              # multiclass_metric_kwargs; the task supplies it per variant.
+              enable_multiclass_metrics: true
+              report_metric_per_class: true
+              enable_miou_metric: true
+              # Logs a per-class confusion matrix to W&B each validation epoch. This is
+              # the direct read on the Trees/Coffee confusion.
+              enable_confusion_matrix: true
+        input_mapping:
+          segment:
+            targets: "targets"
+    batch_size: 8
+    num_workers: 32
+    # ~2.2K windows of 16x16x12 months fit comfortably in RAM, so avoid re-reading
+    # them from weka every epoch.
+    use_in_memory_dataset: true
+    default_config:
+      groups: ["polygon_grid_16"]
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    train_config:
+      tags:
+        split: "train"
+    val_config:
+      tags:
+        split: "val"
+    test_config:
+      tags:
+        split: "test"

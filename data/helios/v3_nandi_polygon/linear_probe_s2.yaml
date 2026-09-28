@@ -1,0 +1,93 @@
+# Linear probe on frozen OlmoEarth v1.2 Base embeddings.
+#
+# Compose with common.yaml, which supplies the data module and task:
+#   --config_paths+=data/helios/v3_nandi_polygon/common.yaml
+#   --config_paths+=data/helios/v3_nandi_polygon/linear_probe_s2.yaml
+#
+# At patch_size=1 the encoder emits one 768-d vector per 10 m pixel, so a 1x1 Conv on
+# top *is* the linear probe, at native resolution. EmbeddingCache stores those feature
+# maps keyed by (window name, crop bounds), so the encoder runs once per window in the
+# first epoch and every later epoch is a matmul over ~1.7 GB of cached features.
+#
+# The cache is why this config does no cropping or flipping: window == crop == 16x16,
+# so every key is stable. Use finetune_s2.yaml when you want augmentation.
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.embedding_cache.EmbeddingCache
+            init_args:
+              cache_on_cpu: true
+              encoder:
+                - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+                  init_args:
+                    model_id: OLMOEARTH_V1_2_BASE
+                    patch_size: 1
+                    # Use the real image timestamps. The legacy dummy timestamps are
+                    # deprecated and only exist for checkpoints trained against them.
+                    use_legacy_timestamps: false
+        decoders:
+          segment:
+            - class_path: rslearn.models.conv.Conv
+              init_args:
+                in_channels: 768
+                out_channels: 11
+                kernel_size: 1
+                activation:
+                  class_path: torch.nn.Identity
+            - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+              init_args:
+                # Inverse-sqrt of the train pixel count per class, normalized on the
+                # median (2451 px). Regenerate if the label set changes.
+                weights:
+                  - 0.96  # Maize       2640 px
+                  - 0.85  # Sugarcane   3431 px
+                  - 1.70  # Legumes      844 px
+                  - 2.83  # Vegetables   307 px
+                  - 1.11  # Coffee      1988 px
+                  - 1.04  # Tea         2287 px
+                  - 1.00  # Grassland   2451 px
+                  - 0.58  # Trees       7295 px
+                  - 0.69  # Shrubland   5172 px
+                  - 1.24  # Water       1582 px
+                  - 0.72  # Built-up    4734 px
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+      init_args:
+        lr: 0.001
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 3
+        min_lr: 0
+        cooldown: 5
+data:
+  init_args:
+    # Epoch 1 is encoder-bound (at patch_size 1 a 16x16 window is ~12K tokens), every
+    # epoch after it is just the cached features. Lower this if epoch 1 OOMs.
+    batch_size: 16
+trainer:
+  max_epochs: 100
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    # Explicitly freeze the encoder. EmbeddingCache already stops gradients, but this
+    # makes the intent visible and keeps the encoder out of any optimizer step.
+    - class_path: rslearn.models.olmoearth_pretrain.optimizer.SimpleFreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 1000000
+    - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+      init_args:
+        # Macro F1, not accuracy: class pixel counts span 307 to 7295, so a micro
+        # average would just track the big classes.
+        monitor: val_segment/AverageF1
+        mode: max
+project_name: 20260921_nandi_v2
+run_name: linear_probe_s2_oe12base_ws16_ps1
+management_dir: ${RSLP_PREFIX}/projects
