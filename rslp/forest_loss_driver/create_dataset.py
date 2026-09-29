@@ -653,7 +653,7 @@ def main() -> None:
     parser.add_argument(
         "--config-path",
         type=Path,
-        default=Path("data/forest_loss_driver/20260924_utm/config.json"),
+        default=Path("data/forest_loss_driver/config.json"),
         help="Dataset config copied to DS_PATH/config.json when it does not exist.",
     )
     parser.add_argument(

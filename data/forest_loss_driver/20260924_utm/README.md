@@ -90,8 +90,9 @@ set stays comparable with `20260401_peru_phase2`:
 Usage
 -----
 
-Set `STUDIO_API_KEY` and run (the script copies `config.json` from this directory into
-the dataset if it does not exist):
+Set `STUDIO_API_KEY` and run (the script copies `data/forest_loss_driver/config.json`,
+which is the same as `config.json` in this directory, into the dataset if it does not
+exist):
 
 ```
 DS=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/20260924_utm/

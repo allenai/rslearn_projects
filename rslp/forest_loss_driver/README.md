@@ -34,7 +34,7 @@ DS=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/202609
 python -m rslp.forest_loss_driver.create_dataset --ds-path $DS
 rslearn dataset prepare --root $DS --workers 64 --retry-max-attempts 5 --retry-backoff-seconds 5
 rslearn dataset materialize --root $DS --workers 64 --ignore-errors --retry-max-attempts 5 --retry-backoff-seconds 5
-rslearn model fit --config data/forest_loss_driver/20260924_utm/config.yaml
+rslearn model fit --config data/forest_loss_driver/config.yaml
 ```
 
 Re-running the script after registering a new Studio project only creates the new
@@ -56,10 +56,11 @@ python -m rslp.main forest_loss_driver extract_alerts --ds_path /weka/dfive-defa
 python -m rslp.main forest_loss_driver extract_alerts --ds_path /weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/brazil_and_colombia/ --extract_alerts_args.gcs_tiff_filenames '["050W_20S_040W_10S.tif", "060W_20S_050W_10S.tif", "070W_20S_060W_10S.tif", "040W_10S_030W_00N.tif", "050W_10S_040W_00N.tif", "060W_10S_050W_00N.tif", "070W_10S_060W_00N.tif", "080W_10S_070W_00N.tif", "050W_00N_040W_10N.tif", "060W_00N_050W_10N.tif", "070W_00N_060W_10N.tif", "080W_00N_070W_10N.tif"]' --extract_alerts_args.countries '["BR"]' --extract_alerts_args.tile_store_dir "file:///weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/tile_store_root_dir/" --extract_alerts_args.index_cache_dir "file:///tmp/index_cache_dir/" --extract_alerts_args.workers 128 --extract_alerts_args.max_number_of_events 5000 --extract_alerts_args.group 20250428_brazil --extract_alerts_args.days 1095 --extract_alerts_args.prediction_utc_time "2025-03-01 00:00:00+00:00
 ```
 
-Switch the rslearn dataset configuration file with the one in
-`data/forest_loss_driver/config_studio_annotation.json`. This obtains an 8-bit RGB
-GeoTIFF for the Sentinel-2 data, along with Planet Labs imagery. Then run the standard
-prepare, ingest, and materialize steps.
+Switch the rslearn dataset configuration file with
+`data/forest_loss_driver/config_studio_annotation.json` (since removed from the repo;
+it is present at commit `c69d5e64`). This obtains an 8-bit RGB GeoTIFF for the
+Sentinel-2 data, along with Planet Labs imagery. Then run the standard prepare, ingest,
+and materialize steps.
 
 Use the script `rslp/forest_loss_driver/scripts/populate_label_layer.py` to populate a
 placeholder label layer that contains the forest loss polygons. This isn't generated

@@ -241,7 +241,7 @@ def test_get_window_geometry_is_utm_128() -> None:
 
 
 def test_create_window_writes_label_and_updates(tmp_path: Path) -> None:
-    config_path = Path("data/forest_loss_driver/20260924_utm/config.json")
+    config_path = Path("data/forest_loss_driver/config.json")
     (tmp_path / "config.json").write_bytes(config_path.read_bytes())
     dataset = Dataset(UPath(tmp_path))
 
