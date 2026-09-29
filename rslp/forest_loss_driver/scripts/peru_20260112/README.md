@@ -33,7 +33,8 @@ here:
 ```
 
 The rslearn dataset should be first created with config file from
-`data/forest_loss_driver/config_studio_annotation.json`.
+`data/forest_loss_driver/config_studio_annotation.json` (since removed from the repo;
+it is present at commit `c69d5e64`).
 
 The selection is done by randomly sampling 100 forest loss events that were predicted
 as each of logging/burned/none/river/airstrip (500 total), and another 500 where the
