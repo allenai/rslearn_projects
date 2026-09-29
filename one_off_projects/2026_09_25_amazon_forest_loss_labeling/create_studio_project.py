@@ -37,9 +37,9 @@ from studio_api import CLASS_COLORS, COUNTRY_COLORS, Studio
 ORGANIZATION_ID = "73c31b7f-af83-4da8-8b61-7c7accd03864"
 PROJECT_NAME = "Forest Loss Driver Validation 2026-09"
 PROJECT_DESCRIPTION = (
-    "Validation annotation of 538 GLAD forest loss events (Jan 2025 - Jul 2026) "
-    "selected with the 20260924 utm forest loss driver model. Predicted category is "
-    "added only after annotation."
+    "Validation annotation of {num_events} GLAD forest loss events (Jan 2025 - Jul "
+    "2026) selected with the 20260924 utm forest loss driver model. Predicted category "
+    "is added only after annotation."
 )
 BOX_SIZE_M = 1280
 
@@ -82,7 +82,7 @@ def main(cli_args: argparse.Namespace) -> None:
             "/projects",
             json={
                 "name": PROJECT_NAME,
-                "description": PROJECT_DESCRIPTION,
+                "description": PROJECT_DESCRIPTION.format(num_events=len(planned)),
                 "organization_id": ORGANIZATION_ID,
             },
         )["records"][0]["id"]

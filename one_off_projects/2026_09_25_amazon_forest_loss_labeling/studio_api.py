@@ -107,7 +107,11 @@ class Studio:
                 labelset = self.request(
                     "POST",
                     "/labelsets",
-                    json={"name": field_name, "project_settings_id": settings_id},
+                    json={
+                        "name": field_name,
+                        "display_name": field_name,
+                        "project_settings_id": settings_id,
+                    },
                 )["records"][0]
             labelset_id = labelset["id"]
         else:
@@ -127,7 +131,14 @@ class Studio:
                 "POST",
                 "/labels",
                 json=[
-                    {"name": name, "color": label_colors[name], "labelset_id": labelset_id}
+                    # Studio shows display_name in the annotation UI, so it must be
+                    # set or the options appear as blank color swatches.
+                    {
+                        "name": name,
+                        "display_name": name,
+                        "color": label_colors[name],
+                        "labelset_id": labelset_id,
+                    }
                     for name in missing
                 ],
             )["records"]

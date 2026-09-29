@@ -9,7 +9,9 @@ There are two stages:
 1. extract: for each GLAD tile, read the rasters once and, for each calendar month,
    extract connected components of alert pixels dated in that month, restricted to the
    target countries, and randomly sample up to --max_per_tile_month of them. Each tile's
-   candidates are written to {out_dir}/candidates/{tile}.geojson.
+   candidates are written to {out_dir}/candidates/{tile}.geojson. Polygons follow the
+   GLAD pixel edges unless --smooth_polygons is passed (the 2026-09-25 run was
+   smoothed; its annotation events were converted afterwards).
 2. select: pool the candidates, shuffle them, and greedily accept events as long as the
    (country, month) has fewer than --max_per_country_month accepted events and there is
    no already-accepted event (in any month) whose center point is within
@@ -230,6 +232,8 @@ def run_extract(cli_args: argparse.Namespace) -> None:
         country_data_path=COUNTRY_DATA_PATH,
         countries=COUNTRIES,
         max_number_of_events=cli_args.max_per_tile_month,
+        # Annotators want the pixel-exact outline, not the smoothed one.
+        smooth_polygons=cli_args.smooth_polygons,
     )
     country_wgs84_shps = load_country_polygons(
         UPath(args.country_data_path), COUNTRIES
@@ -370,6 +374,12 @@ if __name__ == "__main__":
         "--end_month", default="2026-08", help="exclusive end month"
     )
     extract_parser.add_argument("--max_per_tile_month", type=int, default=10000)
+    extract_parser.add_argument(
+        "--smooth_polygons",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="smooth event polygons (the 2026-09-25 run used smoothing; default off)",
+    )
     extract_parser.add_argument("--workers", type=int, default=7)
     extract_parser.add_argument("--block_size", type=int, default=10000)
     extract_parser.add_argument("--block_margin", type=int, default=500)

@@ -7,9 +7,9 @@ events whose polygon intersects any window of the latest training set
 1. country: for each country in COUNTRY_SAMPLE_COUNTRIES and each category, sample
    PER_COUNTRY_CATEGORY events uniformly among events whose predicted (top-1)
    category is that category.
-2. recall: for each category, sample PER_CATEGORY events uniformly (all countries)
-   among events with P(category) >= max(MIN_THRESHOLD, the threshold reaching 0.95
-   recall on the val split).
+2. recall: for each category in RECALL_CATEGORIES, sample PER_CATEGORY events
+   uniformly (all countries) among events with P(category) >= max(MIN_THRESHOLD, the
+   threshold reaching 0.95 recall on the val split).
 
 The two samples are drawn independently so each stays a uniform sample of its
 stratum. Events drawn more than once are written once, with every stratum listed in
@@ -68,6 +68,8 @@ MIN_THRESHOLD = 0.01
 COUNTRY_SAMPLE_COUNTRIES = ["BR", "BO", "EC"]
 PER_COUNTRY_CATEGORY = 10
 PER_CATEGORY = 25
+# Only the lower-accuracy categories get the recall sample.
+RECALL_CATEGORIES = ["airstrip", "none", "landslide", "logging", "hurricane"]
 
 
 def main(out_dir: UPath, seed: int) -> None:
@@ -127,7 +129,8 @@ def main(out_dir: UPath, seed: int) -> None:
             ]
             sample(f"country:{country}:{cls}", pool, PER_COUNTRY_CATEGORY)
 
-    for ci, cls in enumerate(CLASSES):
+    for cls in RECALL_CATEGORIES:
+        ci = CLASSES.index(cls)
         threshold = max(MIN_THRESHOLD, RECALL_95_THRESHOLDS[cls])
         pool = [feat for feat in eligible if feat["properties"]["probs"][ci] >= threshold]
         sample(f"recall:{cls}", pool, PER_CATEGORY)
