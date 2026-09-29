@@ -17,7 +17,10 @@ Package layout:
   mine candidate changes.
 - `land_cover/`: train a per-pixel land cover model and apply it to the ten-year
   dataset to find candidate change pixels (see its [README](./land_cover/README.md)).
-- `annotation_app/`: Flask UI for verifying and labeling points.
+- `annotation_app/`: Flask UI for verifying and labeling points (legacy; see
+  `studio/`).
+- `studio/`: upload/download v2 JSONs to/from OlmoEarth Studio for the LCC
+  Annotator lab.
 - `annotation_scripts/`: per-phase scripts that produce candidate annotation JSONs.
 - `codex_tiles/`: Codex-generated 0.1x0.1 degree tiles with likely changes, and a
   script to sample points from them.
@@ -130,7 +133,45 @@ rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/change_f
 rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_20260408/ --workers 128
 ```
 
-### Running the Annotation App
+### Annotating in OlmoEarth Studio
+
+Annotation happens in the **LCC Annotator** lab in OlmoEarth Studio
+(`olmoearth_studio/ui/labs/lcc-annotator/`; see its README for the workflow and
+keys). It shows Sentinel-2 rendered on the fly by Studio, so no rslearn dataset
+has to be materialized. v2 JSONs move in and out of a Studio project with the
+scripts in `studio/`:
+
+```bash
+# 1. Upload a v2 JSON into a Studio project. Creates the project's fields and
+#    labels if missing (including unseen legacy category values). Tasks that
+#    already exist (by name) are skipped, so it is safe to re-run.
+STUDIO_API_KEY=... python -m rslp.olmoearth_lcc.studio.upload_to_studio \
+    --json annotations.json --project-id <PROJECT_ID> --dry-run
+STUDIO_API_KEY=... python -m rslp.olmoearth_lcc.studio.upload_to_studio \
+    --json annotations.json --project-id <PROJECT_ID>
+
+# 2. Annotate: open the project in Studio, then Labs -> LCC Annotator.
+
+# 3. Download the project back to a v2 JSON for lcc_model/prepare.py.
+STUDIO_API_KEY=... python -m rslp.olmoearth_lcc.studio.download_from_studio \
+    --project-id <PROJECT_ID> --out annotations.json
+```
+
+Both scripts default to production Studio; set `STUDIO_API_URL` (or pass
+`--base-url`) to use another deployment, e.g. `http://localhost:8000/api/v1`.
+
+Each entry becomes a task named `<5-digit JSON index> <window_name>`, so the
+lab and the downloaded JSON keep the original order. The window identity,
+the verbatim `time_range`, `description`, `anchor_date` and any extra entry
+keys are kept in the task's attributes; each point is an annotation whose
+`point_type` field says positive or negative. A round trip reproduces the
+entries exactly, except that empty-string point fields are dropped (prepare.py
+treats them the same as missing ones).
+
+#### Legacy Flask app
+
+The Flask app in `annotation_app/` still works against a materialized rslearn
+dataset:
 
 The annotation app is a Flask web UI for browsing entries and labeling points.
 
