@@ -38,6 +38,7 @@ def launch_weekly_job(
     cluster: str = "ai2/jupiter",
     workspace: str = DEFAULT_WORKSPACE,
     budget: str = DEFAULT_BUDGET,
+    retries: int = 2,
 ) -> None:
     """Create a Beaker experiment that runs ``weekly_report`` for the given date.
 
@@ -55,6 +56,9 @@ def launch_weekly_job(
         cluster: Beaker cluster to run on.
         workspace: Beaker workspace.
         budget: Beaker budget.
+        retries: number of times Beaker re-runs the task if it fails (e.g. out of
+            memory), so it is attempted up to ``retries + 1`` times. Retries
+            resume from the scan checkpoint like preemptions do.
     """
     if date is None:
         date = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -94,7 +98,7 @@ def launch_weekly_job(
             # checkpoint (or skips the scan if it already finished).
             min_runtime="8h",
             auto_resume=True,
-        )
+        ).with_retries(retries)
         logger.info("Creating experiment %s: %s", task_name, " ".join(command))
         workload = beaker.experiment.create(name=task_name, spec=experiment_spec)
         logger.info("Created experiment %s", beaker.workload.url(workload))

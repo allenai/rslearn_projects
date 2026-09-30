@@ -166,9 +166,10 @@ and writes:
 where `YYYYMMDD` is the UTC date the launcher ran (so the Saturday date for the
 scheduled run). Old reports are kept indefinitely for now.
 
-The job is preemptible (protected for the first 8 hours) with `auto_resume`. The
+The job is preemptible (protected for the first 8 hours) with `auto_resume`, and
+failed jobs (e.g. out of memory) are retried up to 2 times (3 attempts total). The
 scan checkpoints to `YYYYMMDD_usage.jsonl.ckpt` and resumes from it after a
-preemption; once the scan finishes a `YYYYMMDD_usage.jsonl.done` marker is written,
+preemption or retry; once the scan finishes a `YYYYMMDD_usage.jsonl.done` marker is written,
 so a restart after that point skips the scan and only re-runs the cheap collapse
 and report stages. The two workflows:
 
