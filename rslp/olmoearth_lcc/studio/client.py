@@ -11,14 +11,16 @@ import requests
 
 DEFAULT_BASE_URL = "https://olmoearth.allenai.org/api/v1"
 DEFAULT_TIMEOUT = 60
-MAX_RETRIES = 4
+MAX_RETRIES = 6
 RETRY_BACKOFF = 2.0
+# Retried along with 5xx: prod Studio rate limits heavy concurrent writes.
+TOO_MANY_REQUESTS = 429
 # Studio search endpoints cap limit (and offset) at 10000.
 MAX_PAGE_SIZE = 10000
 
 
 class StudioClient:
-    """Authenticated requests against the Studio API, with retries on 5xx."""
+    """Authenticated requests against the Studio API, with retries on 5xx and 429."""
 
     def __init__(self, base_url: str | None = None, api_key: str | None = None):
         """Create a client.
@@ -42,15 +44,22 @@ class StudioClient:
         kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
         url = f"{self.base_url}{path}"
         for attempt in range(MAX_RETRIES):
+            delay = RETRY_BACKOFF * (2**attempt)
             try:
                 resp = self.session.request(method, url, **kwargs)
             except requests.ConnectionError:
                 if attempt == MAX_RETRIES - 1:
                     raise
             else:
-                if resp.status_code < 500 or attempt == MAX_RETRIES - 1:
+                retryable = (
+                    resp.status_code >= 500 or resp.status_code == TOO_MANY_REQUESTS
+                )
+                if not retryable or attempt == MAX_RETRIES - 1:
                     break
-            time.sleep(RETRY_BACKOFF * (2**attempt))
+                retry_after = resp.headers.get("Retry-After", "")
+                if retry_after.isdigit():
+                    delay = max(delay, float(retry_after))
+            time.sleep(delay)
         if not resp.ok:
             raise requests.HTTPError(
                 f"{method} {path} failed with {resp.status_code}: {resp.text}",
