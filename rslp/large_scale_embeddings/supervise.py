@@ -272,6 +272,28 @@ class WorkerConfig:
     gpus: int = 1
     # A preempted worker loses its whole job, since there is no intra-job checkpointing.
     priority: str = "urgent"
+    # How many allocated workers to hold at `priority`; the rest of the allocated pool
+    # runs at `overflow_priority` instead.
+    #
+    # Urgent is the strongest claim the run can make on the allocation, and holding the
+    # whole pool there leaves colleagues nothing to preempt when they need slots back.
+    # Reserving a floor keeps the run alive through contention while the bulk of it
+    # yields. Zero keeps every allocated worker at `priority`, the original behaviour.
+    urgent_workers: int = 0
+    # Priority for allocated workers beyond `urgent_workers`. Still allocated -- they
+    # count against the allocation -- so this changes who wins when two jobs want the
+    # same slot, and `overflow_min_runtime_seconds` changes how long they are kept.
+    overflow_priority: str = "high"
+    # Guaranteed runtime to request for each tier, or None for the worker default of
+    # roughly one block.
+    #
+    # A longer request is a stronger promise the scheduler has to honour, so it buys
+    # fewer preemptions at the cost of being harder to place: the cluster must have
+    # that much uninterrupted time free before the worker starts at all. Sizing the
+    # reserve well above one block protects the workers the run cannot afford to lose,
+    # while the overflow tier stays cheaper to schedule.
+    urgent_min_runtime_seconds: int | None = None
+    overflow_min_runtime_seconds: int | None = None
     shared_memory: str = "256GiB"
     # How long a worker waits for new work before exiting. Must exceed the cycle
     # interval, or the pool empties between refills. None leaves the worker's own
@@ -998,6 +1020,62 @@ def _count_worker_split(
     return starting, fresh
 
 
+def _count_urgent_allocated(
+    beaker: Any,
+    workspace: Any,
+    name_prefix: str,
+    priority: str,
+) -> int:
+    """How many of this run's allocated workers already hold `priority`.
+
+    Counted from the workload listing rather than the queue, because a worker's
+    registration carries a heartbeat but not the priority it was launched with. A
+    worker that died without finalizing is still counted, which biases the reserve
+    low; launching too few urgent workers costs throughput, launching too many takes
+    slots colleagues were promised, so low is the safer direction.
+
+    Args:
+        beaker: an open Beaker client.
+        workspace: the workspace to search.
+        name_prefix: the prefix from `worker_name_prefix`.
+        priority: the Beaker priority name that counts as reserved.
+
+    Returns:
+        the number of unfinalized allocated workers at that priority.
+    """
+    want = priority.strip().lower()
+    total = 0
+    for workload in beaker.workload.list(
+        workspace=workspace,
+        author=beaker.user.get(),
+        finalized=False,
+        workload_type=BeakerWorkloadType.experiment,
+        limit=WORKER_LIST_LIMIT,
+    ):
+        name = getattr(getattr(workload, "experiment", None), "name", "")
+        if not name.startswith(name_prefix):
+            continue
+        tasks = list(getattr(workload.experiment, "tasks", []))
+        if not tasks:
+            continue
+        details = tasks[0].system_details
+        # Backfill asks for a short min_runtime to stay unallocated, so excluding it
+        # here keeps the reserve about the allocated pool only.
+        if details.min_runtime.seconds <= BACKFILL_MIN_RUNTIME.total_seconds():
+            continue
+        # `priority` is an enum number, not text: stringifying it gives "4", which
+        # matches no priority name and silently counts the reserve as empty.
+        field = details.DESCRIPTOR.fields_by_name["priority"]
+        got = (
+            field.enum_type.values_by_number[details.priority]
+            .name.replace("JOB_PRIORITY_", "")
+            .lower()
+        )
+        if got == want:
+            total += 1
+    return total
+
+
 def _count_workers(
     beaker: Any,
     workspace: Any,
@@ -1260,11 +1338,38 @@ def _run_cycle(
         just_launched = worker_target - live
         allocated = max(0, min(allocated_target, worker_target) - live)
         allocated = min(allocated, just_launched)
-        if allocated:
-            launch(
-                allocated,
+        # Top the urgent reserve back up first, then put the rest of the allocated
+        # pool at the lower priority. Refilling to a floor rather than launching a
+        # fixed number each cycle keeps the reserve steady as workers retire.
+        urgent = 0
+        if allocated and config.worker.urgent_workers > 0:
+            held = _count_urgent_allocated(
+                beaker,
+                workspace,
+                worker_name_prefix(queue_name),
                 config.worker.priority,
-                rslp.common.worker.DEFAULT_WORKER_MIN_RUNTIME,
+            )
+            urgent = min(allocated, max(0, config.worker.urgent_workers - held))
+        elif allocated:
+            urgent = allocated
+
+        def min_runtime_for(seconds: int | None) -> timedelta:
+            """A tier's guaranteed runtime, falling back to the worker default."""
+            if seconds is None:
+                return rslp.common.worker.DEFAULT_WORKER_MIN_RUNTIME
+            return timedelta(seconds=seconds)
+
+        if urgent:
+            launch(
+                urgent,
+                config.worker.priority,
+                min_runtime_for(config.worker.urgent_min_runtime_seconds),
+            )
+        if allocated - urgent:
+            launch(
+                allocated - urgent,
+                config.worker.overflow_priority,
+                min_runtime_for(config.worker.overflow_min_runtime_seconds),
             )
         if just_launched - allocated:
             launch(
@@ -1275,10 +1380,14 @@ def _run_cycle(
         if launched is not None:
             launched.value = just_launched
         logger.info(
-            "launched %d worker(s), %d allocated and %d backfill (target %d, "
-            "%d existing, %d outstanding job(s))",
+            "launched %d worker(s), %d allocated (%d %s, %d %s) and %d backfill "
+            "(target %d, %d existing, %d outstanding job(s))",
             just_launched,
             allocated,
+            urgent,
+            config.worker.priority,
+            allocated - urgent,
+            config.worker.overflow_priority,
             just_launched - allocated,
             worker_target,
             live,

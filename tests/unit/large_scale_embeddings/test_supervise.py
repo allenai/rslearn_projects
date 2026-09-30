@@ -1115,3 +1115,183 @@ def test_backfill_is_sized_from_running_workers_not_the_live_count() -> None:
             f"_backfill_target is being sized from '{third.id}'; it must be 'running', "
             "or workers that were never placed inflate the target every cycle"
         )
+
+
+def test_urgent_reserve_splits_the_allocated_pool_by_priority() -> None:
+    """Allocated workers past `urgent_workers` must launch at `overflow_priority`.
+
+    Holding the whole allocated pool at urgent leaves colleagues nothing to preempt,
+    which is what the reserve exists to avoid. Assert the launch wiring rather than the
+    arithmetic: a split that computes the right counts but sends them both to
+    `config.worker.priority` looks correct in every unit of the calculation and still
+    reserves nothing.
+    """
+    import ast
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    tree = ast.parse(inspect.getsource(mod))
+
+    priorities = set()
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "launch"
+        ):
+            continue
+        assert len(node.args) >= 2, "unexpected launch() signature"
+        priorities.add(ast.dump(node.args[1]))
+
+    wanted = {
+        ast.dump(ast.parse(expr, mode="eval").body)
+        for expr in (
+            "config.worker.priority",
+            "config.worker.overflow_priority",
+            "config.worker.backfill_priority",
+        )
+    }
+    missing = wanted - priorities
+    assert not missing, (
+        "launch() is never called with "
+        f"{sorted(ast.literal_eval('None') or [] for _ in [])}"
+        f"{missing}; the allocated pool must split across priority and "
+        "overflow_priority, with backfill on its own"
+    )
+
+
+def test_urgent_reserve_tops_up_to_the_floor_rather_than_relaunching_it() -> None:
+    """The reserve must be sized from workers already held, not launched every cycle.
+
+    Launching `urgent_workers` unconditionally each cycle would grow the urgent tier
+    without bound while the pool is being refilled.
+    """
+    import ast
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    src = inspect.getsource(mod)
+    tree = ast.parse(src)
+
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_count_urgent_allocated"
+    ]
+    assert calls, (
+        "the cycle never counts the urgent workers it already holds; the reserve "
+        "must be topped up to a floor, not relaunched in full every cycle"
+    )
+
+
+def test_each_allocated_tier_gets_its_own_min_runtime() -> None:
+    """Urgent and overflow must not share one hardcoded min_runtime.
+
+    The tiers exist so the reserve can buy a stronger guarantee than the bulk of the
+    pool. Passing the same constant to both launches computes the right counts and
+    still gives every allocated worker the same protection, which is the failure this
+    guards against.
+    """
+    import ast
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    tree = ast.parse(inspect.getsource(mod))
+
+    runtimes = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "launch"
+        ):
+            continue
+        assert len(node.args) >= 3, "unexpected launch() signature"
+        runtimes.append(ast.dump(node.args[2]))
+
+    assert len(runtimes) == len(set(runtimes)), (
+        "two launch() calls pass the same min_runtime expression; the urgent reserve "
+        "and the overflow tier must be able to ask for different guarantees"
+    )
+
+
+def test_tier_min_runtime_falls_back_to_the_worker_default() -> None:
+    """Leaving a tier unset must keep the original one-block request."""
+    import importlib
+    from dataclasses import fields
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    names = {f.name: f for f in fields(mod.WorkerConfig)}
+    for name in ("urgent_min_runtime_seconds", "overflow_min_runtime_seconds"):
+        assert name in names, f"{name} is not configurable"
+        assert names[name].default is None, (
+            f"{name} must default to None so an unconfigured run keeps the worker "
+            "default rather than silently changing its scheduling guarantee"
+        )
+
+
+def test_urgent_reserve_reads_priority_as_an_enum_not_a_string() -> None:
+    """`system_details.priority` is an enum number; stringifying it counts nothing.
+
+    `str(4).rsplit("_", 1)[-1]` is "4", which matches no priority name, so the reserve
+    reads as empty every cycle and the urgent tier is relaunched in full each time.
+    That fails silently: the counts look plausible and the tier grows without bound.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    class _Enum:
+        def __init__(self, number: int, name: str) -> None:
+            self.number = number
+            self.name = name
+
+    class _Field:
+        def __init__(self) -> None:
+            self.enum_type = type(
+                "E", (), {"values_by_number": {4: _Enum(4, "JOB_PRIORITY_URGENT")}}
+            )()
+
+    class _Descriptor:
+        fields_by_name = {"priority": _Field()}
+
+    class _Details:
+        DESCRIPTOR = _Descriptor()
+        priority = 4
+
+        class min_runtime:  # noqa: N801
+            seconds = 2700
+
+    class _Task:
+        system_details = _Details()
+
+    class _Experiment:
+        name = "worker_patrickj-test-abc"
+        tasks = [_Task()]
+
+    class _Workload:
+        experiment = _Experiment()
+
+    class _Beaker:
+        class workload:  # noqa: N801
+            @staticmethod
+            def list(**_kwargs: object) -> list:
+                return [_Workload()]
+
+        class user:  # noqa: N801
+            @staticmethod
+            def get() -> str:
+                return "me"
+
+    held = mod._count_urgent_allocated(
+        _Beaker(), object(), "worker_patrickj-test", "urgent"
+    )
+    assert held == 1, (
+        f"an urgent allocated worker was counted as {held}; the reserve must read the "
+        "priority enum by number, not by stringifying it"
+    )
