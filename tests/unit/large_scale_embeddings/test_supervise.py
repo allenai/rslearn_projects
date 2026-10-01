@@ -1442,3 +1442,137 @@ def test_allocation_usage_counts_a_multi_cluster_job_once() -> None:
         f"expected 12 slots (8 + 4, the shared job counted once), got {used}; "
         "summing per-cluster listings double counts multi-cluster jobs"
     )
+
+
+def test_reaper_only_fires_when_the_reserve_is_short() -> None:
+    """A healthy reserve must not have its overflow cancelled.
+
+    The reaper exists to free headroom for urgent relaunches. Running it when the
+    reserve is already full would cancel capacity that is merely waiting its turn, and
+    on a saturated cluster that is most of the pool.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    class _Beaker:
+        class workload:  # noqa: N801
+            @staticmethod
+            def list(**_kwargs: object) -> list:
+                raise AssertionError("must not enumerate workers when not short")
+
+    for shortfall in (0, -5):
+        assert (
+            mod._reap_unplaceable_overflow(
+                _Beaker(), object(), "worker_x", "urgent", shortfall, 2700
+            )
+            == 0
+        ), "the reaper ran with a full reserve"
+
+
+def test_reaper_spares_backfill_running_and_urgent_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only queued, stale, allocated, non-reserve workers may be cancelled.
+
+    Cancelling a running worker throws away a whole job, backfill holds no allocated
+    slot so freeing it buys the reserve nothing, and cancelling urgent would remove the
+    very capacity being topped up.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    old = 1_000.0
+
+    def _wl(
+        name: str, status: int, priority: int, min_runtime: int, created: int
+    ) -> object:
+        return type(
+            "W",
+            (),
+            {
+                "experiment": type(
+                    "E",
+                    (),
+                    {
+                        "name": name,
+                        "created": type("C", (), {"seconds": created})(),
+                        "tasks": [
+                            type(
+                                "T",
+                                (),
+                                {
+                                    "status": status,
+                                    "system_details": _FakeDetails(
+                                        priority, min_runtime
+                                    ),
+                                },
+                            )()
+                        ],
+                    },
+                )(),
+            },
+        )()
+
+    stale = int(old - 10_000)
+    pool = [
+        _wl("worker_x_run", 4, 4, 14400, stale),  # running
+        _wl("worker_x_bf", 2, 5, 60, stale),  # backfill
+        _wl("worker_x_urg", 2, 4, 14400, stale),  # urgent
+        _wl("worker_x_fresh", 2, 5, 7200, int(old)),  # queued but young
+        _wl("worker_x_stale", 2, 5, 7200, stale),  # the only valid target
+    ]
+    cancelled: list = []
+
+    class _Beaker:
+        class workload:  # noqa: N801
+            @staticmethod
+            def list(**_kwargs: object) -> list:
+                return pool
+
+            @staticmethod
+            def cancel(*workloads: object) -> None:
+                cancelled.extend(workloads)
+
+        class user:  # noqa: N801
+            @staticmethod
+            def get() -> str:
+                return "me"
+
+    import datetime as _dt
+
+    class _Now(_dt.datetime):
+        @classmethod
+        def now(cls, tz: object = None) -> "_Now":
+            return cls.fromtimestamp(old, tz)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(mod, "datetime", _Now)
+    n = mod._reap_unplaceable_overflow(
+        _Beaker(), object(), "worker_x", "urgent", 10, 100
+    )
+
+    names = [w.experiment.name for w in cancelled]
+    assert names == ["worker_x_stale"], f"cancelled the wrong workers: {names}"
+    assert n == 1
+
+
+class _FakeDetails:
+    """Minimal stand-in for a task's system_details."""
+
+    def __init__(self, priority: int, min_runtime_seconds: int) -> None:
+        self.priority = priority
+        self.min_runtime = type("R", (), {"seconds": min_runtime_seconds})()
+
+    @property
+    def DESCRIPTOR(self) -> object:  # noqa: N802
+        names = {4: "JOB_PRIORITY_URGENT", 5: "JOB_PRIORITY_HIGH"}
+
+        class _Enum:
+            values_by_number = {
+                k: type("V", (), {"name": v})() for k, v in names.items()
+            }
+
+        class _Field:
+            enum_type = _Enum()
+
+        return type("D", (), {"fields_by_name": {"priority": _Field()}})()

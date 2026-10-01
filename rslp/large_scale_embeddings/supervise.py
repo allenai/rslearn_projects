@@ -127,6 +127,12 @@ DEFAULT_AWS_SECRET_KEY_SECRET = "AWS_SECRET_ACCESS_KEY"  # nosec
 # a blind top-up generates. Size it well above one job's runtime.
 DEFAULT_CLAIM_STALE_SECONDS = int(timedelta(minutes=90).total_seconds())
 
+# How long an overflow worker may sit queued before it is treated as unplaceable and
+# cancelled to make room for the urgent reserve. Well above the minutes a healthy
+# placement takes, and below the hours a saturated cluster leaves one waiting, so the
+# reserve recovers within a cycle or two instead of eroding for an afternoon.
+DEFAULT_OVERFLOW_STALE_SECONDS = int(timedelta(minutes=45).total_seconds())
+
 # Workload states in which a worker is already running, and so has registered with the
 # queue and is represented by its heartbeat. Counting these as "starting" as well
 # double-counts a whole launch batch for the length of the startup grace.
@@ -309,6 +315,9 @@ class WorkerConfig:
     # reserve well above one block protects the workers the run cannot afford to lose,
     # while the overflow tier stays cheaper to schedule.
     urgent_min_runtime_seconds: int | None = None
+    # Seconds a queued overflow worker may wait before being cancelled so the
+    # urgent reserve can be relaunched. None disables the reaper.
+    overflow_stale_seconds: int | None = DEFAULT_OVERFLOW_STALE_SECONDS
     overflow_min_runtime_seconds: int | None = None
     shared_memory: str = "256GiB"
     # How long a worker waits for new work before exiting. Must exceed the cycle
@@ -1039,6 +1048,118 @@ def _count_worker_split(
     return starting, fresh
 
 
+def _priority_name(details: Any) -> str:
+    """The Beaker priority of a task, as a lowercase name.
+
+    `priority` is an enum number, not text: stringifying it gives "4", which matches no
+    priority name and silently reads every tier as unset.
+
+    Args:
+        details: a task's `system_details`.
+
+    Returns:
+        the priority name, e.g. "urgent", or "" if it cannot be read.
+    """
+    try:
+        field = details.DESCRIPTOR.fields_by_name["priority"]
+        return (
+            field.enum_type.values_by_number[details.priority]
+            .name.replace("JOB_PRIORITY_", "")
+            .lower()
+        )
+    except Exception:
+        return ""
+
+
+def _reap_unplaceable_overflow(
+    beaker: Any,
+    workspace: Any,
+    name_prefix: str,
+    priority: str,
+    shortfall: int,
+    stale_seconds: int,
+) -> int:
+    """Cancel long-queued overflow workers so the urgent reserve can be relaunched.
+
+    A queued worker counts toward `live` and must: see PENDING_WORKLOAD_STATUSES for
+    why aging them out of the count instead produces a launch storm. But that leaves a
+    pool saturated with jobs the cluster will not place, and no headroom to replace an
+    urgent worker that exited. The reserve then erodes with nothing able to refill it,
+    which is how 96 urgent fell to 23 while 144 overflow workers sat queued.
+
+    Cancelling is not the same as not counting. The request leaves the cluster queue,
+    so nothing accumulates behind it, and the next cycle's headroom goes to urgent
+    first because the reserve tops up before overflow.
+
+    Only runs when the reserve is short, only takes overflow workers, and only takes as
+    many as the shortfall needs, so a healthy pool is never touched and a cluster that
+    cannot place anything churns by the shortfall rather than by the whole pool.
+
+    Args:
+        beaker: an open Beaker client.
+        workspace: the workspace to search.
+        name_prefix: the prefix from `worker_name_prefix`.
+        priority: the Beaker priority name that counts as reserved.
+        shortfall: how many urgent workers the reserve is missing; zero disables.
+        stale_seconds: only cancel workers queued at least this long, so one that is
+            moments from starting is left alone.
+
+    Returns:
+        the number of workers cancelled, which is the headroom freed.
+    """
+    if shortfall <= 0 or stale_seconds <= 0:
+        return 0
+
+    want = priority.strip().lower()
+    cutoff = datetime.now(UTC).timestamp() - stale_seconds
+    doomed = []
+    for workload in beaker.workload.list(
+        workspace=workspace,
+        author=beaker.user.get(),
+        finalized=False,
+        workload_type=BeakerWorkloadType.experiment,
+        limit=WORKER_LIST_LIMIT,
+    ):
+        experiment = getattr(workload, "experiment", None)
+        if not getattr(experiment, "name", "").startswith(name_prefix):
+            continue
+        tasks = getattr(experiment, "tasks", None)
+        if not tasks:
+            continue
+        task = tasks[0]
+        if getattr(task, "status", None) not in PENDING_WORKLOAD_STATUSES:
+            continue
+        details = task.system_details
+        # Backfill holds no allocated slot, so cancelling it frees nothing the reserve
+        # can use, and it is the capacity we most want to keep.
+        if details.min_runtime.seconds <= BACKFILL_MIN_RUNTIME.total_seconds():
+            continue
+        if _priority_name(details) == want:
+            continue
+        created = getattr(getattr(experiment, "created", None), "seconds", 0) or 0
+        if created > cutoff:
+            continue
+        doomed.append(workload)
+        if len(doomed) >= shortfall:
+            break
+
+    if not doomed:
+        return 0
+    try:
+        beaker.workload.cancel(*doomed)
+    except Exception:
+        logger.exception("could not cancel unplaceable overflow workers")
+        return 0
+    logger.info(
+        "cancelled %d queued overflow worker(s) queued over %ds so the urgent "
+        "reserve (short by %d) can be relaunched",
+        len(doomed),
+        stale_seconds,
+        shortfall,
+    )
+    return len(doomed)
+
+
 def _count_urgent_allocated(
     beaker: Any,
     workspace: Any,
@@ -1082,15 +1203,7 @@ def _count_urgent_allocated(
         # here keeps the reserve about the allocated pool only.
         if details.min_runtime.seconds <= BACKFILL_MIN_RUNTIME.total_seconds():
             continue
-        # `priority` is an enum number, not text: stringifying it gives "4", which
-        # matches no priority name and silently counts the reserve as empty.
-        field = details.DESCRIPTOR.fields_by_name["priority"]
-        got = (
-            field.enum_type.values_by_number[details.priority]
-            .name.replace("JOB_PRIORITY_", "")
-            .lower()
-        )
-        if got == want:
+        if _priority_name(details) == want:
             total += 1
     return total
 
@@ -1167,6 +1280,24 @@ def _run_cycle(
             now=now,
         )
         live = starting + running
+        # An eroded reserve cannot refill itself while queued overflow holds the pool
+        # at target, so make room before sizing. Runs before _capacity_target so this
+        # cycle launches into the headroom rather than waiting for the next one.
+        if config.worker.urgent_workers > 0 and config.worker.overflow_stale_seconds:
+            held = _count_urgent_allocated(
+                beaker,
+                workspace,
+                worker_name_prefix(queue_name),
+                config.worker.priority,
+            )
+            live -= _reap_unplaceable_overflow(
+                beaker,
+                workspace,
+                worker_name_prefix(queue_name),
+                config.worker.priority,
+                config.worker.urgent_workers - held,
+                config.worker.overflow_stale_seconds,
+            )
         # Resolved here rather than from config because capacity sizing needs both the
         # live count and a Beaker client. Static runs get config.worker.num_workers.
         allocated_target = _capacity_target(beaker, config.worker, live)
