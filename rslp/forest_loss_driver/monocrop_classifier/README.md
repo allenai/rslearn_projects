@@ -23,8 +23,11 @@ by `scripts/phase2_upload_to_studio.py`. Use annotations that have:
 
 Class IDs and filtering values are constants in `create_dataset.py`. The Studio
 labelset has eight raw classes; the label written to the dataset merges
-`soybean` into the `mennonites_soybean` slot (renamed `soybean`), giving the
-seven classes the model predicts:
+`soybean` into the `mennonites_soybean` slot (renamed `soybean`). This is because
+we previously found that it isn't feasible for the model to distinguish between
+the two (high confusion between the two classes).
+
+Thus, the seven classes the model predicts are:
 
 | ID | Raw Studio class | Dataset class |
 |---:|---|---|
