@@ -55,7 +55,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260811/
+    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260930/
     inputs:
       sentinel2_quarterly:
         data_type: raster
@@ -304,7 +304,7 @@ data:
     task:
       class_path: rslp.olmoearth_lcc.lcc_model.tasks.LCCMultiTask
       init_args:
-        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260811/lcc_annotations.json
+        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20260930/lcc_annotations.json
         input_mapping:
           binary:
             label_binary: targets
@@ -603,6 +603,6 @@ trainer:
     init_args:
       monitor: val_binary/auroc
       mode: max
-project_name: 2026_09_17_lcc
+project_name: 2026_09_30_lcc
 run_name: bp_abs_qdrop_bpcat_temporal
 management_dir: ${RSLP_PREFIX}/projects
