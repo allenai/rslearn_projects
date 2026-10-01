@@ -19,8 +19,13 @@ from rslearn.utils.geometry import WGS84_PROJECTION, Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from upath import UPath
 
-from .studio import DEFAULT_PROJECT_IDS, StudioClient
+from rslp.utils.studio import StudioClient
 
+DEFAULT_PROJECT_IDS = (
+    "30b9bbb2-1ac9-4cf6-baa5-1b77ce79881c",
+    "dd3e9ecb-4060-4a9b-af71-05b4bf8ad747",
+    "8188a029-fd50-4670-a6f2-243afc3e1b83",
+)
 WINDOW_SIZE = 128
 WINDOW_RESOLUTION = 10
 PRE_EVENT_DAYS = 330

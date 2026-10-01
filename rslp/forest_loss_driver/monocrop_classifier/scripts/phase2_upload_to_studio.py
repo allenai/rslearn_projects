@@ -58,14 +58,11 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 import random
-import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 
-import requests
 import shapely
 import tqdm
 from rslearn.dataset import Dataset, Window
@@ -80,14 +77,11 @@ from rslp.forest_loss_driver.monocrop_classifier.create_prediction_dataset impor
     feature_window_name,
     parse_feature_polygon,
 )
+from rslp.utils.studio import StudioClient
 
 OUTPUT_LAYER = "output_vector"
 # Property written by ClassificationTask (property_name in the model config).
 CLASS_PROPERTY = "class_name"
-BASE_URL = "https://olmoearth.allenai.org/api/v1"
-DEFAULT_TIMEOUT = 30
-MAX_RETRIES = 3
-RETRY_BACKOFF = 2.0
 # Feature properties copied into task attributes when present.
 ATTRIBUTE_PROPERTY_KEYS = ("country", "new_label", "area_ha")
 # Task geometry: 256 pixels * 10 m/pixel box centered at the polygon centroid,
@@ -265,100 +259,8 @@ def centroid_box_wkt(lon: float, lat: float) -> str:
     ).wkt
 
 
-def _get_headers() -> dict[str, str]:
-    api_key = os.environ["STUDIO_API_KEY"]
-    return {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-    }
-
-
-def _api_request(method: str, url: str, **kwargs: Any) -> requests.Response:
-    kwargs.setdefault("headers", _get_headers())
-    kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
-    for attempt in range(MAX_RETRIES):
-        resp = requests.request(method, url, **kwargs)
-        if resp.status_code < 500:
-            return resp
-        if attempt < MAX_RETRIES - 1:
-            time.sleep(RETRY_BACKOFF * (2**attempt))
-    return resp
-
-
-def get_existing_task_names(project_id: str) -> set[str]:
-    """Fetch the names of all tasks already in the project."""
-    names: set[str] = set()
-    offset = 0
-    while True:
-        resp = _api_request(
-            "POST",
-            f"{BASE_URL}/tasks/search",
-            json={"project_id": {"eq": project_id}, "offset": offset, "limit": 1000},
-        )
-        resp.raise_for_status()
-        records = resp.json()["records"]
-        if not records:
-            break
-        names.update(task["name"] for task in records)
-        offset += len(records)
-    return names
-
-
-def create_task(
-    project_id: str,
-    name: str,
-    geom_wkt: str,
-    start_time: str,
-    end_time: str | None,
-    attributes: dict[str, Any],
-) -> str:
-    """Create one Studio task and return its ID."""
-    body: dict[str, Any] = {
-        "name": name,
-        "project_id": project_id,
-        "geom": geom_wkt,
-        "start_time": start_time,
-        "attributes": attributes,
-    }
-    if end_time is not None:
-        body["end_time"] = end_time
-    resp = _api_request("POST", f"{BASE_URL}/tasks", json=body)
-    if resp.status_code != 200:
-        print(resp.text)
-    resp.raise_for_status()
-    return resp.json()["records"][0]["id"]
-
-
-def create_annotation(
-    task_id: str,
-    geom_wkt: str,
-) -> None:
-    """Create one pending annotation with no label (null = not human-labeled)."""
-    resp = _api_request(
-        "POST",
-        f"{BASE_URL}/annotations",
-        json={
-            "status": "pending",
-            "geom": geom_wkt,
-            "task_id": task_id,
-        },
-    )
-    if resp.status_code != 200:
-        print(resp.text)
-    resp.raise_for_status()
-
-
-def get_project(project_id: str) -> dict[str, Any]:
-    """Fetch the project definition, including its annotation template."""
-    resp = _api_request("GET", f"{BASE_URL}/projects/{project_id}")
-    resp.raise_for_status()
-    records = resp.json()["records"]
-    if len(records) != 1:
-        raise ValueError(f"expected one project for {project_id}, got {len(records)}")
-    return records[0]
-
-
 def ensure_labelset_field(
+    client: StudioClient,
     project_id: str,
     template: dict[str, Any],
     field_name: str,
@@ -370,6 +272,7 @@ def ensure_labelset_field(
     individual missing labels.
 
     Args:
+        client: the Studio client.
         project_id: the Studio project ID.
         template: the project's annotation template record.
         field_name: the labelset metadata field name.
@@ -396,33 +299,20 @@ def ensure_labelset_field(
         )
         if labelset is None:
             print(f"Creating labelset {field_name!r}")
-            resp = _api_request(
-                "POST",
-                f"{BASE_URL}/labelsets",
-                json={"name": field_name, "template_id": template["id"]},
-            )
-            if resp.status_code != 200:
-                print(resp.text)
-            resp.raise_for_status()
-            labelset = resp.json()["records"][0]
+            labelset = client.create_labelset(field_name, template["id"])
 
         print(f"Creating labelset metadata field {field_name!r}")
-        resp = _api_request(
-            "POST",
-            f"{BASE_URL}/annotation_metadata_fields",
-            json={
+        client.create_annotation_metadata_field(
+            {
                 "name": field_name,
                 "data_type": "labelset",
                 "template_id": template["id"],
                 "required": True,
                 "labelset_id": labelset["id"],
-            },
+            }
         )
-        if resp.status_code != 200:
-            print(resp.text)
-        resp.raise_for_status()
         # Re-fetch the template; missing labels are created below.
-        template = get_project(project_id)["template"]
+        template = client.get_project(project_id)["template"]
         field = next(
             f
             for f in template["annotation_metadata_fields"]
@@ -437,32 +327,26 @@ def ensure_labelset_field(
     }
     missing = {name: color for name, color in labels.items() if name not in label_ids}
     if missing:
-        # POST /labels takes a list body and creates the labels in batch.
         print(f"Creating missing labels: {sorted(missing)}")
-        resp = _api_request(
-            "POST",
-            f"{BASE_URL}/labels",
-            json=[
+        records = client.create_labels(
+            [
                 {"name": name, "color": color, "labelset_id": labelset_id}
                 for name, color in missing.items()
-            ],
+            ]
         )
-        if resp.status_code != 200:
-            print(resp.text)
-        resp.raise_for_status()
-        for record in resp.json()["records"]:
+        for record in records:
             label_ids[record["name"]] = record["id"]
     return field["id"], label_ids, template
 
 
-def resolve_labels(project_id: str, field_name: str) -> None:
+def resolve_labels(client: StudioClient, project_id: str, field_name: str) -> None:
     """Ensure the labelset fields annotators need exist, creating them if needed.
 
     Ensures both the predicted-class field and the confidence field (and their
     labels) exist in the project template. No labels are assigned to the
     uploaded annotations; the fields are only prepared for human annotators.
     """
-    project = get_project(project_id)
+    project = client.get_project(project_id)
     template = project.get("template")
     if not template:
         raise ValueError(
@@ -471,9 +355,11 @@ def resolve_labels(project_id: str, field_name: str) -> None:
         )
 
     _, _, template = ensure_labelset_field(
-        project_id, template, field_name, LABEL_COLORS
+        client, project_id, template, field_name, LABEL_COLORS
     )
-    ensure_labelset_field(project_id, template, CONFIDENCE_FIELD, CONFIDENCE_COLORS)
+    ensure_labelset_field(
+        client, project_id, template, CONFIDENCE_FIELD, CONFIDENCE_COLORS
+    )
 
 
 def main() -> None:
@@ -587,9 +473,10 @@ def main() -> None:
         print(f"Dry run: would create up to {len(planned)} tasks")
         return
 
-    resolve_labels(args.project_id, args.label_field)
+    client = StudioClient()
+    resolve_labels(client, args.project_id, args.label_field)
 
-    existing_names = get_existing_task_names(args.project_id)
+    existing_names = {task["name"] for task in client.get_tasks(args.project_id)}
     print(f"Found {len(existing_names)} existing tasks in project")
 
     num_created = 0
@@ -601,7 +488,7 @@ def main() -> None:
             num_skipped += 1
             continue
         centroid = geometry.centroid
-        task_id = create_task(
+        task_id = client.create_task(
             project_id=args.project_id,
             name=name,
             geom_wkt=centroid_box_wkt(centroid.x, centroid.y),
@@ -609,10 +496,8 @@ def main() -> None:
             end_time=properties.get("oe_end_time"),
             attributes=attributes,
         )
-        create_annotation(
-            task_id=task_id,
-            geom_wkt=geometry.wkt,
-        )
+        # No label is set: a null label means the task has not been human-labeled.
+        client.create_annotation(task_id=task_id, geom_wkt=geometry.wkt)
         num_created += 1
     print(f"Created {num_created} tasks, skipped {num_skipped} existing")
 

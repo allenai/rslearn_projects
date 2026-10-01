@@ -20,13 +20,11 @@ Example:
 
 import argparse
 import hashlib
-import os
 import re
 import shutil
 from datetime import datetime, timedelta
 from typing import Any
 
-import requests
 import shapely
 import tqdm
 from rslearn.const import WGS84_PROJECTION
@@ -38,12 +36,9 @@ from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
+from rslp.utils.studio import StudioClient
 
 logger = get_logger(__name__)
-
-BASE_URL = "https://olmoearth.allenai.org/api/v1"
-REQUEST_TIMEOUT = 30
-SEARCH_PAGE_SIZE = 1000
 
 # Only tasks with these statuses are converted to windows.
 WANTED_TASK_STATUSES = ["reviewed", "to_be_reviewed"]
@@ -69,66 +64,18 @@ VAL_MODULUS = 10
 DATASET_CONFIG_FNAME = "data/nisar_vessels/config.json"
 
 
-def get_headers() -> dict[str, str]:
-    """Get the headers to use for Studio API requests."""
-    api_key = os.environ["STUDIO_API_KEY"]
-    return {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-    }
-
-
-def search_all(endpoint: str, search_body: dict[str, Any]) -> list[dict[str, Any]]:
-    """Get all records from a paginated Studio search endpoint.
-
-    Args:
-        endpoint: the search endpoint, e.g. "tasks/search".
-        search_body: the search filters (offset/limit are added automatically).
-
-    Returns:
-        all matching records.
-    """
-    records: list[dict[str, Any]] = []
-    offset = 0
-    while True:
-        response = requests.post(
-            f"{BASE_URL}/{endpoint}",
-            headers=get_headers(),
-            json=dict(search_body, offset=offset, limit=SEARCH_PAGE_SIZE),
-            timeout=REQUEST_TIMEOUT,
-        )
-        if response.status_code != 200:
-            logger.error(response.text)
-            raise ValueError(
-                f"got bad API response {response.status_code} from {endpoint}"
-            )
-        cur_records = response.json()["records"]
-        if len(cur_records) == 0:
-            break
-        records.extend(cur_records)
-        offset += len(cur_records)
-    return records
-
-
-def get_tasks(project_id: str) -> list[dict[str, Any]]:
+def get_tasks(client: StudioClient, project_id: str) -> list[dict[str, Any]]:
     """Get the tasks in the project that have a wanted status."""
-    return search_all(
-        "tasks/search",
-        {
-            "project_id": {"eq": project_id},
-            "status": {"inc": WANTED_TASK_STATUSES},
-        },
+    return client.get_tasks(
+        project_id, filters={"status": {"inc": WANTED_TASK_STATUSES}}
     )
 
 
-def get_annotations_by_task(project_id: str) -> dict[str, list[dict[str, Any]]]:
+def get_annotations_by_task(
+    client: StudioClient, project_id: str
+) -> dict[str, list[dict[str, Any]]]:
     """Get non-rejected annotations in the project, grouped by task ID."""
-    annotations = search_all(
-        "annotations/search",
-        {
-            "project_id": {"eq": project_id},
-        },
-    )
+    annotations = client.get_annotations(project_id)
     by_task: dict[str, list[dict[str, Any]]] = {}
     for annotation in annotations:
         if annotation["status"] == "rejected":
@@ -253,11 +200,12 @@ def create_dataset(project_id: str, ds_path: str) -> None:
         with (ds_upath / "config.json").open("wb") as dst:
             shutil.copyfileobj(src, dst)
 
-    tasks = get_tasks(project_id)
+    client = StudioClient()
+    tasks = get_tasks(client, project_id)
     logger.info(
         "got %d tasks with status in %s", len(tasks), ",".join(WANTED_TASK_STATUSES)
     )
-    annotations_by_task = get_annotations_by_task(project_id)
+    annotations_by_task = get_annotations_by_task(client, project_id)
 
     dataset = Dataset(ds_upath)
     split_counts: dict[str, int] = {}

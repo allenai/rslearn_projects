@@ -220,12 +220,12 @@ Oilpalmperu_agriculture_large_-5.767112_-77.139067
 
 The script skips tasks that are already renamed (name starts with `[#`) and continues
 the counter after the highest existing `[#NNN]`, so it is safe to re-run after uploading
-more tasks to the same project. Set `STUDIO_API_KEY` and run in any environment with
-`requests` and `tqdm` (e.g. the rslearn venv):
+more tasks to the same project. Set `STUDIO_API_KEY` and run from the
+`rslearn_projects` root in an environment with `rslp` installed:
 
 ```bash
-STUDIO_API_KEY=... python \
-    rslp/forest_loss_driver/scripts/monocrop_initial_setup_20260624/rename_studio_tasks.py \
+STUDIO_API_KEY=... python -m \
+    rslp.forest_loss_driver.scripts.monocrop_initial_setup_20260624.rename_studio_tasks \
     --project-id <PROJECT_ID> \
     --dry-run
 ```

@@ -17,63 +17,23 @@ Tasks that are already renamed (name starts with ``[#``) are skipped, and the co
 continues after the highest existing ``[#NNN]`` so numbers are not reused. This makes
 the script safe to re-run after uploading additional tasks to the same project.
 
-The STUDIO_API_KEY environment variable must be set. Run in any environment with
-requests and tqdm (e.g. the rslearn venv):
+The STUDIO_API_KEY environment variable must be set. Run from the rslearn_projects
+root in an environment with rslp installed:
 
-    STUDIO_API_KEY=... python \
-        rslp/forest_loss_driver/scripts/monocrop_initial_setup_20260624/rename_studio_tasks.py \
+    STUDIO_API_KEY=... python -m \
+        rslp.forest_loss_driver.scripts.monocrop_initial_setup_20260624.rename_studio_tasks \
         --project-id <PROJECT_ID> \
         --dry-run
 """
 
 import argparse
-import os
 import random
 import re
 from datetime import datetime
-from typing import Any
 
-import requests
 import tqdm
 
-BASE_URL = "https://olmoearth.allenai.org/api/v1/"
-
-
-def get_headers() -> dict[str, str]:
-    """Get the headers to use for HTTP requests."""
-    api_key = os.environ["STUDIO_API_KEY"]
-    return {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-    }
-
-
-def get_tasks(project_id: str) -> list[dict[str, Any]]:
-    """Get all tasks in a project, handling pagination."""
-    cur_offset = 0
-    tasks: list[dict[str, Any]] = []
-    while True:
-        response = requests.post(
-            BASE_URL + "tasks/search",
-            json={
-                "project_id": {"eq": project_id},
-                "offset": cur_offset,
-            },
-            headers=get_headers(),
-            timeout=10,
-        )
-        if response.status_code != 200:
-            print(response.text)
-            raise Exception(f"got bad API response {response.status_code}")
-
-        json_data = response.json()
-        if len(json_data["records"]) == 0:
-            break
-
-        tasks.extend(json_data["records"])
-        cur_offset += len(json_data["records"])
-
-    return tasks
+from rslp.utils.studio import StudioClient
 
 
 def parse_lat_lon(name: str) -> tuple[float, float]:
@@ -101,19 +61,6 @@ def make_new_name(counter: int, lat: float, lon: float, date: str) -> str:
     return f"[#{counter:03d}] ({lat:.4f}, {lon:.4f}) at {date}"
 
 
-def rename_task(task_id: str, new_name: str, project_id: str) -> None:
-    """Rename a single task via the Studio API (preserves geometry/time)."""
-    response = requests.put(
-        BASE_URL + f"tasks/{task_id}",
-        json={"name": new_name, "project_id": project_id},
-        headers=get_headers(),
-        timeout=10,
-    )
-    if response.status_code != 200:
-        print(response.text)
-        raise Exception(f"got bad API response {response.status_code}")
-
-
 def main() -> None:
     """Parse arguments and rename all tasks in the project."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -131,7 +78,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    tasks = get_tasks(args.project_id)
+    client = StudioClient()
+    tasks = client.get_tasks(args.project_id)
     print(f"Found {len(tasks)} tasks")
 
     # Skip tasks that already have the new naming scheme (name starts with "[#").
@@ -165,7 +113,10 @@ def main() -> None:
         return
 
     for task, new_name in tqdm.tqdm(renames, desc="Renaming"):
-        rename_task(task["id"], new_name, args.project_id)
+        # PUT preserves the task's geometry and time range.
+        client.update_task(
+            task["id"], {"name": new_name, "project_id": args.project_id}
+        )
     print(f"Renamed {len(renames)} tasks")
 
 

@@ -11,7 +11,7 @@ classification, and pooling strategies) that led to `model_classify_pool.yaml`.
 
 ## Annotation filtering
 
-The default source projects (`DEFAULT_PROJECT_IDS` in `studio.py`) are Monocrop -
+The default source projects (`DEFAULT_PROJECT_IDS` in `create_dataset.py`) are Monocrop -
 Peru, Monocrop - Bolivia, and Monocrop - Ecuador; pass `--project-id` to
 `create_dataset.py` to use other projects, such as the phase-2 project populated
 by `scripts/phase2_upload_to_studio.py`. Use annotations that have:

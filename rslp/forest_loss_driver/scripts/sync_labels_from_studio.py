@@ -2,14 +2,13 @@
 
 import argparse
 import json
-import os
 import shutil
 from typing import Any
 
-import requests
 from upath import UPath
 
-BASE_URL = "https://olmoearth.allenai.org/api/v1/"
+from rslp.utils.studio import StudioClient
+
 LABEL_MAP = {
     "Airstrips": "airstrip",
     "Agriculture-Large": "agriculture",
@@ -28,71 +27,6 @@ LABEL_MAP = {
     "Selective_Logging": "logging",
     "Windthrowsblowdowns_Hurricane_winds": "hurricane",
 }
-
-
-def get_headers() -> dict[str, str]:
-    """Get the headers to use for HTTP requests."""
-    api_key = os.environ["STUDIO_API_KEY"]
-    return {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-    }
-
-
-def get_tasks(project_id: str) -> list[dict[str, Any]]:
-    """Get tasks all tasks in a project, handling pagination."""
-    cur_offset = 0
-    tasks: list[dict[str, Any]] = []
-    while True:
-        response = requests.post(
-            BASE_URL + "tasks/search",
-            json={
-                "project_id": {"eq": project_id},
-                "offset": cur_offset,
-            },
-            headers=get_headers(),
-            timeout=10,
-        )
-        if response.status_code != 200:
-            print(response.text)
-            raise Exception(f"got bad API response {response.status_code}")
-
-        json_data = response.json()
-        if len(json_data["records"]) == 0:
-            break
-
-        tasks.extend(json_data["records"])
-        cur_offset += len(json_data["records"])
-
-    return tasks
-
-
-def get_annotations(project_id: str) -> list[dict[str, Any]]:
-    """Get all annotations for the specified project as GeoJSON."""
-    cur_offset = 0
-    annotations: list[dict[str, Any]] = []
-    while True:
-        response = requests.post(
-            BASE_URL + "annotations/search",
-            json={
-                "project_id": {"eq": project_id},
-                "offset": cur_offset,
-            },
-            headers=get_headers(),
-            timeout=10,
-        )
-        if response.status_code != 200:
-            print(response.text)
-            raise Exception(f"got bad API response {response.status_code}")
-
-        json_data = response.json()
-        if len(json_data["records"]) == 0:
-            break
-
-        annotations.extend(json_data["records"])
-        cur_offset += len(json_data["records"])
-
-    return annotations
 
 
 def get_label_from_annotation(annotation: dict[str, Any]) -> str | None:
@@ -126,8 +60,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ds_path = UPath(args.ds_path)
 
-    tasks = get_tasks(args.project_id)
-    annotations = get_annotations(args.project_id)
+    client = StudioClient()
+    tasks = client.get_tasks(args.project_id)
+    annotations = client.get_annotations(args.project_id)
 
     task_by_id = {task["id"]: task for task in tasks}
 
