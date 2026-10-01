@@ -1,6 +1,8 @@
 import itertools
 from pathlib import Path
 
+import pytest
+
 
 def test_every_supervise_option_reaches_the_cycle() -> None:
     """Each `supervise` parameter must be forwarded into the config the cycle reads.
@@ -1303,7 +1305,9 @@ def test_urgent_reserve_reads_priority_as_an_enum_not_a_string() -> None:
     )
 
 
-def test_urgent_reserve_floors_the_allocated_target(monkeypatch) -> None:  # noqa: ANN001
+def test_urgent_reserve_floors_the_allocated_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The reserve must raise the target, not just split whatever it yields.
 
     Sized only as a share of the computed target, the reserve shrinks with contention:
@@ -1357,7 +1361,9 @@ def test_urgent_reserve_floors_the_allocated_target(monkeypatch) -> None:  # noq
     )
 
 
-def test_pool_never_targets_zero_without_an_urgent_reserve(monkeypatch) -> None:  # noqa: ANN001
+def test_pool_never_targets_zero_without_an_urgent_reserve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """With no reserve configured, the pool still must not target zero.
 
     `capacity_min_workers` used to supply this via its default of 8. Removing it must
