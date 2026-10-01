@@ -166,7 +166,20 @@ WORKER_HEARTBEAT_STALE_SECONDS = int(timedelta(minutes=5).total_seconds())
 # with a launch of that size. That is how 240 phantom requests reached the cluster once
 # already. Growth is capped and shrink is not: giving capacity back is always safe, and
 # a worker exits on its own once the queue runs dry.
-CAPACITY_MAX_STEP = 32
+#
+# Sized to the urgent reserve rather than below it: a cap under the reserve means a run
+# that has just lost its workers takes several cycles to get back to the floor it is
+# supposed to hold, and at ~8 minutes a cycle that is most of an hour spent below the
+# level the reserve exists to guarantee.
+CAPACITY_MAX_STEP = 64
+
+# Smallest allocated pool to target, whatever the allocation arithmetic says.
+#
+# Inherited from the capacity_min_workers default this replaced: a momentarily full
+# allocation must not park the run at zero workers, or nothing is left running to pick
+# slots back up when they free. A run that wants a larger guaranteed floor sets
+# `urgent_workers`, which is the real reserve.
+MIN_POOL_WORKERS = 8
 
 # How many scheduled jobs to scan when totalling an allocation's usage. A busy cluster
 # runs several hundred; this is sized well above that so the total is not silently
@@ -272,13 +285,16 @@ class WorkerConfig:
     gpus: int = 1
     # A preempted worker loses its whole job, since there is no intra-job checkpointing.
     priority: str = "urgent"
-    # How many allocated workers to hold at `priority`; the rest of the allocated pool
-    # runs at `overflow_priority` instead.
+    # How many allocated workers to hold at `priority`, and the floor the allocated
+    # pool never targets below; the rest of the pool runs at `overflow_priority`.
     #
     # Urgent is the strongest claim the run can make on the allocation, and holding the
     # whole pool there leaves colleagues nothing to preempt when they need slots back.
     # Reserving a floor keeps the run alive through contention while the bulk of it
-    # yields. Zero keeps every allocated worker at `priority`, the original behaviour.
+    # yields. Being a floor as well as a split is what makes the reserve mean something:
+    # sized only as a share of whatever the allocation yields, it silently shrinks with
+    # the target and the run loses the workers it least wanted to lose. Zero keeps every
+    # allocated worker at `priority`, the original behaviour.
     urgent_workers: int = 0
     # Priority for allocated workers beyond `urgent_workers`. Still allocated -- they
     # count against the allocation -- so this changes who wins when two jobs want the
@@ -322,9 +338,6 @@ class WorkerConfig:
     capacity_slots: int | None = None
     # Whose jobs count against that allocation. Defaults to the run's own workspace.
     capacity_workspace: str | None = None
-    # Floor for a capacity-sized pool, so a momentarily full allocation cannot park the
-    # run at zero workers and leave nothing to make progress when slots free up again.
-    capacity_min_workers: int = 8
     # Fraction of the cluster's idle GPU slots to take on top of the allocation, or None
     # to stay inside the allocation.
     #
@@ -596,25 +609,27 @@ def _allocated_slots_in_use(
     Returns:
         slots held or queued for by everyone else in the workspace, never below zero.
     """
-    total = 0
+    # Keyed by job id, because a job eligible for several of this pool's clusters is
+    # returned once per cluster. Summing the listings counted such a job twice, and with
+    # two clusters that was a 48% overcount against a real allocation: every ceres job
+    # was also jupiter-eligible, so 344 slots read as 508 and the target collapsed.
+    # A job can still only occupy one cluster, so one claim is what it is worth.
+    by_job: dict[str, int] = {}
     for name in worker.cluster:
         # Eligible, not scheduled: a colleague's queued job has not been placed on a
         # node yet, but it is a claim on the allocation and will take slots the moment
         # any free up. Counting only what is running lets this pool take capacity
-        # someone is already waiting for. Eligibility is the looser predicate -- a job
-        # listing several clusters counts against each -- so this can overcount when
-        # such a job lands elsewhere. That is the safe direction for a ceiling you are
-        # trying not to exceed.
+        # someone is already waiting for.
         for job in beaker.job.list(
             elegible_for_cluster=beaker.cluster.get(name),
             finalized=False,
             limit=ALLOCATION_JOB_LIMIT,
         ):
             if job.workspace_id == workspace_id:
-                total += job.container_spec.resource_request.gpu_count
+                by_job[job.id] = job.container_spec.resource_request.gpu_count
     # `live` includes workers that have not been scheduled yet, so they are not in the
     # sum above; clamping keeps that from reading as negative usage by other people.
-    return max(0, total - live * worker.gpus)
+    return max(0, sum(by_job.values()) - live * worker.gpus)
 
 
 def _capacity_target(
@@ -670,7 +685,7 @@ def _capacity_target(
         logger.exception(
             "could not read allocation usage; holding the pool at %d", live
         )
-        return max(live, worker.capacity_min_workers)
+        return max(live, worker.urgent_workers, MIN_POOL_WORKERS)
 
     share = worker.capacity_fraction * worker.capacity_slots
     remaining = worker.capacity_slots - others
@@ -678,7 +693,11 @@ def _capacity_target(
     # Slots to workers: they coincide only while a worker holds one GPU.
     slots_per_worker = max(1, worker.gpus)
     target = int(target_slots / slots_per_worker)
-    target = max(worker.capacity_min_workers, min(target, worker.num_workers))
+    # The urgent reserve floors the pool: urgent is held whatever the allocation
+    # arithmetic says, and the overflow tier takes the slack up to the share cap.
+    target = max(
+        worker.urgent_workers, MIN_POOL_WORKERS, min(target, worker.num_workers)
+    )
     # Shrinking is immediate, growing is capped. See CAPACITY_MAX_STEP.
     capped = min(target, live + CAPACITY_MAX_STEP)
     logger.info(

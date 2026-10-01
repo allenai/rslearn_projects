@@ -1,3 +1,4 @@
+import itertools
 from pathlib import Path
 
 
@@ -347,8 +348,13 @@ def test_a_queued_worker_still_counts_while_it_starts() -> None:
 
 
 class _FakeJob:
+    # Distinct ids matter: allocation usage is deduplicated by job id, so fakes that
+    # share one would collapse into a single claim and hide the usage being tested.
+    _next_id = itertools.count()
+
     def __init__(self, workspace_id: str, gpus: int) -> None:
         self.workspace_id = workspace_id
+        self.id = f"job-{next(_FakeJob._next_id)}"
 
         class _RR:
             gpu_count = gpus
@@ -1294,4 +1300,139 @@ def test_urgent_reserve_reads_priority_as_an_enum_not_a_string() -> None:
     assert held == 1, (
         f"an urgent allocated worker was counted as {held}; the reserve must read the "
         "priority enum by number, not by stringifying it"
+    )
+
+
+def test_urgent_reserve_floors_the_allocated_target(monkeypatch) -> None:  # noqa: ANN001
+    """The reserve must raise the target, not just split whatever it yields.
+
+    Sized only as a share of the computed target, the reserve shrinks with contention:
+    at a target of 54 a 64-worker reserve silently becomes 54, and the run loses the
+    workers it least wanted to lose. The floor is what makes the number mean something.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    class _Slots:
+        def __init__(self, n: int) -> None:
+            self.n = n
+
+    class _Beaker:
+        class workspace:  # noqa: N801
+            @staticmethod
+            def get(_name: str) -> object:
+                return type("W", (), {"id": "ws"})()
+
+    # others hold almost the whole allocation, so `remaining` is far below the reserve
+    def fake_usage(*_args: object, **_kwargs: object) -> int:
+        return 430
+
+    monkeypatch.setattr(mod, "_allocated_slots_in_use", fake_usage)
+    worker = mod.WorkerConfig(
+        image_name="img",
+        cluster=["ai2/jupiter"],
+        num_workers=440,
+        gpus=1,
+        capacity_fraction=0.9,
+        capacity_slots=440,
+        urgent_workers=64,
+    )
+    # live is already at the reserve, so CAPACITY_MAX_STEP's growth pacing is not
+    # binding and the floor is what the assertion is actually reading.
+    target = mod._capacity_target(_Beaker(), worker, live=64)
+    assert target >= 64, (
+        f"target {target} fell below the 64-worker urgent reserve; the reserve must "
+        "floor the allocated pool, not be carved out of whatever it yields"
+    )
+
+    # The growth cap must not hold the pool below its own reserve: from an empty pool
+    # one cycle has to be enough to reach the floor, or a run that has just lost its
+    # workers spends cycles under the level the reserve exists to guarantee.
+    from_zero = mod._capacity_target(_Beaker(), worker, live=0)
+    assert from_zero >= 64, (
+        f"target {from_zero} from an empty pool is below the 64-worker reserve; "
+        f"CAPACITY_MAX_STEP ({mod.CAPACITY_MAX_STEP}) must not be smaller than the "
+        "reserve it has to reach"
+    )
+
+
+def test_pool_never_targets_zero_without_an_urgent_reserve(monkeypatch) -> None:  # noqa: ANN001
+    """With no reserve configured, the pool still must not target zero.
+
+    `capacity_min_workers` used to supply this via its default of 8. Removing it must
+    not let a momentarily full allocation park the run with nothing running to pick
+    slots back up.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    assert mod.MIN_POOL_WORKERS > 0
+
+    def fake_usage(*_args: object, **_kwargs: object) -> int:
+        return 440
+
+    monkeypatch.setattr(mod, "_allocated_slots_in_use", fake_usage)
+
+    class _Beaker:
+        class workspace:  # noqa: N801
+            @staticmethod
+            def get(_name: str) -> object:
+                return type("W", (), {"id": "ws"})()
+
+    worker = mod.WorkerConfig(
+        image_name="img",
+        cluster=["ai2/jupiter"],
+        num_workers=440,
+        gpus=1,
+        capacity_fraction=0.9,
+        capacity_slots=440,
+        urgent_workers=0,
+    )
+    assert mod._capacity_target(_Beaker(), worker, live=0) >= mod.MIN_POOL_WORKERS
+
+
+def test_allocation_usage_counts_a_multi_cluster_job_once() -> None:
+    """A job eligible for several of the pool's clusters must not be counted per cluster.
+
+    Beaker's eligibility listing returns such a job once per cluster. Summing the
+    listings double counts it, and that is not a rounding error: with jupiter and ceres
+    every ceres-eligible job was also jupiter-eligible, so 344 real slots read as 508
+    and the computed target collapsed from 198 to 54 while the pool drained.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    class _Job:
+        def __init__(self, jid: str, gpus: int) -> None:
+            self.id = jid
+            self.workspace_id = "ws"
+            self.container_spec = type(
+                "C", (), {"resource_request": type("R", (), {"gpu_count": gpus})()}
+            )()
+
+    # one job eligible for both clusters, one eligible for jupiter only
+    both = _Job("shared", 8)
+    jupiter_only = _Job("solo", 4)
+    listings = {"ai2/jupiter": [both, jupiter_only], "ai2/ceres": [both]}
+
+    class _Beaker:
+        class cluster:  # noqa: N801
+            @staticmethod
+            def get(name: str) -> str:
+                return name
+
+        class job:  # noqa: N801
+            @staticmethod
+            def list(elegible_for_cluster: str, **_kw: object) -> list:
+                return listings[elegible_for_cluster]
+
+    worker = mod.WorkerConfig(
+        image_name="img", cluster=["ai2/jupiter", "ai2/ceres"], gpus=1
+    )
+    used = mod._allocated_slots_in_use(_Beaker(), worker, "ws", live=0)
+    assert used == 12, (
+        f"expected 12 slots (8 + 4, the shared job counted once), got {used}; "
+        "summing per-cluster listings double counts multi-cluster jobs"
     )
