@@ -40,8 +40,18 @@ from shapely import box as shapely_box
 from upath import UPath
 
 from rslp.large_scale_embeddings.model import NODATA_VALUE
+from rslp.large_scale_embeddings.pca import PcaArtifact
+from rslp.large_scale_embeddings.render_pca import (
+    get_pca_marker_fname,
+    pca_time_index,
+    render_window,
+    write_pca_marker,
+)
 from rslp.large_scale_embeddings.tiling import get_zone_wedge, list_kept_crops
-from rslp.large_scale_embeddings.zarr_store import write_window_region
+from rslp.large_scale_embeddings.zarr_store import (
+    DEFAULT_PCA_MAX_LEVEL,
+    write_window_region,
+)
 from rslp.log_utils import get_logger
 from rslp.utils.rslearn import (
     ApplyWindowsArgs,
@@ -79,6 +89,14 @@ COMPLETED_DIR_PREFIX = "completed"
 PROVENANCE_DIR_PREFIX = "provenance"
 
 SENTINEL2_LAYER = "sentinel2_l2a"
+
+# Written into a scratch dataset once its imagery is materialized, so a later run
+# against the same scratch_path goes straight to inference.
+MATERIALIZED_SENTINEL = "materialized"
+
+# Attached to predict queue entries so a worker can materialize the next block in a
+# subprocess while the GPU runs the current one (see rslp.common.worker).
+PREFETCH = {"args": ["--materialize_only", "true"], "scratch_arg": "--scratch_path"}
 OUTPUT_LAYER = "output"
 # Width of the model's embedding output, and so the band count of the GeoZarr array.
 # The band *names* now come from the dataset config rather than being derived here, but
@@ -422,7 +440,8 @@ def _write_window_by_name(
     store_path: str,
     time_index: int,
     patch_size: int,
-) -> None:
+    pca: dict | None = None,
+) -> tuple[list[int], bool]:
     """Load one window from the scratch dataset and write its embeddings to the store.
 
     This is the multiprocessing worker for the write step; the window is reloaded by
@@ -435,6 +454,12 @@ def _write_window_by_name(
         store_path: the GeoZarr store path.
         time_index: the index into the store's time axis for this reference year.
         patch_size: the encoder patch size.
+        pca: if set, also render the window's false-color pyramid from the embeddings
+            already in memory, rather than reading them back later. Keys are
+            artifact_path, store_path, time_index (into the pca store) and max_level.
+
+    Returns:
+        the window's crop offset, and whether any PCA pixels were written.
     """
     dataset = Dataset(ds_path)
     windows = dataset.load_windows(groups=[PREDICTION_GROUP], names=[window_name])
@@ -453,6 +478,20 @@ def _write_window_by_name(
         embeddings=embeddings,
         patch_size=patch_size,
     )
+    crop_offset = [window.bounds[0], window.bounds[1]]
+    if pca is None:
+        return crop_offset, False
+    rendered = render_window(
+        embeddings=embeddings,
+        artifact=PcaArtifact.load(pca["artifact_path"]),
+        pca_store_path=pca["store_path"],
+        zone_number=zone_number,
+        crop_offset=(window.bounds[0], window.bounds[1]),
+        dest_time_index=pca["time_index"],
+        max_level=pca["max_level"],
+        patch_size=patch_size,
+    )
+    return crop_offset, rendered
 
 
 def predict_pipeline(
@@ -471,6 +510,11 @@ def predict_pipeline(
     batch_size: int | None = None,
     scratch_path: str | None = None,
     upload_workers: int = 16,
+    materialize_only: bool = False,
+    pca_artifact_path: str | None = None,
+    pca_store_path: str | None = None,
+    pca_completed_path: str | None = None,
+    pca_max_level: int = DEFAULT_PCA_MAX_LEVEL,
 ) -> None:
     """Compute quantized OlmoEarth embeddings over one tile.
 
@@ -509,7 +553,34 @@ def predict_pipeline(
         upload_workers: number of worker processes for writing the per-crop
             embeddings.
             (for debugging small runs).
+        materialize_only: only materialize imagery into scratch_path and return. A
+            later call with the same scratch_path skips straight to inference.
+        pca_artifact_path: the fitted global PCA artifact. When set, together with
+            pca_store_path and pca_completed_path, each window's UTM false-color
+            pyramid is rendered from the embeddings in memory and the render stage's
+            marker is written, so that stage has nothing left to do for this tile.
+        pca_store_path: the pca store to render into (see init_pca_store).
+        pca_completed_path: directory for the render stage's completion markers.
+        pca_max_level: deepest pyramid level to render.
     """
+    if materialize_only and scratch_path is None:
+        raise ValueError("materialize_only requires scratch_path")
+    pca_paths = (pca_artifact_path, pca_store_path, pca_completed_path)
+    if any(p is not None for p in pca_paths) and None in pca_paths:
+        raise ValueError(
+            "pca_artifact_path, pca_store_path and pca_completed_path must be set "
+            "together"
+        )
+    pca = (
+        None
+        if pca_artifact_path is None
+        else {
+            "artifact_path": pca_artifact_path,
+            "store_path": pca_store_path,
+            "completed_path": pca_completed_path,
+            "max_level": pca_max_level,
+        }
+    )
     if PATCH_SIZE % patch_size != 0:
         raise ValueError(f"patch_size must divide {PATCH_SIZE}, got {patch_size}")
     if window_size % patch_size != 0:
@@ -548,6 +619,8 @@ def predict_pipeline(
                 compile_model=compile_model,
                 batch_size=batch_size,
                 upload_workers=upload_workers,
+                materialize_only=materialize_only,
+                pca=pca,
             )
     else:
         _process_tile(
@@ -566,6 +639,8 @@ def predict_pipeline(
             compile_model=compile_model,
             batch_size=batch_size,
             upload_workers=upload_workers,
+            materialize_only=materialize_only,
+            pca=pca,
         )
 
 
@@ -585,6 +660,8 @@ def _process_tile(
     compile_model: bool,
     batch_size: int | None,
     upload_workers: int,
+    materialize_only: bool,
+    pca: dict | None,
 ) -> None:
     """Process one tile using the given scratch dataset path.
 
@@ -610,12 +687,19 @@ def _process_tile(
             speed, never the embeddings.
         upload_workers: number of worker processes for writing the per-crop
             embeddings.
+        materialize_only: stop after materializing, leaving the dataset for a
+            later call to run inference on.
+        pca: artifact_path, store_path, completed_path and max_level for rendering
+            the UTM false-color pyramid alongside the embeddings, or None to skip it.
     """
-    # Initialize an rslearn dataset in scratch from the predict dataset config.
+    # Initialize an rslearn dataset in scratch from the predict dataset config, unless
+    # an earlier materialize_only call already filled it.
     dataset_config_fname = DATASET_CONFIG_FNAME.format(inputs=inputs.value)
     model_config_fname = MODEL_CONFIG_FNAME.format(inputs=inputs.value)
-    ds_path.mkdir(parents=True)
-    shutil.copyfile(dataset_config_fname, ds_path / "config.json")
+    materialized = (ds_path / MATERIALIZED_SENTINEL).exists()
+    if not materialized:
+        ds_path.mkdir(parents=True)
+        shutil.copyfile(dataset_config_fname, ds_path / "config.json")
 
     # Determine which PATCH_SIZE crops to process (see tiling.py), and additionally
     # skip crops touching the antimeridian.
@@ -642,19 +726,27 @@ def _process_tile(
             time_range=time_range,
             data_factory=dataset.window_data_storage_factory,
         )
-        window.save()
+        if not materialized:
+            window.save()
         windows.append(window)
 
     written: list[list[int]] = []
     skipped_no_data: list[list[int]] = []
+    pca_rendered: list[list[int]] = []
+    pca_empty: list[list[int]] = []
 
-    if len(windows) > 0:
+    if len(windows) > 0 and not materialized:
         # Materialize imagery for the windows.
         logger.info("materialize dataset")
         materialize_dataset(
             ds_path, materialize_pipeline_args=MATERIALIZE_PIPELINE_ARGS
         )
+    if materialize_only:
+        (ds_path / MATERIALIZED_SENTINEL).touch()
+        logger.info("materialized %d windows into %s", len(windows), ds_path)
+        return
 
+    if len(windows) > 0:
         # Run the model only if at least one window has materialized imagery.
         if not any(window.is_layer_completed(SENTINEL2_LAYER) for window in windows):
             logger.info("skipping prediction since no windows seem to have data")
@@ -677,6 +769,19 @@ def _process_tile(
         # pool of worker processes since converting and writing the rasters is slow.
         # We use the forkserver context because the CUDA context initialized by
         # run_model_predict above cannot be safely forked.
+        window_pca = None
+        if pca is not None:
+            window_pca = {
+                "artifact_path": pca["artifact_path"],
+                "store_path": pca["store_path"],
+                "time_index": pca_time_index(
+                    store_path,
+                    projection.crs.to_epsg() % 100,
+                    time_index,
+                    pca["store_path"],
+                ),
+                "max_level": pca["max_level"],
+            }
         upload_kwargs: list[dict] = []
         for window in windows:
             crop_offset = [window.bounds[0], window.bounds[1]]
@@ -692,16 +797,20 @@ def _process_tile(
                     "store_path": store_path,
                     "time_index": time_index,
                     "patch_size": patch_size,
+                    "pca": window_pca,
                 }
             )
             written.append(crop_offset)
         if len(upload_kwargs) > 0:
             pool = multiprocessing.get_context("forkserver").Pool(upload_workers)
             try:
-                for _ in star_imap_unordered(
+                for crop_offset, rendered in star_imap_unordered(
                     pool, _write_window_by_name, upload_kwargs
                 ):
-                    pass
+                    if rendered:
+                        pca_rendered.append(crop_offset)
+                    else:
+                        pca_empty.append(crop_offset)
             finally:
                 pool.close()
                 pool.join()
@@ -749,3 +858,17 @@ def _process_tile(
     with marker_fname.open("w") as f:
         json.dump(marker, f)
     logger.info("wrote marker file %s", marker_fname)
+
+    # After the predict marker, which the render marker names as its source. A crash
+    # between the two leaves the render stage to redo this tile, which is harmless.
+    if pca is not None:
+        write_pca_marker(
+            marker_fname=get_pca_marker_fname(pca["completed_path"], marker_fname),
+            source_fname=marker_fname,
+            pca_store_path=pca["store_path"],
+            artifact_path=pca["artifact_path"],
+            time_index=time_index,
+            max_level=pca["max_level"],
+            rendered=sorted(pca_rendered),
+            empty=sorted(pca_empty),
+        )

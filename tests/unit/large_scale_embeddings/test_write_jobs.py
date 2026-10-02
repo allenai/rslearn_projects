@@ -135,3 +135,41 @@ def test_get_jobs_geojson(tmp_path: pathlib.Path) -> None:
     assert any(
         epsg == 32637 and bounds[3] > 0 for epsg, bounds in seen_bounds
     ), "the Nairobi feature should produce a tile extending south of the equator"
+
+
+def test_get_jobs_carries_the_pca_render_args(tmp_path: pathlib.Path) -> None:
+    """With an artifact, each predict job also renders its UTM pyramid."""
+    jobs = get_jobs(
+        inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+        timestamp=TIMESTAMP,
+        store_path=str(tmp_path / "out"),
+        completed_path=str(tmp_path / "completed"),
+        time_index=0,
+        checkpoint_path="/fake/checkpoint",
+        wgs84_bounds=WGS84_BOUNDS,
+        count=1,
+        pca_artifact_path="gs://bucket/basis",
+        pca_store_path="gs://bucket/pca.zarr",
+        pca_completed_path="gs://bucket/pca_completed/",
+        pca_max_level=3,
+    )
+    args = dict(zip(jobs[0][0::2], jobs[0][1::2]))
+    assert args["--pca_artifact_path"] == "gs://bucket/basis"
+    assert args["--pca_store_path"] == "gs://bucket/pca.zarr"
+    assert args["--pca_completed_path"] == "gs://bucket/pca_completed/"
+    assert args["--pca_max_level"] == "3"
+
+
+def test_get_jobs_without_an_artifact_adds_no_pca_args(tmp_path: pathlib.Path) -> None:
+    """Embedding-only runs enqueue exactly what they did before."""
+    jobs = get_jobs(
+        inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+        timestamp=TIMESTAMP,
+        store_path=str(tmp_path / "out"),
+        completed_path=str(tmp_path / "completed"),
+        time_index=0,
+        checkpoint_path="/fake/checkpoint",
+        wgs84_bounds=WGS84_BOUNDS,
+        count=1,
+    )
+    assert not any(arg.startswith("--pca_") for arg in jobs[0])

@@ -1,9 +1,9 @@
 """Unit tests for rslp.large_scale_embeddings.run_all.
 
 The behaviour under test is the refusal to advance on partial input. supervise returns
-normally when it exhausts its cycles, so a pipeline that trusted that return would fit a
-PCA basis on a partly-written archive and render colours that look plausible and are
-wrong. Nothing downstream detects that, so it has to fail here.
+normally when it exhausts its cycles, so a pipeline that trusted that return would
+annotate and publish layers with holes in them. Nothing downstream detects that, so it
+has to fail here.
 """
 
 from typing import Any
@@ -30,8 +30,25 @@ class _StubPath:
         return self._exists
 
 
-def _stub_paths(monkeypatch: pytest.MonkeyPatch, *, exists: bool) -> None:
-    monkeypatch.setattr(run_all_mod, "UPath", lambda _path: _StubPath(exists))
+# The fitted basis every run with pca requires before it starts.
+ARTIFACT_PATHS = {"gs://bucket/artifact", "gs://bucket/basis"}
+
+
+def _stub_paths(
+    monkeypatch: pytest.MonkeyPatch, *, exists: bool, artifact: bool = True
+) -> None:
+    """Stub path existence: `exists` for the stores, `artifact` for the basis."""
+    monkeypatch.setattr(
+        run_all_mod,
+        "UPath",
+        lambda path: _StubPath(artifact if path in ARTIFACT_PATHS else exists),
+    )
+
+
+def _render_once() -> Any:
+    """A get_render_jobs stub with one leftover block, gone after the sweep runs."""
+    results = [[["leftover"]]]
+    return lambda **kw: results.pop() if results else []
 
 
 COMMON: dict[str, Any] = {
@@ -58,20 +75,55 @@ def _with(**overrides: Any) -> dict[str, Any]:
 
 
 def test_predict_shortfall_stops_the_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Blocks left unpredicted must abort before fit_pca runs."""
-    fitted: list[str] = []
+    """Blocks left unpredicted must abort before the derived layers are built."""
+    annotated: list[str] = []
     monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "supervise", lambda **kw: None)
     _stub_paths(monkeypatch, exists=True)
     # Two blocks still outstanding after supervise returned.
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [["a"], ["b"]])
     monkeypatch.setattr(
-        run_all_mod, "fit_pca", lambda **kw: fitted.append(kw["artifact_path"])
+        run_all_mod, "annotate_pca_store", lambda **kw: annotated.append("annotate")
     )
 
-    with pytest.raises(RuntimeError, match="refusing to fit a PCA basis"):
+    with pytest.raises(RuntimeError, match="partly-written archive"):
         run_all_mod.run_all(**COMMON)
-    assert fitted == [], "fit_pca must not run on a partly-written archive"
+    assert annotated == [], "a partly-written archive must not be annotated"
+
+
+def test_a_missing_basis_stops_the_run_before_any_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Predict renders with the basis as it goes, so it must exist before predict."""
+    calls: list[str] = []
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: calls.append("init"))
+    monkeypatch.setattr(
+        run_all_mod, "supervise", lambda **kw: calls.append(f"supervise:{kw['stage']}")
+    )
+    _stub_paths(monkeypatch, exists=False, artifact=False)
+
+    with pytest.raises(RuntimeError, match="fit_pca"):
+        run_all_mod.run_all(**COMMON)
+    assert calls == [], "no store or stage may be touched without a basis"
+
+
+def test_predict_is_handed_the_pca_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The predict stage renders the UTM pyramid only if it receives the pca paths."""
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
+    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
+    monkeypatch.setattr(
+        run_all_mod, "supervise", lambda **kw: seen.setdefault(kw["stage"], kw)
+    )
+    _stub_paths(monkeypatch, exists=True)
+    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
+
+    run_all_mod.run_all(**COMMON, skip_web_pca=True)
+    assert seen["predict"]["pca"] == COMMON["pca"]
+    # Everything was rendered inline, so the sweep had nothing to drive.
+    assert run_all_mod.STAGE_RENDER_UTM_PCA not in seen
 
 
 def test_render_shortfall_stops_before_annotating(
@@ -88,7 +140,6 @@ def test_render_shortfall_stops_before_annotating(
     monkeypatch.setattr(run_all_mod, "supervise", lambda **kw: None)
     _stub_paths(monkeypatch, exists=True)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [["x"]])
     monkeypatch.setattr(
         run_all_mod,
@@ -104,7 +155,7 @@ def test_render_shortfall_stops_before_annotating(
 def test_all_stages_run_in_order_when_complete(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The happy path runs predict, fit, render and annotate, in that order."""
+    """The happy path creates both stores, predicts, sweeps and annotates, in order."""
     calls: list[str] = []
     monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: calls.append("init"))
     monkeypatch.setattr(
@@ -115,8 +166,7 @@ def test_all_stages_run_in_order_when_complete(
     )
     _stub_paths(monkeypatch, exists=False)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: calls.append("fit_pca"))
-    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", _render_once())
     monkeypatch.setattr(
         run_all_mod, "annotate_pca_store", lambda **kw: calls.append("annotate")
     )
@@ -128,9 +178,8 @@ def test_all_stages_run_in_order_when_complete(
     run_all_mod.run_all(**COMMON, web_min_zoom=12, web_max_zoom=14)
     assert calls == [
         "init",
-        "supervise:predict",
-        "fit_pca",
         "init_pca",
+        "supervise:predict",
         "supervise:render_utm_pca",
         "annotate",
         "init_web",
@@ -156,7 +205,6 @@ def test_web_zooms_run_deepest_first(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     _stub_paths(monkeypatch, exists=False)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
     monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
@@ -192,7 +240,6 @@ def test_web_stage_passes_every_required_supervise_argument(
     monkeypatch.setattr(run_all_mod, "supervise", lambda **kw: seen.append(set(kw)))
     _stub_paths(monkeypatch, exists=False)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
     monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
@@ -231,7 +278,6 @@ def test_skip_web_pca_stops_after_annotate(monkeypatch: pytest.MonkeyPatch) -> N
     )
     _stub_paths(monkeypatch, exists=False)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
     monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
     monkeypatch.setattr(
@@ -244,18 +290,19 @@ def test_skip_web_pca_stops_after_annotate(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 def test_skip_pca_stops_after_predict(monkeypatch: pytest.MonkeyPatch) -> None:
-    """skip_pca produces embeddings only, without fitting or rendering."""
+    """skip_pca produces embeddings only, and needs no basis to do it."""
     calls: list[str] = []
     monkeypatch.setattr(run_all_mod, "init_store", lambda **kw: None)
     monkeypatch.setattr(
-        run_all_mod, "supervise", lambda **kw: calls.append(f"supervise:{kw['stage']}")
+        run_all_mod,
+        "supervise",
+        lambda **kw: calls.append(f"supervise:{kw['stage']}:{kw['pca']}"),
     )
-    _stub_paths(monkeypatch, exists=True)
+    _stub_paths(monkeypatch, exists=True, artifact=False)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: calls.append("fit_pca"))
 
     run_all_mod.run_all(**COMMON, skip_pca=True)
-    assert calls == ["supervise:predict"]
+    assert calls == ["supervise:predict:None"]
 
 
 def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -270,8 +317,7 @@ def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> Non
     )
     _stub_paths(monkeypatch, exists=True)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
-    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", _render_once())
     monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
@@ -350,8 +396,7 @@ def test_web_tuning_does_not_reach_the_other_stages(
     )
     _stub_paths(monkeypatch, exists=False)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
-    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", _render_once())
     monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
@@ -402,7 +447,6 @@ def test_web_stage_ignores_a_leaked_cycle_seconds(
     )
     _stub_paths(monkeypatch, exists=False)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
     monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
@@ -441,8 +485,7 @@ def test_web_workers_outlive_the_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     _stub_paths(monkeypatch, exists=False)
     monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
-    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", _render_once())
     monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "init_web_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "get_web_jobs", lambda **kw: [])
@@ -484,47 +527,6 @@ def test_launch_workers_passes_the_idle_timeout() -> None:
     assert '"--idle_timeout"' in source
 
 
-def test_existing_pca_artifact_is_not_refit(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Resuming must not silently reinterpret rgb that is already written.
-
-    The basis defines what every rendered pixel means, so a refit partway through a
-    flow invalidates everything rendered so far. Keep the artifact unless asked.
-    """
-    seen: list[str] = []
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: seen.append("fit"))
-    _stub_paths(monkeypatch, exists=True)
-    monkeypatch.setattr(run_all_mod, "get_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "supervise", lambda **kw: None)
-    monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
-    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
-    monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
-
-    run_all_mod.run_all(
-        **_with(
-            pca=PcaConfig(
-                artifact_path="gs://bucket/basis",
-                store_path="gs://bucket/pca_v1.zarr",
-                completed_path="gs://bucket/pca_completed/",
-            )
-        ),
-        skip_web_pca=True,
-    )
-    assert seen == [], "an existing artifact was refit without being asked"
-
-    run_all_mod.run_all(
-        **_with(
-            pca=PcaConfig(
-                artifact_path="gs://bucket/basis",
-                store_path="gs://bucket/pca_v1.zarr",
-                completed_path="gs://bucket/pca_completed/",
-            )
-        ),
-        skip_web_pca=True,
-        refit_pca=True,
-    )
-    assert seen == ["fit"], "refit_pca did not force a refit"
-
-
 def test_skip_predict_runs_no_predict_stage(monkeypatch: pytest.MonkeyPatch) -> None:
     """skip_predict must drive the derived stages without enumerating predict work.
 
@@ -547,15 +549,14 @@ def test_skip_predict_runs_no_predict_stage(monkeypatch: pytest.MonkeyPatch) -> 
         return []
 
     monkeypatch.setattr(run_all_mod, "get_jobs", _record_enumeration)
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
-    monkeypatch.setattr(run_all_mod, "get_render_jobs", lambda **kw: [])
+    monkeypatch.setattr(run_all_mod, "get_render_jobs", _render_once())
     monkeypatch.setattr(run_all_mod, "annotate_pca_store", lambda **kw: None)
 
     run_all_mod.run_all(**_with(skip_predict=True, skip_web_pca=True))
 
     assert "predict" not in stages, "skip_predict must not drive the predict stage"
     assert checked == [], "skip_predict must not enumerate predict work either"
-    assert stages, "the render stage must still run"
+    assert stages, "the render sweep must still run"
 
 
 def test_skip_render_pca_reaches_the_display_pyramid(
@@ -576,7 +577,6 @@ def test_skip_render_pca_reaches_the_display_pyramid(
         run_all_mod, "supervise", lambda **kw: stages.append(kw["stage"])
     )
     _stub_paths(monkeypatch, exists=True)
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
 
     def _render_enumeration(**kw: object) -> list[str]:
         enumerated.append("render")
@@ -603,7 +603,6 @@ def test_skip_render_pca_refuses_when_there_is_nothing_rendered(
     monkeypatch.setattr(run_all_mod, "init_pca_store", lambda **kw: None)
     monkeypatch.setattr(run_all_mod, "supervise", lambda **kw: None)
     _stub_paths(monkeypatch, exists=False)
-    monkeypatch.setattr(run_all_mod, "fit_pca", lambda **kw: None)
 
     with pytest.raises(RuntimeError, match="skip_render_pca"):
         run_all_mod.run_all(

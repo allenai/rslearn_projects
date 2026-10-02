@@ -30,6 +30,7 @@ from rslp.large_scale_embeddings.coverage import resolve_mask_path
 from rslp.large_scale_embeddings.predict_pipeline import (
     EMBEDDING_DIM,
     PATCH_SIZE,
+    PREFETCH,
     RESOLUTION,
     EmbeddingInputs,
     get_marker_fname,
@@ -43,6 +44,7 @@ from rslp.large_scale_embeddings.tiling import (
     get_zone_wedge,
     list_kept_crops,
 )
+from rslp.large_scale_embeddings.zarr_store import DEFAULT_PCA_MAX_LEVEL
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -184,6 +186,10 @@ def get_jobs(
     count: int | None = None,
     job_size: int = TILE_SIZE,
     enumeration_cache_dir: str | None = None,
+    pca_artifact_path: str | None = None,
+    pca_store_path: str | None = None,
+    pca_completed_path: str | None = None,
+    pca_max_level: int = DEFAULT_PCA_MAX_LEVEL,
 ) -> list[list[str]]:
     """Get the prediction jobs (one per job_size block).
 
@@ -228,6 +234,11 @@ def get_jobs(
             a barrier island costs minutes across all 60 zones. A supervisor re-runs
             it every cycle in a fresh process, so without a cache that price is paid
             forever. Pass None to disable.
+        pca_artifact_path: the fitted global PCA artifact. When set, each job also
+            renders its UTM false-color pyramid (see predict_pipeline).
+        pca_store_path: the pca store to render into.
+        pca_completed_path: directory for the render stage's completion markers.
+        pca_max_level: deepest pyramid level to render.
 
     Returns:
         a list of worker argument lists, one per job_size block.
@@ -385,6 +396,24 @@ def get_jobs(
         tasks = random.sample(tasks, count)
         logger.info("Randomly sampled %d tasks", len(tasks))
 
+    pca_args: list[str] = []
+    if pca_artifact_path is not None:
+        if pca_store_path is None or pca_completed_path is None:
+            raise ValueError(
+                "pca_store_path and pca_completed_path are required with "
+                "pca_artifact_path"
+            )
+        pca_args = [
+            "--pca_artifact_path",
+            pca_artifact_path,
+            "--pca_store_path",
+            pca_store_path,
+            "--pca_completed_path",
+            pca_completed_path,
+            "--pca_max_level",
+            str(pca_max_level),
+        ]
+
     # Convert tasks to worker jobs (one per tile).
     time_range_json = json.dumps([timestamp.isoformat(), timestamp.isoformat()])
     jobs = []
@@ -415,6 +444,7 @@ def get_jobs(
             "--compile_model",
             "true" if compile_model else "false",
             *(["--batch_size", str(batch_size)] if batch_size is not None else []),
+            *pca_args,
         ]
         jobs.append(cur_args)
 
@@ -438,6 +468,10 @@ def write_jobs(
     geojson_fname: str | None = None,
     count: int | None = None,
     job_size: int = TILE_SIZE,
+    pca_artifact_path: str | None = None,
+    pca_store_path: str | None = None,
+    pca_completed_path: str | None = None,
+    pca_max_level: int = DEFAULT_PCA_MAX_LEVEL,
 ) -> None:
     """Enumerate tiles for one reference timestamp and write jobs to a Beaker queue.
 
@@ -470,6 +504,11 @@ def write_jobs(
         count: limit to this many tasks (randomly sampled).
         job_size: the pixel size of each job (see get_jobs). Defaults to one job per
             TILE_SIZE tile.
+        pca_artifact_path: render each job's UTM false-color pyramid with this
+            fitted artifact (see get_jobs).
+        pca_store_path: the pca store to render into.
+        pca_completed_path: directory for the render stage's completion markers.
+        pca_max_level: deepest pyramid level to render.
     """
     years = zarr_store.get_store_years(store_path)
     if timestamp.year not in years:
@@ -496,11 +535,17 @@ def write_jobs(
         geojson_fname=geojson_fname,
         count=count,
         job_size=job_size,
+        pca_artifact_path=pca_artifact_path,
+        pca_store_path=pca_store_path,
+        pca_completed_path=pca_completed_path,
+        pca_max_level=pca_max_level,
     )
     # Shuffle so outputs start appearing from random parts of the world (aids
     # debugging).
     random.shuffle(jobs)
-    rslp.common.worker.write_jobs(queue_name, "large_scale_embeddings", "predict", jobs)
+    rslp.common.worker.write_jobs(
+        queue_name, "large_scale_embeddings", "predict", jobs, prefetch=PREFETCH
+    )
 
 
 def init_store(

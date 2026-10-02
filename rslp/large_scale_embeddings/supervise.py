@@ -42,7 +42,12 @@ from beaker import (
 from upath import UPath
 
 import rslp.common.worker
-from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
+from rslp.large_scale_embeddings.pca import PcaArtifact
+from rslp.large_scale_embeddings.predict_pipeline import (
+    EMBEDDING_DIM,
+    PREFETCH,
+    EmbeddingInputs,
+)
 from rslp.large_scale_embeddings.render_pca import get_render_jobs
 from rslp.large_scale_embeddings.render_web_pca import get_web_jobs
 from rslp.large_scale_embeddings.write_jobs import get_jobs
@@ -125,7 +130,11 @@ DEFAULT_AWS_SECRET_KEY_SECRET = "AWS_SECRET_ACCESS_KEY"  # nosec
 # forever and skipping every claimed job would deadlock the run on the first death.
 # Trusting a claim only while it is young keeps that recovery without the duplicate work
 # a blind top-up generates. Size it well above one job's runtime.
-DEFAULT_CLAIM_STALE_SECONDS = int(timedelta(minutes=90).total_seconds())
+#
+# With prefetching (queue max_claimed_entries=2) a worker claims a job while the one
+# before it is still running, so a claim is held for about two inference phases: ~82
+# min at the median on H100, and over two hours on A100.
+DEFAULT_CLAIM_STALE_SECONDS = int(timedelta(minutes=180).total_seconds())
 
 # How long an overflow worker may sit queued before it is treated as unplaceable and
 # cancelled to make room for the urgent reserve. Well above the minutes a healthy
@@ -414,7 +423,11 @@ class AoiConfig:
 
 @dataclass
 class PcaConfig:
-    """Paths and levels for the render stages. Unused by the predict stage."""
+    """Paths and levels for the render stages.
+
+    Given to the predict stage with `artifact_path` set, predict also renders the UTM
+    pyramid as it writes each block, from embeddings it already holds in memory.
+    """
 
     artifact_path: str | None = None
     store_path: str | None = None
@@ -582,6 +595,33 @@ def _any_completion_markers(config: SuperviseConfig) -> bool:
         if upath.exists() and any(True for _ in upath.iterdir()):
             return True
     return False
+
+
+def _require_basis(artifact_path: str) -> None:
+    """Raise unless the PCA artifact exists and fits this model's embeddings.
+
+    An olmoearth_run artifact is fitted per foundation model, so one from a different
+    model loads fine and only fails, or silently mis-colors, once projected.
+
+    Args:
+        artifact_path: the artifact predict will render with.
+
+    Raises:
+        ValueError: if it is missing or was fitted on a different embedding width.
+    """
+    try:
+        artifact = PcaArtifact.load(artifact_path)
+    except FileNotFoundError as e:
+        raise ValueError(
+            f"pca.artifact_path {artifact_path} does not exist; fit the basis first "
+            "(fit_pca here, or olmoearth_run's fit-embedding-pca)"
+        ) from e
+    dims = artifact.mean.shape[0]
+    if dims != EMBEDDING_DIM:
+        raise ValueError(
+            f"pca artifact {artifact_path} was fitted on {dims}-dim embeddings but "
+            f"this model writes {EMBEDDING_DIM}; it belongs to a different model"
+        )
 
 
 def worker_name_prefix(queue_name: str) -> str:
@@ -1420,6 +1460,10 @@ def _run_cycle(
                     geojson_fname=config.aoi.geojson_fname,
                     job_size=config.aoi.job_size,
                     enumeration_cache_dir=config.cycle.enumeration_cache_dir,
+                    pca_artifact_path=config.pca.artifact_path,
+                    pca_store_path=config.pca.store_path,
+                    pca_completed_path=config.pca.completed_path,
+                    pca_max_level=config.pca.max_level,
                 )
             )
     result.value = len(remaining)
@@ -1436,7 +1480,11 @@ def _run_cycle(
         batch = fresh[: target_pending - pending]
         if batch:
             rslp.common.worker.write_jobs(
-                queue_name, "large_scale_embeddings", stage, batch
+                queue_name,
+                "large_scale_embeddings",
+                stage,
+                batch,
+                prefetch=PREFETCH if stage == STAGE_PREDICT else None,
             )
         logger.info(
             "enqueued %d job(s) (pending was %d; %d of %d already in flight)",
@@ -1680,6 +1728,9 @@ def supervise(
                 f"stage {STAGE_RENDER_UTM_PCA} requires {', '.join(missing)}; fit the "
                 "basis with the fit_pca workflow first"
             )
+    if stage == STAGE_PREDICT and config.pca.artifact_path is not None:
+        # Every worker would fail on its first block; say so once, here.
+        _require_basis(config.pca.artifact_path)
 
     # "spawn" rather than the default fork: the child creates gRPC channels, and
     # forking a process that may already hold them is a known source of hangs.

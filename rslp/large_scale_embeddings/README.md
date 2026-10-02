@@ -30,25 +30,40 @@ The variant has an rslearn dataset config and a model config in
 comes from the OlmoEarth Datasets sources.
 
 
-Three-Step Flow
----------------
+Flow
+----
 
-A full run is three ordered steps. Each depends on the previous one's output, and all
-three are idempotent and driven by completion markers, so any of them can be
-interrupted and resumed.
+All steps are idempotent and driven by completion markers, so any of them can be
+interrupted and resumed. `run_all` drives them in order.
 
-1. **`predict`** writes the int8 embeddings. Needs GPUs. Enqueue with `write_jobs`, or
-   let `supervise --stage predict` keep the queue and worker pool topped up.
-2. **`fit_pca`** samples the archive just written and fits the global false-color
-   basis, so the basis reflects exactly the data it will be applied to. Single process,
-   reads about one inner chunk per sampled window rather than a pass over the archive.
-   A basis fitted on one region does not transfer, so sampling is stratified across
-   every UTM zone with data.
-3. **`render_pca`** reads the embeddings back and writes the multiscale `pca_rgb`
-   pyramid into the sibling pca store, created once with `init_pca_store`. CPU only, no
-   model, so it schedules without competing for GPU capacity. Enqueue with
-   `write_render_jobs`, or use `supervise --stage render_pca --gpus 0`. Follow it with
-   `annotate_pca_store` to record the basis provenance onto every level.
+1. **`fit_pca`**, once, before the run: samples an existing archive and fits the global
+   false-color basis. Single process, reads about one inner chunk per sampled window
+   rather than a pass over the archive. A basis fitted on one region does not
+   transfer, so sampling is stratified across every UTM zone with data. Fit it on a
+   global sample (a `skip_pca` run is enough), since the basis defines what every
+   rendered pixel means and cannot change once any are written.
+   To match olmoearth_run's colors exactly, skip the fit and point `pca.artifact_path`
+   at the foundation model's `embedding_pca.pkl` instead. It is read directly and
+   applied to int8 values, as olmoearth_run applies it. It must come from the same
+   model: the supervisor refuses one fitted on a different embedding width.
+2. **`predict`** writes the int8 embeddings. Needs GPUs. Given the pca paths, it also
+   renders each block's multiscale `pca_rgb` pyramid into the sibling pca store
+   (created once with `init_pca_store`) from the embeddings it already holds in
+   memory, and writes the render marker. Enqueue with `write_jobs`, or let
+   `supervise --stage predict` keep the queue and worker pool topped up.
+3. **`render_pca`** is now a sweep: it reads embeddings back and renders only blocks
+   that have a predict marker but no render marker, such as ones predicted without the
+   pca paths. CPU only. Follow it with `annotate_pca_store` to record the basis
+   provenance onto every level.
+4. **`render_web_pca`** builds the web-mercator display pyramid, one zoom at a time,
+   deepest first, after everything else.
+
+**Prefetch.** A predict worker materializes its next block in a subprocess while the
+GPU runs the current one. It needs the queue created with `max_claimed_entries=2`, so
+Beaker hands over the next entry early; with 1 the worker runs serially as before.
+Predict entries carry a `prefetch` field naming the args for that step (see
+`rslp.common.worker._Prefetcher`). A claim is then held for about two inference
+phases, which is why `claim_stale_seconds` defaults to 180 minutes.
 
 Three components capture roughly 21-40% of local variance, so `pca_rgb` is a
 visualization of the embeddings, not a reduced-dimension version of them.

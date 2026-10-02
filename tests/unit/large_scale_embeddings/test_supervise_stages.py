@@ -102,6 +102,45 @@ def test_predict_stage_needs_no_pca_arguments() -> None:
     sup.supervise(**_base_kwargs())
 
 
+def test_predict_stage_refuses_a_basis_from_another_model(tmp_path: Any) -> None:
+    """A basis of the wrong width belongs to a different foundation model."""
+    import numpy as np
+
+    from rslp.large_scale_embeddings.pca import PcaArtifact
+
+    dims = 768
+    PcaArtifact(
+        mean=np.zeros(dims, np.float32),
+        components=np.eye(3, dims, dtype=np.float32),
+        norm_bounds=np.array([[0, 0, 0], [1, 1, 1]], np.float32),
+        explained_variance_ratio=np.ones(3, np.float32),
+    ).save(str(tmp_path / "basis"))
+    with pytest.raises(ValueError, match="768-dim"):
+        sup.supervise(
+            **_base_kwargs(
+                pca=sup.PcaConfig(
+                    artifact_path=str(tmp_path / "basis"),
+                    store_path="gs://bucket/pca_v1.zarr",
+                    completed_path="gs://bucket/pca_completed/",
+                )
+            )
+        )
+
+
+def test_predict_stage_refuses_a_missing_basis(tmp_path: Any) -> None:
+    """Predict renders with the artifact, so every worker would fail without it."""
+    with pytest.raises(ValueError, match="fit_pca"):
+        sup.supervise(
+            **_base_kwargs(
+                pca=sup.PcaConfig(
+                    artifact_path=str(tmp_path / "missing"),
+                    store_path="gs://bucket/pca_v1.zarr",
+                    completed_path="gs://bucket/pca_completed/",
+                )
+            )
+        )
+
+
 class _FakeQueueApi:
     """A queue with nothing in it and no workers registered."""
 
@@ -180,10 +219,15 @@ def _install_cycle_fakes(
     monkeypatch.setattr(sup, "Beaker", _FakeBeaker)
 
     def fake_write_jobs(
-        queue_name: str, project: str, workflow: str, batch: list
+        queue_name: str,
+        project: str,
+        workflow: str,
+        batch: list,
+        prefetch: dict | None = None,
     ) -> None:
         recorded["workflow"] = workflow
         recorded["count"] = len(batch)
+        recorded["prefetch"] = prefetch
 
     def fake_launch_workers(**kwargs: object) -> None:
         recorded["launched"] = kwargs.get("num_workers")
@@ -269,6 +313,8 @@ def test_run_cycle_render_stage_enumerates_from_source_markers(
     assert result.value == 2
     assert enqueued["workflow"] == sup.STAGE_RENDER_UTM_PCA
     assert enqueued["count"] == 2
+    # Only predict has a materialize step worth prefetching.
+    assert enqueued["prefetch"] is None
     # The render stage asks for no GPUs.
     assert enqueued["gpus"] == 0
 

@@ -4,9 +4,10 @@
 data it will be applied to, and this module reads the embeddings back and writes the
 multiscale ``pca_rgb`` pyramid into a separate store.
 
-It is separate from ``predict`` because the basis cannot exist until there is data
-to fit on, and because it is cheap: no model, no GPU, just a read, three dot products
-per pixel, and a write, so it runs on ordinary CPU workers.
+``predict`` normally renders each block itself as it writes the embeddings, using
+``render_window`` on the data already in memory, so the basis must be fitted before the
+run. This stage is the sweep for blocks predicted without it: it reads the embeddings
+back, needs no model or GPU, and runs on ordinary CPU workers.
 
 The output is a sibling store rather than another array in the embeddings store, so the
 basis can be refit without touching the source and two renders can coexist during a
@@ -78,6 +79,129 @@ def get_pca_marker_fname(completed_path: str, source_fname: UPath) -> UPath:
     return UPath(completed_path) / pca_marker_name(source_fname)
 
 
+def pca_time_index(
+    store_path: str,
+    zone_number: int,
+    time_index: int,
+    pca_store_path: str,
+    storage_options: dict | None = None,
+) -> int:
+    """Translate a source store time index into the pca store's time index.
+
+    A derived store has its own axis, covering only the years it was built for, so the
+    index does not carry over: a single-year pca store has one slot while the source
+    may have nine. Translate through the year itself, which is the only stable
+    identifier.
+
+    Args:
+        store_path: the GeoZarr store holding the embeddings.
+        zone_number: the UTM zone whose group to read the time axis from.
+        time_index: the index into the source store's time axis.
+        pca_store_path: the pca store.
+        storage_options: fsspec storage options for remote stores.
+
+    Returns:
+        the index into the pca store's time axis for the same year.
+    """
+    group = zarr.open_group(
+        store=store_path,
+        path=zone_group_name(zone_number),
+        mode="r",
+        storage_options=storage_options,
+    )
+    source_year = int(np.asarray(group["time"][time_index]))
+    pca_years = get_store_years(pca_store_path, storage_options=storage_options)
+    if source_year not in pca_years:
+        raise ValueError(
+            f"source year {source_year} (index {time_index}) is not on the pca store's "
+            f"time axis {pca_years}; recreate {pca_store_path} covering that year"
+        )
+    return pca_years.index(source_year)
+
+
+def render_window(
+    embeddings: np.ndarray,
+    artifact: PcaArtifact,
+    pca_store_path: str,
+    zone_number: int,
+    crop_offset: tuple[int, int],
+    dest_time_index: int,
+    max_level: int,
+    patch_size: int = 1,
+    storage_options: dict | None = None,
+) -> bool:
+    """Project one window's embeddings to RGB and write every pyramid level.
+
+    Args:
+        embeddings: the window's int8 embeddings, shape (band, height, width).
+        artifact: the fitted global PCA artifact.
+        pca_store_path: the pca store to write into.
+        zone_number: the UTM zone whose group to write into.
+        crop_offset: the window's (x, y) offset at the input resolution.
+        dest_time_index: the index into the pca store's time axis.
+        max_level: deepest pyramid level to write.
+        patch_size: the encoder patch size used when the embeddings were written.
+        storage_options: fsspec storage options for remote stores.
+
+    Returns:
+        whether anything was written. A window with no valid pixels is left unwritten
+        so the arrays stay sparse.
+    """
+    rgb = project_to_rgb(embeddings, artifact)
+    if not rgb.any():
+        return False
+    x, y = crop_offset
+    window_size = embeddings.shape[1]
+    write_pca_window_levels(
+        pca_store_path=pca_store_path,
+        zone_number=zone_number,
+        window_bounds=(x, y, x + window_size, y + window_size),
+        time_index=dest_time_index,
+        levels=build_pyramid(rgb, max_level),
+        patch_size=patch_size,
+        storage_options=storage_options,
+    )
+    return True
+
+
+def write_pca_marker(
+    marker_fname: UPath,
+    source_fname: UPath,
+    pca_store_path: str,
+    artifact_path: str,
+    time_index: int,
+    max_level: int,
+    rendered: list[list[int]],
+    empty: list[list[int]],
+) -> None:
+    """Write this stage's completion marker for one predict marker.
+
+    Args:
+        marker_fname: the marker to write (see get_pca_marker_fname).
+        source_fname: the predict marker whose windows were rendered.
+        pca_store_path: the pca store that was written.
+        artifact_path: the PCA artifact the render used.
+        time_index: the source store time index from the predict marker.
+        max_level: deepest pyramid level written.
+        rendered: crop offsets that were written.
+        empty: crop offsets skipped for having no valid pixels.
+    """
+    marker = {
+        "source_marker": str(source_fname),
+        "pca_store_path": pca_store_path,
+        "artifact_path": artifact_path,
+        "time_index": time_index,
+        "max_level": max_level,
+        "levels": [pca_level_array_name(k) for k in range(max_level + 1)],
+        "rendered": rendered,
+        "skipped_empty": empty,
+    }
+    marker_fname.parent.mkdir(parents=True, exist_ok=True)
+    with marker_fname.open("w") as f:
+        json.dump(marker, f)
+    logger.info("wrote marker file %s", marker_fname)
+
+
 def render_pca_pipeline(
     store_path: str,
     pca_store_path: str,
@@ -133,19 +257,9 @@ def render_pca_pipeline(
     origin_y = round(transform[5] / transform[4])
     embeddings_array = group[EMBEDDINGS_ARRAY]
     window_size = embeddings_array.shards[2]
-
-    # The marker's time_index addresses the source store's axis. A derived store has
-    # its own axis, covering only the years it was built for, so that index does not
-    # carry over: a single-year pca store has one slot while the source may have nine.
-    # Translate through the year itself, which is the only stable identifier.
-    source_year = int(np.asarray(group["time"][time_index]))
-    pca_years = get_store_years(pca_store_path, storage_options=storage_options)
-    if source_year not in pca_years:
-        raise ValueError(
-            f"source year {source_year} (index {time_index}) is not on the pca store's "
-            f"time axis {pca_years}; recreate {pca_store_path} covering that year"
-        )
-    dest_time_index = pca_years.index(source_year)
+    dest_time_index = pca_time_index(
+        store_path, zone_number, time_index, pca_store_path, storage_options
+    )
 
     rendered: list[list[int]] = []
     empty: list[list[int]] = []
@@ -157,21 +271,20 @@ def render_pca_pipeline(
                 time_index, :, row : row + window_size, col : col + window_size
             ]
         )
-        rgb = project_to_rgb(block, artifact)
-        if not rgb.any():
-            # Nothing valid here; leave the shards unwritten so the arrays stay sparse.
-            empty.append([x, y])
-            continue
-        write_pca_window_levels(
+        if render_window(
+            embeddings=block,
+            artifact=artifact,
             pca_store_path=pca_store_path,
             zone_number=zone_number,
-            window_bounds=(x, y, x + window_size, y + window_size),
-            time_index=dest_time_index,
-            levels=build_pyramid(rgb, max_level),
+            crop_offset=(x, y),
+            dest_time_index=dest_time_index,
+            max_level=max_level,
             patch_size=patch_size,
             storage_options=storage_options,
-        )
-        rendered.append([x, y])
+        ):
+            rendered.append([x, y])
+        else:
+            empty.append([x, y])
 
     logger.info(
         "rendered %d window(s) at levels 0..%d, skipped %d empty, for %s",
@@ -180,21 +293,16 @@ def render_pca_pipeline(
         len(empty),
         source_fname.name,
     )
-
-    marker = {
-        "source_marker": str(source_fname),
-        "pca_store_path": pca_store_path,
-        "artifact_path": artifact_path,
-        "time_index": time_index,
-        "max_level": max_level,
-        "levels": [pca_level_array_name(k) for k in range(max_level + 1)],
-        "rendered": rendered,
-        "skipped_empty": empty,
-    }
-    marker_fname.parent.mkdir(parents=True, exist_ok=True)
-    with marker_fname.open("w") as f:
-        json.dump(marker, f)
-    logger.info("wrote marker file %s", marker_fname)
+    write_pca_marker(
+        marker_fname=marker_fname,
+        source_fname=source_fname,
+        pca_store_path=pca_store_path,
+        artifact_path=artifact_path,
+        time_index=time_index,
+        max_level=max_level,
+        rendered=rendered,
+        empty=empty,
+    )
 
 
 def get_render_jobs(

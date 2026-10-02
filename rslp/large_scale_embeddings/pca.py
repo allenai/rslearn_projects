@@ -18,12 +18,18 @@ at render time. Two deliberate deviations:
    distant one captures a small fraction of the variance, and the normalization bounds
    come out nearly disjoint. Sampling must span zones, not just tiles.
 
+olmoearth_run's own ``embedding_pca.pkl`` can also be loaded directly (see
+``PcaArtifact.load``), so both products render with one basis. It is fitted on the int8
+values rather than dequantized ones, and both repos quantize identically, so it is
+applied to int8 values here too (``input_space``).
+
 Expectation setting: three components capture roughly 21-40% of local variance for
 128-dimensional embeddings. This is a visualization of the embeddings, not a
 reduced-dimension version of them.
 """
 
 import json
+import pickle  # nosec
 import random
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -68,6 +74,31 @@ MAX_WINDOW_ATTEMPTS = 4
 ARTIFACT_ARRAYS_NAME = "arrays.npz"
 ARTIFACT_METADATA_NAME = "metadata.json"
 
+# Which values a basis was fitted on, and so what it must be applied to. This repo's
+# fit_pca dequantizes the int8 archive first. olmoearth_run fits on the int8 values
+# themselves, which are the same values here since both quantize identically.
+INPUT_SPACE_DEQUANTIZED = "dequantized"
+INPUT_SPACE_INT8 = "int8"
+INPUT_SPACE_KEY = "geoemb:pca_input_space"
+
+# olmoearth_run's artifact: a pickled PcaArtifact of its own wrapping a fitted
+# scikit-learn IncrementalPCA (see olmoearth_run fit-embedding-pca). A path with this
+# suffix is read in that format.
+OLMOEARTH_RUN_ARTIFACT_SUFFIX = ".pkl"
+
+# The only classes an olmoearth_run artifact may contain, each loaded as a plain state
+# holder so that neither olmoearth_run nor scikit-learn is needed to read it.
+_OLMOEARTH_RUN_CLASSES = {
+    ("olmoearth_run.shared.tools.pca_artifact", "PcaArtifact"),
+    ("sklearn.decomposition._incremental_pca", "IncrementalPCA"),
+}
+# What numpy needs to rebuild arrays, under its 1.x and 2.x module names.
+_NUMPY_GLOBALS = {
+    (module, name)
+    for module in ("numpy.core.multiarray", "numpy._core.multiarray")
+    for name in ("_reconstruct", "scalar")
+} | {("numpy", "ndarray"), ("numpy", "dtype")}
+
 
 def dequantize(quantized: np.ndarray) -> np.ndarray:
     """Invert the signed-power int8 quantization back to float32.
@@ -101,9 +132,13 @@ class PcaArtifact:
     norm_bounds: np.ndarray
     explained_variance_ratio: np.ndarray
     metadata: dict = field(default_factory=dict)
+    # See INPUT_SPACE_DEQUANTIZED and INPUT_SPACE_INT8.
+    input_space: str = INPUT_SPACE_DEQUANTIZED
 
     def __post_init__(self) -> None:
         """Validate the array shapes so a malformed artifact fails at load time."""
+        if self.input_space not in (INPUT_SPACE_DEQUANTIZED, INPUT_SPACE_INT8):
+            raise ValueError(f"unknown input_space {self.input_space!r}")
         dims = self.mean.shape[0]
         if self.components.shape != (PCA_N_COMPONENTS, dims):
             raise ValueError(
@@ -135,19 +170,22 @@ class PcaArtifact:
                 explained_variance_ratio=self.explained_variance_ratio,
             )
         with (root / ARTIFACT_METADATA_NAME).open("w") as f:
-            json.dump(self.metadata, f, indent=2)
+            json.dump({**self.metadata, INPUT_SPACE_KEY: self.input_space}, f, indent=2)
         logger.info("wrote PCA artifact to %s", artifact_path)
 
     @classmethod
     def load(cls, artifact_path: str) -> "PcaArtifact":
-        """Read an artifact previously written by save.
+        """Read an artifact previously written by save, or one from olmoearth_run.
 
         Args:
-            artifact_path: directory path or URL to read from.
+            artifact_path: directory path or URL to read from, or the path of an
+                olmoearth_run embedding_pca.pkl.
 
         Returns:
             the loaded artifact.
         """
+        if artifact_path.endswith(OLMOEARTH_RUN_ARTIFACT_SUFFIX):
+            return _load_olmoearth_run_artifact(artifact_path)
         root = UPath(artifact_path)
         arrays_fname = root / ARTIFACT_ARRAYS_NAME
         if not arrays_fname.exists():
@@ -168,7 +206,85 @@ class PcaArtifact:
             norm_bounds=arrays["norm_bounds"],
             explained_variance_ratio=arrays["explained_variance_ratio"],
             metadata=metadata,
+            input_space=metadata.get(INPUT_SPACE_KEY, INPUT_SPACE_DEQUANTIZED),
         )
+
+
+class _PickledState:
+    """Stand-in for a pickled class, keeping only the state it was saved with."""
+
+    def __setstate__(self, state: dict) -> None:
+        """Keep the state.
+
+        Args:
+            state: the instance __dict__ the object was pickled with.
+        """
+        self.state = state
+
+
+class _OlmoEarthRunUnpickler(pickle.Unpickler):  # nosec
+    """Unpickles an olmoearth_run artifact, refusing anything else it might contain."""
+
+    def find_class(self, module: str, name: str) -> type:
+        """Resolve a global, allowing only the artifact's own classes and numpy.
+
+        Args:
+            module: the global's module.
+            name: the global's name.
+
+        Returns:
+            the class to construct.
+
+        Raises:
+            pickle.UnpicklingError: for any other global.
+        """
+        if (module, name) in _OLMOEARTH_RUN_CLASSES:
+            return _PickledState
+        if (module, name) in _NUMPY_GLOBALS:
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(
+            f"refusing to load {module}.{name} from a PCA artifact"
+        )
+
+
+def _load_olmoearth_run_artifact(artifact_path: str) -> PcaArtifact:
+    """Read olmoearth_run's embedding_pca.pkl as a PcaArtifact.
+
+    An IncrementalPCA without whitening projects as (x - mean_) @ components_.T, which
+    is what project_to_rgb computes, so only its fitted arrays are needed.
+
+    Args:
+        artifact_path: the path of the embedding_pca.pkl.
+
+    Returns:
+        the artifact, applied to int8 values as olmoearth_run applies it.
+    """
+    with UPath(artifact_path).open("rb") as f:
+        wrapper = _OlmoEarthRunUnpickler(f).load()
+    pca = wrapper.state["pca"].state
+    if pca.get("whiten"):
+        raise ValueError(f"{artifact_path} is a whitened PCA, which is not supported")
+    explained = np.asarray(pca["explained_variance_ratio_"], dtype=np.float32)
+    return PcaArtifact(
+        mean=np.asarray(pca["mean_"], dtype=np.float32),
+        components=np.asarray(pca["components_"], dtype=np.float32),
+        norm_bounds=np.asarray(wrapper.state["norm_bounds"], dtype=np.float32),
+        explained_variance_ratio=explained,
+        input_space=INPUT_SPACE_INT8,
+        metadata={
+            "geoemb:pca_components": PCA_N_COMPONENTS,
+            "geoemb:pca_source_artifact": artifact_path,
+            "geoemb:pca_fit_pixels": int(pca["n_samples_seen_"]),
+            "geoemb:pca_norm_percentiles": [NORM_PERCENTILE_LOW, NORM_PERCENTILE_HIGH],
+            "geoemb:pca_explained_variance_ratio": [float(v) for v in explained],
+            "geoemb:pca_dimensions": int(pca["mean_"].shape[0]),
+            INPUT_SPACE_KEY: INPUT_SPACE_INT8,
+            "geoemb:pca_note": (
+                "False-color visualization. Three components capture only a minority "
+                "of embedding variance; do not use these bands as features."
+            ),
+        },
+    )
 
 
 def fit_basis(samples: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -248,7 +364,10 @@ def project_to_rgb(embeddings: np.ndarray, artifact: PcaArtifact) -> np.ndarray:
     if not valid.any():
         return out
 
-    pixels = dequantize(embeddings[:, valid]).T  # (n_valid, bands)
+    if artifact.input_space == INPUT_SPACE_INT8:
+        pixels = embeddings[:, valid].astype(np.float32).T  # (n_valid, bands)
+    else:
+        pixels = dequantize(embeddings[:, valid]).T
     transformed = (pixels - artifact.mean) @ artifact.components.T
     low, high = artifact.norm_bounds[0], artifact.norm_bounds[1]
     scaled = (transformed - low) / (high - low)

@@ -305,3 +305,69 @@ def test_build_pyramid_halves_each_level() -> None:
     assert sorted(levels) == [0, 1, 2, 3]
     assert [levels[k].shape[1] for k in range(4)] == [2048, 1024, 512, 256]
     assert levels[0] is rgb  # level 0 is the input, not a copy
+
+
+# A real olmoearth_run artifact, pickled by its own PcaArtifact and scikit-learn 1.8
+# IncrementalPCA, with sklearn's transform of a few int8 pixels to compare against.
+OLMOEARTH_RUN_ARTIFACT = (
+    Path(__file__).parent / "data" / "olmoearth_run_embedding_pca.pkl"
+)
+OLMOEARTH_RUN_EXPECTED = (
+    Path(__file__).parent / "data" / "olmoearth_run_embedding_pca_expected.npz"
+)
+
+
+def test_olmoearth_run_artifact_projects_like_sklearn() -> None:
+    """The same artifact must give the same components as olmoearth_run computes."""
+    artifact = pca.PcaArtifact.load(str(OLMOEARTH_RUN_ARTIFACT))
+    expected = np.load(OLMOEARTH_RUN_EXPECTED)
+    assert artifact.input_space == pca.INPUT_SPACE_INT8
+    ours = (
+        expected["pixels"].astype(np.float32) - artifact.mean
+    ) @ artifact.components.T
+    np.testing.assert_allclose(ours, expected["transformed"], atol=1e-3)
+    np.testing.assert_array_equal(artifact.norm_bounds, expected["norm_bounds"])
+
+
+def test_olmoearth_run_artifact_is_applied_to_int8_values() -> None:
+    """olmoearth_run fits on int8 values, so render must not dequantize first."""
+    artifact = pca.PcaArtifact.load(str(OLMOEARTH_RUN_ARTIFACT))
+    expected = np.load(OLMOEARTH_RUN_EXPECTED)
+    pixels = expected["pixels"]  # (n, bands)
+    block = pixels.T.reshape(pixels.shape[1], 1, pixels.shape[0])
+    rgb = pca.project_to_rgb(block, artifact)
+
+    low, high = expected["norm_bounds"]
+    scaled = (expected["transformed"] - low) / (high - low)
+    want = np.clip(np.rint(scaled * 254.0) + 1.0, 1.0, 255.0).astype(np.uint8)
+    np.testing.assert_array_equal(rgb[:, 0, :], want.T)
+
+
+def test_olmoearth_run_artifact_records_its_provenance() -> None:
+    """Annotate copies this onto the store, so it must say where the basis came from."""
+    artifact = pca.PcaArtifact.load(str(OLMOEARTH_RUN_ARTIFACT))
+    assert artifact.metadata["geoemb:pca_source_artifact"] == str(
+        OLMOEARTH_RUN_ARTIFACT
+    )
+    assert artifact.metadata["geoemb:pca_dimensions"] == 128
+    assert artifact.metadata[pca.INPUT_SPACE_KEY] == pca.INPUT_SPACE_INT8
+
+
+def test_olmoearth_run_loader_refuses_other_classes(tmp_path: Path) -> None:
+    """A pickle can run code on load, so only the artifact's own classes are allowed."""
+    import collections
+    import pickle
+
+    path = tmp_path / "embedding_pca.pkl"
+    path.write_bytes(pickle.dumps(collections.OrderedDict(a=1)))
+    with pytest.raises(pickle.UnpicklingError, match="refusing to load"):
+        pca.PcaArtifact.load(str(path))
+
+
+def test_input_space_survives_a_save(tmp_path: Path) -> None:
+    """A copied olmoearth_run basis must keep being applied to int8 values."""
+    artifact = pca.PcaArtifact.load(str(OLMOEARTH_RUN_ARTIFACT))
+    artifact.save(str(tmp_path / "copy"))
+    assert pca.PcaArtifact.load(str(tmp_path / "copy")).input_space == (
+        pca.INPUT_SPACE_INT8
+    )

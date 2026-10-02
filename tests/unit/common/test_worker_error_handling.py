@@ -77,6 +77,8 @@ class FakeRx:
                 learns the queue has gone quiet and exits.
         """
         if not self._batches:
+            # Wait out the timeout like the real channel, so polling does not spin.
+            real_sleep(timeout or 0)
             raise QueueEmpty
         return [_FakeInput(entry_id) for entry_id in self._batches.pop(0)]
 
@@ -268,7 +270,7 @@ def test_termination_releases_the_in_flight_entry() -> None:
         def send(self, entry_id: str | None, **kwargs: Any) -> None:
             sent.append({"entry_id": entry_id, **kwargs})
 
-    handler = _release_on_termination(_Tx(), {"entry_id": "entry-abc"})
+    handler = _release_on_termination(_Tx(), {"entry-abc"})
     with pytest.raises(SystemExit):
         handler(signal.SIGTERM, None)
 
@@ -289,7 +291,7 @@ def test_termination_with_no_entry_is_harmless() -> None:
         def send(self, entry_id: str | None, **kwargs: Any) -> None:
             raise AssertionError("nothing should be sent when no entry is in flight")
 
-    handler = _release_on_termination(_Tx(), {"entry_id": None})
+    handler = _release_on_termination(_Tx(), set())
     with pytest.raises(SystemExit):
         handler(signal.SIGTERM, None)
 

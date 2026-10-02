@@ -1,10 +1,11 @@
 """Drive the whole embedding flow as one Beaker job.
 
-The flow is three ordered steps with real dependencies: ``fit_pca`` cannot run until
-``predict`` has produced data to fit on, and ``render_pca`` cannot run without the
-fitted basis. Running them by hand means four or five invocations with a human holding
-the ordering in their head, and the intermediate states are where mistakes hide -- a
-basis fitted on a partly-written archive produces colours that look fine and are wrong.
+The global PCA basis must be fitted before the run starts (``fit_pca`` on an existing
+archive). Predict then renders each block's UTM false-color pyramid as it writes the
+embeddings, so the separate render stage is only a sweep for blocks predicted without
+it. The web pyramid still runs after everything else, since each zoom is built from the
+one below. Running these by hand means several invocations with a human holding the
+ordering in their head, and the intermediate states are where mistakes hide.
 
 So this owns the ordering, and refuses to advance on partial input. Every step is
 already idempotent and marker-driven, which is what makes chaining them safe: a failed
@@ -26,7 +27,6 @@ from beaker import (
 )
 from upath import UPath
 
-from rslp.large_scale_embeddings.pca import fit_pca
 from rslp.large_scale_embeddings.predict_pipeline import EmbeddingInputs
 from rslp.large_scale_embeddings.render_pca import annotate_pca_store, get_render_jobs
 from rslp.large_scale_embeddings.render_web_pca import get_web_jobs, init_web_store
@@ -109,7 +109,6 @@ def run_all(
     aoi: AoiConfig | None = None,
     matryoshka_dims: list[int] | None = None,
     render_gpus: int = 0,
-    refit_pca: bool = False,
     skip_predict: bool = False,
     skip_render_pca: bool = False,
     skip_pca: bool = False,
@@ -117,7 +116,7 @@ def run_all(
     web_min_zoom: int = 8,
     web_max_zoom: int = 14,
 ) -> None:
-    """Run init_store, predict, fit_pca, render_pca and annotate to completion.
+    """Run init_store, predict (with the UTM pca render), annotate and web to completion.
 
     Args:
         inputs: which input variant to use.
@@ -128,17 +127,14 @@ def run_all(
         model: the encoder and how it is run. See `ModelConfig`.
         worker: the Beaker worker pool. See `WorkerConfig`.
         pca: the derived-layer paths. `artifact_path`, `store_path` and
-            `completed_path` are required unless `skip_pca` is set.
+            `completed_path` are required unless `skip_pca` is set, and the artifact
+            must already exist: fit it with fit_pca before starting the run.
         model_url: URL reference to the encoder model, recorded in the store.
             Defaults to the released encoder these embeddings come from.
         source_data: URLs of the source datasets. Derived from `inputs` if unset.
         cycle: loop pacing for the predict and render stages. See `CycleConfig`.
         aoi: the ground to cover. See `AoiConfig`.
         matryoshka_dims: prefix widths the model supports, recorded in the store.
-        refit_pca: refit the basis even when the artifact already exists. Off by
-            default: a refit is only safe before any rgb is written, since the basis
-            defines what the pixels mean, and re-running a partly finished flow would
-            otherwise silently reinterpret everything already rendered.
         render_gpus: GPUs for the render stages. They need none; a nonzero value is
             only for saturated clusters that count slots in GPUs.
         skip_predict: assume the embeddings already exist and go straight to the
@@ -150,7 +146,8 @@ def run_all(
             shared predict marker directory with no zone filter, so once another region
             is being built it never runs out of work; this is how a finished region
             still reaches its display layer.
-        skip_pca: stop after predict. For a run whose only product is embeddings.
+        skip_pca: predict embeddings only, with no pca render. For a run whose only
+            product is embeddings, such as the sample a global basis is fitted on.
         skip_web_pca: stop after annotate, leaving the display pyramid unbuilt.
         web_min_zoom: shallowest zoom to build.
         web_max_zoom: deepest zoom, warped directly from the UTM store.
@@ -165,7 +162,24 @@ def run_all(
     source_data = source_data or source_data_for(inputs.value)
     completed_paths = [completed_path_template.format(year=year) for year in years]
 
-    logger.info("step 0/5: ensuring the store exists at %s", store_path)
+    pca_paths: tuple[str, str, str] | None = None
+    if not skip_pca:
+        # Narrowed once, here: PcaConfig holds these as optional because a skip_pca
+        # run never sets them, but every pca step needs all three.
+        pca_paths = (
+            require_config(pca.artifact_path, "pca.artifact_path", "run_all"),
+            require_config(pca.store_path, "pca.store_path", "run_all"),
+            require_config(pca.completed_path, "pca.completed_path", "run_all"),
+        )
+        # Checked before any work: predict renders with this basis as it goes, and the
+        # basis defines what every rendered pixel means, so it cannot be fitted later.
+        if not UPath(pca_paths[0]).exists():
+            raise RuntimeError(
+                f"pca artifact {pca_paths[0]} does not exist; fit the global basis "
+                "with fit_pca before starting the run"
+            )
+
+    logger.info("step 0/4: ensuring the stores exist at %s", store_path)
     if UPath(store_path).exists():
         logger.info("store already exists; leaving it as is")
     else:
@@ -178,13 +192,29 @@ def run_all(
             matryoshka_dims=matryoshka_dims,
             patch_size=model.patch_size,
         )
+    if pca_paths is not None and not UPath(pca_paths[1]).exists():
+        if skip_render_pca:
+            raise RuntimeError(
+                f"skip_render_pca was set but {pca_paths[1]} does not exist; there is "
+                "nothing to annotate or build a display pyramid from"
+            )
+        init_pca_store(
+            pca_store_path=pca_paths[1],
+            zone_numbers=aoi.zone_numbers or list(range(1, 61)),
+            years=years,
+            model_url=model_url,
+            source_data=source_data,
+            resolution=10,
+            tile_size=32768,
+            max_level=pca.max_level,
+        )
 
     if skip_predict:
         # The check below enumerates against the aoi, so it cannot stand in for the
         # stage when the caller is covering ground no single aoi describes.
-        logger.info("step 1/5: predict skipped (skip_predict)")
+        logger.info("step 1/4: predict skipped (skip_predict)")
     else:
-        logger.info("step 1/5: predict")
+        logger.info("step 1/4: predict")
         supervise(
             inputs=inputs,
             years=years,
@@ -196,6 +226,7 @@ def run_all(
             stage=STAGE_PREDICT,
             cycle=cycle,
             aoi=aoi,
+            pca=None if pca_paths is None else pca,
         )
         _require_no_predict_jobs(
             inputs=inputs,
@@ -206,66 +237,19 @@ def run_all(
             aoi=aoi,
         )
 
-    if skip_pca:
+    if pca_paths is None:
         logger.info("skip_pca set; stopping after predict")
         return
+    artifact_path, pca_store_path, pca_completed_path = pca_paths
 
-    # Narrowed once, here: PcaConfig holds these as optional because the predict stage
-    # never sets them, but every step from here on needs all three.
-    artifact_path = require_config(pca.artifact_path, "pca.artifact_path", "run_all")
-    pca_store_path = require_config(pca.store_path, "pca.store_path", "run_all")
-    pca_completed_path = require_config(
-        pca.completed_path, "pca.completed_path", "run_all"
-    )
-
-    logger.info("step 2/5: fit_pca -> %s", artifact_path)
-    if UPath(artifact_path).exists() and not refit_pca:
-        # The basis defines what every rendered pixel means, so refitting after any
-        # rgb exists reinterprets it. Resuming a flow must not do that silently; pass
-        # refit_pca to force it.
-        logger.info("pca artifact already exists; keeping it (pass refit_pca to refit)")
-    else:
-        fit_pca(
-            store_path=store_path,
-            completed_paths=completed_paths,
-            artifact_path=artifact_path,
-        )
-
-    logger.info("step 3/5: render_pca into %s", pca_store_path)
-    if skip_render_pca and not UPath(pca_store_path).exists():
-        raise RuntimeError(
-            f"skip_render_pca was set but {pca_store_path} does not exist; there is "
-            "nothing to annotate or build a display pyramid from"
-        )
-    if not UPath(pca_store_path).exists():
-        init_pca_store(
-            pca_store_path=pca_store_path,
-            zone_numbers=aoi.zone_numbers or list(range(1, 61)),
-            years=years,
-            model_url=model_url,
-            source_data=source_data,
-            resolution=10,
-            tile_size=32768,
-            max_level=pca.max_level,
-        )
+    # Predict already rendered every block it wrote with the basis above, so this only
+    # finds blocks predicted without it, such as ones from an earlier skip_pca run.
+    logger.info("step 2/4: render_pca sweep into %s", pca_store_path)
     if skip_render_pca:
         # The check below enumerates every marker in the shared directory, so like the
         # stage itself it cannot stand in for a region once a second one is building.
-        logger.info("step 3/5: render_pca skipped (skip_render_pca)")
+        logger.info("step 2/4: render_pca skipped (skip_render_pca)")
     else:
-        supervise(
-            inputs=inputs,
-            years=years,
-            store_path=store_path,
-            completed_path_template=completed_path_template,
-            queue_name=queue_name,
-            model=model,
-            worker=replace(worker, gpus=render_gpus),
-            stage=STAGE_RENDER_UTM_PCA,
-            cycle=cycle,
-            aoi=aoi,
-            pca=pca,
-        )
         remaining = get_render_jobs(
             store_path=store_path,
             pca_store_path=pca_store_path,
@@ -276,12 +260,36 @@ def run_all(
             max_level=pca.max_level,
         )
         if remaining:
+            logger.info("%d block(s) predicted without a render", len(remaining))
+            supervise(
+                inputs=inputs,
+                years=years,
+                store_path=store_path,
+                completed_path_template=completed_path_template,
+                queue_name=queue_name,
+                model=model,
+                worker=replace(worker, gpus=render_gpus),
+                stage=STAGE_RENDER_UTM_PCA,
+                cycle=cycle,
+                aoi=aoi,
+                pca=pca,
+            )
+            remaining = get_render_jobs(
+                store_path=store_path,
+                pca_store_path=pca_store_path,
+                artifact_path=artifact_path,
+                source_completed_paths=completed_paths,
+                completed_path=pca_completed_path,
+                patch_size=model.patch_size,
+                max_level=pca.max_level,
+            )
+        if remaining:
             raise RuntimeError(
                 f"render_pca finished with {len(remaining)} block(s) unrendered; "
                 "not annotating a partly-rendered store"
             )
 
-    logger.info("step 4/5: annotate_pca_store")
+    logger.info("step 3/4: annotate_pca_store")
     annotate_pca_store(
         pca_store_path=pca_store_path,
         artifact_path=artifact_path,
@@ -305,7 +313,7 @@ def run_all(
     # The display pyramid. One supervise stage per zoom, deepest first, because
     # a coarse shard is built from the four below it and those must already exist.
     # Zoom order is the dependency, so this is a sequence rather than one flat stage.
-    logger.info("step 5/5: render_web_pca (zooms %d..%d)", web_min_zoom, web_max_zoom)
+    logger.info("step 4/4: render_web_pca (zooms %d..%d)", web_min_zoom, web_max_zoom)
     if not UPath(web_store_path).exists():
         init_web_store(
             store_path=web_store_path,
@@ -362,7 +370,7 @@ def run_all(
                 "outstanding; a coarser level built on an incomplete one would be wrong"
             )
 
-    logger.info("run complete: all five steps finished with no work outstanding")
+    logger.info("run complete: every step finished with no work outstanding")
 
 
 def _require_no_predict_jobs(
@@ -376,8 +384,8 @@ def _require_no_predict_jobs(
     """Raise unless every predict block has a completion marker.
 
     Checked per year against the markers rather than trusting supervise's return: it
-    exits normally when it runs out of cycles, and a basis fitted on a partly-written
-    archive is wrong in a way nothing downstream detects.
+    exits normally when it runs out of cycles, and annotating or building the display
+    pyramid over a partly-written archive publishes a layer with holes in it.
     """
     outstanding = 0
     for time_index, (year, completed_path) in enumerate(zip(years, completed_paths)):
@@ -402,8 +410,8 @@ def _require_no_predict_jobs(
             outstanding += len(jobs)
     if outstanding:
         raise RuntimeError(
-            f"predict finished with {outstanding} block(s) incomplete; refusing to fit "
-            "a PCA basis on a partly-written archive"
+            f"predict finished with {outstanding} block(s) incomplete; refusing to "
+            "build the derived layers on a partly-written archive"
         )
 
 
