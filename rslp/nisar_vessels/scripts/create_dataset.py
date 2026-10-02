@@ -3,9 +3,10 @@ r"""Create an rslearn dataset for NISAR vessel detection from an OlmoEarth Studi
 Each Studio task with status "reviewed" or "to_be_reviewed" becomes one rslearn
 window, with bounds matching the task geometry (in an appropriate UTM projection at
 10 m/pixel, matching NISAR L2 GCOV frequency A resolution) and time range matching the
-task start/end times. The task's annotations become point features in the "label"
-vector layer with the property "category" set to "vessel". Tasks with no annotations
-still get an (empty) label layer so they serve as negative examples.
+task start/end times. The task's annotations whose "classification" metadata field is
+"vessel" become point features in the "label" vector layer with the property
+"category" set to "vessel". Tasks with no such annotations still get an (empty) label
+layer so they serve as negative examples.
 
 Windows are assigned to a "train" or "val" group (~90/10) based on a deterministic
 hash of the window name.
@@ -50,6 +51,10 @@ PIXEL_SIZE = 10
 LABEL_LAYER = "label"
 CATEGORY = "vessel"
 
+# Only annotations whose labelset metadata field CLASSIFICATION_FIELD is set to
+# CATEGORY are used.
+CLASSIFICATION_FIELD = "classification"
+
 # Buffer to add around the task time range. The Studio tasks have
 # start_time == end_time set to the NISAR granule acquisition start time, but the
 # data source matches granules with task_start <= collected_at < task_end, so a
@@ -71,11 +76,63 @@ def get_tasks(client: StudioClient, project_id: str) -> list[dict[str, Any]]:
     )
 
 
+def get_classification_filter(
+    client: StudioClient, project_id: str, field_name: str, label_name: str
+) -> dict[str, Any]:
+    """Build a metadata filter matching annotations with the given labelset value.
+
+    Args:
+        client: the Studio client.
+        project_id: the Studio project ID.
+        field_name: name of the labelset metadata field, e.g. "classification".
+        label_name: name of the label to match, e.g. "vessel".
+
+    Returns:
+        an entry for the annotation search ``metadata_filters`` list.
+    """
+    settings = client.get_project(project_id)["settings"]
+    field = next(
+        (
+            f
+            for f in settings.get("annotation_metadata_fields") or []
+            if f["name"] == field_name and f["data_type"] == "labelset"
+        ),
+        None,
+    )
+    if field is None:
+        raise ValueError(
+            f"project {project_id} has no labelset metadata field {field_name!r}"
+        )
+    label = next(
+        (
+            label
+            for label in settings.get("labels") or []
+            if label["labelset_id"] == field["labelset_id"]
+            and label["name"] == label_name
+        ),
+        None,
+    )
+    if label is None:
+        raise ValueError(f"field {field_name!r} has no label {label_name!r}")
+    return {"metadata_field_id": field["id"], "label_id": {"eq": label["id"]}}
+
+
 def get_annotations_by_task(
     client: StudioClient, project_id: str
 ) -> dict[str, list[dict[str, Any]]]:
-    """Get non-rejected annotations in the project, grouped by task ID."""
-    annotations = client.get_annotations(project_id)
+    """Get non-rejected vessel annotations in the project, grouped by task ID."""
+    classification_filter = get_classification_filter(
+        client, project_id, CLASSIFICATION_FIELD, CATEGORY
+    )
+    annotations = client.get_annotations(
+        project_id, filters={"metadata_filters": [classification_filter]}
+    )
+    logger.info(
+        "got %d annotations with %s=%s",
+        len(annotations),
+        CLASSIFICATION_FIELD,
+        CATEGORY,
+    )
     by_task: dict[str, list[dict[str, Any]]] = {}
     for annotation in annotations:
         if annotation["status"] == "rejected":
@@ -109,7 +166,7 @@ def create_window(
     Args:
         dataset: the output rslearn dataset.
         task: the Studio task.
-        annotations: the non-rejected annotations belonging to this task.
+        annotations: the non-rejected vessel annotations belonging to this task.
 
     Returns:
         the split the window was assigned to, or None if the task was skipped.
