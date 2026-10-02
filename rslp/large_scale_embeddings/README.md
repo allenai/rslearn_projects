@@ -625,3 +625,55 @@ Only one reference year is copied (`--time_index`, default 0). T is chunked at 1
 every year is an independent shard and no pattern here crosses the time axis; copying
 all three years of the Kenya store would raise that 55 GB to 246 GB and triple the
 compression time for no extra signal.
+
+Workers on GCE
+--------------
+
+`deploy/gce_worker_startup.sh` boots a GCP GPU VM as a worker on the same Beaker
+queue. The queue is reachable from anywhere with a Beaker token, so the supervisor
+needs no change and does not know these workers exist; it keeps managing the Beaker
+pool while they consume the same entries.
+
+Use it when the Beaker clusters cannot place what the allocation allows. Standard
+provisioning returned STOCKOUT in three of four us-central1 zones for a single A100,
+while a Dynamic Workload Scheduler Flex Start request for 100 filled in four minutes.
+
+    gcloud compute instances create embed-worker-1 \
+      --machine-type=a2-highgpu-1g --zone=us-central1-f \
+      --image-family=common-cu129-ubuntu-2204-nvidia-580 \
+      --image-project=deeplearning-platform-release \
+      --boot-disk-size=300GB --maintenance-policy=TERMINATE \
+      --scopes=https://www.googleapis.com/auth/cloud-platform \
+      --labels=role=embedding-worker \
+      --metadata-from-file=startup-script=rslp/large_scale_embeddings/deploy/gce_worker_startup.sh \
+      --metadata=install-nvidia-driver=True,embed-image-tag=rc-20260930d
+
+Every path, project, secret name and image tag is an instance metadata attribute with
+a default; run `grep 'attr '` on the script for the list. The project defaults to the
+VM's own, so the script is not tied to one. The `role=embedding-worker` label is what
+the coverage slide counts to report GCP workers separately from Beaker ones.
+
+Four things Beaker's executor provides implicitly, which the script has to do itself.
+Each was found by a run failing without it:
+
+- A container runtime. The deep learning VM images carry the driver and
+  `nvidia-container-runtime` but no engine, so docker is installed and the runtime
+  registered with `nvidia-ctk`.
+- The env set, above all `OEDATASETS_API_URL`. Without it the data source builds
+  `/api/v1/items/search` with no scheme and retries forever.
+- `--shm-size`. The 64 MB docker default kills DataLoader workers.
+- `--ulimit nofile`. The 1024 default exhausts descriptors in the file-descriptor
+  sharing strategy, and the loader dies with `EOFError` in `recvfds`.
+
+Secrets are read at boot with the VM's own service account, which needs
+`roles/secretmanager.secretAccessor` on each. Nothing lands on the image or in
+metadata.
+
+The checkpoint is copied to the path the queue entries name. The supervisor bakes
+`--checkpoint_path` into every entry when it enqueues, so reproducing that path
+locally is what lets a GCE worker consume an unmodified entry.
+
+An A100 40GB holds the same batch size of 128 as an H100, peaking near 38 GB of 40.
+One 4096 block measured 81.6 minutes end to end, 14 of them materialize, against a
+51.4 minute whole-run average per block on H100s. That average includes startup and
+contention the single measurement does not, so treat the ratio as an upper bound.
