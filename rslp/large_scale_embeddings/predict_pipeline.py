@@ -256,6 +256,30 @@ def get_output_fname(
     return UPath(out_path) / f"{projection.crs!s}_{bounds[0]}_{bounds[1]}.tif"
 
 
+def _window_span(
+    dataset: Dataset, time_range: tuple[datetime, datetime]
+) -> tuple[datetime, datetime]:
+    """Widen a reference timestamp to the span the dataset's layers cover.
+
+    Args:
+        dataset: the scratch dataset, whose layer configs carry the durations.
+        time_range: the reference timestamp as (T, T).
+
+    Returns:
+        (T, T + longest layer duration), or `time_range` unchanged if no layer sets
+        one, which leaves a config without durations behaving exactly as before.
+    """
+    durations = [
+        layer.data_source.duration
+        for layer in dataset.layers.values()
+        if getattr(layer, "data_source", None) is not None
+        and layer.data_source.duration is not None
+    ]
+    if not durations:
+        return time_range
+    return (time_range[0], time_range[0] + max(durations))
+
+
 def get_marker_fname(
     completed_path: str, projection: Projection, bounds: PixelBounds
 ) -> UPath:
@@ -707,6 +731,17 @@ def _process_tile(
     kept_crops = list_kept_crops(projection, bounds, PATCH_SIZE, wedge=wedge)
 
     dataset = Dataset(ds_path)
+    # The caller passes the window time range as a reference timestamp (T, T): each
+    # layer derives its own request range from time_offset/duration, and
+    # get_request_time_range recomputes the end as start+duration, so the window's own
+    # end never reaches a data source.
+    #
+    # The model does read it. OlmoEarthPeriodTimestamps builds its period grid
+    # backwards from the end of the window's range, and a zero span yields zero
+    # periods and a hard failure on every tile. So give the window the span its layers
+    # already cover. Materialization is unchanged, by the same recompute that made the
+    # end irrelevant in the first place.
+    window_time_range = _window_span(dataset, time_range)
     windows: list[Window] = []
     skipped_longitude: list[list[int]] = []
     for crop_bounds in kept_crops:
@@ -723,7 +758,7 @@ def _process_tile(
             name=f"{crop_bounds[0] // PATCH_SIZE}_{crop_bounds[1] // PATCH_SIZE}",
             projection=projection,
             bounds=crop_bounds,
-            time_range=time_range,
+            time_range=window_time_range,
             data_factory=dataset.window_data_storage_factory,
         )
         if not materialized:
