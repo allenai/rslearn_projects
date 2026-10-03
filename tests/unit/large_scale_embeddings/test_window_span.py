@@ -4,8 +4,10 @@ Callers pass a reference timestamp (T, T) and let each layer derive its own requ
 range from time_offset/duration. That worked while the model read timestamps off the
 materialized items. OlmoEarthPeriodTimestamps reads the window instead, building its
 period grid backwards from the end, so a zero span means zero periods and every tile
-fails. These check the window is widened to what the layers cover, and that nothing
-about materialization moves when it is.
+fails. These check the window is widened to cover what the layers will request.
+
+Real `DataSourceConfig` objects rather than fakes, so the span follows rslearn's own
+window-to-request conversion instead of a second copy of that arithmetic here.
 """
 
 import json
@@ -13,57 +15,70 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+from rslearn.config.dataset import DataSourceConfig
+
 from rslp.large_scale_embeddings.predict_pipeline import _window_span
 
 T = datetime(2025, 1, 1, tzinfo=UTC)
 
 
-def _dataset(
-    durations: dict[str, timedelta | None], no_source: frozenset[str] = frozenset()
-) -> SimpleNamespace:
-    """A stand-in dataset whose layers carry just the durations.
+def _dataset(**layers: DataSourceConfig | None) -> SimpleNamespace:
+    """A stand-in dataset carrying only the layer data source configs.
 
     Args:
-        durations: layer name to its data source's duration, or None for unset.
-        no_source: layers with no data source at all, like the output layer.
+        layers: layer name to its data source config, or None for a layer with none.
 
     Returns:
         an object with the `.layers` the helper reads.
     """
-    layers = {
-        name: SimpleNamespace(
-            data_source=None if name in no_source else SimpleNamespace(duration=dur)
-        )
-        for name, dur in durations.items()
-    }
-    return SimpleNamespace(layers=layers)
-
-
-def test_window_spans_the_longest_layer_duration() -> None:
-    """The window must cover every layer, so no layer's periods are truncated."""
-    got = _window_span(
-        _dataset({"a": timedelta(days=365), "b": timedelta(days=180)}), (T, T)
+    return SimpleNamespace(
+        layers={
+            name: SimpleNamespace(data_source=source) for name, source in layers.items()
+        }
     )
+
+
+def _source(
+    days: int | None = None, offset_days: int | None = None
+) -> DataSourceConfig:
+    """A data source config with an optional duration and offset."""
+    return DataSourceConfig(
+        class_path="x",
+        duration=timedelta(days=days) if days else None,
+        time_offset=timedelta(days=offset_days) if offset_days else None,
+    )
+
+
+def test_window_covers_the_latest_end_any_layer_requests() -> None:
+    """The window must reach the furthest point any layer will ask for."""
+    got = _window_span(_dataset(a=_source(365), b=_source(180)), (T, T))
     assert got == (T, T + timedelta(days=365)), got
+
+
+def test_a_layers_time_offset_extends_the_window() -> None:
+    """An offset layer requests later imagery, so the window has to reach it.
+
+    Reading `duration` alone would stop at T+365d and leave the final month of an
+    offset layer outside the window, which is the kind of thing that shows up as a
+    quietly truncated period grid rather than an error.
+    """
+    got = _window_span(_dataset(a=_source(365, offset_days=30)), (T, T))
+    assert got == (T, T + timedelta(days=395)), got
 
 
 def test_a_layer_without_a_data_source_is_ignored() -> None:
     """The output layer has no data source, so it must not break the lookup."""
-    got = _window_span(
-        _dataset({"output": None, "s2": timedelta(days=365)}, frozenset({"output"})),
-        (T, T),
-    )
+    got = _window_span(_dataset(output=None, s2=_source(365)), (T, T))
     assert got == (T, T + timedelta(days=365)), got
 
 
 def test_no_durations_leaves_the_range_untouched() -> None:
-    """A config that sets no durations must behave exactly as it did before."""
-    got = _window_span(_dataset({"a": None, "b": None}, frozenset({"b"})), (T, T))
-    assert got == (T, T)
+    """A config that declares no durations must behave exactly as it did before."""
+    assert _window_span(_dataset(a=_source(), b=None), (T, T)) == (T, T)
 
 
 def test_the_real_config_fits_the_models_period_count() -> None:
-    """The shipped config must give the model the 12 periods it is configured for.
+    """The shipped config must give the model the periods it is configured for.
 
     Checked against the real files rather than a fixture: the duration lives in the
     dataset config and the period count in the model config, and the failure mode when
@@ -71,22 +86,23 @@ def test_the_real_config_fits_the_models_period_count() -> None:
     """
     root = Path("data/large_scale_embeddings")
     cfg = json.loads((root / "s2_s1_landsat_distilled.json").read_text())
-    durations: dict[str, timedelta | None] = {}
-    no_source: set[str] = set()
+
+    def _days(raw: str | None) -> int | None:
+        if not raw:
+            return None
+        assert raw.endswith("d"), f"unhandled duration format {raw!r}"
+        return int(raw[:-1])
+
+    layers: dict[str, DataSourceConfig | None] = {}
     for name, layer in cfg["layers"].items():
         src = layer.get("data_source")
-        if not src:
-            durations[name] = None
-            no_source.add(name)
-            continue
-        raw = src.get("duration")
-        if not raw:
-            durations[name] = None
-            continue
-        assert raw.endswith("d"), f"unhandled duration format {raw!r}"
-        durations[name] = timedelta(days=int(raw[:-1]))
+        layers[name] = (
+            _source(_days(src.get("duration")), _days(src.get("time_offset")))
+            if src
+            else None
+        )
 
-    start, end = _window_span(_dataset(durations, frozenset(no_source)), (T, T))
+    start, end = _window_span(_dataset(**layers), (T, T))
     span = end - start
     assert span > timedelta(0), "the window must not be a zero-length range"
 

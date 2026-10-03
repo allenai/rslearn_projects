@@ -266,18 +266,21 @@ def _window_span(
         time_range: the reference timestamp as (T, T).
 
     Returns:
-        (T, T + longest layer duration), or `time_range` unchanged if no layer sets
-        one, which leaves a config without durations behaving exactly as before.
+        (T, the latest end any layer will request), or `time_range` unchanged if no
+        layer declares one, which leaves such a config behaving exactly as before.
     """
-    durations = [
-        layer.data_source.duration
+    # rslearn's own window-to-request conversion, rather than reading `duration`
+    # directly: it also applies `time_offset`, so a layer whose window is shifted
+    # forward still ends up inside the span.
+    ends = [
+        requested[1]
         for layer in dataset.layers.values()
-        if getattr(layer, "data_source", None) is not None
-        and layer.data_source.duration is not None
+        if (source := getattr(layer, "data_source", None)) is not None
+        and (requested := source.get_request_time_range(time_range)) is not None
     ]
-    if not durations:
+    if not ends:
         return time_range
-    return (time_range[0], time_range[0] + max(durations))
+    return (time_range[0], max(max(ends), time_range[1]))
 
 
 def get_marker_fname(
