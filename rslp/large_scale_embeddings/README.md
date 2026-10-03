@@ -667,7 +667,11 @@ while a Dynamic Workload Scheduler Flex Start request for 100 filled in four min
       --metadata=install-nvidia-driver=True,embed-image-tag=rc-20260930d
 
 Every path, project, secret name and image tag is an instance metadata attribute with
-a default; run `grep 'attr '` on the script for the list. The project defaults to the
+a default; run `grep 'attr '` on the script for the list. `embed-worker-extra-args` is
+appended to every entry the worker runs and overrides what the supervisor baked in,
+which is how one queue feeds pools on different hardware: `--batch_size` is a
+GPU-memory knob and belongs to the worker, not the job. Beaker workers take the same
+override through `--worker.env_vars '{"RSLP_WORKER_EXTRA_ARGS": "--batch_size 256"}'`. The project defaults to the
 VM's own, so the script is not tied to one. The `role=embedding-worker` label is what
 the coverage slide counts to report GCP workers separately from Beaker ones.
 

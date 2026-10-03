@@ -2,6 +2,7 @@
 
 import json
 import os
+import shlex
 import shutil
 import signal
 import subprocess  # nosec
@@ -67,6 +68,16 @@ SHUTDOWN_GRACE_SECONDS = 120
 # roughly one job: long enough to finish a unit of work, short enough to be placed
 # quickly, since a shorter request fits the allocation grid sooner.
 DEFAULT_WORKER_MIN_RUNTIME = timedelta(minutes=45)
+
+# Arguments this worker appends to every entry it runs, as a shell-quoted string.
+#
+# Appended last, so they beat the values the supervisor baked into the entry. That is
+# what lets one queue feed pools with different hardware: a GPU-memory knob like
+# --batch_size has to follow the worker, not the job, once H100s and A100s share a
+# queue. Kept general rather than a batch_size field, since the next such knob will
+# want the same treatment.
+WORKER_EXTRA_ARGS_ENV = "RSLP_WORKER_EXTRA_ARGS"
+
 
 # Environment variable carrying a worker's own experiment name, set at launch. Beaker
 # does not inject the experiment name, and the drain list names workers, so the worker
@@ -373,12 +384,18 @@ def worker_pipeline(
         drain_path: a list of worker names the supervisor wants to retire, checked
             between jobs. Pass None to never retire early.
     """
+    # Read once: it cannot change while the worker runs, and a bad value should be
+    # reported at startup rather than on whichever entry happens to be next.
+    worker_args = shlex.split(os.environ.get(WORKER_EXTRA_ARGS_ENV, ""))
+    if worker_args:
+        logger.info("appending worker args to every entry: %s", worker_args)
 
     def process_message(json_data: dict[str, Any], extra_args: list[str]) -> None:
         logger.debug("worker received message %s", json_data)
         rslp_project = json_data["project"]
         rslp_workflow = json_data["workflow"]
-        workflow_args = json_data["args"] + extra_args
+        # Last wins in jsonargparse, so the worker's own args override the entry's.
+        workflow_args = json_data["args"] + extra_args + worker_args
         run_workflow(rslp_project, rslp_workflow, workflow_args)
 
     def next_ready(prefetcher: _Prefetcher) -> _Claimed | None:

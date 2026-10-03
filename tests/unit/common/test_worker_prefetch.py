@@ -245,3 +245,44 @@ def test_termination_releases_every_held_entry() -> None:
         handler(signal.SIGTERM, None)
     assert sorted(sent) == ["prefetched", "running"]
     assert held == set()
+
+
+def test_worker_args_are_appended_after_the_entrys_own(
+    harness: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A worker's own args must follow the entry's, so they win.
+
+    One queue feeds pools on different hardware once H100s and A100s share it, and a
+    GPU-memory knob like --batch_size belongs to the worker rather than the job. Order
+    is the whole mechanism: jsonargparse takes the last value, so appending before the
+    entry's args would silently change nothing.
+    """
+    monkeypatch.setenv(worker_mod.WORKER_EXTRA_ARGS_ENV, "--batch_size 256")
+    _, run = harness([[_Input("e1", None)]])
+
+    args = run.run_args["e1"]
+    assert args == ["e1", "--batch_size", "256"], f"got {args}"
+
+
+def test_worker_args_follow_the_prefetch_scratch_path(
+    harness: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """They must come after the scratch path too, not between it and the entry.
+
+    The prefetcher appends --scratch_path, and an override landing before it would be
+    beaten by the entry it is supposed to override.
+    """
+    monkeypatch.setenv(worker_mod.WORKER_EXTRA_ARGS_ENV, "--batch_size 64")
+    _, run = harness([[_Input("e1", PREFETCH)]])
+
+    args = run.run_args["e1"]
+    assert args[0] == "e1"
+    assert args[1] == "--scratch_path"
+    assert args[3:] == ["--batch_size", "64"], f"got {args}"
+
+
+def test_no_worker_args_leaves_the_entry_untouched(harness: Any) -> None:
+    """With the variable unset the worker must not alter the entry's args at all."""
+    _, run = harness([[_Input("e1", None)]])
+
+    assert run.run_args["e1"] == ["e1"]

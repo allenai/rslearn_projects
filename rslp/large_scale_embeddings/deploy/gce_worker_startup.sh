@@ -37,6 +37,9 @@ SEC_AWS_KEY="$(attr embed-secret-aws-key-id aws-access-key-id)"
 SEC_AWS_SECRET="$(attr embed-secret-aws-secret aws-secret-access-key)"
 SEC_BEAKER="$(attr embed-secret-beaker-token patrickj-beaker-token)"
 SHM_SIZE="$(attr embed-shm-size 16g)"
+# Appended to every entry this worker runs, overriding what the supervisor baked
+# in. A GPU-memory knob like --batch_size follows the hardware, not the job.
+EXTRA_ARGS="$(attr embed-worker-extra-args "")"
 NOFILE="$(attr embed-nofile 65535:524288)"
 
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/${IMAGE_NAME}:${IMAGE_TAG}"
@@ -99,6 +102,7 @@ AWS_ACCESS_KEY_ID=$(sec "$SEC_AWS_KEY")
 AWS_SECRET_ACCESS_KEY=$(sec "$SEC_AWS_SECRET")
 BEAKER_TOKEN=$(sec "$SEC_BEAKER")
 RSLP_WORKER_NAME=gce_$(hostname)
+RSLP_WORKER_EXTRA_ARGS=${EXTRA_ARGS}
 ENV
 
 echo "=== worker ==="
