@@ -540,8 +540,10 @@ To limit a run to part of it, pass `--aoi.wgs84_bounds` or `--aoi.epsg_code`;
 `--aoi.geojson_fname` still works if you have a footprint of your own.
 
 `coverage_world.png` renders it over a coastline basemap: magenta is covered, and the
-land showing through uncovered is either outside the UTM grid (the hatched bands above
-84N and below 80S, Antarctica among them) or water the mask correctly excludes.
+land showing through uncovered is water the mask correctly excludes, or land dropped
+on purpose. Antarctica is the second kind: it reaches to about 60S, well inside the UTM
+grid, and was removed from the mask rather than being unreachable. The hatched bands
+above 84N and below 80S are the unreachable part, where UTM defines no zone.
 
 That PNG is a committed artifact and does not rebuild itself, so regenerate it whenever
 the mask changes: `python -m rslp.large_scale_embeddings.tools.render_coverage_world`.
