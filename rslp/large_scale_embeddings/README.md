@@ -539,7 +539,7 @@ replaced, so blocks already computed stay valid:
 To limit a run to part of it, pass `--aoi.wgs84_bounds` or `--aoi.epsg_code`;
 `--aoi.geojson_fname` still works if you have a footprint of your own.
 
-`coverage_world.png` renders it over a coastline basemap: magenta is covered, and the
+`coverage_world.png` renders it in Equal Earth: magenta is covered, and the
 land showing through uncovered is water the mask correctly excludes, or land dropped
 on purpose. Antarctica is the second kind: it reaches to about 60S, well inside the UTM
 grid, and was removed from the mask rather than being unreachable. The hatched bands
