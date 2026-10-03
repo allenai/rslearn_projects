@@ -1651,9 +1651,11 @@ def _job(crs: str, x: int, y: int) -> list[str]:
     ]
 
 
-def _footprint(tmp_path: Path, lon: float, lat: float, half: float = 1.0) -> str:
+def _footprint(
+    tmp_path: Path, lon: float, lat: float, half: float = 1.0, name: str = "priority"
+) -> str:
     """Write a square GeoJSON footprint around a point."""
-    path = tmp_path / "priority.geojson"
+    path = tmp_path / f"{name}.geojson"
     box = [
         [lon - half, lat - half],
         [lon + half, lat - half],
@@ -1693,7 +1695,9 @@ def test_priority_footprint_tiles_are_enqueued_first(tmp_path: Path) -> None:
     # UTM 48N, Cambodia: far outside it.
     outside = [_job("EPSG:32648", 45056, -126976), _job("EPSG:32648", 49152, -126976)]
 
-    got = mod._priority_first(outside + inside, _footprint(tmp_path, -98.7, 39.4, 2.0))
+    got = mod._priority_first(
+        outside + inside, [_footprint(tmp_path, -98.7, 39.4, 2.0)]
+    )
 
     assert len(got) == 4
     assert all(j in inside for j in got[:2]), f"priority tiles not first: {got[:2]}"
@@ -1727,6 +1731,85 @@ def test_unreadable_footprint_does_not_stall_the_run(tmp_path: Path) -> None:
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     jobs = [_job("EPSG:32614", 49152, -438272) for _ in range(3)]
 
-    got = mod._priority_first(jobs, str(tmp_path / "missing.geojson"))
+    got = mod._priority_first(jobs, [str(tmp_path / "missing.geojson")])
 
     assert len(got) == len(jobs)
+
+
+def test_footprints_are_ordered_by_their_position_in_the_list(tmp_path: Path) -> None:
+    """Earlier footprints must outrank later ones, and both outrank the rest.
+
+    The list is the priority order. Tiering by anything else, such as area or match
+    count, would make "do CONUS before Europe" depend on the shapes rather than on
+    what was asked for.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    kansas = [_job("EPSG:32614", 49152, -438272)]  # ~99W 39N
+    cambodia = [_job("EPSG:32648", 45056, -126976)]  # ~105E 11N
+    peru = [_job("EPSG:32619", 36864, 143360)]  # southern hemisphere, matches neither
+
+    first = _footprint(tmp_path, -98.7, 39.4, 2.0, name="a")
+    second = _footprint(tmp_path, 104.8, 11.3, 2.0, name="b")
+
+    got = mod._priority_first(peru + cambodia + kansas, [first, second])
+    assert got[0] in kansas, "first footprint did not win"
+    assert got[1] in cambodia, "second footprint did not come next"
+    assert got[2] in peru, "unmatched tile did not go last"
+
+    # Swapping the list must swap the order, with nothing else changed.
+    got = mod._priority_first(peru + cambodia + kansas, [second, first])
+    assert (
+        got[0] in cambodia and got[1] in kansas
+    ), f"order did not follow the list: {got}"
+
+
+def test_a_tile_takes_the_first_footprint_it_falls_in(tmp_path: Path) -> None:
+    """Overlapping footprints resolve by list order, not by whichever matches last.
+
+    Checked with two groups rather than two tiles: a tile in both footprints must
+    outrank one in only the second. Were the scan to keep going instead of stopping at
+    the first match, both would land in the same tier and interleave, which a
+    single-tile assertion would miss half the time.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    # 39.4N down to 37.6N, all inside narrow, which sits inside wide.
+    both = [_job("EPSG:32614", 49152, -438272 + 4096 * i) for i in range(6)]
+    # 33.8N down to 30.5N: inside wide, south of narrow's 37.4N edge.
+    wide_only = [_job("EPSG:32614", 49152, -376320 + 4096 * i) for i in range(10)]
+
+    narrow = _footprint(tmp_path, -98.7, 39.4, 2.0, name="narrow")
+    wide = _footprint(tmp_path, -98.0, 36.0, 6.0, name="wide")
+
+    got = mod._priority_first(wide_only + both, [narrow, wide])
+    ranks = [0 if j in both else 1 for j in got]
+    assert ranks == sorted(
+        ranks
+    ), "a tile in both footprints must come before one in only the later footprint"
+
+
+def test_an_unreadable_footprint_leaves_the_other_tiers_working(
+    tmp_path: Path,
+) -> None:
+    """One footprint failing to load must not cost the others their ordering.
+
+    Dropping the whole ordering on a single bad path would turn a typo in one entry
+    into a run that quietly does its work in random order.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    kansas = _job("EPSG:32614", 49152, -438272)
+    cambodia = _job("EPSG:32648", 45056, -126976)
+    missing = str(tmp_path / "missing.geojson")
+    real = _footprint(tmp_path, 104.8, 11.3, 2.0, name="real")
+
+    got = mod._priority_first([kansas, cambodia], [missing, real])
+    assert got[0] == cambodia, "the readable footprint should still rank above the rest"
+    assert len(got) == 2
