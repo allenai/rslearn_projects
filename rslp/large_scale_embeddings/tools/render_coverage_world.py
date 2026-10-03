@@ -30,8 +30,14 @@ SRC_W, SRC_H = int(360 / SRC_RES), int(180 / SRC_RES)
 # Output canvas. Equal Earth is about 2.05:1, so this keeps pixels near square.
 DW, DH = 5400, 2640
 
-WATER, LAND, COVERED = 0, 1, 2
-COL = {WATER: (226, 238, 243), LAND: (176, 174, 140), COVERED: (199, 92, 155)}
+# Coverage is carried as a separate bit from land, not as a third class, so the
+# overlay can be blended over whichever basemap colour is underneath.
+WATER, LAND, WATER_COV, LAND_COV = 0, 1, 2, 3
+BASE = {WATER: (226, 238, 243), LAND: (176, 174, 140)}
+COVER = (199, 92, 155)
+# Below 1 so the continents read through the overlay: the figure has to show both what
+# is covered and what shape the land is, and a solid fill loses the second.
+COVER_ALPHA = 0.72
 COAST = (40, 92, 78)
 # UTM is defined from 80S to 84N. Outside that there is no zone to tile, so those bands
 # are hatched rather than left looking merely uncovered.
@@ -89,7 +95,7 @@ def covered_grid() -> npt.NDArray[np.bool_]:
 def main() -> None:
     """Build the figure and write it to OUT."""
     cat = np.where(land_grid(), LAND, WATER).astype(np.uint8)
-    cat[covered_grid()] = COVERED
+    cat[covered_grid()] += WATER_COV
 
     ee = pyproj.CRS.from_epsg(8857)
     fwd = pyproj.Transformer.from_crs("EPSG:4326", ee, always_xy=True)
@@ -126,14 +132,19 @@ def main() -> None:
     )
 
     rgba = np.zeros((DH, DW, 4), np.uint8)
-    for v, c in COL.items():
-        sel = dst == v
-        rgba[sel, 0], rgba[sel, 1], rgba[sel, 2], rgba[sel, 3] = c[0], c[1], c[2], 255
+    base = np.zeros((DH, DW, 3), np.float32)
+    for v, c in BASE.items():
+        base[(dst == v) | (dst == v + WATER_COV)] = c
+    out = base.copy()
+    cov = dst >= WATER_COV
+    out[cov] = base[cov] * (1 - COVER_ALPHA) + np.array(COVER, np.float32) * COVER_ALPHA
+    rgba[..., :3] = out.astype(np.uint8)
+    rgba[..., 3] = 255
     rgba[~inside, 3] = 0
 
     # Coastline, taken as the edge of the land/covered classes so no separate border
     # file is needed. A warped 1px line would break into dashes, hence drawing it here.
-    solid = (dst != WATER) & inside
+    solid = ((dst == LAND) | (dst == LAND_COV)) & inside
     edge = solid ^ np.pad(solid, ((0, 0), (1, 0)))[:, :-1]
     edge |= solid ^ np.pad(solid, ((1, 0), (0, 0)))[:-1, :]
     rgba[edge & inside, :3] = COAST
@@ -143,7 +154,7 @@ def main() -> None:
     rgba[hatch, :3] = (rgba[hatch, :3] * 0.55).astype(np.uint8)
 
     Image.fromarray(rgba, "RGBA").save(OUT, optimize=True)
-    south = la[(dst == COVERED) & inside].min()
+    south = la[(dst >= WATER_COV) & inside].min()
     print(f"wrote {OUT}  southernmost covered lat {south:.2f}")
 
 
