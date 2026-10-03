@@ -92,8 +92,8 @@ def test_render_stage_requires_its_three_paths() -> None:
         )
 
 
-def test_render_stage_error_points_at_fit_pca() -> None:
-    with pytest.raises(ValueError, match="fit_pca"):
+def test_render_stage_error_points_at_the_fit() -> None:
+    with pytest.raises(ValueError, match="fit-embedding-pca"):
         sup.supervise(**_base_kwargs(stage=sup.STAGE_RENDER_UTM_PCA))
 
 
@@ -107,19 +107,25 @@ def test_predict_stage_refuses_a_basis_from_another_model(tmp_path: Any) -> None
     import numpy as np
 
     from rslp.large_scale_embeddings.pca import PcaArtifact
+    from tests.unit.large_scale_embeddings.pca_fixtures import (
+        write_olmoearth_run_artifact,
+    )
 
     dims = 768
-    PcaArtifact(
-        mean=np.zeros(dims, np.float32),
-        components=np.eye(3, dims, dtype=np.float32),
-        norm_bounds=np.array([[0, 0, 0], [1, 1, 1]], np.float32),
-        explained_variance_ratio=np.ones(3, np.float32),
-    ).save(str(tmp_path / "basis"))
+    basis = write_olmoearth_run_artifact(
+        tmp_path / "embedding_pca.pkl",
+        PcaArtifact(
+            mean=np.zeros(dims, np.float32),
+            components=np.eye(3, dims, dtype=np.float32),
+            norm_bounds=np.array([[0, 0, 0], [1, 1, 1]], np.float32),
+            explained_variance_ratio=np.ones(3, np.float32),
+        ),
+    )
     with pytest.raises(ValueError, match="768-dim"):
         sup.supervise(
             **_base_kwargs(
                 pca=sup.PcaConfig(
-                    artifact_path=str(tmp_path / "basis"),
+                    artifact_path=basis,
                     store_path="gs://bucket/pca_v1.zarr",
                     completed_path="gs://bucket/pca_completed/",
                 )
@@ -129,7 +135,7 @@ def test_predict_stage_refuses_a_basis_from_another_model(tmp_path: Any) -> None
 
 def test_predict_stage_refuses_a_missing_basis(tmp_path: Any) -> None:
     """Predict renders with the artifact, so every worker would fail without it."""
-    with pytest.raises(ValueError, match="fit_pca"):
+    with pytest.raises(ValueError, match="fit-embedding-pca"):
         sup.supervise(
             **_base_kwargs(
                 pca=sup.PcaConfig(

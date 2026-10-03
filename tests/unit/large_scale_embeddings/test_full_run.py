@@ -102,7 +102,7 @@ def test_a_missing_basis_stops_the_run_before_any_work(
     )
     _stub_paths(monkeypatch, exists=False, artifact=False)
 
-    with pytest.raises(RuntimeError, match="fit_pca"):
+    with pytest.raises(RuntimeError, match="fit-embedding-pca"):
         run_all_mod.run_all(**COMMON)
     assert calls == [], "no store or stage may be touched without a basis"
 

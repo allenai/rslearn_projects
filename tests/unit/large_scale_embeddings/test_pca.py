@@ -9,15 +9,12 @@ import torch
 from rslp.large_scale_embeddings import pca
 from rslp.large_scale_embeddings import zarr_store as zs
 from rslp.large_scale_embeddings.model import quantize_embeddings
-from rslp.large_scale_embeddings.tiling import get_zone_grid
+from tests.unit.large_scale_embeddings.pca_fixtures import (
+    fit_int8_basis,
+    write_olmoearth_run_artifact,
+)
 
-RESOLUTION = 10
-TILE_SIZE = 2048
-SHARD = 512
-CHUNK = 256
 DIMS = 8
-MODEL_URL = "https://huggingface.co/allenai/OlmoEarth-v1_2-Small"
-SOURCE_DATA = ["https://sentinel.esa.int/web/sentinel/missions/sentinel-2"]
 
 
 def _random_embeddings(rng: np.random.Generator, n: int, dims: int) -> np.ndarray:
@@ -28,51 +25,8 @@ def _random_embeddings(rng: np.random.Generator, n: int, dims: int) -> np.ndarra
 
 
 def _artifact(rng: np.random.Generator, dims: int = DIMS) -> pca.PcaArtifact:
-    samples = _random_embeddings(rng, 5000, dims).astype(np.float32)
-    mean, comps, evr = pca.fit_basis(samples)
-    bounds = pca.compute_norm_bounds(samples, mean, comps)
-    return pca.PcaArtifact(
-        mean=mean, components=comps, norm_bounds=bounds, explained_variance_ratio=evr
-    )
-
-
-def test_fit_basis_recovers_leading_directions() -> None:
-    rng = np.random.default_rng(0)
-    samples = _random_embeddings(rng, 8000, DIMS).astype(np.float32)
-    mean, comps, evr = pca.fit_basis(samples)
-
-    assert comps.shape == (pca.PCA_N_COMPONENTS, DIMS)
-    assert mean.shape == (DIMS,)
-    # Components are orthonormal.
-    np.testing.assert_allclose(comps @ comps.T, np.eye(3), atol=1e-4)
-    # Explained variance is sorted and sums to at most 1.
-    assert evr[0] >= evr[1] >= evr[2]
-    assert evr.sum() <= 1.0 + 1e-5
-    # The construction puts most variance in the first dimensions, so 3 components
-    # should capture a clear majority.
-    assert evr[:3].sum() > 0.5
-
-
-def test_fit_basis_rejects_degenerate_input() -> None:
-    rng = np.random.default_rng(1)
-    with pytest.raises(ValueError, match="more pixels than dimensions"):
-        pca.fit_basis(_random_embeddings(rng, 4, DIMS).astype(np.float32))
-    with pytest.raises(ValueError, match="2-D"):
-        pca.fit_basis(np.zeros((2, 3, 4), dtype=np.float32))
-
-
-def test_norm_bounds_bracket_the_sample() -> None:
-    rng = np.random.default_rng(2)
-    samples = _random_embeddings(rng, 4000, DIMS).astype(np.float32)
-    mean, comps, _ = pca.fit_basis(samples)
-    bounds = pca.compute_norm_bounds(samples, mean, comps)
-
-    assert bounds.shape == (2, pca.PCA_N_COMPONENTS)
-    assert np.all(bounds[1] > bounds[0])
-    transformed = (samples - mean) @ comps.T
-    # p2/p98 by construction: about 2% of mass falls below the low bound.
-    below = (transformed < bounds[0]).mean(axis=0)
-    np.testing.assert_allclose(below, 0.02, atol=0.005)
+    floats = _random_embeddings(rng, 5000, dims).astype(np.float32)
+    return fit_int8_basis(np.asarray(quantize_embeddings(torch.from_numpy(floats))))
 
 
 def test_project_to_rgb_reserves_zero_for_nodata() -> None:
@@ -123,30 +77,21 @@ def test_project_to_rgb_is_deterministic_across_blocks() -> None:
     np.testing.assert_array_equal(rgb_a[:, 0, 0], rgb_b[:, 1, 1])
 
 
-def test_artifact_roundtrip(tmp_path: Path) -> None:
-    rng = np.random.default_rng(6)
-    artifact = _artifact(rng)
-    artifact.metadata = pca.build_metadata(
-        "gs://bucket/store.zarr",
-        [10, 18],
-        1234,
-        7,
-        42,
-        artifact.explained_variance_ratio,
-    )
-    artifact.save(str(tmp_path / "pca"))
-    loaded = pca.PcaArtifact.load(str(tmp_path / "pca"))
-
-    np.testing.assert_array_equal(loaded.mean, artifact.mean)
-    np.testing.assert_array_equal(loaded.components, artifact.components)
-    np.testing.assert_array_equal(loaded.norm_bounds, artifact.norm_bounds)
-    assert loaded.metadata["geoemb:pca_source_zones"] == [10, 18]
-    assert loaded.metadata["geoemb:pca_components"] == pca.PCA_N_COMPONENTS
-
-
 def test_artifact_load_missing_is_actionable(tmp_path: Path) -> None:
-    with pytest.raises(FileNotFoundError, match="fit_pca"):
-        pca.PcaArtifact.load(str(tmp_path / "absent"))
+    with pytest.raises(FileNotFoundError, match="fit-embedding-pca"):
+        pca.PcaArtifact.load(str(tmp_path / "embedding_pca.pkl"))
+
+
+def test_artifact_roundtrip(tmp_path: Path) -> None:
+    """What the fixture writer pickles is what the loader reads back."""
+    artifact = _artifact(np.random.default_rng(6))
+    path = write_olmoearth_run_artifact(tmp_path / "embedding_pca.pkl", artifact)
+    loaded = pca.PcaArtifact.load(path)
+
+    np.testing.assert_allclose(loaded.mean, artifact.mean)
+    np.testing.assert_allclose(loaded.components, artifact.components)
+    np.testing.assert_array_equal(loaded.norm_bounds, artifact.norm_bounds)
+    assert loaded.metadata["geoemb:pca_components"] == pca.PCA_N_COMPONENTS
 
 
 def test_artifact_validates_shapes() -> None:
@@ -163,106 +108,6 @@ def test_artifact_validates_shapes() -> None:
             components=np.zeros((3, 8), np.float32),
             norm_bounds=np.array([[1, 1, 1], [0, 0, 0]], np.float32),
             explained_variance_ratio=np.zeros(3, np.float32),
-        )
-
-
-def _init_small_store(path: Path) -> str:
-    store_path = str(path / "s2.zarr")
-    zs.init_store(
-        store_path=store_path,
-        zone_numbers=[10],
-        years=[2024],
-        model_url=MODEL_URL,
-        source_data=SOURCE_DATA,
-        resolution=RESOLUTION,
-        tile_size=TILE_SIZE,
-        dimensions=DIMS,
-        chunk_size=CHUNK,
-        shard_size=SHARD,
-    )
-    return store_path
-
-
-def _write_marker(
-    completed: Path,
-    epsg: int,
-    x: int,
-    y: int,
-    written: list[list[int]],
-    time_index: int,
-) -> None:
-    """Write a completion marker in the shape the prediction pipeline produces."""
-    completed.mkdir(parents=True, exist_ok=True)
-    fname = completed / f"EPSG:{epsg}_{x}_{y}.json"
-    with fname.open("w") as f:
-        import json
-
-        json.dump(
-            {
-                "bounds": [x, y, x + SHARD, y + SHARD],
-                "time_range": [
-                    "2024-01-01T00:00:00+00:00",
-                    "2024-01-01T00:00:00+00:00",
-                ],
-                "time_index": time_index,
-                "written": written,
-                "skipped_no_data": [],
-                "skipped_longitude": [],
-                "num_filtered_crops": 0,
-            },
-            f,
-        )
-
-
-def test_fit_pca_end_to_end(tmp_path: Path) -> None:
-    """Write real blocks, fit from the markers, then render RGB through the artifact."""
-    store_path = _init_small_store(tmp_path)
-    _, (origin_x, origin_y), _ = get_zone_grid(10, RESOLUTION, TILE_SIZE)
-    rng = np.random.default_rng(11)
-
-    written: list[list[int]] = []
-    for i in range(3):
-        bx0 = origin_x + i * SHARD
-        by0 = origin_y + 2 * SHARD
-        floats = _random_embeddings(rng, SHARD * SHARD, DIMS).astype(np.float32)
-        quant = np.asarray(quantize_embeddings(torch.from_numpy(floats)))
-        block = quant.T.reshape(DIMS, SHARD, SHARD)
-        zs.write_window_region(
-            store_path, 10, (bx0, by0, bx0 + SHARD, by0 + SHARD), 0, block
-        )
-        written.append([bx0, by0])
-
-    completed = tmp_path / "completed_2024"
-    for bx0, by0 in written:
-        _write_marker(completed, 32610, bx0, by0, [[bx0, by0]], 0)
-
-    artifact_path = str(tmp_path / "pca_artifact")
-    pca.fit_pca(
-        store_path=store_path,
-        completed_paths=[str(completed)],
-        artifact_path=artifact_path,
-        blocks_per_zone=3,
-        pixels_per_block=5_000,
-        chunk_size=CHUNK,
-        seed=7,
-    )
-
-    artifact = pca.PcaArtifact.load(artifact_path)
-    assert artifact.mean.shape == (DIMS,)
-    assert artifact.components.shape == (pca.PCA_N_COMPONENTS, DIMS)
-    assert artifact.metadata["geoemb:pca_source_zones"] == [10]
-    assert artifact.metadata["geoemb:pca_fit_blocks"] == 3
-    assert artifact.metadata["geoemb:pca_dimensions"] == DIMS
-    assert artifact.metadata["geoemb:pca_fit_seed"] == 7
-
-
-def test_fit_pca_without_markers_is_actionable(tmp_path: Path) -> None:
-    store_path = _init_small_store(tmp_path)
-    with pytest.raises(ValueError, match="no completion markers"):
-        pca.fit_pca(
-            store_path=store_path,
-            completed_paths=[str(tmp_path / "absent")],
-            artifact_path=str(tmp_path / "artifact"),
         )
 
 
@@ -321,7 +166,6 @@ def test_olmoearth_run_artifact_projects_like_sklearn() -> None:
     """The same artifact must give the same components as olmoearth_run computes."""
     artifact = pca.PcaArtifact.load(str(OLMOEARTH_RUN_ARTIFACT))
     expected = np.load(OLMOEARTH_RUN_EXPECTED)
-    assert artifact.input_space == pca.INPUT_SPACE_INT8
     ours = (
         expected["pixels"].astype(np.float32) - artifact.mean
     ) @ artifact.components.T
@@ -350,7 +194,7 @@ def test_olmoearth_run_artifact_records_its_provenance() -> None:
         OLMOEARTH_RUN_ARTIFACT
     )
     assert artifact.metadata["geoemb:pca_dimensions"] == 128
-    assert artifact.metadata[pca.INPUT_SPACE_KEY] == pca.INPUT_SPACE_INT8
+    assert artifact.metadata["geoemb:pca_input_space"] == "int8"
 
 
 def test_olmoearth_run_loader_refuses_other_classes(tmp_path: Path) -> None:
@@ -362,12 +206,3 @@ def test_olmoearth_run_loader_refuses_other_classes(tmp_path: Path) -> None:
     path.write_bytes(pickle.dumps(collections.OrderedDict(a=1)))
     with pytest.raises(pickle.UnpicklingError, match="refusing to load"):
         pca.PcaArtifact.load(str(path))
-
-
-def test_input_space_survives_a_save(tmp_path: Path) -> None:
-    """A copied olmoearth_run basis must keep being applied to int8 values."""
-    artifact = pca.PcaArtifact.load(str(OLMOEARTH_RUN_ARTIFACT))
-    artifact.save(str(tmp_path / "copy"))
-    assert pca.PcaArtifact.load(str(tmp_path / "copy")).input_space == (
-        pca.INPUT_SPACE_INT8
-    )

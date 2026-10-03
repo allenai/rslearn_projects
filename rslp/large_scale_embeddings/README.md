@@ -36,16 +36,13 @@ Flow
 All steps are idempotent and driven by completion markers, so any of them can be
 interrupted and resumed. `run_all` drives them in order.
 
-1. **`fit_pca`**, once, before the run: samples an existing archive and fits the global
-   false-color basis. Single process, reads about one inner chunk per sampled window
-   rather than a pass over the archive. A basis fitted on one region does not
-   transfer, so sampling is stratified across every UTM zone with data. Fit it on a
-   global sample (a `skip_pca` run is enough), since the basis defines what every
-   rendered pixel means and cannot change once any are written.
-   To match olmoearth_run's colors exactly, skip the fit and point `pca.artifact_path`
-   at the foundation model's `embedding_pca.pkl` instead. It is read directly and
-   applied to int8 values, as olmoearth_run applies it. It must come from the same
-   model: the supervisor refuses one fitted on a different embedding width.
+1. **The basis**, before the run: olmoearth_run's `embedding_pca.pkl` for this
+   foundation model, fitted with its `fit-embedding-pca` (see olmoearth_run's
+   `internal-docs/runbooks/embedding_pca_artifact.md`). Point `pca.artifact_path` at
+   it. It is read directly and applied to int8 values, as olmoearth_run applies it, so
+   both products render identical colors. It must come from the same model: the
+   supervisor refuses one fitted on a different embedding width. The basis defines what
+   every rendered pixel means, so it cannot change once any are written.
 2. **`predict`** writes the int8 embeddings. Needs GPUs. Given the pca paths, it also
    renders each block's multiscale `pca_rgb` pyramid into the sibling pca store
    (created once with `init_pca_store`) from the embeddings it already holds in

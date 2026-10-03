@@ -1,7 +1,7 @@
 """Drive the whole embedding flow as one Beaker job.
 
-The global PCA basis must be fitted before the run starts (``fit_pca`` on an existing
-archive). Predict then renders each block's UTM false-color pyramid as it writes the
+The global PCA basis must exist before the run starts: olmoearth_run's
+``embedding_pca.pkl`` for this model, fitted with its ``fit-embedding-pca``. Predict then renders each block's UTM false-color pyramid as it writes the
 embeddings, so the separate render stage is only a sweep for blocks predicted without
 it. The web pyramid still runs after everything else, since each zoom is built from the
 one below. Running these by hand means several invocations with a human holding the
@@ -128,7 +128,7 @@ def run_all(
         worker: the Beaker worker pool. See `WorkerConfig`.
         pca: the derived-layer paths. `artifact_path`, `store_path` and
             `completed_path` are required unless `skip_pca` is set, and the artifact
-            must already exist: fit it with fit_pca before starting the run.
+            must already exist (olmoearth_run's embedding_pca.pkl for this model).
         model_url: URL reference to the encoder model, recorded in the store.
             Defaults to the released encoder these embeddings come from.
         source_data: URLs of the source datasets. Derived from `inputs` if unset.
@@ -176,7 +176,7 @@ def run_all(
         if not UPath(pca_paths[0]).exists():
             raise RuntimeError(
                 f"pca artifact {pca_paths[0]} does not exist; fit the global basis "
-                "with fit_pca before starting the run"
+                "with olmoearth_run's fit-embedding-pca before starting the run"
             )
 
     logger.info("step 0/4: ensuring the stores exist at %s", store_path)

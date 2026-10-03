@@ -1,16 +1,14 @@
 """Global quantized OlmoEarth embedding inference.
 
-The forward flow, each stage depending on the one before it:
+The forward flow, each stage depending on the one before it. The false-color basis is
+olmoearth_run's per-model ``embedding_pca.pkl``, which must exist before the run.
 
 ``predict``
     Writes int8 embeddings into the GeoZarr archive (``write_jobs`` or ``supervise``
-    enqueues the work).
-``fit_pca``
-    Samples that archive and fits the global false-color basis, so the basis reflects
-    exactly the data it will be applied to.
+    enqueues the work), rendering each block's ``pca_rgb`` pyramid as it goes.
 ``render_pca``
-    Reads the embeddings back and writes the ``pca_rgb`` layer (``write_render_jobs``
-    enqueues the work). CPU only, no model.
+    Sweep for blocks predicted without the render: reads the embeddings back and
+    writes the ``pca_rgb`` layer (``write_render_jobs`` enqueues the work). CPU only.
 ``render_web_pca``
     Warps that layer into a single web-mercator pyramid for display. The UTM pyramid
     keeps ``shard == one prediction window`` at every level, so object count for a view
@@ -19,7 +17,6 @@ The forward flow, each stage depending on the one before it:
 """
 
 from rslp.large_scale_embeddings.full_run import launch_run_all, run_all
-from rslp.large_scale_embeddings.pca import fit_pca
 from rslp.large_scale_embeddings.predict_pipeline import predict_pipeline
 from rslp.large_scale_embeddings.render_pca import (
     annotate_pca_store,
@@ -38,7 +35,6 @@ from rslp.large_scale_embeddings.zarr_store import init_pca_store
 workflows = {
     "bench_build_variants": build_variants,
     "bench_measure": measure,
-    "fit_pca": fit_pca,
     "init_pca_store": init_pca_store,
     "init_store": init_store,
     "launch_run_all": launch_run_all,

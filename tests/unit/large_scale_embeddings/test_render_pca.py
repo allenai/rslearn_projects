@@ -12,6 +12,10 @@ from rslp.large_scale_embeddings import pca, render_pca
 from rslp.large_scale_embeddings import zarr_store as zs
 from rslp.large_scale_embeddings.model import quantize_embeddings
 from rslp.large_scale_embeddings.tiling import get_zone_grid
+from tests.unit.large_scale_embeddings.pca_fixtures import (
+    fit_int8_basis,
+    write_olmoearth_run_artifact,
+)
 
 RESOLUTION = 10
 TILE_SIZE = 2048
@@ -36,8 +40,17 @@ def _unit_vectors(rng: np.random.Generator, n: int, dims: int) -> np.ndarray:
     return (x / np.linalg.norm(x, axis=1, keepdims=True)).astype(np.float32)
 
 
+def _write_basis(tmp_path: Path, blocks: list[np.ndarray]) -> str:
+    """Fit a basis on the valid pixels of the given blocks, as olmoearth_run would."""
+    pixels = np.concatenate([b.reshape(DIMS, -1).T for b in blocks])
+    pixels = pixels[pixels[:, 0] != zs.NODATA_VALUE]
+    return write_olmoearth_run_artifact(
+        tmp_path / "embedding_pca.pkl", fit_int8_basis(pixels)
+    )
+
+
 def _build_run(tmp_path: Path, n_windows: int = 3, nodata_last: bool = False) -> dict:
-    """Run step 1 and step 2 for a small store, returning the paths involved."""
+    """Write a small store and a basis fitted on it, returning the paths involved."""
     store_path = str(tmp_path / "s2.zarr")
     zs.init_store(
         store_path=store_path,
@@ -68,6 +81,7 @@ def _build_run(tmp_path: Path, n_windows: int = 3, nodata_last: bool = False) ->
     rng = np.random.default_rng(3)
 
     written = []
+    blocks = []
     for i in range(n_windows):
         bx0 = origin_x + i * SHARD
         by0 = origin_y + 2 * SHARD
@@ -82,6 +96,7 @@ def _build_run(tmp_path: Path, n_windows: int = 3, nodata_last: bool = False) ->
             store_path, ZONE, (bx0, by0, bx0 + SHARD, by0 + SHARD), 0, block
         )
         written.append([bx0, by0])
+        blocks.append(block)
 
     # One step 1 marker naming every window, as a single block would produce.
     source_completed = tmp_path / "s2_2024_completed"
@@ -108,16 +123,7 @@ def _build_run(tmp_path: Path, n_windows: int = 3, nodata_last: bool = False) ->
             f,
         )
 
-    artifact_path = str(tmp_path / "pca_artifact")
-    pca.fit_pca(
-        store_path=store_path,
-        completed_paths=[str(source_completed)],
-        artifact_path=artifact_path,
-        blocks_per_zone=3,
-        pixels_per_block=4_000,
-        chunk_size=CHUNK,
-        seed=5,
-    )
+    artifact_path = _write_basis(tmp_path, blocks)
     return {
         "store_path": store_path,
         "pca_store_path": pca_store_path,
@@ -250,7 +256,7 @@ def test_get_render_jobs_excludes_completed(tmp_path: Path) -> None:
 
 def test_render_without_artifact_is_actionable(tmp_path: Path) -> None:
     run = _build_run(tmp_path)
-    with pytest.raises(FileNotFoundError, match="fit_pca"):
+    with pytest.raises(FileNotFoundError, match="fit-embedding-pca"):
         render_pca.render_pca_pipeline(
             store_path=run["store_path"],
             pca_store_path=run["pca_store_path"],
@@ -270,7 +276,8 @@ def test_annotate_pca_store_records_provenance(tmp_path: Path) -> None:
     attrs = dict(group[zs.PCA_ARRAY].attrs)
     assert attrs["geoemb:pca_components"] == pca.PCA_N_COMPONENTS
     assert attrs["geoemb:pca_artifact_path"] == run["artifact_path"]
-    assert attrs["geoemb:pca_source_zones"] == [ZONE]
+    assert attrs["geoemb:pca_source_artifact"] == run["artifact_path"]
+    assert attrs["geoemb:pca_input_space"] == "int8"
     assert "do not use these bands as features" in attrs["geoemb:pca_note"]
 
     # Every level carries the provenance, since any of them can be served.
@@ -504,16 +511,7 @@ def test_render_maps_source_year_onto_the_pca_store_axis(tmp_path: Path) -> None
             },
             f,
         )
-    artifact_path = str(tmp_path / "pca_artifact")
-    pca.fit_pca(
-        store_path=store_path,
-        completed_paths=[str(source_completed)],
-        artifact_path=artifact_path,
-        blocks_per_zone=3,
-        pixels_per_block=4_000,
-        chunk_size=CHUNK,
-        seed=5,
-    )
+    artifact_path = _write_basis(tmp_path, [block])
 
     render_pca.render_pca_pipeline(
         store_path=store_path,

@@ -614,7 +614,7 @@ def _require_basis(artifact_path: str) -> None:
     except FileNotFoundError as e:
         raise ValueError(
             f"pca.artifact_path {artifact_path} does not exist; fit the basis first "
-            "(fit_pca here, or olmoearth_run's fit-embedding-pca)"
+            "with olmoearth_run's fit-embedding-pca"
         ) from e
     dims = artifact.mean.shape[0]
     if dims != EMBEDDING_DIM:
@@ -1726,7 +1726,7 @@ def supervise(
         if missing:
             raise ValueError(
                 f"stage {STAGE_RENDER_UTM_PCA} requires {', '.join(missing)}; fit the "
-                "basis with the fit_pca workflow first"
+                "basis with olmoearth_run's fit-embedding-pca first"
             )
     if stage == STAGE_PREDICT and config.pca.artifact_path is not None:
         # Every worker would fail on its first block; say so once, here.

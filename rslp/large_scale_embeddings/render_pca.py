@@ -1,11 +1,10 @@
 """Render the false-color pyramid from the written embeddings.
 
-``predict`` writes the int8 embeddings, ``fit_pca`` fits a global basis on exactly the
-data it will be applied to, and this module reads the embeddings back and writes the
-multiscale ``pca_rgb`` pyramid into a separate store.
+This module projects int8 embeddings through olmoearth_run's global PCA basis and
+writes the multiscale ``pca_rgb`` pyramid into a separate store.
 
 ``predict`` normally renders each block itself as it writes the embeddings, using
-``render_window`` on the data already in memory, so the basis must be fitted before the
+``render_window`` on the data already in memory, so the basis must exist before the
 run. This stage is the sweep for blocks predicted without it: it reads the embeddings
 back, needs no model or GPU, and runs on ordinary CPU workers.
 
@@ -220,7 +219,7 @@ def render_pca_pipeline(
     Args:
         store_path: the GeoZarr store holding the embeddings. Opened read-only.
         pca_store_path: the sibling store to write the false-color pyramid into.
-        artifact_path: the fitted global PCA artifact from ``fit_pca``.
+        artifact_path: olmoearth_run's embedding_pca.pkl for this model.
         source_marker: path to the predict completion marker naming the windows to
             render.
         completed_path: directory for this step's own completion markers.
@@ -386,7 +385,7 @@ def write_render_jobs(
     Args:
         store_path: the GeoZarr store holding the embeddings.
         pca_store_path: the sibling store to write the pyramid into.
-        artifact_path: the fitted global PCA artifact from ``fit_pca``.
+        artifact_path: olmoearth_run's embedding_pca.pkl for this model.
         source_completed_paths: predict marker directories, one per reference year.
         completed_path: directory for this step's markers.
         queue_name: the Beaker queue to write job entries to.
@@ -396,9 +395,9 @@ def write_render_jobs(
     # Fail before enqueuing anything rather than after every worker has started.
     artifact = PcaArtifact.load(artifact_path)
     logger.info(
-        "rendering with a basis over %d dimensions fitted at %s",
+        "rendering with a basis over %d dimensions from %s",
         artifact.mean.shape[0],
-        artifact.metadata.get("geoemb:pca_fitted_at", "unknown time"),
+        artifact_path,
     )
 
     jobs = get_render_jobs(
@@ -428,7 +427,7 @@ def annotate_pca_store(
     """Record the basis provenance onto the pca store's arrays.
 
     The RGB pixels are meaningless without knowing which basis produced them, so the
-    artifact metadata is copied onto every pyramid level. Run once after ``fit_pca``.
+    artifact metadata is copied onto every pyramid level. Run once the render is done.
 
     Args:
         pca_store_path: the pca store to annotate.
