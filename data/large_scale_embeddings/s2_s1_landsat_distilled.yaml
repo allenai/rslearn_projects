@@ -5,7 +5,7 @@ model:
       class_path: rslearn.models.singletask.SingleTaskModel
       init_args:
         encoder:
-          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          - class_path: rslearn.models.olmoearth_pretrain.model_period_timestamps.OlmoEarthPeriodTimestamps
             init_args:
               # Where the weights come from is set by the prediction pipeline
               # (--checkpoint_path), which picks model_path for a released bundle and
@@ -28,9 +28,12 @@ model:
               # The normalization stats expect dB, hence Sentinel1ToDecibels below.
               normalize: true
               autocast_dtype: bfloat16
-              # Use the real mosaic timestamps, and pad samples whose mosaic counts
-              # differ so they can be batched together.
-              use_legacy_timestamps: false
+              # Assign images to a fixed period grid rather than aligning modalities
+              # greedily. These two match the layers' query_config in the dataset
+              # config, so the model's periods and the mosaics it is handed agree.
+              # jsonargparse parses timedelta as "d days, h:m:s"; "30d" is rejected.
+              period_duration: "30 days, 0:00:00"
+              max_matches: 12
               # Overridden by the prediction pipeline (--compile_model).
               compile_model: true
               # Prefer the cuDNN attention kernel, measured 21% faster than the
