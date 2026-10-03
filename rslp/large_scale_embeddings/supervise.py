@@ -25,6 +25,7 @@ terminates if it overruns its budget.
 import json
 import multiprocessing
 import random
+import shlex
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -285,9 +286,6 @@ class ModelConfig:
     window_size: int = 16
     overlap_size: int = 4
     compile_model: bool = True
-    # Crops per batch, or None to keep the model config's value. The GPU-memory knob:
-    # batching groups independent crops, so it changes footprint and speed, not output.
-    batch_size: int | None = None
 
 
 @dataclass
@@ -296,6 +294,12 @@ class WorkerConfig:
 
     image_name: str
     cluster: list[str]
+    # Crops per batch. A GPU-memory knob, not a model setting: batching groups
+    # independent crops, so it changes footprint and speed, never the output. It
+    # belongs to the worker because one queue feeds pools on different hardware,
+    # and it is required because falling back to the model config's value would
+    # silently size an A100's batch for an H100.
+    batch_size: int
     num_workers: int = 8
     gpus: int = 1
     # A preempted worker loses its whole job, since there is no intra-job checkpointing.
@@ -1454,7 +1458,6 @@ def _run_cycle(
                     window_size=config.model.window_size,
                     overlap_size=config.model.overlap_size,
                     compile_model=config.model.compile_model,
-                    batch_size=config.model.batch_size,
                     epsg_code=config.aoi.epsg_code,
                     wgs84_bounds=config.aoi.wgs84_bounds,
                     geojson_fname=config.aoi.geojson_fname,
@@ -1521,6 +1524,12 @@ def _run_cycle(
                 name_prefix=worker_name_prefix(queue_name),
                 extra_env_vars={
                     "OEDATASETS_API_URL": config.worker.datasets_api_url,
+                    # Prepended, so anything the caller passes in env_vars still wins:
+                    # the worker appends these to each entry and the last value is the
+                    # one jsonargparse keeps.
+                    rslp.common.worker.WORKER_EXTRA_ARGS_ENV: shlex.join(
+                        ["--batch_size", str(config.worker.batch_size)]
+                    ),
                     **(config.worker.env_vars or {}),
                 },
                 extra_env_secrets={

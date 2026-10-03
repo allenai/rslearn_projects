@@ -116,7 +116,7 @@ def test_a_worker_outlasts_the_gap_between_refills() -> None:
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     cycle = mod.CycleConfig()
-    idle = mod.WorkerConfig(image_name="i", cluster=["c"]).idle_seconds
+    idle = mod.WorkerConfig(image_name="i", cluster=["c"], batch_size=128).idle_seconds
     assert idle is not None, (
         "WorkerConfig.idle_seconds defaults to None, which hands the worker its own "
         "ten-second timeout, so it quits the moment the queue drains"
@@ -147,7 +147,9 @@ def test_workers_always_get_the_gdal_billing_project() -> None:
 
     envs: list[dict[str, str] | None] = [None, {}, {"SOMETHING_ELSE": "1"}]
     for env in envs:
-        worker = mod.WorkerConfig(image_name="i", cluster=["c"], env_vars=env)
+        worker = mod.WorkerConfig(
+            image_name="i", cluster=["c"], batch_size=128, env_vars=env
+        )
         assert worker.env_vars["GS_USER_PROJECT"], (
             f"env_vars={env!r} produced a WorkerConfig with no billing project, so "
             "its workers would read Landsat unauthorised"
@@ -164,7 +166,10 @@ def test_an_explicit_worker_env_var_still_wins() -> None:
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     worker = mod.WorkerConfig(
-        image_name="i", cluster=["c"], env_vars={"GS_USER_PROJECT": "other-project"}
+        batch_size=128,
+        image_name="i",
+        cluster=["c"],
+        env_vars={"GS_USER_PROJECT": "other-project"},
     )
     assert worker.env_vars["GS_USER_PROJECT"] == "other-project"
 
@@ -405,6 +410,7 @@ def _worker_cfg(mod, **kw):  # type: ignore[no-untyped-def]
     base = dict(
         image_name="i",
         cluster=["ai2/jupiter"],
+        batch_size=128,
         num_workers=512,
         gpus=1,
         capacity_slots=352,
@@ -906,7 +912,7 @@ def test_backfill_is_off_unless_asked_for() -> None:
     import importlib
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    worker = mod.WorkerConfig(image_name="img", cluster=["ai2/jupiter"])
+    worker = mod.WorkerConfig(image_name="img", cluster=["ai2/jupiter"], batch_size=128)
 
     class _Exploding:
         @property
@@ -923,6 +929,7 @@ def test_backfill_sizes_from_idle_slots_across_clusters() -> None:
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     beaker = _FakeClusterBeaker({"ai2/jupiter": 100, "ai2/saturn": 20})
     worker = mod.WorkerConfig(
+        batch_size=128,
         image_name="img",
         cluster=["ai2/jupiter", "ai2/saturn"],
         backfill_fraction=0.5,
@@ -939,6 +946,7 @@ def test_backfill_respects_its_ceiling_and_gpus_per_worker() -> None:
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     beaker = _FakeClusterBeaker({"ai2/jupiter": 800})
     worker = mod.WorkerConfig(
+        batch_size=128,
         image_name="img",
         cluster=["ai2/jupiter"],
         backfill_fraction=1.0,
@@ -948,6 +956,7 @@ def test_backfill_respects_its_ceiling_and_gpus_per_worker() -> None:
 
     # Two GPUs per worker halves how many workers the same slots buy.
     worker = mod.WorkerConfig(
+        batch_size=128,
         image_name="img",
         cluster=["ai2/jupiter"],
         gpus=2,
@@ -970,7 +979,7 @@ def test_backfill_survives_an_unreadable_cluster() -> None:
                 raise RuntimeError("beaker is down")
 
     worker = mod.WorkerConfig(
-        image_name="img", cluster=["ai2/jupiter"], backfill_fraction=0.5
+        batch_size=128, image_name="img", cluster=["ai2/jupiter"], backfill_fraction=0.5
     )
     assert mod._backfill_target(_Broken(), worker, 0, 0) == 0
 
@@ -999,6 +1008,7 @@ def test_backfill_does_not_fight_its_own_workers() -> None:
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     worker = mod.WorkerConfig(
+        batch_size=128,
         image_name="img",
         cluster=["ai2/jupiter"],
         backfill_fraction=1.0,
@@ -1033,6 +1043,7 @@ def test_an_unreadable_cluster_holds_backfill_instead_of_dropping_it() -> None:
                 raise RuntimeError("beaker is down")
 
     worker = mod.WorkerConfig(
+        batch_size=128,
         image_name="img",
         cluster=["ai2/jupiter"],
         backfill_fraction=1.0,
@@ -1054,6 +1065,7 @@ def test_queued_backfill_workers_do_not_inflate_the_target() -> None:
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     worker = mod.WorkerConfig(
+        batch_size=128,
         image_name="img",
         cluster=["ai2/jupiter"],
         backfill_fraction=1.0,
@@ -1076,6 +1088,7 @@ def test_backfill_target_is_a_fixed_point_once_slots_are_taken() -> None:
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     worker = mod.WorkerConfig(
+        batch_size=128,
         image_name="img",
         cluster=["ai2/jupiter"],
         backfill_fraction=1.0,
@@ -1334,6 +1347,7 @@ def test_urgent_reserve_floors_the_allocated_target(
 
     monkeypatch.setattr(mod, "_allocated_slots_in_use", fake_usage)
     worker = mod.WorkerConfig(
+        batch_size=128,
         image_name="img",
         cluster=["ai2/jupiter"],
         num_workers=440,
@@ -1387,6 +1401,7 @@ def test_pool_never_targets_zero_without_an_urgent_reserve(
                 return type("W", (), {"id": "ws"})()
 
     worker = mod.WorkerConfig(
+        batch_size=128,
         image_name="img",
         cluster=["ai2/jupiter"],
         num_workers=440,
@@ -1435,7 +1450,7 @@ def test_allocation_usage_counts_a_multi_cluster_job_once() -> None:
                 return listings[elegible_for_cluster]
 
     worker = mod.WorkerConfig(
-        image_name="img", cluster=["ai2/jupiter", "ai2/ceres"], gpus=1
+        batch_size=128, image_name="img", cluster=["ai2/jupiter", "ai2/ceres"], gpus=1
     )
     used = mod._allocated_slots_in_use(_Beaker(), worker, "ws", live=0)
     assert used == 12, (
@@ -1576,3 +1591,50 @@ class _FakeDetails:
             enum_type = _Enum()
 
         return type("D", (), {"fields_by_name": {"priority": _Field()}})()
+
+
+def test_batch_size_reaches_workers_and_not_the_queue() -> None:
+    """Batch size must travel with the worker, never baked into a queue entry.
+
+    One queue feeds pools on different hardware, so a value fixed at enqueue time
+    sizes every GPU's batch for whichever is smallest. Keeping it out of the entry is
+    half of that; putting it in the worker's environment is the other half.
+    """
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    jobs = importlib.import_module("rslp.large_scale_embeddings.write_jobs")
+
+    assert "--batch_size" not in inspect.getsource(
+        jobs
+    ), "write_jobs still emits --batch_size into queue entries"
+
+    src = inspect.getsource(mod)
+    assert (
+        "WORKER_EXTRA_ARGS_ENV" in src
+    ), "the supervisor must pass the batch size to workers through the environment"
+    assert (
+        "config.worker.batch_size" in src
+    ), "the batch size must come from the worker config, not the model config"
+
+
+def test_batch_size_is_required_on_the_worker_config() -> None:
+    """Omitting it must fail loudly rather than fall back to the model config.
+
+    A silent fallback would size an A100's batch from a YAML written for an H100, and
+    the failure would be an out-of-memory crash on some later tile rather than here.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    try:
+        mod.WorkerConfig(image_name="i", cluster=["c"])
+    except TypeError as e:
+        assert "batch_size" in str(e), f"wrong error: {e}"
+    else:
+        raise AssertionError("WorkerConfig accepted no batch_size")
+
+    assert not hasattr(
+        mod.ModelConfig(checkpoint_path="p"), "batch_size"
+    ), "batch_size must not remain on ModelConfig, whose settings change the output"

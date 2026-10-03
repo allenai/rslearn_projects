@@ -667,13 +667,18 @@ while a Dynamic Workload Scheduler Flex Start request for 100 filled in four min
       --metadata=install-nvidia-driver=True,embed-image-tag=rc-20260930d
 
 Every path, project, secret name and image tag is an instance metadata attribute with
-a default; run `grep 'attr '` on the script for the list. `embed-worker-extra-args` is
-appended to every entry the worker runs and overrides what the supervisor baked in,
-which is how one queue feeds pools on different hardware: `--batch_size` is a
-GPU-memory knob and belongs to the worker, not the job. Beaker workers take the same
-override through `--worker.env_vars '{"RSLP_WORKER_EXTRA_ARGS": "--batch_size 256"}'`. The project defaults to the
+a default; run `grep 'attr '` on the script for the list. The project defaults to the
 VM's own, so the script is not tied to one. The `role=embedding-worker` label is what
 the coverage slide counts to report GCP workers separately from Beaker ones.
+
+Batch size follows the worker, not the job. `--worker.batch_size` is required and the
+supervisor passes it to each worker in `RSLP_WORKER_EXTRA_ARGS`, which the worker
+appends to every entry it runs; queue entries carry no `--batch_size` at all. That is
+what lets one queue feed an H100 pool and an A100 pool at once, since batching only
+groups independent crops and changes footprint and speed, never the embeddings. On GCE
+the same override is `embed-worker-extra-args`, and anything passed through
+`--worker.env_vars` wins over the supervisor's value because the last one parsed is
+the one kept.
 
 Four things Beaker's executor provides implicitly, which the script has to do itself.
 Each was found by a run failing without it:

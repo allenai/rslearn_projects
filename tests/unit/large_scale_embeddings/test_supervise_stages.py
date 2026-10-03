@@ -30,7 +30,9 @@ def _base_kwargs(**overrides: object) -> dict:
         "completed_path_template": "gs://bucket/s2_{year}_completed/",
         "queue_name": "user/queue",
         "model": sup.ModelConfig(checkpoint_path="/weka/ckpt"),
-        "worker": sup.WorkerConfig(image_name="user/image", cluster=["ai2/cluster"]),
+        "worker": sup.WorkerConfig(
+            image_name="user/image", cluster=["ai2/cluster"], batch_size=128
+        ),
         "cycle": sup.CycleConfig(max_cycles=0),
     }
     kwargs.update(overrides)
@@ -256,6 +258,7 @@ def _render_cycle_config(num_workers: int = 2, **overrides: object) -> Supervise
         stage=sup.STAGE_RENDER_UTM_PCA,
         model=sup.ModelConfig(checkpoint_path="/weka/ckpt"),
         worker=sup.WorkerConfig(
+            batch_size=128,
             image_name="user/image",
             cluster=["ai2/cluster"],
             num_workers=num_workers,

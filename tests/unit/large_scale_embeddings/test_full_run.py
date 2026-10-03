@@ -58,7 +58,9 @@ COMMON: dict[str, Any] = {
     "completed_path_template": "gs://bucket/completed_{year}/",
     "queue_name": "user/queue",
     "model": ModelConfig(checkpoint_path="/fake/ckpt"),
-    "worker": WorkerConfig(image_name="user/image", cluster=["ai2/jupiter"]),
+    "worker": WorkerConfig(
+        image_name="user/image", cluster=["ai2/jupiter"], batch_size=128
+    ),
     "model_url": "https://example.invalid/model",
     "source_data": ["https://example.invalid/s2"],
     "pca": PcaConfig(
@@ -325,7 +327,7 @@ def test_render_stage_defaults_to_no_gpu(monkeypatch: pytest.MonkeyPatch) -> Non
     run_all_mod.run_all(
         **_with(
             worker=WorkerConfig(
-                image_name="user/image", cluster=["ai2/jupiter"], gpus=1
+                batch_size=128, image_name="user/image", cluster=["ai2/jupiter"], gpus=1
             )
         )
     )
@@ -368,6 +370,7 @@ def test_caller_can_override_a_gdal_default(monkeypatch: pytest.MonkeyPatch) -> 
     run_all_mod.run_all(
         **_with(
             worker=WorkerConfig(
+                batch_size=128,
                 image_name="user/image",
                 cluster=["ai2/jupiter"],
                 env_vars={"GS_USER_PROJECT": "other-project"},
