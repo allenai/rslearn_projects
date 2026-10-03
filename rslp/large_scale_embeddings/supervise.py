@@ -32,6 +32,8 @@ from datetime import UTC, datetime, timedelta
 from multiprocessing.sharedctypes import Synchronized
 from typing import Any, TypeVar
 
+import shapely
+import shapely.geometry
 from beaker import (
     Beaker,
     BeakerConstraints,
@@ -40,6 +42,7 @@ from beaker import (
     BeakerTaskResources,
     BeakerWorkloadType,
 )
+from pyproj import Transformer
 from upath import UPath
 
 import rslp.common.worker
@@ -420,6 +423,9 @@ class AoiConfig:
     # orphans existing markers, since a marker is keyed on its block's bounds.
     job_size: int = 4096
     geojson_fname: str | None = None
+    # Tiles intersecting this footprint are enqueued before the rest. The queue is
+    # kept shallow, so this is what decides the order work is actually done in.
+    priority_geojson_fname: str | None = None
     epsg_code: int | None = None
     wgs84_bounds: tuple[float, float, float, float] | None = None
     zone_numbers: list[int] | None = None
@@ -1092,6 +1098,82 @@ def _count_worker_split(
     return starting, fresh
 
 
+def _priority_first(
+    jobs: list[list[str]], geojson_fname: str | None
+) -> list[list[str]]:
+    """Order jobs so ones inside the priority footprint are enqueued first.
+
+    The queue is deliberately shallow, so enqueue order is what decides what gets
+    worked on next: ordering here is the whole priority mechanism, and no second queue
+    or worker change is needed. Shuffling stays, but within each tier, so the spread
+    across zones and imagery sources that it buys is kept.
+
+    Jobs are read from their own args rather than re-enumerated, since enumeration
+    takes minutes and runs every cycle.
+
+    Args:
+        jobs: worker argument lists, as `get_jobs` returns them.
+        geojson_fname: footprint whose tiles go first, or None to just shuffle.
+
+    Returns:
+        the jobs, priority tier first, shuffled within each tier.
+    """
+    if geojson_fname is None:
+        shuffled = list(jobs)
+        random.shuffle(shuffled)
+        return shuffled
+
+    try:
+        with UPath(geojson_fname).open() as f:
+            shapes = [
+                shapely.geometry.shape(feat["geometry"])
+                for feat in json.load(f)["features"]
+            ]
+        tree = shapely.STRtree(shapes)
+    except Exception:
+        # A footprint that cannot be read must not stall the run; losing the ordering
+        # costs throughput on the areas someone wanted first, not correctness.
+        logger.exception(
+            "could not read priority footprint %s; not ordering", geojson_fname
+        )
+        shuffled = list(jobs)
+        random.shuffle(shuffled)
+        return shuffled
+
+    # Grouped by CRS so each zone's centres transform in one call rather than per job.
+    by_crs: dict[str, list[tuple[int, float, float]]] = {}
+    for i, job in enumerate(jobs):
+        try:
+            crs = json.loads(job[job.index("--projection_json") + 1])["crs"]
+            x0, y0, x1, y1 = json.loads(job[job.index("--bounds") + 1])
+        except (ValueError, KeyError, IndexError, json.JSONDecodeError):
+            continue
+        by_crs.setdefault(crs, []).append(
+            ((i), (x0 + x1) / 2 * 10.0, -(y0 + y1) / 2 * 10.0)
+        )
+
+    hot: set[int] = set()
+    for crs, entries in by_crs.items():
+        tr = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
+        lons, lats = tr.transform([e[1] for e in entries], [e[2] for e in entries])
+        for (idx, _, _), lon, lat in zip(entries, lons, lats, strict=True):
+            pt = shapely.Point(lon, lat)
+            if any(shapes[k].intersects(pt) for k in tree.query(pt)):
+                hot.add(idx)
+
+    first = [job for i, job in enumerate(jobs) if i in hot]
+    rest = [job for i, job in enumerate(jobs) if i not in hot]
+    random.shuffle(first)
+    random.shuffle(rest)
+    logger.info(
+        "priority ordering: %d of %d job(s) inside %s",
+        len(first),
+        len(jobs),
+        geojson_fname,
+    )
+    return first + rest
+
+
 def _priority_name(details: Any) -> str:
     """The Beaker priority of a task, as a lowercase name.
 
@@ -1479,7 +1561,7 @@ def _run_cycle(
     # it much harder, because a job can be re-offered many times over a long run.
     fresh = [job for job in remaining if tuple(job) not in in_flight]
     if pending < target_pending:
-        random.shuffle(fresh)
+        fresh = _priority_first(fresh, config.aoi.priority_geojson_fname)
         batch = fresh[: target_pending - pending]
         if batch:
             rslp.common.worker.write_jobs(

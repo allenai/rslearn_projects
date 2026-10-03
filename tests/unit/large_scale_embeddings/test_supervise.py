@@ -1,4 +1,5 @@
 import itertools
+import json
 from pathlib import Path
 
 import pytest
@@ -1638,3 +1639,94 @@ def test_batch_size_is_required_on_the_worker_config() -> None:
     assert not hasattr(
         mod.ModelConfig(checkpoint_path="p"), "batch_size"
     ), "batch_size must not remain on ModelConfig, whose settings change the output"
+
+
+def _job(crs: str, x: int, y: int) -> list[str]:
+    """One worker argument list, carrying just the fields the ordering reads."""
+    return [
+        "--projection_json",
+        json.dumps({"crs": crs, "x_resolution": 10, "y_resolution": -10}),
+        "--bounds",
+        json.dumps([x, y, x + 4096, y + 4096]),
+    ]
+
+
+def _footprint(tmp_path: Path, lon: float, lat: float, half: float = 1.0) -> str:
+    """Write a square GeoJSON footprint around a point."""
+    path = tmp_path / "priority.geojson"
+    box = [
+        [lon - half, lat - half],
+        [lon + half, lat - half],
+        [lon + half, lat + half],
+        [lon - half, lat + half],
+        [lon - half, lat - half],
+    ]
+    path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {"type": "Polygon", "coordinates": [box]},
+                    }
+                ],
+            }
+        )
+    )
+    return str(path)
+
+
+def test_priority_footprint_tiles_are_enqueued_first(tmp_path: Path) -> None:
+    """Tiles inside the footprint must come before every tile outside it.
+
+    The queue is kept shallow on purpose, so enqueue order decides what is worked on
+    next. Ordering here is the entire priority mechanism; a tile that sorts late is
+    not merely deprioritised, it waits for everything else.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    # UTM 14N, around 99W 39N: inside the footprint written below.
+    inside = [_job("EPSG:32614", 49152, -438272), _job("EPSG:32614", 53248, -438272)]
+    # UTM 48N, Cambodia: far outside it.
+    outside = [_job("EPSG:32648", 45056, -126976), _job("EPSG:32648", 49152, -126976)]
+
+    got = mod._priority_first(outside + inside, _footprint(tmp_path, -98.7, 39.4, 2.0))
+
+    assert len(got) == 4
+    assert all(j in inside for j in got[:2]), f"priority tiles not first: {got[:2]}"
+    assert all(j in outside for j in got[2:]), "non-priority tiles not last"
+
+
+def test_no_footprint_still_shuffles(tmp_path: Path) -> None:
+    """Without a footprint the ordering must stay random, not become insertion order.
+
+    The shuffle spreads load across zones and imagery sources. Returning the list
+    untouched would quietly concentrate a cycle's batch on one region.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    jobs = [_job("EPSG:32614", 4096 * i, -438272) for i in range(50)]
+
+    orders = {tuple(map(tuple, mod._priority_first(jobs, None))) for _ in range(5)}
+
+    assert len(orders) > 1, "order was identical every time, so nothing is shuffling"
+
+
+def test_unreadable_footprint_does_not_stall_the_run(tmp_path: Path) -> None:
+    """A bad footprint must cost ordering, not the cycle.
+
+    Enqueueing is how the pool is kept fed; raising here would stop the run over a
+    file that only decides what order to do the work in.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    jobs = [_job("EPSG:32614", 49152, -438272) for _ in range(3)]
+
+    got = mod._priority_first(jobs, str(tmp_path / "missing.geojson"))
+
+    assert len(got) == len(jobs)

@@ -539,6 +539,12 @@ replaced, so blocks already computed stay valid:
 To limit a run to part of it, pass `--aoi.wgs84_bounds` or `--aoi.epsg_code`;
 `--aoi.geojson_fname` still works if you have a footprint of your own.
 
+To do part of it first rather than only, pass `--aoi.priority_geojson_fname`. Tiles
+intersecting that footprint are enqueued ahead of the rest, shuffled within each tier.
+No second queue is involved: the supervisor keeps the queue shallow, a few hundred
+entries against tens of thousands outstanding, so enqueue order is already what decides
+what gets worked on next.
+
 `coverage_world.png` renders it in Equal Earth: magenta is covered, and the
 land showing through uncovered is water the mask correctly excludes, or land dropped
 on purpose. Antarctica is the second kind: it reaches to about 60S, well inside the UTM
