@@ -150,20 +150,6 @@ def shard_bounds(
     return (min_x, min_y, max_x, max_y)
 
 
-def shards_per_side(zoom: int) -> int:
-    """How many shards span the world at a zoom level.
-
-    Low zooms are smaller than one shard, so the array is a single partial shard there.
-
-    Args:
-        zoom: the XYZ zoom level.
-
-    Returns:
-        the number of shards across the array, at least 1.
-    """
-    return max(1, web_size(zoom) // WEB_SHARD)
-
-
 def build_multiscales(min_zoom: int, max_zoom: int) -> list[dict[str, Any]]:
     """Describe the pyramid for readers.
 
@@ -598,84 +584,6 @@ def parent_shards(shards: set[tuple[int, int]]) -> set[tuple[int, int]]:
         (row, col) pairs at zoom - 1.
     """
     return {(r // 2, c // 2) for r, c in shards}
-
-
-def render_web_pca_pipeline_all(
-    source_store_path: str,
-    web_store_path: str,
-    years: list[int],
-    zone_numbers: list[int],
-    min_zoom: int = 8,
-    max_zoom: int = DEFAULT_MAX_ZOOM,
-    source_url: str | None = None,
-    storage_options: dict[str, Any] | None = None,
-) -> None:
-    """Build the whole web-mercator pyramid for one run.
-
-    The base zoom is warped from the UTM store; every coarser zoom is cascaded from the
-    one below. Work is enumerated from the source's own object keys rather than probed,
-    so the cost tracks the data that exists rather than the size of the global grid.
-
-    Args:
-        source_store_path: the UTM PCA store to read, as a zarr-openable path.
-        web_store_path: where to write the web store.
-        years: reference years in store order.
-        zone_numbers: UTM zone numbers present in the source.
-        min_zoom: shallowest zoom to build.
-        max_zoom: deepest zoom to build, warped directly from UTM.
-        source_url: https base of the source, for listing its keys. Defaults to
-            source_store_path when that is already an https URL.
-        storage_options: fsspec options for the destination.
-    """
-    listing_url = source_url or source_store_path
-    src = zarr.open_group(_zarr_store(source_store_path, None), mode="r")
-
-    init_web_store(
-        web_store_path,
-        years=years,
-        min_zoom=min_zoom,
-        max_zoom=max_zoom,
-        source_store_path=source_store_path,
-        storage_options=storage_options,
-    )
-    dest = zarr.open_group(_zarr_store(web_store_path, storage_options), mode="a")
-
-    base: set[tuple[int, int]] = set()
-    for zone in zone_numbers:
-        positions = source_shard_positions(listing_url, f"utm{zone:02d}")
-        base |= web_shards_for_source(positions, zone, max_zoom)
-        logger.info("zone %d: %d source shard(s)", zone, len(positions))
-    logger.info("z%d: %d output shard(s)", max_zoom, len(base))
-
-    for t, year in enumerate(years):
-        written = 0
-        for row, col in sorted(base):
-            written += (
-                1
-                if reproject_shard(
-                    src,
-                    dest[web_array_name(max_zoom)],
-                    max_zoom,
-                    t,
-                    row,
-                    col,
-                    zone_numbers,
-                )
-                else 0
-            )
-        logger.info(
-            "year %d z%d: %d/%d shard(s) with data", year, max_zoom, written, len(base)
-        )
-
-        shards = base
-        for zoom in range(max_zoom - 1, min_zoom - 1, -1):
-            shards = parent_shards(shards)
-            got = 0
-            for row, col in sorted(shards):
-                got += 1 if downsample_shard(dest, zoom, t, row, col) else 0
-            logger.info(
-                "year %d z%d: %d/%d shard(s) with data", year, zoom, got, len(shards)
-            )
 
 
 def web_marker_name(time_index: int, row: int, col: int) -> str:

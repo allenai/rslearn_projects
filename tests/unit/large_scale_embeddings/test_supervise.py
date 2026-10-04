@@ -71,7 +71,7 @@ def test_the_worker_count_is_not_time_based() -> None:
     shortfall gets launched again each cycle and the pool overshoots `num_workers` by
     however many cycles a container start takes. A timer covering that window only
     narrows the race: set too short it overshoots anyway, set too long it leaves the
-    pool short whenever a worker dies while starting. `_count_workers` asks Beaker
+    pool short whenever a worker dies while starting. `_count_worker_split` asks Beaker
     which worker experiments exist and have not finalized, which is exact.
     """
     import importlib
@@ -204,7 +204,7 @@ class _FakeQueueWorker:
 
 
 class _FakeBeaker:
-    """Just enough of the client for _count_workers."""
+    """Just enough of the client for _count_worker_split."""
 
     def __init__(self, workloads: list, heartbeats: list[int]) -> None:
         self._workloads = workloads
@@ -258,7 +258,8 @@ def test_a_worker_that_stopped_heartbeating_does_not_count() -> None:
     workloads = [_FakeWorkload(f"{prefix}_{i}", old) for i in range(20)]
     beaker = _FakeBeaker(workloads, heartbeats=[])
     assert (
-        mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 0
+        sum(mod._count_worker_split(beaker, object(), prefix, queue=object(), now=now))
+        == 0
     ), "dead workers still count, so the pool will strand the last jobs"
 
 
@@ -273,7 +274,10 @@ def test_a_starting_worker_still_counts() -> None:
         _FakeWorkload(f"{prefix}_{i}", int(now) - 60, status=3) for i in range(5)
     ]
     beaker = _FakeBeaker(workloads, heartbeats=[])
-    assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 5
+    assert (
+        sum(mod._count_worker_split(beaker, object(), prefix, queue=object(), now=now))
+        == 5
+    )
 
 
 def test_a_busy_worker_counts_via_its_heartbeat() -> None:
@@ -289,7 +293,10 @@ def test_a_busy_worker_counts_via_its_heartbeat() -> None:
     now = 1_000_000.0
     workloads = [_FakeWorkload(f"{prefix}_{i}", int(now) - 7200) for i in range(3)]
     beaker = _FakeBeaker(workloads, heartbeats=[int(now) - 10] * 3)
-    assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 3
+    assert (
+        sum(mod._count_worker_split(beaker, object(), prefix, queue=object(), now=now))
+        == 3
+    )
 
 
 def test_a_long_queued_worker_still_counts() -> None:
@@ -313,7 +320,8 @@ def test_a_long_queued_worker_still_counts() -> None:
     ]
     beaker = _FakeBeaker(workloads, heartbeats=[])
     assert (
-        mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 240
+        sum(mod._count_worker_split(beaker, object(), prefix, queue=object(), now=now))
+        == 240
     ), "a long-queued worker stopped counting, so the supervisor will launch more"
 
 
@@ -336,7 +344,8 @@ def test_a_running_worker_is_not_counted_twice() -> None:
     ]
     beaker = _FakeBeaker(workloads, heartbeats=[int(now) - 10] * 128)
     assert (
-        mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 128
+        sum(mod._count_worker_split(beaker, object(), prefix, queue=object(), now=now))
+        == 128
     ), "a young running worker is counted by both signals, so the pool is overstated"
 
 
@@ -352,7 +361,10 @@ def test_a_queued_worker_still_counts_while_it_starts() -> None:
         _FakeWorkload(f"{prefix}_{i}", int(now) - 60, status=2) for i in range(10)
     ]
     beaker = _FakeBeaker(workloads, heartbeats=[])
-    assert mod._count_workers(beaker, object(), prefix, queue=object(), now=now) == 10
+    assert (
+        sum(mod._count_worker_split(beaker, object(), prefix, queue=object(), now=now))
+        == 10
+    )
 
 
 class _FakeJob:
@@ -865,7 +877,9 @@ def test_a_stopping_worker_is_not_double_counted_as_starting() -> None:
     workloads = [_FakeWorkload(f"{prefix}_a", int(now) - 60, status=5)]
     workloads += [_FakeWorkload(f"{prefix}_b", int(now) - 60, status=6)]
     beaker = _FakeBeaker(workloads, heartbeats=[])
-    got = mod._count_workers(beaker, object(), prefix, queue=object(), now=now)
+    got = sum(
+        mod._count_worker_split(beaker, object(), prefix, queue=object(), now=now)
+    )
     assert got == 0, f"a stopping worker was counted as starting, got {got}"
 
 

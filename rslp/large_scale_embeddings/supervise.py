@@ -1351,29 +1351,6 @@ def _count_urgent_allocated(
     return total
 
 
-def _count_workers(
-    beaker: Any,
-    workspace: Any,
-    name_prefix: str,
-    queue: Any = None,
-    now: float | None = None,
-) -> int:
-    """Total workers starting or demonstrably alive.
-
-    Args:
-        beaker: an open Beaker client.
-        workspace: the workspace to search.
-        name_prefix: the prefix from `worker_name_prefix`.
-        queue: the queue whose worker registrations to read.
-        now: current unix time, passed in so this stays testable.
-
-    Returns:
-        starting plus running.
-    """
-    starting, running = _count_worker_split(beaker, workspace, name_prefix, queue, now)
-    return starting + running
-
-
 def _run_cycle(
     config: SuperviseConfig,
     result: Any,
