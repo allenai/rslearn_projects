@@ -341,6 +341,10 @@ class WorkerConfig:
     # ten-second default, which suits a queue filled once up front but not one a
     # supervisor refills.
     idle_seconds: int | None = 900
+    # Beaker secret holding the GCP service account key, or None for the shared
+    # default. Lets this run write the archive under its own identity without
+    # moving every other rslp job onto it at the same time.
+    gcp_credentials_secret: str | None = None
     env_vars: dict[str, str] | None = None
     weka_bucket: str = DEFAULT_WEKA_BUCKET
     weka_mount_path: str = DEFAULT_WEKA_MOUNT_PATH
@@ -1608,6 +1612,7 @@ def _run_cycle(
                 shared_memory=config.worker.shared_memory,
                 priority=BeakerJobPriority[priority],
                 min_runtime=min_runtime,
+                gcp_credentials_secret=config.worker.gcp_credentials_secret,
                 weka_mounts=[
                     WekaMount(
                         bucket_name=config.worker.weka_bucket,
@@ -1708,6 +1713,7 @@ def launch_supervisor(
     gpu_count: int = 0,
     min_runtime: timedelta = DEFAULT_SUPERVISOR_MIN_RUNTIME,
     auto_resume: bool = True,
+    gcp_credentials_secret: str | None = None,
 ) -> str:
     """Launch `supervise` as a CPU-only Beaker job so a run outlives any one session.
 
@@ -1736,6 +1742,9 @@ def launch_supervisor(
         min_runtime: how long the scheduler should let the supervisor run before it may
             be preempted. Above five minutes the job counts as allocated; at or below it
             it is unallocated and yields to any allocated work.
+        gcp_credentials_secret: Beaker secret holding the GCP service account key,
+            or None for the shared default. Match whatever the workers use, since
+            the supervisor reads the same completion markers they write.
         auto_resume: whether Beaker replaces the job when it is preempted. Leave this on:
             without it a preempted supervisor is gone for good, and with it gone nothing
             refills the queue or replaces a worker. Restarting is safe, since the
@@ -1754,7 +1763,11 @@ def launch_supervisor(
         constraints=BeakerConstraints(cluster=cluster),
         min_runtime=min_runtime,
         auto_resume=auto_resume,
-        datasets=[create_gcp_credentials_mount()],
+        datasets=[
+            create_gcp_credentials_mount(gcp_credentials_secret)
+            if gcp_credentials_secret
+            else create_gcp_credentials_mount()
+        ],
         env_vars=get_base_env_vars(),
         resources=BeakerTaskResources(
             cpu_count=cpu_count, memory=memory, gpu_count=gpu_count

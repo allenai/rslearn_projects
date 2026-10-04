@@ -536,6 +536,7 @@ def launch_workers(
     name_prefix: str = "worker",
     min_runtime: timedelta = DEFAULT_WORKER_MIN_RUNTIME,
     auto_resume: bool = True,
+    gcp_credentials_secret: str | None = None,
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -565,6 +566,9 @@ def launch_workers(
         min_runtime: how long the scheduler should let a worker run before it may be
             preempted. Above five minutes the job counts as allocated; at or below it
             the job is unallocated and yields to any allocated work.
+        gcp_credentials_secret: Beaker secret holding the GCP service account key,
+            or None for the shared default. One run can use its own identity this
+            way without moving every other rslp job onto it.
         auto_resume: whether Beaker replaces the job when it is preempted. Without it a
             preempted worker is simply gone.
     """
@@ -593,7 +597,11 @@ def launch_workers(
                 + [BeakerEnvVar(name=WORKER_NAME_ENV_VAR, value=worker_name)]
             )
 
-            datasets = [create_gcp_credentials_mount()]
+            datasets = [
+                create_gcp_credentials_mount(gcp_credentials_secret)
+                if gcp_credentials_secret
+                else create_gcp_credentials_mount()
+            ]
             datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
 
             spec = BeakerExperimentSpec.new(

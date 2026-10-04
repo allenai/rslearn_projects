@@ -1813,3 +1813,37 @@ def test_an_unreadable_footprint_leaves_the_other_tiers_working(
     got = mod._priority_first([kansas, cambodia], [missing, real])
     assert got[0] == cambodia, "the readable footprint should still rank above the rest"
     assert len(got) == 2
+
+
+def test_a_run_can_use_its_own_gcp_identity() -> None:
+    """The credentials secret must reach both the supervisor and its workers.
+
+    `RSLEARN_GCP_CREDENTIALS` is the shared default across every rslp Beaker job, so
+    changing which account writes the archive has to be possible for one run without
+    moving training, materialization and the vessel pipelines onto it too. The
+    supervisor needs the same identity as its workers, since it reads the markers they
+    write.
+    """
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker_mod = importlib.import_module("rslp.common.worker")
+
+    assert (
+        "gcp_credentials_secret" in inspect.signature(mod.launch_supervisor).parameters
+    ), "launch_supervisor cannot be pointed at a different credentials secret"
+    assert (
+        "gcp_credentials_secret"
+        in inspect.signature(worker_mod.launch_workers).parameters
+    ), "launch_workers cannot be pointed at a different credentials secret"
+
+    cfg = mod.WorkerConfig(image_name="i", cluster=["c"], batch_size=128)
+    assert (
+        cfg.gcp_credentials_secret is None
+    ), "the default must stay the shared secret, so existing runs are unaffected"
+
+    src = inspect.getsource(mod)
+    assert (
+        "gcp_credentials_secret=config.worker.gcp_credentials_secret" in src
+    ), "the supervisor does not pass its configured secret on to the workers"
