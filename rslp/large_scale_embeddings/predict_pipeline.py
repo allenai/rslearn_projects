@@ -104,8 +104,9 @@ OUTPUT_LAYER = "output"
 # before any dataset is materialized.
 EMBEDDING_DIM = 128
 
-# Materialize parallelizes over window x item-group units, not windows, so sizing these
-# pools by window count alone would under-parallelize.
+# One job per window, so the useful pool size is the window count: a block of
+# AoiConfig.job_size holds (job_size / PATCH_SIZE)^2 of them. These pools are sized well
+# above that, which costs only the forks.
 MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
     disabled_layers=[],
     # Use initial job for prepare since it involves caching steps that should only be
