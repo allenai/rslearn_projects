@@ -1,6 +1,7 @@
 import itertools
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -1655,14 +1656,25 @@ def test_batch_size_is_required_on_the_worker_config() -> None:
     ), "batch_size must not remain on ModelConfig, whose settings change the output"
 
 
-def _job(crs: str, x: int, y: int) -> list[str]:
+def _job(crs: str, x: int, y: int, year: int = 2025) -> list[str]:
     """One worker argument list, carrying just the fields the ordering reads."""
+    stamp = f"{year}-01-01T00:00:00+00:00"
     return [
         "--projection_json",
         json.dumps({"crs": crs, "x_resolution": 10, "y_resolution": -10}),
         "--bounds",
         json.dumps([x, y, x + 4096, y + 4096]),
+        "--time_range",
+        json.dumps([stamp, stamp]),
     ]
+
+
+def _tier(fname: str | None = None, years: list[int] | None = None) -> Any:
+    """One priority tier, built through the real config class."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    return mod.PriorityTier(geojson_fname=fname, years=years)
 
 
 def _footprint(
@@ -1710,7 +1722,7 @@ def test_priority_footprint_tiles_are_enqueued_first(tmp_path: Path) -> None:
     outside = [_job("EPSG:32648", 45056, -126976), _job("EPSG:32648", 49152, -126976)]
 
     got = mod._priority_first(
-        outside + inside, [_footprint(tmp_path, -98.7, 39.4, 2.0)]
+        outside + inside, [_tier(_footprint(tmp_path, -98.7, 39.4, 2.0))]
     )
 
     assert len(got) == 4
@@ -1745,7 +1757,7 @@ def test_unreadable_footprint_does_not_stall_the_run(tmp_path: Path) -> None:
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     jobs = [_job("EPSG:32614", 49152, -438272) for _ in range(3)]
 
-    got = mod._priority_first(jobs, [str(tmp_path / "missing.geojson")])
+    got = mod._priority_first(jobs, [_tier(str(tmp_path / "missing.geojson"))])
 
     assert len(got) == len(jobs)
 
@@ -1768,13 +1780,13 @@ def test_footprints_are_ordered_by_their_position_in_the_list(tmp_path: Path) ->
     first = _footprint(tmp_path, -98.7, 39.4, 2.0, name="a")
     second = _footprint(tmp_path, 104.8, 11.3, 2.0, name="b")
 
-    got = mod._priority_first(peru + cambodia + kansas, [first, second])
+    got = mod._priority_first(peru + cambodia + kansas, [_tier(first), _tier(second)])
     assert got[0] in kansas, "first footprint did not win"
     assert got[1] in cambodia, "second footprint did not come next"
     assert got[2] in peru, "unmatched tile did not go last"
 
     # Swapping the list must swap the order, with nothing else changed.
-    got = mod._priority_first(peru + cambodia + kansas, [second, first])
+    got = mod._priority_first(peru + cambodia + kansas, [_tier(second), _tier(first)])
     assert (
         got[0] in cambodia and got[1] in kansas
     ), f"order did not follow the list: {got}"
@@ -1800,7 +1812,7 @@ def test_a_tile_takes_the_first_footprint_it_falls_in(tmp_path: Path) -> None:
     narrow = _footprint(tmp_path, -98.7, 39.4, 2.0, name="narrow")
     wide = _footprint(tmp_path, -98.0, 36.0, 6.0, name="wide")
 
-    got = mod._priority_first(wide_only + both, [narrow, wide])
+    got = mod._priority_first(wide_only + both, [_tier(narrow), _tier(wide)])
     ranks = [0 if j in both else 1 for j in got]
     assert ranks == sorted(
         ranks
@@ -1824,9 +1836,135 @@ def test_an_unreadable_footprint_leaves_the_other_tiers_working(
     missing = str(tmp_path / "missing.geojson")
     real = _footprint(tmp_path, 104.8, 11.3, 2.0, name="real")
 
-    got = mod._priority_first([kansas, cambodia], [missing, real])
+    got = mod._priority_first([kansas, cambodia], [_tier(missing), _tier(real)])
     assert got[0] == cambodia, "the readable footprint should still rank above the rest"
     assert len(got) == 2
+
+
+def test_a_tier_can_select_a_year_everywhere(tmp_path: Path) -> None:
+    """A tier with years and no footprint must rank that year across the whole run.
+
+    This is how "then finish 2025" is expressed. Requiring a footprint would mean
+    writing a world-sized GeoJSON to say something about time.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    recent = [
+        _job("EPSG:32614", 49152, -438272, year=2025),
+        _job("EPSG:32648", 45056, -126976, year=2025),
+    ]
+    older = [
+        _job("EPSG:32614", 53248, -438272, year=2017),
+        _job("EPSG:32648", 49152, -126976, year=2017),
+    ]
+
+    got = mod._priority_first(older + recent, [_tier(years=[2025])])
+
+    assert all(j in recent for j in got[:2]), f"2025 did not come first: {got[:2]}"
+    assert all(j in older for j in got[2:]), "other years did not go last"
+
+
+def test_a_tier_matches_only_where_year_and_footprint_both_hold(
+    tmp_path: Path,
+) -> None:
+    """Both halves of a tier must hold, so the two filters intersect, not union.
+
+    A tier that matched on either would make "Kenya, recent years only" also pull in
+    Kenya's oldest years, which is the opposite of what it asks for.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    kansas = _footprint(tmp_path, -98.7, 39.4, 2.0, name="kansas")
+    wanted = _job("EPSG:32614", 49152, -438272, year=2025)
+    right_place_wrong_year = _job("EPSG:32614", 53248, -438272, year=2017)
+    right_year_wrong_place = _job("EPSG:32648", 45056, -126976, year=2025)
+
+    jobs = [right_place_wrong_year, right_year_wrong_place, wanted]
+    got = mod._priority_first(jobs, [_tier(kansas, years=[2025])])
+
+    assert got[0] == wanted, f"the tile matching both did not come first: {got[0]}"
+    assert len(got) == 3
+
+
+def test_tiers_order_areas_and_years_together(tmp_path: Path) -> None:
+    """The worked example: all years of one area, recent years of a second, then 2025.
+
+    Checked end to end because the ordering only earns its keep when the three
+    interact: the second area's old years must fall past the third tier, and the first
+    area's old years must not.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    conus = _footprint(tmp_path, -98.7, 39.4, 2.0, name="conus")
+    kenya = _footprint(tmp_path, 104.8, 11.3, 2.0, name="kenya")
+
+    conus_old = _job("EPSG:32614", 49152, -438272, year=2017)
+    kenya_recent = _job("EPSG:32648", 45056, -126976, year=2024)
+    kenya_old = _job("EPSG:32648", 49152, -126976, year=2017)
+    elsewhere_2025 = _job("EPSG:32619", 36864, 143360, year=2025)
+    elsewhere_old = _job("EPSG:32619", 40960, 143360, year=2018)
+
+    got = mod._priority_first(
+        [elsewhere_old, kenya_old, elsewhere_2025, kenya_recent, conus_old],
+        [
+            _tier(conus),
+            _tier(kenya, years=[2021, 2022, 2023, 2024, 2025]),
+            _tier(years=[2025]),
+        ],
+    )
+
+    assert got[:3] == [
+        conus_old,
+        kenya_recent,
+        elsewhere_2025,
+    ], f"tiers did not order as asked: {got}"
+    assert set(map(tuple, got[3:])) == {
+        tuple(kenya_old),
+        tuple(elsewhere_old),
+    }, "the unmatched years did not fall to the last tier"
+
+
+def test_a_tier_selecting_everything_is_rejected() -> None:
+    """A tier with neither field would swallow every job and strand the ones after it.
+
+    Failing at construction rather than at enqueue time keeps it a config error
+    instead of a run that silently ignores most of its priorities.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    with pytest.raises(ValueError, match="geojson_fname, years, or both"):
+        mod.PriorityTier()
+
+
+def test_a_job_without_a_readable_year_skips_year_tiers_only(tmp_path: Path) -> None:
+    """An unreadable year must cost a job the year tiers, not the footprint tiers.
+
+    The year is parsed out of the job's own args, so a future change to how a job is
+    built could stop it parsing. Dropping such a job out of every tier would silently
+    deprioritise whatever that change touched.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    kansas = _footprint(tmp_path, -98.7, 39.4, 2.0, name="kansas")
+    # The same Kansas job, minus the --time_range pair the year is read from.
+    undated = _job("EPSG:32614", 49152, -438272)[:4]
+    elsewhere = _job("EPSG:32648", 45056, -126976, year=2025)
+
+    got = mod._priority_first([elsewhere, undated], [_tier(kansas)])
+    assert got[0] == undated, "the undated job lost a footprint-only tier"
+
+    got = mod._priority_first([elsewhere, undated], [_tier(years=[2025])])
+    assert got[0] == elsewhere, "the undated job matched a year tier it cannot satisfy"
 
 
 def test_a_run_can_use_its_own_gcp_identity() -> None:

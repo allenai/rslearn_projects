@@ -552,12 +552,27 @@ replaced, so blocks already computed stay valid:
 To limit a run to part of it, pass `--aoi.wgs84_bounds` or `--aoi.epsg_code`;
 `--aoi.geojson_fname` still works if you have a footprint of your own.
 
-To do part of it first rather than only, pass `--aoi.priority_geojson_fnames` a list
-of footprints in priority order. A tile is enqueued in the tier of the first footprint
-it falls in, then everything else, shuffled within each tier. No second queue is
-involved: the supervisor keeps the queue shallow, a few hundred entries against tens of
-thousands outstanding, so enqueue order is already what decides what gets worked on
-next.
+To do part of it first rather than only, pass `--aoi.priority` a list of tiers in
+priority order. Each tier takes a `geojson_fname`, a list of `years`, or both. A job is
+enqueued in the first tier matching it on both counts, then everything else, shuffled
+within each tier:
+
+    --aoi.priority '[
+      {"geojson_fname": "conus.geojson"},
+      {"geojson_fname": "kenya.geojson", "years": [2021, 2022, 2023, 2024, 2025]},
+      {"years": [2025]}
+    ]'
+
+That runs every year of CONUS, then Kenya's five most recent, then 2025 everywhere
+else, then the rest. Omitting `geojson_fname` matches anywhere and omitting `years`
+matches every year, so a tier can select on either axis alone; a tier setting neither
+is rejected, since it would match everything and strand the tiers after it.
+
+No second queue is involved: the supervisor keeps the queue shallow, a few hundred
+entries against tens of thousands outstanding, so enqueue order is already what decides
+what gets worked on next. Matching is on the block's centre, which is right for
+ordering but is not AOI clipping: a block straddling a footprint's edge is in or out by
+its centre alone.
 
 `coverage_world.png` renders it in Equal Earth: magenta is covered, and the
 land showing through uncovered is water the mask correctly excludes, or land dropped

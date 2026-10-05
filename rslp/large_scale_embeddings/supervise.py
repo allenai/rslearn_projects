@@ -418,6 +418,29 @@ class CycleConfig:
 
 
 @dataclass
+class PriorityTier:
+    """One band of work to finish before the next."""
+
+    # Where the tier applies. None matches anywhere, so a tier can select a year
+    # across the whole run.
+    geojson_fname: str | None = None
+    # Which reference years it applies to. None matches every year the run covers.
+    years: list[int] | None = None
+
+    def __post_init__(self) -> None:
+        """Reject a tier that selects everything.
+
+        Raises:
+            ValueError: if neither a footprint nor a year list is set.
+        """
+        if self.geojson_fname is None and self.years is None:
+            raise ValueError(
+                "a priority tier needs geojson_fname, years, or both; one with "
+                "neither matches every job, leaving the tiers after it unreachable"
+            )
+
+
+@dataclass
 class AoiConfig:
     """Which ground the run covers, and how it is cut into jobs."""
 
@@ -432,10 +455,10 @@ class AoiConfig:
     # shorter half of the block, which is why the smaller size cost nothing before.
     job_size: int = 8192
     geojson_fname: str | None = None
-    # Footprints in priority order. Tiles are enqueued by the first one they fall
-    # in, then everything else. The queue is kept shallow, so this is what decides
-    # the order work is actually done in.
-    priority_geojson_fnames: list[str] | None = None
+    # Tiers in priority order. A job joins the first one matching both its footprint
+    # and its year, then everything else follows. The queue is kept shallow, so this
+    # is what decides the order work is actually done in.
+    priority: list[PriorityTier] | None = None
     epsg_code: int | None = None
     wgs84_bounds: tuple[float, float, float, float] | None = None
     zone_numbers: list[int] | None = None
@@ -1108,26 +1131,36 @@ def _count_worker_split(
     return starting, fresh
 
 
+def _job_year(job: list[str]) -> int | None:
+    """The reference year a job writes, or None if its args cannot be read."""
+    try:
+        start = json.loads(job[job.index("--time_range") + 1])[0]
+        return datetime.fromisoformat(start).year
+    except (ValueError, IndexError, KeyError, json.JSONDecodeError):
+        return None
+
+
 def _priority_first(
-    jobs: list[list[str]], geojson_fnames: list[str] | None
+    jobs: list[list[str]], tiers: list[PriorityTier] | None
 ) -> list[list[str]]:
-    """Order jobs by priority tier, earliest footprint first.
+    """Order jobs by priority tier, earliest tier first.
 
     The queue is deliberately shallow, so enqueue order is what decides what gets
     worked on next: ordering here is the whole priority mechanism, and no second queue
     or worker change is needed. Shuffling stays, but within each tier, so the spread
     across zones and imagery sources that it buys is kept.
 
-    A tile is put in the tier of the first footprint it falls in, so overlapping
-    footprints resolve by their order in the list rather than by area or by accident.
+    A job joins the first tier matching both its footprint and its year, so
+    overlapping tiers resolve by their order in the list rather than by area, by year
+    count, or by accident.
 
     Jobs are read from their own args rather than re-enumerated, since enumeration
     takes minutes and runs every cycle.
 
     Args:
         jobs: worker argument lists, as `get_jobs` returns them.
-        geojson_fnames: footprints in priority order; tiles in none of them go last.
-            None or empty just shuffles.
+        tiers: priority tiers in order; jobs matching none go last. None or empty
+            just shuffles.
 
     Returns:
         the jobs, highest tier first, shuffled within each tier.
@@ -1138,13 +1171,19 @@ def _priority_first(
         random.shuffle(out)
         return out
 
-    if not geojson_fnames:
+    if not tiers:
         return shuffled(jobs)
+    ordered: list[PriorityTier] = list(tiers)
 
-    tiers: list[tuple[list[Any], Any]] = []
-    for fname in geojson_fnames:
+    # None means the tier has no footprint and so matches anywhere. An empty shape
+    # list means it has one that would not load, and so matches nothing.
+    footprints: list[tuple[list[Any], Any] | None] = []
+    for tier in ordered:
+        if tier.geojson_fname is None:
+            footprints.append(None)
+            continue
         try:
-            with UPath(fname).open() as f:
+            with UPath(tier.geojson_fname).open() as f:
                 shapes = [
                     shapely.geometry.shape(feat["geometry"])
                     for feat in json.load(f)["features"]
@@ -1152,9 +1191,13 @@ def _priority_first(
         except Exception:
             # A footprint that cannot be read must not stall the run; losing a tier
             # costs throughput on areas someone wanted first, not correctness.
-            logger.exception("could not read priority footprint %s; skipping it", fname)
+            logger.exception(
+                "could not read priority footprint %s; skipping it", tier.geojson_fname
+            )
             shapes = []
-        tiers.append((shapes, shapely.STRtree(shapes) if shapes else None))
+        footprints.append((shapes, shapely.STRtree(shapes) if shapes else None))
+
+    years = [_job_year(job) for job in jobs]
 
     # Grouped by CRS so each zone's centres transform in one call rather than per job.
     by_crs: dict[str, list[tuple[int, float, float]]] = {}
@@ -1168,21 +1211,38 @@ def _priority_first(
             (i, (x0 + x1) / 2 * 10.0, -(y0 + y1) / 2 * 10.0)
         )
 
-    # Default tier is one past the last footprint: everything matching nothing.
-    tier_of = [len(tiers)] * len(jobs)
+    points: dict[int, Any] = {}
     for crs, entries in by_crs.items():
         tr = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
         lons, lats = tr.transform([e[1] for e in entries], [e[2] for e in entries])
         for (idx, _, _), lon, lat in zip(entries, lons, lats, strict=True):
-            pt = shapely.Point(lon, lat)
-            for t, (shapes, tree) in enumerate(tiers):
-                if tree is not None and any(
-                    shapes[k].intersects(pt) for k in tree.query(pt)
-                ):
-                    tier_of[idx] = t
-                    break
+            points[idx] = shapely.Point(lon, lat)
 
-    buckets: list[list[list[str]]] = [[] for _ in range(len(tiers) + 1)]
+    def matches(tier_index: int, job_index: int) -> bool:
+        """Whether a job belongs to a tier, on both year and footprint."""
+        tier = ordered[tier_index]
+        if tier.years is not None and years[job_index] not in tier.years:
+            return False
+        footprint = footprints[tier_index]
+        if footprint is None:
+            return True
+        pt = points.get(job_index)
+        if pt is None:
+            return False
+        shapes, tree = footprint
+        return tree is not None and any(
+            shapes[k].intersects(pt) for k in tree.query(pt)
+        )
+
+    # Default tier is one past the last: everything matching nothing.
+    tier_of = [len(ordered)] * len(jobs)
+    for i in range(len(jobs)):
+        for t in range(len(ordered)):
+            if matches(t, i):
+                tier_of[i] = t
+                break
+
+    buckets: list[list[list[str]]] = [[] for _ in range(len(ordered) + 1)]
     for i, job in enumerate(jobs):
         buckets[tier_of[i]].append(job)
     counts = [len(b) for b in buckets[:-1]]
@@ -1560,7 +1620,7 @@ def _run_cycle(
     # it much harder, because a job can be re-offered many times over a long run.
     fresh = [job for job in remaining if tuple(job) not in in_flight]
     if pending < target_pending:
-        fresh = _priority_first(fresh, config.aoi.priority_geojson_fnames)
+        fresh = _priority_first(fresh, config.aoi.priority)
         batch = fresh[: target_pending - pending]
         if batch:
             rslp.common.worker.write_jobs(
