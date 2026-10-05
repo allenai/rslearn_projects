@@ -410,12 +410,25 @@ predict) at `patch_size=1`, `window_size=16` on an H100:
         4096         4      ~12 min   completes, but ~55% of the time is fixed overhead
 
 Smaller jobs survive better but pay model load and compile per job, so total GPU time
-rises. The default is 4096. `job_size` is the unit of work a preemption destroys: the
-completion marker is written once, after every window in the block, so a job killed
-near the end redoes all of it. Those durations were measured when a job ran ~38 min;
-with the current model a job is several times longer, which moves the balance toward
-the smaller size. Note also that `urgent` is preempted by other `urgent` work, so
-priority reduces the rate rather than removing it.
+rises. `job_size` is the unit of work a preemption destroys: the completion marker is
+written once, after every window in the block, so a job killed near the end redoes all
+of it. Note also that `urgent` is preempted by other `urgent` work, so priority reduces
+the rate rather than removing it.
+
+The default is 8192, because materialize cost is mostly per block rather than per
+window. Measured on one AOI with four workers each, 2026-10-05:
+
+    job_size   windows   materialize   whole block   per 4096 of area
+        4096         4      13.4 min      32.3 min        32.3 min
+        8192        16      16.4 min     124.3 min        31.1 min
+
+Four times the ground for a fifth more materialize, so 3.3x the materialize throughput
+per unit area. Whole-block time barely moved, because with prefetching a block costs
+`max(materialize, inference)` and inference was the longer half. The size only pays
+once a faster model inverts that: at a 5x inference speedup the same numbers give 16.1
+min per 4096 of area against 6.7, a 2.4x difference. Pick the smaller size for a run
+that is inference-bound, or one on a pool preempted often enough that losing four times
+the work per preemption outweighs it.
 
 `job_size` does not affect the store's layout: shard and chunk sizes are fixed at
 `init_store`. It is purely a scheduling knob, so it can differ between runs against one

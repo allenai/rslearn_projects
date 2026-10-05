@@ -425,7 +425,12 @@ class AoiConfig:
     # once, after every window in the block, so a job killed near the end redoes all of
     # it. Must be a multiple of PATCH_SIZE and divide TILE_SIZE. Changing it mid-run
     # orphans existing markers, since a marker is keyed on its block's bounds.
-    job_size: int = 4096
+    #
+    # 8192 because materialize cost is mostly per block, not per window: measured
+    # 13.4 min for 4 windows at 4096 against 16.4 min for 16 at 8192, so 3.3x the
+    # materialize throughput per unit area. That only shows up once inference is the
+    # shorter half of the block, which is why the smaller size cost nothing before.
+    job_size: int = 8192
     geojson_fname: str | None = None
     # Footprints in priority order. Tiles are enqueued by the first one they fall
     # in, then everything else. The queue is kept shallow, so this is what decides
