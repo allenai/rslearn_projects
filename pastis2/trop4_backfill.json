@@ -1,0 +1,22 @@
+{
+ "loio|S2|Tessera v2|R\u00e9union": 3.73,
+ "loio|S2|Tessera v2|Guadeloupe": 31.15,
+ "loio|S2|Tessera v2|Martinique": 33.4,
+ "loio|S2|Tessera v2|Guyane": 1.67,
+ "loio|S2|Tessera v2|Mayotte": 0.01,
+ "loio|S2|AEF / GSE|R\u00e9union": 1.25,
+ "loio|S2|AEF / GSE|Guadeloupe": 22.06,
+ "loio|S2|AEF / GSE|Martinique": 18.35,
+ "loio|S2|AEF / GSE|Guyane": 0.13,
+ "loio|S2|AEF / GSE|Mayotte": 0.0,
+ "loio|S2|TSViT (scratch)|R\u00e9union": 20.08,
+ "loio|S2|TSViT (scratch)|Guadeloupe": 29.61,
+ "loio|S2|TSViT (scratch)|Martinique": 28.64,
+ "loio|S2|TSViT (scratch)|Guyane": 2.37,
+ "loio|S2|TSViT (scratch)|Mayotte": 2.13,
+ "t443|OlmoEarth probe \u00b7 64d": 28.91,
+ "t443|OlmoEarth probe \u00b7 128d": 33.14,
+ "t443|TSViT (scratch)": 31.15,
+ "t443|TSViT + focal \u03b3=2": 34.77,
+ "t443|Trivial (all Background)": 0.0
+}
