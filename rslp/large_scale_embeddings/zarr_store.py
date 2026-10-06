@@ -70,8 +70,14 @@ EMBEDDING_DIMENSIONS = ("time", "band", "y", "x")
 # Default chunk (inner) and shard (outer storage unit) spatial sizes.
 # The shard size must equal the window size (PATCH_SIZE) so each prediction window
 # writes exactly one shard, keeping concurrent region writes on disjoint objects.
-# chunk=256 halves the bytes read per interactive AOI versus 512, at ~14% more storage.
-DEFAULT_CHUNK_SIZE = 256
+#
+# chunk=64 because a point read costs one whole chunk: 0.3 MB against 3.2 MB at 256, an
+# 11x saving on reading embeddings at scattered label locations, which is the archive's
+# commonest third-party use and needs no client configuration to get. It costs 8.8% more
+# storage, and costs an unconfigured reader 1.8x the bytes on a partial, off-aligned
+# area read (481 MB against 268 for a 20 km AOI). Bulk sequential reads are unaffected.
+# See CHUNKING.md for the sweep and for the coalescing behaviour behind that 1.8x.
+DEFAULT_CHUNK_SIZE = 64
 DEFAULT_SHARD_SIZE = 2048
 # Compression is off the pipeline's critical path (seconds of CPU per shard against
 # minutes of GPU inference), so this is set for read cost, not write cost. Level 3 also
@@ -84,10 +90,14 @@ DEFAULT_ZSTD_LEVEL = 3
 # it costs essentially nothing in bytes, since the dimensions are decorrelated and the
 # codec gains nothing from seeing them together.
 #
-# Set to the smallest width the model is trained to emit, and no smaller. zarr-python
-# does not coalesce adjacent sub-chunk range requests, so a finer split buys no bytes
-# and costs one request per extra sub-chunk on every read. If a checkpoint later ships
-# trained 32- or 16-dim prefixes, lower this and re-render.
+# Set to the smallest width the model is trained to emit, and no smaller: a finer split
+# buys no bytes and costs a request per extra sub-chunk on every read. The encoder emits
+# 64 and 128 (DEFAULT_MATRYOSHKA_DIMS), so 64 makes a prefix read exactly one chunk. If
+# a checkpoint later ships trained 32- or 16-dim prefixes, lower this and re-render.
+#
+# zarr-python coalesced no adjacent ranges when this was written; since 3.3 it merges
+# them within array.sharding_coalesce_max_gap_bytes, which changes what a split costs
+# a reader. It does not change this setting, which is pinned to the emitted widths.
 DEFAULT_BAND_CHUNK = 64
 # Chunk size (in elements) for the 1-D x/y coordinate arrays. They are linear ramps
 # so they compress to almost nothing under zstd.

@@ -167,7 +167,7 @@ implementation of the convention). Each zone group holds:
 
 - an `embeddings` array with dimensions `(time, band, y, x)`: `band` is the 128-dim
   embedding vector, `time` is the annual reference years. It is int8, sharded so that
-  one shard equals one 2048x2048 prediction window (with 256x256 inner chunks),
+  one shard equals one 2048x2048 prediction window (with 64x64 inner chunks),
   zstd-compressed, with fill/nodata value -128.
 - `time`, `x`, and `y` coordinate arrays.
 - `proj:` and `spatial:` attributes (CRS and affine transform) and the geoemb
@@ -604,10 +604,12 @@ completion check before it reports a count.
 Chunk shape
 -----------
 
-The store fixes three geometry parameters, and all three are now measured. See
-`CHUNKING.md` for the full table and the reasoning; the short version is that
-`DEFAULT_CHUNK_SIZE = 256`, `DEFAULT_BAND_CHUNK = 64` and `DEFAULT_ZSTD_LEVEL = 3` are
-the right choices and no change is needed.
+The store fixes three geometry parameters, and all three are measured. See
+`CHUNKING.md` for the full table and the reasoning; the short version is
+`DEFAULT_CHUNK_SIZE = 64`, `DEFAULT_BAND_CHUNK = 64` and `DEFAULT_ZSTD_LEVEL = 3`. The
+chunk size moved from 256 to 64 on 2026-10-06: a point read costs one whole chunk, so
+64 makes reading embeddings at scattered label locations 11x cheaper for every reader
+with no client configuration, for 8.8% more storage.
 
 `DEFAULT_SHARD_SIZE = 2048` is not a tuning parameter at all. One prediction window
 writes exactly one object, which is what keeps concurrent writers on disjoint objects
@@ -615,8 +617,8 @@ and needs no locking. It moves only if the write path does.
 
 The other two are chosen once and for good: zarr cannot re-chunk an array in place, so
 changing them means rewriting every object. Re-run the benchmark before creating a store
-if the embedding dimensionality changes, if the trained Matryoshka width moves off 64, or
-if the dominant access pattern stops being the AOI read the measurements assume.
+if the embedding dimensionality changes, if the emitted Matryoshka widths move, or if
+the dominant access pattern stops being the point and AOI reads measured there.
 
 `tools/bench_chunking.py` is what produced them. Two commands:
 

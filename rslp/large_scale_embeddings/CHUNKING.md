@@ -52,9 +52,9 @@ block, 4,832 MB uncompressed.
 
 | variant | stored | ratio | point 64d | point 128d | 20 km AOI 64d | 40 km transect |
 |---|---|---|---|---|---|---|
-| `sp64_d64` | 4,134 MB | 0.856 | 0.3 MB / 2 | 0.5 MB / 2 | 481.4 MB / 71 | 36.7 MB / 36 |
+| **`sp64_d64`** | **4,134 MB** | **0.856** | **0.3 MB / 2** | **0.5 MB / 2** | **481.4 MB / 71** | **36.7 MB / 36** |
 | `sp128_d64` | 4,207 MB | 0.871 | 0.9 MB / 2 | 1.8 MB / 2 | 475.5 MB / 59 | 30.8 MB / 36 |
-| **`sp256_d64`** | **3,799 MB** | **0.786** | **3.2 MB / 2** | **6.5 MB / 2** | **267.8 MB / 85** | **56.6 MB / 20** |
+| `sp256_d64` | 3,799 MB | 0.786 | 3.2 MB / 2 | 6.5 MB / 2 | 267.8 MB / 85 | 56.6 MB / 20 |
 | `sp512_d64` | 3,507 MB | 0.726 | 12.0 MB / 2 | 23.9 MB / 3 | 307.5 MB / 29 | 110.9 MB / 12 |
 | `sp256_d128` | 3,799 MB | 0.786 | 6.5 MB / 2 | 6.5 MB / 2 | 534.7 MB / 49 | 113.0 MB / 20 |
 | `sp256_d64_z1` | 3,913 MB | 0.810 | 3.4 MB / 2 | 6.7 MB / 2 | 278.4 MB / 85 | 58.3 MB / 20 |
@@ -135,13 +135,28 @@ band-last dimension order with uncompressed inner chunks would make a point read
 Status
 ------
 
-Unchanged and evidenced: `DEFAULT_BAND_CHUNK = 64`, `DEFAULT_ZSTD_LEVEL = 3`.
+    DEFAULT_CHUNK_SIZE = 64      (was 256, changed 2026-10-06)
+    DEFAULT_BAND_CHUNK = 64      (unchanged)
+    DEFAULT_ZSTD_LEVEL = 3       (unchanged)
 
-`DEFAULT_CHUNK_SIZE` is still 256 and the choice is open pending two answers from the
-Studio explorer, the archive's main interactive reader: whether it can pin
-`array.sharding_coalesce_max_gap_bytes = 0` and regression-test that it stays pinned,
-and whether point reads or AOI reads dominate its cost in practice. If it can hold the
-setting, 64 is the better choice and costs 8.8% storage.
+64 was chosen because the two risks are not symmetric. 256 imposes a guaranteed 11x on
+every point read, by every reader, with no way for the reader to avoid it. 64 imposes a
+bounded 1.8x on one access pattern, partial off-aligned area reads, only for readers who
+leave the coalescing default in place, and those readers can fix it themselves. Bulk
+sequential reads are unaffected either way, because a full-shard read has no gaps
+between its chunks for coalescing to over-read.
+
+Configuring the reader was considered and rejected: the archive is published, so an
+unknown reader with stock settings has to get a good result without being told anything.
+
+Two consequences:
+
+- **Storage is 8.8% higher.** Measured on CONUS at 0.786; the archive-wide figure will
+  differ by region.
+- **The Studio explorer hardcodes the chunk size** to match the store, in `INNER_CHUNK`
+  in `ui/src/pages/Embeddings/core/store.ts` and alongside `BAND_CHUNK` in `config.ts`.
+  Those move in lockstep with a store built at the new default. Its label reads are
+  already chunk-aligned single-chunk fetches, so they pick up the 11x directly.
 
 Re-run this before creating a store if the embedding dimensionality changes, if the
 emitted Matryoshka widths move, or if the dominant access pattern turns out to be
