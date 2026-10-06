@@ -65,11 +65,21 @@ from rslp.log_utils import get_logger
 logger = get_logger(__name__)
 
 # The axes to sweep. Shard stays 2048: see the module docstring.
-SPATIAL_CHUNKS = (128, 256, 512, 1024)
-BAND_CHUNKS = (16, 32, 64, 128)
+#
+# Band is no longer swept. The encoder emits two Matryoshka widths, 64 and 128
+# (DEFAULT_MATRYOSHKA_DIMS), so 64 is correct by construction: a 64-dim read is exactly
+# one chunk and a 128-dim read exactly two. Anything narrower splits a read nobody
+# issues, and 128 doubles the bytes of a 64-dim read. The 2026-09-05 sweep covered
+# 16 and 32 because narrower widths were readable then.
+#
+# 1024 is dropped for the same reason it lost in 2026-09: worst nearly everywhere.
+SPATIAL_CHUNKS = (64, 128, 256, 512)
+BAND_CHUNKS = (64,)
 
-# One extra variant at the pre-2026-09 compression level, so the offline recompression
-# measurement can be confirmed against a store read through the real path.
+# Two controls, neither a candidate. The band control shows what the wrong band chunk
+# costs, and the compression control confirms the offline recompression measurement
+# against a store read through the real path.
+CONTROL_BAND_SHAPE = (256, 128)
 CONTROL_ZSTD_LEVEL = 1
 CONTROL_SHAPE = (256, 64)
 
@@ -77,12 +87,20 @@ CONTROL_SHAPE = (256, 64)
 BLOCK_SHARDS = 3
 
 # Where to cut the block out of the source store. These are shard indices, not pixels.
-# This 3 x 3 in utm36 is fully written Kenya land: every one of the nine objects is
-# ~390 MB, against 537 MB uncompressed, so none of them is mostly nodata. A block with
-# empty shards would measure compression of zeros.
-SOURCE_ZONE = 36
-SOURCE_SHARD_ROW = 449
-SOURCE_SHARD_COL = 33
+# A block with empty shards would measure compression of zeros, so every one of the nine
+# objects has to be fully written.
+#
+# This 3 x 3 is CONUS land in utm14, south Texas, from the global v1.3 archive at
+# time_index 8 (2025). Picked from 2,540 candidate blocks whose nine shards are within
+# 8% of each other in size, as the one closest to the median: 422 MB a shard against
+# 537 MB uncompressed, a 0.786 ratio matching the archive's own median.
+#
+# The 2026-09-05 sweep used Kenya, utm36 row 449 col 33, which compresses to about 0.73.
+# Real content varies by a wide margin and the ratio sets every byte figure here, so a
+# source is worth choosing rather than inheriting.
+SOURCE_ZONE = 14
+SOURCE_SHARD_ROW = 312
+SOURCE_SHARD_COL = 25
 
 # Dimensions in the source store, and the Matryoshka width a client would actually read.
 FULL_DIMS = 128
@@ -113,9 +131,12 @@ def variant_grid(zstd_level: int) -> list[tuple[int, int, int]]:
         the sweep, plus one control at the older compression level.
     """
     grid = [(sp, d, zstd_level) for sp in SPATIAL_CHUNKS for d in BAND_CHUNKS]
-    control = (*CONTROL_SHAPE, CONTROL_ZSTD_LEVEL)
-    if control not in grid:
-        grid.append(control)
+    for control in (
+        (*CONTROL_BAND_SHAPE, zstd_level),
+        (*CONTROL_SHAPE, CONTROL_ZSTD_LEVEL),
+    ):
+        if control not in grid:
+            grid.append(control)
     return grid
 
 
@@ -466,6 +487,23 @@ def measure_one(
     return best
 
 
+def stored_bytes(store_path: str, zone_number: int) -> int:
+    """Total bytes the variant's embedding array occupies.
+
+    The read patterns say what a layout costs to query; this says what it costs to
+    keep. Chunk size moves both, since smaller chunks give zstd less context.
+
+    Args:
+        store_path: the variant store.
+        zone_number: UTM zone the block was copied into.
+
+    Returns:
+        the summed size of every object under the zone's embeddings array.
+    """
+    root = UPath(f"{store_path}/{zone_group_name(zone_number)}/{EMBEDDINGS_ARRAY}")
+    return sum(p.stat().st_size for p in root.rglob("*") if p.is_file())
+
+
 def measure(
     out_prefix: str,
     zone_number: int = SOURCE_ZONE,
@@ -500,6 +538,8 @@ def measure(
 
     rows: list[dict[str, Any]] = []
     for name in variants:
+        size = stored_bytes(f"{out_prefix.rstrip('/')}/{name}", zone_number)
+        logger.info("%-22s %8.2f MB stored", name, size / 1e6)
         for pattern in patterns:
             got = measure_one(
                 store_path=f"{out_prefix.rstrip('/')}/{name}",
@@ -509,7 +549,12 @@ def measure(
                 origin_x=origin_x,
                 repeats=repeats,
             )
-            row = {"variant": name, "pattern": pattern["name"], **got}
+            row = {
+                "variant": name,
+                "pattern": pattern["name"],
+                "stored_bytes": size,
+                **got,
+            }
             # The number the whole sweep is about: bytes moved over bytes wanted.
             row["amplification"] = got["bytes"] / max(got["wanted_bytes"], 1)
             rows.append(row)

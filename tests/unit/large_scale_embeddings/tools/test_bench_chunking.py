@@ -3,6 +3,7 @@
 from rslp.large_scale_embeddings.tools.bench_chunking import (
     BAND_CHUNKS,
     BLOCK_SHARDS,
+    CONTROL_BAND_SHAPE,
     CONTROL_SHAPE,
     CONTROL_ZSTD_LEVEL,
     SPATIAL_CHUNKS,
@@ -10,7 +11,10 @@ from rslp.large_scale_embeddings.tools.bench_chunking import (
     variant_grid,
     variant_name,
 )
-from rslp.large_scale_embeddings.zarr_store import DEFAULT_SHARD_SIZE
+from rslp.large_scale_embeddings.zarr_store import (
+    DEFAULT_MATRYOSHKA_DIMS,
+    DEFAULT_SHARD_SIZE,
+)
 
 
 def test_no_read_starts_on_a_chunk_boundary() -> None:
@@ -63,12 +67,32 @@ def test_the_aoi_pattern_straddles_four_shards() -> None:
     assert BLOCK_SHARDS >= 2, "a 1-shard block cannot hold a straddling AOI read"
 
 
-def test_the_grid_covers_both_axes_and_carries_the_control() -> None:
-    """The sweep is the full cross product, plus one variant at the old zstd level."""
+def test_the_grid_covers_the_swept_axis_and_carries_both_controls() -> None:
+    """The sweep is the cross product, plus a band control and a compression control.
+
+    The controls are not candidates: one shows what the wrong band chunk costs and the
+    other confirms the compression level. Counting them into the cross product would
+    let a control quietly become a recommendation.
+    """
     grid = variant_grid(3)
-    assert len(grid) == len(SPATIAL_CHUNKS) * len(BAND_CHUNKS) + 1
-    assert (*CONTROL_SHAPE, CONTROL_ZSTD_LEVEL) in grid
+    assert len(grid) == len(SPATIAL_CHUNKS) * len(BAND_CHUNKS) + 2
+    assert (*CONTROL_SHAPE, CONTROL_ZSTD_LEVEL) in grid, "no compression control"
+    assert (*CONTROL_BAND_SHAPE, 3) in grid, "no band control"
     assert len({variant_name(*g) for g in grid}) == len(grid), "duplicate variant names"
+
+
+def test_the_band_axis_matches_the_matryoshka_widths() -> None:
+    """Every swept band chunk must be a width the encoder actually emits.
+
+    The 2026-09-05 sweep covered 16 and 32 because narrower prefixes were readable
+    then. They no longer are, so sweeping them would spend hours of compression
+    measuring reads nobody can issue.
+    """
+    for band in BAND_CHUNKS:
+        assert band in DEFAULT_MATRYOSHKA_DIMS, (
+            f"band chunk {band} is not one of the emitted widths "
+            f"{DEFAULT_MATRYOSHKA_DIMS}"
+        )
 
 
 def test_the_shard_size_is_not_swept() -> None:
