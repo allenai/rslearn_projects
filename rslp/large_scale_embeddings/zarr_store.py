@@ -22,11 +22,19 @@ a custom ``method`` plus a ``link`` to the formula (see the project README).
 import importlib.metadata
 import pathlib
 import subprocess  # nosec: only ever run with a fixed argv and no shell
+from datetime import timedelta
 
 import numpy as np
 import zarr
+from fsspec.core import url_to_fs
 from rslearn.utils.geometry import PixelBounds, Projection
 from zarr.codecs import ZstdCodec
+from zarr.core.buffer import Buffer
+from zarr.storage import FsspecStore
+
+# Private, and used for one line that mirrors FsspecStore.set. Importing it keeps the
+# key-to-path mapping identical to the parent's rather than reimplementing it.
+from zarr.storage._fsspec import _dereference_path
 
 from rslp.large_scale_embeddings.model import NODATA_VALUE
 from rslp.large_scale_embeddings.tiling import get_zone_grid
@@ -99,6 +107,142 @@ DEFAULT_ZSTD_LEVEL = 3
 # them within array.sharding_coalesce_max_gap_bytes, which changes what a split costs
 # a reader. It does not change this setting, which is pinned to the emitted widths.
 DEFAULT_BAND_CHUNK = 64
+# How long a CDN and a browser may cache each kind of object.
+#
+# A chunk is written once by the single window that owns it and never revisited, so it
+# can be cached indefinitely and marked immutable. Metadata is the opposite: a reader
+# consults it to discover which years and zones the store now holds, and a run fills
+# those in over weeks, so a stale copy reads as missing coverage.
+DEFAULT_CHUNK_MAX_AGE = timedelta(days=365)
+DEFAULT_METADATA_MAX_AGE = timedelta(minutes=1)
+
+# Arrays whose chunks are metadata in all but name: the time axis and the coordinate
+# ramps are read to find out what the store covers, so they expire with the metadata
+# rather than with the embeddings.
+SHORT_CACHE_ARRAYS = ("time", "x", "y")
+
+
+def cache_control(max_age: timedelta, immutable: bool) -> str:
+    """The Cache-Control header for an object with this lifetime.
+
+    Args:
+        max_age: how long a cache may serve the object without revalidating.
+        immutable: whether the object can never change, which lets a browser skip
+            revalidation entirely rather than issuing a conditional request.
+
+    Returns:
+        the header value.
+    """
+    parts = ["public", f"max-age={int(max_age.total_seconds())}"]
+    if immutable:
+        parts.append("immutable")
+    return ", ".join(parts)
+
+
+class CacheControlStore(FsspecStore):
+    """An fsspec store that stamps Cache-Control as it writes each object.
+
+    Stamping at write time rather than afterwards keeps it to one request per object:
+    a separate pass would have to walk millions of chunks, and anything it missed would
+    be served with whatever default the bucket applies.
+    """
+
+    def __init__(
+        self,
+        *args: object,
+        chunk_max_age: timedelta = DEFAULT_CHUNK_MAX_AGE,
+        metadata_max_age: timedelta = DEFAULT_METADATA_MAX_AGE,
+        **kwargs: object,
+    ) -> None:
+        """Wrap an FsspecStore with the two cache lifetimes.
+
+        Args:
+            args: passed to FsspecStore.
+            chunk_max_age: lifetime for an embedding chunk, served immutable.
+            metadata_max_age: lifetime for zarr.json and the coordinate arrays.
+            kwargs: passed to FsspecStore.
+        """
+        super().__init__(*args, **kwargs)  # type: ignore[arg-type]
+        self._chunk_header = cache_control(chunk_max_age, immutable=True)
+        self._metadata_header = cache_control(metadata_max_age, immutable=False)
+
+    def _header_for(self, key: str) -> str:
+        """The Cache-Control value for one store key."""
+        if "/c/" not in key:
+            # zarr.json, and anything else that is not chunk data.
+            return self._metadata_header
+        array_name = key.split("/c/")[0].rsplit("/", 1)[-1]
+        if array_name in SHORT_CACHE_ARRAYS:
+            return self._metadata_header
+        return self._chunk_header
+
+    async def set(
+        self, key: str, value: Buffer, byte_range: tuple | None = None
+    ) -> None:
+        """Write one object, carrying its Cache-Control.
+
+        Mirrors FsspecStore.set, which calls _pipe_file with no metadata. gcsfs takes
+        fixed_key_metadata there, so the header costs no extra request. A filesystem
+        that does not accept it writes unstamped rather than failing, since losing the
+        header must not lose the data.
+
+        Args:
+            key: the store key.
+            value: the bytes to write.
+            byte_range: unsupported, as in the parent.
+
+        Raises:
+            NotImplementedError: if a byte range is given.
+        """
+        if not self._is_open:
+            await self._open()
+        self._check_writable()
+        if byte_range is not None:
+            raise NotImplementedError
+        path = _dereference_path(self.path, key)
+        data = value.to_bytes()
+        try:
+            await self.fs._pipe_file(
+                path,
+                data,
+                fixed_key_metadata={"cache_control": self._header_for(key)},
+            )
+        except TypeError:
+            await self.fs._pipe_file(path, data)
+
+
+def writable_store(
+    store_path: str,
+    storage_options: dict | None = None,
+    chunk_max_age: timedelta = DEFAULT_CHUNK_MAX_AGE,
+    metadata_max_age: timedelta = DEFAULT_METADATA_MAX_AGE,
+) -> CacheControlStore | str:
+    """The store to open for writing, stamping Cache-Control where that is possible.
+
+    Args:
+        store_path: the store path or URL.
+        storage_options: fsspec storage options for remote stores.
+        chunk_max_age: lifetime for an embedding chunk, served immutable.
+        metadata_max_age: lifetime for zarr.json and the coordinate arrays.
+
+    Returns:
+        a stamping store for a remote path, or the path unchanged for a local one,
+        where there is no CDN in front and nothing to stamp.
+    """
+    if "://" not in store_path:
+        return store_path
+    # asynchronous=True to match what FsspecStore.from_url builds; without it zarr
+    # warns and the async set() below runs against a sync filesystem.
+    fs, path = url_to_fs(store_path, asynchronous=True, **(storage_options or {}))
+    return CacheControlStore(
+        fs,
+        path=path,
+        read_only=False,
+        chunk_max_age=chunk_max_age,
+        metadata_max_age=metadata_max_age,
+    )
+
+
 # Chunk size (in elements) for the 1-D x/y coordinate arrays. They are linear ramps
 # so they compress to almost nothing under zstd.
 COORD_CHUNK_SIZE = 65536
@@ -384,6 +528,8 @@ def init_store(
     quantization_link: str = DEFAULT_QUANTIZATION_LINK,
     overwrite: bool = False,
     storage_options: dict | None = None,
+    chunk_max_age: timedelta = DEFAULT_CHUNK_MAX_AGE,
+    metadata_max_age: timedelta = DEFAULT_METADATA_MAX_AGE,
 ) -> None:
     """Create the GeoZarr store skeleton (root, zone groups, arrays, metadata).
 
@@ -413,6 +559,8 @@ def init_store(
         quantization_link: URL documenting the dequantization formula.
         overwrite: whether to overwrite an existing store.
         storage_options: fsspec storage options for remote stores.
+        chunk_max_age: how long a cache may hold an embedding chunk.
+        metadata_max_age: how long a cache may hold zarr.json and the coordinates.
     """
     if tile_size % shard_size != 0:
         raise ValueError(
@@ -430,9 +578,10 @@ def init_store(
         gsd = float(resolution)
 
     root = zarr.open_group(
-        store=store_path,
+        store=writable_store(
+            store_path, storage_options, chunk_max_age, metadata_max_age
+        ),
         mode="w" if overwrite else "w-",
-        storage_options=storage_options,
     )
     geoemb_attrs = build_geoemb_attrs(
         dimensions=dimensions,
@@ -548,6 +697,8 @@ def init_pca_store(
     zstd_level: int = DEFAULT_ZSTD_LEVEL,
     overwrite: bool = False,
     storage_options: dict | None = None,
+    chunk_max_age: timedelta = DEFAULT_CHUNK_MAX_AGE,
+    metadata_max_age: timedelta = DEFAULT_METADATA_MAX_AGE,
 ) -> None:
     """Create the sibling store that holds the derived false-color pyramid.
 
@@ -575,6 +726,8 @@ def init_pca_store(
         zstd_level: zstd compression level.
         overwrite: whether to overwrite an existing store.
         storage_options: fsspec storage options for remote stores.
+        chunk_max_age: how long a cache may hold an embedding chunk.
+        metadata_max_age: how long a cache may hold zarr.json and the coordinates.
     """
     if shard_size % (2**max_level) != 0:
         raise ValueError(
@@ -585,9 +738,10 @@ def init_pca_store(
         gsd = float(resolution)
 
     root = zarr.open_group(
-        store=pca_store_path,
+        store=writable_store(
+            pca_store_path, storage_options, chunk_max_age, metadata_max_age
+        ),
         mode="w" if overwrite else "w-",
-        storage_options=storage_options,
     )
     geoemb_attrs = build_geoemb_attrs(
         dimensions=PCA_BANDS,
@@ -678,6 +832,8 @@ def write_pca_window_levels(
     levels: dict[int, np.ndarray],
     patch_size: int = 1,
     storage_options: dict | None = None,
+    chunk_max_age: timedelta = DEFAULT_CHUNK_MAX_AGE,
+    metadata_max_age: timedelta = DEFAULT_METADATA_MAX_AGE,
 ) -> None:
     """Write one window's RGB into every pyramid level of the pca store.
 
@@ -690,12 +846,15 @@ def write_pca_window_levels(
         levels: mapping of pyramid level to its uint8 (PCA_BANDS, h, w) array.
         patch_size: the encoder patch size.
         storage_options: fsspec storage options for remote stores.
+        chunk_max_age: how long a cache may hold an embedding chunk.
+        metadata_max_age: how long a cache may hold zarr.json and the coordinates.
     """
     group = zarr.open_group(
-        store=pca_store_path,
+        store=writable_store(
+            pca_store_path, storage_options, chunk_max_age, metadata_max_age
+        ),
         path=zone_group_name(zone_number),
         mode="r+",
-        storage_options=storage_options,
     )
     row_offset, col_offset = _window_offsets(group, window_bounds, patch_size)
     for level, rgb in sorted(levels.items()):
@@ -724,6 +883,8 @@ def write_window_region(
     embeddings: np.ndarray,
     patch_size: int = 1,
     storage_options: dict | None = None,
+    chunk_max_age: timedelta = DEFAULT_CHUNK_MAX_AGE,
+    metadata_max_age: timedelta = DEFAULT_METADATA_MAX_AGE,
 ) -> None:
     """Write one window's embedding raster into the zone array region.
 
@@ -745,12 +906,15 @@ def write_window_region(
             input resolution, so the window bounds are divided by it to locate the
             output region.
         storage_options: fsspec storage options for remote stores.
+        chunk_max_age: how long a cache may hold an embedding chunk.
+        metadata_max_age: how long a cache may hold zarr.json and the coordinates.
     """
     group = zarr.open_group(
-        store=store_path,
+        store=writable_store(
+            store_path, storage_options, chunk_max_age, metadata_max_age
+        ),
         path=zone_group_name(zone_number),
         mode="r+",
-        storage_options=storage_options,
     )
     # The store grid is at the output resolution, so map the input-pixel window bounds
     # down to output pixels before offsetting against the (output-pixel) array origin.
