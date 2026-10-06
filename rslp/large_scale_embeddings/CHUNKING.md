@@ -1,14 +1,12 @@
 Chunk Shape Read Costs
 ======================
 
-Measured results for the two free parameters of the embeddings store, and the evidence
-behind `DEFAULT_CHUNK_SIZE`, `DEFAULT_BAND_CHUNK` and `DEFAULT_ZSTD_LEVEL` in
-`zarr_store.py`.
+Measured evidence for `DEFAULT_CHUNK_SIZE`, `DEFAULT_BAND_CHUNK` and
+`DEFAULT_ZSTD_LEVEL` in `zarr_store.py`.
 
-**These three are fixed when `init_store` runs and cannot be changed afterwards.** Zarr
-cannot re-chunk an array in place, so a different choice means rewriting every object in
-the archive. That is why they are worth measuring rather than assuming, and why this
-benchmark gates creating a store rather than following it.
+**These are fixed when `init_store` runs and cannot be changed afterwards.** Zarr cannot
+re-chunk an array in place, so a different choice means rewriting every object in the
+archive. That is why this benchmark gates creating a store rather than following it.
 
 The shard is not free to choose: it is pinned to the prediction window so that one
 window writes one object, which is what makes concurrent writes safe without locking.
@@ -17,118 +15,153 @@ window writes one object, which is what makes concurrent writes safe without loc
 How it was measured
 -------------------
 
-`tools/bench_chunking.py`, run 2026-09-05 against the Kenya store as source:
+`tools/bench_chunking.py`, run 2026-10-06 against the global v1.3 archive:
 
     python -m rslp.main large_scale_embeddings bench_build_variants \
-        --source_store_path gs://BUCKET/geozarr_kenya_.../embeddings.zarr \
-        --out_prefix gs://BUCKET/large_scale_embeddings/bench_chunking_20260905
+        --source_store_path gs://BUCKET/geozarr_global_v1.3/.../embeddings.zarr \
+        --out_prefix gs://BUCKET/large_scale_embeddings/bench_chunking_20261005 \
+        --time_index 8
 
     python -m rslp.main large_scale_embeddings bench_measure \
-        --out_prefix gs://BUCKET/large_scale_embeddings/bench_chunking_20260905 \
-        --results_path gs://BUCKET/large_scale_embeddings/bench_chunking_20260905/results.json
+        --out_prefix gs://BUCKET/large_scale_embeddings/bench_chunking_20261005 \
+        --results_path gs://BUCKET/.../bench_chunking_20261005/results.json
 
-Prediction is not re-run. One 3x3 block of finished shards is read out of the source once
-and rewritten into 17 variant stores, so every variant holds byte-identical embeddings
-and the only difference between them is layout. 16 variants cover the grid of four
-spatial sizes against four band depths at zstd-3; the seventeenth repeats `sp256_d64` at
-zstd-1 as a compression control.
+Prediction is not re-run. A 3 x 3 block of finished shards is read out of the source
+once and rewritten into each variant, so every variant holds byte-identical embeddings
+and the only difference is layout. Reads are anchored off every chunk boundary under
+test; a benchmark that aligns its reads measures the best case for large chunks and
+describes no AOI anyone draws.
 
-Each measurement reopens the store, because zarr caches a shard index per array handle
-and reusing one would measure a warm index that no cold client gets. Three repeats,
-fastest kept. Raw rows are in `results.json` beside the variants.
+Source block: utm14 shard row 312, col 25, time index 8 (2025). CONUS land in south
+Texas, chosen from 2,540 candidate blocks whose nine shards are within 8% of each other
+in size, as the one closest to the median. It compresses to 0.786, matching the
+archive's own median. The 2026-09-05 sweep used Kenya, which compresses to about 0.73,
+so its byte figures were optimistic. Content varies by a wide margin and sets every
+number here, so the source is worth choosing rather than inheriting.
 
-Naming is `sp{spatial}_d{band}_z{zstd}`: `sp256_d64_z3` is a 256 px inner chunk, 64
-dimensions per chunk along the band axis, zstd level 3.
+Band is no longer swept. The encoder emits two Matryoshka widths, 64 and 128
+(`DEFAULT_MATRYOSHKA_DIMS`), so `d64` is correct by construction: a 64-dim read is
+exactly one chunk and a 128-dim read exactly two. `d128` is kept as a control only.
 
 
 Results
 -------
 
-Bytes actually moved over the network, and the number of range requests issued.
+Bytes moved and requests issued, at zstd 3 unless noted. Stored is the whole 3 x 3
+block, 4,832 MB uncompressed.
 
-| variant | point<br>64 dims | point<br>128 dims | 1 km area<br>128 dims | 20 km AOI<br>64 dims | 40 km transect<br>64 dims |
-|---|---|---|---|---|---|
-| `sp128_d16_z3` | 0.8 MB<br>3 req | 1.5 MB<br>5 req | 1.5 MB<br>5 req | 228.2 MB<br>34 req | 40.4 MB<br>21 req |
-| `sp128_d32_z3` | 0.8 MB<br>2 req | 1.6 MB<br>3 req | 1.6 MB<br>3 req | 230.8 MB<br>85 req | 37.4 MB<br>20 req |
-| `sp128_d64_z3` | 0.8 MB<br>2 req | 1.6 MB<br>2 req | 1.6 MB<br>2 req | 410.8 MB<br>52 req | 25.1 MB<br>36 req |
-| `sp128_d128_z3` | 1.6 MB<br>2 req | 1.6 MB<br>2 req | 1.6 MB<br>2 req | 447.6 MB<br>56 req | 50.8 MB<br>36 req |
-| `sp256_d16_z3` | 2.9 MB<br>3 req | 5.9 MB<br>5 req | 5.9 MB<br>5 req | 232.6 MB<br>42 req | 47.3 MB<br>37 req |
-| `sp256_d32_z3` | 2.9 MB<br>2 req | 5.9 MB<br>3 req | 5.9 MB<br>3 req | 232.4 MB<br>33 req | 47.2 MB<br>20 req |
-| **`sp256_d64_z3`** | **2.9 MB**<br>2 req | **5.9 MB**<br>2 req | **5.9 MB**<br>2 req | **232.2 MB**<br>85 req | **47.2 MB**<br>20 req |
-| `sp256_d128_z3` | 5.9 MB<br>2 req | 5.9 MB<br>2 req | 5.9 MB<br>2 req | 465.5 MB<br>49 req | 96.3 MB<br>20 req |
-| `sp512_d16_z3` | 10.7 MB<br>3 req | 21.8 MB<br>5 req | 21.8 MB<br>5 req | 270.9 MB<br>28 req | 94.9 MB<br>21 req |
-| `sp512_d32_z3` | 10.7 MB<br>2 req | 21.7 MB<br>3 req | 21.7 MB<br>3 req | 270.8 MB<br>25 req | 94.9 MB<br>12 req |
-| `sp512_d64_z3` | 10.7 MB<br>2 req | 21.7 MB<br>3 req | 21.7 MB<br>3 req | 270.8 MB<br>29 req | 94.9 MB<br>12 req |
-| `sp512_d128_z3` | 21.7 MB<br>2 req | 21.7 MB<br>2 req | 21.7 MB<br>2 req | 547.9 MB<br>29 req | 194.0 MB<br>12 req |
-| `sp1024_d16_z3` | 42.6 MB<br>5 req | 86.5 MB<br>9 req | 86.5 MB<br>9 req | 391.0 MB<br>40 req | 212.6 MB<br>23 req |
-| `sp1024_d32_z3` | 42.6 MB<br>3 req | 86.5 MB<br>5 req | 86.5 MB<br>5 req | 390.9 MB<br>22 req | 212.5 MB<br>13 req |
-| `sp1024_d64_z3` | 42.6 MB<br>2 req | 86.5 MB<br>3 req | 86.5 MB<br>3 req | 390.9 MB<br>13 req | 212.5 MB<br>8 req |
-| `sp1024_d128_z3` | 86.5 MB<br>2 req | 86.5 MB<br>2 req | 86.5 MB<br>2 req | 792.0 MB<br>9 req | 433.8 MB<br>8 req |
+| variant | stored | ratio | point 64d | point 128d | 20 km AOI 64d | 40 km transect |
+|---|---|---|---|---|---|---|
+| `sp64_d64` | 4,134 MB | 0.856 | 0.3 MB / 2 | 0.5 MB / 2 | 481.4 MB / 71 | 36.7 MB / 36 |
+| `sp128_d64` | 4,207 MB | 0.871 | 0.9 MB / 2 | 1.8 MB / 2 | 475.5 MB / 59 | 30.8 MB / 36 |
+| **`sp256_d64`** | **3,799 MB** | **0.786** | **3.2 MB / 2** | **6.5 MB / 2** | **267.8 MB / 85** | **56.6 MB / 20** |
+| `sp512_d64` | 3,507 MB | 0.726 | 12.0 MB / 2 | 23.9 MB / 3 | 307.5 MB / 29 | 110.9 MB / 12 |
+| `sp256_d128` | 3,799 MB | 0.786 | 6.5 MB / 2 | 6.5 MB / 2 | 534.7 MB / 49 | 113.0 MB / 20 |
+| `sp256_d64_z1` | 3,913 MB | 0.810 | 3.4 MB / 2 | 6.7 MB / 2 | 278.4 MB / 85 | 58.3 MB / 20 |
 
-Wall-clock times are in `results.json` but are not reproduced here: they are dominated by
-network variance from one client in one region, and the byte and request counts are the
-properties of the layout. Where times do separate the variants they follow the bytes.
+The AOI column above was measured under zarr 3.4.0 defaults. Read the next section
+before drawing anything from it.
+
+
+The reader decides the AOI cost, not the layout
+-----------------------------------------------
+
+**zarr coalesces adjacent ranged reads, and that doubles what small chunks move.**
+`array.sharding_coalesce_max_gap_bytes` (1 MiB by default since 3.3) merges nearby
+chunk ranges into one GET and reads the gaps between them. The same variants, same
+bytes on disk, on the 20 km AOI:
+
+| variant | zarr 3.4.0 default | gap 0 | zarr 3.2.1 | chunks spanned |
+|---|---|---|---|---|
+| `sp64_d64` | 481.4 MB / 71 req | 245.3 MB / 1093 req | 245.3 MB / 1093 req | 1,089 |
+| `sp128_d64` | 475.5 MB / 59 req | 265.4 MB / 293 req | 265.4 MB / 293 req | 289 |
+| `sp256_d64` | 267.8 MB / 85 req | 267.8 MB / 85 req | 267.8 MB / 85 req | 81 |
+
+Three things follow:
+
+- **With coalescing off, every row matches theory exactly**, request counts included
+  (1,089 chunks plus 4 shard-index reads is 1,093). Setting the gap to 0 reproduces
+  3.2.1 byte for byte, so the knob fully controls the behaviour.
+- **`sp256` is unaffected.** At 256 px the chunks are already larger than the coalescing
+  window, so it reads 267.8 MB over 85 requests under every configuration tested. Its
+  cost is a property of the archive.
+- **Below 256 px the cost is a property of the client.** A reader that upgrades zarr and
+  does not set the knob pays 1.8x more bytes, silently.
+
+`sharding_coalesce_max_bytes: 0` changes nothing further; the gap setting alone does it.
 
 
 What the numbers say
 --------------------
 
-**Spatial 256 is the right choice.** It wins the 20 km AOI, which is the pattern an
-interactive client actually issues, moving 232 MB against 271 MB at 512 (+17%) and
-391 MB at 1024 (+68%). Both extremes had never been tried before this run and both fail,
-differently: 1024 is worst nearly everywhere, while 128 is genuinely better on point
-reads (0.8 MB against 2.9 MB) but collapses on the AOI at 411 MB, 77% worse than 256.
-256 is the compromise: near-best on wide reads, acceptable on points.
+**Band 64 is settled.** `sp256_d128` moves 534.7 MB on the AOI against `sp256_d64`'s
+267.8, exactly double, because a 64-dim read has to fetch both band chunks. Nothing
+narrower than 64 is worth testing now that 64 is the narrowest width the encoder emits.
 
-**Band depth 64 holds, though less decisively than the byte argument suggested.** At the
-64 dimensions the model is trained to emit, `d64` is exactly one chunk and one usable
-vector. Finer depths shave a little off point reads and cost round trips instead, which
-is the effect the old comment in `zarr_store.py` predicted from first principles and this
-confirms: `sp1024_d16` needs 9 requests where `d128` needs 2. The honest caveat is that
-`sp256_d32` matches `sp256_d64` on AOI bytes within noise (232.4 MB against 232.2 MB)
-while issuing fewer requests. There is no measured reason to prefer 64 over 32 on cost
-alone; 64 is kept because it makes a Matryoshka-width read exactly one chunk, which is a
-property worth having rather than a number worth optimising.
-
-**Amplification is inherent, and large.** A single-point 64-dim read against
-`sp256_d64_z3` moves 2,910,450 bytes to deliver 64 bytes: **45,476x**. zstd frames are
-not seekable, so answering one pixel moves its whole chunk. No layout in the grid avoids
-this; the smallest, `sp128_d16`, still amplifies about 12,000x. This is the cost of
-compression, and it is why a point-query workload wants a different artifact rather than
-a different chunk shape.
-
-
-zstd level
-----------
-
-`sp256_d64` built at level 1 and level 3, everything else identical:
-
-| pattern | level 1 | level 3 | saving |
-|---|---|---|---|
-| point, 64 dims | 3,092,782 B | 2,910,450 B | 5.9% |
-| 40 km transect, 64 dims | 51,011,247 B | 47,176,030 B | 7.5% |
-| 20 km AOI, 64 dims | 251,228,594 B | 232,197,373 B | 7.6% |
-
-Level 3 moves 6 to 8% fewer bytes with no time penalty, confirming in situ the 6.3%
-measured offline by recompressing real chunks. The saving comes off storage *and* off
-every read, since a range request moves compressed bytes. Level 3 is also what the
+**zstd 3 is settled.** Against level 1 at the same shape it stores 2.9% less and moves
+4.0% fewer bytes on the AOI, with no time penalty. The saving comes off storage *and*
+off every read, since a range request moves compressed bytes. Level 3 is also what the
 comparable AlphaEarth mosaic uses, so a like-for-like read comparison stays honest.
 
+**512 loses.** It costs 12.0 MB for a point read and 110.9 MB on the transect, roughly
+double 256 on both, and its 8% storage saving does not pay for that.
 
-Conclusion
-----------
+**Spatial 64 against 256 is a real tradeoff, not a measurement question.** 128 is
+dominated by 64 on all three axes and can be set aside.
 
-The current defaults are correct and no change is needed:
+| | `sp64_d64` | `sp256_d64` |
+|---|---|---|
+| Point read, 64 dims | **0.3 MB** | 3.2 MB |
+| 20 km AOI, coalescing off | **245.3 MB** | 267.8 MB |
+| 20 km AOI requests | 1,093 | **85** |
+| 20 km AOI if the knob is lost | 481.4 MB | **267.8 MB** |
+| Storage | +8.8% | **baseline** |
 
-    DEFAULT_CHUNK_SIZE = 256
-    DEFAULT_BAND_CHUNK = 64
-    DEFAULT_ZSTD_LEVEL = 3
+64 is 11x cheaper on the point read, which is the pattern that dominates fitting a
+classifier from scattered labels, and it needs no configuration to get that. It is also
+slightly cheaper on the AOI once coalescing is off. It costs 8.8% storage across the
+archive, 13x the request count, and a client-side setting someone has to keep set.
 
-Re-run this benchmark before creating a store if the embedding dimensionality changes,
-if the model's trained Matryoshka width moves off 64, or if the dominant access pattern
-turns out to be something other than the AOI read assumed here.
+256 needs nothing kept set. Its numbers did not move across four client configurations.
+
+**Amplification is inherent and large either way.** A single-point 64-dim read against
+`sp256_d64` moves 3.2 MB to deliver 64 bytes, about 50,000x; `sp64_d64` still amplifies
+about 4,000x. zstd frames are not seekable, so answering one pixel moves its whole
+chunk. A point-query workload wants a different artifact, not a different chunk shape:
+band-last dimension order with uncompressed inner chunks would make a point read a
+64-byte ranged GET, at about 24% more storage.
+
+
+Status
+------
+
+Unchanged and evidenced: `DEFAULT_BAND_CHUNK = 64`, `DEFAULT_ZSTD_LEVEL = 3`.
+
+`DEFAULT_CHUNK_SIZE` is still 256 and the choice is open pending two answers from the
+Studio explorer, the archive's main interactive reader: whether it can pin
+`array.sharding_coalesce_max_gap_bytes = 0` and regression-test that it stays pinned,
+and whether point reads or AOI reads dominate its cost in practice. If it can hold the
+setting, 64 is the better choice and costs 8.8% storage.
+
+Re-run this before creating a store if the embedding dimensionality changes, if the
+emitted Matryoshka widths move, or if the dominant access pattern turns out to be
+something other than the point and AOI reads assumed here.
 
 What this deliberately does not measure is the zoomed-out continental view. That is
 served by the PCA pyramid, whose levels exist so a wide extent touches a bounded number
 of chunks; asking `embeddings.zarr` for a continent is not an access pattern anyone
 should have, and benchmarking it would argue for a chunk shape nothing needs.
+
+
+Why the 2026-09-05 sweep is superseded
+--------------------------------------
+
+That run concluded "spatial 256 is the right choice" largely on `sp128_d64_z3` moving
+410.8 MB on the AOI, 77% worse than 256. Re-measuring those same Kenya variants on
+2026-10-05 under zarr 3.2.1 gave 223.9 MB over 293 requests, while `sp256_d64_z3`
+reproduced byte for byte at 232,197,373. The 410.8 figure was a coalescing read sitting
+in a table whose other rows were not, so that sweep mixed two client behaviours and its
+spatial conclusion does not hold. Its band and compression conclusions are unaffected
+and are re-confirmed above.
+
+It also swept band chunks 16 and 32, which were readable widths then and are not now.
