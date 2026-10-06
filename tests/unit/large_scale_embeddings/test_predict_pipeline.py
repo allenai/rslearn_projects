@@ -187,6 +187,7 @@ def test_only_one_loader_argument_survives(tmp_path: pathlib.Path) -> None:
         model_config_fname=str(config_fname),
         checkpoint_path=str(bundle),
         patch_size=1,
+        latent_patch_size=1,
         window_size=16,
         overlap_size=4,
         compile_model=True,

@@ -176,6 +176,7 @@ def get_jobs(
     checkpoint_path: str,
     time_index: int,
     patch_size: int = 1,
+    latent_patch_size: int | None = None,
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
@@ -209,8 +210,9 @@ def get_jobs(
             different store_path/completed_path (same for patch_size, window_size, and
             overlap_size below).
         time_index: the index into the store's time axis for this reference year.
-        patch_size: the encoder patch size; yields one embedding per patch_size x
-            patch_size pixels.
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding, defaulting to patch_size.
+            A pix512 model tokenizes at 2 and still emits one per pixel.
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
@@ -434,6 +436,11 @@ def get_jobs(
             str(time_index),
             "--patch_size",
             str(patch_size),
+            *(
+                []
+                if latent_patch_size is None
+                else ["--latent_patch_size", str(latent_patch_size)]
+            ),
             "--window_size",
             str(window_size),
             "--overlap_size",
@@ -455,6 +462,7 @@ def write_jobs(
     queue_name: str,
     checkpoint_path: str,
     patch_size: int = 1,
+    latent_patch_size: int | None = None,
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
@@ -485,8 +493,9 @@ def write_jobs(
             Different checkpoints produce different embeddings so they must use
             different store_path/completed_path (same for patch_size, window_size, and
             overlap_size below).
-        patch_size: the encoder patch size; yields one embedding per patch_size x
-            patch_size pixels.
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding, defaulting to patch_size.
+            A pix512 model tokenizes at 2 and still emits one per pixel.
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
@@ -519,6 +528,7 @@ def write_jobs(
         checkpoint_path=checkpoint_path,
         time_index=time_index,
         patch_size=patch_size,
+        latent_patch_size=latent_patch_size,
         window_size=window_size,
         overlap_size=overlap_size,
         compile_model=compile_model,
@@ -547,7 +557,7 @@ def init_store(
     model_url: str = zarr_store.DEFAULT_MODEL_URL,
     source_data: list[str] | None = None,
     zone_numbers: list[int] | None = None,
-    patch_size: int = 1,
+    latent_patch_size: int = 1,
     band_chunk: int = zarr_store.DEFAULT_BAND_CHUNK,
     matryoshka_dims: list[int] | None = None,
     build_version: str = zarr_store.DEFAULT_BUILD_VERSION,
@@ -568,8 +578,10 @@ def init_store(
             Defaults to the released encoder these embeddings come from.
         source_data: URLs of the source datasets. Derived from `inputs` if unset.
         zone_numbers: the UTM zone numbers to create; defaults to all of 1-60.
-        patch_size: the encoder patch size; the store grid is at 1/patch_size of the
-            input resolution, so it must match the patch_size used by write_jobs.
+        latent_patch_size: pixels per output embedding. The store grid is at
+            1/latent_patch_size of the input resolution, so it must match what the run
+            predicts with. Named for the output grid because that is all it sets, and
+            a store built on the wrong one cannot be re-gridded.
         band_chunk: dimensions per inner chunk along the band axis. Makes Matryoshka
             prefix reads proportionally cheaper at negligible storage cost.
         matryoshka_dims: prefix widths the model supports, recorded in the store's
@@ -580,14 +592,16 @@ def init_store(
     """
     if zone_numbers is None:
         zone_numbers = list(range(1, 61))
-    if PATCH_SIZE % patch_size != 0:
-        raise ValueError(f"patch_size must divide {PATCH_SIZE}, got {patch_size}")
-    # The store grid is at the output (embedding) resolution, which is 1/patch_size of
-    # the input resolution. One output window (= one shard) is PATCH_SIZE / patch_size
-    # pixels, and the tile size scales down the same way.
-    output_resolution = RESOLUTION * patch_size
-    output_tile_size = TILE_SIZE // patch_size
-    output_shard_size = PATCH_SIZE // patch_size
+    if PATCH_SIZE % latent_patch_size != 0:
+        raise ValueError(
+            f"latent_patch_size must divide {PATCH_SIZE}, got {latent_patch_size}"
+        )
+    # The store grid is at the output (embedding) resolution, which is
+    # 1/latent_patch_size of the input resolution. One output window (= one shard) is
+    # PATCH_SIZE / latent_patch_size pixels, and the tile size scales down the same way.
+    output_resolution = RESOLUTION * latent_patch_size
+    output_tile_size = TILE_SIZE // latent_patch_size
+    output_shard_size = PATCH_SIZE // latent_patch_size
     zarr_store.init_store(
         store_path=store_path,
         zone_numbers=zone_numbers,

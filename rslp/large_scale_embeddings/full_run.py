@@ -190,7 +190,7 @@ def run_all(
             source_data=source_data,
             zone_numbers=aoi.zone_numbers,
             matryoshka_dims=matryoshka_dims,
-            patch_size=model.patch_size,
+            latent_patch_size=model.latent_patch_size or model.patch_size,
         )
     if pca_paths is not None and not UPath(pca_paths[1]).exists():
         if skip_render_pca:

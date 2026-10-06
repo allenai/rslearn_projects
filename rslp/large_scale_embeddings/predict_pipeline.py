@@ -171,6 +171,7 @@ def _get_model_extra_args(
     model_config_fname: str,
     checkpoint_path: str,
     patch_size: int,
+    latent_patch_size: int,
     window_size: int,
     overlap_size: int,
     compile_model: bool,
@@ -186,8 +187,10 @@ def _get_model_extra_args(
     Args:
         model_config_fname: the model configuration file.
         checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
-        patch_size: the encoder patch size (yields one embedding per patch_size
-            pixels).
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding. Separate from patch_size
+            because the two differ: a pix512 model tokenizes at 2 and still emits one
+            embedding per pixel, so the output grid follows this one.
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
@@ -215,14 +218,21 @@ def _get_model_extra_args(
     encoder[0]["init_args"][chosen] = checkpoint_path
     encoder[0]["init_args"]["patch_size"] = patch_size
     encoder[0]["init_args"]["compile_model"] = compile_model
+    if latent_patch_size != patch_size:
+        # rslearn names no such argument; it reaches the encoder's forward through the
+        # wrapper's generic passthrough. Sent only when it differs, so a model that has
+        # never heard of it is called exactly as before.
+        forward_kwargs = dict(encoder[0]["init_args"].get("forward_kwargs", {}))
+        forward_kwargs["latent_patch_size"] = latent_patch_size
+        encoder[0]["init_args"]["forward_kwargs"] = forward_kwargs
 
     # Set the merger options on the RslearnWriter callback (the first and only
     # callback entry). The merger operates at the output resolution, which is
-    # 1/patch_size of the input resolution.
+    # 1/latent_patch_size of the input resolution.
     callbacks = model_config["trainer"]["callbacks"]
     merger = callbacks[0]["init_args"]["merger"]
-    merger["init_args"]["downsample_factor"] = patch_size
-    merger["init_args"]["overlap_pixels"] = overlap_size // patch_size
+    merger["init_args"]["downsample_factor"] = latent_patch_size
+    merger["init_args"]["overlap_pixels"] = overlap_size // latent_patch_size
 
     return [
         "--model.init_args.model.init_args.encoder",
@@ -391,7 +401,7 @@ def _crop_crosses_bad_longitude(projection: Projection, bounds: PixelBounds) -> 
 
 
 def _read_window_embeddings(
-    dataset: Dataset, window: Window, patch_size: int
+    dataset: Dataset, window: Window, latent_patch_size: int
 ) -> np.ndarray:
     """Read the window's int8 embedding raster and mask invalid pixels to nodata.
 
@@ -402,23 +412,23 @@ def _read_window_embeddings(
         dataset: the scratch dataset, used to look up band names from its config rather
             than hardcoding them here.
         window: the window to read.
-        patch_size: the encoder patch size. The embedding raster is at 1/patch_size
+        latent_patch_size: pixels per output embedding. The raster is at 1/latent_patch_size
             of the window resolution.
 
     Returns:
         the int8 embedding array of shape (band, height, width).
     """
-    # The embedding raster is at 1/patch_size of the window resolution.
+    # The embedding raster is at 1/latent_patch_size of the window resolution.
     out_projection = Projection(
         window.projection.crs,
-        window.projection.x_resolution * patch_size,
-        window.projection.y_resolution * patch_size,
+        window.projection.x_resolution * latent_patch_size,
+        window.projection.y_resolution * latent_patch_size,
     )
     out_bounds = (
-        window.bounds[0] // patch_size,
-        window.bounds[1] // patch_size,
-        window.bounds[2] // patch_size,
-        window.bounds[3] // patch_size,
+        window.bounds[0] // latent_patch_size,
+        window.bounds[1] // latent_patch_size,
+        window.bounds[2] // latent_patch_size,
+        window.bounds[3] // latent_patch_size,
     )
     raster = window.data.read_raster(
         OUTPUT_LAYER,
@@ -451,12 +461,12 @@ def _read_window_embeddings(
         valid |= (s2_array != 0).any(axis=0)
     # Downsample the validity mask to the output resolution: an output pixel is
     # valid if any input pixel in its patch is valid.
-    if patch_size > 1:
+    if latent_patch_size > 1:
         valid = valid.reshape(
-            valid.shape[0] // patch_size,
-            patch_size,
-            valid.shape[1] // patch_size,
-            patch_size,
+            valid.shape[0] // latent_patch_size,
+            latent_patch_size,
+            valid.shape[1] // latent_patch_size,
+            latent_patch_size,
         ).any(axis=(1, 3))
     embeddings[:, ~valid] = NODATA_VALUE
     return embeddings
@@ -467,7 +477,7 @@ def _write_window_by_name(
     window_name: str,
     store_path: str,
     time_index: int,
-    patch_size: int,
+    latent_patch_size: int,
     pca: dict | None = None,
 ) -> tuple[list[int], bool]:
     """Load one window from the scratch dataset and write its embeddings to the store.
@@ -481,7 +491,7 @@ def _write_window_by_name(
         window_name: the name of the window to write.
         store_path: the GeoZarr store path.
         time_index: the index into the store's time axis for this reference year.
-        patch_size: the encoder patch size.
+        latent_patch_size: pixels per output embedding.
         pca: if set, also render the window's false-color pyramid from the embeddings
             already in memory, rather than reading them back later. Keys are
             artifact_path, store_path, time_index (into the pca store) and max_level.
@@ -496,7 +506,7 @@ def _write_window_by_name(
             f"expected one window named {window_name} but got {len(windows)}"
         )
     window = windows[0]
-    embeddings = _read_window_embeddings(dataset, window, patch_size)
+    embeddings = _read_window_embeddings(dataset, window, latent_patch_size)
     zone_number = window.projection.crs.to_epsg() % 100
     write_window_region(
         store_path=store_path,
@@ -504,7 +514,7 @@ def _write_window_by_name(
         window_bounds=window.bounds,
         time_index=time_index,
         embeddings=embeddings,
-        patch_size=patch_size,
+        patch_size=latent_patch_size,
     )
     crop_offset = [window.bounds[0], window.bounds[1]]
     if pca is None:
@@ -517,7 +527,7 @@ def _write_window_by_name(
         crop_offset=(window.bounds[0], window.bounds[1]),
         dest_time_index=pca["time_index"],
         max_level=pca["max_level"],
-        patch_size=patch_size,
+        patch_size=latent_patch_size,
     )
     return crop_offset, rendered
 
@@ -532,6 +542,7 @@ def predict_pipeline(
     checkpoint_path: str,
     time_index: int,
     patch_size: int = 1,
+    latent_patch_size: int | None = None,
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
@@ -564,8 +575,11 @@ def predict_pipeline(
             different store and completed_path (same for patch_size, window_size, and
             overlap_size below).
         time_index: the index into the store's time axis for this reference year.
-        patch_size: the encoder patch size; yields one 128-dimensional embedding per
-            patch_size x patch_size pixels (so the output rasters are at 1/patch_size
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding, defaulting to patch_size. A
+            pix512 model tokenizes at 2 and still emits one embedding per pixel, so
+            the two differ and the output grid follows this one (rasters at
+            1/latent_patch_size
             of the window resolution).
         window_size: the size of the crops the model operates on (much bigger than 16
             fails with the 12 monthly inputs at patch_size=1 due to GPU memory
@@ -609,17 +623,30 @@ def predict_pipeline(
             "max_level": pca_max_level,
         }
     )
-    if PATCH_SIZE % patch_size != 0:
-        raise ValueError(f"patch_size must divide {PATCH_SIZE}, got {patch_size}")
+    # Defaults to the token patch size, which is what every model before the pix512
+    # ones did: one embedding per token.
+    if latent_patch_size is None:
+        latent_patch_size = patch_size
     if window_size % patch_size != 0:
         raise ValueError(
             f"window_size ({window_size}) must be a multiple of patch_size "
             f"({patch_size})"
         )
-    if overlap_size % patch_size != 0:
+    # The remaining divisibility is of the output grid, not the token grid: the crop
+    # offsets, the merger and the store all count in output pixels.
+    if PATCH_SIZE % latent_patch_size != 0:
         raise ValueError(
-            f"overlap_size ({overlap_size}) must be a multiple of patch_size "
-            f"({patch_size})"
+            f"latent_patch_size must divide {PATCH_SIZE}, got {latent_patch_size}"
+        )
+    if window_size % latent_patch_size != 0:
+        raise ValueError(
+            f"window_size ({window_size}) must be a multiple of latent_patch_size "
+            f"({latent_patch_size})"
+        )
+    if overlap_size % latent_patch_size != 0:
+        raise ValueError(
+            f"overlap_size ({overlap_size}) must be a multiple of latent_patch_size "
+            f"({latent_patch_size})"
         )
 
     projection = Projection.deserialize(json.loads(projection_json))
@@ -642,6 +669,7 @@ def predict_pipeline(
                 checkpoint_path=checkpoint_path,
                 time_index=time_index,
                 patch_size=patch_size,
+                latent_patch_size=latent_patch_size,
                 window_size=window_size,
                 overlap_size=overlap_size,
                 compile_model=compile_model,
@@ -662,6 +690,7 @@ def predict_pipeline(
             checkpoint_path=checkpoint_path,
             time_index=time_index,
             patch_size=patch_size,
+            latent_patch_size=latent_patch_size,
             window_size=window_size,
             overlap_size=overlap_size,
             compile_model=compile_model,
@@ -683,6 +712,7 @@ def _process_tile(
     checkpoint_path: str,
     time_index: int,
     patch_size: int,
+    latent_patch_size: int,
     window_size: int,
     overlap_size: int,
     compile_model: bool,
@@ -705,7 +735,8 @@ def _process_tile(
         ds_path: where to create the temporary rslearn dataset.
         checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
         time_index: the index into the store's time axis for this reference year.
-        patch_size: the encoder patch size.
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding.
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
@@ -797,6 +828,7 @@ def _process_tile(
                     model_config_fname=model_config_fname,
                     checkpoint_path=checkpoint_path,
                     patch_size=patch_size,
+                    latent_patch_size=latent_patch_size,
                     window_size=window_size,
                     overlap_size=overlap_size,
                     compile_model=compile_model,
@@ -835,7 +867,7 @@ def _process_tile(
                     "window_name": window.name,
                     "store_path": store_path,
                     "time_index": time_index,
-                    "patch_size": patch_size,
+                    "latent_patch_size": latent_patch_size,
                     "pca": window_pca,
                 }
             )

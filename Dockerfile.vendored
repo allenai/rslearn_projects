@@ -61,4 +61,13 @@ RUN uv pip install --system --break-system-packages \
       /opt/rslearn[extra] /opt/olmoearth_pretrain \
       /opt/rslearn_projects[extra] /opt/olmoearth_run[runner]
 
+# NATTEN is the Lighthouse attention kernel on H100 and newer, and is not a declared
+# dependency of olmoearth_pretrain: the wheel is built against an exact torch and CUDA,
+# so it is pinned here to match the torch the install above resolves (2.9.1+cu128) and
+# must move with it. A100 and older use FlexAttention from torch and ignore this.
+# Tiled inference does not use it at all.
+RUN uv pip install --system --break-system-packages \
+      --find-links https://whl.natten.org \
+      natten==0.21.5+torch290cu128
+
 WORKDIR /opt/rslearn_projects

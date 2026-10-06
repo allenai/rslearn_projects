@@ -286,6 +286,10 @@ class ModelConfig:
 
     checkpoint_path: str
     patch_size: int = 1
+    # Pixels per output embedding, or None to follow patch_size. A pix512 model
+    # tokenizes at 2 and still emits one embedding per pixel, so the store grid and
+    # the merger follow this rather than the token size.
+    latent_patch_size: int | None = None
     window_size: int = 16
     overlap_size: int = 4
     compile_model: bool = True
@@ -1596,6 +1600,7 @@ def _run_cycle(
                     checkpoint_path=config.model.checkpoint_path,
                     time_index=store_years.index(year),
                     patch_size=config.model.patch_size,
+                    latent_patch_size=config.model.latent_patch_size,
                     window_size=config.model.window_size,
                     overlap_size=config.model.overlap_size,
                     compile_model=config.model.compile_model,
