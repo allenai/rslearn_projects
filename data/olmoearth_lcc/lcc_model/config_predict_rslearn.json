@@ -109,9 +109,9 @@
       "band_sets": [
         {
           "bands": [
-            "ts_end_idx"
+            "ts_end_days"
           ],
-          "dtype": "uint8"
+          "dtype": "uint16"
         }
       ],
       "type": "raster"
@@ -120,9 +120,9 @@
       "band_sets": [
         {
           "bands": [
-            "ts_start_idx"
+            "ts_start_days"
           ],
-          "dtype": "uint8"
+          "dtype": "uint16"
         }
       ],
       "type": "raster"

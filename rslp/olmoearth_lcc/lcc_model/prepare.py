@@ -63,7 +63,7 @@ FREQUENT_BLOCK_DURATION = timedelta(days=90)
 FREQUENT_PERIOD = timedelta(days=7)
 # Deterministic options end this long after the annotation date so the block
 # covers that date.
-OPTION_MARGIN = timedelta(days=1)
+OPTION_MARGIN = timedelta(days=6)
 
 # Annotation was done using imagery up to this date, so no frequent option should
 # sample imagery after it (otherwise it could contain unannotated changes).

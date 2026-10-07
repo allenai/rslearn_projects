@@ -331,6 +331,15 @@ the model with generic rslearn components (`BreakpointScan`, `TokensToChannels`,
 the checkpoints can be run by systems that depend on rslearn alone. Their `_predict`
 counterparts contain no `rslp` imports at all.
 
+In these configs, `ts_start` / `ts_end` use rslearn's `PerPixelTimestepHead` and
+`PerPixelTimestepTask`. Training is unchanged (22-way classification over the input
+timestep index), but at prediction the `_predict` configs write each pixel's
+predicted change start/end as a date, in uint16 days since 1970-01-01 (0 = nodata), to
+the `output_ts_start` / `output_ts_end` layers of `config_predict_rslearn.json`,
+instead of the timestep index. The date is the midpoint of the predicted input image's
+time range. For a mosaic, that is the time range of its first (least cloudy) item, not of
+the 7-day or 90-day period.
+
 #### OlmoEarth Studio (olmoearth_run)
 
 The Studio configs for the `rslearn_bpcat_notemporal` model live in olmoearth_projects
@@ -342,8 +351,14 @@ images from a 90-day block, quarterly ending at T-90d) and must be synced before
 deploying a model trained on it.
 Studio currently supports a single output per model, so only the `post_change` head
 (argmax class index) is written there; the other heads will be exposed once
-multi-output support is available. See the README in that directory for the time range
-semantics (`oe_start_time` is the reference date) and how to run it.
+multi-output support is available. Where the Studio configs include `ts_start` /
+`ts_end`, they still write timestep indices. Switching them to the date head and task
+needs olmoearth_run changes: it writes all fields to one band set with a single dtype
+(currently uint8, so it would need to become uint16), and it requires all fields to
+share one field type, while the other fields are segmentation classes and dates are
+not. See the README in that
+directory for the time range semantics (`oe_start_time` is the reference date) and how
+to run it.
 
 ---
 

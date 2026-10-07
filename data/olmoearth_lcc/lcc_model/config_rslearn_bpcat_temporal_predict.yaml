@@ -15,8 +15,8 @@
 #
 # Outputs: one RslearnWriter per head writes to its own layer (output_<task>). The five
 # probability heads write softmax probabilities scaled to 0..255 (uint8); ts_start and
-# ts_end write the argmax timestep index (0..21) of the predicted change start/end,
-# which maps to a date via the timestamps of the materialized input images.
+# ts_end write the date, as uint16 days since 1970-01-01, of the midpoint of the time
+# range of the input image at which the predicted change starts/ends (0 = nodata).
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -158,13 +158,15 @@ model:
             init_args: {in_dim: 768, out_dim: 1}
           - class_path: rslearn.models.upsample.Upsample
             init_args: {scale_factor: 4}
-          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
+            init_args: {input_key: sentinel2_l2a}
           ts_end:
           - class_path: rslearn.models.tokens_to_channels.TokensToChannels
             init_args: {in_dim: 768, out_dim: 1}
           - class_path: rslearn.models.upsample.Upsample
             init_args: {scale_factor: 4}
-          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
+            init_args: {input_key: sentinel2_l2a}
         loss_weights:
           binary: 2.0
 data:
@@ -231,13 +233,14 @@ data:
               num_classes: 15
               output_probs: true
               prob_scales: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
-          # Argmax timestep index of the predicted change start/end (single band).
+          # Date (days since 1970-01-01) of the argmax timestep of the predicted change
+          # start/end (single uint16 band).
           ts_start:
-            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepTask
             init_args:
               num_classes: 22
           ts_end:
-            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepTask
             init_args:
               num_classes: 22
     batch_size: 8

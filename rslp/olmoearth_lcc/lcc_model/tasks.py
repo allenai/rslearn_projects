@@ -261,10 +261,15 @@ class LCCMultiTask(MultiTask):
     Annotations are loaded from a sidecar JSON written by the prepare script,
     keyed by "{group}/{name}". The injected metadata is consumed by
     ``transforms.StackSampler`` to compute the ``ts_start`` / ``ts_end`` timestep
-    targets. Those two tasks should be configured as ``SegmentationTask`` over the
-    input timesteps (with ``TimestepToleranceAccuracy`` in ``other_metrics``); their
-    ``input_mapping`` entries only need a placeholder label since StackSampler
-    overwrites the targets.
+    targets. Those two tasks should be configured as ``SegmentationTask`` or
+    rslearn's ``PerPixelTimestepTask`` over the input timesteps (with
+    ``TimestepToleranceAccuracy`` in ``other_metrics``); their ``input_mapping``
+    entries only need a placeholder label since StackSampler overwrites the targets.
+
+    ``process_output`` only supports ``ChangeModel`` outputs. With
+    ``PerPixelTimestepHead`` the per-task outputs are dicts, so models built from
+    rslearn components predict with the ``config_rslearn_*_predict.yaml`` configs,
+    which use a plain ``MultiTask``.
 
     The same_change label raster is merged into the pre_change raster so a
     single head predicts both (class layout ``MERGED_PRE_SAME_CATEGORY_NAMES``).

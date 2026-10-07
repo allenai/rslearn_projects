@@ -9,6 +9,10 @@
 #                                      (before_after), ts_start + ts_end (tokens ->
 #                                      22-way timestep index)
 #
+# ts_start/ts_end use PerPixelTimestepHead + PerPixelTimestepTask: they train on the
+# timestep index like a SegmentationTask, and at prediction write the date (days since
+# 1970-01-01) of the predicted input image instead of its index.
+#
 # Unlike ChangeModel, each decoder has its own BreakpointScan (own scorer weights)
 # rather than one shared scan feeding binary/src/dst/pre/post.
 #
@@ -19,9 +23,9 @@
 # Training-only pieces come from rslp (StackSampler, LCCMultiTask annotation
 # injection, BalancedBinarySegmentationHead, TimestepToleranceAccuracy); none of them
 # carry parameters, so the checkpoint loads directly into the pure-rslearn
-# config_rslearn_bpcat_notemporal_predict.yaml. The model block below must stay in sync
-# with that file (and with the OlmoEarth Studio config derived from it in
-# olmoearth_projects/olmoearth_run_data/olmoearth_lcc/).
+# config_rslearn_bpcat_notemporal_predict.yaml. The model block and the ts_start/ts_end
+# task blocks below must stay in sync with that file (and with the OlmoEarth Studio
+# config derived from it in olmoearth_projects/olmoearth_run_data/olmoearth_lcc/).
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -156,13 +160,15 @@ model:
             init_args: {in_dim: 768, out_dim: 1}
           - class_path: rslearn.models.upsample.Upsample
             init_args: {scale_factor: 4}
-          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
+            init_args: {input_key: sentinel2_l2a}
           ts_end:
           - class_path: rslearn.models.tokens_to_channels.TokensToChannels
             init_args: {in_dim: 768, out_dim: 1}
           - class_path: rslearn.models.upsample.Upsample
             init_args: {scale_factor: 4}
-          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
+            init_args: {input_key: sentinel2_l2a}
         loss_weights:
           binary: 2.0
     optimizer:
@@ -500,7 +506,7 @@ data:
                 average: micro
           # Classes are the 22 input timestep indices; valid only at change points.
           ts_start:
-            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepTask
             init_args:
               num_classes: 22
               metric_kwargs:
@@ -515,7 +521,7 @@ data:
                   init_args:
                     tolerance: 2
           ts_end:
-            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepTask
             init_args:
               num_classes: 22
               metric_kwargs:
