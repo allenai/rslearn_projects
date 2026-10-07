@@ -1,7 +1,7 @@
 """Shared settings for the change alert experiments."""
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 
 # Change detection range: the model should detect changes up to this old.
 DETECTION_RANGE = timedelta(days=90)
@@ -9,7 +9,7 @@ FREQUENT_PERIOD = timedelta(days=7)
 INFREQUENT_PERIOD = timedelta(days=90)
 NUM_SLOTS = 4
 
-# The frequent layers cover 26 weeks so that the Recent model (12 weekly images) can
+# The frequent layers cover 26 weeks so that the Recent model (20 weekly images) can
 # fall back to older weeks; the History model only uses the last HISTORY_LOOKBACK of it.
 FREQUENT_DURATION = timedelta(days=182)
 # The History model takes its weekly images from this lookback before the latest
@@ -21,6 +21,24 @@ TEST_HISTORY_FREQUENT_DURATION = timedelta(days=63)
 
 # Test scenarios: the time series ends this many days after the change.
 TEST_END_DAYS = [7, 45, 90]
+
+# The number of images input to the model for each context: the history context has
+# 8 quarterly and HISTORY_NUM_FREQUENT weekly images, the recent context has
+# RECENT_NUM_FREQUENT weekly images.
+HISTORY_NUM_INFREQUENT = 8
+HISTORY_NUM_FREQUENT = 4
+RECENT_NUM_FREQUENT = 20
+NUM_TIMESTEPS = {
+    "history": HISTORY_NUM_INFREQUENT + HISTORY_NUM_FREQUENT,
+    "recent": RECENT_NUM_FREQUENT,
+}
+
+# Annotations are only used if their change date is within this range. Earlier changes
+# do not have INFREQUENT_DURATION of Sentinel-2 L2A history before them. Later changes
+# do not have imagery for the whole detection range yet: the cutoff is DETECTION_RANGE
+# plus a week before 2026-10-07, when the datasets were created.
+MIN_CHANGE_DATE = date(2019, 1, 1)
+MAX_CHANGE_DATE = date(2026, 10, 7) - DETECTION_RANGE - timedelta(days=7)
 
 WINDOW_SIZE = 64
 RESOLUTION = 10
@@ -44,7 +62,8 @@ BANDS = [
     "B12",
 ]
 
-# Same data source as data/olmoearth_lcc/lcc_model/config.json: least cloudy scene
+# Same data source as data/olmoearth_lcc/lcc_model/config.json (on the
+# favyen/20260407-change-finder branch): least cloudy scene
 # first within each mosaic period.
 DATA_SOURCE = {
     "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
@@ -78,6 +97,8 @@ class SourceDataset:
     project_id: str
     # Category names. Index 0 is reserved for nodata in the label raster, so class
     # IDs are 1 + the index in this list. The first category is the negative one.
+    # Only categories with at least 50 annotations within the change date range are
+    # used; annotations of other categories are skipped.
     categories: list[str]
     # Task source_file attributes to skip.
     skip_source_files: tuple[str, ...] = ()
@@ -89,7 +110,6 @@ SOURCE_DATASETS = {
         categories=[
             "none",
             "agriculture",
-            "airstrip",
             "burned",
             "hurricane",
             "landslide",
@@ -101,16 +121,12 @@ SOURCE_DATASETS = {
     ),
     "lcc": SourceDataset(
         project_id="10af2d3e-12b1-41de-8ee2-af70255b9fa4",
-        # Categories with at least 20 examples after skipping the batches below.
         categories=[
             "none",
-            "landslide",
             "mining",
             "new_building",
             "new_crop_field",
-            "new_infrastructure",
             "new_road",
-            "selective_logging",
             "settlement",
             "site_clearing",
             "water_expand",

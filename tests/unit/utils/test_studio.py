@@ -40,19 +40,30 @@ def make_client(session: FakeSession) -> StudioClient:
 
 
 def test_search_all_paginates_and_merges_filters() -> None:
+    a = {"id": "a", "creation_time": "t1"}
+    b = {"id": "b", "creation_time": "t2"}
+    c = {"id": "c", "creation_time": "t2"}
+    d = {"id": "d", "creation_time": "t3"}
     session = FakeSession(
         [
-            FakeResponse(200, {"records": [{"id": "a"}, {"id": "b"}]}),
-            FakeResponse(200, {"records": [{"id": "c"}]}),
-            FakeResponse(200, {"records": []}),
+            FakeResponse(200, {"records": [a, b]}),
+            # The cursor is inclusive, so b is returned again.
+            FakeResponse(200, {"records": [b, c]}),
+            FakeResponse(200, {"records": [c, d]}),
+            FakeResponse(200, {"records": [d]}),
         ]
     )
     client = make_client(session)
 
     tasks = client.get_tasks("proj", filters={"status": {"inc": ["reviewed"]}})
 
-    assert [task["id"] for task in tasks] == ["a", "b", "c"]
-    assert [call["json"]["offset"] for call in session.calls] == [0, 2, 3]
+    assert [task["id"] for task in tasks] == ["a", "b", "c", "d"]
+    assert [call["json"].get("creation_time") for call in session.calls] == [
+        None,
+        {"gte": "t2"},
+        {"gte": "t2"},
+        {"gte": "t3"},
+    ]
     first = session.calls[0]
     assert first["method"] == "POST"
     assert first["url"] == "https://studio.test/api/v1/tasks/search"
@@ -60,9 +71,33 @@ def test_search_all_paginates_and_merges_filters() -> None:
     assert first["json"] == {
         "status": {"inc": ["reviewed"]},
         "project_id": {"eq": "proj"},
+        "sort_by": "creation_time",
+        "sort_direction": "asc",
         "limit": 2,
-        "offset": 0,
     }
+
+
+def test_search_all_raises_when_cursor_cannot_advance() -> None:
+    b = {"id": "b", "creation_time": "t2"}
+    c = {"id": "c", "creation_time": "t2"}
+    session = FakeSession(
+        [
+            FakeResponse(200, {"records": [b, c]}),
+            FakeResponse(200, {"records": [b, c]}),
+        ]
+    )
+    client = make_client(session)
+
+    # b and c share creation_time t2 and fill a whole page, so paging cannot advance.
+    with pytest.raises(RuntimeError, match="share creation_time t2"):
+        client.get_tasks("proj")
+
+
+def test_search_all_rejects_paging_filters() -> None:
+    client = make_client(FakeSession([]))
+
+    with pytest.raises(ValueError, match="creation_time"):
+        client.get_tasks("proj", filters={"creation_time": {"gte": "t"}})
 
 
 def test_retries_server_errors_and_connection_errors() -> None:

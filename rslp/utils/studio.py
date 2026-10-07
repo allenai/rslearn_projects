@@ -113,31 +113,51 @@ class StudioClient:
     ) -> list[dict[str, Any]]:
         """Fetch all records for a project from a paginated search endpoint.
 
+        Pages with a creation_time cursor rather than offsets, since Studio caps the
+        offset at 10000.
+
         Args:
             resource: The resource to search, e.g. ``tasks`` or ``annotations``.
             project_id: The Studio project ID.
             filters: Additional search filters, e.g.
-                ``{"status": {"inc": ["reviewed"]}}``.
+                ``{"status": {"inc": ["reviewed"]}}``. They cannot include
+                creation_time, sort_by, or sort_direction, which are used for paging.
 
         Returns:
-            All matching records.
+            All matching records, oldest first.
         """
-        offset = 0
+        reserved = {"creation_time", "sort_by", "sort_direction"} & set(filters or {})
+        if reserved:
+            raise ValueError(f"filters cannot include {sorted(reserved)}")
+
+        seen: set[str] = set()
         records: list[dict[str, Any]] = []
+        cursor: str | None = None
         while True:
             body = {
                 **(filters or {}),
                 "project_id": {"eq": project_id},
+                "sort_by": "creation_time",
+                "sort_direction": "asc",
                 "limit": self.page_size,
-                "offset": offset,
             }
+            if cursor is not None:
+                # gte rather than gt so that records sharing the cursor's
+                # creation_time are not skipped; duplicates are removed below.
+                body["creation_time"] = {"gte": cursor}
             page = self._request("POST", f"{resource}/search", json=body).json()[
                 "records"
             ]
-            if not page:
+            new = [record for record in page if record["id"] not in seen]
+            seen.update(record["id"] for record in new)
+            records.extend(new)
+            if len(page) < self.page_size:
                 break
-            records.extend(page)
-            offset += len(page)
+            if not new:
+                raise RuntimeError(
+                    f"more than {self.page_size} records share creation_time {cursor}"
+                )
+            cursor = page[-1]["creation_time"]
         return records
 
     def get_tasks(

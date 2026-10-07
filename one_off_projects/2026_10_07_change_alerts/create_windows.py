@@ -9,6 +9,9 @@ written:
 - label_change_day: uint16 days since 1970-01-01 of the change date at the annotated
   pixel(s) for positive annotations, 0 elsewhere and for negatives.
 
+Annotations are skipped if their category is not used or their change date is outside
+[MIN_CHANGE_DATE, MAX_CHANGE_DATE] (see select_annotations).
+
 Windows are split into train/val/test by hashing a ~10 km grid cell. Run this once
 for the training dataset with --splits train,val and once for each test dataset with
 --splits test; the dataset config.json (from make_config.py) must already exist.
@@ -32,6 +35,8 @@ import shapely.affinity
 import shapely.wkt
 import tqdm
 from common import (
+    MAX_CHANGE_DATE,
+    MIN_CHANGE_DATE,
     RESOLUTION,
     SOURCE_DATASETS,
     SPLIT_CELL_SIZE,
@@ -45,7 +50,7 @@ from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.raster_array import RasterArray
 from upath import UPath
 
-from rslp.olmoearth_lcc.studio.client import StudioClient
+from rslp.utils.studio import StudioClient
 
 UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
@@ -68,29 +73,38 @@ def get_split(projection: Projection, col: int, row: int) -> str:
     return split
 
 
-def fetch_annotations(source: str) -> list[dict[str, Any]]:
-    """Fetch the annotations to use from Studio.
+def fetch_records(source: str) -> dict[str, Any]:
+    """Fetch the tasks and annotations of the source's Studio project.
+
+    Returns:
+        dict with "tasks" (map from task ID to task) and "annotations" (list).
+    """
+    cfg = SOURCE_DATASETS[source]
+    client = StudioClient()
+    tasks = {task["id"]: task for task in client.get_tasks(cfg.project_id)}
+    annotations = client.get_annotations(cfg.project_id)
+    print(f"fetched {len(tasks)} tasks and {len(annotations)} annotations")
+    return {"tasks": tasks, "annotations": annotations}
+
+
+def select_annotations(source: str, records: dict[str, Any]) -> list[dict[str, Any]]:
+    """Select the annotations to create windows for.
+
+    Annotations are skipped if their task's source_file is in skip_source_files, their
+    category is not one of the categories, or their change date is outside
+    [MIN_CHANGE_DATE, MAX_CHANGE_DATE].
 
     Returns:
         list of dicts with id, category, change_date, geom_wkt, and task attributes.
     """
     cfg = SOURCE_DATASETS[source]
-    client = StudioClient()
-    tasks = {
-        task["id"]: task
-        for task in client.search_all(
-            "/tasks/search", {"project_id": {"eq": cfg.project_id}}, page_size=1000
-        )
-    }
+    tasks = records["tasks"]
     annotations = []
-    num_skipped_source = 0
-    num_skipped_category = 0
-    for ann in client.search_all(
-        "/annotations/search", {"project_id": {"eq": cfg.project_id}}, page_size=1000
-    ):
+    num_skipped: dict[str, int] = {"source_file": 0, "category": 0, "date": 0}
+    for ann in records["annotations"]:
         attributes = tasks[ann["task_id"]]["attributes"]
         if attributes.get("source_file") in cfg.skip_source_files:
-            num_skipped_source += 1
+            num_skipped["source_file"] += 1
             continue
         categories = [
             mv["label_name"]
@@ -98,13 +112,16 @@ def fetch_annotations(source: str) -> list[dict[str, Any]]:
             if mv["name"] == "category"
         ]
         if not categories or categories[0] not in cfg.categories:
-            num_skipped_category += 1
+            num_skipped["category"] += 1
             continue
         if ann["start_time"] != ann["end_time"]:
             raise ValueError(
                 f"annotation {ann['id']} has a time range, expected a date"
             )
         start_time = datetime.fromisoformat(ann["start_time"].replace("Z", "+00:00"))
+        if not MIN_CHANGE_DATE <= start_time.date() <= MAX_CHANGE_DATE:
+            num_skipped["date"] += 1
+            continue
         annotations.append(
             {
                 "id": ann["id"],
@@ -114,9 +131,12 @@ def fetch_annotations(source: str) -> list[dict[str, Any]]:
                 "attributes": attributes,
             }
         )
+    counts: dict[str, int] = {}
+    for ann in annotations:
+        counts[ann["category"]] = counts.get(ann["category"], 0) + 1
     print(
-        f"got {len(annotations)} annotations from {source}, skipped "
-        f"{num_skipped_source} by source_file and {num_skipped_category} by category"
+        f"selected {len(annotations)} annotations from {source} (skipped {num_skipped}): "
+        f"{counts}"
     )
     return annotations
 
@@ -241,7 +261,14 @@ def main() -> None:
     parser.add_argument(
         "--annotations_cache",
         default=None,
-        help="Optional JSON file to cache the Studio annotations in",
+        help="Optional JSON file to cache the Studio tasks and annotations in "
+        "(before filtering)",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Only use this many annotations (a deterministic subset), for testing",
     )
     parser.add_argument("--workers", type=int, default=32)
     args = parser.parse_args()
@@ -256,15 +283,18 @@ def main() -> None:
 
     if args.annotations_cache and UPath(args.annotations_cache).exists():
         with UPath(args.annotations_cache).open() as f:
-            annotations = json.load(f)
+            records = json.load(f)
     else:
-        annotations = fetch_annotations(args.source)
+        records = fetch_records(args.source)
         if args.annotations_cache:
             with UPath(args.annotations_cache).open("w") as f:
-                json.dump(annotations, f)
+                json.dump(records, f)
+    annotations = select_annotations(args.source, records)
+    if args.limit is not None:
+        annotations = sorted(annotations, key=lambda ann: ann["id"])[: args.limit]
 
     jobs = [
-        dict(ds_path=ds_path, source=args.source, splits=splits, ann=ann)
+        {"ds_path": ds_path, "source": args.source, "splits": splits, "ann": ann}
         for ann in annotations
     ]
     counts: dict[str, int] = {}

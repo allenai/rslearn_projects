@@ -7,7 +7,7 @@ such as the inputs' layers and the transforms wholesale.
 Runs differ along three axes:
 - aug: fixed4 trains on the four fixed slots (7/35/62/90 days after the change),
   rand4 on the four per-window randomized slots, and rand1 on randomized slot 0 only.
-- ctx: history uses 8 quarterly + 4 weekly images, recent uses 12 weekly images.
+- ctx: history uses 8 quarterly + 4 weekly images, recent uses 20 weekly images.
 - head: pool predicts the category from attention-pooled tokens, breakpoint from the
   before/after features of a BreakpointScan.
 
@@ -25,7 +25,11 @@ from typing import Any
 import yaml
 from common import (
     HISTORY_LOOKBACK,
+    HISTORY_NUM_FREQUENT,
+    HISTORY_NUM_INFREQUENT,
     NUM_SLOTS,
+    NUM_TIMESTEPS,
+    RECENT_NUM_FREQUENT,
     SOURCE_DATASETS,
     dataset_path,
 )
@@ -49,7 +53,6 @@ S2_BANDS = [
     "B09",
 ]
 EMBED_DIM = 768
-NUM_TIMESTEPS = 12
 VAL_SLOT = "rand_0"
 
 
@@ -127,12 +130,12 @@ def _sampler(
     }
     if ctx == "history":
         init_args.update(
-            num_frequent=4,
+            num_frequent=HISTORY_NUM_FREQUENT,
             frequent_lookback_days=HISTORY_LOOKBACK.days,
-            num_infrequent=8,
+            num_infrequent=HISTORY_NUM_INFREQUENT,
         )
     elif ctx == "recent":
-        init_args.update(num_frequent=NUM_TIMESTEPS)
+        init_args.update(num_frequent=RECENT_NUM_FREQUENT)
     else:
         raise ValueError(f"unknown ctx {ctx}")
     if option_index is not None:
@@ -225,7 +228,7 @@ TIMESTEP_DECODER = [
 ]
 
 
-def _task(categories: list[str]) -> dict[str, Any]:
+def _task(categories: list[str], ctx: str) -> dict[str, Any]:
     num_classes = len(categories) + 1
     return {
         "class_path": "rslearn.train.tasks.multi_task.MultiTask",
@@ -258,7 +261,7 @@ def _task(categories: list[str]) -> dict[str, Any]:
                 "timestep": {
                     "class_path": "rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepTask",
                     "init_args": {
-                        "num_classes": NUM_TIMESTEPS,
+                        "num_classes": NUM_TIMESTEPS[ctx],
                         # The built-in accuracy requires exactly num_classes channels,
                         # which batches of shorter time series do not have.
                         "enable_accuracy_metric": False,
@@ -366,7 +369,7 @@ def make_train_config(source: str, run: Run, ds_path: str | None = None) -> dict
             "init_args": {
                 "path": ds_path or dataset_path(source, "train"),
                 "inputs": inputs,
-                "task": _task(categories),
+                "task": _task(categories, run.ctx),
                 "batch_size": 8,
                 "num_workers": 16,
                 "train_config": {

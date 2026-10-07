@@ -40,7 +40,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 64
-              out_channels: 13
+              out_channels: 10
               kernel_size: 1
               activation:
                 class_path: torch.nn.Identity
@@ -147,18 +147,15 @@ data:
           category:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 13
+              num_classes: 10
               nodata_value: 0
               class_names:
               - nodata
               - none
-              - landslide
               - mining
               - new_building
               - new_crop_field
-              - new_infrastructure
               - new_road
-              - selective_logging
               - settlement
               - site_clearing
               - water_expand
@@ -169,7 +166,7 @@ data:
                 balanced_accuracy:
                   class_path: rslearn.change_alerts.metrics.BalancedAccuracy
                   init_args:
-                    num_classes: 13
+                    num_classes: 10
                 change_auroc:
                   class_path: rslearn.change_alerts.metrics.ChangeAUROC
                   init_args:

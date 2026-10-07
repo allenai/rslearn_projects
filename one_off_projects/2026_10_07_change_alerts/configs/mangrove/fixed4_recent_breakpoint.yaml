@@ -232,7 +232,7 @@ data:
           timestep:
             class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepTask
             init_args:
-              num_classes: 12
+              num_classes: 20
               enable_accuracy_metric: false
               other_metrics:
                 accuracy:
@@ -257,7 +257,7 @@ data:
           output_key: sentinel2_l2a
           category_target: category
           timestep_target: timestep
-          num_frequent: 12
+          num_frequent: 20
           drop_keys:
           - freq_rand_0
       - class_path: rslearn.train.transforms.flip.Flip
@@ -295,7 +295,7 @@ data:
           output_key: sentinel2_l2a
           category_target: category
           timestep_target: timestep
-          num_frequent: 12
+          num_frequent: 20
           option_index: 0
           drop_keys:
           - freq_fixed_0
@@ -329,7 +329,7 @@ data:
           output_key: sentinel2_l2a
           category_target: category
           timestep_target: timestep
-          num_frequent: 12
+          num_frequent: 20
           option_index: 0
           drop_keys:
           - freq_fixed_0

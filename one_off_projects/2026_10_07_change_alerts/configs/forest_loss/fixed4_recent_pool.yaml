@@ -40,7 +40,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 64
-              out_channels: 11
+              out_channels: 10
               kernel_size: 1
               activation:
                 class_path: torch.nn.Identity
@@ -210,13 +210,12 @@ data:
           category:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 11
+              num_classes: 10
               nodata_value: 0
               class_names:
               - nodata
               - none
               - agriculture
-              - airstrip
               - burned
               - hurricane
               - landslide
@@ -230,7 +229,7 @@ data:
                 balanced_accuracy:
                   class_path: rslearn.change_alerts.metrics.BalancedAccuracy
                   init_args:
-                    num_classes: 11
+                    num_classes: 10
                 change_auroc:
                   class_path: rslearn.change_alerts.metrics.ChangeAUROC
                   init_args:
@@ -238,7 +237,7 @@ data:
           timestep:
             class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepTask
             init_args:
-              num_classes: 12
+              num_classes: 20
               enable_accuracy_metric: false
               other_metrics:
                 accuracy:
@@ -263,7 +262,7 @@ data:
           output_key: sentinel2_l2a
           category_target: category
           timestep_target: timestep
-          num_frequent: 12
+          num_frequent: 20
           drop_keys:
           - freq_rand_0
       - class_path: rslearn.train.transforms.flip.Flip
@@ -301,7 +300,7 @@ data:
           output_key: sentinel2_l2a
           category_target: category
           timestep_target: timestep
-          num_frequent: 12
+          num_frequent: 20
           option_index: 0
           drop_keys:
           - freq_fixed_0
@@ -335,7 +334,7 @@ data:
           output_key: sentinel2_l2a
           category_target: category
           timestep_target: timestep
-          num_frequent: 12
+          num_frequent: 20
           option_index: 0
           drop_keys:
           - freq_fixed_0

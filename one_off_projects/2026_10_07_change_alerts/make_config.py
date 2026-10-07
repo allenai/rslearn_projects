@@ -56,11 +56,11 @@ def _slot_layers(
 ) -> dict[str, dict[str, Any]]:
     infrequent_kwargs: dict[str, Any] = {}
     if with_infrequent:
-        infrequent_kwargs = dict(
-            infrequent_period=INFREQUENT_PERIOD,
-            infrequent_duration=INFREQUENT_DURATION,
-            infrequent_end_before=HISTORY_LOOKBACK,
-        )
+        infrequent_kwargs = {
+            "infrequent_period": INFREQUENT_PERIOD,
+            "infrequent_duration": INFREQUENT_DURATION,
+            "infrequent_end_before": HISTORY_LOOKBACK,
+        }
     return make_slot_layer_configs(
         end_offsets=end_offsets,
         data_source=DATA_SOURCE,

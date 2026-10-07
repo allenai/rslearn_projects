@@ -6,7 +6,21 @@ change category and the timestep at which it appears. The training data comes fr
 the "Ai2 - Change Detection Experimentation" organization on OlmoEarth Studio, where
 each annotation has a location, change date, and change category. We train
 separately on three of its projects (Forest Loss Driver, LCC, and Mangrove; Nepal is
-excluded).
+excluded since its change dates are only known to the year).
+
+Annotations are only used if:
+
+- Their change date is between 2019-01-01 (so that there are 900 days of Sentinel-2 L2A
+  history before it) and 2026-07-02 (97 days before the datasets were created, so that
+  the whole detection range has imagery).
+- Their category has at least 50 annotations within that date range. This drops
+  airstrip from Forest Loss Driver and landslide, new_infrastructure, and
+  selective_logging from LCC.
+- For LCC, their task is not from one of the batches with about five negatives per
+  window (see `skip_source_files` in `common.py`). The LCC Studio project was created
+  from the output of `rslp/olmoearth_lcc/lcc_model/filter_v2_jsons.py` (on the
+  `favyen/20260407-change-finder` branch), so it already
+  excludes entries that fail the olmoearth_lcc date checks or have no points.
 
 The generic components are in rslearn under `rslearn.change_alerts` (see
 `rslearn/docs/ChangeAlerts.md`):
@@ -43,12 +57,14 @@ the change between 7 and 90 days.
   mosaics within the last 60 days. The quarterly mosaics end 60 days before the end of
   the time series, so if the 4 weekly mosaics are the latest 4 weeks, there is a gap
   of about a month between the quarterly and weekly mosaics.
-- Recent context: the latest 12 weekly mosaics (within the last 26 weeks).
+- Recent context: the latest 20 weekly mosaics (within the last 26 weeks).
 - Category head: attention pooling over the timesteps (`SimpleAttentionPool`), or the
   before/after features from a `BreakpointScan`.
 
 All runs predict the timestep of the change with `TokensToChannels` and
-`PerPixelTimestepHead` (12 timesteps).
+`PerPixelTimestepHead` (12 timesteps for the history context, 20 for the recent
+context). The arms are compared on the change category; the timestep metrics are
+logged too.
 
 All runs validate on randomized slot 0, so validation covers the whole detection range
 and is the same across runs. The best checkpoint is selected by
@@ -81,10 +97,12 @@ These environment variables are needed:
 
 - `STUDIO_API_KEY` (see `rslearn_projects/.env`) for creating the windows.
 - `OEDATASETS_API_URL` and `DATASETS_API_TOKEN` for the OlmoEarth Datasets Sentinel-2
-  L2A data source used by prepare and materialize.
+  L2A data source used by prepare and materialize (see `rslearn/.env`). Materialization
+  jobs launched with `rslp.main common launch_data_materialization_jobs` need them
+  passed explicitly with `--extra_env_vars` and `--extra_env_secrets`.
 
-For each source, from this directory (a JSON cache of the Studio annotations avoids
-fetching them three times):
+For each source, from this directory (a JSON cache of the Studio tasks and annotations
+avoids fetching them three times; the filters above are applied after loading it):
 
 ```
 SOURCE=forest_loss
