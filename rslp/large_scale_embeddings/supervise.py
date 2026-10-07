@@ -293,6 +293,9 @@ class ModelConfig:
     window_size: int = 16
     overlap_size: int = 4
     compile_model: bool = True
+    # Run each crop as one seam-free forward instead of tiling it into training-size
+    # windows. Needs batch_size 1, a large window_size, and NATTEN in the image on H100.
+    searchlight: bool = False
 
 
 @dataclass
@@ -1604,6 +1607,7 @@ def _run_cycle(
                     window_size=config.model.window_size,
                     overlap_size=config.model.overlap_size,
                     compile_model=config.model.compile_model,
+                    searchlight=config.model.searchlight,
                     epsg_code=config.aoi.epsg_code,
                     wgs84_bounds=config.aoi.wgs84_bounds,
                     geojson_fname=config.aoi.geojson_fname,

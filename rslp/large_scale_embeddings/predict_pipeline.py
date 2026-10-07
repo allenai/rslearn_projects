@@ -77,6 +77,12 @@ class EmbeddingInputs(Enum):
 DATASET_CONFIG_FNAME = "data/large_scale_embeddings/{inputs}.json"
 MODEL_CONFIG_FNAME = "data/large_scale_embeddings/{inputs}.yaml"
 
+# Searchlight runs a whole crop in one forward and gives every pixel its own window,
+# so there are no tile seams. It is an argument to the encoder's forward, reached
+# through rslearn's generic forward_kwargs; jsonargparse builds the settings object
+# from this class_path even though the field is typed dict[str, Any].
+SEARCHLIGHT_CLASS = "olmoearth_pretrain.nn.searchlight.SearchlightSettings"
+
 # Per-window size. The tile size (passed via bounds) must be a multiple of this.
 PATCH_SIZE = 2048
 RESOLUTION = 10
@@ -176,6 +182,7 @@ def _get_model_extra_args(
     overlap_size: int,
     compile_model: bool,
     batch_size: int | None,
+    searchlight: bool = False,
 ) -> list[str]:
     """Get the extra arguments to pass to rslearn model predict.
 
@@ -194,9 +201,13 @@ def _get_model_extra_args(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        searchlight: run each crop as one seam-free forward instead of tiling it.
         batch_size: crops per batch, or None to keep the config's value. This is the
             GPU-memory knob: batching only groups independent crops, so changing it
             affects footprint and speed, never the embeddings.
+        searchlight: run each crop as one seam-free forward instead of tiling it into
+            training-size windows. Needs batch_size 1 and a crop large enough to be
+            worth it, and on H100 it needs NATTEN in the image.
 
     Returns:
         list of arguments to pass to rslearn model predict.
@@ -224,6 +235,15 @@ def _get_model_extra_args(
         # never heard of it is called exactly as before.
         forward_kwargs = dict(encoder[0]["init_args"].get("forward_kwargs", {}))
         forward_kwargs["latent_patch_size"] = latent_patch_size
+        encoder[0]["init_args"]["forward_kwargs"] = forward_kwargs
+    if searchlight:
+        forward_kwargs = dict(encoder[0]["init_args"].get("forward_kwargs", {}))
+        forward_kwargs["searchlight"] = {
+            "class_path": SEARCHLIGHT_CLASS,
+            # Compiles the projection and MLP math, worth ~1.3x, and follows the same
+            # switch as the encoder's own compilation.
+            "init_args": {"compile": compile_model},
+        }
         encoder[0]["init_args"]["forward_kwargs"] = forward_kwargs
 
     # Set the merger options on the RslearnWriter callback (the first and only
@@ -546,6 +566,7 @@ def predict_pipeline(
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
+    searchlight: bool = False,
     batch_size: int | None = None,
     scratch_path: str | None = None,
     upload_workers: int = 16,
@@ -587,6 +608,7 @@ def predict_pipeline(
         overlap_size: overlap in pixels between adjacent crops, to mitigate embedding
             seams at crop boundaries.
         compile_model: whether to compile the encoder transformer blocks.
+        searchlight: run each crop as one seam-free forward instead of tiling it.
         batch_size: crops per batch, or None to keep the config's value. Lower it for
             a tile whose input stack will not fit in GPU memory.
         scratch_path: optional directory to store the scratch rslearn dataset in
@@ -673,6 +695,7 @@ def predict_pipeline(
                 window_size=window_size,
                 overlap_size=overlap_size,
                 compile_model=compile_model,
+                searchlight=searchlight,
                 batch_size=batch_size,
                 upload_workers=upload_workers,
                 materialize_only=materialize_only,
@@ -694,6 +717,7 @@ def predict_pipeline(
             window_size=window_size,
             overlap_size=overlap_size,
             compile_model=compile_model,
+            searchlight=searchlight,
             batch_size=batch_size,
             upload_workers=upload_workers,
             materialize_only=materialize_only,
@@ -716,6 +740,7 @@ def _process_tile(
     window_size: int,
     overlap_size: int,
     compile_model: bool,
+    searchlight: bool,
     batch_size: int | None,
     upload_workers: int,
     materialize_only: bool,
@@ -740,6 +765,7 @@ def _process_tile(
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        searchlight: run each crop as one seam-free forward instead of tiling it.
         batch_size: crops per batch, or None to keep the config's value. Lower it
             for a tile whose full monthly input stack will not fit in GPU memory;
             batching groups independent crops, so this changes footprint and
@@ -832,6 +858,7 @@ def _process_tile(
                     window_size=window_size,
                     overlap_size=overlap_size,
                     compile_model=compile_model,
+                    searchlight=searchlight,
                     batch_size=batch_size,
                 ),
             )
