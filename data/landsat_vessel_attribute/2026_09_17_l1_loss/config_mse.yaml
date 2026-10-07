@@ -19,7 +19,7 @@ model:
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
               init_args:
-                loss_mode: l1
+                loss_mode: mse
           width:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -29,7 +29,7 @@ model:
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
               init_args:
-                loss_mode: l1
+                loss_mode: mse
           speed:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -39,7 +39,7 @@ model:
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
               init_args:
-                loss_mode: l1
+                loss_mode: mse
           heading_x:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -49,7 +49,7 @@ model:
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
               init_args:
-                loss_mode: l1
+                loss_mode: mse
           heading_y:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -59,7 +59,7 @@ model:
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
               init_args:
-                loss_mode: l1
+                loss_mode: mse
           ship_type:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -209,5 +209,5 @@ trainer:
         unfreeze_at_epoch: 5
         unfreeze_lr_factor: 10
 project_name: 2026_09_17_vessel_attribute_l1
-run_name: landsat_l1
+run_name: landsat_mse
 management_dir: ${RSLP_PREFIX}/projects
