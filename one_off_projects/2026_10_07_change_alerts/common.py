@@ -43,6 +43,10 @@ MAX_CHANGE_DATE = date(2026, 10, 7) - DETECTION_RANGE - timedelta(days=7)
 WINDOW_SIZE = 64
 RESOLUTION = 10
 
+# Windows are spread over this many groups ("{source}_{k:02d}", by hashing the
+# annotation ID) so that materialization can be split across jobs by group.
+NUM_GROUPS = 16
+
 # Train/val/test fractions, assigned by hashing a SPLIT_CELL_SIZE (in pixels) grid cell.
 SPLIT_FRACTIONS = {"train": 0.7, "val": 0.1, "test": 0.2}
 SPLIT_CELL_SIZE = 1000

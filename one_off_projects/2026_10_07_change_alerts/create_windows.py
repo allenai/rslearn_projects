@@ -12,7 +12,8 @@ written:
 Annotations are skipped if their category is not used or their change date is outside
 [MIN_CHANGE_DATE, MAX_CHANGE_DATE] (see select_annotations).
 
-Windows are split into train/val/test by hashing a ~10 km grid cell. Run this once
+Windows are placed in NUM_GROUPS groups ("{source}_{k:02d}") so that materialization
+can be split across jobs by group. Windows are split into train/val/test by hashing a ~10 km grid cell. Run this once
 for the training dataset with --splits train,val and once for each test dataset with
 --splits test; the dataset config.json (from make_config.py) must already exist.
 
@@ -37,6 +38,7 @@ import tqdm
 from common import (
     MAX_CHANGE_DATE,
     MIN_CHANGE_DATE,
+    NUM_GROUPS,
     RESOLUTION,
     SOURCE_DATASETS,
     SPLIT_CELL_SIZE,
@@ -71,6 +73,12 @@ def get_split(projection: Projection, col: int, row: int) -> str:
         if value < cumulative:
             return split
     return split
+
+
+def get_group(source: str, annotation_id: str) -> str:
+    """Get the window group, which spreads windows over NUM_GROUPS groups."""
+    shard = int(hashlib.sha256(annotation_id.encode()).hexdigest()[:8], 16) % NUM_GROUPS
+    return f"{source}_{shard:02d}"
 
 
 def fetch_records(source: str) -> dict[str, Any]:
@@ -210,7 +218,7 @@ def create_window(
     dataset = get_dataset(ds_path)
     window = Window(
         storage=dataset.storage,
-        group=source,
+        group=get_group(source, ann["id"]),
         name=ann["id"],
         projection=projection,
         bounds=bounds,

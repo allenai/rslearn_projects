@@ -101,8 +101,9 @@ These environment variables are needed:
   jobs launched with `rslp.main common launch_data_materialization_jobs` need them
   passed explicitly with `--extra_env_vars` and `--extra_env_secrets`.
 
-For each source, from this directory (a JSON cache of the Studio tasks and annotations
-avoids fetching them three times; the filters above are applied after loading it):
+Windows are created and prepared locally, then materialized on Beaker. For each source,
+from this directory (a JSON cache of the Studio tasks and annotations avoids fetching
+them three times; the filters above are applied after loading it):
 
 ```
 SOURCE=forest_loss
@@ -112,17 +113,15 @@ CACHE=/weka/dfive-default/rslearn-eai/datasets/change_alerts/20261007/annotation
 # Training dataset.
 python make_config.py --mode train --ds_path $ROOT/train
 python create_windows.py --source $SOURCE --kind train --annotations_cache $CACHE --workers 32
-rslearn dataset prepare --root $ROOT/train --workers 64 \
+rslearn dataset prepare --root $ROOT/train --workers 64 --retry-max-attempts 3 \
     --enabled-layers freq_fixed_0,infreq_fixed_0,freq_fixed_1,infreq_fixed_1,freq_fixed_2,infreq_fixed_2,freq_fixed_3,infreq_fixed_3
-python prepare_randomized.py --ds_path $ROOT/train --group $SOURCE --workers 64
-rslearn dataset materialize --root $ROOT/train --workers 64
+python prepare_randomized.py --ds_path $ROOT/train --workers 64
 
 # Test datasets.
 for KIND in test_history test_recent; do
     python make_config.py --mode $KIND --ds_path $ROOT/$KIND
     python create_windows.py --source $SOURCE --kind $KIND --annotations_cache $CACHE --workers 32
-    rslearn dataset prepare --root $ROOT/$KIND --workers 64
-    rslearn dataset materialize --root $ROOT/$KIND --workers 64
+    rslearn dataset prepare --root $ROOT/$KIND --workers 64 --retry-max-attempts 3
 done
 ```
 
@@ -130,6 +129,38 @@ The randomized layers (`freq_rand_{k}` and `infreq_rand_{k}`) must only be prepa
 with `prepare_randomized.py`, not `rslearn dataset prepare`: in config.json they end at
 the change date, and `prepare_randomized.py` shifts each window by its random offset
 when preparing them.
+
+Materialization is slow: each item group (one mosaic) takes about 8 seconds per worker,
+since each of the 12 bands is a separate COG read (plus an OlmoEarth Datasets API
+lookup). A training window has about 280 item groups, and each window is materialized
+by one worker, so it takes over 30 minutes. The windows are spread over 16 groups per
+source (`{source}_00` to `{source}_15`), and each Beaker job materializes one group
+index across all nine dataset roots, e.g. for group 03:
+
+```
+for SOURCE in forest_loss lcc mangrove; do
+    for KIND in train test_history test_recent; do
+        rslearn dataset materialize --root $DATASET_ROOT/$SOURCE/$KIND --group ${SOURCE}_03 \
+            --workers 64 --no-use-initial-job --retry-max-attempts 2 --retry-backoff-seconds 10 \
+            --ignore-errors
+    done
+done
+```
+
+Use `--no-use-initial-job`, otherwise the first window is materialized serially before
+the workers start.
+
+The OlmoEarth Datasets Sentinel-2 items were being renamed in October 2026 (appending
+`_S<time>` to the name). Items that are renamed between prepare and materialize fail
+with "Expected 1 item for X, got 0 from OlmoEarth API", leaving that layer incomplete.
+`fix_incomplete.py` finds incomplete layers and prepares them again; then run
+materialize again, and repeat until no layers are incomplete:
+
+```
+python fix_incomplete.py --ds_path $ROOT/train
+rslearn dataset materialize --root $ROOT/train --workers 64 --no-use-initial-job \
+    --retry-max-attempts 2 --retry-backoff-seconds 10
+```
 
 ### Training
 
