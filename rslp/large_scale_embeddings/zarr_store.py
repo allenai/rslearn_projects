@@ -113,18 +113,16 @@ DEFAULT_BAND_CHUNK = 64
 # can be cached indefinitely and marked immutable. Metadata is the opposite: a reader
 # consults it to discover which years and zones the store holds.
 #
-# Ten minutes rather than one: init_store fixes the time axis, the zone groups and the
-# array shapes at creation and a run only writes chunk data, so the metadata does not
-# change while a run fills in. Every reader fetches these before it can read anything,
-# so a short TTL buys discovery latency the run does not need and costs steady
-# revalidation traffic at every edge.
+# Ten minutes for zarr.json, because annotate_pca_store re-consolidates it after the
+# store is created and a reader prefers that snapshot: a long TTL would serve the
+# pre-annotation metadata until someone invalidated the CDN. Ten rather than one
+# because nothing else rewrites it, so a shorter TTL only adds revalidation traffic
+# for every reader, which must fetch it before it can read anything.
+#
+# An overwrite=True re-render to the same path still needs a CDN invalidation: it
+# rewrites chunks that are already cached for a year and marked immutable.
 DEFAULT_CHUNK_MAX_AGE = timedelta(days=365)
 DEFAULT_METADATA_MAX_AGE = timedelta(minutes=10)
-
-# Arrays whose chunks are metadata in all but name: the time axis and the coordinate
-# ramps are read to find out what the store covers, so they expire with the metadata
-# rather than with the embeddings.
-SHORT_CACHE_ARRAYS = ("time", "x", "y")
 
 
 def cache_control(max_age: timedelta, immutable: bool) -> str:
@@ -172,14 +170,16 @@ class CacheControlStore(FsspecStore):
         self._metadata_header = cache_control(metadata_max_age, immutable=False)
 
     def _header_for(self, key: str) -> str:
-        """The Cache-Control value for one store key."""
-        if "/c/" not in key:
-            # zarr.json, and anything else that is not chunk data.
-            return self._metadata_header
-        array_name = key.split("/c/")[0].rsplit("/", 1)[-1]
-        if array_name in SHORT_CACHE_ARRAYS:
-            return self._metadata_header
-        return self._chunk_header
+        """The Cache-Control value for one store key.
+
+        Split on what is rewritten after creation rather than on what looks like
+        metadata. Only zarr.json is: annotate_pca_store re-consolidates it, and a
+        reader prefers that snapshot, so a long TTL would hide the annotation until
+        someone invalidated the CDN. Chunks, including the time and coordinate ramps,
+        are written once; rewriting them at all means an overwrite=True run, which
+        rewrites the embedding chunks too and needs an invalidation regardless.
+        """
+        return self._chunk_header if "/c/" in key else self._metadata_header
 
     async def set(
         self, key: str, value: Buffer, byte_range: tuple | None = None
