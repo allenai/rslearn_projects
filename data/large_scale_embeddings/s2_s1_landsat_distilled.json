@@ -24,6 +24,9 @@
         "duration": "365d",
         "ingest": false,
         "init_args": {
+          "provider_excludes": [
+            "AWS_USGS_LANDSAT"
+          ],
           "query": {
             "sort_by": "CLOUD_COVER",
             "sort_direction": "ASC"
