@@ -2,10 +2,12 @@
 # GitHub, which the default Dockerfile does via `git clone`.
 #
 # Use this when a run depends on rslearn, olmoearth_pretrain, or olmoearth_run
-# changes that are not on a branch yet, or on a pinned commit of one of them. The
-# distilled-model run needs both: a patched rslearn and an olmoearth_pretrain old
-# enough to load the release-candidate checkpoint (see
-# rslp/large_scale_embeddings/README.md for that pairing).
+# changes that are not on a branch yet, or on a pinned commit of one of them.
+#
+# As of 2026-10-07 the only one that needs it is olmoearth_pretrain, pinned to the
+# Searchlight branch (PR #624, which contains #623) for the v1.3 ld1 checkpoint.
+# rslearn and olmoearth_run are ordinary master commits and carry no local patches;
+# an earlier version of this file said rslearn was patched, which is no longer true.
 #
 # Populate these first; `docker_build` is gitignored, so they are yours to place:
 #
