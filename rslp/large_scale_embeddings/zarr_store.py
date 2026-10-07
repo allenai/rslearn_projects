@@ -111,10 +111,15 @@ DEFAULT_BAND_CHUNK = 64
 #
 # A chunk is written once by the single window that owns it and never revisited, so it
 # can be cached indefinitely and marked immutable. Metadata is the opposite: a reader
-# consults it to discover which years and zones the store now holds, and a run fills
-# those in over weeks, so a stale copy reads as missing coverage.
+# consults it to discover which years and zones the store holds.
+#
+# Ten minutes rather than one: init_store fixes the time axis, the zone groups and the
+# array shapes at creation and a run only writes chunk data, so the metadata does not
+# change while a run fills in. Every reader fetches these before it can read anything,
+# so a short TTL buys discovery latency the run does not need and costs steady
+# revalidation traffic at every edge.
 DEFAULT_CHUNK_MAX_AGE = timedelta(days=365)
-DEFAULT_METADATA_MAX_AGE = timedelta(minutes=1)
+DEFAULT_METADATA_MAX_AGE = timedelta(minutes=10)
 
 # Arrays whose chunks are metadata in all but name: the time axis and the coordinate
 # ramps are read to find out what the store covers, so they expire with the metadata
