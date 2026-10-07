@@ -79,13 +79,12 @@ EMBEDDING_DIMENSIONS = ("time", "band", "y", "x")
 # The shard size must equal the window size (PATCH_SIZE) so each prediction window
 # writes exactly one shard, keeping concurrent region writes on disjoint objects.
 #
-# chunk=64 because a point read costs one whole chunk: 0.3 MB against 3.2 MB at 256, an
-# 11x saving on reading embeddings at scattered label locations, which is the archive's
-# commonest third-party use and needs no client configuration to get. It costs 8.8% more
-# storage, and costs an unconfigured reader 1.8x the bytes on a partial, off-aligned
-# area read (481 MB against 268 for a 20 km AOI). Bulk sequential reads are unaffected.
-# See CHUNKING.md for the sweep and for the coalescing behaviour behind that 1.8x.
-DEFAULT_CHUNK_SIZE = 64
+# chunk=256 to match the earlier embeddings already computed and read at 256, and
+# because its read cost does not depend on the reader's coalescing setting. 64 would
+# make a point read 11x cheaper (0.3 MB against 3.2 MB) for 8.8% more storage, but
+# costs a zarr-python reader on the coalescing default 1.8x the bytes on a partial area
+# read. See CHUNKING.md for the sweep and for the coalescing behaviour behind that 1.8x.
+DEFAULT_CHUNK_SIZE = 256
 DEFAULT_SHARD_SIZE = 2048
 # Compression is off the pipeline's critical path (seconds of CPU per shard against
 # minutes of GPU inference), so this is set for read cost, not write cost. Level 3 also

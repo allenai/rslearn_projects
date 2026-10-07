@@ -52,9 +52,9 @@ block, 4,832 MB uncompressed.
 
 | variant | stored | ratio | point 64d | point 128d | 20 km AOI 64d | 40 km transect |
 |---|---|---|---|---|---|---|
-| **`sp64_d64`** | **4,134 MB** | **0.856** | **0.3 MB / 2** | **0.5 MB / 2** | **481.4 MB / 71** | **36.7 MB / 36** |
+| `sp64_d64` | 4,134 MB | 0.856 | 0.3 MB / 2 | 0.5 MB / 2 | 481.4 MB / 71 | 36.7 MB / 36 |
 | `sp128_d64` | 4,207 MB | 0.871 | 0.9 MB / 2 | 1.8 MB / 2 | 475.5 MB / 59 | 30.8 MB / 36 |
-| `sp256_d64` | 3,799 MB | 0.786 | 3.2 MB / 2 | 6.5 MB / 2 | 267.8 MB / 85 | 56.6 MB / 20 |
+| **`sp256_d64`** | **3,799 MB** | **0.786** | **3.2 MB / 2** | **6.5 MB / 2** | **267.8 MB / 85** | **56.6 MB / 20** |
 | `sp512_d64` | 3,507 MB | 0.726 | 12.0 MB / 2 | 23.9 MB / 3 | 307.5 MB / 29 | 110.9 MB / 12 |
 | `sp256_d128` | 3,799 MB | 0.786 | 6.5 MB / 2 | 6.5 MB / 2 | 534.7 MB / 49 | 113.0 MB / 20 |
 | `sp256_d64_z1` | 3,913 MB | 0.810 | 3.4 MB / 2 | 6.7 MB / 2 | 278.4 MB / 85 | 58.3 MB / 20 |
@@ -106,8 +106,8 @@ comparable AlphaEarth mosaic uses, so a like-for-like read comparison stays hone
 **512 loses.** It costs 12.0 MB for a point read and 110.9 MB on the transect, roughly
 double 256 on both, and its 8% storage saving does not pay for that.
 
-**Spatial 64 against 256 is a real tradeoff, not a measurement question.** 128 is
-dominated by 64 on all three axes and can be set aside.
+**Spatial 64 against 256 is a real tradeoff, not a measurement question.** 128 is not
+a midpoint: it stores the most, still coalesces, and matches 256 on the AOI.
 
 | | `sp64_d64` | `sp256_d64` |
 |---|---|---|
@@ -135,28 +135,38 @@ band-last dimension order with uncompressed inner chunks would make a point read
 Status
 ------
 
-    DEFAULT_CHUNK_SIZE = 64      (was 256, changed 2026-10-06)
+    DEFAULT_CHUNK_SIZE = 256     (set to 64 on 2026-10-06, back to 256 on 2026-10-07)
     DEFAULT_BAND_CHUNK = 64      (unchanged)
     DEFAULT_ZSTD_LEVEL = 3       (unchanged)
 
-64 was chosen because the two risks are not symmetric. 256 imposes a guaranteed 11x on
-every point read, by every reader, with no way for the reader to avoid it. 64 imposes a
-bounded 1.8x on one access pattern, partial off-aligned area reads, only for readers who
-leave the coalescing default in place, and those readers can fix it themselves. Bulk
-sequential reads are unaffected either way, because a full-shard read has no gaps
-between its chunks for coalescing to over-read.
+256 was kept for two reasons:
 
-Configuring the reader was considered and rejected: the archive is published, so an
-unknown reader with stock settings has to get a good result without being told anything.
+- **It matches the earlier embeddings already computed at 256.** Readers, including the
+  Studio explorer (`INNER_CHUNK` in `ui/src/pages/Embeddings/core/store.ts` and beside
+  `BAND_CHUNK` in `config.ts`), stay consistent across both archives with no change.
+- **Its read cost is a property of the archive.** It did not move under any client
+  configuration tested, so an unknown reader with stock settings gets the measured cost.
+- **It matches the AlphaEarth GeoZarr mosaic** (`source.coop/tge-labs/aef-mosaic`), the
+  closest comparable archive: 256 x 256 inner chunks of all 64 dims and one year, in
+  4096 x 4096 shards, zstd 3, int8 with -128 nodata. A 64-dim point read costs one
+  chunk on both, so read comparisons stay like-for-like. No rationale for its chunk
+  shape is published.
 
-Two consequences:
+What it gives up:
 
-- **Storage is 8.8% higher.** Measured on CONUS at 0.786; the archive-wide figure will
-  differ by region.
-- **The Studio explorer hardcodes the chunk size** to match the store, in `INNER_CHUNK`
-  in `ui/src/pages/Embeddings/core/store.ts` and alongside `BAND_CHUNK` in `config.ts`.
-  Those move in lockstep with a store built at the new default. Its label reads are
-  already chunk-aligned single-chunk fetches, so they pick up the 11x directly.
+- **Point reads cost 11x more than at 64** (3.2 MB against 0.3 MB for 64 dims), for every
+  reader, permanently. This is the main cost of the choice.
+- **Area reads are about 9% more bytes than 64 with coalescing off** (267.8 MB against
+  245.3 MB), but 13x fewer requests. The explorer reads through zarrita, which does not
+  coalesce, so this is the comparison that applies to it.
+
+This is not permanent in the way the embeddings are. Re-chunking is a read-and-rewrite
+of every shard, CPU and I/O only, with no inference re-run.
+
+128 was considered as a midpoint and rejected: it stores the most of the three, still
+falls inside the 1 MiB coalescing window (a compressed chunk is about 0.9 MB), and with
+coalescing off matches 256 on the AOI. Only powers of two divide the 2048 shard, so
+there is nothing between 128 and 256.
 
 Re-run this before creating a store if the embedding dimensionality changes, if the
 emitted Matryoshka widths move, or if the dominant access pattern turns out to be

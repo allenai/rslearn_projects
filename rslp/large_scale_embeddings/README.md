@@ -167,7 +167,7 @@ implementation of the convention). Each zone group holds:
 
 - an `embeddings` array with dimensions `(time, band, y, x)`: `band` is the 128-dim
   embedding vector, `time` is the annual reference years. It is int8, sharded so that
-  one shard equals one 2048x2048 prediction window (with 64x64 inner chunks),
+  one shard equals one 2048x2048 prediction window (with 256x256 inner chunks),
   zstd-compressed, with fill/nodata value -128.
 - `time`, `x`, and `y` coordinate arrays.
 - `proj:` and `spatial:` attributes (CRS and affine transform) and the geoemb
@@ -608,10 +608,10 @@ Chunk shape
 
 The store fixes three geometry parameters, and all three are measured. See
 `CHUNKING.md` for the full table and the reasoning; the short version is
-`DEFAULT_CHUNK_SIZE = 64`, `DEFAULT_BAND_CHUNK = 64` and `DEFAULT_ZSTD_LEVEL = 3`. The
-chunk size moved from 256 to 64 on 2026-10-06: a point read costs one whole chunk, so
-64 makes reading embeddings at scattered label locations 11x cheaper for every reader
-with no client configuration, for 8.8% more storage.
+`DEFAULT_CHUNK_SIZE = 256`, `DEFAULT_BAND_CHUNK = 64` and `DEFAULT_ZSTD_LEVEL = 3`. 256
+matches the earlier embeddings already computed at that size, and its read cost does not
+depend on the reader's coalescing setting. 64 was tried on 2026-10-06 for 11x cheaper
+point reads and reverted on 2026-10-07.
 
 `DEFAULT_SHARD_SIZE = 2048` is not a tuning parameter at all. One prediction window
 writes exactly one object, which is what keeps concurrent writers on disjoint objects
