@@ -4,10 +4,14 @@
 # Use this when a run depends on rslearn, olmoearth_pretrain, or olmoearth_run
 # changes that are not on a branch yet, or on a pinned commit of one of them.
 #
-# As of 2026-10-07 the only one that needs it is olmoearth_pretrain, pinned to the
-# Searchlight branch (PR #624, which contains #623) for the v1.3 ld1 checkpoint.
-# rslearn and olmoearth_run are ordinary master commits and carry no local patches;
-# an earlier version of this file said rslearn was patched, which is no longer true.
+# As of 2026-10-07 all three are ordinary default-branch commits and none carries a
+# local patch: olmoearth_pretrain #623 and #624 (Searchlight) merged that evening. Two
+# reasons remain to build this way rather than from the default Dockerfile:
+#
+#   - olmoearth_run is not installed by it at all, and the `olmoearth_run` extra that
+#     would is broken (requirements-olmoearth_run.txt does not exist).
+#   - a long run wants the three pinned to exact commits, which `geoemb:build_version`
+#     then records on every store written. The default Dockerfile tracks a branch.
 #
 # Populate these first; `docker_build` is gitignored, so they are yours to place:
 #

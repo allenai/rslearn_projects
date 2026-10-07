@@ -281,13 +281,14 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
    clipped fraction near zero. That catches a config-incompatible checkpoint, a broken
    write path, and a checkpoint whose head geometry no longer suits the quantizer.
 
-   Because that pairing needs a specific olmoearth_pretrain commit, this run's image
-   is built from local checkouts with `Dockerfile.vendored` rather than from the
-   default `Dockerfile`, which clones from GitHub. See that file's header for the
-   directories to populate. rslearn and olmoearth_run are ordinary master commits and
-   need no patch. Nothing in the image records which commits went in, so confirm each
-   checkout is where you want it before building; `geoemb:build_version` on a written
-   store records them after the fact.
+   This run's image is built from local checkouts with `Dockerfile.vendored` rather
+   than from the default `Dockerfile`. Since olmoearth_pretrain #623 and #624 merged
+   on 2026-10-07 none of the three needs a patch, but the default image does not
+   install olmoearth_run and tracks branches rather than pinning commits, which a
+   month-long run wants. See that file's header for the directories to populate.
+   Nothing in the image records which commits went in, so confirm each checkout is
+   where you want it before building; `geoemb:build_version` on a written store
+   records them after the fact.
 
    Pin dependencies that read the store. gcsfs 2026.8.0 returns wrong bytes for
    ranged reads, which surfaces as a Zarr shard-index checksum mismatch and looks
