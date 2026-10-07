@@ -21,7 +21,7 @@
 # Outputs: one RslearnWriter per head writes to its own layer (output_<task>). The five
 # probability heads write softmax probabilities scaled to 0..255 (uint8); ts_start and
 # ts_end write the date, as uint16 days since 1970-01-01, of the midpoint of the time
-# range of the input image at which the predicted change starts/ends (0 = nodata).
+# range of the input image at which the predicted change starts/ends (65535 = nodata).
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:

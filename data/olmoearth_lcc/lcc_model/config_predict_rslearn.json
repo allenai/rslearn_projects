@@ -111,7 +111,8 @@
           "bands": [
             "ts_end_days"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "nodata_value": 65535
         }
       ],
       "type": "raster"
@@ -122,7 +123,8 @@
           "bands": [
             "ts_start_days"
           ],
-          "dtype": "uint16"
+          "dtype": "uint16",
+          "nodata_value": 65535
         }
       ],
       "type": "raster"
