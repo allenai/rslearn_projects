@@ -2093,3 +2093,71 @@ def test_backfill_on_an_old_min_runtime_is_drained(tmp_path: Path) -> None:
         _ReleaseBeaker(workers), object(), prefix, surplus=0, drain_path=drain_path
     )
     assert _drain_list(drain_path) == [f"{prefix}_old_backfill"]
+
+
+def test_allocated_workers_are_counted_by_min_runtime() -> None:
+    """Allocated means min_runtime over the unallocated limit, running or starting."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+
+    def workload(name: str, seconds: int, status: int) -> types.SimpleNamespace:
+        details = types.SimpleNamespace(
+            min_runtime=types.SimpleNamespace(seconds=seconds)
+        )
+        task = types.SimpleNamespace(system_details=details)
+        return types.SimpleNamespace(
+            experiment=types.SimpleNamespace(name=name, tasks=[task]), status=status
+        )
+
+    workloads = [
+        workload(f"{prefix}_a1", 14400, 4),  # allocated, running
+        workload(f"{prefix}_a2", 7200, 4),  # allocated, running
+        workload(f"{prefix}_a3", 7200, 2),  # allocated, queued
+        workload(f"{prefix}_b1", 0, 4),  # backfill
+        workload(f"{prefix}_b2", 300, 4),  # old backfill, still unallocated
+        workload("worker_someone-else_x", 14400, 4),  # another run
+    ]
+
+    class _Beaker:
+        class workload:
+            @staticmethod
+            def list(**kwargs: object) -> list:
+                return workloads
+
+        class user:
+            @staticmethod
+            def get() -> str:
+                return "me"
+
+    assert mod._count_allocated(_Beaker(), object(), prefix) == (3, 2)
+
+
+def test_backfill_is_sized_against_running_allocated_workers() -> None:
+    """Held backfill is running workers minus allocated workers actually running.
+
+    Passing the allocated target instead assumed the allocated pool was full. When it
+    was short, backfill was undercounted, filled the allocated pool's room, and every
+    allocated launch was cancelled as surplus.
+    """
+    import ast
+    import importlib
+    import inspect
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    tree = ast.parse(inspect.getsource(mod))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_backfill_target"
+    ]
+    assert calls, "no call to _backfill_target found"
+    for call in calls:
+        fourth = call.args[3]
+        assert isinstance(fourth, ast.Name) and fourth.id == "allocated_running", (
+            f"_backfill_target's allocated count is {ast.dump(fourth)}; it must be the "
+            "allocated workers running, not the allocated target"
+        )

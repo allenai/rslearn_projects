@@ -876,6 +876,53 @@ def _cluster_free_slots(beaker: Any, worker: "WorkerConfig") -> int:
     return max(0, total)
 
 
+def _count_allocated(
+    beaker: Any,
+    workspace: Any,
+    name_prefix: str,
+) -> tuple[int, int]:
+    """This run's allocated workers, as (live, running).
+
+    Allocated means a min_runtime over UNALLOCATED_MAX_MIN_RUNTIME. Counted directly
+    rather than inferred as the live pool minus backfill: that inference assumed the
+    allocated pool was always at target, so whenever it was short the backfill workers
+    filled its room, allocated launches read as surplus and were cancelled, and the
+    allocated pool could not grow while any backfill was running.
+
+    Args:
+        beaker: an open Beaker client.
+        workspace: the workspace to search.
+        name_prefix: the prefix from `worker_name_prefix`.
+
+    Returns:
+        (allocated workers starting or running, allocated workers running).
+    """
+    live = running = 0
+    for workload in beaker.workload.list(
+        workspace=workspace,
+        author=beaker.user.get(),
+        finalized=False,
+        workload_type=BeakerWorkloadType.experiment,
+        limit=WORKER_LIST_LIMIT,
+    ):
+        name = getattr(getattr(workload, "experiment", None), "name", "")
+        if not name.startswith(name_prefix):
+            continue
+        tasks = list(getattr(workload.experiment, "tasks", None) or [])
+        if not tasks:
+            continue
+        seconds = tasks[0].system_details.min_runtime.seconds
+        if seconds <= UNALLOCATED_MAX_MIN_RUNTIME.total_seconds():
+            continue
+        status = getattr(workload, "status", None)
+        if status in RUNNING_WORKLOAD_STATUSES:
+            live += 1
+            running += 1
+        elif status in PENDING_WORKLOAD_STATUSES or status is None:
+            live += 1
+    return live, running
+
+
 def _backfill_target(
     beaker: Any,
     worker: "WorkerConfig",
@@ -910,7 +957,8 @@ def _backfill_target(
         beaker: an open Beaker client.
         worker: the pool configuration.
         running: workers demonstrably alive, both kinds. Excludes those still queued.
-        allocated: this cycle's allocated-pool target.
+        allocated: this run's allocated workers that are running, so that
+            `running - allocated` is the backfill actually holding slots.
 
     Returns:
         workers to run at backfill priority, possibly zero.
@@ -1735,12 +1783,15 @@ def _run_cycle(
         # Resolved here rather than from config because capacity sizing needs both the
         # live count and a Beaker client. Static runs get config.worker.num_workers.
         allocated_target = _capacity_target(beaker, config.worker, live)
+        allocated_live, allocated_running = _count_allocated(
+            beaker, workspace, worker_name_prefix(queue_name)
+        )
         # Backfill rides on top of the allocation rather than replacing part of it, so
         # the run keeps every slot it is entitled to and adds whatever the cluster is
         # wasting. Re-capped because each half is capped separately and the sum is not.
         num_workers = min(
             allocated_target
-            + _backfill_target(beaker, config.worker, running, allocated_target),
+            + _backfill_target(beaker, config.worker, running, allocated_running),
             live + CAPACITY_MAX_STEP,
         )
         # Staying inside an allocation means giving capacity back, not just declining
@@ -1937,7 +1988,9 @@ def _run_cycle(
         # its slot until the block is done; a backfill worker can lose it at any moment,
         # so a slot the run is entitled to is worth more held allocated than unallocated.
         just_launched = worker_target - live
-        allocated = max(0, min(allocated_target, worker_target) - live)
+        # Against the allocated workers alone: measured against the whole live pool,
+        # running backfill would stand in for allocated workers that do not exist.
+        allocated = max(0, min(allocated_target, worker_target) - allocated_live)
         allocated = min(allocated, just_launched)
         # Top the urgent reserve back up first, then put the rest of the allocated
         # pool at the lower priority. Refilling to a floor rather than launching a
