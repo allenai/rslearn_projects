@@ -12,7 +12,7 @@ Afterwards, run `rslearn dataset materialize` again (completed layers are skippe
 Repeat until the scan reports no incomplete layers or no progress is made.
 
 Usage:
-    python fix_incomplete.py --ds_path PATH [--scan_only]
+    python fix_incomplete.py --ds_path PATH [--groups GROUP,...] [--scan_only]
 """
 
 import argparse
@@ -98,12 +98,18 @@ def main() -> None:
     parser.add_argument("--ds_path", required=True)
     parser.add_argument("--workers", type=int, default=32)
     parser.add_argument(
+        "--groups",
+        default=None,
+        help="Comma-separated window groups to process (default all)",
+    )
+    parser.add_argument(
         "--scan_only", action="store_true", help="Only report incomplete layers"
     )
     args = parser.parse_args()
 
     dataset = Dataset(UPath(args.ds_path))
-    windows = dataset.load_windows(workers=args.workers)
+    groups = args.groups.split(",") if args.groups else None
+    windows = dataset.load_windows(groups=groups, workers=args.workers)
     jobs = [(args.ds_path, window.group, window.name) for window in windows]
     incomplete: list[tuple[str, str, list[str]]] = []
     with multiprocessing.Pool(args.workers) as pool:
