@@ -455,16 +455,21 @@ stat(DATA.km2_per_gpu_hour == null ? "\\u2013" : fmt(DATA.km2_per_gpu_hour),
 const workers = DATA.workers;
 if (workers) {
   stat(fmt(workers.working), "GPUs working");
-  const allocated = workers.allocated.filter(([, n]) => n > 0)
-    .map(([priority, n]) => fmt(n) + " " + priority);
-  const parts = [];
-  if (allocated.length) parts.push(allocated.join(" and ") + " in our allocation");
-  if (workers.spare) parts.push(fmt(workers.spare) + " on spare capacity");
-  if (workers.outside) parts.push(fmt(workers.outside) + " outside Beaker");
-  let line = "At last check: " + (parts.length ? parts.join(", ") : "none running");
-  if (workers.waiting) line += "; " + fmt(workers.waiting) + " waiting for a slot";
+  // One line per cluster: urgent and high from the allocation, then high on spare
+  // (unallocated) capacity.
+  const tierText = (allocated, spare) => {
+    const parts = allocated.filter(([, n]) => n > 0).map(([priority, n]) =>
+      fmt(n) + " " + priority + (priority === "urgent" ? "" : " (allocated)"));
+    if (spare) parts.push(fmt(spare) + " high (unallocated)");
+    return parts.join(", ") || "none running";
+  };
+  const lines = (workers.clusters && workers.clusters.length)
+    ? workers.clusters.map(c => c.name + ": " + tierText(c.allocated, c.spare))
+    : [tierText(workers.allocated, workers.spare)];
+  if (workers.outside) lines.push("outside Beaker: " + fmt(workers.outside));
+  if (workers.waiting) lines.push("waiting for a slot: " + fmt(workers.waiting));
   const fleetLine = document.getElementById("fleet");
-  fleetLine.textContent = line + ".";
+  fleetLine.textContent = "At last check · " + lines.join(" · ");
   fleetLine.hidden = false;
 }
 const started = DATA.layers.filter(layer => layer.done > 0);

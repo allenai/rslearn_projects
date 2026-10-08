@@ -646,9 +646,12 @@ class _Status:
 
 
 class _Entry:
-    def __init__(self, args: list[str], state: str, claimed_at: int = 0) -> None:
+    def __init__(
+        self, args: list[str], state: str, claimed_at: int = 0, worker_id: str = ""
+    ) -> None:
         self.input = _Input(args)
         self.status = _Status(state, claimed_at)
+        self.worker_id = worker_id
 
 
 def test_entry_job_key_reads_the_args() -> None:
@@ -688,6 +691,26 @@ def test_a_claim_without_a_timestamp_is_treated_as_live(
     monkeypatch.setattr(sup, "_state_name", lambda e: e.status.state)
     entries = [_Entry(["job", "x"], "CLAIMED", claimed_at=0)]
     assert ("job", "x") in sup._in_flight_job_keys(entries, 10_000)
+
+
+def test_a_claim_held_by_a_dead_worker_is_reoffered_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A worker killed outright never releases its claims. Waiting on claim age left
+    # those jobs unoffered for the whole stale window; a dead heartbeat frees them now.
+    monkeypatch.setattr(sup, "_state_name", lambda e: e.status.state)
+    now = 10_000
+    entries = [
+        _Entry(["job", "live"], "CLAIMED", claimed_at=now - 60, worker_id="w1"),
+        _Entry(["job", "dead"], "CLAIMED", claimed_at=now - 60, worker_id="w2"),
+        _Entry(["job", "no-id"], "CLAIMED", claimed_at=now - 60),
+    ]
+    keys = sup._in_flight_job_keys(entries, now, 5400, live_workers={"w1"})
+    assert ("job", "live") in keys, "a claim by a live worker is being worked"
+    assert ("job", "dead") not in keys, "a dead worker's claim must be re-offered"
+    assert ("job", "no-id") in keys, "with no worker id, fall back to claim age"
+    # Without a live set, claims are judged by age alone, as before.
+    assert ("job", "dead") in sup._in_flight_job_keys(entries, now, 5400)
 
 
 def test_stale_threshold_is_well_clear_of_one_job() -> None:

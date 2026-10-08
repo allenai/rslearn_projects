@@ -189,6 +189,7 @@ def _get_model_extra_args(
     compile_model: bool,
     batch_size: int | None,
     searchlight: bool = False,
+    num_workers: int | None = None,
 ) -> list[str]:
     """Get the extra arguments to pass to rslearn model predict.
 
@@ -214,6 +215,9 @@ def _get_model_extra_args(
         searchlight: run each crop as one seam-free forward instead of tiling it into
             training-size windows. Needs batch_size 1 and a crop large enough to be
             worth it, and on H100 it needs NATTEN in the image.
+        num_workers: data loader processes, or None to keep the config's value. The
+            host-memory knob: each holds about 10 GB at an 8192 job size, so a machine
+            with less memory than a Beaker node needs fewer.
 
     Returns:
         list of arguments to pass to rslearn model predict.
@@ -272,6 +276,11 @@ def _get_model_extra_args(
         *(
             ["--data.init_args.batch_size", str(batch_size)]
             if batch_size is not None
+            else []
+        ),
+        *(
+            ["--data.init_args.num_workers", str(num_workers)]
+            if num_workers is not None
             else []
         ),
     ]
@@ -574,6 +583,7 @@ def predict_pipeline(
     compile_model: bool = True,
     searchlight: bool = False,
     batch_size: int | None = None,
+    num_workers: int | None = None,
     scratch_path: str | None = None,
     upload_workers: int = 16,
     materialize_only: bool = False,
@@ -617,6 +627,8 @@ def predict_pipeline(
         searchlight: run each crop as one seam-free forward instead of tiling it.
         batch_size: crops per batch, or None to keep the config's value. Lower it for
             a tile whose input stack will not fit in GPU memory.
+        num_workers: data loader processes, or None to keep the config's value. Lower
+            it on a machine with less host memory than a Beaker node.
         scratch_path: optional directory to store the scratch rslearn dataset in
             directly, and keep it afterward (useful for debugging). By default, a
             temporary directory is used and deleted when the tile is done.
@@ -703,6 +715,7 @@ def predict_pipeline(
                 compile_model=compile_model,
                 searchlight=searchlight,
                 batch_size=batch_size,
+                num_workers=num_workers,
                 upload_workers=upload_workers,
                 materialize_only=materialize_only,
                 pca=pca,
@@ -725,6 +738,7 @@ def predict_pipeline(
             compile_model=compile_model,
             searchlight=searchlight,
             batch_size=batch_size,
+            num_workers=num_workers,
             upload_workers=upload_workers,
             materialize_only=materialize_only,
             pca=pca,
@@ -748,6 +762,7 @@ def _process_tile(
     compile_model: bool,
     searchlight: bool,
     batch_size: int | None,
+    num_workers: int | None,
     upload_workers: int,
     materialize_only: bool,
     pca: dict | None,
@@ -776,6 +791,7 @@ def _process_tile(
             for a tile whose full monthly input stack will not fit in GPU memory;
             batching groups independent crops, so this changes footprint and
             speed, never the embeddings.
+        num_workers: data loader processes, or None to keep the config's value.
         upload_workers: number of worker processes for writing the per-crop
             embeddings.
         materialize_only: stop after materializing, leaving the dataset for a
@@ -867,6 +883,7 @@ def _process_tile(
                     compile_model=compile_model,
                     searchlight=searchlight,
                     batch_size=batch_size,
+                    num_workers=num_workers,
                 ),
             )
 

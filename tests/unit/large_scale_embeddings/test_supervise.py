@@ -201,7 +201,11 @@ class _FakeHeartbeat:
 
 
 class _FakeQueueWorker:
+    _ids = itertools.count()
+
     def __init__(self, seconds: int) -> None:
+        # Real registrations carry an id; live workers are tracked by it.
+        self.id = f"worker-{next(self._ids)}"
         self.heartbeat = _FakeHeartbeat(seconds)
 
 
@@ -2034,13 +2038,19 @@ def test_fleet_summary_counts_workers_outside_beaker() -> None:
     config = types.SimpleNamespace(
         worker=types.SimpleNamespace(priority="urgent", overflow_priority="high")
     )
-    summary = sup._fleet_summary(config, [90, 20, 5, 315, 12])  # type: ignore[arg-type]
-    assert summary == {
-        "working": 315,
-        "allocated": [["urgent", 90], ["high", 20]],
-        "spare": 5,
-        "outside": 200,
-        "waiting": 12,
+    fleet = {
+        "clusters": {"jupiter H100": [56, 102, 44], "ceres H100": [39, 12, 0]},
+        "registered": 258,
+        "waiting": 21,
     }
+    summary = sup._fleet_summary(config, fleet)  # type: ignore[arg-type]
+    assert summary["working"] == 258
+    assert summary["allocated"] == [["urgent", 95], ["high", 114]]
+    assert summary["spare"] == 44
+    assert summary["outside"] == 5
+    assert summary["waiting"] == 21
+    assert [c["name"] for c in summary["clusters"]] == ["ceres H100", "jupiter H100"]
+    assert summary["clusters"][1]["allocated"] == [["urgent", 56], ["high", 102]]
     # Workers running but not yet registered do not make outside negative.
-    assert sup._fleet_summary(config, [3, 0, 0, 1, 0])["working"] == 3  # type: ignore[arg-type]
+    small = {"clusters": {"jupiter H100": [3, 0, 0]}, "registered": 1}
+    assert sup._fleet_summary(config, small)["working"] == 3  # type: ignore[arg-type]

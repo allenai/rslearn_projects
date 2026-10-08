@@ -96,6 +96,8 @@ DEFAULT_ENUMERATION_CACHE_DIR = "/tmp/rslp_enumeration_cache"
 
 # Where the status page keeps the markers it has already read.
 DEFAULT_STATUS_CACHE_DIR = "/tmp/rslp_status_cache"
+# Room for the cycle's fleet counts, as JSON, handed back to the parent for the page.
+FLEET_PAYLOAD_BYTES = 16384
 
 # Minimum runtime to request for the supervisor. It is a cheap CPU job that should stay
 # up for the whole run, but a shorter request is placed sooner, and auto_resume brings it
@@ -594,17 +596,25 @@ def _in_flight_job_keys(
     entries: Any,
     now: float,
     claim_stale_seconds: int = DEFAULT_CLAIM_STALE_SECONDS,
+    live_workers: set[str] | None = None,
 ) -> set[tuple[str, ...]]:
     """Jobs already queued or being worked on, which need no second entry.
 
     A pending entry is waiting to be picked up. A claimed entry counts only while its
-    claim is younger than `claim_stale_seconds`; past that the worker holding it is
-    presumed dead and the job is offered again.
+    worker is alive and its claim is younger than `claim_stale_seconds`; past either,
+    the job is offered again.
+
+    A preempted worker that is killed outright never releases its claims, and Beaker
+    has no call to release them, so waiting on age alone left those jobs unoffered for
+    the whole stale window. Checking the claiming worker's heartbeat frees them within
+    minutes of the worker dying.
 
     Args:
         entries: the queue's entries.
         now: current unix time, passed in so this stays testable.
         claim_stale_seconds: age past which a claim is ignored.
+        live_workers: ids of the queue's workers with a fresh heartbeat, or None to
+            judge claims by age alone.
 
     Returns:
         the set of job keys that should not be enqueued again this cycle.
@@ -619,6 +629,10 @@ def _in_flight_job_keys(
             continue
         if state == "PENDING":
             in_flight.add(key)
+            continue
+        worker_id = getattr(entry, "worker_id", "") or ""
+        if live_workers is not None and worker_id and worker_id not in live_workers:
+            # The worker holding it has stopped heartbeating: it is gone.
             continue
         claimed = getattr(getattr(entry, "status", None), "claimed", None)
         seconds = getattr(claimed, "seconds", 0) or 0
@@ -1175,13 +1189,27 @@ def _fresh_registrations(beaker: Any, queue: Any, now: float) -> int:
     Returns:
         the number of registrations heartbeating within the stale window.
     """
-    fresh = 0
+    return len(_fresh_worker_ids(beaker, queue, now))
+
+
+def _fresh_worker_ids(beaker: Any, queue: Any, now: float) -> set[str]:
+    """Ids of the queue's workers with a recent heartbeat, wherever they run.
+
+    Args:
+        beaker: an open Beaker client.
+        queue: the queue whose worker registrations to read.
+        now: current unix time.
+
+    Returns:
+        the registration ids heartbeating within the stale window.
+    """
+    fresh: set[str] = set()
     for worker in beaker.queue.list_workers(queue):
         heartbeat = getattr(worker, "heartbeat", None)
         if heartbeat is None or not heartbeat.seconds:
             continue
         if now - heartbeat.seconds < WORKER_HEARTBEAT_STALE_SECONDS:
-            fresh += 1
+            fresh.add(worker.id)
     return fresh
 
 
@@ -1475,8 +1503,11 @@ def _count_running_tiers(
     workspace: Any,
     name_prefix: str,
     priority: str,
-) -> tuple[int, int, int]:
-    """This run's running Beaker workers, split the way the status page reports them.
+) -> dict[str, list[int]]:
+    """This run's running Beaker workers by cluster, split the way the page reports them.
+
+    The cluster is read from each worker's node, since a worker may be placed on any
+    cluster it lists. One lookup per worker, so this runs only for the status page.
 
     Args:
         beaker: an open Beaker client.
@@ -1485,10 +1516,13 @@ def _count_running_tiers(
         priority: the Beaker priority name of the allocated reserve.
 
     Returns:
-        (allocated at `priority`, allocated at any other priority, backfill).
+        "cluster GPU" -> [allocated at `priority`, allocated at any other priority,
+        backfill].
     """
     want = priority.strip().lower()
-    reserve = other = backfill = 0
+    by_cluster: dict[str, list[int]] = {}
+    node_label: dict[str, str] = {}
+    cluster_label: dict[str, str] = {}
     for workload in beaker.workload.list(
         workspace=workspace,
         author=beaker.user.get(),
@@ -1504,34 +1538,70 @@ def _count_running_tiers(
         tasks = list(getattr(workload.experiment, "tasks", []))
         if not tasks:
             continue
+        label = "unknown"
+        try:
+            node_id = beaker.workload.get_latest_job(
+                workload
+            ).assignment_details.node_id
+            if node_id not in node_label:
+                cluster_id = beaker.node.get(node_id).cluster_id
+                if cluster_id not in cluster_label:
+                    cluster = beaker.cluster.get(cluster_id)
+                    shape = cluster.node_shape
+                    # The enum name, e.g. GPU_TYPE_NVIDIA_H100 -> H100.
+                    gpu = (
+                        shape.DESCRIPTOR.fields_by_name["gpu_type"]
+                        .enum_type.values_by_number[shape.gpu_type]
+                        .name.rsplit("_", 1)[-1]
+                    )
+                    cluster_label[cluster_id] = f"{cluster.name} {gpu}"
+                node_label[node_id] = cluster_label[cluster_id]
+            label = node_label[node_id]
+        except Exception:
+            # The breakdown is for display only; a lookup that fails files the worker
+            # under "unknown" rather than failing the cycle.
+            logger.debug("could not find the cluster for %s", name, exc_info=True)
+        counts = by_cluster.setdefault(label, [0, 0, 0])
         details = tasks[0].system_details
         if details.min_runtime.seconds <= BACKFILL_MIN_RUNTIME.total_seconds():
-            backfill += 1
+            counts[2] += 1
         elif _priority_name(details) == want:
-            reserve += 1
+            counts[0] += 1
         else:
-            other += 1
-    return reserve, other, backfill
+            counts[1] += 1
+    return by_cluster
 
 
-def _fleet_summary(config: SuperviseConfig, fleet: Any) -> dict[str, Any]:
-    """The worker counts for the status page, from one cycle's `fleet` array.
+def _fleet_summary(config: SuperviseConfig, fleet: dict[str, Any]) -> dict[str, Any]:
+    """The worker counts for the status page, from one cycle's fleet payload.
 
     Queue registrations count every worker consuming the queue, wherever it runs, so
     those beyond the Beaker workers running are reported as outside Beaker.
     """
-    reserve, other, backfill, registered, waiting = list(fleet)
-    on_beaker = reserve + other + backfill
-    outside = max(registered - on_beaker, 0)
+    clusters = fleet.get("clusters", {})
+    totals = [sum(c[k] for c in clusters.values()) for k in range(3)]
+    on_beaker = sum(totals)
+    outside = max(fleet.get("registered", 0) - on_beaker, 0)
     return {
         "working": on_beaker + outside,
         "allocated": [
-            [config.worker.priority, reserve],
-            [config.worker.overflow_priority, other],
+            [config.worker.priority, totals[0]],
+            [config.worker.overflow_priority, totals[1]],
         ],
-        "spare": backfill,
+        "spare": totals[2],
+        "clusters": [
+            {
+                "name": name,
+                "allocated": [
+                    [config.worker.priority, counts[0]],
+                    [config.worker.overflow_priority, counts[1]],
+                ],
+                "spare": counts[2],
+            }
+            for name, counts in sorted(clusters.items())
+        ],
         "outside": outside,
-        "waiting": waiting,
+        "waiting": fleet.get("waiting", 0),
     }
 
 
@@ -1557,8 +1627,9 @@ def _run_cycle(
             a cycle killed for overrunning its budget still has numbers worth keeping.
         launched: shared int the number of workers launched is written to, so the
             parent can carry it into the next cycle's liveness count.
-        fleet: shared int array (reserve, other allocated, backfill, registered,
-            waiting) for the status page, filled only when the page is on.
+        fleet: shared byte array the cycle writes a JSON fleet payload into
+            (per-cluster tiers, registrations, waiting) for the status page, filled
+            only when the page is on.
     """
     queue_name = config.queue_name
     # Only meaningful when the pool is sized to the cluster: a static pool has no
@@ -1577,7 +1648,15 @@ def _run_cycle(
             name = _state_name(entry)
             counts[name] = counts.get(name, 0) + 1
         now = time.time()
-        in_flight = _in_flight_job_keys(entries, now, config.cycle.claim_stale_seconds)
+        live_workers: set[str] | None = _fresh_worker_ids(beaker, queue, now)
+        if not live_workers and counts.get("CLAIMED", 0):
+            # Claims with no live worker at all is far likelier to be a failed listing
+            # than every worker dying at once; trusting it would re-offer every claimed
+            # job. Fall back to claim age for this cycle.
+            live_workers = None
+        in_flight = _in_flight_job_keys(
+            entries, now, config.cycle.claim_stale_seconds, live_workers
+        )
         workspace = beaker.workspace.get(DEFAULT_WORKSPACE)
         starting, running = _count_worker_split(
             beaker,
@@ -1588,16 +1667,20 @@ def _run_cycle(
         )
         live = starting + running
         if fleet is not None and config.status.path is not None:
-            fleet[:3] = _count_running_tiers(
-                beaker,
-                workspace,
-                worker_name_prefix(queue_name),
-                config.worker.priority,
-            )
-            # Every registration, Beaker or not, so the page can report the rest as
-            # outside Beaker.
-            fleet[3] = _fresh_registrations(beaker, queue, now)
-            fleet[4] = starting
+            fleet.value = json.dumps(
+                {
+                    "clusters": _count_running_tiers(
+                        beaker,
+                        workspace,
+                        worker_name_prefix(queue_name),
+                        config.worker.priority,
+                    ),
+                    # Every registration, Beaker or not, so the page can report the
+                    # rest as outside Beaker.
+                    "registered": _fresh_registrations(beaker, queue, now),
+                    "waiting": starting,
+                }
+            ).encode()[: FLEET_PAYLOAD_BYTES - 1]
         # An eroded reserve cannot refill itself while queued overflow holds the pool
         # at target, so make room before sizing. Runs before _capacity_target so this
         # cycle launches into the headroom rather than waiting for the next one.
@@ -2137,7 +2220,8 @@ def supervise(
         result: Synchronized[int] = ctx.Value("i", _NO_RESULT)  # type: ignore[assignment]
         launched: Synchronized[int] = ctx.Value("i", 0)  # type: ignore[assignment]
         stats = ctx.Array("i", 6)
-        fleet = ctx.Array("i", 5)
+        # A byte array, which carries .value; typeshed types every Array the same.
+        fleet: Any = ctx.Array("c", FLEET_PAYLOAD_BYTES)
         proc = ctx.Process(
             target=_run_cycle, args=(config, result, launched, stats, fleet)
         )
@@ -2161,7 +2245,10 @@ def supervise(
         if status.path is not None:
             # Only from a cycle that finished, so a killed one cannot zero the page.
             if remaining != _NO_RESULT:
-                workers = _fleet_summary(config, fleet)
+                try:
+                    workers = _fleet_summary(config, json.loads(fleet.value or b"{}"))
+                except ValueError:
+                    logger.warning("could not read this cycle's fleet counts")
             status_proc, status_started = _tend_status(
                 ctx, config, status_proc, status_started, workers
             )
