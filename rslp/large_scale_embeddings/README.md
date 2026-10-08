@@ -283,7 +283,8 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
 
    This run's image is built from local checkouts with `Dockerfile.vendored` rather
    than from the default `Dockerfile`. Since olmoearth_pretrain #623 and #624 merged
-   on 2026-10-07 none of the three needs a patch, but the default image does not
+   on 2026-10-07 none of the three needs a patch (their default branches are master,
+   main and develop respectively), but the default image does not
    install olmoearth_run and tracks branches rather than pinning commits, which a
    month-long run wants. See that file's header for the directories to populate.
    Nothing in the image records which commits went in, so confirm each checkout is
