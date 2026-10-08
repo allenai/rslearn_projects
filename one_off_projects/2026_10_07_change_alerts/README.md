@@ -141,8 +141,7 @@ index across all nine dataset roots, e.g. for group 03:
 for SOURCE in forest_loss lcc mangrove; do
     for KIND in train test_history test_recent; do
         rslearn dataset materialize --root $DATASET_ROOT/$SOURCE/$KIND --group ${SOURCE}_03 \
-            --workers 64 --no-use-initial-job --retry-max-attempts 2 --retry-backoff-seconds 10 \
-            --ignore-errors
+            --workers 64 --no-use-initial-job --retry-max-attempts 0 --ignore-errors
     done
 done
 ```
@@ -152,15 +151,20 @@ the workers start.
 
 The OlmoEarth Datasets Sentinel-2 items were being renamed in October 2026 (appending
 `_S<time>` to the name). Items that are renamed between prepare and materialize fail
-with "Expected 1 item for X, got 0 from OlmoEarth API", leaving that layer incomplete.
-`fix_incomplete.py` finds incomplete layers and prepares them again; then run
-materialize again, and repeat until no layers are incomplete:
+with "Expected 1 item for X, got 0 from OlmoEarth API", leaving that layer incomplete
+(retrying does not help, so materialize without retries). `remap_renamed.py` finds the
+incomplete layers and replaces the renamed items with their new names (one API search
+per window, and the scenes chosen per period are unchanged); then run materialize
+again, and repeat until no layers are incomplete:
 
 ```
-python fix_incomplete.py --ds_path $ROOT/train
+python remap_renamed.py --ds_path $ROOT/train
 rslearn dataset materialize --root $ROOT/train --workers 64 --no-use-initial-job \
-    --retry-max-attempts 2 --retry-backoff-seconds 10
+    --retry-max-attempts 0 --ignore-errors
 ```
+
+`fix_incomplete.py` instead re-prepares the incomplete layers from scratch, which is
+much slower but also handles items that were removed rather than renamed.
 
 ### Training
 
