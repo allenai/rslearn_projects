@@ -11,6 +11,7 @@ The tile size is fixed to 32768x32768 here; the prediction pipeline itself accep
 any tile size that is a multiple of PATCH_SIZE.
 """
 
+import concurrent.futures
 import functools
 import hashlib
 import json
@@ -339,12 +340,15 @@ def enumerate_blocks(
     elif cached is None:
         # Zones are independent and each costs seconds of mask sampling, so they
         # run across processes. Spawned, not forked: a supervisor cycle may already
-        # hold gRPC channels, and forking a process holding them can hang.
-        processes = min(len(zone_numbers), os.cpu_count() or 1)
-        ctx = multiprocessing.get_context("spawn")
-        with ctx.Pool(processes) as pool:
+        # hold gRPC channels, and forking a process holding them can hang. An
+        # executor rather than a Pool, because a Pool whose workers die at startup
+        # replaces them forever and never returns; the executor raises instead.
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=min(len(zone_numbers), os.cpu_count() or 1),
+            mp_context=multiprocessing.get_context("spawn"),
+        ) as pool:
             for zone_tasks in tqdm.tqdm(
-                pool.imap(
+                pool.map(
                     functools.partial(
                         _enumerate_zone,
                         job_size=job_size,
