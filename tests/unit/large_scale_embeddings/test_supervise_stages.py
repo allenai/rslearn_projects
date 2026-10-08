@@ -565,7 +565,11 @@ def test_supervise_raises_after_repeated_cycle_failures(
     calls = {"n": 0}
 
     def never_reports(
-        config: Any, result: Any, launched: Any = None, stats: Any = None
+        config: Any,
+        result: Any,
+        launched: Any = None,
+        stats: Any = None,
+        fleet: Any = None,
     ) -> None:
         # Leave result at _NO_RESULT, as a crashed or killed cycle does.
         calls["n"] += 1
@@ -586,7 +590,11 @@ def test_a_reporting_cycle_resets_the_failure_streak(
     seen = {"i": 0}
 
     def scripted(
-        config: Any, result: Any, launched: Any = None, stats: Any = None
+        config: Any,
+        result: Any,
+        launched: Any = None,
+        stats: Any = None,
+        fleet: Any = None,
     ) -> None:
         val = script[seen["i"] % len(script)]
         seen["i"] += 1

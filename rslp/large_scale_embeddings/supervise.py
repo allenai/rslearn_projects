@@ -27,7 +27,7 @@ import multiprocessing
 import random
 import shlex
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from multiprocessing.sharedctypes import Synchronized
 from typing import Any, TypeVar
@@ -54,6 +54,7 @@ from rslp.large_scale_embeddings.predict_pipeline import (
 )
 from rslp.large_scale_embeddings.render_pca import get_render_jobs
 from rslp.large_scale_embeddings.render_web_pca import get_web_jobs
+from rslp.large_scale_embeddings.status_page import publish_status
 from rslp.large_scale_embeddings.write_jobs import get_jobs
 from rslp.large_scale_embeddings.zarr_store import (
     DEFAULT_PCA_MAX_LEVEL,
@@ -92,6 +93,9 @@ DEFAULT_CYCLE_BUDGET_SECONDS = int(timedelta(minutes=10).total_seconds())
 
 # Where a supervisor caches its enumerated block list between cycles.
 DEFAULT_ENUMERATION_CACHE_DIR = "/tmp/rslp_enumeration_cache"
+
+# Where the status page keeps the markers it has already read.
+DEFAULT_STATUS_CACHE_DIR = "/tmp/rslp_status_cache"
 
 # Minimum runtime to request for the supervisor. It is a cheap CPU job that should stay
 # up for the whole run, but a shorter request is placed sooner, and auto_resume brings it
@@ -491,6 +495,20 @@ class PcaConfig:
 
 
 @dataclass
+class StatusConfig:
+    """The public status page, rebuilt from the markers as the run goes."""
+
+    # Directory to publish index.html and its layers into, or None for no page. Must
+    # sit beside the store rather than inside it, so the archive holds only data.
+    path: str | None = None
+    title: str = "Embeddings coverage"
+    interval_seconds: int = int(timedelta(minutes=30).total_seconds())
+    # A build that outruns this is killed and tried again at the next interval.
+    budget_seconds: int = int(timedelta(minutes=20).total_seconds())
+    cache_dir: str = DEFAULT_STATUS_CACHE_DIR
+
+
+@dataclass
 class SuperviseConfig:
     """Everything one supervision cycle reads.
 
@@ -509,6 +527,7 @@ class SuperviseConfig:
     cycle: CycleConfig
     aoi: AoiConfig
     pca: PcaConfig
+    status: StatusConfig = field(default_factory=StatusConfig)
 
 
 _T = TypeVar("_T")
@@ -1423,11 +1442,77 @@ def _count_urgent_allocated(
     return total
 
 
+def _count_running_tiers(
+    beaker: Any,
+    workspace: Any,
+    name_prefix: str,
+    priority: str,
+) -> tuple[int, int, int]:
+    """This run's running Beaker workers, split the way the status page reports them.
+
+    Args:
+        beaker: an open Beaker client.
+        workspace: the workspace to search.
+        name_prefix: the prefix from `worker_name_prefix`.
+        priority: the Beaker priority name of the allocated reserve.
+
+    Returns:
+        (allocated at `priority`, allocated at any other priority, backfill).
+    """
+    want = priority.strip().lower()
+    reserve = other = backfill = 0
+    for workload in beaker.workload.list(
+        workspace=workspace,
+        author=beaker.user.get(),
+        finalized=False,
+        workload_type=BeakerWorkloadType.experiment,
+        limit=WORKER_LIST_LIMIT,
+    ):
+        name = getattr(getattr(workload, "experiment", None), "name", "")
+        if not name.startswith(name_prefix):
+            continue
+        if getattr(workload, "status", None) not in RUNNING_WORKLOAD_STATUSES:
+            continue
+        tasks = list(getattr(workload.experiment, "tasks", []))
+        if not tasks:
+            continue
+        details = tasks[0].system_details
+        if details.min_runtime.seconds <= BACKFILL_MIN_RUNTIME.total_seconds():
+            backfill += 1
+        elif _priority_name(details) == want:
+            reserve += 1
+        else:
+            other += 1
+    return reserve, other, backfill
+
+
+def _fleet_summary(config: SuperviseConfig, fleet: Any) -> dict[str, Any]:
+    """The worker counts for the status page, from one cycle's `fleet` array.
+
+    Queue registrations count every worker consuming the queue, wherever it runs, so
+    those beyond the Beaker workers running are reported as outside Beaker.
+    """
+    reserve, other, backfill, registered, waiting = list(fleet)
+    on_beaker = reserve + other + backfill
+    outside = max(registered - on_beaker, 0)
+    return {
+        "working": on_beaker + outside,
+        "allocated": [
+            [config.worker.priority, reserve],
+            [config.worker.overflow_priority, other],
+        ],
+        "spare": backfill,
+        "outside": outside,
+        "waiting": waiting,
+    }
+
+
 def _run_cycle(
     config: SuperviseConfig,
     result: Any,
     launched: Any = None,
     stats: Any = None,
+    fleet: Any = None,
 ) -> None:
     """Run one supervision cycle, reporting the remaining job count via `result`.
 
@@ -1444,6 +1529,8 @@ def _run_cycle(
             a cycle killed for overrunning its budget still has numbers worth keeping.
         launched: shared int the number of workers launched is written to, so the
             parent can carry it into the next cycle's liveness count.
+        fleet: shared int array (reserve, other allocated, backfill, registered,
+            waiting) for the status page, filled only when the page is on.
     """
     queue_name = config.queue_name
     # Only meaningful when the pool is sized to the cluster: a static pool has no
@@ -1472,6 +1559,15 @@ def _run_cycle(
             now=now,
         )
         live = starting + running
+        if fleet is not None and config.status.path is not None:
+            fleet[:3] = _count_running_tiers(
+                beaker,
+                workspace,
+                worker_name_prefix(queue_name),
+                config.worker.priority,
+            )
+            fleet[3] = running
+            fleet[4] = starting
         # An eroded reserve cannot refill itself while queued overflow holds the pool
         # at target, so make room before sizing. Runs before _capacity_target so this
         # cycle launches into the headroom rather than waiting for the next one.
@@ -1753,6 +1849,69 @@ def _run_cycle(
         )
 
 
+def _status_kwargs(config: SuperviseConfig) -> dict[str, Any]:
+    """Arguments for `publish_status`, matching what this run enumerates."""
+    status = config.status
+    return {
+        "status_path": status.path,
+        "years": config.years,
+        "completed_path_template": config.completed_path_template,
+        "title": status.title,
+        "cache_dir": status.cache_dir,
+        "job_size": config.aoi.job_size,
+        "epsg_code": config.aoi.epsg_code,
+        "wgs84_bounds": config.aoi.wgs84_bounds,
+        "geojson_fname": config.aoi.geojson_fname,
+        "enumeration_cache_dir": config.cycle.enumeration_cache_dir,
+    }
+
+
+def _tend_status(
+    ctx: Any,
+    config: SuperviseConfig,
+    proc: Any,
+    started: float,
+    workers: dict[str, Any] | None,
+    force: bool = False,
+) -> tuple[Any, float]:
+    """Start a status build when one is due, and reap or kill the last one.
+
+    The build runs in its own process alongside the cycles, so a slow listing never
+    delays a cycle and a failed build costs only that refresh.
+
+    Args:
+        ctx: the multiprocessing context to start the build in.
+        config: the run configuration.
+        proc: the build in progress or last finished, or None.
+        started: when that build started.
+        workers: the latest cycle's worker counts, or None before the first.
+        force: start one now if none is running, whatever the interval.
+
+    Returns:
+        the build process and its start time, for the next call.
+    """
+    status = config.status
+    now = time.time()
+    if proc is not None and proc.is_alive():
+        if now - started < status.budget_seconds:
+            return proc, started
+        logger.warning(
+            "status build exceeded its %ds budget; killing it", status.budget_seconds
+        )
+        proc.kill()
+        proc.join(30)
+    elif proc is not None and proc.exitcode != 0:
+        logger.warning("status build failed (exit code %s)", proc.exitcode)
+    if proc is not None and not force and now - started < status.interval_seconds:
+        return proc, started
+    proc = ctx.Process(
+        target=publish_status,
+        kwargs={**_status_kwargs(config), "workers": workers},
+    )
+    proc.start()
+    return proc, now
+
+
 def launch_supervisor(
     image_name: str,
     cluster: list[str],
@@ -1843,6 +2002,7 @@ def supervise(
     cycle: CycleConfig | None = None,
     aoi: AoiConfig | None = None,
     pca: PcaConfig | None = None,
+    status: StatusConfig | None = None,
 ) -> None:
     """Refill the queue and worker pool each cycle until every tile has a marker.
 
@@ -1859,10 +2019,12 @@ def supervise(
         aoi: the ground to cover and how to cut it up. See `AoiConfig`.
         pca: paths for the render stages. See `PcaConfig`. Required by
             `STAGE_RENDER_UTM_PCA` and `STAGE_RENDER_WEB_PCA`.
+        status: the public status page. See `StatusConfig`. Predict stage only.
 
     Raises:
         ValueError: if the stage is unknown, if a render stage is missing a path it
-            needs, or if the first cycle enumerates no work at all.
+            needs, if the status page would land inside the store or on a stage
+            without predict markers, or if the first cycle enumerates no work at all.
     """
     cycle = cycle or CycleConfig()
     config = SuperviseConfig(
@@ -1877,6 +2039,7 @@ def supervise(
         cycle=cycle,
         aoi=aoi or AoiConfig(),
         pca=pca or PcaConfig(),
+        status=status or StatusConfig(),
     )
 
     if stage not in STAGES:
@@ -1896,6 +2059,16 @@ def supervise(
                 f"stage {STAGE_RENDER_UTM_PCA} requires {', '.join(missing)}; fit the "
                 "basis with olmoearth_run's fit-embedding-pca first"
             )
+    status = config.status
+    if status.path is not None:
+        if stage != STAGE_PREDICT:
+            raise ValueError(f"status.path is only supported for {STAGE_PREDICT}")
+        store_prefix = store_path.rstrip("/") + "/"
+        if (status.path.rstrip("/") + "/").startswith(store_prefix):
+            raise ValueError(
+                f"status.path {status.path} is inside store_path {store_path}; put it "
+                "beside the store so the archive holds only data"
+            )
     if stage == STAGE_PREDICT and config.pca.artifact_path is not None:
         # Every worker would fail on its first block; say so once, here.
         _require_basis(config.pca.artifact_path)
@@ -1907,6 +2080,9 @@ def supervise(
     consecutive_failures = 0
     cycle_number = 0
     total = None
+    status_proc: Any = None
+    status_started = 0.0
+    workers: dict[str, Any] | None = None
     metrics = _Metrics(
         cycle.wandb_project,
         f"{config.stage}-{config.queue_name.split('/')[-1]}",
@@ -1929,7 +2105,10 @@ def supervise(
         result: Synchronized[int] = ctx.Value("i", _NO_RESULT)  # type: ignore[assignment]
         launched: Synchronized[int] = ctx.Value("i", 0)  # type: ignore[assignment]
         stats = ctx.Array("i", 6)
-        proc = ctx.Process(target=_run_cycle, args=(config, result, launched, stats))
+        fleet = ctx.Array("i", 5)
+        proc = ctx.Process(
+            target=_run_cycle, args=(config, result, launched, stats, fleet)
+        )
         started = time.time()
         proc.start()
         proc.join(cycle.budget_seconds)
@@ -1947,6 +2126,13 @@ def supervise(
                 proc.join(30)
         elapsed = int(time.time() - started)
         remaining = result.value
+        if status.path is not None:
+            # Only from a cycle that finished, so a killed one cannot zero the page.
+            if remaining != _NO_RESULT:
+                workers = _fleet_summary(config, fleet)
+            status_proc, status_started = _tend_status(
+                ctx, config, status_proc, status_started, workers
+            )
         pending, claimed, completed, rejected, live, worker_target = (
             stats[0],
             stats[1],
@@ -2021,6 +2207,14 @@ def supervise(
                     "store_path and completed_path_template are correct"
                 )
             logger.info("all tiles have completion markers; run complete")
+            if status.path is not None:
+                # One last build, so the page ends on the finished run.
+                if status_proc is not None:
+                    status_proc.join(status.budget_seconds)
+                status_proc, _ = _tend_status(
+                    ctx, config, status_proc, status_started, workers, force=True
+                )
+                status_proc.join(status.budget_seconds)
             metrics.finish()
             return
         else:

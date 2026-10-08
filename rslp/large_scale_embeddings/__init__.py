@@ -27,6 +27,7 @@ from rslp.large_scale_embeddings.render_web_pca import (
     init_web_store,
     render_web_pca_pipeline,
 )
+from rslp.large_scale_embeddings.status_page import publish_status
 from rslp.large_scale_embeddings.supervise import launch_supervisor, supervise
 from rslp.large_scale_embeddings.tools import build_variants, measure
 from rslp.large_scale_embeddings.write_jobs import init_store, write_jobs
@@ -40,6 +41,7 @@ workflows = {
     "launch_run_all": launch_run_all,
     "launch_supervisor": launch_supervisor,
     "predict": predict_pipeline,
+    "publish_status": publish_status,
     "render_utm_pca": render_pca_pipeline,
     "render_web_pca": render_web_pca_pipeline,
     "init_web_store": init_web_store,

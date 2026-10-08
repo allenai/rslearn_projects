@@ -25,6 +25,7 @@ import json
 import multiprocessing
 import shutil
 import tempfile
+import time
 from datetime import datetime, timedelta
 from enum import Enum
 
@@ -93,6 +94,11 @@ PREDICTION_GROUP = "predict"
 # prefix, so that adding it does not change the arguments already queued for a run.
 COMPLETED_DIR_PREFIX = "completed"
 PROVENANCE_DIR_PREFIX = "provenance"
+
+# When this process last wrote a marker, or loaded this module. A worker runs every
+# entry in one process on one GPU, so the time between markers is the GPU time the
+# block held, including any wait on its prefetch.
+_LAST_MARKER_TIME = time.monotonic()
 
 SENTINEL2_LAYER = "sentinel2_l2a"
 
@@ -777,6 +783,7 @@ def _process_tile(
         pca: artifact_path, store_path, completed_path and max_level for rendering
             the UTM false-color pyramid alongside the embeddings, or None to skip it.
     """
+    global _LAST_MARKER_TIME
     # Initialize an rslearn dataset in scratch from the predict dataset config, unless
     # an earlier materialize_only call already filled it.
     dataset_config_fname = DATASET_CONFIG_FNAME.format(inputs=inputs.value)
@@ -951,10 +958,12 @@ def _process_tile(
         * (bounds[3] - bounds[1])
         // (PATCH_SIZE * PATCH_SIZE)
         - len(kept_crops),
+        "gpu_seconds": round(time.monotonic() - _LAST_MARKER_TIME, 1),
     }
     marker_fname.parent.mkdir(parents=True, exist_ok=True)
     with marker_fname.open("w") as f:
         json.dump(marker, f)
+    _LAST_MARKER_TIME = time.monotonic()
     logger.info("wrote marker file %s", marker_fname)
 
     # After the predict marker, which the render marker names as its source. A crash

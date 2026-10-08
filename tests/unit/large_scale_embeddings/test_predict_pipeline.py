@@ -256,6 +256,7 @@ def test_materialize_only_then_predict_reuses_the_scratch(
     marker = json.loads(next((tmp_path / "completed").iterdir()).read_text())
     # The fake predict writes no output, so the crop counts as skipped.
     assert marker["skipped_no_data"] == [[0, 0]]
+    assert marker["gpu_seconds"] >= 0
 
 
 def test_materialize_only_needs_a_scratch_path() -> None:

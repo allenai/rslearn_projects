@@ -168,86 +168,25 @@ def _write_enumeration_cache(
         logger.exception("could not write enumeration cache %s", path)
 
 
-def get_jobs(
-    inputs: EmbeddingInputs,
-    timestamp: datetime,
-    store_path: str,
-    completed_path: str,
-    checkpoint_path: str,
-    time_index: int,
-    patch_size: int = 1,
-    latent_patch_size: int | None = None,
-    window_size: int = 16,
-    overlap_size: int = 4,
-    compile_model: bool = True,
-    searchlight: bool = False,
+def enumerate_blocks(
+    job_size: int = TILE_SIZE,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
-    count: int | None = None,
-    job_size: int = TILE_SIZE,
     enumeration_cache_dir: str | None = None,
-    pca_artifact_path: str | None = None,
-    pca_store_path: str | None = None,
-    pca_completed_path: str | None = None,
-    pca_max_level: int = DEFAULT_PCA_MAX_LEVEL,
-) -> list[list[str]]:
-    """Get the prediction jobs (one per job_size block).
-
-    Each UTM zone number (1-60) is processed once in its northern CRS (EPSG:326NN),
-    spanning both hemispheres. Tiles whose completion markers already exist are
-    excluded, along with tiles that don't intersect their zone's canonical wedge or
-    contain no crops to process.
+) -> list[tuple[Projection, PixelBounds]]:
+    """Every block the run covers, whether or not it has a marker yet.
 
     Args:
-        inputs: which input variant to use. Different variants produce different
-            embeddings so they must use different stores.
-        timestamp: the reference timestamp (start of the one-year input period). Must
-            have timezone.
-        store_path: the GeoZarr store to write embeddings into.
-        completed_path: the directory for per-tile completion markers.
-        checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
-            Different checkpoints produce different embeddings so they must use
-            different store_path/completed_path (same for patch_size, window_size, and
-            overlap_size below).
-        time_index: the index into the store's time axis for this reference year.
-        patch_size: the encoder's token patch size.
-        latent_patch_size: pixels per output embedding, defaulting to patch_size.
-            A pix512 model tokenizes at 2 and still emits one per pixel.
-        window_size: the size of the crops the model operates on.
-        overlap_size: overlap in pixels between adjacent crops.
-        compile_model: whether to compile the encoder transformer blocks.
-        searchlight: run each crop as one seam-free forward instead of tiling it.
-        epsg_code: limit tasks to the zone of this UTM EPSG code (326NN or 327NN both
-            map to zone NN); default all UTM zones.
-        wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
-        geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
-            file (features must be in WGS84 coordinates).
-        count: limit to this many tasks (randomly sampled).
-        job_size: the pixel size of each job, a divisor of TILE_SIZE and a multiple
-            of PATCH_SIZE. Defaults to one job per TILE_SIZE tile. Smaller jobs cost
-            more fixed overhead (model load and compile per job) but each finishes
-            far sooner, which matters on preemptible workers: a job that outlives the
-            gaps between preemptions never completes at all.
-        enumeration_cache_dir: directory to cache the enumerated block list in. The
-            enumeration is deterministic given the coverage mask and the area
-            arguments, but it is not cheap: sampling the mask finely enough to catch
-            a barrier island costs minutes across all 60 zones. A supervisor re-runs
-            it every cycle in a fresh process, so without a cache that price is paid
-            forever. Pass None to disable.
-        pca_artifact_path: the fitted global PCA artifact. When set, each job also
-            renders its UTM false-color pyramid (see predict_pipeline).
-        pca_store_path: the pca store to render into.
-        pca_completed_path: directory for the render stage's completion markers.
-        pca_max_level: deepest pyramid level to render.
+        job_size: the pixel size of each block.
+        epsg_code: limit to the zone of this UTM EPSG code.
+        wgs84_bounds: limit to blocks intersecting these WGS84 bounds.
+        geojson_fname: limit to blocks intersecting a feature in this GeoJSON file.
+        enumeration_cache_dir: directory to cache the result in, or None.
 
     Returns:
-        a list of worker argument lists, one per job_size block.
+        (projection, bounds) per block.
     """
-    if job_size % PATCH_SIZE != 0:
-        raise ValueError(f"job_size {job_size} must be a multiple of {PATCH_SIZE}")
-    if TILE_SIZE % job_size != 0:
-        raise ValueError(f"job_size {job_size} must divide TILE_SIZE {TILE_SIZE}")
     cache_key = _enumeration_cache_key(job_size, epsg_code, wgs84_bounds, geojson_fname)
     cached: list[tuple[Projection, PixelBounds]] | None = None
     if enumeration_cache_dir is not None:
@@ -379,6 +318,96 @@ def get_jobs(
     elif enumeration_cache_dir is not None:
         _write_enumeration_cache(enumeration_cache_dir, cache_key, tasks)
     logger.info("Got %d total tasks", len(tasks))
+    return tasks
+
+
+def get_jobs(
+    inputs: EmbeddingInputs,
+    timestamp: datetime,
+    store_path: str,
+    completed_path: str,
+    checkpoint_path: str,
+    time_index: int,
+    patch_size: int = 1,
+    latent_patch_size: int | None = None,
+    window_size: int = 16,
+    overlap_size: int = 4,
+    compile_model: bool = True,
+    searchlight: bool = False,
+    epsg_code: int | None = None,
+    wgs84_bounds: tuple[float, float, float, float] | None = None,
+    geojson_fname: str | None = None,
+    count: int | None = None,
+    job_size: int = TILE_SIZE,
+    enumeration_cache_dir: str | None = None,
+    pca_artifact_path: str | None = None,
+    pca_store_path: str | None = None,
+    pca_completed_path: str | None = None,
+    pca_max_level: int = DEFAULT_PCA_MAX_LEVEL,
+) -> list[list[str]]:
+    """Get the prediction jobs (one per job_size block).
+
+    Each UTM zone number (1-60) is processed once in its northern CRS (EPSG:326NN),
+    spanning both hemispheres. Tiles whose completion markers already exist are
+    excluded, along with tiles that don't intersect their zone's canonical wedge or
+    contain no crops to process.
+
+    Args:
+        inputs: which input variant to use. Different variants produce different
+            embeddings so they must use different stores.
+        timestamp: the reference timestamp (start of the one-year input period). Must
+            have timezone.
+        store_path: the GeoZarr store to write embeddings into.
+        completed_path: the directory for per-tile completion markers.
+        checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
+            Different checkpoints produce different embeddings so they must use
+            different store_path/completed_path (same for patch_size, window_size, and
+            overlap_size below).
+        time_index: the index into the store's time axis for this reference year.
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding, defaulting to patch_size.
+            A pix512 model tokenizes at 2 and still emits one per pixel.
+        window_size: the size of the crops the model operates on.
+        overlap_size: overlap in pixels between adjacent crops.
+        compile_model: whether to compile the encoder transformer blocks.
+        searchlight: run each crop as one seam-free forward instead of tiling it.
+        epsg_code: limit tasks to the zone of this UTM EPSG code (326NN or 327NN both
+            map to zone NN); default all UTM zones.
+        wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
+        geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
+            file (features must be in WGS84 coordinates).
+        count: limit to this many tasks (randomly sampled).
+        job_size: the pixel size of each job, a divisor of TILE_SIZE and a multiple
+            of PATCH_SIZE. Defaults to one job per TILE_SIZE tile. Smaller jobs cost
+            more fixed overhead (model load and compile per job) but each finishes
+            far sooner, which matters on preemptible workers: a job that outlives the
+            gaps between preemptions never completes at all.
+        enumeration_cache_dir: directory to cache the enumerated block list in. The
+            enumeration is deterministic given the coverage mask and the area
+            arguments, but it is not cheap: sampling the mask finely enough to catch
+            a barrier island costs minutes across all 60 zones. A supervisor re-runs
+            it every cycle in a fresh process, so without a cache that price is paid
+            forever. Pass None to disable.
+        pca_artifact_path: the fitted global PCA artifact. When set, each job also
+            renders its UTM false-color pyramid (see predict_pipeline).
+        pca_store_path: the pca store to render into.
+        pca_completed_path: directory for the render stage's completion markers.
+        pca_max_level: deepest pyramid level to render.
+
+    Returns:
+        a list of worker argument lists, one per job_size block.
+    """
+    if job_size % PATCH_SIZE != 0:
+        raise ValueError(f"job_size {job_size} must be a multiple of {PATCH_SIZE}")
+    if TILE_SIZE % job_size != 0:
+        raise ValueError(f"job_size {job_size} must divide TILE_SIZE {TILE_SIZE}")
+    tasks = enumerate_blocks(
+        job_size=job_size,
+        epsg_code=epsg_code,
+        wgs84_bounds=wgs84_bounds,
+        geojson_fname=geojson_fname,
+        enumeration_cache_dir=enumeration_cache_dir,
+    )
 
     # Remove tasks where the completion marker already exists.
     completed_upath = UPath(completed_path)

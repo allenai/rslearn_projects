@@ -1,5 +1,6 @@
 import itertools
 import json
+import types
 from pathlib import Path
 from typing import Any
 
@@ -1999,3 +2000,23 @@ def test_a_run_can_use_its_own_gcp_identity() -> None:
     assert (
         "gcp_credentials_secret=config.worker.gcp_credentials_secret" in src
     ), "the supervisor does not pass its configured secret on to the workers"
+
+
+def test_fleet_summary_counts_workers_outside_beaker() -> None:
+    """Registrations beyond the running Beaker workers are reported as outside."""
+    import importlib
+
+    sup = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    config = types.SimpleNamespace(
+        worker=types.SimpleNamespace(priority="urgent", overflow_priority="high")
+    )
+    summary = sup._fleet_summary(config, [90, 20, 5, 315, 12])  # type: ignore[arg-type]
+    assert summary == {
+        "working": 315,
+        "allocated": [["urgent", 90], ["high", 20]],
+        "spare": 5,
+        "outside": 200,
+        "waiting": 12,
+    }
+    # Workers running but not yet registered do not make outside negative.
+    assert sup._fleet_summary(config, [3, 0, 0, 1, 0])["working"] == 3  # type: ignore[arg-type]
