@@ -984,6 +984,23 @@ def _publish_drain_list(drain_path: str, worker_names: list[str]) -> None:
         json.dump({"written": time.time(), "workers": worker_names}, f)
 
 
+def _launched_with_outdated_backfill(workload: Any) -> bool:
+    """Whether a worker is backfill launched with an older BACKFILL_MIN_RUNTIME.
+
+    Such a worker still counts as unallocated, but would keep its old min_runtime until
+    it exits, which for a busy backfill worker can be many hours.
+    """
+    tasks = list(getattr(getattr(workload, "experiment", None), "tasks", None) or [])
+    if not tasks:
+        return False
+    seconds = tasks[0].system_details.min_runtime.seconds
+    return (
+        BACKFILL_MIN_RUNTIME.total_seconds()
+        < seconds
+        <= UNALLOCATED_MAX_MIN_RUNTIME.total_seconds()
+    )
+
+
 def _release_surplus_workers(
     beaker: Any,
     workspace: Any,
@@ -1009,6 +1026,10 @@ def _release_surplus_workers(
     available, and the queue is kept topped up to `target_pending` all run, so a
     surplus worker mid-run never sees an empty queue and would hold its slot
     indefinitely.
+
+    Backfill workers launched with an older BACKFILL_MIN_RUNTIME are drained too,
+    whether or not there is a surplus, so the next cycle replaces them with workers on
+    the current setting.
 
     Args:
         beaker: an open Beaker client.
@@ -1078,6 +1099,12 @@ def _release_surplus_workers(
         return cancelled
 
     draining = [w.experiment.name for w in running[: surplus - cancelled]]
+    outdated = [
+        w.experiment.name
+        for w in running
+        if _launched_with_outdated_backfill(w) and w.experiment.name not in draining
+    ]
+    draining += outdated
     try:
         _publish_drain_list(drain_path, draining)
     except Exception:
@@ -1088,10 +1115,12 @@ def _release_surplus_workers(
     if draining:
         logger.info(
             "asked %d running worker(s) to retire after their current job "
-            "(%d over target, %d cancelled while queued)",
+            "(%d over target, %d cancelled while queued, %d on an old backfill "
+            "min_runtime)",
             len(draining),
             surplus,
             cancelled,
+            len(outdated),
         )
     return cancelled
 

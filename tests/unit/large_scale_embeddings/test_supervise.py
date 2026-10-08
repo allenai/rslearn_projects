@@ -2060,3 +2060,36 @@ def test_fleet_summary_counts_workers_outside_beaker() -> None:
     # Workers running but not yet registered do not make outside negative.
     small = {"clusters": {"jupiter H100": [3, 0, 0]}, "registered": 1}
     assert sup._fleet_summary(config, small)["working"] == 3  # type: ignore[arg-type]
+
+
+def test_backfill_on_an_old_min_runtime_is_drained(tmp_path: Path) -> None:
+    """Backfill launched before BACKFILL_MIN_RUNTIME changed retires at its next job.
+
+    Otherwise it keeps the old setting until it exits, which for busy backfill can be
+    many hours. Allocated workers and current backfill are left alone.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+
+    def workload(name: str, min_runtime_seconds: int) -> types.SimpleNamespace:
+        details = types.SimpleNamespace(
+            min_runtime=types.SimpleNamespace(seconds=min_runtime_seconds)
+        )
+        task = types.SimpleNamespace(system_details=details)
+        experiment = types.SimpleNamespace(
+            name=name, created=types.SimpleNamespace(seconds=1000), tasks=[task]
+        )
+        return types.SimpleNamespace(experiment=experiment, status=4)
+
+    workers = [
+        workload(f"{prefix}_old_backfill", 300),
+        workload(f"{prefix}_new_backfill", 0),
+        workload(f"{prefix}_allocated", 14400),
+    ]
+    drain_path = str(tmp_path / "drain.json")
+    mod._release_surplus_workers(
+        _ReleaseBeaker(workers), object(), prefix, surplus=0, drain_path=drain_path
+    )
+    assert _drain_list(drain_path) == [f"{prefix}_old_backfill"]
