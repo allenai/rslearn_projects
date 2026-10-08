@@ -88,7 +88,9 @@ def test_publish_status(
 
     for fname in ("2023.png", "2024.png", "2025.png", "coverage.png"):
         image = Image.open(io.BytesIO((out / fname).read_bytes()))
-        assert image.size == (status_page.MAP_PIXELS, status_page.MAP_PIXELS)
+        assert image.size == (status_page.MAP_WIDTH, status_page.MAP_HEIGHT)
+    assert json.loads((out / "countries.json").read_text())["features"]
+    assert data["map"]["crs"] == "EPSG:8857"
     assert Image.open(out / "2023.png").getbbox() is None
     assert Image.open(out / "2025.png").getbbox() is not None
 

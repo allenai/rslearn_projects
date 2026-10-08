@@ -4,21 +4,23 @@ Built from the completion markers alone, so it needs no Beaker access and shows 
 same thing whoever runs it. The supervisor calls `publish_status` periodically; it can
 also be run by hand.
 
-Each year is a transparent Web Mercator PNG overlay, one block per filled polygon,
-under a page that holds the stats inline. Everything is uploaded no-store, since the
+Each year is a transparent PNG overlay in Equal Earth, an equal-area projection, so a
+region's share of the map is its share of the ground. One block per filled polygon,
+over country outlines from Natural Earth, under a page that holds the stats inline. Everything is uploaded no-store, since the
 names never change between builds.
 """
 
 import io
 import json
-import math
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import pyproj
+import shapely
+import shapely.affinity
 from fsspec.core import url_to_fs
 from PIL import Image, ImageDraw
 from rslearn.utils.geometry import PixelBounds, Projection
@@ -34,11 +36,21 @@ from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 
-# Overlay width and height in Web Mercator pixels. At 8192 an 8192 px block (82 km)
-# is about 17 px at the equator, and the PNGs stay a few hundred KB each.
-MAP_PIXELS = 8192
-# Web Mercator's latitude limit, where the square world image ends.
-MERCATOR_MAX_LAT = 85.0511
+# Equal Earth. The overlays and the page's map both use it.
+MAP_CRS = "EPSG:8857"
+MAP_PROJ4 = "+proj=eqearth +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+_TO_MAP = pyproj.Transformer.from_crs("EPSG:4326", MAP_CRS, always_xy=True)
+# Half-width and half-height of the projected world, in metres.
+MAP_X_MAX = abs(_TO_MAP.transform(180.0, 0.0)[0])
+MAP_Y_MAX = abs(_TO_MAP.transform(0.0, 90.0)[1])
+# Overlay size in pixels. At 8192 wide an 8192 px block (82 km) is about 20 px, and the
+# PNGs stay a few hundred KB each.
+MAP_WIDTH = 8192
+MAP_HEIGHT = round(MAP_WIDTH * MAP_Y_MAX / MAP_X_MAX)
+# Points per block edge, so a block's outline follows its UTM edges once projected.
+BLOCK_EDGE_POINTS = 8
+# Country outlines for the map, published beside the page.
+BASEMAP_RELPATH = "data/large_scale_embeddings/basemap_countries.geojson"
 KM2_PER_CROP = PATCH_SIZE * PATCH_SIZE * RESOLUTION * RESOLUTION / 1e6
 MARKER_READ_THREADS = 32
 # Red for the oldest year through violet for the newest. Years are spread across it
@@ -131,20 +143,71 @@ def read_markers(
     return cached
 
 
-def _mercator_px(lon: list[float], lat: list[float]) -> list[tuple[float, float]]:
-    """Project WGS84 points to pixel coordinates on the square world image."""
-    points = []
-    for x, y in zip(lon, lat):
-        y = max(-MERCATOR_MAX_LAT, min(MERCATOR_MAX_LAT, y))
-        merc = math.log(math.tan(math.pi / 4 + math.radians(y) / 2))
-        points.append(
-            ((x + 180) / 360 * MAP_PIXELS, (1 - merc / math.pi) / 2 * MAP_PIXELS)
+def _block_lonlat(projection: Projection, bounds: PixelBounds) -> shapely.Geometry:
+    """A block's outline in WGS84, split in two if it crosses the antimeridian."""
+    x0, y0, x1, y1 = (
+        v * r
+        for v, r in zip(
+            bounds,
+            (
+                projection.x_resolution,
+                projection.y_resolution,
+                projection.x_resolution,
+                projection.y_resolution,
+            ),
         )
-    return points
+    )
+    t = [k / BLOCK_EDGE_POINTS for k in range(BLOCK_EDGE_POINTS)]
+    xs = (
+        [x0 + (x1 - x0) * k for k in t]
+        + [x1] * len(t)
+        + [x1 - (x1 - x0) * k for k in t]
+        + [x0] * len(t)
+    )
+    ys = (
+        [y0] * len(t)
+        + [y0 + (y1 - y0) * k for k in t]
+        + [y1] * len(t)
+        + [y1 - (y1 - y0) * k for k in t]
+    )
+    lon, lat = _to_wgs84(str(projection.crs)).transform(xs, ys)
+    lon = list(lon)
+    if max(lon) - min(lon) <= 180:
+        return shapely.Polygon(zip(lon, lat))
+    shifted = shapely.Polygon(zip([x + 360 if x < 0 else x for x in lon], lat))
+    west = shifted.intersection(shapely.box(-180, -90, 180, 90))
+    east = shapely.affinity.translate(
+        shifted.intersection(shapely.box(180, -90, 540, 90)), -360
+    )
+    return shapely.union_all([west, east])
+
+
+_TRANSFORMERS: dict[str, pyproj.Transformer] = {}
+
+
+def _to_wgs84(crs: str) -> pyproj.Transformer:
+    """A cached transformer from a block's CRS to WGS84."""
+    if crs not in _TRANSFORMERS:
+        _TRANSFORMERS[crs] = pyproj.Transformer.from_crs(
+            crs, "EPSG:4326", always_xy=True
+        )
+    return _TRANSFORMERS[crs]
+
+
+def _map_px(lon: list[float], lat: list[float]) -> list[tuple[float, float]]:
+    """Project WGS84 points to pixel coordinates on the Equal Earth world image."""
+    xs, ys = _TO_MAP.transform(lon, lat)
+    return [
+        (
+            (x + MAP_X_MAX) / (2 * MAP_X_MAX) * MAP_WIDTH,
+            (MAP_Y_MAX - y) / (2 * MAP_Y_MAX) * MAP_HEIGHT,
+        )
+        for x, y in zip(xs, ys)
+    ]
 
 
 def render_layer(blocks: list[tuple[Projection, PixelBounds]], color: str) -> bytes:
-    """Draw blocks as filled polygons on a transparent Web Mercator PNG.
+    """Draw blocks as filled polygons on a transparent Equal Earth PNG.
 
     Args:
         blocks: the blocks to draw.
@@ -153,34 +216,30 @@ def render_layer(blocks: list[tuple[Projection, PixelBounds]], color: str) -> by
     Returns:
         the PNG bytes.
     """
-    image = Image.new("P", (MAP_PIXELS, MAP_PIXELS), 0)
+    image = Image.new("P", (MAP_WIDTH, MAP_HEIGHT), 0)
     rgb = [int(color[i : i + 2], 16) for i in (1, 3, 5)]
     image.putpalette([0, 0, 0] + rgb)
     draw = ImageDraw.Draw(image)
-
-    by_crs: dict[str, list[tuple[Projection, PixelBounds]]] = defaultdict(list)
     for projection, bounds in blocks:
-        by_crs[str(projection.crs)].append((projection, bounds))
-    for crs, crs_blocks in by_crs.items():
-        to_wgs84 = pyproj.Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
-        for projection, (x0, y0, x1, y1) in crs_blocks:
-            xs = [x * projection.x_resolution for x in (x0, x1, x1, x0)]
-            ys = [y * projection.y_resolution for y in (y0, y0, y1, y1)]
-            lon, lat = to_wgs84.transform(xs, ys)
-            lon = list(lon)
-            # A block straddling the antimeridian is drawn twice, once each side,
-            # rather than as a polygon spanning the whole world.
-            shifts = [0.0]
-            if max(lon) - min(lon) > 180:
-                lon = [x + 360 if x < 0 else x for x in lon]
-                shifts = [0.0, -MAP_PIXELS]
-            for shift in shifts:
-                points = [(px + shift, py) for px, py in _mercator_px(lon, list(lat))]
-                draw.polygon(points, fill=1)
+        outline = _block_lonlat(projection, bounds)
+        for part in getattr(outline, "geoms", [outline]):
+            if part.is_empty or part.geom_type != "Polygon":
+                continue
+            lon, lat = part.exterior.xy
+            draw.polygon(_map_px(list(lon), list(lat)), fill=1)
 
     buf = io.BytesIO()
     image.save(buf, format="PNG", optimize=True, transparency=0)
     return buf.getvalue()
+
+
+def _basemap() -> bytes:
+    """The country outlines, read from the checkout or the image's working directory."""
+    for root in (Path.cwd(), Path(__file__).resolve().parents[2]):
+        path = root / BASEMAP_RELPATH
+        if path.exists():
+            return path.read_bytes()
+    raise FileNotFoundError(f"{BASEMAP_RELPATH} not found")
 
 
 def _upload(url: str, data: bytes, content_type: str) -> None:
@@ -287,11 +346,18 @@ def publish_status(
         if gpu_hours
         else None,
         "coverage": {"color": COVERAGE_COLOR, "file": "coverage.png"},
+        "map": {
+            "crs": MAP_CRS,
+            "proj4": MAP_PROJ4,
+            "x_max": MAP_X_MAX,
+            "y_max": MAP_Y_MAX,
+        },
         "layers": layers,
         "workers": workers,
     }
     for fname, png in pngs.items():
         _upload(str(status / fname), png, "image/png")
+    _upload(str(status / "countries.json"), _basemap(), "application/json")
     html = PAGE_TEMPLATE.replace("__TITLE__", title).replace(
         "__DATA__", json.dumps(data)
     )
@@ -311,12 +377,16 @@ PAGE_TEMPLATE = """<!doctype html>
 <title>__TITLE__</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4leaflet/1.0.2/proj4leaflet.min.js"></script>
 <style>
-  :root{--paper:#f4f2ed;--panel:#fff;--ink:#191d1b;--muted:#6b746e;--rule:#d6d1c4;}
+  :root{--paper:#f4f2ed;--panel:#fff;--ink:#191d1b;--muted:#6b746e;--rule:#d6d1c4;
+    --sea:#dfe8ee;--land:#f7f5f0;--border:#8a8f8c;}
   @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-    --paper:#13161a;--panel:#1b2024;--ink:#eaefec;--muted:#98a29b;--rule:#2b3237;}}
+    --paper:#13161a;--panel:#1b2024;--ink:#eaefec;--muted:#98a29b;--rule:#2b3237;
+    --sea:#1d2a33;--land:#2a3036;--border:#6d7672;}}
   :root[data-theme="dark"]{--paper:#13161a;--panel:#1b2024;--ink:#eaefec;
-    --muted:#98a29b;--rule:#2b3237;}
+    --muted:#98a29b;--rule:#2b3237;--sea:#1d2a33;--land:#2a3036;--border:#6d7672;}
   *{box-sizing:border-box}
   body{margin:0;background:var(--paper);color:var(--ink);
     font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;}
@@ -404,24 +474,47 @@ for (const layer of [...started].reverse()) {
 
 // The view and layer choices survive the periodic reload, per tab. Storage can be
 // unavailable (private windows, blocked site data), so every access is guarded.
-const VIEW_KEY = "status-view";
+const VIEW_KEY = "status-view-equal-earth";
 let saved = null;
 try { saved = JSON.parse(sessionStorage.getItem(VIEW_KEY)); } catch (e) {}
 
-const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-const map = L.map("map", {worldCopyJump: true, minZoom: 1, maxZoom: 9})
-  .setView(saved ? saved.center : [20, 0], saved ? saved.zoom : 2);
-L.tileLayer(
-  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/" +
-    (dark ? "World_Dark_Gray_Base" : "World_Light_Gray_Base") +
-    "/MapServer/tile/{z}/{y}/{x}",
-  {attribution: "Tiles &copy; Esri", maxNativeZoom: 16}
-).addTo(map);
-const world = [[-85.0511, -180], [85.0511, 180]];
+// Equal Earth, so every block covers the same share of the map as of the ground.
+const X = DATA.map.x_max, Y = DATA.map.y_max;
+const resolutions = [];
+for (let z = 0; z <= 10; z++) resolutions.push(2 * X / 512 / Math.pow(2, z));
+const crs = new L.Proj.CRS(DATA.map.crs, DATA.map.proj4, {
+  resolutions: resolutions,
+  origin: [-X, Y],
+  bounds: L.bounds([-X, -Y], [X, Y]),
+});
+const map = L.map("map", {crs: crs, minZoom: 0, maxZoom: 9, zoomSnap: 0.25});
+// Opens on the latitudes the run covers; Antarctica is outside it.
+if (saved) map.setView(saved.center, saved.zoom);
+else map.fitBounds([[-58, -170], [84, 180]]);
+map.attributionControl.addAttribution("Boundaries: Natural Earth");
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// Sea below everything, borders above the year layers so blocks stay readable.
+map.createPane("base").style.zIndex = 200;
+map.createPane("borders").style.zIndex = 450;
+map.getPane("borders").style.pointerEvents = "none";
+const edge = [];
+for (let lat = -90; lat <= 90; lat += 2) edge.push([lat, -180]);
+for (let lat = 90; lat >= -90; lat -= 2) edge.push([lat, 180]);
+L.polygon(edge, {pane: "base", stroke: true, color: css("--rule"), weight: 1,
+  fillColor: css("--sea"), fillOpacity: 1, interactive: false}).addTo(map);
+fetch("countries.json?v=" + DATA.version).then(r => r.json()).then(countries => {
+  L.geoJSON(countries, {pane: "base", interactive: false,
+    style: {stroke: false, fillColor: css("--land"), fillOpacity: 1}}).addTo(map);
+  L.geoJSON(countries, {pane: "borders", interactive: false,
+    style: {color: css("--border"), weight: 0.6, opacity: 0.8, fill: false}}).addTo(map);
+});
+
+const world = L.bounds([-X, -Y], [X, Y]);
 const bust = "?v=" + DATA.version;
 // Fixed z-order, oldest year on top, so toggling a layer does not restack it.
 const overlay = (file, opacity, zIndex) =>
-  L.imageOverlay(file + bust, world, {opacity: opacity, zIndex: zIndex, interactive: false});
+  L.Proj.imageOverlay(file + bust, world, {opacity: opacity, zIndex: zIndex, interactive: false});
 const swatch = (color, text) =>
   '<i class="sw" style="background:' + color + '"></i>' + text;
 
