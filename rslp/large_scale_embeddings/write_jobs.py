@@ -588,13 +588,13 @@ def write_jobs(
 def init_store(
     store_path: str,
     years: list[int],
+    model_url: str,
+    matryoshka_dims: list[int],
     inputs: EmbeddingInputs = EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
-    model_url: str = zarr_store.DEFAULT_MODEL_URL,
     source_data: list[str] | None = None,
     zone_numbers: list[int] | None = None,
     latent_patch_size: int = 1,
     band_chunk: int = zarr_store.DEFAULT_BAND_CHUNK,
-    matryoshka_dims: list[int] | None = None,
     build_version: str = zarr_store.DEFAULT_BUILD_VERSION,
     zstd_level: int = zarr_store.DEFAULT_ZSTD_LEVEL,
     overwrite: bool = False,
@@ -609,8 +609,14 @@ def init_store(
         years: the annual reference years, defining the time axis.
         inputs: the input variant the store will hold, used to record which source
             datasets it was built from.
-        model_url: URL reference to the encoder model (e.g. a HuggingFace repo).
-            Defaults to the released encoder these embeddings come from.
+        model_url: what produced these embeddings, recorded as geoemb:model. Required,
+            with no default, because the default named the released v1.3 encoder and a
+            store built from a training checkpoint then claimed to be the release. Pass
+            the checkpoint path for a checkpoint, the HuggingFace URL for the release.
+        matryoshka_dims: prefix widths the encoder is trained to emit, recorded so a
+            reader knows which truncations are valid. Required for the same reason:
+            inheriting the release's widths asserts something about a checkpoint nobody
+            checked. DEFAULT_MATRYOSHKA_DIMS is the released model's.
         source_data: URLs of the source datasets. Derived from `inputs` if unset.
         zone_numbers: the UTM zone numbers to create; defaults to all of 1-60.
         latent_patch_size: pixels per output embedding. The store grid is at
@@ -619,8 +625,6 @@ def init_store(
             a store built on the wrong one cannot be re-gridded.
         band_chunk: dimensions per inner chunk along the band axis. Makes Matryoshka
             prefix reads proportionally cheaper at negligible storage cost.
-        matryoshka_dims: prefix widths the model supports, recorded in the store's
-            provenance so a reader knows which truncations are valid.
         build_version: version of the software that built the store.
         zstd_level: zstd compression level for the arrays.
         overwrite: whether to overwrite an existing store.

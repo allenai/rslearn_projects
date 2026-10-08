@@ -219,6 +219,8 @@ tile:
     python -m rslp.main large_scale_embeddings init_store \
         --store_path gs://BUCKET/PREFIX/embeddings.zarr \
         --years '[2024]' \
+        --model_url /weka/path/to/checkpoint \
+        --matryoshka_dims '[128, 64]' \
         --inputs S2_S1_LANDSAT_DISTILLED \
         --zone_numbers '[10]'
 
@@ -303,6 +305,8 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
         python -m rslp.main large_scale_embeddings init_store \
             --store_path gs://BUCKET/PREFIX/embeddings.zarr \
             --years '[2021, 2022, 2023, 2024, 2025]' \
+            --model_url /weka/path/to/checkpoint \
+            --matryoshka_dims '[128, 64]' \
             --inputs S2_S1_LANDSAT_DISTILLED
 
    `--model_url`, `--source_data`, `--matryoshka_dims` and `--build_version` describe

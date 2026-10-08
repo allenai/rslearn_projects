@@ -48,7 +48,6 @@ from rslp.large_scale_embeddings.supervise import (
 )
 from rslp.large_scale_embeddings.write_jobs import get_jobs, init_store
 from rslp.large_scale_embeddings.zarr_store import (
-    DEFAULT_MODEL_URL,
     init_pca_store,
     source_data_for,
 )
@@ -103,11 +102,11 @@ def run_all(
     model: ModelConfig,
     worker: WorkerConfig,
     pca: PcaConfig,
-    model_url: str = DEFAULT_MODEL_URL,
+    model_url: str,
+    matryoshka_dims: list[int],
     source_data: list[str] | None = None,
     cycle: CycleConfig | None = None,
     aoi: AoiConfig | None = None,
-    matryoshka_dims: list[int] | None = None,
     render_gpus: int = 0,
     skip_predict: bool = False,
     skip_render_pca: bool = False,
@@ -129,12 +128,16 @@ def run_all(
         pca: the derived-layer paths. `artifact_path`, `store_path` and
             `completed_path` are required unless `skip_pca` is set, and the artifact
             must already exist (olmoearth_run's embedding_pca.pkl for this model).
-        model_url: URL reference to the encoder model, recorded in the store.
+        model_url: what produced these embeddings, recorded as geoemb:model. No
+            default: a store built from a training checkpoint must not inherit the
+            released model's URL and claim to be the release.
             Defaults to the released encoder these embeddings come from.
         source_data: URLs of the source datasets. Derived from `inputs` if unset.
         cycle: loop pacing for the predict and render stages. See `CycleConfig`.
         aoi: the ground to cover. See `AoiConfig`.
-        matryoshka_dims: prefix widths the model supports, recorded in the store.
+        matryoshka_dims: prefix widths the encoder is trained to emit, recorded so a
+            reader knows which truncations are valid. No default, for the same reason
+            as model_url.
         render_gpus: GPUs for the render stages. They need none; a nonzero value is
             only for saturated clusters that count slots in GPUs.
         skip_predict: assume the embeddings already exist and go straight to the

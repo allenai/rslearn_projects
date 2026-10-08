@@ -62,6 +62,7 @@ COMMON: dict[str, Any] = {
         image_name="user/image", cluster=["ai2/jupiter"], batch_size=128
     ),
     "model_url": "https://example.invalid/model",
+    "matryoshka_dims": [128, 64],
     "source_data": ["https://example.invalid/s2"],
     "pca": PcaConfig(
         artifact_path="gs://bucket/artifact",
