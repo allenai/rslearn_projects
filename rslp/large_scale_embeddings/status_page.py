@@ -5,8 +5,8 @@ same thing whoever runs it. The supervisor calls `publish_status` periodically; 
 also be run by hand.
 
 Each year is a transparent Web Mercator PNG overlay, one block per filled polygon,
-under a page that holds the stats inline. Everything is uploaded with a zero max-age,
-since the names never change between builds.
+under a page that holds the stats inline. Everything is uploaded no-store, since the
+names never change between builds.
 """
 
 import io
@@ -14,7 +14,7 @@ import json
 import math
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -30,7 +30,6 @@ from rslp.large_scale_embeddings.predict_pipeline import (
     get_marker_fname,
 )
 from rslp.large_scale_embeddings.write_jobs import TILE_SIZE, enumerate_blocks
-from rslp.large_scale_embeddings.zarr_store import cache_control
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -57,6 +56,9 @@ SPECTRUM = [
 ]
 COVERAGE_COLOR = "#bfb498"
 DISPLAY_TZ = ZoneInfo("America/Los_Angeles")
+# Neither the CDN nor a browser may keep a copy: every build overwrites the same names,
+# and a cached copy would show a stale page with no sign that it is stale.
+CACHE_CONTROL = "no-store"
 
 
 class TruncatedListingError(RuntimeError):
@@ -181,7 +183,7 @@ def render_layer(blocks: list[tuple[Projection, PixelBounds]], color: str) -> by
 
 
 def _upload(url: str, data: bytes, content_type: str) -> None:
-    """Write one object with a zero max-age, since its name never changes."""
+    """Write one object uncached, since its name never changes."""
     if "://" not in url:
         # A local path has no cache in front of it and no content type to set.
         path = UPath(url)
@@ -193,9 +195,7 @@ def _upload(url: str, data: bytes, content_type: str) -> None:
         path,
         data,
         content_type=content_type,
-        fixed_key_metadata={
-            "cache_control": cache_control(timedelta(0), immutable=False)
-        },
+        fixed_key_metadata={"cache_control": CACHE_CONTROL},
     )
 
 

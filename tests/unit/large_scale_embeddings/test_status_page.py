@@ -91,3 +91,23 @@ def test_publish_status(
         assert image.size == (status_page.MAP_PIXELS, status_page.MAP_PIXELS)
     assert Image.open(out / "2023.png").getbbox() is None
     assert Image.open(out / "2025.png").getbbox() is not None
+
+
+def test_upload_is_never_cached(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A remote write carries no-store, so no CDN or browser keeps a stale page."""
+    calls: list[dict] = []
+
+    class _Fs:
+        def pipe_file(self, path: str, data: bytes, **kwargs: object) -> None:
+            calls.append(kwargs)
+
+    monkeypatch.setattr(
+        status_page, "url_to_fs", lambda url: (_Fs(), url.split("://", 1)[1])
+    )
+    status_page._upload("gs://bucket/status/index.html", b"<html>", "text/html")
+    assert calls == [
+        {
+            "content_type": "text/html",
+            "fixed_key_metadata": {"cache_control": "no-store"},
+        }
+    ]
