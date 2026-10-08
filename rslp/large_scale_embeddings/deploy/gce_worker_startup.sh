@@ -36,6 +36,10 @@ SEC_DATASETS="$(attr embed-secret-datasets-token olmoearth-datasets-api-token)"
 SEC_AWS_KEY="$(attr embed-secret-aws-key-id aws-access-key-id)"
 SEC_AWS_SECRET="$(attr embed-secret-aws-secret aws-secret-access-key)"
 SEC_BEAKER="$(attr embed-secret-beaker-token patrickj-beaker-token)"
+# The embeddings-writer service account key, the same one Beaker jobs mount, so every
+# writer to the store is one identity. The VM's own account only reads secrets and
+# pulls the image.
+SEC_GCP_CREDS="$(attr embed-secret-gcp-credentials olmoearth-embeddings-gcp-credentials)"
 SHM_SIZE="$(attr embed-shm-size 16g)"
 # Appended to every entry this worker runs, overriding what the supervisor baked
 # in. A GPU-memory knob like --batch_size follows the hardware, not the job.
@@ -90,6 +94,13 @@ echo "=== secrets ==="
 # or in instance metadata.
 sec() { gcloud secrets versions access latest --secret="$1" --project="$SECRET_PROJECT"; }
 umask 077
+GCP_CREDS_FILE=/etc/embedworker-gcp-credentials.json
+# Refuse to start rather than fall back to the VM's account: a worker writing as the
+# wrong identity fails on its first marker, or worse, succeeds where it should not.
+if ! sec "$SEC_GCP_CREDS" >"$GCP_CREDS_FILE" || [ ! -s "$GCP_CREDS_FILE" ]; then
+  echo "could not read secret $SEC_GCP_CREDS from $SECRET_PROJECT; not starting the worker"
+  exit 1
+fi
 cat >/etc/embedworker.env <<ENV
 OEDATASETS_API_URL=${DATASETS_API_URL}
 GS_USER_PROJECT=${PROJECT}
@@ -103,6 +114,7 @@ AWS_SECRET_ACCESS_KEY=$(sec "$SEC_AWS_SECRET")
 BEAKER_TOKEN=$(sec "$SEC_BEAKER")
 RSLP_WORKER_NAME=gce_$(hostname)
 RSLP_WORKER_EXTRA_ARGS=${EXTRA_ARGS}
+GOOGLE_APPLICATION_CREDENTIALS=/etc/credentials/gcp_credentials.json
 ENV
 
 echo "=== worker ==="
@@ -120,6 +132,7 @@ docker run -d --name embedworker \
   --shm-size="$SHM_SIZE" \
   --ulimit "nofile=${NOFILE}" \
   -v /weka:/weka \
+  -v "${GCP_CREDS_FILE}:/etc/credentials/gcp_credentials.json:ro" \
   "$IMAGE" \
   python -m rslp.main common worker --queue_name "$QUEUE"
 
