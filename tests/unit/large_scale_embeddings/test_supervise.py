@@ -1043,9 +1043,9 @@ def test_backfill_workers_must_stay_unallocated() -> None:
             seconds=int(mod.BACKFILL_MIN_RUNTIME.total_seconds())
         )
     )
-    assert mod._is_unallocated(details), (
-        "backfill must classify as unallocated, or it counts against the allocation cap"
-    )
+    assert mod._is_unallocated(
+        details
+    ), "backfill must classify as unallocated, or it counts against the allocation cap"
     details.min_runtime.seconds = 300
     assert not mod._is_unallocated(
         details
