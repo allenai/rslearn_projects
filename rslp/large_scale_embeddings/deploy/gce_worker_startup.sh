@@ -44,6 +44,9 @@ SHM_SIZE="$(attr embed-shm-size 16g)"
 # Appended to every entry this worker runs, overriding what the supervisor baked
 # in. A GPU-memory knob like --batch_size follows the hardware, not the job.
 EXTRA_ARGS="$(attr embed-worker-extra-args "")"
+# Extra environment for the worker container, one KEY=VALUE per line or separated by
+# spaces, for settings that are not worker args (e.g. PYTORCH_CUDA_ALLOC_CONF).
+EXTRA_ENV="$(attr embed-extra-env "")"
 NOFILE="$(attr embed-nofile 65535:524288)"
 
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/${IMAGE_NAME}:${IMAGE_TAG}"
@@ -116,6 +119,9 @@ RSLP_WORKER_NAME=gce_$(hostname)
 RSLP_WORKER_EXTRA_ARGS=${EXTRA_ARGS}
 GOOGLE_APPLICATION_CREDENTIALS=/etc/credentials/gcp_credentials.json
 ENV
+if [ -n "$EXTRA_ENV" ]; then
+  printf '%s\n' $EXTRA_ENV >>/etc/embedworker.env
+fi
 
 echo "=== worker ==="
 docker pull "$IMAGE"
