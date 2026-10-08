@@ -399,9 +399,15 @@ for (const layer of [...started].reverse()) {
   stat(pct(layer), layer.year + " complete", layer.color);
 }
 
+// The view and layer choices survive the periodic reload, per tab. Storage can be
+// unavailable (private windows, blocked site data), so every access is guarded.
+const VIEW_KEY = "status-view";
+let saved = null;
+try { saved = JSON.parse(sessionStorage.getItem(VIEW_KEY)); } catch (e) {}
+
 const dark = matchMedia("(prefers-color-scheme: dark)").matches;
 const map = L.map("map", {worldCopyJump: true, minZoom: 1, maxZoom: 9})
-  .setView([20, 0], 2);
+  .setView(saved ? saved.center : [20, 0], saved ? saved.zoom : 2);
 L.tileLayer(
   "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/" +
     (dark ? "World_Dark_Gray_Base" : "World_Light_Gray_Base") +
@@ -417,17 +423,42 @@ const swatch = (color, text) =>
   '<i class="sw" style="background:' + color + '"></i>' + text;
 
 const overlays = {};
-overlays[swatch(DATA.coverage.color, "coverage area")] =
-  overlay(DATA.coverage.file, 0.45, 1).addTo(map);
+const byKey = {coverage: overlay(DATA.coverage.file, 0.45, 1)};
+overlays[swatch(DATA.coverage.color, "coverage area")] = byKey.coverage;
 // Listed newest first. DATA.layers runs oldest first, so the oldest gets the top z.
 DATA.layers.forEach((layer, i) => { layer.z = 1 + DATA.layers.length - i; });
 for (const layer of [...DATA.layers].reverse()) {
   const label = layer.done > 0 ? layer.year + " (" + pct(layer) + ")" : String(layer.year);
   const lyr = overlay(layer.file, 0.85, layer.z);
-  if (layer.done > 0) lyr.addTo(map);
+  byKey[layer.year] = lyr;
   overlays[swatch(layer.color, label)] = lyr;
 }
+// By default the coverage area and every year with work are on.
+const shown = saved ? new Set(saved.shown) : new Set(
+  ["coverage", ...DATA.layers.filter(l => l.done > 0).map(l => String(l.year))]);
+for (const [key, lyr] of Object.entries(byKey)) {
+  if (shown.has(String(key))) lyr.addTo(map);
+}
 L.control.layers(null, overlays, {collapsed: innerWidth < 700}).addTo(map);
+
+// Reload every five minutes to pick up the latest build. A hidden tab waits until
+// it is shown again rather than reloading in the background.
+const RELOAD_MS = 5 * 60 * 1000;
+let due = false;
+function reload() {
+  try {
+    sessionStorage.setItem(VIEW_KEY, JSON.stringify({
+      center: map.getCenter(),
+      zoom: map.getZoom(),
+      shown: Object.keys(byKey).filter(key => map.hasLayer(byKey[key])),
+    }));
+  } catch (e) {}
+  location.reload();
+}
+setInterval(() => { if (document.hidden) due = true; else reload(); }, RELOAD_MS);
+document.addEventListener("visibilitychange", () => {
+  if (due && !document.hidden) reload();
+});
 </script>
 </body>
 </html>
