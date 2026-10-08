@@ -11,8 +11,11 @@ The tile size is fixed to 32768x32768 here; the prediction pipeline itself accep
 any tile size that is a multiple of PATCH_SIZE.
 """
 
+import functools
 import hashlib
 import json
+import multiprocessing
+import os
 import random
 from collections.abc import Generator
 from datetime import datetime
@@ -168,6 +171,130 @@ def _write_enumeration_cache(
         logger.exception("could not write enumeration cache %s", path)
 
 
+def _enumerate_zone(
+    zone_number: int,
+    job_size: int,
+    geojson_shapes: list[shapely.Geometry] | None,
+    wgs84_bounds: tuple[float, float, float, float] | None,
+) -> list[tuple[Projection, PixelBounds]]:
+    """Enumerate one UTM zone's blocks. See `enumerate_blocks`.
+
+    A module-level function so it can run in a worker process.
+
+    Args:
+        zone_number: the UTM zone number (1-60).
+        job_size: the pixel size of each block.
+        geojson_shapes: footprint restriction in WGS84, if any.
+        wgs84_bounds: bounding box restriction, if any.
+
+    Returns:
+        (projection, bounds) per block in the zone.
+    """
+    tasks: list[tuple[Projection, PixelBounds]] = []
+    projection, _, _ = get_zone_grid(zone_number, RESOLUTION, TILE_SIZE)
+    wedge = get_zone_wedge(projection.crs, RESOLUTION)
+    # The zone's WGS84 extent, spanning both hemispheres. Deliberately not
+    # get_wgs84_bounds(projection.crs): the projection is the zone's *northern* CRS,
+    # so that returns 0..84N and would silently drop every southern shape.
+    zone_lon_min = -180 + (zone_number - 1) * 6
+    zone_shp = shapely.box(zone_lon_min, UTM_MIN_LAT, zone_lon_min + 6, UTM_MAX_LAT)
+
+    # Intersect the GeoJSON shapes with the WGS84 extent of the current UTM zone
+    # and project them into the zone's pixel coordinate system (skipping the zone
+    # if no shape intersects it). Reprojecting geometry far outside the zone's
+    # extent fails (or yields meaningless bounds), so we only reproject the
+    # portion of each shape that falls within the zone.
+    zone_geojson_shapes: list[shapely.Geometry] | None = None
+    if geojson_shapes is not None:
+        zone_geojson_shapes = []
+        for shp in geojson_shapes:
+            zone_intersect_shp = shp.intersection(zone_shp)
+            if zone_intersect_shp.is_empty:
+                continue
+            zone_geojson_shapes.append(
+                STGeometry(WGS84_PROJECTION, zone_intersect_shp, None)
+                .to_projection(projection)
+                .shp
+            )
+        if len(zone_geojson_shapes) == 0:
+            return tasks
+
+    user_bounds_in_proj: PixelBounds | None = None
+    if wgs84_bounds is not None:
+        # Intersect the user bounds with the zone extent for the same reason as
+        # the GeoJSON shapes above.
+        intersect_shp = shapely.box(*wgs84_bounds).intersection(zone_shp)
+        if intersect_shp.is_empty:
+            return tasks
+        dst_geom = STGeometry(WGS84_PROJECTION, intersect_shp, None).to_projection(
+            projection
+        )
+        user_bounds_in_proj = (
+            int(dst_geom.shp.bounds[0]),
+            int(dst_geom.shp.bounds[1]),
+            int(dst_geom.shp.bounds[2]),
+            int(dst_geom.shp.bounds[3]),
+        )
+
+    for col, row in enumerate_tiles_in_zone(zone_number):
+        if user_bounds_in_proj is not None:
+            if (col + 1) * TILE_SIZE < user_bounds_in_proj[0]:
+                continue
+            if col * TILE_SIZE >= user_bounds_in_proj[2]:
+                continue
+            if (row + 1) * TILE_SIZE < user_bounds_in_proj[1]:
+                continue
+            if row * TILE_SIZE >= user_bounds_in_proj[3]:
+                continue
+
+        bounds = (
+            col * TILE_SIZE,
+            row * TILE_SIZE,
+            (col + 1) * TILE_SIZE,
+            (row + 1) * TILE_SIZE,
+        )
+
+        # Skip tiles that don't intersect any GeoJSON feature.
+        if zone_geojson_shapes is not None:
+            tile_box = shapely.box(*bounds)
+            if not any(shp.intersects(tile_box) for shp in zone_geojson_shapes):
+                continue
+
+        # Skip tiles outside the zone's canonical wedge (they are covered by the
+        # neighboring UTM zone).
+        if not bounds_intersect_wedge(wedge, bounds):
+            continue
+        # Skip tiles with no crops to process (e.g. entirely ocean). The crops are
+        # kept so each block below can take its own from them rather than sampling
+        # the coverage mask a second time: a block's lattice points are a subset of
+        # its tile's, so the answer is identical.
+        tile_crops = list_kept_crops(projection, bounds, PATCH_SIZE, wedge=wedge)
+        if len(tile_crops) == 0:
+            continue
+
+        # Split the tile into job_size blocks. Subdividing the TILE_SIZE grid
+        # (rather than re-gridding the zone) keeps every block on the same
+        # absolute pixel coordinates the store was created with.
+        for sub_x in range(bounds[0], bounds[2], job_size):
+            for sub_y in range(bounds[1], bounds[3], job_size):
+                sub_bounds = (sub_x, sub_y, sub_x + job_size, sub_y + job_size)
+                if zone_geojson_shapes is not None and not any(
+                    shp.intersects(shapely.box(*sub_bounds))
+                    for shp in zone_geojson_shapes
+                ):
+                    continue
+                if not bounds_intersect_wedge(wedge, sub_bounds):
+                    continue
+                if not any(
+                    sub_bounds[0] <= crop[0] < sub_bounds[2]
+                    and sub_bounds[1] <= crop[1] < sub_bounds[3]
+                    for crop in tile_crops
+                ):
+                    continue
+                tasks.append((projection, sub_bounds))
+    return tasks
+
+
 def enumerate_blocks(
     job_size: int = TILE_SIZE,
     epsg_code: int | None = None,
@@ -207,111 +334,29 @@ def enumerate_blocks(
         ]
 
     tasks: list[tuple[Projection, PixelBounds]] = []
-    for zone_number in (
-        []
-        if cached is not None
-        else tqdm.tqdm(zone_numbers, desc="Enumerating tasks across UTM zones")
-    ):
-        projection, _, _ = get_zone_grid(zone_number, RESOLUTION, TILE_SIZE)
-        wedge = get_zone_wedge(projection.crs, RESOLUTION)
-        # The zone's WGS84 extent, spanning both hemispheres. Deliberately not
-        # get_wgs84_bounds(projection.crs): the projection is the zone's *northern* CRS,
-        # so that returns 0..84N and would silently drop every southern shape.
-        zone_lon_min = -180 + (zone_number - 1) * 6
-        zone_shp = shapely.box(zone_lon_min, UTM_MIN_LAT, zone_lon_min + 6, UTM_MAX_LAT)
-
-        # Intersect the GeoJSON shapes with the WGS84 extent of the current UTM zone
-        # and project them into the zone's pixel coordinate system (skipping the zone
-        # if no shape intersects it). Reprojecting geometry far outside the zone's
-        # extent fails (or yields meaningless bounds), so we only reproject the
-        # portion of each shape that falls within the zone.
-        zone_geojson_shapes: list[shapely.Geometry] | None = None
-        if geojson_shapes is not None:
-            zone_geojson_shapes = []
-            for shp in geojson_shapes:
-                zone_intersect_shp = shp.intersection(zone_shp)
-                if zone_intersect_shp.is_empty:
-                    continue
-                zone_geojson_shapes.append(
-                    STGeometry(WGS84_PROJECTION, zone_intersect_shp, None)
-                    .to_projection(projection)
-                    .shp
-                )
-            if len(zone_geojson_shapes) == 0:
-                continue
-
-        user_bounds_in_proj: PixelBounds | None = None
-        if wgs84_bounds is not None:
-            # Intersect the user bounds with the zone extent for the same reason as
-            # the GeoJSON shapes above.
-            intersect_shp = shapely.box(*wgs84_bounds).intersection(zone_shp)
-            if intersect_shp.is_empty:
-                continue
-            dst_geom = STGeometry(WGS84_PROJECTION, intersect_shp, None).to_projection(
-                projection
-            )
-            user_bounds_in_proj = (
-                int(dst_geom.shp.bounds[0]),
-                int(dst_geom.shp.bounds[1]),
-                int(dst_geom.shp.bounds[2]),
-                int(dst_geom.shp.bounds[3]),
-            )
-
-        for col, row in enumerate_tiles_in_zone(zone_number):
-            if user_bounds_in_proj is not None:
-                if (col + 1) * TILE_SIZE < user_bounds_in_proj[0]:
-                    continue
-                if col * TILE_SIZE >= user_bounds_in_proj[2]:
-                    continue
-                if (row + 1) * TILE_SIZE < user_bounds_in_proj[1]:
-                    continue
-                if row * TILE_SIZE >= user_bounds_in_proj[3]:
-                    continue
-
-            bounds = (
-                col * TILE_SIZE,
-                row * TILE_SIZE,
-                (col + 1) * TILE_SIZE,
-                (row + 1) * TILE_SIZE,
-            )
-
-            # Skip tiles that don't intersect any GeoJSON feature.
-            if zone_geojson_shapes is not None:
-                tile_box = shapely.box(*bounds)
-                if not any(shp.intersects(tile_box) for shp in zone_geojson_shapes):
-                    continue
-
-            # Skip tiles outside the zone's canonical wedge (they are covered by the
-            # neighboring UTM zone).
-            if not bounds_intersect_wedge(wedge, bounds):
-                continue
-            # Skip tiles with no crops to process (e.g. entirely ocean).
-            if len(list_kept_crops(projection, bounds, PATCH_SIZE, wedge=wedge)) == 0:
-                continue
-
-            # Split the tile into job_size blocks. Subdividing the TILE_SIZE grid
-            # (rather than re-gridding the zone) keeps every block on the same
-            # absolute pixel coordinates the store was created with.
-            for sub_x in range(bounds[0], bounds[2], job_size):
-                for sub_y in range(bounds[1], bounds[3], job_size):
-                    sub_bounds = (sub_x, sub_y, sub_x + job_size, sub_y + job_size)
-                    if zone_geojson_shapes is not None and not any(
-                        shp.intersects(shapely.box(*sub_bounds))
-                        for shp in zone_geojson_shapes
-                    ):
-                        continue
-                    if not bounds_intersect_wedge(wedge, sub_bounds):
-                        continue
-                    if (
-                        len(
-                            list_kept_crops(
-                                projection, sub_bounds, PATCH_SIZE, wedge=wedge
-                            )
-                        )
-                        == 0
-                    ):
-                        continue
-                    tasks.append((projection, sub_bounds))
+    if cached is None and len(zone_numbers) == 1:
+        tasks = _enumerate_zone(zone_numbers[0], job_size, geojson_shapes, wgs84_bounds)
+    elif cached is None:
+        # Zones are independent and each costs seconds of mask sampling, so they
+        # run across processes. Spawned, not forked: a supervisor cycle may already
+        # hold gRPC channels, and forking a process holding them can hang.
+        processes = min(len(zone_numbers), os.cpu_count() or 1)
+        ctx = multiprocessing.get_context("spawn")
+        with ctx.Pool(processes) as pool:
+            for zone_tasks in tqdm.tqdm(
+                pool.imap(
+                    functools.partial(
+                        _enumerate_zone,
+                        job_size=job_size,
+                        geojson_shapes=geojson_shapes,
+                        wgs84_bounds=wgs84_bounds,
+                    ),
+                    zone_numbers,
+                ),
+                total=len(zone_numbers),
+                desc="Enumerating tasks across UTM zones",
+            ):
+                tasks.extend(zone_tasks)
 
     if cached is not None:
         tasks = cached

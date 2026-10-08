@@ -263,18 +263,22 @@ GEOEMB_CONVENTION = {
     "name": "geoemb:",
     "description": "Geoembeddings convention for geospatial embedding arrays with model provenance",
 }
+# v0.1, not v1: those are the only tags these two have, and the URLs we published
+# before 404'd. The proj convention also moved from zarr-experimental/geo-proj to
+# zarr-conventions/proj. Every value below is a const in the respective schema, so it
+# is theirs to set, including `name` carrying no colon where geoemb's does.
 SPATIAL_CONVENTION = {
-    "schema_url": "https://raw.githubusercontent.com/zarr-conventions/spatial/refs/tags/v1/schema.json",
-    "spec_url": "https://github.com/zarr-conventions/spatial/blob/v1/README.md",
+    "schema_url": "https://raw.githubusercontent.com/zarr-conventions/spatial/refs/tags/v0.1/schema.json",
+    "spec_url": "https://github.com/zarr-conventions/spatial/blob/v0.1/README.md",
     "uuid": "689b58e2-cf7b-45e0-9fff-9cfc0883d6b4",
-    "name": "spatial:",
+    "name": "spatial",
     "description": "Spatial coordinate information",
 }
 PROJ_CONVENTION = {
-    "schema_url": "https://raw.githubusercontent.com/zarr-experimental/geo-proj/refs/tags/v1/schema.json",
-    "spec_url": "https://github.com/zarr-experimental/geo-proj/blob/v1/README.md",
+    "schema_url": "https://raw.githubusercontent.com/zarr-conventions/proj/refs/tags/v0.1/schema.json",
+    "spec_url": "https://github.com/zarr-conventions/proj/blob/v0.1/README.md",
     "uuid": "f17cb550-5864-4468-aeb7-f3180cfb622f",
-    "name": "proj:",
+    "name": "proj",
     "description": "Coordinate reference system information for geospatial data",
 }
 ZARR_CONVENTIONS = [GEOEMB_CONVENTION, SPATIAL_CONVENTION, PROJ_CONVENTION]
