@@ -1,25 +1,12 @@
-"""Create rslearn windows for the round-1 annotation pool.
+"""Create one 512 px @ 15 m window per detection in the annotation pool.
 
-One window per detection in ``round1_annotation_pool_v2.geojson``, on the same 15 m
-grid the classifier trains on (see ``windows/feedback_20260325``, 64 px @ 15 m) but
-512 px across instead of 64. The wider window serves three purposes at once:
+The wide window gives annotators context (the app shows the centre 128 px and the full
+512 px); training center-crops it. Each window's source scene is written directly instead
+of running ``rslearn dataset prepare``, which could match a neighbouring scene. Deleted
+RT products fall back to the T1/T2 product of the same acquisition. Scenes are also
+assigned frozen train/val/test splits.
 
-- the annotation crop view is the centre 128 x 128 px (1.92 km), pan-sharpened RGB;
-- the annotation zoom-out view is the full 512 px extent (7.68 km);
-- training reads the same window with a centre ``Pad(mode="center")`` crop back to
-  the training size, so no imagery has to be re-acquired to change it.
-
-Items are written directly rather than via ``rslearn dataset prepare``: each pool row
-names the exact scene its detection came from, and prepare would instead re-match by
-time/space and could pick an overlapping neighbour scene. For the 500 RT rows, whose
-products USGS has since deleted from s3://usgs-landsat, we fall back to the definitive
-T1/T2 product of the same acquisition (same platform, path/row and acquisition date) —
-the same substitution ``spectral/extract_spectra.py`` makes, recorded per window in the
-index so it is never silently invisible.
-
-Usage:
-    export AWS_ACCESS_KEY_ID=$(beaker secret read AWS_ACCESS_KEY_ID -w ai2/earth-systems)
-    export AWS_SECRET_ACCESS_KEY=$(beaker secret read AWS_SECRET_ACCESS_KEY -w ai2/earth-systems)
+Usage (needs AWS credentials for the usgs-landsat bucket):
     python -m rslp.landsat_vessels.scripts.create_round1_windows [--limit N] [--group NAME] [--dry_run]
 """
 
@@ -54,20 +41,14 @@ INDEX_DIR = UPath("/weka/dfive-default/yawenz/landsat/annotation_round1")
 GROUP = "round1_20260803"
 LAYER_NAME = "landsat"
 
-# 512 px at 15 m/pixel = 7.68 km across. Centre 128 px = the annotation crop view;
-# centre 64 px = the current training window.
 WINDOW_SIZE = 512
 WINDOW_RESOLUTION = 15
 CROP_VIEW_SIZE = 128
 TRAIN_VIEW_SIZE = 64
 
-# The pool's timestamp is the scene acquisition time; items are pinned by name so this
-# range only has to be wide enough that a later re-prepare would rediscover the scene.
 TIME_BUFFER_MINUTES = 20
 
-# Scene-level split quotas, applied within each (stratum, tier) cell by detection
-# count. Splitting on scene keeps every detection from one acquisition in one split,
-# so no location or lighting condition leaks between train and test.
+# Per (stratum, tier) cell, by detection count. All detections of a scene share a split.
 TEST_FRACTION = 0.20
 VAL_FRACTION = 0.10
 
@@ -91,10 +72,8 @@ def stable_hash(value: str) -> int:
 def assign_scene_splits(rows: list[dict]) -> dict[str, str]:
     """Assign every scene to train/val/test, stratified by (stratum, tier).
 
-    Within each cell, scenes are ordered by a stable hash of the scene id and filled
-    into test until the cell's test detection quota is met, then val, then train. Quotas
-    are on detection counts rather than scene counts because detections per scene vary
-    by an order of magnitude (flood scenes vs quiet ones).
+    Scenes are taken in a stable hashed order and fill test, then val, up to each cell's
+    detection quota; the rest go to train.
     """
     cells: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for row in rows:
@@ -111,10 +90,7 @@ def assign_scene_splits(rows: list[dict]) -> dict[str, str]:
         for scene_id in sorted(scene_counts, key=lambda s: stable_hash(s + str(cell))):
             count = scene_counts[scene_id]
             for split in ("test", "val"):
-                # Fill up to but never past the quota, so overshoot never comes out of
-                # train. The filled == 0 case is the exception: a cell whose scenes are
-                # all larger than its quota must still contribute one, or that stratum
-                # would be missing from the split entirely.
+                # Never pass the quota, except to give every cell at least one scene.
                 if filled[split] + count <= quotas[split] or filled[split] == 0:
                     splits[scene_id] = split
                     filled[split] += count
@@ -129,14 +105,9 @@ def resolve_items(
 ) -> tuple[dict[str, object], dict[str, str]]:
     """Look up one data source item per scene, substituting for deleted RT products.
 
-    Returns (item by scene id, substituted product id by scene id). Scenes whose
-    product is gone and which have no same-acquisition replacement are absent from the
-    first dict, and are reported by the caller rather than silently dropped.
-
-    One product listing per (year, path, row) takes several seconds against S3, so the
-    listings run on a thread pool. boto3 clients are not thread-safe, so each worker
-    thread builds its own data source; the on-disk metadata cache is shared and written
-    atomically, so a second run of this script costs no S3 calls at all.
+    Returns (item by scene id, substituted product id by scene id); unresolvable scenes
+    are missing from the first dict. Each thread gets its own data source because boto3
+    clients are not thread-safe.
     """
     by_pathrow: dict[tuple[int, str, str], set[str]] = defaultdict(set)
     for scene_id in scene_ids:
@@ -167,8 +138,7 @@ def resolve_items(
             if scene_id in available:
                 items[scene_id] = available[scene_id]
                 continue
-            # Product is gone (RT superseded). Prefer T1 over T2 over RT, and the most
-            # recent processing date, among products for the same acquisition.
+            # Prefer T1, then T2, then RT, and the latest processing date.
             platform, _, pathrow, acquired, _, _ = parse_product(scene_id)
             candidates = []
             for name in available:
@@ -199,8 +169,6 @@ def window_bounds(
     geometry = STGeometry(
         WGS84_PROJECTION, shapely.Point(lon, lat), None
     ).to_projection(projection)
-    # Round to whole pixels so the detection sits at the centre pixel of the window,
-    # matching how the detector's own crop windows are cut.
     col = int(geometry.shp.x)
     row = int(geometry.shp.y)
     half = WINDOW_SIZE // 2

@@ -14,8 +14,7 @@ AWS_DATASET_CONFIG = "data/landsat_vessels/predict_dataset_config_aws.json"
 
 # All Landsat bands required by the prediction pipeline. The detector and classifier
 # only use a subset, but the attribute model reads the full band stack via the
-# landsat_allbands layer, so every band must be provided. It is also used for scene zip
-# extraction so all bands are available to every pipeline stage.
+# landsat_allbands layer, so every band must be provided.
 with open(LOCAL_FILES_DATASET_CONFIG) as f:
     json_data = json.load(f)
 LANDSAT_ALLBANDS = json_data["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["band_sets"][0][
@@ -23,9 +22,6 @@ LANDSAT_ALLBANDS = json_data["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["band_sets"]
 ]
 
 # Model config
-# Detector: config_detector.yaml (score_threshold=0.7).
-# Classifier: the v1.0.0 model (run olmoearth_base_layerdecay_20260908d), deployed at
-# positive_class_threshold=0.99. Together this is the det0.7 / cls0.99 operating point.
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config_detector.yaml"
 CLASSIFY_MODEL_CONFIG = "data/landsat_vessels/config_classifier_20260908.yaml"
 CLASSIFY_WINDOW_SIZE = 64

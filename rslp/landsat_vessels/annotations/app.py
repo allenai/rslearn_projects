@@ -1,17 +1,8 @@
-"""Annotation app for the Landsat vessel classifier re-annotation rounds.
+"""Annotation app for labelling Landsat vessel detections.
 
-Serves the pre-rendered window views (crop, zoom-out, panchromatic) and spectral curves
-for a window group, and records one label per detection to an append-only JSONL on weka.
-
-Append-only is the point: every keystroke is durable the moment it is made, a relabel is
-a new record rather than a mutation, and the file survives the browser, the server and
-the machine.
-
-Each label is then written straight through into that window's rslearn ``label`` layer,
-so the dataset is up to date as you annotate and no separate step is required to make the
-labels real. The JSONL stays the source of truth: it is written and fsynced *before* the
-window write is attempted, so a failing dataset write can never lose an annotation, and
-``POST /api/resync`` re-applies the whole log to the dataset whenever you want to be sure.
+Serves the rendered views for a window group and appends each label to a JSONL log, then
+writes it into the window's ``label`` layer. The log is written first, so a failed
+dataset write never loses a label; ``POST /api/resync`` re-applies the whole log.
 
 Usage:
     python -m uvicorn rslp.landsat_vessels.annotations.app:app --host 127.0.0.1 --port 8501
@@ -58,10 +49,7 @@ ASSETS_DIR = ROUND_DIR / "assets"
 LABELS_PATH = ROUND_DIR / "labels" / f"{GROUP}_labels.jsonl"
 STATIC_DIR = Path(__file__).parent / "static"
 
-# The classifier's two classes, plus the two non-answers. "unsure" is a real annotation
-# outcome and must stay distinguishable from "not yet seen": a detection a human could
-# not call is evidence about the data, and silently dropping those would make the
-# remaining labels look cleaner than the imagery actually is.
+# The classifier's two classes plus two non-answers.
 LABELS = ["correct", "incorrect", "unsure", "skip"]
 REASONS = ["ice", "cloud", "glint", "whitecap", "land", "wake", "other"]
 
@@ -128,8 +116,6 @@ class Store:
                 "curves": {},
             }
 
-        # Windows whose imagery has finished rendering. Recomputed on demand so the app
-        # can be started while the render is still running.
         self.rendered: set[str] = set()
         self.refresh_rendered()
 
@@ -137,9 +123,7 @@ class Store:
         self.lock = threading.Lock()
         self._load_labels()
 
-        # Write-through into the rslearn dataset. Windows are loaded lazily and cached:
-        # loading all 2,000 up front costs seconds of startup for something most sessions
-        # touch a few hundred of.
+        # Windows are loaded lazily and cached.
         self.dataset = Dataset(DATASET_ROOT)
         self.vector_format = GeojsonVectorFormat()
         self.windows: dict[str, object] = {}
@@ -155,17 +139,11 @@ class Store:
         return self.windows[name]
 
     def sync_to_window(self, record: dict) -> None:
-        """Apply one annotation event to the window's label layer.
-
-        Raises on failure; the caller reports it rather than the annotator losing work,
-        since the JSONL has already been written by this point.
-        """
+        """Apply one annotation event to the window's label layer."""
         name = record["window"]
         window = self.get_window(name)
         label = record.get("label")
         if label is None or label == "skip":
-            # Cleared, or taken back to "come back to this": the dataset should not keep
-            # a label the annotator no longer stands behind.
             writeback.clear_label(window)
             return
         properties = writeback.build_properties(record, self.records[name], GROUP)
@@ -282,7 +260,6 @@ def session() -> dict[str, Any]:
         "rendered": len(store.rendered),
         "labels": LABELS,
         "reasons": REASONS,
-        # Band definitions for the curve axes; the samples themselves come per item.
         "points": store.spectra["points"],
         "refl_bands": store.spectra["refl_bands"],
         "thermal_bands": store.spectra["thermal_bands"],
@@ -305,11 +282,7 @@ def item(window: str) -> dict[str, Any]:
 
 @app.post("/api/items")
 def items(request: ItemsRequest) -> dict[str, Any]:
-    """Detail for a page of windows in one round trip.
-
-    The gallery shows 20 at a time, each with its own spectral curve; fetching them
-    one by one would be 20 requests per page turn.
-    """
+    """Detail for a page of windows in one round trip."""
     unknown = [w for w in request.windows if w not in store.records]
     if unknown:
         raise HTTPException(status_code=404, detail=f"unknown windows: {unknown[:5]}")
@@ -342,8 +315,7 @@ def label(request: LabelRequest) -> dict[str, Any]:
             "elapsed_ms": request.elapsed_ms,
             "ts": time.time(),
         }
-    # Order matters: the log is durable before the dataset write is attempted, so a
-    # dataset problem degrades to "resync later", never to lost work.
+    # Write the log before the dataset so a failed write can be resynced later.
     store.append(record)
     synced = True
     sync_error = None
@@ -393,11 +365,7 @@ def progress() -> dict[str, Any]:
 
 @app.post("/api/resync")
 def resync() -> dict[str, Any]:
-    """Re-apply every label in the log to its window.
-
-    The write-through path covers normal use; this is the repair button for labels made
-    while the dataset was unwritable, and it is what the app's "resync" control calls.
-    """
+    """Re-apply every label in the log to its window."""
     written = 0
     failed: dict[str, str] = {}
     for window, record in list(store.labels.items()):
@@ -412,11 +380,7 @@ def resync() -> dict[str, Any]:
 
 @app.get("/api/label_layers")
 def label_layers() -> dict[str, Any]:
-    """How many windows in the group currently carry a label layer.
-
-    The independent check on write-through: this counts what is actually on disk in the
-    dataset, not what the app believes it wrote.
-    """
+    """Compare labels in the log with label layers actually on disk."""
     windows_dir = DATASET_ROOT / "windows" / GROUP
     on_disk = sum(
         1

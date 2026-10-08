@@ -1,35 +1,16 @@
-"""Stage 1 - pull in-app feedback from Skylight and reduce it to trainable rows.
+"""Step 1: turn a Skylight in-app feedback export into the CSV create_windows reads.
 
-This generalises the round-0 ``enrich_feedback.py`` (production only) into a single,
-environment-aware step that produces exactly the CSV ``create_windows.py`` consumes:
-
-1. read the raw in-app feedback CSV exported from the Skylight admin panel,
-2. derive ``tile_id`` and, when it is a Landsat product id, ``scene_id``,
-3. enrich each row with ``event_time`` / ``lat`` / ``lon`` from the Skylight GraphQL API
-   (skippable with --tile-only when the export already carries coordinates),
-4. keep only trusted users and GOOD/BAD labels (drop UNSURE/empty),
-5. write ``feedback_<date>.csv`` with a normalised schema.
-
-The raw export is a manual download: open the admin in-app-feedback tab for the chosen
-environment (integration by default -- that is where v1.0.0 is deployed) and save the
-CSV. The GraphQL auth token is grabbed from browser DevTools (Network tab -> any GraphQL
-request -> Authorization header) and passed with --token.
-
-Date and user filtering keep the batch tight: --since (with --date-field acquisition, the
-default) drops detections produced before v1.0.0 shipped, and --username keeps only the
-chosen reviewer(s). Both are applied *before* enrichment, so API calls are spent only on
-rows that survive.
+Reads the CSV exported from the Skylight admin in-app-feedback tab, filters it (value,
+user, date, model version), adds lat/lon for each detection, and writes
+``feedback_<date>.csv``. Coordinates come from the sat-service detection JSONs on GCS by
+default, since the Skylight GraphQL API is IP-restricted from compute.
 
 Usage:
     python -m rslp.landsat_vessels.feedback.pull \
-        --input /weka/dfive-default/yawenz/landsat/feedback_20260911/in_app_feedback.csv \
-        --environment integration \
-        --source gcs \
-        --username yawenz@allenai.org \
-        --since 20260911 --date-field submission \
-        --keep bad_only \
-        --model-version landsat_vessels_v1.0.0 \
-        --out /weka/dfive-default/yawenz/landsat/feedback_20260911/feedback_20260911.csv
+        --input <dir>/in_app_feedback.csv --out <dir>/feedback_<date>.csv \
+        --environment integration --source gcs \
+        --username yawenz@allenai.org --since <deploy date> --date-field submission \
+        --keep bad_only --model-version landsat_vessels_v1.0.0
 """
 
 import argparse
@@ -43,8 +24,8 @@ import requests
 
 from rslp.landsat_vessels.feedback import config
 
-# A Landsat Collection-2 Level-1 product id, e.g. LC09_L1TP_109027_20260911_20260911_02_T1.
-# Group 4 is the acquisition date (YYYYMMDD); group 5 is the processing date.
+# Landsat Collection-2 Level-1 product id. Group 4 is the acquisition date, group 5 the
+# processing date.
 PRODUCT_RE = re.compile(r"^(LC0[89])_(L1\w{2})_(\d{6})_(\d{8})_(\d{8})_02_(T1|T2|RT)$")
 
 EVENT_QUERY = """
@@ -94,13 +75,7 @@ def derive_tile_id(event_id: str) -> str:
 
 
 def derive_scene_id(tile_id: str, event_id: str) -> str:
-    """The Landsat product id for this feedback, or "" if none is embedded.
-
-    Skylight ids embed the Landsat product id for Landsat detections; when present it
-    lets create_windows pin the exact scene (and substitute a deleted RT product) rather
-    than re-matching by time and space. When absent, create_windows falls back to a
-    time-range match.
-    """
+    """The Landsat product id embedded in a Skylight id, or "" if there is none."""
     for candidate in (tile_id, event_id):
         match = PRODUCT_RE.search(candidate or "")
         if match:
@@ -135,14 +110,7 @@ def parse_date(value: str) -> date | None:
 
 
 def row_date(row: dict, field: str) -> date | None:
-    """The date used for --since/--until filtering, per --date-field.
-
-    - acquisition (default): the Landsat acquisition date parsed from the product id.
-      This is what tells us a detection was produced by the *deployed* model, so it is
-      the right filter for "only feedback on detections made after v1.0.0 shipped".
-    - submission: when the user filed the feedback (raw CSV ``timestamp``).
-    - event_time: the detection event time from enrichment.
-    """
+    """The date --since/--until compare against: acquisition, submission or event_time."""
     if field == "acquisition":
         return acquisition_date(str(row.get("scene_id") or row.get("tile_id") or ""))
     if field == "submission":
@@ -222,10 +190,8 @@ def _gsutil_cat(url: str) -> str | None:
 def enrich_from_gcs(rows: list[dict], detections_base: str) -> tuple[int, set[str]]:
     """Fill lat/lon/event_time/score from the sat-service detection JSONs on GCS.
 
-    Groups rows by scene, reads each scene's JSON once, and matches each feedback
-    ``event_id``'s trailing index to the detection whose crop index equals it. Returns
-    (rows enriched, model versions seen). This is the offline, authoritative alternative
-    to the GraphQL ``event`` query -- the same records Skylight served.
+    A feedback event id's trailing index matches the detection's crop index. Returns
+    (rows enriched, model versions seen).
     """
     import json
     from collections import defaultdict
@@ -246,8 +212,7 @@ def enrich_from_gcs(rows: list[dict], detections_base: str) -> tuple[int, set[st
         match = PRODUCT_RE.search(scene)
         if not match:
             continue
-        acq = match.group(4)  # YYYYMMDD
-        # Try the acquisition-date folder first, then the processing-date folder.
+        acq = match.group(4)
         contents = None
         for date_str in (acq, match.group(5)):
             url = f"{detections_base}/{date_str[:4]}/{date_str[4:6]}/{date_str[6:8]}/{scene}.json"
@@ -357,8 +322,7 @@ def main() -> None:
         "--since",
         default=None,
         metavar="YYYYMMDD",
-        help="keep feedback on/after this date. Use the v1.0.0 deploy date to exclude "
-        "detections the old model produced (e.g. --since 20260911).",
+        help="keep feedback on/after this date",
     )
     parser.add_argument(
         "--until",
@@ -370,19 +334,15 @@ def main() -> None:
         "--date-field",
         choices=["acquisition", "submission", "event_time"],
         default="acquisition",
-        help="which date --since/--until apply to (default: acquisition = when the "
-        "detection was produced, i.e. by which deployed model)",
+        help="which date --since/--until apply to",
     )
     parser.add_argument(
         "--model-version",
         action="append",
         default=None,
         metavar="VERSION",
-        help="keep only detections produced by these model version(s) (repeatable; "
-        "substring match on the detection JSON's rslearn_model_version). Only the model "
-        "under evaluation should feed its own feedback loop, "
-        "e.g. --model-version landsat_vessels_v1.0.0. Requires --source gcs (the "
-        "version comes from the detection JSON).",
+        help="keep only detections whose rslearn_model_version contains this "
+        "(repeatable; needs --source gcs)",
     )
     args = parser.parse_args()
 
@@ -413,8 +373,6 @@ def main() -> None:
     event_col = _find_column(fieldnames, ["event_id", "eventid", "event"])
     value_col = _find_column(fieldnames, ["value", "label", "rating"])
     user_col = _find_column(fieldnames, ["username", "user", "email", "user_email"])
-    # Submission time (when the feedback was filed) is distinct from the detection's
-    # event_time (added by enrichment); keep them apart so date filtering is unambiguous.
     submitted_col = _find_column(
         fieldnames, ["timestamp", "created_at", "submitted_at"]
     )
@@ -424,7 +382,6 @@ def main() -> None:
     if not event_col or not value_col:
         sys.exit(f"input must have an event id and a value column; found {fieldnames}")
 
-    # tile_id / scene_id / submission time are all derivable without any API call.
     for row in rows:
         event_id = (row.get(event_col) or "").strip()
         row["event_id"] = event_id
@@ -432,8 +389,7 @@ def main() -> None:
         row["scene_id"] = derive_scene_id(row["tile_id"], event_id)
         row["_submitted"] = row.get(submitted_col, "") if submitted_col else ""
 
-    # --- Cheap pre-filters (no API): value, user, and date. Only survivors get enriched,
-    # so the coordinate lookups are spent only on rows we will actually keep. ---
+    # Filter before enrichment so lookups are only spent on rows we keep.
     keep_values = {
         "good_bad": {"GOOD", "BAD"},
         "bad_only": {"BAD"},
@@ -475,7 +431,6 @@ def main() -> None:
         f"date={dropped['date']}){date_desc}"
     )
 
-    # Resolve the enrichment source (see --source help).
     have_coords = bool(time_col and lat_col and lon_col)
     source = "tile" if args.tile_only else args.source
     if source == "auto":
@@ -539,8 +494,6 @@ def main() -> None:
             f"(source=gcs); source is {source!r}, so no rows will match."
         )
 
-    # Post-filter: only rows that now have coordinates (and, if requested, the right
-    # model version) can become windows.
     dropped["model_version"] = 0
     kept: list[dict] = []
     for row in prefiltered:

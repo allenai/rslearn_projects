@@ -21,11 +21,13 @@ The classifier can be trained like this:
 
     rslearn model fit --config data/landsat_vessels/config_classifier_20260908.yaml
 
-This is the v1.0.0 classifier (in production): an OlmoEarth-base model trained with
-round-1 annotations. `config_classifier_20260928.yaml` is the same recipe with the Skylight
-feedback data added (see `rslp/landsat_vessels/feedback/README.md`). The round-1 annotation
-process is described in `rslp/landsat_vessels/annotations/README.md`, and the training
-results are in `rslp/landsat_vessels/README.md`.
+This is the v1.0.0 classifier (in production): an OlmoEarth-base model trained with the
+previous annotations (`selected_copy`, `phase2a_completed`) and the round-1 annotations
+(`round1_20260803`), validated on `feedback_20260325`. `config_classifier_20260928.yaml` is
+the same recipe with the Skylight feedback groups added (see
+`rslp/landsat_vessels/feedback/README.md`). Round 1 is described in
+`rslp/landsat_vessels/annotations/README.md`, and training results are in
+`rslp/landsat_vessels/README.md`.
 
 ---
 
@@ -104,11 +106,10 @@ This will launch multiple beaker jobs. Each job will evaluate the model on one w
 
 This will output the evaluation metrics, including precision, recall, and F1 score.
 
-### Scenario Checks (Smoke Test)
+### Scenario Checks
 
-The scenario checks run the full pipeline over a fixed set of scenes covering different
-regions, failure modes (whitecaps, clouds, ice, islands), and true positives, and check
-that the number of kept detections falls in the expected range:
+Run the pipeline on these scenes and check that the number of detections falls in the
+expected range:
 
 | Scene | Description | Expected |
 |-------|-------------|----------|
@@ -120,10 +121,8 @@ that the number of kept detections falls in the expected range:
 | LC09_L1TP_010012_20241102_20241102_02_T1 | Mostly islands with some ice | [0, 10] |
 | LC09_L1TP_193030_20241104_20241104_02_T1 | Some vessels | [20, 100] |
 
-Run each scene through the pipeline and count the output detections:
-
 ```python
 python -m rslp.main landsat_vessels predict --scene_id LC09_L1TP_193021_20241104_20241104_02_T1 --scratch_path /tmp/scratch --json_path /tmp/out.json
 ```
 
-See `rslp/landsat_vessels/README.md` for the latest results and threshold sweep.
+Latest results are in `rslp/landsat_vessels/README.md`.

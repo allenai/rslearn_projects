@@ -1,30 +1,9 @@
-"""Render the annotation views for the round-1 windows.
+"""Render the images and spectral curves the annotation app serves.
 
-Reads each materialized 512 px @ 15 m window and writes the images the annotation app
-serves, plus a compiled spectral-curve file. Nothing here touches S3: the window
-rasters on weka are the only input, so this can be re-run freely to change the rendering.
-
-Per window, four images:
-
-- ``crop_fixed.png`` (128 px) — pan-sharpened RGB with the production stretch,
-  ``clip((DN - 5000) * 255/12000)``, pan-sharpened exactly as
-  ``predict_pipeline._write_detection_crop`` does. This is pixel-for-pixel what the
-  detector's own crop looks like, so an annotator judging a production false positive
-  sees what production saw.
-- ``crop_auto.png`` (128 px) — same pipeline, but the DN window comes from the 2-98th
-  percentile of this crop's own RGB. The fixed stretch is a DN window, not a
-  reflectance one, so low-sun and dark-water crops sit at the bottom of it and read as
-  near-black even where the bands separate cleanly. One shared range across R/G/B
-  rather than three per-band ranges, so colour ratios survive the stretch.
-- ``b8.png`` (128 px) — the panchromatic band alone at its native 15 m, auto-stretched.
-  The sharpest single band, and the one where a small hull reads most clearly.
-- ``zoom_auto.webp``, ``zoom_fixed.webp``, ``zoom_b8.webp`` (512 px) — the full 7.68 km
-  context window in each of the same three renderings, so switching the view in the app
-  switches both panels together. The auto stretch here is computed over the whole 512 px
-  window rather than the crop, so the surrounding scene reads even when the crop is dark.
-
-The detection marker and the crop-extent box are drawn by the app in CSS rather than
-baked in, so no pixel of these images is anything but sensor data.
+For each materialized window, writes 128 px crops and 512 px context views in three
+renderings: the pipeline's fixed stretch (what production saw), a per-crop auto stretch
+(for dark scenes), and B8 alone. All RGB views are pan-sharpened like the pipeline's
+detection crops. Reads only the window rasters, so it can be re-run freely.
 
 Usage:
     python -m rslp.landsat_vessels.scripts.render_annotation_assets [--workers 16] [--limit N] [--overwrite]
@@ -56,8 +35,7 @@ MULTIBAND_ORDER = ["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
 WINDOW_SIZE = 512
 CROP_SIZE = 128
 
-# Every file a finished window must have. A window missing any of them is re-rendered, so
-# adding a view here is enough to make the next run backfill it.
+# A window missing any of these is re-rendered.
 EXPECTED_ASSETS = [
     "crop_auto.png",
     "crop_fixed.png",
@@ -66,21 +44,15 @@ EXPECTED_ASSETS = [
     "zoom_fixed.webp",
     "zoom_b8.webp",
 ]
-# Superseded by zoom_auto.webp; removed on re-render so it stops taking up space.
-LEGACY_ASSETS = ["zoom.webp"]
 
 # The production stretch from predict_pipeline._write_detection_crop.
 FIXED_DN_LO = 5000.0
 FIXED_DN_SPAN = 12000.0
-# Percentiles for the auto stretch, and the floor on the resulting span so that a crop
-# of near-uniform water does not get amplified into pure noise.
+# Auto stretch percentiles, and a minimum span so uniform water isn't amplified to noise.
 AUTO_PERCENTILES = (2.0, 98.0)
 MIN_AUTO_SPAN = 500.0
 
-# Bands plotted on the reflectance curve, in wavelength order. B8 and B9 are sampled but
-# left off: B8 is one wide passband spanning B2-B4 so it is not an independent spectral
-# point, and B9 sits in a water-vapour absorption feature where surface targets read
-# near zero. Matches spectral/build_artifact.py.
+# Reflectance curve bands. B8 (panchromatic) and B9 (water-vapour absorption) are left off.
 REFL_BANDS = [
     ("B1", 443),
     ("B2", 482),
@@ -100,11 +72,7 @@ def scale_to_bytes(dn: np.ndarray, lo: float, span: float) -> np.ndarray:
 
 
 def auto_range(dn: np.ndarray) -> tuple[float, float]:
-    """A shared DN window from the 2-98th percentile of the valid pixels.
-
-    Zero is Landsat's fill value, so off-swath corners are excluded rather than dragging
-    the low end to 0 and flattening everything above it.
-    """
+    """A shared DN window from the 2-98th percentile of non-fill (non-zero) pixels."""
     valid = dn[dn > 0]
     if valid.size < 16:
         return FIXED_DN_LO, FIXED_DN_SPAN
@@ -113,11 +81,7 @@ def auto_range(dn: np.ndarray) -> tuple[float, float]:
 
 
 def pansharpen(rgb8: dict[str, np.ndarray], b8_8: np.ndarray) -> np.ndarray:
-    """Pan-sharpen 8-bit R/G/B with the 8-bit panchromatic band.
-
-    The production formula: scale each band so the three sum to B8, which carries the
-    15 m detail the 30 m bands do not.
-    """
+    """Pan-sharpen 8-bit R/G/B with B8, using the pipeline's formula."""
     total = np.clip(
         (
             rgb8["B2"].astype(np.int32)
@@ -156,9 +120,7 @@ def render_window(record: dict, overwrite: bool) -> dict:
     if not (window_dir / "completed").exists():
         return {"window": name, "status": "not_materialized"}
 
-    # Read the 30 m bands resampled up to the window's 15 m grid with nearest
-    # neighbour, the same resampling the production pipeline uses, so the crop is not
-    # blurred by interpolation that the detector never saw.
+    # Nearest-neighbour upsampling to 15 m, as in the pipeline.
     with rasterio.open(window_dir / MULTIBAND_DIR / "geotiff.tif") as src:
         multiband = src.read(
             out_shape=(src.count, WINDOW_SIZE, WINDOW_SIZE),
@@ -172,7 +134,6 @@ def render_window(record: dict, overwrite: bool) -> dict:
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Fixed-stretch crop: identical arithmetic to the production crop writer.
     crop_dn = {
         band: centre_crop(dn[band], CROP_SIZE) for band in ("B2", "B3", "B4", "B8")
     }
@@ -183,8 +144,7 @@ def render_window(record: dict, overwrite: bool) -> dict:
     with (out_dir / "crop_fixed.png").open("wb") as f:
         Image.fromarray(pansharpen(fixed8, fixed8["B8"])).save(f, format="PNG")
 
-    # Auto-stretch crop: one shared RGB range, and B8 on its own range since it is a
-    # different (wider) passband and would otherwise wash out the sharpening.
+    # B8 gets its own range since it is a wider passband.
     rgb_stack = np.concatenate([crop_dn[b].ravel() for b in ("B2", "B3", "B4")])
     rgb_lo, rgb_span = auto_range(rgb_stack)
     b8_lo, b8_span = auto_range(crop_dn["B8"])
@@ -198,9 +158,7 @@ def render_window(record: dict, overwrite: bool) -> dict:
     with (out_dir / "b8.png").open("wb") as f:
         Image.fromarray(auto_b8).save(f, format="PNG")
 
-    # Zoom-out, in all three renderings so the app can switch both panels together.
-    # The auto range here is the whole window's, not the crop's, so the surrounding scene
-    # reads even when the crop itself is dark.
+    # The zoom-out auto range uses the whole window, not the crop.
     zoom_rgb_lo, zoom_rgb_span = auto_range(
         np.concatenate([dn[b].ravel() for b in ("B2", "B3", "B4")])
     )
@@ -227,9 +185,6 @@ def render_window(record: dict, overwrite: bool) -> dict:
         with (out_dir / filename).open("wb") as f:
             Image.fromarray(array).save(f, format="WEBP", quality=90, method=4)
 
-    for legacy in LEGACY_ASSETS:
-        (out_dir / legacy).unlink(missing_ok=True)
-
     valid_fraction = float((dn["B8"] > 0).mean())
     return {
         "window": name,
@@ -255,12 +210,7 @@ def render_window_safe(args: tuple[dict, bool]) -> dict:
 
 
 def compile_spectra(records: list[dict]) -> dict:
-    """Collect the per-detection spectral curves from the spectral pipeline's cache.
-
-    The curves were computed once (TOA reflectance with each scene's MTL coefficients,
-    at-sensor brightness temperature for the thermal bands) and validated then; this
-    only reshapes them for the app, keyed by window name.
-    """
+    """Collect per-detection spectral curves from the spectral cache, keyed by window."""
     wanted: dict[str, list[str]] = {}
     for record in records:
         wanted.setdefault(record["scene_id"], []).append(record["window"])

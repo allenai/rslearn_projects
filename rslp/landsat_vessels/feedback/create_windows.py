@@ -1,38 +1,19 @@
-"""Stage 2 - turn a normalised feedback CSV into rslearn windows.
+"""Step 2: create one labelled window per feedback row in a ``feedback_<date>`` group.
 
-Each feedback row becomes one window in a dated group (e.g. ``feedback_20260911``) of the
-classifier dataset, carrying a ``label`` layer (``incorrect`` for a BAD / false positive,
-``correct`` for a GOOD). Training then reads the group exactly like the existing
-``feedback_20260325`` and ``round1_20260803`` groups.
-
-Two ways a window's imagery is located, chosen per row:
-
-- **pinned** (``scene_id`` present): the exact Landsat product is looked up in the AWS
-  data source and written into the window, substituting the definitive T1/T2 product when
-  the reported RT product has since been deleted from ``s3://usgs-landsat`` (same logic as
-  ``scripts/create_round1_windows.py``). This is exact and reproducible.
-- **matched** (no ``scene_id``): only a time range is written, and ``rslearn dataset
-  prepare`` matches the scene by time and space later. Less precise, used only when the
-  feedback carries no product id.
-
-After windows are written, materialise the group so the ``landsat`` layer is populated::
-
-    # pinned windows already know their item, so prepare is skipped for them:
-    rslearn dataset prepare     --root <root> --group <group> --workers 32   # matched rows only
-    rslearn dataset materialize --root <root> --group <group> --workers 32
-
-``--materialize`` runs those for you.
+Rows with a ``scene_id`` get that Landsat product pinned (falling back to another product
+of the same acquisition, RT -> T1 -> T2, if it was deleted); rows without one are matched
+by time with ``rslearn dataset prepare``. ``--materialize`` then runs the rslearn dataset
+CLI to fetch the imagery.
 
 Usage:
     python -m rslp.landsat_vessels.feedback.create_windows \
-        --csv /weka/dfive-default/yawenz/landsat/feedback_20260911/feedback_20260911.csv \
-        --group feedback_20260911 \
-        --materialize
+        --csv <dir>/feedback_<date>.csv --group feedback_<date> --materialize
 """
 
 import argparse
 import csv as _csv
 import hashlib
+import json
 import re
 import subprocess  # nosec B404 - shells out only to the rslearn dataset CLI
 import threading
@@ -56,11 +37,7 @@ from upath import UPath
 from rslp.landsat_vessels.feedback import config
 
 PRODUCT_RE = re.compile(r"^(LC0[89])_(L1\w{2})_(\d{6})_(\d{8})_(\d{8})_02_(T1|T2|RT)$")
-# Substitution preference when the exact product a detection ran on is missing: try RT
-# first (production runs on the RT tier, so RT is the imagery the deployed model actually
-# saw), then T1, then T2 of the same acquisition. This is the opposite of
-# scripts/create_round1_windows.py, which preferred T1/T2 for long-term reproducibility;
-# feedback windows instead want to reproduce what production saw.
+# Substitute products closest to what production saw (it runs on RT) first.
 TIER_RANK = {"RT": 0, "T1": 1, "T2": 2}
 
 
@@ -75,12 +52,10 @@ def parse_product(product_id: str) -> tuple[str, str, str, str, str, str]:
 def resolve_items(
     make_data_source: Callable[[], Any], scene_ids: set[str], workers: int
 ) -> tuple[dict[str, Any], dict[str, str]]:
-    """One AWS data-source item per scene, substituting deleted RT products.
+    """One AWS data-source item per scene, substituting deleted products.
 
-    Returns (item by scene id, replacement product id by scene id). Mirrors
-    ``scripts/create_round1_windows.resolve_items``: listings run on a thread pool with a
-    per-thread data source (boto3 clients are not thread-safe); the on-disk metadata cache
-    is shared so a second run costs no S3 calls.
+    Returns (item by scene id, replacement product id by scene id). Each thread gets its
+    own data source because boto3 clients are not thread-safe.
     """
     by_pathrow: dict[tuple[int, str, str], set[str]] = defaultdict(set)
     for scene_id in scene_ids:
@@ -144,12 +119,7 @@ def window_bounds(
 
 
 def assign_split(event_id: str, val_fraction: float) -> str:
-    """Deterministically send a fraction of events to val, the rest to train.
-
-    Feedback windows are hard negatives meant to enter *training*; evaluation stays on
-    the frozen round1 test set and the feedback_20260325 val set. A small val holdout is
-    available (val_fraction) but off by default.
-    """
+    """Deterministically send a fraction of events to val, the rest to train."""
     if val_fraction <= 0:
         return "train"
     bucket = int(hashlib.sha256(event_id.encode()).hexdigest()[:8], 16) % 1000
@@ -261,8 +231,7 @@ def main() -> None:
         scene_id = row.get("scene_id") or ""
         item = items.get(scene_id) if scene_id else None
         if scene_id and item is None:
-            # pinned but unresolved (product gone, no substitute): skip rather than
-            # silently fall back to a fuzzy time match.
+            # Product gone with no substitute; don't fall back to a fuzzy time match.
             continue
 
         record = {
@@ -312,7 +281,7 @@ def main() -> None:
             "feedback_value": row.get("value", ""),
             "annotator": row.get("username", "unknown"),
             "source": "skylight_in_app_feedback",
-            "model_version": config.DEPLOYED_MODEL_VERSION,
+            "model_version": row.get("model_version") or config.DEPLOYED_MODEL_VERSION,
             "annotation_round": args.group,
             "event_id": event_id,
             "lon": lon,
@@ -335,8 +304,6 @@ def main() -> None:
         return
 
     index_path = UPath(args.csv).parent / f"{args.group}_index.json"
-    import json
-
     with index_path.open("w") as f:
         json.dump(index, f)
     print(f"wrote {written} windows to {dataset.path / 'windows' / args.group}")
@@ -361,9 +328,7 @@ def _materialize(root: str, group: str, run_prepare: bool, workers: int) -> None
     """Run the rslearn dataset CLI to populate the landsat layer for the group."""
     steps = []
     if run_prepare:
-        # Only matched (unpinned) windows need prepare; pinned windows already carry
-        # their item. prepare is safe on the whole group -- it no-ops windows that
-        # already have their layer data.
+        # Pinned windows already have their item, so prepare skips them.
         steps.append(["prepare"])
     steps.append(["materialize"])
     for step in steps:

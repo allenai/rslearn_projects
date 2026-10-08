@@ -1,21 +1,10 @@
-"""Render a candidates-grid PNG of feedback false positives.
+"""Render a grid of the false positives in a materialized feedback group.
 
-A grid of pan-sharpened RGB crops with a coloured border and per-cell labels, rendered
-from the materialised feedback windows rather than from a live pipeline run -- Skylight's own
-``image_chips`` are transient and get cleaned up, so they cannot be relied on.
-
-Each crop is built exactly as the production pipeline builds its detection crops
-(``predict_pipeline._write_detection_crop``): B2/B3/B4/B8 remapped ``(DN-5000)*255/12000``
-to 8-bit, then a Brovey pan-sharpen ``band*B8/mean(B2,B3,B4)`` using the 15 m B8. Borders
-are red because every window here is a human-confirmed false positive.
-
-Only numpy/rasterio/PIL are imported (no torch), so it runs without the heavy model stack.
+Crops are pan-sharpened the same way as the pipeline's detection crops.
 
 Usage:
     python -m rslp.landsat_vessels.feedback.visualize \
-        --csv   /weka/dfive-default/yawenz/landsat/feedback_20260911/feedback_20260911.csv \
-        --group feedback_20260911 \
-        --out   /weka/dfive-default/yawenz/landsat/feedback_20260911/figures/fp_grid.png
+        --csv <dir>/feedback_<date>.csv --group feedback_<date> --out <dir>/fp_grid.png
 """
 
 import argparse
@@ -52,11 +41,7 @@ def _remap(raw: np.ndarray) -> np.ndarray:
 
 
 def render_crop(window_dir: str, size: int) -> Image.Image | None:
-    """Pan-sharpened true-colour crop for one feedback window, or None if unreadable.
-
-    Reads B8 (15 m) and B2/B3/B4 (30 m, upsampled to B8's grid with nearest neighbour),
-    then applies the same remap + Brovey pan-sharpen as the production pipeline.
-    """
+    """Pan-sharpened true-colour crop for one feedback window, or None if unreadable."""
     b8_path = os.path.join(window_dir, "layers", "landsat", "B8", "geotiff.tif")
     ten_path = os.path.join(
         window_dir, "layers", "landsat", "_".join(TEN_BANDS), "geotiff.tif"
@@ -91,7 +76,7 @@ def main() -> None:
         "--csv", required=True, help="feedback CSV (for det score/order)"
     )
     parser.add_argument(
-        "--group", required=True, help="window group, e.g. feedback_20260911"
+        "--group", required=True, help="window group, e.g. feedback_20260928"
     )
     parser.add_argument("--dataset-root", default=str(config.DATASET_ROOT))
     parser.add_argument("--out", required=True, help="output PNG path")
@@ -102,12 +87,7 @@ def main() -> None:
     with open(args.csv, newline="") as f:
         rows = list(_csv.DictReader(f))
 
-    # Group by scene, then by detector score desc, so same-scene FPs sit together.
-    def sort_key(r: dict) -> tuple:
-        """Order rows by scene, then by detector score descending."""
-        return (r["scene_id"], -float(r.get("score") or 0.0))
-
-    rows.sort(key=sort_key)
+    rows.sort(key=lambda r: (r["scene_id"], -float(r.get("score") or 0.0)))
     windows_root = os.path.join(args.dataset_root, "windows", args.group)
     print(f"rendering {len(rows)} FP crops from {windows_root}")
 

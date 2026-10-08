@@ -1,13 +1,4 @@
-"""Landsat vessel prediction pipeline.
-
-Operating point (see rslp.landsat_vessels.config):
-- Detector: config_detector.yaml, score_threshold=0.7.
-- Classifier: config_classifier_20260908.yaml (run olmoearth_base_layerdecay_20260908d),
-  positive_class_threshold=0.99.
-A detection is kept only when the detector score is >=0.7 AND the classifier's
-P(correct) is >=0.99. Both thresholds live in the model configs, so this pipeline and
-the FastAPI service (api_main.py) inherit them automatically.
-"""
+"""Landsat vessel prediction pipeline."""
 
 import json
 import os
@@ -196,15 +187,11 @@ def get_vessel_detections(
 
 
 def _classifier_config_for_predict() -> str:
-    """Write a classifier config whose input reads the predict-time Landsat layer.
+    """Write a temp copy of the classifier config that reads LANDSAT_ALLBANDS_LAYER_NAME.
 
-    The training config reads the classifier's 11-band input from the "landsat" layer,
-    matching how the training dataset (dataset_20250624) stores all bands. In the
-    predict pipeline those 11 bands are materialized under LANDSAT_ALLBANDS_LAYER_NAME
-    instead (the "landsat" layer here is the detector's 7-band layer, saved empty for
-    classifier windows), so we override the input layer to LANDSAT_ALLBANDS_LAYER_NAME
-    for prediction only. Returns the path to a temporary patched config; the caller is
-    responsible for removing it.
+    The training dataset stores the classifier's 11 bands in the "landsat" layer, but in
+    the predict dataset that layer holds the detector's 7 bands. The caller must delete
+    the returned file.
     """
     with open(CLASSIFY_MODEL_CONFIG) as f:
         cfg = yaml.safe_load(f)
@@ -297,9 +284,7 @@ def run_classifier(
         if not window.is_layer_completed(LANDSAT_ALLBANDS_LAYER_NAME):
             raise ValueError(f"window {window.name} does not have materialized Landsat")
 
-    # Run classification model. The classifier input is materialized under
-    # LANDSAT_ALLBANDS_LAYER_NAME here rather than the "landsat" layer the training
-    # config reads from, so predict against a patched config (see helper docstring).
+    # Run classification model.
     classify_config = _classifier_config_for_predict()
     try:
         run_model_predict(
@@ -722,11 +707,8 @@ def _write_detection_crop(
     if crop_window is None:
         raise ValueError("Crop window is None")
 
-    # The crop window is the classifier window, which materializes the 11-band
-    # landsat_allbands layer (raw uint16 DN, one multi-band geotiff); the 7-band
-    # "landsat" layer is empty for these windows. Read the bands we need from it
-    # and apply the same 5000-17000 DN -> 0-255 remap the detector's uint8 layer
-    # uses (see the landsat layer's remap in predict_dataset_config.json).
+    # The crop window only materializes the raw-DN all-bands layer, so apply the same
+    # 5000-17000 DN -> 0-255 remap as the detector's "landsat" layer.
     raster_dir = crop_window.get_raster_dir(
         LANDSAT_ALLBANDS_LAYER_NAME, LANDSAT_ALLBANDS
     )

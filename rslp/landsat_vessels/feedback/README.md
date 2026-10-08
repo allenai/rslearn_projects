@@ -1,175 +1,88 @@
 # Landsat vessel feedback loop
 
-Once a model is deployed to Skylight integration, wait for it to run and for users to
-flag false positives, then fold that feedback back into the classifier: pull the
-feedback, turn it into training windows, retrain, validate, and republish the served
-Docker image — so the deployed detector keeps improving. Repeat each time enough new
-feedback has accumulated.
+Once a model is deployed to Skylight, users flag false positives in the app. This loop
+turns that feedback into training windows, retrains the classifier, and republishes the
+Docker image. Repeat whenever enough new feedback has accumulated.
 
-This is the standing version of the one-off round-0 flow
-(`/weka/dfive-default/yawenz/landsat/README.md`, group `feedback_20260325`) and the
-round-1 annotation flow (`rslp/landsat_vessels/annotations/`).
+## Current state
 
-## Current state (update every cycle)
+- **Deployed:** `landsat_vessels_v1.0.0` (config `config_classifier_20260908.yaml`, run
+  `olmoearth_base_layerdecay_20260908d`) on Skylight integration, at detector 0.7 /
+  classifier 0.99.
+- **Feedback groups:** `feedback_20260911`, `feedback_20260928`.
+- **Latest retrain config (not yet published):** `config_classifier_20260928.yaml`, the
+  v1.0.0 recipe plus both feedback groups.
 
-- **Deployed:** `landsat_vessels_v1.0.0` = run `olmoearth_base_layerdecay_20260908d`,
-  config `data/landsat_vessels/config_classifier_20260908.yaml`, operating point
-  detector `0.7` / classifier `0.99`, on **integration** (<https://app-int.skylight.earth>).
-- **Feedback batches:** `feedback_20260911` (28 v1.0.0 false positives) and
-  `feedback_20260928`.
-- **Latest retrain config (not yet published):**
-  `data/landsat_vessels/config_classifier_20260928.yaml`, run
-  `olmoearth_base_layerdecay_20260928` = the v1.0.0 recipe plus both feedback groups.
+## Setup
 
-## Prereqs
+Run from the repo root with `RSLP_PREFIX=/weka/dfive-default/rslearn-eai`, AWS
+credentials for the `usgs-landsat` bucket, and `gsutil` authenticated. Use a per-batch
+working directory, e.g. `/weka/dfive-default/yawenz/landsat/feedback_<date>/`.
 
-- Repo `/weka/dfive-default/yawenz/rslearn_projects`, branch
-  `yawenz/20260602-landset-vessel-classifier-v2`.
-- venv `/weka/dfive-default/yawenz/.venv-rslearn` — the CLI is `.venv-rslearn/bin/rslearn`
-  (there is **no** `python -m rslearn`); Python is `.venv-rslearn/bin/python`.
-- Env: `RSLP_PREFIX=/weka/dfive-default/rslearn-eai`, `PYTHONPATH=$PWD`,
-  `CUDA_VISIBLE_DEVICES=0`, and `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (Landsat
-  scenes are read from AWS S3 — ask the user; never commit or print them).
-- `gcloud`/`gsutil` authenticated as `yawenz@allenai.org`. Use a GPU node (1 GPU is enough)
-  and a per-batch working dir, e.g. `/weka/dfive-default/yawenz/landsat/feedback_<date>/`.
+## Steps
 
-## The loop
-
-```
-Skylight in-app feedback ─(1)pull─▶ feedback_<date>.csv ─(2)create_windows─▶ rslearn windows
-   ─(3)add_to_training─▶ config_classifier_<date>.yaml ─(4)train─▶ best.ckpt
-   ─(4.5)validate (new vs deployed) ─(5)publish─▶ Docker + Skylight
-```
-
-Each cycle is its own dated group `feedback_<date>` and its own dated config/run
-`..._<date>` — a separate, auditable slice of the training data.
-
-### 1. Pull + enrich + filter feedback
-
-Export the in-app feedback CSV from the admin panel
-(`.../admin?selected-tab=in-app-feedback`) → `in_app_feedback.csv` (columns
-`event_id, username, value, timestamp, ...`; no coordinates). The Skylight API is
-**IP-blocked from compute** (integration returns `403`, production `401` at the load
-balancer), so coordinates are enriched **offline from the sat-service detection bucket on
-GCS** — the authoritative source, which also records each detection's
-`rslearn_model_version`.
+**1. Pull feedback.** Export the in-app feedback CSV from the Skylight admin panel
+(`/admin?selected-tab=in-app-feedback`), then filter it and add coordinates from the
+sat-service detection JSONs on GCS:
 
 ```bash
 python -m rslp.landsat_vessels.feedback.pull \
-  --input  /weka/dfive-default/yawenz/landsat/feedback_<date>/in_app_feedback.csv \
-  --out    /weka/dfive-default/yawenz/landsat/feedback_<date>/feedback_<date>.csv \
+  --input <dir>/in_app_feedback.csv --out <dir>/feedback_<date>.csv \
   --environment integration --source gcs \
-  --username yawenz@allenai.org \
-  --since <YYYYMMDD-of-current-deploy> --date-field submission \
-  --keep bad_only \
-  --model-version <DEPLOYED_MODEL_VERSION>     # e.g. landsat_vessels_v1.0.0
+  --username yawenz@allenai.org --since <deploy date> --date-field submission \
+  --keep bad_only --model-version landsat_vessels_v1.0.0
 ```
 
-Filters (cheap ones first, so GCS is only read for survivors):
-- `--username` — exact allowlist (repeatable); overrides the trusted-domain list in `config.py`.
-- `--keep bad_only` — false positives only (`BAD → incorrect`); `good_bad` also keeps `GOOD → correct`.
-- `--since` / `--until` with `--date-field` — `acquisition` (the date in the product id,
-  = when the detection was produced), `submission` (when the feedback was filed), or `event_time`.
-- `--model-version` — keep only detections from the model under evaluation (substring
-  match on the detection JSON's `rslearn_model_version`), applied after GCS enrichment.
-  **Critical:** integration can serve a mix of versions; only fold in the FPs the model
-  you monitor produced.
+`--model-version` matters: integration can serve several model versions, and only the
+deployed model's mistakes should be added.
 
-Enrichment sources (`--source`): `gcs` (default here, offline, authoritative), `api`
-(Skylight GraphQL, needs `--token`, only from an allowlisted network), `tile`
-(coordinates already in the export). Buckets per environment are in `config.py`.
-
-### 2. Create + materialize windows
+**2. Create windows.** One 64 px @ 15 m window per row in group `feedback_<date>`, with a
+`label` layer, then materialize the imagery:
 
 ```bash
-export PATH=/weka/dfive-default/yawenz/.venv-rslearn/bin:$PATH   # so create_windows can shell out to `rslearn`
 python -m rslp.landsat_vessels.feedback.create_windows \
-  --csv   /weka/dfive-default/yawenz/landsat/feedback_<date>/feedback_<date>.csv \
-  --group feedback_<date> \
-  --materialize --workers 32
+  --csv <dir>/feedback_<date>.csv --group feedback_<date> --materialize
 ```
 
-One 64 px @ 15 m window per feedback row in group `feedback_<date>`, each with a `label`
-layer (`label=incorrect`, `model_version`, `annotator`). When the CSV carries a Landsat
-`scene_id` the exact product is pinned; if it is gone, another product of the same
-acquisition is substituted **RT → T1 → T2** (production runs on RT, so RT is the imagery
-the deployed model saw). Windows with no `scene_id` are matched by time. `--materialize`
-runs `rslearn dataset materialize` (drop it to just write windows and print the commands).
-
-### 3. Generate the training config
+**3. Generate the training config.** Writes `config_classifier_<date>.yaml` with the new
+group added and `run_name: olmoearth_base_layerdecay_<date>`. Pass the previous cycle's
+config as `--base-config` to keep its feedback groups (the default is the v1.0.0 config),
+and delete the superseded config afterwards.
 
 ```bash
-python -m rslp.landsat_vessels.feedback.add_to_training --group feedback_<date>
+python -m rslp.landsat_vessels.feedback.add_to_training --group feedback_<date> \
+  --base-config data/landsat_vessels/config_classifier_<previous date>.yaml
 ```
 
-Writes `data/landsat_vessels/config_classifier_<date>.yaml` = the base config +
-`feedback_<date>` added to `data.init_args.default_config.groups` +
-`run_name: olmoearth_base_layerdecay_<date>`. The only diff is the added group and the run
-name; val stays `feedback_20260325`, test stays the frozen `round1_20260803` set, so every
-cycle's model is comparable. The base defaults to the deployed v1.0.0 config; pass
-`--base-config` with the previous cycle's config to keep its feedback groups too (that is
-how `20260928` carries both `feedback_20260911` and `feedback_20260928`). Delete the
-superseded dated config once the new one is in use. **Do not edit other configs.**
-
-### 4. Retrain (1 GPU)
-
-Train locally with the rslearn CLI (what the feedback retrains used; the beaker
-`launch_finetune` path is missing from this checkout):
+**4. Retrain (1 GPU).**
 
 ```bash
-export RSLP_PREFIX=/weka/dfive-default/rslearn-eai CUDA_VISIBLE_DEVICES=0
-export AWS_ACCESS_KEY_ID=<key> AWS_SECRET_ACCESS_KEY=<secret>
-nohup /weka/dfive-default/yawenz/.venv-rslearn/bin/rslearn model fit \
-  --config data/landsat_vessels/config_classifier_<date>.yaml \
-  > /weka/dfive-default/yawenz/landsat/feedback_<date>/train_<date>.log 2>&1 &
-echo $! > /weka/dfive-default/yawenz/landsat/feedback_<date>/train.pid
+rslearn model fit --config data/landsat_vessels/config_classifier_<date>.yaml
 ```
 
-Best checkpoint (metric `val_correct_f1`) lands at
-`${RSLP_PREFIX}/projects/landsat_vessel_classification_v2/olmoearth_base_layerdecay_<date>/best.ckpt`.
-**Healthy start** = the log advances past `Matplotlib is building the font cache` to
-dataloaders/`Epoch 0` and `nvidia-smi` shows GPU memory > 0.
+The best checkpoint (by `val_correct_f1`) lands at
+`$RSLP_PREFIX/projects/landsat_vessel_classification_v2/olmoearth_base_layerdecay_<date>/best.ckpt`.
 
-### 4.5 Validate before publishing (QA gate)
+**5. Validate.** Temporarily point `CLASSIFY_MODEL_CONFIG` in `config.py` at the new
+config and run the feedback scenes and the scenario-check scenes (listed in
+`ai2_docs/landsat_vessels/train_eval.md`) through
+`python -m rslp.main landsat_vessels predict --scene_id <id> --json_path <out.json>`.
+Compare detection counts with the deployed config: feedback scenes should drop, the rest
+should stay in their expected ranges. `feedback/visualize.py` renders the feedback windows
+as a grid.
 
-Compare the new classifier with the deployed one on the feedback scenes and the
-scenario-check scenes (listed in `ai2_docs/landsat_vessels/train_eval.md`). The pipeline
-reads `CLASSIFY_MODEL_CONFIG` from `config.py`, so temporarily point it at the new config
-(the config's `run_name` picks the checkpoint under `$RSLP_PREFIX`), then run each scene through
-`python -m rslp.main landsat_vessels predict --scene_id <id> --json_path <out.json>` and
-compare kept counts against the same run on the deployed config. Feedback scenes should
-drop sharply; other scenes should stay stable and inside their expected ranges.
-`feedback/visualize.py` renders the feedback windows as a grid for a visual check.
-
-### 5. Publish the new version
-
-`publish.py` plans by default (prints every action, touches nothing); add flags to apply.
+**6. Publish.** Prints the plan by default; the flags perform each step.
 
 ```bash
 python -m rslp.landsat_vessels.feedback.publish \
   --run-name olmoearth_base_layerdecay_<date> \
-  --config   data/landsat_vessels/config_classifier_<date>.yaml \
-  --old-run-name <run currently in the Dockerfile>   # e.g. olmoearth_base_layerdecay_20260908d
-  --upload --patch            # then --build --push (or run the printed docker commands)
+  --config data/landsat_vessels/config_classifier_<date>.yaml \
+  --upload --patch   # then --build --push
 ```
 
-1. **upload** `best.ckpt` →
-   `gs://ai2-rslearn-projects-data/projects/landsat_vessel_classification_v2/olmoearth_base_layerdecay_<date>/best.ckpt`.
-2. **patch** `Dockerfile` (classifier `wget` `<old_run>` → `<new_run>`) and `config.py`
-   (`CLASSIFY_MODEL_CONFIG` → the new dated config).
-3. **build & push** the `landsat_vessels:latest` image (needs a docker daemon + registry
-   creds; usually run by hand from the printed commands). Pass `--image
-   landsat_vessels:v1.1.1` to tag the version.
+This uploads the checkpoint to GCS, points the Dockerfile and `config.py` at the new run,
+and builds and pushes the image. Smoke-test the container endpoint before redeploying,
+and coordinate the version label with the Skylight deploy owner.
 
-Then **smoke-test the container endpoint** (port 5555), not just the local checkout,
-before redeploying to Skylight.
-
-The `v1.x.x` label is **not** in this repo — it is assigned at deploy time on the
-Skylight/sat-service side plus the docker image tag. Coordinate the redeploy + version
-label with the Skylight deploy owner.
-
-### 6. Close the cycle
-
-So the next loop targets the newly-deployed model, update `config.py`
-(`DEPLOYED_MODEL_VERSION`, `DEPLOYED_RUN_NAME`, `BASE_CLASSIFIER_CONFIG`) and the
-**Current state** section above.
+**7. Close the cycle.** Update `DEPLOYED_MODEL_VERSION`, `DEPLOYED_RUN_NAME` and
+`BASE_CLASSIFIER_CONFIG` in `feedback/config.py`, and the current state above.

@@ -1,12 +1,4 @@
-"""API for Landsat Vessel Detection.
-
-This service is a thin wrapper over ``rslp.landsat_vessels.predict_pipeline`` and
-inherits its model + thresholds from ``rslp.landsat_vessels.config``. The current
-operating point is the config_classifier_20260908.yaml classifier at
-detector score_threshold=0.7 and classifier positive_class_threshold=0.99. Updating the
-configs updates this API automatically -- no code change here is needed to change the
-model or thresholds.
-"""
+"""API for Landsat Vessel Detection."""
 
 from __future__ import annotations
 

@@ -1,27 +1,16 @@
-"""Stage 5 - publish a retrained classifier into the served Docker image.
+"""Step 5: publish a retrained classifier into the served Docker image.
 
-After a feedback retrain finishes, its checkpoint sits on weka under
-``$RSLP_PREFIX/projects/<project>/<run>/best.ckpt``. The served container downloads the
-classifier from GCS at build time, and loads it through
-``config_classifier_*.yaml`` (whose ``project_name``/``run_name`` must match the download
-path). So publishing is:
+1. upload the checkpoint from ``$RSLP_PREFIX/projects/<project>/<run>/best.ckpt`` to GCS;
+2. patch the Dockerfile's classifier download and ``config.py``'s CLASSIFY_MODEL_CONFIG;
+3. build and push the image.
 
-1. **upload** the checkpoint to
-   ``gs://ai2-rslearn-projects-data/projects/<project>/<run>/best.ckpt``;
-2. **patch** the Dockerfile's classifier ``wget`` to the new run, and point
-   ``rslp/landsat_vessels/config.py``'s ``CLASSIFY_MODEL_CONFIG`` at the new config;
-3. **build & push** the base + landsat images, then redeploy to Skylight.
-
-By default this only *plans* -- it prints every action and touches nothing. Add
-``--upload`` / ``--patch`` to perform the file operations, and ``--build`` / ``--push``
-to run docker (both need a docker daemon and registry credentials, so they are usually
-run by hand from the printed commands).
+Only prints the plan by default; ``--upload``, ``--patch``, ``--build`` and ``--push``
+perform each step.
 
 Usage:
     python -m rslp.landsat_vessels.feedback.publish \
-        --run-name olmoearth_base_layerdecay_20260928 \
-        --config data/landsat_vessels/config_classifier_20260928.yaml \
-        --upload --patch
+        --run-name olmoearth_base_layerdecay_<date> \
+        --config data/landsat_vessels/config_classifier_<date>.yaml --upload --patch
 """
 
 import argparse
@@ -30,8 +19,6 @@ import subprocess  # nosec B404 - runs gsutil/docker from internally-built argv
 from pathlib import Path
 
 from rslp.landsat_vessels.feedback import config
-
-REPO_ROOT = Path.cwd()
 
 
 def _run(cmd: list[str], do_it: bool) -> None:
@@ -48,7 +35,7 @@ def _patch_file(path: Path, old: str, new: str, do_it: bool) -> None:
     if count == 0:
         print(f"  WARNING: pattern not found in {path.name}: {old!r}")
         return
-    print(f"  {path.relative_to(REPO_ROOT)}: {count}x {old!r} -> {new!r}")
+    print(f"  {path}: {count}x {old!r} -> {new!r}")
     if do_it:
         path.write_text(text.replace(old, new))
 
@@ -70,8 +57,7 @@ def main() -> None:
     parser.add_argument(
         "--config",
         default=None,
-        help="new classifier config (rel to repo) to point config.py at, "
-        "e.g. data/landsat_vessels/config_classifier_20260928.yaml",
+        help="new classifier config to point config.py at",
     )
     parser.add_argument(
         "--rslp-prefix",
@@ -113,10 +99,10 @@ def main() -> None:
     print("\n== 2. patch Dockerfile + config.py ==")
     old_path = f"{args.project_name}/{args.old_run_name}"
     new_path = f"{args.project_name}/{args.run_name}"
-    dockerfile = REPO_ROOT / config.DOCKERFILE_REL
+    dockerfile = Path(config.DOCKERFILE_REL)
     _patch_file(dockerfile, old_path, new_path, args.patch)
     if args.config:
-        config_py = REPO_ROOT / config.CONFIG_PY_REL
+        config_py = Path(config.CONFIG_PY_REL)
         old_cfg = Path(config.BASE_CLASSIFIER_CONFIG).name
         new_cfg = Path(args.config).name
         if new_cfg != old_cfg:
@@ -131,7 +117,7 @@ def main() -> None:
     print(f"  container will wget: {gcs_url}")
 
     print("\n== 3. build & push image ==")
-    compose_dir = REPO_ROOT / "rslp/landsat_vessels"
+    compose_dir = Path("rslp/landsat_vessels")
     print(f"  (cwd: {compose_dir})")
     _run(
         ["docker", "compose", "-f", str(compose_dir / "docker-compose.yaml"), "build"],

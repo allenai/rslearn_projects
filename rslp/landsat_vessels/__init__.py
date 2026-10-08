@@ -2,11 +2,7 @@
 
 from typing import Any
 
-# ``predict_pipeline`` pulls in torch + rslearn models, which are slow to import
-# (especially off networked storage). Import it lazily via PEP 562 so lightweight
-# submodules -- e.g. the feedback tooling under ``rslp.landsat_vessels.feedback`` -- can
-# import the package without paying for the full model stack. ``rslp.main`` reads
-# ``workflows`` only when a workflow is actually run, which triggers the import then.
+# Import predict_pipeline lazily so the feedback tools don't load torch.
 
 __all__ = ["predict_pipeline", "workflows"]
 
