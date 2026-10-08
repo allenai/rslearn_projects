@@ -5,8 +5,8 @@ The Landsat Vessel Detection API provides a way to apply the Landsat scenes for 
 
 ## Overview
 - **Model Name**: Landsat Vessel Detection
-- **Tag**: `landsat_vessels_v0.0.8`
-- **Last Updated**: `2025-04-25`
+- **Tag**: `landsat_vessels_v1.0.0`
+- **Last Updated**: `2026-09-09`
 
 
 ## Setting Up the Environment
@@ -50,7 +50,7 @@ Prebuilt Docker images are available on GHCR. Use the following steps to pull an
 1. Pull the image from GHCR.
 
     ```bash
-    docker pull ghcr.io/allenai/landsat-vessel-detection:landsat_vessels_v0.0.8
+    docker pull ghcr.io/allenai/landsat-vessel-detection:landsat_vessels_v1.0.0
     ```
 
 2. Run the container. Note that you need to replace the `<port_number>` and `<path_to_service_account_key>` with the actual `LANDSAT_PORT` (if you use the default port, set it to `5555`) and path to your local service account key file, and keep the other arguments unchanged.
@@ -63,7 +63,7 @@ Prebuilt Docker images are available on GHCR. Use the following steps to pull an
     --env-file .env \
     --shm-size=15g \
     --gpus all \
-    ghcr.io/allenai/landsat-vessel-detection:landsat_vessels_v0.0.8
+    ghcr.io/allenai/landsat-vessel-detection:landsat_vessels_v1.0.0
     ```
 
 ## Making Requests to the API

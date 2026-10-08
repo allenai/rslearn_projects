@@ -2,8 +2,8 @@
 
 ## Overview
 - **Model Name**: Landsat Vessel Detection
-- **Tag**: `landsat_vessels_v0.0.8`
-- **Last Updated**: `2025-02-14`
+- **Tag**: `landsat_vessels_v1.0.0`
+- **Last Updated**: `2026-09-09`
 
 ---
 
@@ -16,22 +16,16 @@ Note: The evaluation metrics are reported for the two-stage model (detector + cl
 | 2024-11-15 | 0.0.1   | 0.72      | 0.53   | 0.61     |
 | YYYY-MM-DD | TBD     | TBD       | TBD    | TBD      |
 
-## Offline Scenario Checks
-
-| Mode                                  | Status  |
-|---------------------------------------|---------|
-| **True Positive** - Dense vessels     | ✅ Pass |
-| **True Positive** - Sparse vessels    | ✅ Pass |
-| **False Positive** - Icebergs         | ✅ Pass |
-| **False Positive** - Clouds           | ✅ Pass |
-| **False Positive** - Whitecaps        | ✅ Pass |
+## Model Configurations
+- **Detector**: `rslearn_projects/data/landsat_vessels/config_detector.yaml` (score_threshold 0.7)
+- **Classifier**: `rslearn_projects/data/landsat_vessels/config_classifier_20260908.yaml` (OlmoEarth-base, positive_class_threshold 0.99)
+- **Filters**: marine infrastructure `rslearn_projects/rslp/utils/filter.py`
 
 ---
 
-## Model Configurations
-- **Detector**: `rslearn_projects/data/landsat_vessels/config_detector.yaml`
-- **Classifier**: `rslearn_projects/data/landsat_vessels/config_classifier.yaml`
-- **Filters**: marine infrastructure `rslearn_projects/rslp/utils/filter.py`
+## Round 1 Annotations
+
+The `v1.0.0` classifier adds ~2,000 round-1 annotations focused on hard negatives (~1,600 negatives / ~360 positives), drawn from detector output on RT/T1/T2 scenes across the Skylight marine regions (Jan 2024 – Jul 2026). See `rslp/landsat_vessels/annotations/README.md`.
 
 ---
 
@@ -63,3 +57,4 @@ Below is an example of the missed vessels, a lot of them are only visible in the
 - **`v0.0.6`**: Fix bug with RGB crops.
 - **`v0.0.7`**: Fix Docker container bug.
 - **`v0.0.8`**: enable Pytorch Lightning environment variable parsing to allow disabling progress bar via environment variable.
+- **`v1.0.0`**: replace the Swin classifier with an OlmoEarth-base classifier (`config_classifier_20260908.yaml`, crop 32 / patch 2) trained with the previous and round-1 annotations; deploy at detector 0.7 / classifier 0.99.
