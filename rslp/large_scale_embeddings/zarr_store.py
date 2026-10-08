@@ -38,7 +38,6 @@ from zarr.storage._fsspec import _dereference_path
 
 from rslp.large_scale_embeddings.model import (
     NODATA_VALUE,
-    QUANTIZE_CLIP_THRESHOLD,
     QUANTIZE_POWER,
     QUANTIZE_SCALE,
 )
@@ -416,20 +415,23 @@ def get_store_years(store_path: str, storage_options: dict | None = None) -> lis
 def _quantization_attrs() -> dict:
     """Build the geoemb:quantization object for the signed-power scheme.
 
-    Self-describing on purpose: a reader gets the formula and its constants rather
-    than a URL into a repository they may not be able to open, at a path that moves.
-    Every number is read from the quantizer so the attribute cannot drift from it.
+    Self-describing on purpose: a reader gets the formula rather than a URL into a
+    repository they may not be able to open, at a path that moves. Every number is read
+    from the quantizer so the attribute cannot drift from it.
+
+    `formula`, `power`, `valid_range` and `nodata` are extensions: the convention's
+    quantization object sets additionalProperties false and models only linear
+    scale/offset, which cannot express a signed power. The scheme is not recoverable
+    from the fields it does define, so the formula is worth the deviation.
     """
     return {
         "method": "signed_power",
         "power": QUANTIZE_POWER,
-        "scale": QUANTIZE_SCALE,
         "formula": f"(abs(q) / {QUANTIZE_SCALE}) ** {QUANTIZE_POWER} * sign(q)",
         "original_dtype": "float32",
         "quantized_dtype": "int8",
         "valid_range": [-127, 127],
         "nodata": NODATA_VALUE,
-        "saturates_above": round(QUANTIZE_CLIP_THRESHOLD, 6),
     }
 
 
