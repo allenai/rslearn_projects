@@ -1150,6 +1150,31 @@ def _count_worker_split(
             # pull. Either way nothing else is counting it, and it will run eventually.
             starting += 1
 
+    running = sum(
+        1
+        for workload in workloads
+        if getattr(workload, "status", None) in RUNNING_WORKLOAD_STATUSES
+    )
+    # Registrations come from every worker on the queue, including ones outside Beaker
+    # (GCE), and a registration carries no name to tell them apart. Capping at this
+    # run's running Beaker workloads keeps those out of the pool count, so they add to
+    # the run rather than displacing Beaker workers. The cost: while external workers
+    # are registered, a dead but unfinalized Beaker worker is counted until Beaker
+    # finalizes it.
+    return starting, min(running, _fresh_registrations(beaker, queue, now))
+
+
+def _fresh_registrations(beaker: Any, queue: Any, now: float) -> int:
+    """Count the queue's workers with a recent heartbeat, wherever they run.
+
+    Args:
+        beaker: an open Beaker client.
+        queue: the queue whose worker registrations to read.
+        now: current unix time.
+
+    Returns:
+        the number of registrations heartbeating within the stale window.
+    """
     fresh = 0
     for worker in beaker.queue.list_workers(queue):
         heartbeat = getattr(worker, "heartbeat", None)
@@ -1157,7 +1182,7 @@ def _count_worker_split(
             continue
         if now - heartbeat.seconds < WORKER_HEARTBEAT_STALE_SECONDS:
             fresh += 1
-    return starting, fresh
+    return fresh
 
 
 def _job_year(job: list[str]) -> int | None:
@@ -1569,7 +1594,9 @@ def _run_cycle(
                 worker_name_prefix(queue_name),
                 config.worker.priority,
             )
-            fleet[3] = running
+            # Every registration, Beaker or not, so the page can report the rest as
+            # outside Beaker.
+            fleet[3] = _fresh_registrations(beaker, queue, now)
             fleet[4] = starting
         # An eroded reserve cannot refill itself while queued overflow holds the pool
         # at target, so make room before sizing. Runs before _capacity_target so this

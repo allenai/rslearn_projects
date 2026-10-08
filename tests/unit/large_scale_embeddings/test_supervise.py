@@ -293,7 +293,9 @@ def test_a_busy_worker_counts_via_its_heartbeat() -> None:
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
     prefix = "worker_patrickj-q"
     now = 1_000_000.0
-    workloads = [_FakeWorkload(f"{prefix}_{i}", int(now) - 7200) for i in range(3)]
+    workloads = [
+        _FakeWorkload(f"{prefix}_{i}", int(now) - 7200, status=4) for i in range(3)
+    ]
     beaker = _FakeBeaker(workloads, heartbeats=[int(now) - 10] * 3)
     assert (
         sum(mod._count_worker_split(beaker, object(), prefix, queue=object(), now=now))
@@ -349,6 +351,28 @@ def test_a_running_worker_is_not_counted_twice() -> None:
         sum(mod._count_worker_split(beaker, object(), prefix, queue=object(), now=now))
         == 128
     ), "a young running worker is counted by both signals, so the pool is overstated"
+
+
+def test_workers_outside_beaker_do_not_change_the_beaker_count() -> None:
+    """GCE workers register on the same queue, and must add to the pool, not shrink it.
+
+    A registration carries no name, so they cannot be filtered out. Counted, every one
+    of them would stand in for a Beaker worker the supervisor then never launches.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    now = 1_000_000.0
+    workloads = [
+        _FakeWorkload(f"{prefix}_{i}", int(now) - 7200, status=4) for i in range(10)
+    ]
+    # Ten Beaker workers heartbeating, plus twenty-five GCE workers on the same queue.
+    beaker = _FakeBeaker(workloads, heartbeats=[int(now) - 10] * 35)
+    assert (
+        sum(mod._count_worker_split(beaker, object(), prefix, queue=object(), now=now))
+        == 10
+    ), "workers outside Beaker were counted, so they displace Beaker workers"
 
 
 def test_a_queued_worker_still_counts_while_it_starts() -> None:
