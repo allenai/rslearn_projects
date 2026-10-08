@@ -232,6 +232,7 @@ def test_materialize_only_then_predict_reuses_the_scratch(
         pp, "list_kept_crops", lambda proj, bounds, size, wedge: [(0, 0, 2048, 2048)]
     )
     monkeypatch.setattr(pp, "_crop_crosses_bad_longitude", lambda proj, b: False)
+    monkeypatch.setenv(pp.WORKER_NAME_ENV_VAR, "gce_test-vm")
 
     projection = Projection(CRS.from_epsg(32610), 10, -10)
     kwargs = dict(
@@ -243,6 +244,7 @@ def test_materialize_only_then_predict_reuses_the_scratch(
         completed_path=str(tmp_path / "completed"),
         checkpoint_path=str(tmp_path / "ckpt"),
         time_index=0,
+        window_size=384,
         scratch_path=str(tmp_path / "scratch"),
     )
 
@@ -257,6 +259,8 @@ def test_materialize_only_then_predict_reuses_the_scratch(
     # The fake predict writes no output, so the crop counts as skipped.
     assert marker["skipped_no_data"] == [[0, 0]]
     assert marker["gpu_seconds"] >= 0
+    assert marker["window_size"] == 384
+    assert marker["worker"] == "gce_test-vm"
 
 
 def test_materialize_only_needs_a_scratch_path() -> None:

@@ -199,7 +199,9 @@ When a tile finishes, a marker file `{crs}_{x}_{y}.json` is written to
 `completed_path` recording the tile's projection, bounds, time range, time index, and
 which windows were written and which were skipped (`written`, `skipped_no_data` for
 windows without Sentinel-2 coverage, `skipped_longitude`, and `num_filtered_crops`
-for wedge/ocean-filtered windows). Tiles with existing markers are excluded when
+for wedge/ocean-filtered windows), plus `gpu_seconds`, the `window_size` the tile was
+computed with and the `worker` that wrote it. Markers without `window_size` predate it
+and were computed at 480. Tiles with existing markers are excluded when
 writing jobs and skipped by the prediction pipeline, so the pipeline is idempotent and
 jobs can safely be re-enqueued to retry failures.
 

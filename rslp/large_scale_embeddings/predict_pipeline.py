@@ -23,6 +23,7 @@ combination must use its own store and completed_path.
 
 import json
 import multiprocessing
+import os
 import shutil
 import tempfile
 import time
@@ -153,6 +154,11 @@ MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
 
 # The encoder's mutually exclusive ways to say where the weights are.
 CHECKPOINT_ARGS = ("model_id", "model_path", "checkpoint_path")
+
+
+# Names the worker running this job, recorded in the marker. Set on Beaker workers by
+# rslp.common.worker and on GCE workers by the startup script.
+WORKER_NAME_ENV_VAR = "RSLP_WORKER_NAME"
 
 
 def _checkpoint_arg(checkpoint_path: str) -> str:
@@ -976,6 +982,9 @@ def _process_tile(
         // (PATCH_SIZE * PATCH_SIZE)
         - len(kept_crops),
         "gpu_seconds": round(time.monotonic() - _LAST_MARKER_TIME, 1),
+        # Markers written before these two were added came from window 480 runs.
+        "window_size": window_size,
+        "worker": os.environ.get(WORKER_NAME_ENV_VAR),
     }
     marker_fname.parent.mkdir(parents=True, exist_ok=True)
     with marker_fname.open("w") as f:
