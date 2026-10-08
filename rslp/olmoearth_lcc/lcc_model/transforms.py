@@ -7,8 +7,9 @@ imagery in a 90-day block.
 - ``StackSampler`` (train/val): picks one of the materialized frequent options,
   takes the 16 most recent quarterly mosaics before it, and emits the 22-image
   ``sentinel2_l2a`` stack plus per-pixel start/end timestep-index targets (the
-  ``TS_START_KEY`` / ``TS_END_KEY`` segmentation-style tasks). It can optionally
-  drop quarterly mosaics at train time as augmentation.
+  ``TS_START_KEY`` / ``TS_END_KEY`` segmentation-style tasks, unless
+  ``emit_timestep_targets=False``). It can optionally drop quarterly mosaics at
+  train time as augmentation.
 - ``PredictStackBuilder`` (predict): same stack from the single
   ``sentinel2_frequent_0`` layer, with no annotation or targets.
 - ``mark_negative_points_none``: labels negative (no-change) points as "none" for
@@ -141,6 +142,10 @@ class StackSampler(Transform):
     independently dropped before sampling (keeping at least ``min_keep``), so
     across epochs the model sees different mosaic compositions of the same
     window and learns invariance to composition.
+
+    With ``emit_timestep_targets=False``, the start/end targets are left untouched,
+    for configs where rslearn's ``PerPixelTimestepTask`` reads them from the
+    ``label_ts_start`` / ``label_ts_end`` day rasters instead.
     """
 
     def __init__(
@@ -148,6 +153,7 @@ class StackSampler(Transform):
         deterministic: bool = False,
         quarterly_dropout: float = 0.0,
         min_keep: int = 8,
+        emit_timestep_targets: bool = True,
     ) -> None:
         """Initialize the transform.
 
@@ -157,11 +163,14 @@ class StackSampler(Transform):
                 context rather than the hardest immediate-detection case.
             quarterly_dropout: probability of dropping each quarterly image.
             min_keep: minimum number of quarterly images to keep under dropout.
+            emit_timestep_targets: whether to compute the ``ts_start`` / ``ts_end``
+                timestep-index targets from the window's annotation dates.
         """
         super().__init__()
         self.deterministic = deterministic
         self.quarterly_dropout = quarterly_dropout
         self.min_keep = min_keep
+        self.emit_timestep_targets = emit_timestep_targets
 
     def _drop_quarterly(self, quarterly: RasterImage) -> RasterImage:
         """Randomly drop quarterly images (train-time augmentation)."""
@@ -181,6 +190,38 @@ class StackSampler(Transform):
             image=quarterly.image[:, keep, :, :],
             timestamps=[quarterly.timestamps[i] for i in keep],
         )
+
+    def _set_timestep_targets(
+        self,
+        target_dict: dict[str, Any],
+        combined_ts: list[tuple[datetime, datetime]],
+        pre_change: datetime,
+        post_change: datetime,
+        quarterly: RasterImage,
+    ) -> None:
+        """Compute start/end timestamp index targets over the chronological steps."""
+        centers = [ts[0] + (ts[1] - ts[0]) / 2 for ts in combined_ts]
+        start_idx = _change_index(centers, pre_change, is_start=True)
+        end_idx = _change_index(centers, post_change, is_start=False)
+
+        H, W = quarterly.image.shape[2], quarterly.image.shape[3]
+        start_map = torch.zeros(H, W, dtype=torch.long)
+        end_map = torch.zeros(H, W, dtype=torch.long)
+
+        if "binary" in target_dict:
+            binary_classes = target_dict["binary"]["classes"].get_hw_tensor()
+            change_mask = binary_classes == 2
+            start_map[change_mask] = start_idx
+            end_map[change_mask] = end_idx
+            valid_mask = change_mask.float()
+        else:
+            valid_mask = torch.ones(H, W, dtype=torch.float32)
+
+        for key, idx_map in ((TS_START_KEY, start_map), (TS_END_KEY, end_map)):
+            target_dict[key] = {
+                "classes": RasterImage(image=idx_map[None, None, :, :]),
+                "valid": RasterImage(image=valid_mask.clone()[None, None, :, :]),
+            }
 
     @override
     def forward(
@@ -241,29 +282,10 @@ class StackSampler(Transform):
         combined_ts = q_ts + chosen_frequent.timestamps
         input_dict[OUTPUT_KEY] = RasterImage(image=combined_img, timestamps=combined_ts)
 
-        # Compute start/end timestamp index targets over the chronological steps.
-        centers = [ts[0] + (ts[1] - ts[0]) / 2 for ts in combined_ts]
-        start_idx = _change_index(centers, pre_change, is_start=True)
-        end_idx = _change_index(centers, post_change, is_start=False)
-
-        H, W = quarterly.image.shape[2], quarterly.image.shape[3]
-        start_map = torch.zeros(H, W, dtype=torch.long)
-        end_map = torch.zeros(H, W, dtype=torch.long)
-
-        if "binary" in target_dict:
-            binary_classes = target_dict["binary"]["classes"].get_hw_tensor()
-            change_mask = binary_classes == 2
-            start_map[change_mask] = start_idx
-            end_map[change_mask] = end_idx
-            valid_mask = change_mask.float()
-        else:
-            valid_mask = torch.ones(H, W, dtype=torch.float32)
-
-        for key, idx_map in ((TS_START_KEY, start_map), (TS_END_KEY, end_map)):
-            target_dict[key] = {
-                "classes": RasterImage(image=idx_map[None, None, :, :]),
-                "valid": RasterImage(image=valid_mask.clone()[None, None, :, :]),
-            }
+        if self.emit_timestep_targets:
+            self._set_timestep_targets(
+                target_dict, combined_ts, pre_change, post_change, quarterly
+            )
 
         # Mask dst loss when the latest frequent image is before post_change, since
         # the model can't predict destination land cover without post-change imagery.

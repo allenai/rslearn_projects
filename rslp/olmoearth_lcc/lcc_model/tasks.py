@@ -260,11 +260,19 @@ class LCCMultiTask(MultiTask):
 
     Annotations are loaded from a sidecar JSON written by the prepare script,
     keyed by "{group}/{name}". The injected metadata is consumed by
-    ``transforms.StackSampler`` to compute the ``ts_start`` / ``ts_end`` timestep
-    targets. Those two tasks should be configured as ``SegmentationTask`` or
-    rslearn's ``PerPixelTimestepTask`` over the input timesteps (with
-    ``TimestepToleranceAccuracy`` in ``other_metrics``); their ``input_mapping``
-    entries only need a placeholder label since StackSampler overwrites the targets.
+    ``transforms.StackSampler`` to pick the frequent option and mask ``dst``.
+
+    The ``ts_start`` / ``ts_end`` tasks (with ``TimestepToleranceAccuracy`` in
+    ``other_metrics``) can be configured in two ways:
+
+    - As ``SegmentationTask`` over the input timesteps, with StackSampler computing
+      the timestep-index targets from the window's sidecar dates. Their
+      ``input_mapping`` entries only need a placeholder label since StackSampler
+      overwrites the targets.
+    - As rslearn's ``PerPixelTimestepTask``, reading the per-point dates from the
+      ``label_ts_start`` / ``label_ts_end`` layers, with StackSampler's
+      ``emit_timestep_targets`` disabled. ``PerPixelTimestepHead`` maps the dates
+      to timestep indices of the sampled stack.
 
     ``process_output`` only supports ``ChangeModel`` outputs. With
     ``PerPixelTimestepHead`` the per-task outputs are dicts, so models built from

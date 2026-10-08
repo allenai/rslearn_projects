@@ -373,7 +373,7 @@ trainer:
         logging_interval: "epoch"
     - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
       init_args:
-        monitor: val_binary/auroc
+        monitor: val_post_change/accuracy
         mode: max
 project_name: 2026_10_07b_lcc
 run_name: temporal_posenc_attnpool_v1_2_bpbin_00

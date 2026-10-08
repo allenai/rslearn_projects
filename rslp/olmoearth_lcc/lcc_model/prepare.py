@@ -9,6 +9,8 @@ This script takes one or more v2 annotation JSONs and creates an rslearn dataset
 - label_binary, label_src, label_dst: Pre-rasterized point labels
 - label_pre_change, label_post_change, label_same_change: Pre-rasterized point
   labels for the pre/post/same change-category heads (class 1 = "none")
+- label_ts_start, label_ts_end: Pre-rasterized uint16 pre_change / post_change
+  dates of each positive point, as days since 1970-01-01 (65535 = nodata)
 
 The time range for each window covers all annotation-derived frequent blocks and
 enough preceding quarterly history. Frequent image options can extend up to
@@ -141,6 +143,10 @@ CHANGE_CATEGORY_FIELDS = {
 }
 
 ANNOTATIONS_SIDECAR_FNAME = "lcc_annotations.json"
+
+UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+# Value of label_ts_start / label_ts_end at pixels without a dated positive point.
+TS_LABEL_NODATA = 65535
 
 
 def _parse_date(s: str) -> datetime:
@@ -416,9 +422,11 @@ def _write_label_layer(
     layer_config: LayerConfig,
     array_hw: np.ndarray,
 ) -> None:
-    """Write a single-band uint8 label raster and mark layer complete."""
+    """Write a single-band label raster and mark layer complete."""
     band_set = layer_config.band_sets[0]
-    chw = array_hw[np.newaxis, :, :].astype(np.uint8, copy=False)
+    chw = array_hw[np.newaxis, :, :].astype(
+        band_set.dtype.get_numpy_dtype(), copy=False
+    )
     with window.data.open_layer_writer(layer_name) as writer:
         writer.write_raster(
             band_set.bands,
@@ -430,18 +438,35 @@ def _write_label_layer(
     window.mark_layer_completed(layer_name)
 
 
+def _date_to_unix_days(date: datetime) -> int:
+    """Days since 1970-01-01 (UTC) of a timezone-aware datetime."""
+    days = (date - UNIX_EPOCH) // timedelta(days=1)
+    if days < 0 or days >= TS_LABEL_NODATA:
+        raise ValueError(f"{date} cannot be represented as uint16 days since 1970")
+    return days
+
+
 def _compute_label_arrays(
     entry: dict[str, Any],
     projection: Projection,
     bounds: tuple[int, ...],
+    gap: timedelta = timedelta(0),
 ) -> dict[str, np.ndarray]:
-    """Rasterize point labels into per-layer arrays (no I/O)."""
+    """Rasterize point labels into per-layer arrays (no I/O).
+
+    gap is added to each point's post_change for the label_ts_end raster, matching
+    the post_change written to the annotations sidecar.
+    """
     h = bounds[3] - bounds[1]
     w = bounds[2] - bounds[0]
 
     binary = np.zeros((h, w), dtype=np.uint8)
     src_label = np.zeros((h, w), dtype=np.uint8)
     dst_label = np.zeros((h, w), dtype=np.uint8)
+    # Per-point change start/end dates as days since 1970-01-01, consumed by
+    # rslearn's PerPixelTimestepTask.
+    ts_start = np.full((h, w), TS_LABEL_NODATA, dtype=np.uint16)
+    ts_end = np.full((h, w), TS_LABEL_NODATA, dtype=np.uint16)
     # One label raster per change-category field (pre/post/same). Class 0 = nodata
     # (masked); at a positive point with at least one change-category field set,
     # every field's raster is written (unset fields become class 1 = "none").
@@ -465,6 +490,11 @@ def _compute_label_arrays(
                 src_label[row, col] = src_id
             if dst_id > 0:
                 dst_label[row, col] = dst_id
+            if pt.get("pre_change") and pt.get("post_change"):
+                ts_start[row, col] = _date_to_unix_days(_parse_date(pt["pre_change"]))
+                ts_end[row, col] = _date_to_unix_days(
+                    _parse_date(pt["post_change"]) + gap
+                )
 
             # Only train the change-category heads when at least one of the three
             # fields is set; otherwise leave nodata (masked) for all three.
@@ -481,6 +511,8 @@ def _compute_label_arrays(
         "label_binary": binary,
         "label_src": src_label,
         "label_dst": dst_label,
+        "label_ts_start": ts_start,
+        "label_ts_end": ts_end,
     }
     label_arrays.update(change_labels)
     return label_arrays
@@ -744,7 +776,7 @@ def _process_entry(
         center_row + half,
     )
 
-    label_arrays = _compute_label_arrays(entry, projection, bounds)
+    label_arrays = _compute_label_arrays(entry, projection, bounds, gap=gap)
 
     positive_pixels = []
     for pt in entry.get("positive_points", []):

@@ -153,6 +153,36 @@
       ],
       "type": "raster"
     },
+    "label_ts_end": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
+      "type": "raster"
+    },
+    "label_ts_start": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
+      "type": "raster"
+    },
     "output_change": {
       "band_sets": [
         {

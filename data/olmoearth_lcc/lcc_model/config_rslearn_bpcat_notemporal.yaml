@@ -9,9 +9,11 @@
 #                                      (before_after), ts_start + ts_end (tokens ->
 #                                      22-way timestep index)
 #
-# ts_start/ts_end use PerPixelTimestepHead + PerPixelTimestepTask: they train on the
-# timestep index like a SegmentationTask, and at prediction write the date (days since
-# 1970-01-01) of the predicted input image instead of its index.
+# ts_start/ts_end use PerPixelTimestepHead + PerPixelTimestepTask: their labels are the
+# per-point pre_change/post_change dates (days since 1970-01-01) from the
+# label_ts_start/label_ts_end layers, which the head maps to the input timestep index
+# of the sampled stack (mode BEFORE/AFTER). They then train like a SegmentationTask,
+# and at prediction write the date of the predicted input image instead of its index.
 #
 # Unlike ChangeModel, each decoder has its own BreakpointScan (own scorer weights)
 # rather than one shared scan feeding binary/src/dst/pre/post.
@@ -161,14 +163,16 @@ model:
           - class_path: rslearn.models.upsample.Upsample
             init_args: {scale_factor: 4}
           - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
-            init_args: {input_key: sentinel2_l2a}
+            # Target: the latest input image on or before the annotated pre_change.
+            init_args: {input_key: sentinel2_l2a, mode: BEFORE}
           ts_end:
           - class_path: rslearn.models.tokens_to_channels.TokensToChannels
             init_args: {in_dim: 768, out_dim: 1}
           - class_path: rslearn.models.upsample.Upsample
             init_args: {scale_factor: 4}
           - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
-            init_args: {input_key: sentinel2_l2a}
+            # Target: the earliest input image on or after the annotated post_change.
+            init_args: {input_key: sentinel2_l2a, mode: AFTER}
         loss_weights:
           binary: 2.0
     optimizer:
@@ -340,6 +344,22 @@ data:
         - label
         is_target: true
         dtype: INT32
+      label_ts_start:
+        data_type: raster
+        layers:
+        - label_ts_start
+        bands:
+        - label
+        is_target: true
+        dtype: INT32
+      label_ts_end:
+        data_type: raster
+        layers:
+        - label_ts_end
+        bands:
+        - label
+        is_target: true
+        dtype: INT32
     task:
       class_path: rslp.olmoearth_lcc.lcc_model.tasks.LCCMultiTask
       init_args:
@@ -355,14 +375,10 @@ data:
             label_pre_change: targets
           post_change:
             label_post_change: targets
-          # ts_start/ts_end targets are produced by StackSampler (which needs the
-          # sampled stack to know the timestep indices). label_binary is only a
-          # placeholder so SegmentationTask.process_inputs has something to read;
-          # StackSampler overwrites both classes and valid.
           ts_start:
-            label_binary: targets
+            label_ts_start: targets
           ts_end:
-            label_binary: targets
+            label_ts_end: targets
         tasks:
           binary:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
@@ -504,7 +520,8 @@ data:
               - settlement
               metric_kwargs:
                 average: micro
-          # Classes are the 22 input timestep indices; valid only at change points.
+          # Classes are the 22 input timestep indices (mapped from the labeled dates
+          # by PerPixelTimestepHead); valid only at dated change points.
           ts_start:
             class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepTask
             init_args:
@@ -544,6 +561,7 @@ data:
       - class_path: rslp.olmoearth_lcc.lcc_model.transforms.StackSampler
         init_args:
           deterministic: true
+          emit_timestep_targets: false
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:
@@ -554,6 +572,7 @@ data:
         init_args:
           deterministic: false
           quarterly_dropout: 0.25
+          emit_timestep_targets: false
       - class_path: rslearn.train.transforms.flip.Flip
         init_args:
           image_selectors:
@@ -568,9 +587,9 @@ data:
           - target/pre_change/valid
           - target/post_change/classes
           - target/post_change/valid
-          - target/ts_start/classes
+          - target/ts_start/days
           - target/ts_start/valid
-          - target/ts_end/classes
+          - target/ts_end/days
           - target/ts_end/valid
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
@@ -592,7 +611,7 @@ trainer:
       logging_interval: epoch
   - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
     init_args:
-      monitor: val_binary/auroc
+      monitor: val_post_change/accuracy
       mode: max
 project_name: 2026_10_07b_lcc
 run_name: rslearn_bpcat_notemporal

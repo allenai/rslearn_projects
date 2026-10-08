@@ -297,7 +297,12 @@ The prepare script:
   min(2026-01-01, stop_date), where 2026-01-01 is the annotation cutoff and
   stop_date is the earliest optional per-point stop date.
 - Window time_range is derived from the annotations (no fixed 10-year range).
-- Rasterizes point labels into label_binary/label_src/label_dst layers.
+- Rasterizes point labels into label_binary/label_src/label_dst layers, the
+  label_pre_change/label_post_change/label_same_change category layers, and the
+  label_ts_start/label_ts_end layers. The last two hold each positive point's own
+  pre_change and post_change (plus `--gap-days`) as uint16 days since 1970-01-01
+  (65535 = nodata). Re-running prepare on an existing dataset adds them in place
+  without re-materializing imagery.
 - Writes `lcc_annotations.json` sidecar for training-time annotation injection
   (merges with existing sidecar on re-runs).
 
@@ -332,8 +337,15 @@ the checkpoints can be run by systems that depend on rslearn alone. Their `_pred
 counterparts contain no `rslp` imports at all.
 
 In these configs, `ts_start` / `ts_end` use rslearn's `PerPixelTimestepHead` and
-`PerPixelTimestepTask`. Training is unchanged (22-way classification over the input
-timestep index), but at prediction the `_predict` configs write each pixel's
+`PerPixelTimestepTask`. Their labels come from the `label_ts_start` / `label_ts_end`
+layers (per-point dates) rather than from the window's sidecar dates via
+`StackSampler`, which these configs run with `emit_timestep_targets: false`. The head
+maps each labeled date to an index of the sampled 22-image stack: `ts_start` uses
+`mode: BEFORE` (the latest image on or before pre_change) and `ts_end` uses
+`mode: AFTER` (the earliest image on or after post_change), compared at day
+granularity. Pixels where no image qualifies are excluded from the loss. Training is
+then a 22-way classification over the input timestep index, but at prediction the
+`_predict` configs write each pixel's
 predicted change start/end as a date, in uint16 days since 1970-01-01 (65535 =
 nodata), to the `output_ts_start` / `output_ts_end` layers of
 `config_predict_rslearn.json`, instead of the timestep index. The date is the midpoint

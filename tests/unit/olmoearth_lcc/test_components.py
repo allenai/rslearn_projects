@@ -6,6 +6,10 @@ import pytest
 import torch
 from rslearn.models.component import FeatureMaps
 from rslearn.train.model_context import ModelContext, RasterImage
+from rslearn.train.tasks.per_pixel_timestep import (
+    DateToTimestepMode,
+    PerPixelTimestepHead,
+)
 from rslearn.train.tasks.segmentation import SegmentationHead
 
 from rslp.olmoearth_lcc.lcc_model.components import BalancedBinarySegmentationHead
@@ -25,6 +29,7 @@ from rslp.olmoearth_lcc.lcc_model.transforms import (
 
 CROP = 8
 T0 = datetime(2020, 1, 1, tzinfo=timezone.utc)
+UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 def _stack_inputs() -> tuple[dict, dict]:
@@ -75,6 +80,45 @@ def test_stack_sampler_timestep_targets() -> None:
         assert classes.shape == (CROP, CROP)
         assert classes[2, 3] == expected_idx
         # Only the change point is valid.
+        assert valid.sum() == 1 and valid[2, 3] == 1
+
+
+def test_stack_sampler_without_timestep_targets() -> None:
+    """With emit_timestep_targets=False, ts targets come from the day label rasters.
+
+    StackSampler should leave them untouched, and PerPixelTimestepHead should map the
+    labeled dates to the same timestep indices that StackSampler would compute.
+    """
+    input_dict, target_dict = _stack_inputs()
+    ann = input_dict[ANNOTATION_KEY]
+    for key, date in (
+        (TS_START_KEY, ann["pre_change"]),
+        (TS_END_KEY, ann["post_change"]),
+    ):
+        days = torch.full((CROP, CROP), 65535, dtype=torch.long)
+        days[2, 3] = (date - UNIX_EPOCH).days
+        target_dict[key] = {
+            "days": RasterImage(image=days[None, None]),
+            "valid": RasterImage(image=(days != 65535).float()[None, None]),
+        }
+
+    input_dict, target_dict = StackSampler(
+        deterministic=True, emit_timestep_targets=False
+    )(input_dict, target_dict)
+
+    num_timesteps = NUM_QUARTERLY + NUM_FREQUENT
+    context = ModelContext(inputs=[input_dict], metadatas=[])
+    logits = FeatureMaps([torch.zeros(1, num_timesteps, CROP, CROP)])
+    for key, mode, expected_idx in (
+        (TS_START_KEY, DateToTimestepMode.BEFORE, 13),
+        (TS_END_KEY, DateToTimestepMode.AFTER, NUM_QUARTERLY + 1),
+    ):
+        assert set(target_dict[key]) == {"days", "valid"}
+        head = PerPixelTimestepHead(input_key=INPUT_KEY, mode=mode)
+        targets = head(logits, context, [target_dict[key]]).outputs[0]["targets"]
+        classes = targets["classes"].get_hw_tensor()
+        valid = targets["valid"].get_hw_tensor()
+        assert classes[2, 3] == expected_idx
         assert valid.sum() == 1 and valid[2, 3] == 1
 
 

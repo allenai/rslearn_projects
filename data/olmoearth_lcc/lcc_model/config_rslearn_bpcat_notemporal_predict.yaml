@@ -157,14 +157,14 @@ model:
           - class_path: rslearn.models.upsample.Upsample
             init_args: {scale_factor: 4}
           - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
-            init_args: {input_key: sentinel2_l2a}
+            init_args: {input_key: sentinel2_l2a, mode: BEFORE}
           ts_end:
           - class_path: rslearn.models.tokens_to_channels.TokensToChannels
             init_args: {in_dim: 768, out_dim: 1}
           - class_path: rslearn.models.upsample.Upsample
             init_args: {scale_factor: 4}
           - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
-            init_args: {input_key: sentinel2_l2a}
+            init_args: {input_key: sentinel2_l2a, mode: AFTER}
         loss_weights:
           binary: 2.0
 data:
