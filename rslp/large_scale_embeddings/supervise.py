@@ -211,17 +211,19 @@ MIN_POOL_WORKERS = 8
 # truncated into an underestimate, which would read as free allocation and over-launch.
 ALLOCATION_JOB_LIMIT = 5000
 
-# Longest min_runtime a job may ask for and still count as unallocated.
-#
-# Beaker treats a job that wants more than this as a claim on an allocation. At or under
-# it the job is unallocated: it schedules only onto slots no allocation is holding, and
-# yields to allocated work the moment that work appears. Used to classify workers, so it
-# also covers backfill launched before BACKFILL_MIN_RUNTIME dropped to zero.
-UNALLOCATED_MAX_MIN_RUNTIME = timedelta(minutes=5)
-
-# min_runtime backfill workers are launched with: none at all, so they can never be
-# mistaken for a claim on the allocation, whatever Beaker's threshold.
+# min_runtime backfill workers are launched with: none at all. Exactly this, and
+# nothing else, counts as unallocated (see _is_unallocated).
 BACKFILL_MIN_RUNTIME = timedelta(0)
+
+
+def _is_unallocated(details: Any) -> bool:
+    """Whether a task's system details mark it as unallocated backfill.
+
+    Unallocated means a min_runtime of exactly BACKFILL_MIN_RUNTIME. Any other value
+    counts as allocated, including workers launched with an older short min_runtime.
+    """
+    return details.min_runtime.seconds == BACKFILL_MIN_RUNTIME.total_seconds()
+
 
 # GDAL environment every worker needs, merged in below so it cannot be forgotten.
 #
@@ -883,7 +885,7 @@ def _count_allocated(
 ) -> tuple[int, int]:
     """This run's allocated workers, as (live, running).
 
-    Allocated means a min_runtime over UNALLOCATED_MAX_MIN_RUNTIME. Counted directly
+    Allocated means any min_runtime other than BACKFILL_MIN_RUNTIME. Counted directly
     rather than inferred as the live pool minus backfill: that inference assumed the
     allocated pool was always at target, so whenever it was short the backfill workers
     filled its room, allocated launches read as surplus and were cancelled, and the
@@ -911,8 +913,7 @@ def _count_allocated(
         tasks = list(getattr(workload.experiment, "tasks", None) or [])
         if not tasks:
             continue
-        seconds = tasks[0].system_details.min_runtime.seconds
-        if seconds <= UNALLOCATED_MAX_MIN_RUNTIME.total_seconds():
+        if _is_unallocated(tasks[0].system_details):
             continue
         status = getattr(workload, "status", None)
         if status in RUNNING_WORKLOAD_STATUSES:
@@ -1032,23 +1033,6 @@ def _publish_drain_list(drain_path: str, worker_names: list[str]) -> None:
         json.dump({"written": time.time(), "workers": worker_names}, f)
 
 
-def _launched_with_outdated_backfill(workload: Any) -> bool:
-    """Whether a worker is backfill launched with an older BACKFILL_MIN_RUNTIME.
-
-    Such a worker still counts as unallocated, but would keep its old min_runtime until
-    it exits, which for a busy backfill worker can be many hours.
-    """
-    tasks = list(getattr(getattr(workload, "experiment", None), "tasks", None) or [])
-    if not tasks:
-        return False
-    seconds = tasks[0].system_details.min_runtime.seconds
-    return (
-        BACKFILL_MIN_RUNTIME.total_seconds()
-        < seconds
-        <= UNALLOCATED_MAX_MIN_RUNTIME.total_seconds()
-    )
-
-
 def _release_surplus_workers(
     beaker: Any,
     workspace: Any,
@@ -1074,10 +1058,6 @@ def _release_surplus_workers(
     available, and the queue is kept topped up to `target_pending` all run, so a
     surplus worker mid-run never sees an empty queue and would hold its slot
     indefinitely.
-
-    Backfill workers launched with an older BACKFILL_MIN_RUNTIME are drained too,
-    whether or not there is a surplus, so the next cycle replaces them with workers on
-    the current setting.
 
     Args:
         beaker: an open Beaker client.
@@ -1147,12 +1127,6 @@ def _release_surplus_workers(
         return cancelled
 
     draining = [w.experiment.name for w in running[: surplus - cancelled]]
-    outdated = [
-        w.experiment.name
-        for w in running
-        if _launched_with_outdated_backfill(w) and w.experiment.name not in draining
-    ]
-    draining += outdated
     try:
         _publish_drain_list(drain_path, draining)
     except Exception:
@@ -1163,12 +1137,10 @@ def _release_surplus_workers(
     if draining:
         logger.info(
             "asked %d running worker(s) to retire after their current job "
-            "(%d over target, %d cancelled while queued, %d on an old backfill "
-            "min_runtime)",
+            "(%d over target, %d cancelled while queued)",
             len(draining),
             surplus,
             cancelled,
-            len(outdated),
         )
     return cancelled
 
@@ -1503,7 +1475,7 @@ def _reap_unplaceable_overflow(
         details = task.system_details
         # Backfill holds no allocated slot, so cancelling it frees nothing the reserve
         # can use, and it is the capacity we most want to keep.
-        if details.min_runtime.seconds <= UNALLOCATED_MAX_MIN_RUNTIME.total_seconds():
+        if _is_unallocated(details):
             continue
         if _priority_name(details) == want:
             continue
@@ -1570,9 +1542,9 @@ def _count_urgent_allocated(
         if not tasks:
             continue
         details = tasks[0].system_details
-        # Backfill asks for a short min_runtime to stay unallocated, so excluding it
+        # Backfill asks for no min_runtime to stay unallocated, so excluding it
         # here keeps the reserve about the allocated pool only.
-        if details.min_runtime.seconds <= UNALLOCATED_MAX_MIN_RUNTIME.total_seconds():
+        if _is_unallocated(details):
             continue
         if _priority_name(details) == want:
             total += 1
@@ -1644,7 +1616,7 @@ def _count_running_tiers(
             logger.debug("could not find the cluster for %s", name, exc_info=True)
         counts = by_cluster.setdefault(label, [0, 0, 0])
         details = tasks[0].system_details
-        if details.min_runtime.seconds <= UNALLOCATED_MAX_MIN_RUNTIME.total_seconds():
+        if _is_unallocated(details):
             counts[2] += 1
         elif _priority_name(details) == want:
             counts[0] += 1

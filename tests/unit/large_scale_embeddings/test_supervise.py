@@ -1038,13 +1038,18 @@ def test_backfill_workers_must_stay_unallocated() -> None:
     assert mod.BACKFILL_MIN_RUNTIME == timedelta(
         0
     ), "backfill launches with no min_runtime, so it can never count as allocated"
-    assert (
-        mod.BACKFILL_MIN_RUNTIME <= mod.UNALLOCATED_MAX_MIN_RUNTIME
-    ), "backfill must classify as unallocated, or it counts against the allocation cap"
-    assert mod.UNALLOCATED_MAX_MIN_RUNTIME <= timedelta(minutes=5), (
-        "a backfill worker asking for more than five minutes counts as allocated and "
-        "would consume the very allocation it is meant to leave alone"
+    details = types.SimpleNamespace(
+        min_runtime=types.SimpleNamespace(
+            seconds=int(mod.BACKFILL_MIN_RUNTIME.total_seconds())
+        )
     )
+    assert mod._is_unallocated(details), (
+        "backfill must classify as unallocated, or it counts against the allocation cap"
+    )
+    details.min_runtime.seconds = 300
+    assert not mod._is_unallocated(
+        details
+    ), "only a zero min_runtime is unallocated; five minutes counts as allocated"
 
 
 def test_backfill_does_not_fight_its_own_workers() -> None:
@@ -1583,7 +1588,7 @@ def test_reaper_spares_backfill_running_and_urgent_workers(
     stale = int(old - 10_000)
     pool = [
         _wl("worker_x_run", 4, 4, 14400, stale),  # running
-        _wl("worker_x_bf", 2, 5, 60, stale),  # backfill
+        _wl("worker_x_bf", 2, 5, 0, stale),  # backfill
         _wl("worker_x_urg", 2, 4, 14400, stale),  # urgent
         _wl("worker_x_fresh", 2, 5, 7200, int(old)),  # queued but young
         _wl("worker_x_stale", 2, 5, 7200, stale),  # the only valid target
@@ -2062,41 +2067,8 @@ def test_fleet_summary_counts_workers_outside_beaker() -> None:
     assert sup._fleet_summary(config, small)["working"] == 3  # type: ignore[arg-type]
 
 
-def test_backfill_on_an_old_min_runtime_is_drained(tmp_path: Path) -> None:
-    """Backfill launched before BACKFILL_MIN_RUNTIME changed retires at its next job.
-
-    Otherwise it keeps the old setting until it exits, which for busy backfill can be
-    many hours. Allocated workers and current backfill are left alone.
-    """
-    import importlib
-
-    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    prefix = "worker_patrickj-q"
-
-    def workload(name: str, min_runtime_seconds: int) -> types.SimpleNamespace:
-        details = types.SimpleNamespace(
-            min_runtime=types.SimpleNamespace(seconds=min_runtime_seconds)
-        )
-        task = types.SimpleNamespace(system_details=details)
-        experiment = types.SimpleNamespace(
-            name=name, created=types.SimpleNamespace(seconds=1000), tasks=[task]
-        )
-        return types.SimpleNamespace(experiment=experiment, status=4)
-
-    workers = [
-        workload(f"{prefix}_old_backfill", 300),
-        workload(f"{prefix}_new_backfill", 0),
-        workload(f"{prefix}_allocated", 14400),
-    ]
-    drain_path = str(tmp_path / "drain.json")
-    mod._release_surplus_workers(
-        _ReleaseBeaker(workers), object(), prefix, surplus=0, drain_path=drain_path
-    )
-    assert _drain_list(drain_path) == [f"{prefix}_old_backfill"]
-
-
 def test_allocated_workers_are_counted_by_min_runtime() -> None:
-    """Allocated means min_runtime over the unallocated limit, running or starting."""
+    """Allocated means any min_runtime but zero, running or starting."""
     import importlib
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
@@ -2116,7 +2088,7 @@ def test_allocated_workers_are_counted_by_min_runtime() -> None:
         workload(f"{prefix}_a2", 7200, 4),  # allocated, running
         workload(f"{prefix}_a3", 7200, 2),  # allocated, queued
         workload(f"{prefix}_b1", 0, 4),  # backfill
-        workload(f"{prefix}_b2", 300, 4),  # old backfill, still unallocated
+        workload(f"{prefix}_b2", 300, 4),  # old 5-minute backfill counts as allocated
         workload("worker_someone-else_x", 14400, 4),  # another run
     ]
 
@@ -2131,7 +2103,7 @@ def test_allocated_workers_are_counted_by_min_runtime() -> None:
             def get() -> str:
                 return "me"
 
-    assert mod._count_allocated(_Beaker(), object(), prefix) == (3, 2)
+    assert mod._count_allocated(_Beaker(), object(), prefix) == (4, 3)
 
 
 def test_backfill_is_sized_against_running_allocated_workers() -> None:
