@@ -29,7 +29,10 @@
           ],
           "query": {
             "sort_by": "CLOUD_COVER",
-            "sort_direction": "ASC"
+            "sort_direction": "ASC",
+            "sun_elevation": {
+              "gt": 0
+            }
           }
         },
         "query_config": {
