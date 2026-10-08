@@ -57,6 +57,11 @@ logger = get_logger(__name__)
 # of PATCH_SIZE).
 TILE_SIZE = 32768
 
+# Longest segment, in degrees, of a footprint's edges before it is reprojected into a
+# zone's CRS. Short enough that the straight UTM segments stay close to the curved
+# lines they stand for.
+ZONE_EDGE_SEGMENT_DEG = 0.1
+
 
 def enumerate_tiles_in_zone(zone_number: int) -> Generator[tuple[int, int], None, None]:
     """List the (column, row) of all TILE_SIZE tiles within a UTM zone.
@@ -109,6 +114,11 @@ def _enumeration_cache_key(
         f"step={LAND_STEP_SIZE}",
         f"mask={mask_id}",
     ]
+    if geojson_fname is not None:
+        # How finely a footprint's edges are densified changes which blocks it keeps,
+        # so a cache written before densifying existed is never reused. Added only
+        # with a footprint, so caches of unrestricted runs keep their keys.
+        parts.append(f"edge_segment={ZONE_EDGE_SEGMENT_DEG}")
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
 
@@ -212,6 +222,13 @@ def _enumerate_zone(
             zone_intersect_shp = shp.intersection(zone_shp)
             if zone_intersect_shp.is_empty:
                 continue
+            # Densified so every edge stays on its line once reprojected. A long edge,
+            # whether the zone's own side (80S to 84N in one segment) or one of the
+            # footprint's, becomes a straight chord in UTM and cuts off a sliver of
+            # ground, silently dropping the blocks there.
+            zone_intersect_shp = shapely.segmentize(
+                zone_intersect_shp, max_segment_length=ZONE_EDGE_SEGMENT_DEG
+            )
             zone_geojson_shapes.append(
                 STGeometry(WGS84_PROJECTION, zone_intersect_shp, None)
                 .to_projection(projection)
@@ -302,6 +319,7 @@ def enumerate_blocks(
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
     enumeration_cache_dir: str | None = None,
+    blocks_fname: str | None = None,
 ) -> list[tuple[Projection, PixelBounds]]:
     """Every block the run covers, whether or not it has a marker yet.
 
@@ -310,6 +328,10 @@ def enumerate_blocks(
         epsg_code: limit to the zone of this UTM EPSG code.
         wgs84_bounds: limit to blocks intersecting these WGS84 bounds.
         geojson_fname: limit to blocks intersecting a feature in this GeoJSON file.
+        blocks_fname: limit to the blocks named in this JSON list of `block_id`s.
+            Exact where a footprint cannot be: neighbouring zones' block grids overlap
+            on the ground, so a footprint that touches a chosen block in one zone also
+            touches the unchosen block covering the same ground in the next.
         enumeration_cache_dir: directory to cache the result in, or None.
 
     Returns:
@@ -367,7 +389,51 @@ def enumerate_blocks(
     elif enumeration_cache_dir is not None:
         _write_enumeration_cache(enumeration_cache_dir, cache_key, tasks)
     logger.info("Got %d total tasks", len(tasks))
+    if blocks_fname is not None:
+        tasks = _filter_to_blocks(tasks, blocks_fname)
     return tasks
+
+
+def block_id(projection: Projection, bounds: PixelBounds) -> str:
+    """Name a block the way its completion marker is named, without the extension.
+
+    Args:
+        projection: the block's projection.
+        bounds: the block's pixel bounds.
+
+    Returns:
+        "{crs}_{x}_{y}", unique per block within one job_size.
+    """
+    return f"{projection.crs!s}_{bounds[0]}_{bounds[1]}"
+
+
+def _filter_to_blocks(
+    tasks: list[tuple[Projection, PixelBounds]], blocks_fname: str
+) -> list[tuple[Projection, PixelBounds]]:
+    """Keep only the blocks a list names.
+
+    Args:
+        tasks: the enumerated blocks.
+        blocks_fname: JSON list of `block_id`s.
+
+    Returns:
+        the named blocks, in enumeration order.
+
+    Raises:
+        ValueError: if the list names a block the enumeration does not have. That
+            means it was built for another job_size or coverage mask, and following
+            it would silently shrink the run.
+    """
+    with UPath(blocks_fname).open() as f:
+        wanted = set(json.load(f))
+    kept = [task for task in tasks if block_id(*task) in wanted]
+    if len(kept) != len(wanted):
+        raise ValueError(
+            f"{blocks_fname} names {len(wanted) - len(kept)} block(s) this enumeration "
+            "does not have; it was likely built for another job_size or coverage mask"
+        )
+    logger.info("Kept %d of %d tasks named in %s", len(kept), len(tasks), blocks_fname)
+    return kept
 
 
 def get_jobs(
@@ -386,6 +452,7 @@ def get_jobs(
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
+    blocks_fname: str | None = None,
     count: int | None = None,
     job_size: int = TILE_SIZE,
     enumeration_cache_dir: str | None = None,
@@ -425,6 +492,8 @@ def get_jobs(
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
         geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
             file (features must be in WGS84 coordinates).
+        blocks_fname: limit tasks to the blocks named in this JSON list of
+            `block_id`s. See `enumerate_blocks`.
         count: limit to this many tasks (randomly sampled).
         job_size: the pixel size of each job, a divisor of TILE_SIZE and a multiple
             of PATCH_SIZE. Defaults to one job per TILE_SIZE tile. Smaller jobs cost
@@ -456,6 +525,7 @@ def get_jobs(
         wgs84_bounds=wgs84_bounds,
         geojson_fname=geojson_fname,
         enumeration_cache_dir=enumeration_cache_dir,
+        blocks_fname=blocks_fname,
     )
 
     # Remove tasks where the completion marker already exists.
@@ -551,6 +621,7 @@ def write_jobs(
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
+    blocks_fname: str | None = None,
     count: int | None = None,
     job_size: int = TILE_SIZE,
     pca_artifact_path: str | None = None,
@@ -586,6 +657,8 @@ def write_jobs(
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
         geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
             file (features must be in WGS84 coordinates).
+        blocks_fname: limit tasks to the blocks named in this JSON list of
+            `block_id`s. See `enumerate_blocks`.
         count: limit to this many tasks (randomly sampled).
         job_size: the pixel size of each job (see get_jobs). Defaults to one job per
             TILE_SIZE tile.
@@ -619,6 +692,7 @@ def write_jobs(
         epsg_code=epsg_code,
         wgs84_bounds=wgs84_bounds,
         geojson_fname=geojson_fname,
+        blocks_fname=blocks_fname,
         count=count,
         job_size=job_size,
         pca_artifact_path=pca_artifact_path,

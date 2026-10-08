@@ -210,6 +210,7 @@ def publish_status(
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
+    blocks_fname: str | None = None,
     enumeration_cache_dir: str | None = None,
     workers: dict[str, Any] | None = None,
 ) -> None:
@@ -225,6 +226,7 @@ def publish_status(
         epsg_code: the run's zone restriction, if any.
         wgs84_bounds: the run's bounding box restriction, if any.
         geojson_fname: the run's footprint restriction, if any.
+        blocks_fname: the run's block list, if any.
         enumeration_cache_dir: the supervisor's enumeration cache, reused here.
         workers: worker counts from the supervisor's latest cycle, or None to leave
             them off the page. Keys: working, allocated ([priority, count] pairs),
@@ -236,6 +238,7 @@ def publish_status(
         wgs84_bounds=wgs84_bounds,
         geojson_fname=geojson_fname,
         enumeration_cache_dir=enumeration_cache_dir,
+        blocks_fname=blocks_fname,
     )
     colors = year_colors(years)
     status = UPath(status_path)

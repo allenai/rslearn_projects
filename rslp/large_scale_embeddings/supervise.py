@@ -466,6 +466,9 @@ class AoiConfig:
     # shorter half of the block, which is why the smaller size cost nothing before.
     job_size: int = 8192
     geojson_fname: str | None = None
+    # JSON list of block ids to cover, from write_jobs.block_id. Exact where a footprint
+    # cannot be; see write_jobs.enumerate_blocks. Built for one job_size.
+    blocks_fname: str | None = None
     # Tiers in priority order. A job joins the first one matching both its footprint
     # and its year, then everything else follows. The queue is kept shallow, so this
     # is what decides the order work is actually done in.
@@ -1707,6 +1710,7 @@ def _run_cycle(
                     epsg_code=config.aoi.epsg_code,
                     wgs84_bounds=config.aoi.wgs84_bounds,
                     geojson_fname=config.aoi.geojson_fname,
+                    blocks_fname=config.aoi.blocks_fname,
                     job_size=config.aoi.job_size,
                     enumeration_cache_dir=config.cycle.enumeration_cache_dir,
                     pca_artifact_path=config.pca.artifact_path,
@@ -1862,6 +1866,7 @@ def _status_kwargs(config: SuperviseConfig) -> dict[str, Any]:
         "epsg_code": config.aoi.epsg_code,
         "wgs84_bounds": config.aoi.wgs84_bounds,
         "geojson_fname": config.aoi.geojson_fname,
+        "blocks_fname": config.aoi.blocks_fname,
         "enumeration_cache_dir": config.cycle.enumeration_cache_dir,
     }
 

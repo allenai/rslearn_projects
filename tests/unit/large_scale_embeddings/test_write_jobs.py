@@ -173,3 +173,68 @@ def test_get_jobs_without_an_artifact_adds_no_pca_args(tmp_path: pathlib.Path) -
         count=1,
     )
     assert not any(arg.startswith("--pca_") for arg in jobs[0])
+
+
+def test_blocks_fname_keeps_exactly_the_named_blocks(tmp_path: pathlib.Path) -> None:
+    """A block list narrows the enumeration to those blocks, and only those."""
+    from rslp.large_scale_embeddings.write_jobs import block_id, enumerate_blocks
+
+    every = enumerate_blocks(job_size=8192, wgs84_bounds=WGS84_BOUNDS)
+    chosen = [block_id(*block) for block in every[::3]]
+    blocks_fname = tmp_path / "blocks.json"
+    blocks_fname.write_text(json.dumps(chosen))
+    kept = enumerate_blocks(
+        job_size=8192, wgs84_bounds=WGS84_BOUNDS, blocks_fname=str(blocks_fname)
+    )
+    assert [block_id(*block) for block in kept] == chosen
+
+
+def test_blocks_fname_rejects_a_block_the_run_does_not_have(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A list built for another job_size must fail rather than shrink the run."""
+    import pytest
+
+    from rslp.large_scale_embeddings.write_jobs import enumerate_blocks
+
+    blocks_fname = tmp_path / "blocks.json"
+    blocks_fname.write_text(json.dumps(["EPSG:32637_1_1"]))
+    with pytest.raises(ValueError, match="does not have"):
+        enumerate_blocks(
+            job_size=8192, wgs84_bounds=WGS84_BOUNDS, blocks_fname=str(blocks_fname)
+        )
+
+
+def test_a_footprint_covering_the_zone_keeps_every_block(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A footprint wider than the zone must keep exactly the unrestricted blocks.
+
+    The footprint is clipped to the zone's 6 degree box and reprojected. Its edges used
+    to go in as single segments, so the zone's sides (80S to 84N) became straight
+    chords in UTM that cut a sliver off the zone's edges and dropped the blocks there.
+    """
+    from rslp.large_scale_embeddings.write_jobs import enumerate_blocks
+
+    fname = tmp_path / "wider.geojson"
+    fname.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {},
+                        "geometry": shapely.geometry.mapping(
+                            shapely.box(30.0, -85.0, 48.0, 85.0)
+                        ),
+                    }
+                ],
+            }
+        )
+    )
+    restricted = enumerate_blocks(
+        job_size=8192, epsg_code=32637, geojson_fname=str(fname)
+    )
+    unrestricted = enumerate_blocks(job_size=8192, epsg_code=32637)
+    assert restricted == unrestricted
