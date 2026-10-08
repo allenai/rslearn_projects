@@ -1035,7 +1035,13 @@ def test_backfill_workers_must_stay_unallocated() -> None:
     from datetime import timedelta
 
     mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
-    assert mod.BACKFILL_MIN_RUNTIME <= timedelta(minutes=5), (
+    assert mod.BACKFILL_MIN_RUNTIME == timedelta(
+        0
+    ), "backfill launches with no min_runtime, so it can never count as allocated"
+    assert (
+        mod.BACKFILL_MIN_RUNTIME <= mod.UNALLOCATED_MAX_MIN_RUNTIME
+    ), "backfill must classify as unallocated, or it counts against the allocation cap"
+    assert mod.UNALLOCATED_MAX_MIN_RUNTIME <= timedelta(minutes=5), (
         "a backfill worker asking for more than five minutes counts as allocated and "
         "would consume the very allocation it is meant to leave alone"
     )

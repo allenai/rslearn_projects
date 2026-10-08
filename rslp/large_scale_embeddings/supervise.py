@@ -215,9 +215,13 @@ ALLOCATION_JOB_LIMIT = 5000
 #
 # Beaker treats a job that wants more than this as a claim on an allocation. At or under
 # it the job is unallocated: it schedules only onto slots no allocation is holding, and
-# yields to allocated work the moment that work appears. That is exactly the bargain a
-# backfill worker wants, so this is a threshold to stay under, not a duration to tune.
-BACKFILL_MIN_RUNTIME = timedelta(minutes=5)
+# yields to allocated work the moment that work appears. Used to classify workers, so it
+# also covers backfill launched before BACKFILL_MIN_RUNTIME dropped to zero.
+UNALLOCATED_MAX_MIN_RUNTIME = timedelta(minutes=5)
+
+# min_runtime backfill workers are launched with: none at all, so they can never be
+# mistaken for a claim on the allocation, whatever Beaker's threshold.
+BACKFILL_MIN_RUNTIME = timedelta(0)
 
 # GDAL environment every worker needs, merged in below so it cannot be forgotten.
 #
@@ -1422,7 +1426,7 @@ def _reap_unplaceable_overflow(
         details = task.system_details
         # Backfill holds no allocated slot, so cancelling it frees nothing the reserve
         # can use, and it is the capacity we most want to keep.
-        if details.min_runtime.seconds <= BACKFILL_MIN_RUNTIME.total_seconds():
+        if details.min_runtime.seconds <= UNALLOCATED_MAX_MIN_RUNTIME.total_seconds():
             continue
         if _priority_name(details) == want:
             continue
@@ -1491,7 +1495,7 @@ def _count_urgent_allocated(
         details = tasks[0].system_details
         # Backfill asks for a short min_runtime to stay unallocated, so excluding it
         # here keeps the reserve about the allocated pool only.
-        if details.min_runtime.seconds <= BACKFILL_MIN_RUNTIME.total_seconds():
+        if details.min_runtime.seconds <= UNALLOCATED_MAX_MIN_RUNTIME.total_seconds():
             continue
         if _priority_name(details) == want:
             total += 1
@@ -1563,7 +1567,7 @@ def _count_running_tiers(
             logger.debug("could not find the cluster for %s", name, exc_info=True)
         counts = by_cluster.setdefault(label, [0, 0, 0])
         details = tasks[0].system_details
-        if details.min_runtime.seconds <= BACKFILL_MIN_RUNTIME.total_seconds():
+        if details.min_runtime.seconds <= UNALLOCATED_MAX_MIN_RUNTIME.total_seconds():
             counts[2] += 1
         elif _priority_name(details) == want:
             counts[0] += 1
