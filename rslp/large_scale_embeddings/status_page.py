@@ -105,8 +105,9 @@ def read_markers(
     cached: dict[str, tuple[float | None, int]] = {}
     if cache_path.exists():
         cached = {
-            name: tuple(v) for name, v in json.loads(cache_path.read_text()).items()
-        }  # type: ignore[misc]
+            name: (seconds, crops)
+            for name, (seconds, crops) in json.loads(cache_path.read_text()).items()
+        }
 
     completed = UPath(completed_path)
     names = {p.name for p in completed.iterdir()} if completed.exists() else set()
