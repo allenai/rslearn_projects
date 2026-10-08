@@ -24,12 +24,16 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import rasterio
+import rasterio.windows
 
 # Degrees per cell. The mask is a global EPSG:4326 grid at this resolution, so a cell
 # is about 926 m at the equator.
 COVERAGE_RES_DEG = 1.0 / 120.0
 COVERAGE_HEIGHT = 21600
 COVERAGE_WIDTH = 43200
+# Mask rows read per band when loading, ~47 MB as bool.
+MASK_READ_ROWS = 1080
+MASK_GDAL_CACHE_MB = 64
 
 # Repo-relative, matching DATASET_CONFIG_FNAME and friends. Resolved against the
 # working directory first, because that is how the image runs (WORKDIR is the repo
@@ -67,14 +71,27 @@ def _packed_mask() -> npt.NDArray[np.uint8]:
     Returns:
         the mask as one bit per cell, row-major from (90N, 180W).
     """
-    with rasterio.open(resolve_mask_path()) as src:
+    # GDAL's block cache defaults to a share of system RAM and would keep every
+    # decompressed tile of a read that is only ever done once, so it is capped here.
+    with (
+        rasterio.Env(GDAL_CACHEMAX=MASK_GDAL_CACHE_MB),
+        rasterio.open(resolve_mask_path()) as src,
+    ):
         if (src.height, src.width) != (COVERAGE_HEIGHT, COVERAGE_WIDTH):
             raise ValueError(
                 f"coverage mask is {src.height}x{src.width}, expected "
                 f"{COVERAGE_HEIGHT}x{COVERAGE_WIDTH}"
             )
-        arr = src.read(1).astype(bool)
-    return np.packbits(np.reshape(arr, -1))
+        # Packed in row bands rather than read whole: the full raster as bool is
+        # ~0.9 GB, and every enumeration worker loads its own copy. A row is 43200
+        # cells, a whole number of bytes, so the bands pack to the same bits.
+        bands = []
+        for row in range(0, src.height, MASK_READ_ROWS):
+            window = rasterio.windows.Window(
+                0, row, src.width, min(MASK_READ_ROWS, src.height - row)
+            )
+            bands.append(np.packbits(src.read(1, window=window).astype(bool)))
+    return np.concatenate(bands)
 
 
 def is_covered(lats: npt.ArrayLike, lons: npt.ArrayLike) -> npt.NDArray[np.bool_]:

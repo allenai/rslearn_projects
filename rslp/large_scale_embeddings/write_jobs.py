@@ -57,6 +57,13 @@ logger = get_logger(__name__)
 # of PATCH_SIZE).
 TILE_SIZE = 32768
 
+# Most processes enumeration runs zones in. Each loads its own coverage mask, and in a
+# container os.cpu_count() reports the host's cores, not the job's: a supervisor given
+# 2 CPUs and 8 GiB would otherwise start dozens of workers and run out of memory.
+ENUMERATION_MAX_PROCESSES = 4
+# Fewest zones with work worth starting worker processes for.
+ENUMERATION_POOL_MIN_ZONES = 8
+
 # Longest segment, in degrees, of a footprint's edges before it is reprojected into a
 # zone's CRS. Short enough that the straight UTM segments stay close to the curved
 # lines they stand for.
@@ -313,6 +320,30 @@ def _enumerate_zone(
     return tasks
 
 
+def _zone_reaches(
+    zone_number: int,
+    geojson_shapes: list[shapely.Geometry] | None,
+    wgs84_bounds: tuple[float, float, float, float] | None,
+) -> bool:
+    """Whether a zone's extent meets the area restriction, as `_enumerate_zone` tests.
+
+    Args:
+        zone_number: the UTM zone number (1-60).
+        geojson_shapes: footprint restriction in WGS84, if any.
+        wgs84_bounds: bounding box restriction, if any.
+
+    Returns:
+        False only when the zone can have no blocks.
+    """
+    zone_lon_min = -180 + (zone_number - 1) * 6
+    zone_shp = shapely.box(zone_lon_min, UTM_MIN_LAT, zone_lon_min + 6, UTM_MAX_LAT)
+    if geojson_shapes is not None and not any(
+        shp.intersects(zone_shp) for shp in geojson_shapes
+    ):
+        return False
+    return wgs84_bounds is None or shapely.box(*wgs84_bounds).intersects(zone_shp)
+
+
 def enumerate_blocks(
     job_size: int = TILE_SIZE,
     epsg_code: int | None = None,
@@ -356,9 +387,19 @@ def enumerate_blocks(
             for feature in feature_collection["features"]
         ]
 
+    # Only zones the area restriction reaches have any work. The rest return at once,
+    # so they are dropped here rather than costing a worker process each.
+    zone_numbers = [
+        zone
+        for zone in zone_numbers
+        if _zone_reaches(zone, geojson_shapes, wgs84_bounds)
+    ]
     tasks: list[tuple[Projection, PixelBounds]] = []
-    if cached is None and len(zone_numbers) == 1:
-        tasks = _enumerate_zone(zone_numbers[0], job_size, geojson_shapes, wgs84_bounds)
+    if cached is None and len(zone_numbers) < ENUMERATION_POOL_MIN_ZONES:
+        # A few zones run inline: each worker process re-imports the package (torch
+        # included) and loads its own mask, which costs more than it saves here.
+        for zone in zone_numbers:
+            tasks.extend(_enumerate_zone(zone, job_size, geojson_shapes, wgs84_bounds))
     elif cached is None:
         # Zones are independent and each costs seconds of mask sampling, so they
         # run across processes. Spawned, not forked: a supervisor cycle may already
@@ -366,7 +407,9 @@ def enumerate_blocks(
         # executor rather than a Pool, because a Pool whose workers die at startup
         # replaces them forever and never returns; the executor raises instead.
         with concurrent.futures.ProcessPoolExecutor(
-            max_workers=min(len(zone_numbers), os.cpu_count() or 1),
+            max_workers=min(
+                len(zone_numbers), os.cpu_count() or 1, ENUMERATION_MAX_PROCESSES
+            ),
             mp_context=multiprocessing.get_context("spawn"),
         ) as pool:
             for zone_tasks in tqdm.tqdm(
