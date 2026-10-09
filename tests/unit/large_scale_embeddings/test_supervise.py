@@ -2133,3 +2133,84 @@ def test_backfill_is_sized_against_running_allocated_workers() -> None:
             f"_backfill_target's allocated count is {ast.dump(fourth)}; it must be the "
             "allocated workers running, not the allocated target"
         )
+
+
+def test_a_retry_goes_first_in_its_tier_and_ahead_of_later_tiers() -> None:
+    """A failed 2025 job is next in line, not shuffled back among 2025's remainder.
+
+    Otherwise a job that fails early in a year waits for most of that year's other jobs
+    to be enqueued before it, and once later years start it sits behind them too.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    fresh_2025 = [_job("EPSG:32614", 4096 * i, -438272, year=2025) for i in range(20)]
+    retry_2025 = _job("EPSG:32648", 45056, -126976, year=2025)
+    fresh_2024 = [_job("EPSG:32614", 4096 * i, -438272, year=2024) for i in range(5)]
+    retry_2024 = _job("EPSG:32648", 45056, -126976, year=2024)
+    jobs = fresh_2024 + [retry_2024] + fresh_2025 + [retry_2025]
+    retries = {tuple(retry_2025), tuple(retry_2024)}
+
+    for _ in range(5):
+        got = mod._priority_first(jobs, [_tier(years=[2025])], retries)
+        assert got[0] == retry_2025, "the 2025 retry was not first"
+        assert all(j in fresh_2025 for j in got[1:21]), "2025 jobs did not follow"
+        # A 2024 retry leads 2024 but never overtakes 2025.
+        assert got[21] == retry_2024, "the 2024 retry did not lead its tier"
+
+
+def test_retries_lead_even_without_tiers() -> None:
+    """With no priority tiers, retries still go ahead of everything else."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    jobs = [_job("EPSG:32614", 4096 * i, -438272) for i in range(10)]
+    got = mod._priority_first(jobs, None, {tuple(jobs[7])})
+    assert got[0] == jobs[7]
+    assert sorted(tuple(j) for j in got) == sorted(tuple(j) for j in jobs)
+
+
+def test_offer_counts_count_every_state_and_skip_bad_entries() -> None:
+    """Rejected, completed and claimed entries all count as an earlier offer."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    def entry(args: list[str] | None) -> types.SimpleNamespace:
+        values = [types.SimpleNamespace(string_value=a) for a in (args or [])]
+        fields = {
+            "args": types.SimpleNamespace(
+                list_value=types.SimpleNamespace(values=values)
+            )
+        }
+        return types.SimpleNamespace(
+            input=types.SimpleNamespace(fields=fields if args else {})
+        )
+
+    a, b = _job("EPSG:32614", 0, 0), _job("EPSG:32614", 4096, 0)
+    counts = mod._offer_counts([entry(a), entry(a), entry(b), entry(None)])
+    assert counts == {tuple(a): 2, tuple(b): 1}
+
+
+def test_a_job_that_keeps_failing_stops_jumping_the_line() -> None:
+    """Past MAX_PRIORITY_OFFERS a job is ordered like any other in its tier.
+
+    A job that fails every time would otherwise take the head of the queue every cycle
+    for the rest of the run.
+    """
+    import ast
+    import importlib
+    import inspect
+    import textwrap
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    assert 1 < mod.MAX_PRIORITY_OFFERS <= 5
+    tree = ast.parse(textwrap.dedent(inspect.getsource(mod._run_cycle)))
+    names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+    assert {
+        "_offer_counts",
+        "MAX_PRIORITY_OFFERS",
+        "retries",
+    } <= names, "the cycle must count offers and cap retries before ordering"

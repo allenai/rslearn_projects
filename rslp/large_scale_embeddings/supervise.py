@@ -650,6 +650,33 @@ def _in_flight_job_keys(
     return in_flight
 
 
+# Offers after which a job that keeps failing stops jumping the line. Retries go first so
+# a failure is redone promptly, but one that fails every time would otherwise hold the
+# head of the queue for the rest of the run.
+MAX_PRIORITY_OFFERS = 3
+
+
+def _offer_counts(entries: Any) -> dict[tuple[str, ...], int]:
+    """How many entries each job has had in the queue, in any state.
+
+    A job with no completion marker and nothing in flight that has an entry at all was
+    offered before and did not finish: its worker rejected it, died holding it, or
+    completed it without writing the marker. That is what marks it as a retry.
+
+    Args:
+        entries: the queue's entries, as listed for this cycle.
+
+    Returns:
+        entry count per job key.
+    """
+    counts: dict[tuple[str, ...], int] = {}
+    for entry in entries:
+        key = _entry_job_key(entry)
+        if key is not None:
+            counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def _stage_marker_paths(config: SuperviseConfig) -> list[str]:
     """The completion-marker directories this stage writes into.
 
@@ -1276,9 +1303,15 @@ def _job_year(job: list[str]) -> int | None:
 
 
 def _priority_first(
-    jobs: list[list[str]], tiers: list[PriorityTier] | None
+    jobs: list[list[str]],
+    tiers: list[PriorityTier] | None,
+    retries: set[tuple[str, ...]] | None = None,
 ) -> list[list[str]]:
-    """Order jobs by priority tier, earliest tier first.
+    """Order jobs by priority tier, earliest tier first, retries first within a tier.
+
+    A retry is a job that was offered before and did not finish. It goes ahead of every
+    job of its own tier and every later one, so with year-first tiers a failed 2025 job
+    is next in line rather than shuffled back among the 2025 jobs still to come.
 
     The queue is deliberately shallow, so enqueue order is what decides what gets
     worked on next: ordering here is the whole priority mechanism, and no second queue
@@ -1296,15 +1329,19 @@ def _priority_first(
         jobs: worker argument lists, as `get_jobs` returns them.
         tiers: priority tiers in order; jobs matching none go last. None or empty
             just shuffles.
+        retries: keys of jobs to put first within their tier.
 
     Returns:
-        the jobs, highest tier first, shuffled within each tier.
+        the jobs, highest tier first, retries first and the rest shuffled within each
+        tier.
     """
+    retried: set[tuple[str, ...]] = retries or set()
 
     def shuffled(seq: list[list[str]]) -> list[list[str]]:
         out = list(seq)
         random.shuffle(out)
-        return out
+        first = [job for job in out if tuple(job) in retried]
+        return first + [job for job in out if tuple(job) not in retried]
 
     if not tiers:
         return shuffled(jobs)
@@ -1383,10 +1420,12 @@ def _priority_first(
     counts = [len(b) for b in buckets[:-1]]
     if any(counts):
         logger.info(
-            "priority ordering: %s job(s) by tier, %d unprioritized, of %d",
+            "priority ordering: %s job(s) by tier, %d unprioritized, of %d; "
+            "%d retries first in their tier",
             counts,
             len(buckets[-1]),
             len(jobs),
+            sum(1 for job in jobs if tuple(job) in retried),
         )
     return [job for bucket in buckets for job in shuffled(bucket)]
 
@@ -1895,7 +1934,13 @@ def _run_cycle(
     # it much harder, because a job can be re-offered many times over a long run.
     fresh = [job for job in remaining if tuple(job) not in in_flight]
     if pending < target_pending:
-        fresh = _priority_first(fresh, config.aoi.priority)
+        offers = _offer_counts(entries)
+        retries = {
+            tuple(job)
+            for job in fresh
+            if 0 < offers.get(tuple(job), 0) < MAX_PRIORITY_OFFERS
+        }
+        fresh = _priority_first(fresh, config.aoi.priority, retries)
         batch = fresh[: target_pending - pending]
         if batch:
             rslp.common.worker.write_jobs(
