@@ -23,8 +23,8 @@ LANDSAT_ALLBANDS = json_data["layers"][LANDSAT_ALLBANDS_LAYER_NAME]["band_sets"]
 
 # Model config
 DETECT_MODEL_CONFIG = "data/landsat_vessels/config_detector.yaml"
-CLASSIFY_MODEL_CONFIG = "data/landsat_vessels/config_classifier.yaml"
-CLASSIFY_WINDOW_SIZE = 128
+CLASSIFY_MODEL_CONFIG = "data/landsat_vessels/config_classifier_20260908.yaml"
+CLASSIFY_WINDOW_SIZE = 64
 ATTRIBUTE_MODEL_CONFIG = "data/landsat_vessel_attribute/config.yaml"
 ATTRIBUTE_WINDOW_SIZE = 128
 
