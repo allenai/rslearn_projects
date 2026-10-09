@@ -31,7 +31,7 @@ from rslp.large_scale_embeddings.predict_pipeline import (
     RESOLUTION,
     get_marker_fname,
 )
-from rslp.large_scale_embeddings.write_jobs import TILE_SIZE, enumerate_blocks
+from rslp.large_scale_embeddings.write_jobs import TILE_SIZE, block_id, enumerate_blocks
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -270,6 +270,7 @@ def publish_status(
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
     blocks_fname: str | None = None,
+    year_blocks_fname: dict[int, str] | None = None,
     enumeration_cache_dir: str | None = None,
     workers: dict[str, Any] | None = None,
 ) -> None:
@@ -286,19 +287,28 @@ def publish_status(
         wgs84_bounds: the run's bounding box restriction, if any.
         geojson_fname: the run's footprint restriction, if any.
         blocks_fname: the run's block list, if any.
+        year_blocks_fname: per-year block lists overriding blocks_fname, so a year
+            that covers more ground is measured against its own total.
         enumeration_cache_dir: the supervisor's enumeration cache, reused here.
         workers: worker counts from the supervisor's latest cycle, or None to leave
             them off the page. Keys: working, allocated ([priority, count] pairs),
             spare, outside, waiting.
     """
-    blocks = enumerate_blocks(
-        job_size=job_size,
-        epsg_code=epsg_code,
-        wgs84_bounds=wgs84_bounds,
-        geojson_fname=geojson_fname,
-        enumeration_cache_dir=enumeration_cache_dir,
-        blocks_fname=blocks_fname,
-    )
+    by_fname: dict[str | None, list] = {}
+
+    def year_blocks(year: int) -> list:
+        fname = (year_blocks_fname or {}).get(year, blocks_fname)
+        if fname not in by_fname:
+            by_fname[fname] = enumerate_blocks(
+                job_size=job_size,
+                epsg_code=epsg_code,
+                wgs84_bounds=wgs84_bounds,
+                geojson_fname=geojson_fname,
+                enumeration_cache_dir=enumeration_cache_dir,
+                blocks_fname=fname,
+            )
+        return by_fname[fname]
+
     colors = year_colors(years)
     status = UPath(status_path)
     gpu_seconds = 0.0
@@ -307,6 +317,7 @@ def publish_status(
     pngs: dict[str, bytes] = {}
 
     for year in sorted(years):
+        blocks = year_blocks(year)
         completed_path = completed_path_template.format(year=year)
         cache_key = completed_path.replace("://", "_").replace("/", "_")
         markers = read_markers(completed_path, UPath(cache_dir) / f"{cache_key}.json")
@@ -334,7 +345,11 @@ def publish_status(
             }
         )
 
-    pngs["coverage.png"] = render_layer(blocks, COVERAGE_COLOR)
+    # The ground any year covers, so the grey underlay shows everything in the run.
+    covered = list(
+        {block_id(p, b): (p, b) for bl in by_fname.values() for p, b in bl}.values()
+    )
+    pngs["coverage.png"] = render_layer(covered, COVERAGE_COLOR)
     gpu_hours = gpu_seconds / 3600
     now = datetime.now(DISPLAY_TZ)
     data = {

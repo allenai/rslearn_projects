@@ -477,6 +477,9 @@ class AoiConfig:
     # JSON list of block ids to cover, from write_jobs.block_id. Exact where a footprint
     # cannot be; see write_jobs.enumerate_blocks. Built for one job_size.
     blocks_fname: str | None = None
+    # Per-year block lists, overriding blocks_fname for the years named. Lets one year
+    # cover more ground than the rest, e.g. the whole world for 2025 only.
+    year_blocks_fname: dict[int, str] | None = None
     # Tiers in priority order. A job joins the first one matching both its footprint
     # and its year, then everything else follows. The queue is kept shallow, so this
     # is what decides the order work is actually done in.
@@ -484,6 +487,19 @@ class AoiConfig:
     epsg_code: int | None = None
     wgs84_bounds: tuple[float, float, float, float] | None = None
     zone_numbers: list[int] | None = None
+
+
+def _year_blocks_fname(aoi: AoiConfig, year: int) -> str | None:
+    """The block list a year enumerates: its own if it has one, else the run's.
+
+    Args:
+        aoi: the run's area configuration.
+        year: the reference year.
+
+    Returns:
+        the block list path, or None for no block list.
+    """
+    return (aoi.year_blocks_fname or {}).get(year, aoi.blocks_fname)
 
 
 @dataclass
@@ -1915,7 +1931,7 @@ def _run_cycle(
                     epsg_code=config.aoi.epsg_code,
                     wgs84_bounds=config.aoi.wgs84_bounds,
                     geojson_fname=config.aoi.geojson_fname,
-                    blocks_fname=config.aoi.blocks_fname,
+                    blocks_fname=_year_blocks_fname(config.aoi, year),
                     job_size=config.aoi.job_size,
                     enumeration_cache_dir=config.cycle.enumeration_cache_dir,
                     pca_artifact_path=config.pca.artifact_path,
@@ -2080,6 +2096,7 @@ def _status_kwargs(config: SuperviseConfig) -> dict[str, Any]:
         "wgs84_bounds": config.aoi.wgs84_bounds,
         "geojson_fname": config.aoi.geojson_fname,
         "blocks_fname": config.aoi.blocks_fname,
+        "year_blocks_fname": config.aoi.year_blocks_fname,
         "enumeration_cache_dir": config.cycle.enumeration_cache_dir,
     }
 

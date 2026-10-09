@@ -2214,3 +2214,32 @@ def test_a_job_that_keeps_failing_stops_jumping_the_line() -> None:
         "MAX_PRIORITY_OFFERS",
         "retries",
     } <= names, "the cycle must count offers and cap retries before ordering"
+
+
+def test_a_year_can_have_its_own_block_list() -> None:
+    """A year named in year_blocks_fname uses its own list; the rest use blocks_fname.
+
+    This is how one year covers the whole world while the others leave regions out.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    aoi = mod.AoiConfig(
+        blocks_fname="most.json", year_blocks_fname={2025: "world.json"}
+    )
+    assert mod._year_blocks_fname(aoi, 2025) == "world.json"
+    assert mod._year_blocks_fname(aoi, 2024) == "most.json"
+    assert (
+        mod._year_blocks_fname(mod.AoiConfig(blocks_fname="most.json"), 2025)
+        == "most.json"
+    )
+
+
+def test_the_world_block_list_is_both_lists_together() -> None:
+    """blocks_world.json is exactly the 2024-2025 blocks plus the deferred ones."""
+    areas = Path("data/large_scale_embeddings/areas")
+    world = json.loads((areas / "blocks_world.json").read_text())
+    most = set(json.loads((areas / "blocks_2024_2025.json").read_text()))
+    deferred = set(json.loads((areas / "deferred_2024_2025.json").read_text()))
+    assert len(world) == len(set(world)) == len(most | deferred)
+    assert set(world) == most | deferred

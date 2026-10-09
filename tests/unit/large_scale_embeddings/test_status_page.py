@@ -95,6 +95,39 @@ def test_publish_status(
     assert Image.open(out / "2025.png").getbbox() is not None
 
 
+def test_a_year_with_its_own_block_list_has_its_own_total(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A year that covers more ground is measured against its own list."""
+    monkeypatch.setattr(
+        status_page,
+        "enumerate_blocks",
+        lambda **kwargs: BLOCKS
+        if kwargs["blocks_fname"] == "world.json"
+        else BLOCKS[:1],
+    )
+    _write_marker(tmp_path / "completed_2025", BLOCKS[1], 600.0, 16)
+
+    out = tmp_path / "status"
+    status_page.publish_status(
+        status_path=str(out),
+        years=[2024, 2025],
+        completed_path_template=str(tmp_path / "completed_{year}"),
+        title="Test coverage",
+        cache_dir=str(tmp_path / "cache"),
+        blocks_fname="most.json",
+        year_blocks_fname={2025: "world.json"},
+    )
+
+    html = (out / "index.html").read_text()
+    data = json.loads(html.split("const DATA = ", 1)[1].split(";\n", 1)[0])
+    totals = {
+        layer["year"]: (layer["done"], layer["total"]) for layer in data["layers"]
+    }
+    # BLOCKS[1] is only in 2025's list, so it counts for 2025 and nothing else.
+    assert totals == {2024: (0, 1), 2025: (1, 2)}
+
+
 def test_upload_is_never_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     """A remote write carries no-store, so no CDN or browser keeps a stale page."""
     calls: list[dict] = []
