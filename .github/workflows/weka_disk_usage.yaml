@@ -1,0 +1,101 @@
+name: Weka-Disk-Usage-Report
+
+# Weekly weka disk usage report. This workflow only launches a Beaker job; the job
+# itself runs rslp.weka_disk_usage.weekly_report (scan -> collapse -> text report)
+# with the weka bucket mounted and writes its outputs to
+# /weka/dfive-default/weka_disk_utilization/YYYYMMDD_{usage.jsonl,collapsed.json,report.txt}.
+#
+# For scheduled and manual runs, both this runner and the Beaker job use the public
+# ghcr.io/allenai/rslearn_projects:latest image that build_test.yaml publishes from
+# master, so nothing is built. For pushes to the development branch below (used to
+# test this workflow before it is merged, since workflow_dispatch is only offered
+# once the workflow exists on master), the image is instead built from the pushed
+# commit and pushed to GHCR with a sha-* tag, because :latest does not yet contain
+# rslp.weka_disk_usage.
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "YYYYMMDD prefix for the output files (default: current UTC date)"
+        required: false
+        default: ""
+  schedule:
+    # GitHub cron is UTC and cannot follow DST. Saturday 06:00 UTC is Friday
+    # 11:00 PM PDT / 10:00 PM PST, so the report is ready by Monday morning.
+    - cron: '0 6 * * 6'
+  push:
+    branches:
+      - favyen/20260921-disk-usage-job
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: allenai/rslearn_projects
+  BEAKER_TOKEN: ${{ secrets.BEAKER_TOKEN }}
+  BEAKER_ADDR: ${{ secrets.BEAKER_ADDR }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  launch_beaker_job:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+
+      # Avoid issues with running out of disk space; the image is large.
+      - name: Cleanup disk space
+        run: |
+          sudo docker rmi $(docker image ls -aq) >/dev/null 2>&1 || true
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+
+      - name: Select image
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "IMAGE=${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA}" >> "$GITHUB_ENV"
+          else
+            echo "IMAGE=${REGISTRY}/${IMAGE_NAME}:latest" >> "$GITHUB_ENV"
+          fi
+
+      - name: Log in to the Container registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}
+
+      - name: Pull rslearn_projects image
+        run: docker pull "$IMAGE"
+
+      - name: Launch weekly report Beaker job
+        env:
+          REPORT_DATE: ${{ github.event.inputs.date }}
+        run: |
+          EXTRA_ARGS=()
+          if [ -n "$REPORT_DATE" ]; then
+            EXTRA_ARGS+=(--date "$REPORT_DATE")
+          fi
+          docker run --rm \
+            -e BEAKER_TOKEN="${BEAKER_TOKEN}" \
+            -e BEAKER_ADDR="${BEAKER_ADDR}" \
+            "$IMAGE" \
+            python -m rslp.main weka_disk_usage launch_weekly_job \
+              --docker_image "$IMAGE" "${EXTRA_ARGS[@]}"
