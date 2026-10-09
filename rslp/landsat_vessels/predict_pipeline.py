@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import rasterio
+import yaml
 from PIL import Image
 from rasterio.enums import Resampling
 from rslearn.const import WGS84_PROJECTION
@@ -185,6 +186,30 @@ def get_vessel_detections(
     return detections
 
 
+def _classifier_config_for_predict() -> str:
+    """Write a temp copy of the classifier config that reads LANDSAT_ALLBANDS_LAYER_NAME.
+
+    The training dataset stores the classifier's 11 bands in the "landsat" layer, but in
+    the predict dataset that layer holds the detector's 7 bands. The caller must delete
+    the returned file.
+    """
+    with open(CLASSIFY_MODEL_CONFIG) as f:
+        cfg = yaml.safe_load(f)
+    inputs = cfg["data"]["init_args"]["inputs"]
+    if LANDSAT_LAYER_NAME not in inputs:
+        raise KeyError(
+            f"expected classifier config to have an input named "
+            f"'{LANDSAT_LAYER_NAME}', got {list(inputs)}"
+        )
+    inputs[LANDSAT_LAYER_NAME]["layers"] = [LANDSAT_ALLBANDS_LAYER_NAME]
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yaml", prefix="classifier_predict_", delete=False
+    )
+    yaml.safe_dump(cfg, tmp)
+    tmp.close()
+    return tmp.name
+
+
 def run_classifier(
     ds_path: UPath,
     detections: list[VesselDetection],
@@ -231,13 +256,12 @@ def run_classifier(
         if scene_data.item:
             window.save_layer_datas(
                 {
-                    LANDSAT_LAYER_NAME: WindowLayerData(
-                        LANDSAT_LAYER_NAME, [[scene_data.item.serialize()]]
+                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
+                        LANDSAT_ALLBANDS_LAYER_NAME,
+                        [[scene_data.item.serialize()]],
                     ),
                     # Empty layer data so it doesn't go through ingest/materialize.
-                    LANDSAT_ALLBANDS_LAYER_NAME: WindowLayerData(
-                        LANDSAT_ALLBANDS_LAYER_NAME, []
-                    ),
+                    LANDSAT_LAYER_NAME: WindowLayerData(LANDSAT_LAYER_NAME, []),
                 }
             )
 
@@ -257,16 +281,20 @@ def run_classifier(
 
     # Verify that no window is unmaterialized.
     for window in windows:
-        if not window.is_layer_completed(LANDSAT_LAYER_NAME):
+        if not window.is_layer_completed(LANDSAT_ALLBANDS_LAYER_NAME):
             raise ValueError(f"window {window.name} does not have materialized Landsat")
 
     # Run classification model.
-    run_model_predict(
-        CLASSIFY_MODEL_CONFIG,
-        ds_path,
-        groups=[group],
-        extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
-    )
+    classify_config = _classifier_config_for_predict()
+    try:
+        run_model_predict(
+            classify_config,
+            ds_path,
+            groups=[group],
+            extra_args=["--data.init_args.num_workers", str(NUM_DATA_LOADER_WORKERS)],
+        )
+    finally:
+        os.remove(classify_config)
 
     # Read the results.
     good_detections = []
@@ -678,25 +706,29 @@ def _write_detection_crop(
     crop_window: Window = detection.metadata["crop_window"]
     if crop_window is None:
         raise ValueError("Crop window is None")
-    for band in ["B2", "B3", "B4", "B8"]:
-        raster_dir = crop_window.get_raster_dir(LANDSAT_LAYER_NAME, [band])
 
-        # Use nearest neighbor resampling to reduce blur effect.
-        # This means B2/B3/B4 (the RGB bands) are resampled to 15 m/pixel using nearest
-        # neighbor resampling.
-        raster_format = GeotiffRasterFormat()
-        image = raster_format.decode_raster(
+    # The crop window only materializes the raw-DN all-bands layer, so apply the same
+    # 5000-17000 DN -> 0-255 remap as the detector's "landsat" layer.
+    raster_dir = crop_window.get_raster_dir(
+        LANDSAT_ALLBANDS_LAYER_NAME, LANDSAT_ALLBANDS
+    )
+    # Use nearest neighbor resampling to reduce blur effect. This means B2/B3/B4
+    # (the RGB bands) are resampled to 15 m/pixel using nearest neighbor resampling.
+    array = (
+        GeotiffRasterFormat()
+        .decode_raster(
             raster_dir,
             crop_window.projection,
             crop_window.bounds,
             resampling=Resampling.nearest,
-        ).get_chw_array()
-        if image.shape[0] != 1:
-            raise ValueError(
-                f"expected single-band image for {band} but got {image.shape[0]} bands"
-            )
-
-        images[band] = image[0, :, :]
+        )
+        .get_chw_array()
+    )
+    for band in ["B2", "B3", "B4", "B8"]:
+        raw = array[LANDSAT_ALLBANDS.index(band)].astype(np.float32)
+        images[band] = np.clip((raw - 5000.0) * 255.0 / 12000.0, 0, 255).astype(
+            np.uint8
+        )
 
     # Apply simple pan-sharpening for the RGB.
     # This is just linearly scaling RGB bands to add up to B8, which is captured at

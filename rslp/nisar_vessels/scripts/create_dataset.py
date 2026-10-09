@@ -3,9 +3,10 @@ r"""Create an rslearn dataset for NISAR vessel detection from an OlmoEarth Studi
 Each Studio task with status "reviewed" or "to_be_reviewed" becomes one rslearn
 window, with bounds matching the task geometry (in an appropriate UTM projection at
 10 m/pixel, matching NISAR L2 GCOV frequency A resolution) and time range matching the
-task start/end times. The task's annotations become point features in the "label"
-vector layer with the property "category" set to "vessel". Tasks with no annotations
-still get an (empty) label layer so they serve as negative examples.
+task start/end times. The task's annotations whose "classification" metadata field is
+"vessel" become point features in the "label" vector layer with the property
+"category" set to "vessel". Tasks with no such annotations still get an (empty) label
+layer so they serve as negative examples.
 
 Windows are assigned to a "train" or "val" group (~90/10) based on a deterministic
 hash of the window name.
@@ -20,13 +21,11 @@ Example:
 
 import argparse
 import hashlib
-import os
 import re
 import shutil
 from datetime import datetime, timedelta
 from typing import Any
 
-import requests
 import shapely
 import tqdm
 from rslearn.const import WGS84_PROJECTION
@@ -38,12 +37,9 @@ from rslearn.utils.vector_format import GeojsonVectorFormat
 from upath import UPath
 
 from rslp.log_utils import get_logger
+from rslp.utils.studio import StudioClient
 
 logger = get_logger(__name__)
-
-BASE_URL = "https://olmoearth.allenai.org/api/v1"
-REQUEST_TIMEOUT = 30
-SEARCH_PAGE_SIZE = 1000
 
 # Only tasks with these statuses are converted to windows.
 WANTED_TASK_STATUSES = ["reviewed", "to_be_reviewed"]
@@ -54,6 +50,10 @@ PIXEL_SIZE = 10
 
 LABEL_LAYER = "label"
 CATEGORY = "vessel"
+
+# Only annotations whose labelset metadata field CLASSIFICATION_FIELD is set to
+# CATEGORY are used.
+CLASSIFICATION_FIELD = "classification"
 
 # Buffer to add around the task time range. The Studio tasks have
 # start_time == end_time set to the NISAR granule acquisition start time, but the
@@ -69,65 +69,69 @@ VAL_MODULUS = 10
 DATASET_CONFIG_FNAME = "data/nisar_vessels/config.json"
 
 
-def get_headers() -> dict[str, str]:
-    """Get the headers to use for Studio API requests."""
-    api_key = os.environ["STUDIO_API_KEY"]
-    return {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-    }
-
-
-def search_all(endpoint: str, search_body: dict[str, Any]) -> list[dict[str, Any]]:
-    """Get all records from a paginated Studio search endpoint.
-
-    Args:
-        endpoint: the search endpoint, e.g. "tasks/search".
-        search_body: the search filters (offset/limit are added automatically).
-
-    Returns:
-        all matching records.
-    """
-    records: list[dict[str, Any]] = []
-    offset = 0
-    while True:
-        response = requests.post(
-            f"{BASE_URL}/{endpoint}",
-            headers=get_headers(),
-            json=dict(search_body, offset=offset, limit=SEARCH_PAGE_SIZE),
-            timeout=REQUEST_TIMEOUT,
-        )
-        if response.status_code != 200:
-            logger.error(response.text)
-            raise ValueError(
-                f"got bad API response {response.status_code} from {endpoint}"
-            )
-        cur_records = response.json()["records"]
-        if len(cur_records) == 0:
-            break
-        records.extend(cur_records)
-        offset += len(cur_records)
-    return records
-
-
-def get_tasks(project_id: str) -> list[dict[str, Any]]:
+def get_tasks(client: StudioClient, project_id: str) -> list[dict[str, Any]]:
     """Get the tasks in the project that have a wanted status."""
-    return search_all(
-        "tasks/search",
-        {
-            "project_id": {"eq": project_id},
-            "status": {"inc": WANTED_TASK_STATUSES},
-        },
+    return client.get_tasks(
+        project_id, filters={"status": {"inc": WANTED_TASK_STATUSES}}
     )
 
 
-def get_annotations_by_task(project_id: str) -> dict[str, list[dict[str, Any]]]:
-    """Get non-rejected annotations in the project, grouped by task ID."""
-    annotations = search_all(
-        "annotations/search",
-        {
-            "project_id": {"eq": project_id},
-        },
+def get_classification_filter(
+    client: StudioClient, project_id: str, field_name: str, label_name: str
+) -> dict[str, Any]:
+    """Build a metadata filter matching annotations with the given labelset value.
+
+    Args:
+        client: the Studio client.
+        project_id: the Studio project ID.
+        field_name: name of the labelset metadata field, e.g. "classification".
+        label_name: name of the label to match, e.g. "vessel".
+
+    Returns:
+        an entry for the annotation search ``metadata_filters`` list.
+    """
+    settings = client.get_project(project_id)["settings"]
+    field = next(
+        (
+            f
+            for f in settings.get("annotation_metadata_fields") or []
+            if f["name"] == field_name and f["data_type"] == "labelset"
+        ),
+        None,
+    )
+    if field is None:
+        raise ValueError(
+            f"project {project_id} has no labelset metadata field {field_name!r}"
+        )
+    label = next(
+        (
+            label
+            for label in settings.get("labels") or []
+            if label["labelset_id"] == field["labelset_id"]
+            and label["name"] == label_name
+        ),
+        None,
+    )
+    if label is None:
+        raise ValueError(f"field {field_name!r} has no label {label_name!r}")
+    return {"metadata_field_id": field["id"], "label_id": {"eq": label["id"]}}
+
+
+def get_annotations_by_task(
+    client: StudioClient, project_id: str
+) -> dict[str, list[dict[str, Any]]]:
+    """Get non-rejected vessel annotations in the project, grouped by task ID."""
+    classification_filter = get_classification_filter(
+        client, project_id, CLASSIFICATION_FIELD, CATEGORY
+    )
+    annotations = client.get_annotations(
+        project_id, filters={"metadata_filters": [classification_filter]}
+    )
+    logger.info(
+        "got %d annotations with %s=%s",
+        len(annotations),
+        CLASSIFICATION_FIELD,
+        CATEGORY,
     )
     by_task: dict[str, list[dict[str, Any]]] = {}
     for annotation in annotations:
@@ -162,7 +166,7 @@ def create_window(
     Args:
         dataset: the output rslearn dataset.
         task: the Studio task.
-        annotations: the non-rejected annotations belonging to this task.
+        annotations: the non-rejected vessel annotations belonging to this task.
 
     Returns:
         the split the window was assigned to, or None if the task was skipped.
@@ -253,11 +257,12 @@ def create_dataset(project_id: str, ds_path: str) -> None:
         with (ds_upath / "config.json").open("wb") as dst:
             shutil.copyfileobj(src, dst)
 
-    tasks = get_tasks(project_id)
+    client = StudioClient()
+    tasks = get_tasks(client, project_id)
     logger.info(
         "got %d tasks with status in %s", len(tasks), ",".join(WANTED_TASK_STATUSES)
     )
-    annotations_by_task = get_annotations_by_task(project_id)
+    annotations_by_task = get_annotations_by_task(client, project_id)
 
     dataset = Dataset(ds_upath)
     split_counts: dict[str, int] = {}

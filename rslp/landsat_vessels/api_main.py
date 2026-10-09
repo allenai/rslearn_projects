@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import Enum
@@ -27,6 +28,9 @@ LANDSAT_PORT = int(os.getenv("LANDSAT_PORT", 5555))
 
 # Set up the logger
 logger = get_logger(__name__)
+
+# Serializes GPU inference so a single worker only ever runs one prediction at a time.
+_inference_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -132,6 +136,7 @@ class LandsatRequest(BaseModel):
                     "description": "Example with image_files",
                     "value": {
                         "image_files": {
+                            "B1": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B1.TIF",
                             "B2": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B2.TIF",
                             "B3": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B3.TIF",
                             "B4": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B4.TIF",
@@ -139,6 +144,9 @@ class LandsatRequest(BaseModel):
                             "B6": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B6.TIF",
                             "B7": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B7.TIF",
                             "B8": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B8.TIF",
+                            "B9": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B9.TIF",
+                            "B10": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B10.TIF",
+                            "B11": "gs://path/to/landsat_8_9/downloads/2024/10/30/LC08_L1GT_102011_20241030_20241030_02_RT_B11.TIF",
                         },
                     },
                 },
@@ -162,7 +170,9 @@ async def home() -> dict:
     summary="Get Vessel Detections from Landsat",
     description="Returns vessel detections from Landsat.",
 )
-async def get_detections(info: LandsatRequest, response: Response) -> LandsatResponse:
+# Not async on purpose: FastAPI runs a sync handler in a worker thread, so the
+# prediction does not block the event loop and the health probe keeps answering.
+def get_detections(info: LandsatRequest, response: Response) -> LandsatResponse:
     """Returns vessel detections for a given request.
 
     Args:
@@ -182,7 +192,7 @@ async def get_detections(info: LandsatRequest, response: Response) -> LandsatRes
         )
     try:
         logger.info("Processing request with input data.")
-        with time_operation(TimerOperations.TotalInferenceTime):
+        with _inference_lock, time_operation(TimerOperations.TotalInferenceTime):
             detections = predict_pipeline(
                 scene_id=info.scene_id,
                 scene_zip_path=info.scene_zip_path,

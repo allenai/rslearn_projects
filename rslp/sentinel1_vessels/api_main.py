@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from enum import Enum
@@ -29,6 +30,9 @@ from rslp.vessels import VesselDetectionDict
 
 # Set up the logger
 logger = get_logger(__name__)
+
+# Serializes GPU inference so a single worker only ever runs one prediction at a time.
+_inference_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -156,9 +160,9 @@ async def home() -> dict:
     summary="Get Vessel Detections from Sentinel-1",
     description="Returns vessel detections from Sentinel-1.",
 )
-async def get_detections(
-    info: Sentinel1Request, response: Response
-) -> Sentinel1Response:
+# Not async on purpose: FastAPI runs a sync handler in a worker thread, so the
+# prediction does not block the event loop and the health probe keeps answering.
+def get_detections(info: Sentinel1Request, response: Response) -> Sentinel1Response:
     """Returns vessel detections for a given request.
 
     Args:
@@ -197,7 +201,7 @@ async def get_detections(
             if info.score_threshold is not None
             else SENTINEL1_SCORE_THRESHOLD
         )
-        with time_operation(TimerOperations.TotalInferenceTime):
+        with _inference_lock, time_operation(TimerOperations.TotalInferenceTime):
             vessel_detections = predict_pipeline(
                 tasks=[task],
                 score_threshold=threshold,

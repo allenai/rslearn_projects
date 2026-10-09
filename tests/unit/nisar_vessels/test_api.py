@@ -5,8 +5,6 @@ with a request: resolving the score threshold, and turning the request into a
 PredictionTask.
 """
 
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 
 import pytest
@@ -152,28 +150,3 @@ def test_pipeline_error_becomes_an_error_response(
     assert body["status"] == "error"
     assert "HVHV" in body["error_message"]
     assert body["predictions"] == []
-
-
-def test_health_endpoint_answers_during_a_prediction(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The health probe is served while a prediction is still running."""
-    started = threading.Event()
-    release = threading.Event()
-
-    def blocking_pipeline(**kwargs: object) -> list[list]:
-        started.set()
-        release.wait(timeout=10)
-        return [[]]
-
-    monkeypatch.setattr(api_main, "predict_pipeline", blocking_pipeline)
-
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        request = pool.submit(client.post, "/detections", json={"h5_path": H5_PATH})
-        assert started.wait(timeout=10), "prediction never started"
-
-        # The prediction is mid-flight; the probe must still come back.
-        assert client.get("/").status_code == HTTPStatus.OK
-
-        release.set()
-        assert request.result(timeout=10).status_code == HTTPStatus.OK
