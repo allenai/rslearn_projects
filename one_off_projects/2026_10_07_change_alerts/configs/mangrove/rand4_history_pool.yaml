@@ -57,6 +57,7 @@ model:
           - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
             init_args:
               input_key: sentinel2_l2a
+              mode: AFTER
     optimizer:
       class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
       init_args:
@@ -331,7 +332,7 @@ data:
           - sentinel2_l2a
           - target/category/classes
           - target/category/valid
-          - target/timestep/classes
+          - target/timestep/days
           - target/timestep/valid
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
