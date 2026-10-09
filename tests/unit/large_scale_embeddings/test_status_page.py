@@ -22,13 +22,19 @@ BLOCKS = [
 
 
 def _write_marker(
-    completed: pathlib.Path, block: tuple, gpu_seconds: float | None, crops: int
+    completed: pathlib.Path,
+    block: tuple,
+    gpu_seconds: float | None,
+    crops: int,
+    worker: str | None = None,
 ) -> None:
     fname = get_marker_fname(str(completed), *block)
     fname.parent.mkdir(parents=True, exist_ok=True)
     marker: dict = {"written": [[0, 0]] * crops}
     if gpu_seconds is not None:
         marker["gpu_seconds"] = gpu_seconds
+    if worker is not None:
+        marker["worker"] = worker
     fname.write_text(json.dumps(marker))
 
 
@@ -126,6 +132,44 @@ def test_a_year_with_its_own_block_list_has_its_own_total(
     }
     # BLOCKS[1] is only in 2025's list, so it counts for 2025 and nothing else.
     assert totals == {2024: (0, 1), 2025: (1, 2)}
+
+
+def test_km2_per_gpu_hour_is_split_by_pool(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GCE blocks count as outside Beaker; Beaker and unnamed markers as Beaker."""
+    monkeypatch.setattr(status_page, "enumerate_blocks", lambda **kwargs: BLOCKS)
+    _write_marker(tmp_path / "completed_2025", BLOCKS[0], 3600.0, 16, "worker_x_1")
+    _write_marker(tmp_path / "completed_2025", BLOCKS[1], 7200.0, 16, "gce_embed-1")
+    _write_marker(tmp_path / "completed_2024", BLOCKS[0], 3600.0, 16)
+
+    out = tmp_path / "status"
+    status_page.publish_status(
+        status_path=str(out),
+        years=[2024, 2025],
+        completed_path_template=str(tmp_path / "completed_{year}"),
+        title="Test coverage",
+        cache_dir=str(tmp_path / "cache"),
+    )
+
+    html = (out / "index.html").read_text()
+    data = json.loads(html.split("const DATA = ", 1)[1].split(";\n", 1)[0])
+    km2 = status_page.KM2_PER_CROP
+    assert data["km2_per_gpu_hour_by_pool"] == {
+        "beaker": round(32 * km2 / 2.0),
+        "outside": round(16 * km2 / 2.0),
+    }
+    assert data["km2_per_gpu_hour"] == round(48 * km2 / 4.0)
+
+
+def test_a_cache_without_the_pool_field_is_reread(tmp_path: pathlib.Path) -> None:
+    """A cache from before the split is discarded, so no marker is misfiled."""
+    completed = tmp_path / "completed"
+    cache = tmp_path / "cache.json"
+    _write_marker(completed, BLOCKS[0], 60.0, 16, "gce_embed-1")
+    name = get_marker_fname(str(completed), *BLOCKS[0]).name
+    cache.write_text(json.dumps({name: [60.0, 16]}))
+    assert status_page.read_markers(str(completed), cache)[name] == (60.0, 16, True)
 
 
 def test_upload_is_never_cached(monkeypatch: pytest.MonkeyPatch) -> None:

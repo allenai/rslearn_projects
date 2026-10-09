@@ -94,9 +94,15 @@ def year_colors(years: list[int]) -> dict[int, str]:
     }
 
 
+# Worker names that mark a block as computed outside Beaker. The GCE startup script names
+# its workers gce_<hostname>; Beaker workers, and markers from before markers named the
+# worker at all, count as Beaker.
+OUTSIDE_BEAKER_WORKER_PREFIX = "gce_"
+
+
 def read_markers(
     completed_path: str, cache_path: UPath
-) -> dict[str, tuple[float | None, int]]:
+) -> dict[str, tuple[float | None, int, bool]]:
     """Read every marker in a directory, reusing what an earlier call already read.
 
     Markers are written once and never change, so only new names are fetched.
@@ -106,20 +112,21 @@ def read_markers(
         cache_path: local JSON file holding the markers already read.
 
     Returns:
-        (gpu_seconds, crops written) per marker name. gpu_seconds is None for a
-        marker written before markers recorded it.
+        (gpu_seconds, crops written, outside Beaker) per marker name. gpu_seconds is
+        None for a marker written before markers recorded it.
 
     Raises:
         TruncatedListingError: if a marker read before is missing from the listing.
             Markers are never deleted during a run, so this means the listing was
             cut short, and publishing it would show progress going backwards.
     """
-    cached: dict[str, tuple[float | None, int]] = {}
+    cached: dict[str, tuple[float | None, int, bool]] = {}
     if cache_path.exists():
-        cached = {
-            name: (seconds, crops)
-            for name, (seconds, crops) in json.loads(cache_path.read_text()).items()
-        }
+        entries = json.loads(cache_path.read_text())
+        # A cache written before markers were split by pool lacks the third field;
+        # re-reading those markers beats guessing which pool wrote them.
+        if all(len(entry) == 3 for entry in entries.values()):
+            cached = {name: tuple(entry) for name, entry in entries.items()}  # type: ignore[misc]
 
     completed = UPath(completed_path)
     names = {p.name for p in completed.iterdir()} if completed.exists() else set()
@@ -129,9 +136,14 @@ def read_markers(
             f"{lost} marker(s) read earlier are missing from {completed_path}"
         )
 
-    def read_one(name: str) -> tuple[str, tuple[float | None, int]]:
+    def read_one(name: str) -> tuple[str, tuple[float | None, int, bool]]:
         marker = json.loads((completed / name).read_text())
-        return name, (marker.get("gpu_seconds"), len(marker.get("written", [])))
+        outside = (marker.get("worker") or "").startswith(OUTSIDE_BEAKER_WORKER_PREFIX)
+        return name, (
+            marker.get("gpu_seconds"),
+            len(marker.get("written", [])),
+            outside,
+        )
 
     new = sorted(names - cached.keys())
     if new:
@@ -311,8 +323,8 @@ def publish_status(
 
     colors = year_colors(years)
     status = UPath(status_path)
-    gpu_seconds = 0.0
-    timed_crops = 0
+    # Per pool, [gpu_seconds, crops], so each pool's rate is its own.
+    pools = {"beaker": [0.0, 0], "outside": [0.0, 0]}
     layers = []
     pngs: dict[str, bytes] = {}
 
@@ -329,10 +341,11 @@ def publish_status(
             if name not in markers:
                 continue
             done.append((projection, bounds))
-            seconds, crops = markers[name]
+            seconds, crops, outside = markers[name]
             if seconds is not None:
-                gpu_seconds += seconds
-                timed_crops += crops
+                pool = pools["outside" if outside else "beaker"]
+                pool[0] += seconds
+                pool[1] += crops
         fname = f"{year}.png"
         pngs[fname] = render_layer(done, colors[year])
         layers.append(
@@ -350,6 +363,8 @@ def publish_status(
         {block_id(p, b): (p, b) for bl in by_fname.values() for p, b in bl}.values()
     )
     pngs["coverage.png"] = render_layer(covered, COVERAGE_COLOR)
+    gpu_seconds = sum(seconds for seconds, _ in pools.values())
+    timed_crops = sum(crops for _, crops in pools.values())
     gpu_hours = gpu_seconds / 3600
     now = datetime.now(DISPLAY_TZ)
     data = {
@@ -360,6 +375,11 @@ def publish_status(
         "km2_per_gpu_hour": round(timed_crops * KM2_PER_CROP / gpu_hours)
         if gpu_hours
         else None,
+        "km2_per_gpu_hour_by_pool": {
+            name: round(crops * KM2_PER_CROP / (seconds / 3600))
+            for name, (seconds, crops) in pools.items()
+            if seconds
+        },
         "coverage": {"color": COVERAGE_COLOR, "file": "coverage.png"},
         "map": {
             "crs": MAP_CRS,
@@ -467,6 +487,12 @@ function pct(layer) {
 stat(fmt(DATA.gpu_hours), "GPU-hours spent");
 stat(DATA.km2_per_gpu_hour == null ? "\\u2013" : fmt(DATA.km2_per_gpu_hour),
      "km\\u00b2 per GPU-hour");
+// Split by pool once anything ran outside Beaker, since the two hardware types differ.
+const byPool = DATA.km2_per_gpu_hour_by_pool || {};
+if (byPool.outside) {
+  if (byPool.beaker) stat(fmt(byPool.beaker), "km\\u00b2 per GPU-hour, Beaker");
+  stat(fmt(byPool.outside), "km\\u00b2 per GPU-hour, outside Beaker");
+}
 const workers = DATA.workers;
 if (workers) {
   stat(fmt(workers.working), "GPUs working");
