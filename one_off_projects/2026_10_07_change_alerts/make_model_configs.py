@@ -160,7 +160,7 @@ FLIP = {
             "sentinel2_l2a",
             "target/category/classes",
             "target/category/valid",
-            "target/timestep/classes",
+            "target/timestep/days",
             "target/timestep/valid",
         ]
     },
@@ -223,7 +223,9 @@ TIMESTEP_DECODER = [
     _upsample(4),
     {
         "class_path": "rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead",
-        "init_args": {"input_key": "sentinel2_l2a"},
+        # The sampler labels each pixel with the midpoint day of its target timestep,
+        # which maps back to that timestep in either mode.
+        "init_args": {"input_key": "sentinel2_l2a", "mode": "AFTER"},
     },
 ]
 
