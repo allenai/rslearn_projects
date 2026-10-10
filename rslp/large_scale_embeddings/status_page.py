@@ -299,8 +299,9 @@ def publish_status(
         wgs84_bounds: the run's bounding box restriction, if any.
         geojson_fname: the run's footprint restriction, if any.
         blocks_fname: the run's block list, if any.
-        year_blocks_fname: per-year block lists overriding blocks_fname, so a year
-            that covers more ground is measured against its own total.
+        year_blocks_fname: per-year block lists overriding blocks_fname. Every year's
+            percentage is still taken over the whole area any year covers, so years
+            compare on one scale.
         enumeration_cache_dir: the supervisor's enumeration cache, reused here.
         workers: worker counts from the supervisor's latest cycle, or None to leave
             them off the page. Keys: working, allocated ([priority, count] pairs),
@@ -353,15 +354,17 @@ def publish_status(
                 "year": year,
                 "color": colors[year],
                 "done": len(done),
-                "total": len(blocks),
                 "file": fname,
             }
         )
 
-    # The ground any year covers, so the grey underlay shows everything in the run.
+    # The ground any year covers: the grey underlay, and every year's denominator, so a
+    # year limited to a small area reads as a small share of the world, not of itself.
     covered = list(
         {block_id(p, b): (p, b) for bl in by_fname.values() for p, b in bl}.values()
     )
+    for layer in layers:
+        layer["total"] = len(covered)
     pngs["coverage.png"] = render_layer(covered, COVERAGE_COLOR)
     gpu_seconds = sum(seconds for seconds, _ in pools.values())
     timed_crops = sum(crops for _, crops in pools.values())

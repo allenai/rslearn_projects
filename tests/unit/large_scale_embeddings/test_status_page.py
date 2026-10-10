@@ -101,10 +101,14 @@ def test_publish_status(
     assert Image.open(out / "2025.png").getbbox() is not None
 
 
-def test_a_year_with_its_own_block_list_has_its_own_total(
+def test_every_year_is_a_share_of_the_whole_area(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A year that covers more ground is measured against its own list."""
+    """Percentages share one denominator: everything any year covers.
+
+    A year limited to a small area must read as a small share of the world, not as a
+    large share of its own list.
+    """
     monkeypatch.setattr(
         status_page,
         "enumerate_blocks",
@@ -113,15 +117,18 @@ def test_a_year_with_its_own_block_list_has_its_own_total(
         else BLOCKS[:1],
     )
     _write_marker(tmp_path / "completed_2025", BLOCKS[1], 600.0, 16)
+    _write_marker(tmp_path / "completed_2019", BLOCKS[0], 600.0, 16)
+    # Outside 2019's own list, so it does not count for 2019.
+    _write_marker(tmp_path / "completed_2019", BLOCKS[1], 600.0, 16)
 
     out = tmp_path / "status"
     status_page.publish_status(
         status_path=str(out),
-        years=[2024, 2025],
+        years=[2019, 2025],
         completed_path_template=str(tmp_path / "completed_{year}"),
         title="Test coverage",
         cache_dir=str(tmp_path / "cache"),
-        blocks_fname="most.json",
+        blocks_fname="small.json",
         year_blocks_fname={2025: "world.json"},
     )
 
@@ -130,8 +137,7 @@ def test_a_year_with_its_own_block_list_has_its_own_total(
     totals = {
         layer["year"]: (layer["done"], layer["total"]) for layer in data["layers"]
     }
-    # BLOCKS[1] is only in 2025's list, so it counts for 2025 and nothing else.
-    assert totals == {2024: (0, 1), 2025: (1, 2)}
+    assert totals == {2019: (1, 2), 2025: (1, 2)}
 
 
 def test_km2_per_gpu_hour_is_split_by_pool(
