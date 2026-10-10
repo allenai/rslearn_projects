@@ -188,6 +188,13 @@ session with WEKA mounted:
 python eval_test.py --out results.csv
 ```
 
+Or run it on Beaker, one job per source and run (a subset with `--sources` and
+`--runs`), each writing `{out_dir}/{source}_{run}.csv`:
+
+```
+python launch_eval.py --image_name [BEAKER_IMAGE] --out_dir [OUT_DIR]
+```
+
 The metrics are:
 
 - `test_category/balanced_accuracy` (headline): mean per-category recall.
