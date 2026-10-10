@@ -2243,3 +2243,29 @@ def test_the_world_block_list_is_both_lists_together() -> None:
     deferred = set(json.loads((areas / "deferred_2024_2025.json").read_text()))
     assert len(world) == len(set(world)) == len(most | deferred)
     assert set(world) == most | deferred
+
+
+def test_a_coastal_block_joins_the_tier_it_overlaps(tmp_path: Path) -> None:
+    """A block whose centre is outside a footprint but which overlaps it joins the tier.
+
+    Matching on the centre left coastal and border blocks (Astoria's centre is in the
+    Columbia estuary, one north of Bellingham is centred in Canada) behind the whole
+    rest of the world, though most of their ground was in the priority area.
+    """
+    import importlib
+
+    from pyproj import Transformer
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    block = _job("EPSG:32614", 49152, -438272)
+    other = _job("EPSG:32614", 0, -438272)
+    tr = Transformer.from_crs("EPSG:32614", "EPSG:4326", always_xy=True)
+    east_lon, mid_lat = tr.transform((49152 + 4096) * 10.0, (438272 - 2048) * 10.0)
+    centre_lon, _ = tr.transform((49152 + 2048) * 10.0, (438272 - 2048) * 10.0)
+    # A square whose west edge cuts the block's eastern strip but stays east of its centre.
+    footprint = _footprint(tmp_path, east_lon + 0.9, mid_lat, half=1.0)
+    assert east_lon + 0.9 - 1.0 > centre_lon, "the footprint must not reach the centre"
+
+    got = mod._priority_first([other, block], [_tier(footprint)])
+    assert got[0] == block, "the overlapping block did not join the tier"

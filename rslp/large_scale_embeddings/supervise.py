@@ -1387,24 +1387,33 @@ def _priority_first(
 
     years = [_job_year(job) for job in jobs]
 
-    # Grouped by CRS so each zone's centres transform in one call rather than per job.
-    by_crs: dict[str, list[tuple[int, float, float]]] = {}
+    # A job's footprint, not its centre, decides a footprint tier: a coastal or border
+    # block whose centre falls in the sea or across a border still belongs to the area
+    # it overlaps. Grouped by CRS so each zone's outlines transform in one call.
+    by_crs: dict[str, list[tuple[int, list[float], list[float]]]] = {}
     for i, job in enumerate(jobs):
         try:
             crs = json.loads(job[job.index("--projection_json") + 1])["crs"]
             x0, y0, x1, y1 = json.loads(job[job.index("--bounds") + 1])
         except (ValueError, KeyError, IndexError, json.JSONDecodeError):
             continue
+        # Corners and edge midpoints, enough to follow a UTM block's outline in degrees.
+        xs = [x0, (x0 + x1) / 2, x1, x1, x1, (x0 + x1) / 2, x0, x0]
+        ys = [y0, y0, y0, (y0 + y1) / 2, y1, y1, y1, (y0 + y1) / 2]
         by_crs.setdefault(crs, []).append(
-            (i, (x0 + x1) / 2 * 10.0, -(y0 + y1) / 2 * 10.0)
+            (i, [x * 10.0 for x in xs], [-y * 10.0 for y in ys])
         )
 
-    points: dict[int, Any] = {}
+    outlines: dict[int, Any] = {}
     for crs, entries in by_crs.items():
         tr = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
-        lons, lats = tr.transform([e[1] for e in entries], [e[2] for e in entries])
-        for (idx, _, _), lon, lat in zip(entries, lons, lats, strict=True):
-            points[idx] = shapely.Point(lon, lat)
+        for idx, xs_m, ys_m in entries:
+            lons, lats = tr.transform(xs_m, ys_m)
+            # A block across the antimeridian would become a polygon wrapping the globe
+            # and match every footprint at its latitudes; no tier area spans it.
+            if max(lons) - min(lons) > 180:
+                continue
+            outlines[idx] = shapely.Polygon(zip(lons, lats, strict=True))
 
     def matches(tier_index: int, job_index: int) -> bool:
         """Whether a job belongs to a tier, on both year and footprint."""
@@ -1414,12 +1423,12 @@ def _priority_first(
         footprint = footprints[tier_index]
         if footprint is None:
             return True
-        pt = points.get(job_index)
-        if pt is None:
+        outline = outlines.get(job_index)
+        if outline is None:
             return False
         shapes, tree = footprint
         return tree is not None and any(
-            shapes[k].intersects(pt) for k in tree.query(pt)
+            shapes[k].intersects(outline) for k in tree.query(outline)
         )
 
     # Default tier is one past the last: everything matching nothing.
