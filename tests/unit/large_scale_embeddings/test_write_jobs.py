@@ -21,10 +21,11 @@ TIMESTAMP = datetime(2025, 1, 1, tzinfo=UTC)
 def test_get_jobs_wgs84_bounds(tmp_path: pathlib.Path) -> None:
     """Jobs limited by wgs84_bounds cover the right zones and tiles."""
     jobs = get_jobs(
-        inputs=EmbeddingInputs.S2,
+        inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
         timestamp=TIMESTAMP,
-        out_path=str(tmp_path / "out"),
+        store_path=str(tmp_path / "out"),
         completed_path=str(tmp_path / "completed"),
+        time_index=0,
         checkpoint_path="/fake/checkpoint",
         wgs84_bounds=WGS84_BOUNDS,
     )
@@ -35,9 +36,10 @@ def test_get_jobs_wgs84_bounds(tmp_path: pathlib.Path) -> None:
     padded_query_shp = shapely.box(*WGS84_BOUNDS).buffer(0.5)
 
     seen_epsg_codes = set()
+    seen_bounds: list[tuple[int, list[int]]] = []
     for job in jobs:
         args = dict(zip(job[0::2], job[1::2]))
-        assert args["--inputs"] == "S2"
+        assert args["--inputs"] == "S2_S1_LANDSAT_DISTILLED"
         assert args["--time_range"] == json.dumps(
             [TIMESTAMP.isoformat(), TIMESTAMP.isoformat()]
         )
@@ -46,17 +48,25 @@ def test_get_jobs_wgs84_bounds(tmp_path: pathlib.Path) -> None:
         seen_epsg_codes.add(projection.crs.to_epsg())
 
         bounds = json.loads(args["--bounds"])
+        seen_bounds.append((projection.crs.to_epsg(), bounds))
         tile_geom = STGeometry(projection, shapely.box(*bounds), None).to_projection(
             WGS84_PROJECTION
         )
         assert tile_geom.shp.intersects(padded_query_shp)
 
     # The bounds span lon 36-38 and lat -2 to 1, so tiles should be limited to UTM
-    # zones 36/37 north and south. Zone 36 only touches at lon=36 exactly so it may
-    # or may not contribute tiles, but zone 37 must appear in both hemispheres.
-    assert seen_epsg_codes <= {32636, 32637, 32736, 32737}
+    # zones 36 and 37. Zone 36 only touches at lon=36 exactly so it may or may not
+    # contribute tiles. Every zone is stored in its *northern* CRS, so no 327NN code
+    # should ever appear even though the bounds reach 2 degrees south.
+    assert seen_epsg_codes <= {32636, 32637}
     assert 32637 in seen_epsg_codes
-    assert 32737 in seen_epsg_codes
+
+    # Both hemispheres still have to be covered; they now differ by the sign of the
+    # pixel row rather than by EPSG code. Pixel y runs southward from a negative origin,
+    # so y < 0 is north of the equator and y > 0 is south of it.
+    zone_37_bounds = [b for epsg, b in seen_bounds if epsg == 32637]
+    assert any(b[1] < 0 for b in zone_37_bounds), "no tile north of the equator"
+    assert any(b[3] > 0 for b in zone_37_bounds), "no tile south of the equator"
 
 
 def test_get_jobs_geojson(tmp_path: pathlib.Path) -> None:
@@ -87,10 +97,11 @@ def test_get_jobs_geojson(tmp_path: pathlib.Path) -> None:
         json.dump(feature_collection, f)
 
     jobs = get_jobs(
-        inputs=EmbeddingInputs.S2,
+        inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
         timestamp=TIMESTAMP,
-        out_path=str(tmp_path / "out"),
+        store_path=str(tmp_path / "out"),
         completed_path=str(tmp_path / "completed"),
+        time_index=0,
         checkpoint_path="/fake/checkpoint",
         geojson_fname=str(geojson_fname),
     )
@@ -101,12 +112,14 @@ def test_get_jobs_geojson(tmp_path: pathlib.Path) -> None:
     padded_query_shp = shapely.union_all([wide_shp, nairobi_shp]).buffer(0.5)
 
     seen_epsg_codes = set()
+    seen_bounds: list[tuple[int, list[int]]] = []
     for job in jobs:
         args = dict(zip(job[0::2], job[1::2]))
         projection = Projection.deserialize(json.loads(args["--projection_json"]))
         seen_epsg_codes.add(projection.crs.to_epsg())
 
         bounds = json.loads(args["--bounds"])
+        seen_bounds.append((projection.crs.to_epsg(), bounds))
         tile_geom = STGeometry(projection, shapely.box(*bounds), None).to_projection(
             WGS84_PROJECTION
         )
@@ -114,4 +127,114 @@ def test_get_jobs_geojson(tmp_path: pathlib.Path) -> None:
 
     # The wide feature yields tiles in exactly zones 11-15 north, and the Nairobi
     # feature in zone 37 south.
-    assert seen_epsg_codes == {32611, 32612, 32613, 32614, 32615, 32737}
+    # Nairobi is ~1.3 degrees south, but zone 37 is stored in its northern CRS, so it
+    # is 32637 with a positive (southward) pixel row rather than 32737.
+    assert seen_epsg_codes == {32611, 32612, 32613, 32614, 32615, 32637}
+    # The tile grid is aligned to northing 0, so the Nairobi tile starts exactly at the
+    # equator and extends south: y1 is what carries the sign, not y0.
+    assert any(
+        epsg == 32637 and bounds[3] > 0 for epsg, bounds in seen_bounds
+    ), "the Nairobi feature should produce a tile extending south of the equator"
+
+
+def test_get_jobs_carries_the_pca_render_args(tmp_path: pathlib.Path) -> None:
+    """With an artifact, each predict job also renders its UTM pyramid."""
+    jobs = get_jobs(
+        inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+        timestamp=TIMESTAMP,
+        store_path=str(tmp_path / "out"),
+        completed_path=str(tmp_path / "completed"),
+        time_index=0,
+        checkpoint_path="/fake/checkpoint",
+        wgs84_bounds=WGS84_BOUNDS,
+        count=1,
+        pca_artifact_path="gs://bucket/basis",
+        pca_store_path="gs://bucket/pca.zarr",
+        pca_completed_path="gs://bucket/pca_completed/",
+        pca_max_level=3,
+    )
+    args = dict(zip(jobs[0][0::2], jobs[0][1::2]))
+    assert args["--pca_artifact_path"] == "gs://bucket/basis"
+    assert args["--pca_store_path"] == "gs://bucket/pca.zarr"
+    assert args["--pca_completed_path"] == "gs://bucket/pca_completed/"
+    assert args["--pca_max_level"] == "3"
+
+
+def test_get_jobs_without_an_artifact_adds_no_pca_args(tmp_path: pathlib.Path) -> None:
+    """Embedding-only runs enqueue exactly what they did before."""
+    jobs = get_jobs(
+        inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+        timestamp=TIMESTAMP,
+        store_path=str(tmp_path / "out"),
+        completed_path=str(tmp_path / "completed"),
+        time_index=0,
+        checkpoint_path="/fake/checkpoint",
+        wgs84_bounds=WGS84_BOUNDS,
+        count=1,
+    )
+    assert not any(arg.startswith("--pca_") for arg in jobs[0])
+
+
+def test_blocks_fname_keeps_exactly_the_named_blocks(tmp_path: pathlib.Path) -> None:
+    """A block list narrows the enumeration to those blocks, and only those."""
+    from rslp.large_scale_embeddings.write_jobs import block_id, enumerate_blocks
+
+    every = enumerate_blocks(job_size=8192, wgs84_bounds=WGS84_BOUNDS)
+    chosen = [block_id(*block) for block in every[::3]]
+    blocks_fname = tmp_path / "blocks.json"
+    blocks_fname.write_text(json.dumps(chosen))
+    kept = enumerate_blocks(
+        job_size=8192, wgs84_bounds=WGS84_BOUNDS, blocks_fname=str(blocks_fname)
+    )
+    assert [block_id(*block) for block in kept] == chosen
+
+
+def test_blocks_fname_rejects_a_block_the_run_does_not_have(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A list built for another job_size must fail rather than shrink the run."""
+    import pytest
+
+    from rslp.large_scale_embeddings.write_jobs import enumerate_blocks
+
+    blocks_fname = tmp_path / "blocks.json"
+    blocks_fname.write_text(json.dumps(["EPSG:32637_1_1"]))
+    with pytest.raises(ValueError, match="does not have"):
+        enumerate_blocks(
+            job_size=8192, wgs84_bounds=WGS84_BOUNDS, blocks_fname=str(blocks_fname)
+        )
+
+
+def test_a_footprint_covering_the_zone_keeps_every_block(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A footprint wider than the zone must keep exactly the unrestricted blocks.
+
+    The footprint is clipped to the zone's 6 degree box and reprojected. Its edges used
+    to go in as single segments, so the zone's sides (80S to 84N) became straight
+    chords in UTM that cut a sliver off the zone's edges and dropped the blocks there.
+    """
+    from rslp.large_scale_embeddings.write_jobs import enumerate_blocks
+
+    fname = tmp_path / "wider.geojson"
+    fname.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {},
+                        "geometry": shapely.geometry.mapping(
+                            shapely.box(30.0, -85.0, 48.0, 85.0)
+                        ),
+                    }
+                ],
+            }
+        )
+    )
+    restricted = enumerate_blocks(
+        job_size=8192, epsg_code=32637, geojson_fname=str(fname)
+    )
+    unrestricted = enumerate_blocks(job_size=8192, epsg_code=32637)
+    assert restricted == unrestricted

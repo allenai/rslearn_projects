@@ -11,7 +11,12 @@ The tile size is fixed to 32768x32768 here; the prediction pipeline itself accep
 any tile size that is a multiple of PATCH_SIZE.
 """
 
+import concurrent.futures
+import functools
+import hashlib
 import json
+import multiprocessing
+import os
 import random
 from collections.abc import Generator
 from datetime import datetime
@@ -19,22 +24,32 @@ from datetime import datetime
 import shapely
 import shapely.geometry
 import tqdm
-from rasterio.crs import CRS
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
-from rslearn.utils.get_utm_ups_crs import get_proj_bounds, get_wgs84_bounds
 from upath import UPath
 
 import rslp.common.worker
-from rslp.log_utils import get_logger
-
-from .predict_pipeline import (
+from rslp.large_scale_embeddings import zarr_store
+from rslp.large_scale_embeddings.coverage import resolve_mask_path
+from rslp.large_scale_embeddings.predict_pipeline import (
+    EMBEDDING_DIM,
     PATCH_SIZE,
+    PREFETCH,
     RESOLUTION,
     EmbeddingInputs,
     get_marker_fname,
 )
-from .tiling import bounds_intersect_wedge, get_zone_wedge, list_kept_crops
+from rslp.large_scale_embeddings.tiling import (
+    LAND_STEP_SIZE,
+    UTM_MAX_LAT,
+    UTM_MIN_LAT,
+    bounds_intersect_wedge,
+    get_zone_grid,
+    get_zone_wedge,
+    list_kept_crops,
+)
+from rslp.large_scale_embeddings.zarr_store import DEFAULT_PCA_MAX_LEVEL
+from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
 
@@ -42,80 +57,326 @@ logger = get_logger(__name__)
 # of PATCH_SIZE).
 TILE_SIZE = 32768
 
+# Most processes enumeration runs zones in. Each loads its own coverage mask, and in a
+# container os.cpu_count() reports the host's cores, not the job's: a supervisor given
+# 2 CPUs and 8 GiB would otherwise start dozens of workers and run out of memory.
+ENUMERATION_MAX_PROCESSES = 4
+# Fewest zones with work worth starting worker processes for.
+ENUMERATION_POOL_MIN_ZONES = 8
 
-def enumerate_tiles_in_zone(utm_zone: CRS) -> Generator[tuple[int, int], None, None]:
+# Longest segment, in degrees, of a footprint's edges before it is reprojected into a
+# zone's CRS. Short enough that the straight UTM segments stay close to the curved
+# lines they stand for.
+ZONE_EDGE_SEGMENT_DEG = 0.1
+
+
+def enumerate_tiles_in_zone(zone_number: int) -> Generator[tuple[int, int], None, None]:
     """List the (column, row) of all TILE_SIZE tiles within a UTM zone.
 
     Args:
-        utm_zone: the CRS which must correspond to a UTM EPSG.
+        zone_number: the UTM zone number (1-60).
 
     Returns:
         generator of (column, row) of the tiles that are needed.
     """
-    crs_bbox = STGeometry(
-        Projection(utm_zone, 1, 1),
-        shapely.box(*get_proj_bounds(utm_zone)),
-        None,
+    _, (origin_x, origin_y), (height, width) = get_zone_grid(
+        zone_number, RESOLUTION, TILE_SIZE
     )
-    projection = Projection(utm_zone, RESOLUTION, -RESOLUTION)
-    pixel_bbox = crs_bbox.to_projection(projection)
-    zone_bounds = tuple(int(value) for value in pixel_bbox.shp.bounds)
-
-    for col in range(zone_bounds[0] // TILE_SIZE, zone_bounds[2] // TILE_SIZE + 1):
-        for row in range(zone_bounds[1] // TILE_SIZE, zone_bounds[3] // TILE_SIZE + 1):
+    for col in range(origin_x // TILE_SIZE, (origin_x + width) // TILE_SIZE):
+        for row in range(origin_y // TILE_SIZE, (origin_y + height) // TILE_SIZE):
             yield (col, row)
 
 
-def get_jobs(
-    inputs: EmbeddingInputs,
-    timestamp: datetime,
-    out_path: str,
-    completed_path: str,
-    checkpoint_path: str,
-    patch_size: int = 1,
-    window_size: int = 16,
-    overlap_size: int = 4,
-    compile_model: bool = True,
+def _enumeration_cache_key(
+    job_size: int,
+    epsg_code: int | None,
+    wgs84_bounds: tuple[float, float, float, float] | None,
+    geojson_fname: str | None,
+) -> str:
+    """Identify one enumeration, so a stale cache can never be read as fresh.
+
+    Everything that changes which blocks come out goes into the key: the area
+    arguments, the block size, the sampling step, and the coverage mask itself by
+    size and mtime. Change the mask and the old cache is simply never found.
+
+    Args:
+        job_size: the pixel size of each block.
+        epsg_code: the single-zone restriction, if any.
+        wgs84_bounds: the bounding box restriction, if any.
+        geojson_fname: the footprint restriction, if any.
+
+    Returns:
+        a hex digest naming this enumeration.
+    """
+    try:
+        stat = resolve_mask_path().stat()
+        mask_id = f"{stat.st_size}:{int(stat.st_mtime)}"
+    except OSError:
+        mask_id = "missing"
+    parts = [
+        f"job_size={job_size}",
+        f"epsg={epsg_code}",
+        f"bounds={wgs84_bounds}",
+        f"geojson={geojson_fname}",
+        f"step={LAND_STEP_SIZE}",
+        f"mask={mask_id}",
+    ]
+    if geojson_fname is not None:
+        # How finely a footprint's edges are densified changes which blocks it keeps,
+        # so a cache written before densifying existed is never reused. Added only
+        # with a footprint, so caches of unrestricted runs keep their keys.
+        parts.append(f"edge_segment={ZONE_EDGE_SEGMENT_DEG}")
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
+def _read_enumeration_cache(
+    cache_dir: str, key: str
+) -> list[tuple[Projection, PixelBounds]] | None:
+    """Load a cached enumeration, or None if there is not a usable one.
+
+    Never raises: a corrupt or unreadable cache means re-enumerating, which is slow
+    but correct. Failing the cycle instead would be worse.
+
+    Args:
+        cache_dir: where caches live.
+        key: the key from `_enumeration_cache_key`.
+
+    Returns:
+        the cached block list, or None.
+    """
+    path = UPath(cache_dir) / f"enumeration_{key}.json"
+    try:
+        if not path.exists():
+            return None
+        with path.open() as f:
+            raw = json.load(f)
+        tasks = [
+            (Projection.deserialize(entry["projection"]), tuple(entry["bounds"]))
+            for entry in raw
+        ]
+        logger.info("Loaded %d tasks from enumeration cache %s", len(tasks), path)
+        return tasks
+    except Exception:
+        logger.exception("could not read enumeration cache %s; re-enumerating", path)
+        return None
+
+
+def _write_enumeration_cache(
+    cache_dir: str, key: str, tasks: list[tuple[Projection, PixelBounds]]
+) -> None:
+    """Store an enumeration for the next cycle to reuse.
+
+    Never raises: failing to cache costs time, not correctness.
+
+    Args:
+        cache_dir: where caches live.
+        key: the key from `_enumeration_cache_key`.
+        tasks: the enumerated blocks.
+    """
+    path = UPath(cache_dir) / f"enumeration_{key}.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w") as f:
+            json.dump(
+                [
+                    {"projection": projection.serialize(), "bounds": list(bounds)}
+                    for projection, bounds in tasks
+                ],
+                f,
+            )
+        logger.info("Cached %d tasks to %s", len(tasks), path)
+    except Exception:
+        logger.exception("could not write enumeration cache %s", path)
+
+
+def _enumerate_zone(
+    zone_number: int,
+    job_size: int,
+    geojson_shapes: list[shapely.Geometry] | None,
+    wgs84_bounds: tuple[float, float, float, float] | None,
+) -> list[tuple[Projection, PixelBounds]]:
+    """Enumerate one UTM zone's blocks. See `enumerate_blocks`.
+
+    A module-level function so it can run in a worker process.
+
+    Args:
+        zone_number: the UTM zone number (1-60).
+        job_size: the pixel size of each block.
+        geojson_shapes: footprint restriction in WGS84, if any.
+        wgs84_bounds: bounding box restriction, if any.
+
+    Returns:
+        (projection, bounds) per block in the zone.
+    """
+    tasks: list[tuple[Projection, PixelBounds]] = []
+    projection, _, _ = get_zone_grid(zone_number, RESOLUTION, TILE_SIZE)
+    wedge = get_zone_wedge(projection.crs, RESOLUTION)
+    # The zone's WGS84 extent, spanning both hemispheres. Deliberately not
+    # get_wgs84_bounds(projection.crs): the projection is the zone's *northern* CRS,
+    # so that returns 0..84N and would silently drop every southern shape.
+    zone_lon_min = -180 + (zone_number - 1) * 6
+    zone_shp = shapely.box(zone_lon_min, UTM_MIN_LAT, zone_lon_min + 6, UTM_MAX_LAT)
+
+    # Intersect the GeoJSON shapes with the WGS84 extent of the current UTM zone
+    # and project them into the zone's pixel coordinate system (skipping the zone
+    # if no shape intersects it). Reprojecting geometry far outside the zone's
+    # extent fails (or yields meaningless bounds), so we only reproject the
+    # portion of each shape that falls within the zone.
+    zone_geojson_shapes: list[shapely.Geometry] | None = None
+    if geojson_shapes is not None:
+        zone_geojson_shapes = []
+        for shp in geojson_shapes:
+            zone_intersect_shp = shp.intersection(zone_shp)
+            if zone_intersect_shp.is_empty:
+                continue
+            # Densified so every edge stays on its line once reprojected. A long edge,
+            # whether the zone's own side (80S to 84N in one segment) or one of the
+            # footprint's, becomes a straight chord in UTM and cuts off a sliver of
+            # ground, silently dropping the blocks there.
+            zone_intersect_shp = shapely.segmentize(
+                zone_intersect_shp, max_segment_length=ZONE_EDGE_SEGMENT_DEG
+            )
+            zone_geojson_shapes.append(
+                STGeometry(WGS84_PROJECTION, zone_intersect_shp, None)
+                .to_projection(projection)
+                .shp
+            )
+        if len(zone_geojson_shapes) == 0:
+            return tasks
+
+    user_bounds_in_proj: PixelBounds | None = None
+    if wgs84_bounds is not None:
+        # Intersect the user bounds with the zone extent for the same reason as
+        # the GeoJSON shapes above.
+        intersect_shp = shapely.box(*wgs84_bounds).intersection(zone_shp)
+        if intersect_shp.is_empty:
+            return tasks
+        dst_geom = STGeometry(WGS84_PROJECTION, intersect_shp, None).to_projection(
+            projection
+        )
+        user_bounds_in_proj = (
+            int(dst_geom.shp.bounds[0]),
+            int(dst_geom.shp.bounds[1]),
+            int(dst_geom.shp.bounds[2]),
+            int(dst_geom.shp.bounds[3]),
+        )
+
+    for col, row in enumerate_tiles_in_zone(zone_number):
+        if user_bounds_in_proj is not None:
+            if (col + 1) * TILE_SIZE < user_bounds_in_proj[0]:
+                continue
+            if col * TILE_SIZE >= user_bounds_in_proj[2]:
+                continue
+            if (row + 1) * TILE_SIZE < user_bounds_in_proj[1]:
+                continue
+            if row * TILE_SIZE >= user_bounds_in_proj[3]:
+                continue
+
+        bounds = (
+            col * TILE_SIZE,
+            row * TILE_SIZE,
+            (col + 1) * TILE_SIZE,
+            (row + 1) * TILE_SIZE,
+        )
+
+        # Skip tiles that don't intersect any GeoJSON feature.
+        if zone_geojson_shapes is not None:
+            tile_box = shapely.box(*bounds)
+            if not any(shp.intersects(tile_box) for shp in zone_geojson_shapes):
+                continue
+
+        # Skip tiles outside the zone's canonical wedge (they are covered by the
+        # neighboring UTM zone).
+        if not bounds_intersect_wedge(wedge, bounds):
+            continue
+        # Skip tiles with no crops to process (e.g. entirely ocean). The crops are
+        # kept so each block below can take its own from them rather than sampling
+        # the coverage mask a second time: a block's lattice points are a subset of
+        # its tile's, so the answer is identical.
+        tile_crops = list_kept_crops(projection, bounds, PATCH_SIZE, wedge=wedge)
+        if len(tile_crops) == 0:
+            continue
+
+        # Split the tile into job_size blocks. Subdividing the TILE_SIZE grid
+        # (rather than re-gridding the zone) keeps every block on the same
+        # absolute pixel coordinates the store was created with.
+        for sub_x in range(bounds[0], bounds[2], job_size):
+            for sub_y in range(bounds[1], bounds[3], job_size):
+                sub_bounds = (sub_x, sub_y, sub_x + job_size, sub_y + job_size)
+                if zone_geojson_shapes is not None and not any(
+                    shp.intersects(shapely.box(*sub_bounds))
+                    for shp in zone_geojson_shapes
+                ):
+                    continue
+                if not bounds_intersect_wedge(wedge, sub_bounds):
+                    continue
+                if not any(
+                    sub_bounds[0] <= crop[0] < sub_bounds[2]
+                    and sub_bounds[1] <= crop[1] < sub_bounds[3]
+                    for crop in tile_crops
+                ):
+                    continue
+                tasks.append((projection, sub_bounds))
+    return tasks
+
+
+def _zone_reaches(
+    zone_number: int,
+    geojson_shapes: list[shapely.Geometry] | None,
+    wgs84_bounds: tuple[float, float, float, float] | None,
+) -> bool:
+    """Whether a zone's extent meets the area restriction, as `_enumerate_zone` tests.
+
+    Args:
+        zone_number: the UTM zone number (1-60).
+        geojson_shapes: footprint restriction in WGS84, if any.
+        wgs84_bounds: bounding box restriction, if any.
+
+    Returns:
+        False only when the zone can have no blocks.
+    """
+    zone_lon_min = -180 + (zone_number - 1) * 6
+    zone_shp = shapely.box(zone_lon_min, UTM_MIN_LAT, zone_lon_min + 6, UTM_MAX_LAT)
+    if geojson_shapes is not None and not any(
+        shp.intersects(zone_shp) for shp in geojson_shapes
+    ):
+        return False
+    return wgs84_bounds is None or shapely.box(*wgs84_bounds).intersects(zone_shp)
+
+
+def enumerate_blocks(
+    job_size: int = TILE_SIZE,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
-    count: int | None = None,
-) -> list[list[str]]:
-    """Get the prediction jobs (one per tile).
-
-    Tiles whose completion markers already exist are excluded, along with tiles that
-    don't intersect their zone's canonical wedge or contain no crops to process.
+    enumeration_cache_dir: str | None = None,
+    blocks_fname: str | None = None,
+) -> list[tuple[Projection, PixelBounds]]:
+    """Every block the run covers, whether or not it has a marker yet.
 
     Args:
-        inputs: which input variant to use. Different variants produce different
-            embeddings so they must use different out_path/completed_path.
-        timestamp: the reference timestamp (start of the one-year input period). Must
-            have timezone.
-        out_path: the directory to write the embedding GeoTIFFs.
-        completed_path: the directory for per-tile completion markers.
-        checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
-            Different checkpoints produce different embeddings so they must use
-            different out_path/completed_path (same for patch_size, window_size, and
-            overlap_size below).
-        patch_size: the encoder patch size; yields one embedding per patch_size x
-            patch_size pixels.
-        window_size: the size of the crops the model operates on.
-        overlap_size: overlap in pixels between adjacent crops.
-        compile_model: whether to compile the encoder transformer blocks.
-        epsg_code: limit tasks to this UTM zone (EPSG code); default all UTM zones.
-        wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
-        geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
-            file (features must be in WGS84 coordinates).
-        count: limit to this many tasks (randomly sampled).
+        job_size: the pixel size of each block.
+        epsg_code: limit to the zone of this UTM EPSG code.
+        wgs84_bounds: limit to blocks intersecting these WGS84 bounds.
+        geojson_fname: limit to blocks intersecting a feature in this GeoJSON file.
+        blocks_fname: limit to the blocks named in this JSON list of `block_id`s.
+            Exact where a footprint cannot be: neighbouring zones' block grids overlap
+            on the ground, so a footprint that touches a chosen block in one zone also
+            touches the unchosen block covering the same ground in the next.
+        enumeration_cache_dir: directory to cache the result in, or None.
 
     Returns:
-        a list of worker argument lists, one per TILE_SIZE tile.
+        (projection, bounds) per block.
     """
+    cache_key = _enumeration_cache_key(job_size, epsg_code, wgs84_bounds, geojson_fname)
+    cached: list[tuple[Projection, PixelBounds]] | None = None
+    if enumeration_cache_dir is not None:
+        cached = _read_enumeration_cache(enumeration_cache_dir, cache_key)
+
     if epsg_code:
-        utm_zones = [CRS.from_epsg(epsg_code)]
+        zone_numbers = [epsg_code % 100]
     else:
-        utm_zones = [CRS.from_epsg(code) for code in range(32601, 32661)]
-        utm_zones += [CRS.from_epsg(code) for code in range(32701, 32761)]
+        zone_numbers = list(range(1, 61))
 
     geojson_shapes: list[shapely.Geometry] | None = None
     if geojson_fname is not None:
@@ -126,84 +387,189 @@ def get_jobs(
             for feature in feature_collection["features"]
         ]
 
+    # Only zones the area restriction reaches have any work. The rest return at once,
+    # so they are dropped here rather than costing a worker process each.
+    zone_numbers = [
+        zone
+        for zone in zone_numbers
+        if _zone_reaches(zone, geojson_shapes, wgs84_bounds)
+    ]
     tasks: list[tuple[Projection, PixelBounds]] = []
-    for utm_zone in tqdm.tqdm(utm_zones, desc="Enumerating tasks across UTM zones"):
-        projection = Projection(utm_zone, RESOLUTION, -RESOLUTION)
-        wedge = get_zone_wedge(utm_zone, RESOLUTION)
-        zone_shp = shapely.box(*get_wgs84_bounds(utm_zone))
+    if cached is None and len(zone_numbers) < ENUMERATION_POOL_MIN_ZONES:
+        # A few zones run inline: each worker process re-imports the package (torch
+        # included) and loads its own mask, which costs more than it saves here.
+        for zone in zone_numbers:
+            tasks.extend(_enumerate_zone(zone, job_size, geojson_shapes, wgs84_bounds))
+    elif cached is None:
+        # Zones are independent and each costs seconds of mask sampling, so they
+        # run across processes. Spawned, not forked: a supervisor cycle may already
+        # hold gRPC channels, and forking a process holding them can hang. An
+        # executor rather than a Pool, because a Pool whose workers die at startup
+        # replaces them forever and never returns; the executor raises instead.
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=min(
+                len(zone_numbers), os.cpu_count() or 1, ENUMERATION_MAX_PROCESSES
+            ),
+            mp_context=multiprocessing.get_context("spawn"),
+        ) as pool:
+            for zone_tasks in tqdm.tqdm(
+                pool.map(
+                    functools.partial(
+                        _enumerate_zone,
+                        job_size=job_size,
+                        geojson_shapes=geojson_shapes,
+                        wgs84_bounds=wgs84_bounds,
+                    ),
+                    zone_numbers,
+                ),
+                total=len(zone_numbers),
+                desc="Enumerating tasks across UTM zones",
+            ):
+                tasks.extend(zone_tasks)
 
-        # Intersect the GeoJSON shapes with the WGS84 extent of the current UTM zone
-        # and project them into the zone's pixel coordinate system (skipping the zone
-        # if no shape intersects it). Reprojecting geometry far outside the zone's
-        # extent fails (or yields meaningless bounds), so we only reproject the
-        # portion of each shape that falls within the zone.
-        zone_geojson_shapes: list[shapely.Geometry] | None = None
-        if geojson_shapes is not None:
-            zone_geojson_shapes = []
-            for shp in geojson_shapes:
-                zone_intersect_shp = shp.intersection(zone_shp)
-                if zone_intersect_shp.is_empty:
-                    continue
-                zone_geojson_shapes.append(
-                    STGeometry(WGS84_PROJECTION, zone_intersect_shp, None)
-                    .to_projection(projection)
-                    .shp
-                )
-            if len(zone_geojson_shapes) == 0:
-                continue
-
-        user_bounds_in_proj: PixelBounds | None = None
-        if wgs84_bounds is not None:
-            # Intersect the user bounds with the zone extent for the same reason as
-            # the GeoJSON shapes above.
-            intersect_shp = shapely.box(*wgs84_bounds).intersection(zone_shp)
-            if intersect_shp.is_empty:
-                continue
-            dst_geom = STGeometry(WGS84_PROJECTION, intersect_shp, None).to_projection(
-                projection
-            )
-            user_bounds_in_proj = (
-                int(dst_geom.shp.bounds[0]),
-                int(dst_geom.shp.bounds[1]),
-                int(dst_geom.shp.bounds[2]),
-                int(dst_geom.shp.bounds[3]),
-            )
-
-        for col, row in enumerate_tiles_in_zone(utm_zone):
-            if user_bounds_in_proj is not None:
-                if (col + 1) * TILE_SIZE < user_bounds_in_proj[0]:
-                    continue
-                if col * TILE_SIZE >= user_bounds_in_proj[2]:
-                    continue
-                if (row + 1) * TILE_SIZE < user_bounds_in_proj[1]:
-                    continue
-                if row * TILE_SIZE >= user_bounds_in_proj[3]:
-                    continue
-
-            bounds = (
-                col * TILE_SIZE,
-                row * TILE_SIZE,
-                (col + 1) * TILE_SIZE,
-                (row + 1) * TILE_SIZE,
-            )
-
-            # Skip tiles that don't intersect any GeoJSON feature.
-            if zone_geojson_shapes is not None:
-                tile_box = shapely.box(*bounds)
-                if not any(shp.intersects(tile_box) for shp in zone_geojson_shapes):
-                    continue
-
-            # Skip tiles outside the zone's canonical wedge (they are covered by the
-            # neighboring UTM zone).
-            if not bounds_intersect_wedge(wedge, bounds):
-                continue
-            # Skip tiles with no crops to process (e.g. entirely ocean).
-            if len(list_kept_crops(projection, bounds, PATCH_SIZE, wedge=wedge)) == 0:
-                continue
-
-            tasks.append((projection, bounds))
-
+    if cached is not None:
+        tasks = cached
+    elif enumeration_cache_dir is not None:
+        _write_enumeration_cache(enumeration_cache_dir, cache_key, tasks)
     logger.info("Got %d total tasks", len(tasks))
+    if blocks_fname is not None:
+        tasks = _filter_to_blocks(tasks, blocks_fname)
+    return tasks
+
+
+def block_id(projection: Projection, bounds: PixelBounds) -> str:
+    """Name a block the way its completion marker is named, without the extension.
+
+    Args:
+        projection: the block's projection.
+        bounds: the block's pixel bounds.
+
+    Returns:
+        "{crs}_{x}_{y}", unique per block within one job_size.
+    """
+    return f"{projection.crs!s}_{bounds[0]}_{bounds[1]}"
+
+
+def _filter_to_blocks(
+    tasks: list[tuple[Projection, PixelBounds]], blocks_fname: str
+) -> list[tuple[Projection, PixelBounds]]:
+    """Keep only the blocks a list names.
+
+    Args:
+        tasks: the enumerated blocks.
+        blocks_fname: JSON list of `block_id`s.
+
+    Returns:
+        the named blocks, in enumeration order.
+
+    Raises:
+        ValueError: if the list names a block the enumeration does not have. That
+            means it was built for another job_size or coverage mask, and following
+            it would silently shrink the run.
+    """
+    with UPath(blocks_fname).open() as f:
+        wanted = set(json.load(f))
+    kept = [task for task in tasks if block_id(*task) in wanted]
+    if len(kept) != len(wanted):
+        raise ValueError(
+            f"{blocks_fname} names {len(wanted) - len(kept)} block(s) this enumeration "
+            "does not have; it was likely built for another job_size or coverage mask"
+        )
+    logger.info("Kept %d of %d tasks named in %s", len(kept), len(tasks), blocks_fname)
+    return kept
+
+
+def get_jobs(
+    inputs: EmbeddingInputs,
+    timestamp: datetime,
+    store_path: str,
+    completed_path: str,
+    checkpoint_path: str,
+    time_index: int,
+    patch_size: int = 1,
+    latent_patch_size: int | None = None,
+    window_size: int = 16,
+    overlap_size: int = 4,
+    compile_model: bool = True,
+    searchlight: bool = False,
+    epsg_code: int | None = None,
+    wgs84_bounds: tuple[float, float, float, float] | None = None,
+    geojson_fname: str | None = None,
+    blocks_fname: str | None = None,
+    count: int | None = None,
+    job_size: int = TILE_SIZE,
+    enumeration_cache_dir: str | None = None,
+    pca_artifact_path: str | None = None,
+    pca_store_path: str | None = None,
+    pca_completed_path: str | None = None,
+    pca_max_level: int = DEFAULT_PCA_MAX_LEVEL,
+) -> list[list[str]]:
+    """Get the prediction jobs (one per job_size block).
+
+    Each UTM zone number (1-60) is processed once in its northern CRS (EPSG:326NN),
+    spanning both hemispheres. Tiles whose completion markers already exist are
+    excluded, along with tiles that don't intersect their zone's canonical wedge or
+    contain no crops to process.
+
+    Args:
+        inputs: which input variant to use. Different variants produce different
+            embeddings so they must use different stores.
+        timestamp: the reference timestamp (start of the one-year input period). Must
+            have timezone.
+        store_path: the GeoZarr store to write embeddings into.
+        completed_path: the directory for per-tile completion markers.
+        checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
+            Different checkpoints produce different embeddings so they must use
+            different store_path/completed_path (same for patch_size, window_size, and
+            overlap_size below).
+        time_index: the index into the store's time axis for this reference year.
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding, defaulting to patch_size.
+            A pix512 model tokenizes at 2 and still emits one per pixel.
+        window_size: the size of the crops the model operates on.
+        overlap_size: overlap in pixels between adjacent crops.
+        compile_model: whether to compile the encoder transformer blocks.
+        searchlight: run each crop as one seam-free forward instead of tiling it.
+        epsg_code: limit tasks to the zone of this UTM EPSG code (326NN or 327NN both
+            map to zone NN); default all UTM zones.
+        wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
+        geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
+            file (features must be in WGS84 coordinates).
+        blocks_fname: limit tasks to the blocks named in this JSON list of
+            `block_id`s. See `enumerate_blocks`.
+        count: limit to this many tasks (randomly sampled).
+        job_size: the pixel size of each job, a divisor of TILE_SIZE and a multiple
+            of PATCH_SIZE. Defaults to one job per TILE_SIZE tile. Smaller jobs cost
+            more fixed overhead (model load and compile per job) but each finishes
+            far sooner, which matters on preemptible workers: a job that outlives the
+            gaps between preemptions never completes at all.
+        enumeration_cache_dir: directory to cache the enumerated block list in. The
+            enumeration is deterministic given the coverage mask and the area
+            arguments, but it is not cheap: sampling the mask finely enough to catch
+            a barrier island costs minutes across all 60 zones. A supervisor re-runs
+            it every cycle in a fresh process, so without a cache that price is paid
+            forever. Pass None to disable.
+        pca_artifact_path: the fitted global PCA artifact. When set, each job also
+            renders its UTM false-color pyramid (see predict_pipeline).
+        pca_store_path: the pca store to render into.
+        pca_completed_path: directory for the render stage's completion markers.
+        pca_max_level: deepest pyramid level to render.
+
+    Returns:
+        a list of worker argument lists, one per job_size block.
+    """
+    if job_size % PATCH_SIZE != 0:
+        raise ValueError(f"job_size {job_size} must be a multiple of {PATCH_SIZE}")
+    if TILE_SIZE % job_size != 0:
+        raise ValueError(f"job_size {job_size} must divide TILE_SIZE {TILE_SIZE}")
+    tasks = enumerate_blocks(
+        job_size=job_size,
+        epsg_code=epsg_code,
+        wgs84_bounds=wgs84_bounds,
+        geojson_fname=geojson_fname,
+        enumeration_cache_dir=enumeration_cache_dir,
+        blocks_fname=blocks_fname,
+    )
 
     # Remove tasks where the completion marker already exists.
     completed_upath = UPath(completed_path)
@@ -222,6 +588,24 @@ def get_jobs(
         tasks = random.sample(tasks, count)
         logger.info("Randomly sampled %d tasks", len(tasks))
 
+    pca_args: list[str] = []
+    if pca_artifact_path is not None:
+        if pca_store_path is None or pca_completed_path is None:
+            raise ValueError(
+                "pca_store_path and pca_completed_path are required with "
+                "pca_artifact_path"
+            )
+        pca_args = [
+            "--pca_artifact_path",
+            pca_artifact_path,
+            "--pca_store_path",
+            pca_store_path,
+            "--pca_completed_path",
+            pca_completed_path,
+            "--pca_max_level",
+            str(pca_max_level),
+        ]
+
     # Convert tasks to worker jobs (one per tile).
     time_range_json = json.dumps([timestamp.isoformat(), timestamp.isoformat()])
     jobs = []
@@ -235,20 +619,29 @@ def get_jobs(
             json.dumps(list(bounds)),
             "--time_range",
             time_range_json,
-            "--out_path",
-            out_path,
+            "--store_path",
+            store_path,
             "--completed_path",
             completed_path,
             "--checkpoint_path",
             checkpoint_path,
+            "--time_index",
+            str(time_index),
             "--patch_size",
             str(patch_size),
+            *(
+                []
+                if latent_patch_size is None
+                else ["--latent_patch_size", str(latent_patch_size)]
+            ),
             "--window_size",
             str(window_size),
             "--overlap_size",
             str(overlap_size),
             "--compile_model",
             "true" if compile_model else "false",
+            *(["--searchlight", "true"] if searchlight else []),
+            *pca_args,
         ]
         jobs.append(cur_args)
 
@@ -258,60 +651,184 @@ def get_jobs(
 def write_jobs(
     inputs: EmbeddingInputs,
     timestamp: datetime,
-    out_path: str,
+    store_path: str,
     completed_path: str,
     queue_name: str,
     checkpoint_path: str,
     patch_size: int = 1,
+    latent_patch_size: int | None = None,
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
+    searchlight: bool = False,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
+    blocks_fname: str | None = None,
     count: int | None = None,
+    job_size: int = TILE_SIZE,
+    pca_artifact_path: str | None = None,
+    pca_store_path: str | None = None,
+    pca_completed_path: str | None = None,
+    pca_max_level: int = DEFAULT_PCA_MAX_LEVEL,
 ) -> None:
     """Enumerate tiles for one reference timestamp and write jobs to a Beaker queue.
 
+    The store must already be initialized (see init_store); its time axis determines
+    the time index for this timestamp's year.
+
     Args:
         inputs: which input variant to use. Different variants produce different
-            embeddings so they must use different out_path/completed_path.
+            embeddings so they must use different stores.
         timestamp: the reference timestamp (start of the one-year input period). Must
             have timezone.
-        out_path: the directory to write the embedding GeoTIFFs.
+        store_path: the GeoZarr store to write embeddings into.
         completed_path: the directory for per-tile completion markers.
         queue_name: the Beaker queue to write the job entries to.
         checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
             Different checkpoints produce different embeddings so they must use
-            different out_path/completed_path (same for patch_size, window_size, and
+            different store_path/completed_path (same for patch_size, window_size, and
             overlap_size below).
-        patch_size: the encoder patch size; yields one embedding per patch_size x
-            patch_size pixels.
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding, defaulting to patch_size.
+            A pix512 model tokenizes at 2 and still emits one per pixel.
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
-        epsg_code: limit tasks to this UTM zone (EPSG code); default all UTM zones.
+        searchlight: run each crop as one seam-free forward instead of tiling it.
+        epsg_code: limit tasks to the zone of this UTM EPSG code; default all zones.
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
         geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
             file (features must be in WGS84 coordinates).
+        blocks_fname: limit tasks to the blocks named in this JSON list of
+            `block_id`s. See `enumerate_blocks`.
         count: limit to this many tasks (randomly sampled).
+        job_size: the pixel size of each job (see get_jobs). Defaults to one job per
+            TILE_SIZE tile.
+        pca_artifact_path: render each job's UTM false-color pyramid with this
+            fitted artifact (see get_jobs).
+        pca_store_path: the pca store to render into.
+        pca_completed_path: directory for the render stage's completion markers.
+        pca_max_level: deepest pyramid level to render.
     """
+    years = zarr_store.get_store_years(store_path)
+    if timestamp.year not in years:
+        raise ValueError(
+            f"store {store_path} has years {years} but timestamp year "
+            f"{timestamp.year} is not among them (run init_store first)"
+        )
+    time_index = years.index(timestamp.year)
+
     jobs = get_jobs(
         inputs=inputs,
         timestamp=timestamp,
-        out_path=out_path,
+        store_path=store_path,
         completed_path=completed_path,
         checkpoint_path=checkpoint_path,
+        time_index=time_index,
         patch_size=patch_size,
+        latent_patch_size=latent_patch_size,
         window_size=window_size,
         overlap_size=overlap_size,
         compile_model=compile_model,
+        searchlight=searchlight,
         epsg_code=epsg_code,
         wgs84_bounds=wgs84_bounds,
         geojson_fname=geojson_fname,
+        blocks_fname=blocks_fname,
         count=count,
+        job_size=job_size,
+        pca_artifact_path=pca_artifact_path,
+        pca_store_path=pca_store_path,
+        pca_completed_path=pca_completed_path,
+        pca_max_level=pca_max_level,
     )
     # Shuffle so outputs start appearing from random parts of the world (aids
     # debugging).
     random.shuffle(jobs)
-    rslp.common.worker.write_jobs(queue_name, "large_scale_embeddings", "predict", jobs)
+    rslp.common.worker.write_jobs(
+        queue_name, "large_scale_embeddings", "predict", jobs, prefetch=PREFETCH
+    )
+
+
+def init_store(
+    store_path: str,
+    years: list[int],
+    model_url: str,
+    matryoshka_dims: list[int],
+    inputs: EmbeddingInputs = EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+    source_data: list[str] | None = None,
+    zone_numbers: list[int] | None = None,
+    latent_patch_size: int = 1,
+    band_chunk: int = zarr_store.DEFAULT_BAND_CHUNK,
+    build_version: str = zarr_store.DEFAULT_BUILD_VERSION,
+    zstd_level: int = zarr_store.DEFAULT_ZSTD_LEVEL,
+    overwrite: bool = False,
+) -> None:
+    """Initialize the GeoZarr store for a variant before enqueuing prediction jobs.
+
+    Creates the root group and one group per UTM zone with an empty sharded int8
+    embedding array spanning the given years. Run once per store, before write_jobs.
+
+    Args:
+        store_path: the GeoZarr store path or URL to create.
+        years: the annual reference years, defining the time axis.
+        inputs: the input variant the store will hold, used to record which source
+            datasets it was built from.
+        model_url: what produced these embeddings, recorded as geoemb:model. Required,
+            with no default, because the default named the released v1.3 encoder and a
+            store built from a training checkpoint then claimed to be the release. Pass
+            the checkpoint path for a checkpoint, the HuggingFace URL for the release.
+        matryoshka_dims: prefix widths the encoder is trained to emit, recorded so a
+            reader knows which truncations are valid. Required for the same reason:
+            inheriting the release's widths asserts something about a checkpoint nobody
+            checked. DEFAULT_MATRYOSHKA_DIMS is the released model's.
+        source_data: URLs of the source datasets. Derived from `inputs` if unset.
+        zone_numbers: the UTM zone numbers to create; defaults to all of 1-60.
+        latent_patch_size: pixels per output embedding. The store grid is at
+            1/latent_patch_size of the input resolution, so it must match what the run
+            predicts with. Named for the output grid because that is all it sets, and
+            a store built on the wrong one cannot be re-gridded.
+        band_chunk: dimensions per inner chunk along the band axis. Makes Matryoshka
+            prefix reads proportionally cheaper at negligible storage cost.
+        build_version: version of the software that built the store.
+        zstd_level: zstd compression level for the arrays.
+        overwrite: whether to overwrite an existing store.
+    """
+    if zone_numbers is None:
+        zone_numbers = list(range(1, 61))
+    if PATCH_SIZE % latent_patch_size != 0:
+        raise ValueError(
+            f"latent_patch_size must divide {PATCH_SIZE}, got {latent_patch_size}"
+        )
+    # The store grid is at the output (embedding) resolution, which is
+    # 1/latent_patch_size of the input resolution. One output window (= one shard) is
+    # PATCH_SIZE / latent_patch_size pixels, and the tile size scales down the same way.
+    output_resolution = RESOLUTION * latent_patch_size
+    output_tile_size = TILE_SIZE // latent_patch_size
+    output_shard_size = PATCH_SIZE // latent_patch_size
+    zarr_store.init_store(
+        store_path=store_path,
+        zone_numbers=zone_numbers,
+        years=years,
+        model_url=model_url,
+        source_data=(
+            source_data
+            if source_data is not None
+            else zarr_store.source_data_for(inputs.value)
+        ),
+        resolution=output_resolution,
+        tile_size=output_tile_size,
+        dimensions=EMBEDDING_DIM,
+        band_chunk=band_chunk,
+        matryoshka_dims=(
+            matryoshka_dims
+            if matryoshka_dims is not None
+            else zarr_store.DEFAULT_MATRYOSHKA_DIMS
+        ),
+        chunk_size=min(zarr_store.DEFAULT_CHUNK_SIZE, output_shard_size),
+        shard_size=output_shard_size,
+        zstd_level=zstd_level,
+        build_version=build_version,
+        overwrite=overwrite,
+    )

@@ -1,0 +1,81 @@
+# Builds the large_scale_embeddings image from local checkouts instead of from
+# GitHub, which the default Dockerfile does via `git clone`.
+#
+# Use this when a run depends on rslearn, olmoearth_pretrain, or olmoearth_run
+# changes that are not on a branch yet, or on a pinned commit of one of them.
+#
+# As of 2026-10-08 all three are ordinary default-branch commits and none carries a
+# local patch: olmoearth_pretrain #623 and #624 (Searchlight) merged on the 7th. Note
+# the default branches differ: rslearn master, olmoearth_pretrain main, olmoearth_run
+# develop. Two reasons remain to build this way rather than from the default
+# Dockerfile:
+#
+#   - olmoearth_run is not installed by it at all, and the `olmoearth_run` extra that
+#     would is broken (requirements-olmoearth_run.txt does not exist).
+#   - a long run wants the three pinned to exact commits, which `geoemb:build_version`
+#     then records on every store written. The default Dockerfile tracks a branch.
+#
+# Populate these first; `docker_build` is gitignored, so they are yours to place:
+#
+#   docker_build/rslearn              github.com/allenai/rslearn
+#   docker_build/olmoearth_pretrain   github.com/allenai/olmoearth_pretrain
+#   docker_build/olmoearth_run        github.com/allenai/olmoearth_run
+#
+# Then, from the repo root:
+#
+#   docker build -f Dockerfile.vendored -t rslpomp-geozarr-<tag> .
+#   beaker image create --name rslpomp-geozarr-<tag> \
+#       --workspace ai2/earth-systems rslpomp-geozarr-<tag>
+#
+# Whatever is checked out in those three directories is what ships, so confirm
+# each one is on the commit you intend before building. Nothing in the image
+# records which commits went in.
+
+FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime
+
+# g++ is needed at runtime by torch.compile (inductor) to build CPU kernels. The base
+# image ships gcc but not g++, and without it a compiled predict stalls inside the
+# prediction loop with no traceback and no exit.
+#
+# update and install must share one RUN. Split across two, the update layer caches and
+# its package index goes stale, so adding a package later fails with 404s on every
+# fetch while the already-cached ones keep working.
+RUN apt update && apt install -y \
+    libpq-dev ffmpeg libsm6 libxext6 git wget g++
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Dependency manifests are copied before the sources so that editing code does
+# not invalidate the (slow) dependency layer below.
+COPY docker_build/rslearn/pyproject.toml /opt/rslearn/pyproject.toml
+COPY docker_build/olmoearth_pretrain/pyproject.toml /opt/olmoearth_pretrain/pyproject.toml
+COPY requirements.txt /opt/rslearn_projects/requirements.txt
+COPY requirements-extra.txt /opt/rslearn_projects/requirements-extra.txt
+COPY requirements-olmocore.txt /opt/rslearn_projects/requirements-olmocore.txt
+RUN uv pip install --system --break-system-packages \
+      /opt/rslearn[extra] /opt/olmoearth_pretrain \
+      -r /opt/rslearn_projects/requirements.txt \
+      -r /opt/rslearn_projects/requirements-extra.txt \
+      -r /opt/rslearn_projects/requirements-olmocore.txt
+
+COPY ./docker_build/rslearn /opt/rslearn
+COPY ./docker_build/olmoearth_pretrain /opt/olmoearth_pretrain
+COPY ./docker_build/olmoearth_run /opt/olmoearth_run
+COPY . /opt/rslearn_projects/
+
+# Re-run with the real sources present so the editable installs pick up the code
+# that the manifest-only layer above could not see.
+RUN uv pip install --system --break-system-packages \
+      /opt/rslearn[extra] /opt/olmoearth_pretrain \
+      /opt/rslearn_projects[extra] /opt/olmoearth_run[runner]
+
+# NATTEN is the Lighthouse attention kernel on H100 and newer, and is not a declared
+# dependency of olmoearth_pretrain: the wheel is built against an exact torch and CUDA,
+# so it is pinned here to match the torch the install above resolves (2.9.1+cu128) and
+# must move with it. A100 and older use FlexAttention from torch and ignore this.
+# Tiled inference does not use it at all.
+RUN uv pip install --system --break-system-packages \
+      --find-links https://whl.natten.org \
+      natten==0.21.5+torch290cu128
+
+WORKDIR /opt/rslearn_projects

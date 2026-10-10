@@ -3,26 +3,30 @@
 This computes 10 m/pixel, 128-dimensional, int8-quantized OlmoEarth embeddings over
 one tile (a part of a UTM zone) by creating PATCH_SIZE windows, materializing
 Sentinel-2 (and optionally Sentinel-1) mosaics from the OlmoEarth Datasets source,
-running the model, and uploading one GeoTIFF per window to out_path. A per-tile
-marker file is written to completed_path once the tile is done, recording which
-crops were written and which were skipped.
+running the model, and writing each window's embeddings into the GeoZarr store
+(see zarr_store.py). A per-tile marker file is written to completed_path once the
+tile is done, recording which crops were written and which were skipped. Alongside it,
+a provenance file naming the source scenes behind each window's mosaics is written to
+a sibling directory (see get_provenance_fname).
 
-Windows that don't intersect the zone's canonical wedge or that are entirely ocean
-are skipped (see tiling.py). Embedding pixels where all Sentinel-2 mosaics are empty
-are set to the nodata value (-128).
+Windows that don't intersect the zone's canonical wedge or that fall outside the
+coverage mask are skipped (see tiling.py). Embedding pixels where all Sentinel-2
+mosaics are empty are set to the nodata value (-128).
 
 This module is tile-size-agnostic: it accepts any ``bounds`` whose extents are
 multiples of PATCH_SIZE. The fixed 32768x32768 tiling lives only in write_jobs.py.
 
 Note that different input variants (see EmbeddingInputs), checkpoints, and model
 settings (patch_size/window_size/overlap_size) produce different embeddings, so each
-combination must use its own out_path and completed_path.
+combination must use its own store and completed_path.
 """
 
 import json
 import multiprocessing
+import os
 import shutil
 import tempfile
+import time
 from datetime import datetime, timedelta
 from enum import Enum
 
@@ -33,11 +37,23 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
 from rslearn.utils.mp import star_imap_unordered
-from rslearn.utils.raster_array import RasterArray, RasterMetadata
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from shapely import box as shapely_box
 from upath import UPath
 
+from rslp.large_scale_embeddings.model import NODATA_VALUE
+from rslp.large_scale_embeddings.pca import PcaArtifact
+from rslp.large_scale_embeddings.render_pca import (
+    get_pca_marker_fname,
+    pca_time_index,
+    render_window,
+    write_pca_marker,
+)
+from rslp.large_scale_embeddings.tiling import get_zone_wedge, list_kept_crops
+from rslp.large_scale_embeddings.zarr_store import (
+    DEFAULT_PCA_MAX_LEVEL,
+    write_window_region,
+)
 from rslp.log_utils import get_logger
 from rslp.utils.rslearn import (
     ApplyWindowsArgs,
@@ -49,21 +65,25 @@ from rslp.utils.rslearn import (
     run_model_predict,
 )
 
-from .model import NODATA_VALUE
-from .tiling import get_zone_wedge, list_kept_crops
-
 logger = get_logger(__name__)
 
 
 class EmbeddingInputs(Enum):
     """Which input modalities the embeddings are computed from."""
 
-    S2 = "s2"
-    S2_S1 = "s2_s1"
+    # Sentinel-2, Sentinel-1 and Landsat 8/9, through the model's 128-dim student
+    # head. S1 and Landsat are best-effort.
+    S2_S1_LANDSAT_DISTILLED = "s2_s1_landsat_distilled"
 
 
 DATASET_CONFIG_FNAME = "data/large_scale_embeddings/{inputs}.json"
 MODEL_CONFIG_FNAME = "data/large_scale_embeddings/{inputs}.yaml"
+
+# Searchlight runs a whole crop in one forward and gives every pixel its own window,
+# so there are no tile seams. It is an argument to the encoder's forward, reached
+# through rslearn's generic forward_kwargs; jsonargparse builds the settings object
+# from this class_path even though the field is typed dict[str, Any].
+SEARCHLIGHT_CLASS = "olmoearth_pretrain.nn.searchlight.SearchlightSettings"
 
 # Per-window size. The tile size (passed via bounds) must be a multiple of this.
 PATCH_SIZE = 2048
@@ -71,9 +91,35 @@ RESOLUTION = 10
 
 PREDICTION_GROUP = "predict"
 
-SENTINEL2_LAYER = "sentinel2_l2a"
-OUTPUT_LAYER = "output"
+# Provenance is written to a sibling of the marker directory, derived by swapping this
+# prefix, so that adding it does not change the arguments already queued for a run.
+COMPLETED_DIR_PREFIX = "completed"
+PROVENANCE_DIR_PREFIX = "provenance"
 
+# When this process last wrote a marker, or loaded this module. A worker runs every
+# entry in one process on one GPU, so the time between markers is the GPU time the
+# block held, including any wait on its prefetch.
+_LAST_MARKER_TIME = time.monotonic()
+
+SENTINEL2_LAYER = "sentinel2_l2a"
+
+# Written into a scratch dataset once its imagery is materialized, so a later run
+# against the same scratch_path goes straight to inference.
+MATERIALIZED_SENTINEL = "materialized"
+
+# Attached to predict queue entries so a worker can materialize the next block in a
+# subprocess while the GPU runs the current one (see rslp.common.worker).
+PREFETCH = {"args": ["--materialize_only", "true"], "scratch_arg": "--scratch_path"}
+OUTPUT_LAYER = "output"
+# Width of the model's embedding output, and so the band count of the GeoZarr array.
+# The band *names* now come from the dataset config rather than being derived here, but
+# init_store still needs the count up front: the array's shape is fixed at creation,
+# before any dataset is materialized.
+EMBEDDING_DIM = 128
+
+# One job per window, so the useful pool size is the window count: a block of
+# AoiConfig.job_size holds (job_size / PATCH_SIZE)^2 of them. These pools are sized well
+# above that, which costs only the forks.
 MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
     disabled_layers=[],
     # Use initial job for prepare since it involves caching steps that should only be
@@ -106,13 +152,50 @@ MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
 )
 
 
+# The encoder's mutually exclusive ways to say where the weights are.
+CHECKPOINT_ARGS = ("model_id", "model_path", "checkpoint_path")
+
+
+# Names the worker running this job, recorded in the marker. Set on Beaker workers by
+# rslp.common.worker and on GCE workers by the startup script.
+WORKER_NAME_ENV_VAR = "RSLP_WORKER_NAME"
+
+
+def _checkpoint_arg(checkpoint_path: str) -> str:
+    """Which OlmoEarth loader argument `checkpoint_path` should be passed as.
+
+    The encoder accepts exactly one of `model_id`, `model_path` or `checkpoint_path`,
+    and the right one is a property of the weights on disk, not of the caller: a
+    pre-training run writes a `model_and_optim` folder beside its config, while a
+    released bundle is a `config.json` and a `weights.pth`. Choosing here keeps one
+    `--checkpoint_path` option pointing at either, so queue entries already written
+    against the old layout stay valid when a run moves to a bundle.
+
+    Args:
+        checkpoint_path: the directory the run was given.
+
+    Returns:
+        "model_path" for a released bundle, "checkpoint_path" for a training
+        checkpoint.
+    """
+    return (
+        "model_path"
+        if (UPath(checkpoint_path) / "weights.pth").exists()
+        else "checkpoint_path"
+    )
+
+
 def _get_model_extra_args(
     model_config_fname: str,
     checkpoint_path: str,
     patch_size: int,
+    latent_patch_size: int,
     window_size: int,
     overlap_size: int,
     compile_model: bool,
+    batch_size: int | None,
+    searchlight: bool = False,
+    num_workers: int | None = None,
 ) -> list[str]:
     """Get the extra arguments to pass to rslearn model predict.
 
@@ -124,11 +207,23 @@ def _get_model_extra_args(
     Args:
         model_config_fname: the model configuration file.
         checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
-        patch_size: the encoder patch size (yields one embedding per patch_size
-            pixels).
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding. Separate from patch_size
+            because the two differ: a pix512 model tokenizes at 2 and still emits one
+            embedding per pixel, so the output grid follows this one.
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
+        searchlight: run each crop as one seam-free forward instead of tiling it.
+        batch_size: crops per batch, or None to keep the config's value. This is the
+            GPU-memory knob: batching only groups independent crops, so changing it
+            affects footprint and speed, never the embeddings.
+        searchlight: run each crop as one seam-free forward instead of tiling it into
+            training-size windows. Needs batch_size 1 and a crop large enough to be
+            worth it, and on H100 it needs NATTEN in the image.
+        num_workers: data loader processes, or None to keep the config's value. The
+            host-memory knob: each holds about 10 GB at an 8192 job size, so a machine
+            with less memory than a Beaker node needs fewer.
 
     Returns:
         list of arguments to pass to rslearn model predict.
@@ -139,17 +234,41 @@ def _get_model_extra_args(
     # Set the checkpoint path, patch size, and compilation flag on the OlmoEarth
     # encoder (the first and only encoder entry).
     encoder = model_config["model"]["init_args"]["model"]["init_args"]["encoder"]
-    encoder[0]["init_args"]["checkpoint_path"] = checkpoint_path
+    # Exactly one loader argument may be set, so the others are removed. jsonargparse
+    # merges this block onto the config file's init_args rather than replacing them,
+    # which is why the file names none of them: a placeholder there would survive
+    # beside the one chosen here, and setting the others to null does not help because
+    # they reach the parser as the string "None" and fail their own type check.
+    chosen = _checkpoint_arg(checkpoint_path)
+    for name in CHECKPOINT_ARGS:
+        encoder[0]["init_args"].pop(name, None)
+    encoder[0]["init_args"][chosen] = checkpoint_path
     encoder[0]["init_args"]["patch_size"] = patch_size
     encoder[0]["init_args"]["compile_model"] = compile_model
+    if latent_patch_size != patch_size:
+        # rslearn names no such argument; it reaches the encoder's forward through the
+        # wrapper's generic passthrough. Sent only when it differs, so a model that has
+        # never heard of it is called exactly as before.
+        forward_kwargs = dict(encoder[0]["init_args"].get("forward_kwargs", {}))
+        forward_kwargs["latent_patch_size"] = latent_patch_size
+        encoder[0]["init_args"]["forward_kwargs"] = forward_kwargs
+    if searchlight:
+        forward_kwargs = dict(encoder[0]["init_args"].get("forward_kwargs", {}))
+        forward_kwargs["searchlight"] = {
+            "class_path": SEARCHLIGHT_CLASS,
+            # Compiles the projection and MLP math, worth ~1.3x, and follows the same
+            # switch as the encoder's own compilation.
+            "init_args": {"compile": compile_model},
+        }
+        encoder[0]["init_args"]["forward_kwargs"] = forward_kwargs
 
     # Set the merger options on the RslearnWriter callback (the first and only
     # callback entry). The merger operates at the output resolution, which is
-    # 1/patch_size of the input resolution.
+    # 1/latent_patch_size of the input resolution.
     callbacks = model_config["trainer"]["callbacks"]
     merger = callbacks[0]["init_args"]["merger"]
-    merger["init_args"]["downsample_factor"] = patch_size
-    merger["init_args"]["overlap_pixels"] = overlap_size // patch_size
+    merger["init_args"]["downsample_factor"] = latent_patch_size
+    merger["init_args"]["overlap_pixels"] = overlap_size // latent_patch_size
 
     return [
         "--model.init_args.model.init_args.encoder",
@@ -160,6 +279,16 @@ def _get_model_extra_args(
         str(window_size),
         "--data.init_args.predict_config.overlap_pixels",
         str(overlap_size),
+        *(
+            ["--data.init_args.batch_size", str(batch_size)]
+            if batch_size is not None
+            else []
+        ),
+        *(
+            ["--data.init_args.num_workers", str(num_workers)]
+            if num_workers is not None
+            else []
+        ),
     ]
 
 
@@ -176,7 +305,34 @@ def get_output_fname(
     Returns:
         the output filename.
     """
-    return UPath(out_path) / f"{str(projection.crs)}_{bounds[0]}_{bounds[1]}.tif"
+    return UPath(out_path) / f"{projection.crs!s}_{bounds[0]}_{bounds[1]}.tif"
+
+
+def _window_span(
+    dataset: Dataset, time_range: tuple[datetime, datetime]
+) -> tuple[datetime, datetime]:
+    """Widen a reference timestamp to the span the dataset's layers cover.
+
+    Args:
+        dataset: the scratch dataset, whose layer configs carry the durations.
+        time_range: the reference timestamp as (T, T).
+
+    Returns:
+        (T, the latest end any layer will request), or `time_range` unchanged if no
+        layer declares one, which leaves such a config behaving exactly as before.
+    """
+    # rslearn's own window-to-request conversion, rather than reading `duration`
+    # directly: it also applies `time_offset`, so a layer whose window is shifted
+    # forward still ends up inside the span.
+    ends = [
+        requested[1]
+        for layer in dataset.layers.values()
+        if (source := getattr(layer, "data_source", None)) is not None
+        and (requested := source.get_request_time_range(time_range)) is not None
+    ]
+    if not ends:
+        return time_range
+    return (time_range[0], max(max(ends), time_range[1]))
 
 
 def get_marker_fname(
@@ -192,15 +348,79 @@ def get_marker_fname(
     Returns:
         the marker filename.
     """
-    return UPath(completed_path) / f"{str(projection.crs)}_{bounds[0]}_{bounds[1]}.json"
+    return UPath(completed_path) / f"{projection.crs!s}_{bounds[0]}_{bounds[1]}.json"
+
+
+def get_provenance_fname(marker_fname: UPath) -> UPath:
+    """Get the per-tile provenance filename for a tile's marker filename.
+
+    This lives in a sibling of the marker directory rather than inside it, so that the
+    supervisor's per-cycle listing of the markers does not have to walk it. The
+    basename matches the marker's, so the two join by name.
+
+    Args:
+        marker_fname: the tile's completion marker filename.
+
+    Returns:
+        the provenance filename.
+    """
+    completed_upath = marker_fname.parent
+    name = completed_upath.name
+    if name.startswith(COMPLETED_DIR_PREFIX):
+        name = PROVENANCE_DIR_PREFIX + name[len(COMPLETED_DIR_PREFIX) :]
+    else:
+        name = f"{name}_{PROVENANCE_DIR_PREFIX}"
+    return completed_upath.parent / name / marker_fname.name
+
+
+def _collect_provenance(windows: list[Window]) -> dict[str, dict]:
+    """Record the source scenes that fed each window's mosaics.
+
+    The items come from dataset prepare, and name the exact scenes, with their
+    capture times, that were composited into each monthly mosaic.
+
+    Args:
+        windows: the windows of this tile, after materialize.
+
+    Returns:
+        a dict from window name to layer name to the per-mosaic item groups.
+    """
+    provenance: dict[str, dict] = {}
+    for window in windows:
+        layers: dict[str, list[dict]] = {}
+        for layer_name, layer_data in window.load_layer_datas().items():
+            if layer_name == OUTPUT_LAYER:
+                continue
+            group_time_ranges = layer_data.group_time_ranges or [None] * len(
+                layer_data.serialized_item_groups
+            )
+            layers[layer_name] = [
+                {
+                    "time_range": (
+                        [
+                            group_time_range[0].isoformat(),
+                            group_time_range[1].isoformat(),
+                        ]
+                        if group_time_range is not None
+                        else None
+                    ),
+                    "items": items,
+                }
+                for items, group_time_range in zip(
+                    layer_data.serialized_item_groups, group_time_ranges, strict=True
+                )
+            ]
+        provenance[window.name] = layers
+    return provenance
 
 
 def _crop_crosses_bad_longitude(projection: Projection, bounds: PixelBounds) -> bool:
-    """Check whether a crop is too close to or crossing 0/180 longitude.
+    """Check whether a crop touches or crosses the antimeridian.
 
-    Mosaics for such crops are unreliable (items on the other side of the
-    antimeridian may be matched), so we skip them like the other scaled inference
-    pipelines do.
+    Mosaics for such crops are unreliable (items on the other side may be matched),
+    so we skip them like the other scaled inference pipelines do. Only 180 longitude
+    is a seam in WGS84: a crossing polygon's bounds widen to span most of the globe,
+    which is what the checks below detect. Crops at the prime meridian are kept.
 
     Args:
         projection: the UTM projection.
@@ -214,45 +434,42 @@ def _crop_crosses_bad_longitude(projection: Projection, bounds: PixelBounds) -> 
         WGS84_PROJECTION
     )
     wgs84_bounds = wgs84_geom.shp.bounds
-    if wgs84_bounds[0] <= -180 + epsilon or wgs84_bounds[2] >= 180 - epsilon:
-        return True
-    if wgs84_bounds[0] < -90 and wgs84_bounds[2] > 90:
-        return True
-    return False
+    touches_antimeridian = (
+        wgs84_bounds[0] <= -180 + epsilon or wgs84_bounds[2] >= 180 - epsilon
+    )
+    spans_the_seam = wgs84_bounds[0] < -90 and wgs84_bounds[2] > 90
+    return touches_antimeridian or spans_the_seam
 
 
-def _upload_window_output(
-    dataset: Dataset,
-    window: Window,
-    projection: Projection,
-    out_fname: UPath,
-    patch_size: int,
-) -> None:
-    """Upload one window's embedding raster to the output path.
+def _read_window_embeddings(
+    dataset: Dataset, window: Window, latent_patch_size: int
+) -> np.ndarray:
+    """Read the window's int8 embedding raster and mask invalid pixels to nodata.
 
-    Reads the int8 embedding raster from the scratch dataset, sets pixels where all
-    Sentinel-2 mosaics are empty to NODATA_VALUE, and writes a tiled (uncompressed)
-    GeoTIFF to the output path.
+    Reads the merged embedding output from the scratch dataset and sets pixels where
+    all Sentinel-2 mosaics are empty to NODATA_VALUE.
 
     Args:
-        dataset: the scratch dataset (used to look up band names from the config).
-        window: the window to upload.
-        projection: the UTM projection (must match the window projection).
-        out_fname: the output filename.
-        patch_size: the encoder patch size. The embedding raster is at 1/patch_size
+        dataset: the scratch dataset, used to look up band names from its config rather
+            than hardcoding them here.
+        window: the window to read.
+        latent_patch_size: pixels per output embedding. The raster is at 1/latent_patch_size
             of the window resolution.
+
+    Returns:
+        the int8 embedding array of shape (band, height, width).
     """
-    # The embedding raster is at 1/patch_size of the window resolution.
+    # The embedding raster is at 1/latent_patch_size of the window resolution.
     out_projection = Projection(
-        projection.crs,
-        projection.x_resolution * patch_size,
-        projection.y_resolution * patch_size,
+        window.projection.crs,
+        window.projection.x_resolution * latent_patch_size,
+        window.projection.y_resolution * latent_patch_size,
     )
     out_bounds = (
-        window.bounds[0] // patch_size,
-        window.bounds[1] // patch_size,
-        window.bounds[2] // patch_size,
-        window.bounds[3] // patch_size,
+        window.bounds[0] // latent_patch_size,
+        window.bounds[1] // latent_patch_size,
+        window.bounds[2] // latent_patch_size,
+        window.bounds[3] // latent_patch_size,
     )
     raster = window.data.read_raster(
         OUTPUT_LAYER,
@@ -285,48 +502,43 @@ def _upload_window_output(
         valid |= (s2_array != 0).any(axis=0)
     # Downsample the validity mask to the output resolution: an output pixel is
     # valid if any input pixel in its patch is valid.
-    if patch_size > 1:
+    if latent_patch_size > 1:
         valid = valid.reshape(
-            valid.shape[0] // patch_size,
-            patch_size,
-            valid.shape[1] // patch_size,
-            patch_size,
+            valid.shape[0] // latent_patch_size,
+            latent_patch_size,
+            valid.shape[1] // latent_patch_size,
+            latent_patch_size,
         ).any(axis=(1, 3))
     embeddings[:, ~valid] = NODATA_VALUE
-
-    raster_format = GeotiffRasterFormat(
-        always_enable_tiling=True,
-        block_size=512,
-        geotiff_options={"compress": "none"},
-    )
-    raster_format.encode_raster(
-        out_fname.parent,
-        out_projection,
-        out_bounds,
-        RasterArray(
-            chw_array=embeddings,
-            metadata=RasterMetadata(nodata_value=NODATA_VALUE),
-        ),
-        fname=out_fname.name,
-    )
+    return embeddings
 
 
-def _upload_window_by_name(
+def _write_window_by_name(
     ds_path: UPath,
     window_name: str,
-    out_path: str,
-    patch_size: int,
-) -> None:
-    """Load one window from the scratch dataset and upload its embedding raster.
+    store_path: str,
+    time_index: int,
+    latent_patch_size: int,
+    pca: dict | None = None,
+) -> tuple[list[int], bool]:
+    """Load one window from the scratch dataset and write its embeddings to the store.
 
-    This is the multiprocessing worker for the upload step; the window is reloaded by
-    name so that only picklable arguments cross the process boundary.
+    This is the multiprocessing worker for the write step; the window is reloaded by
+    name so that only picklable arguments cross the process boundary. The window must
+    be in its zone's northern CRS (EPSG:326NN) so its bounds match the store grid.
 
     Args:
         ds_path: the scratch dataset path.
-        window_name: the name of the window to upload.
-        out_path: the output directory.
-        patch_size: the encoder patch size.
+        window_name: the name of the window to write.
+        store_path: the GeoZarr store path.
+        time_index: the index into the store's time axis for this reference year.
+        latent_patch_size: pixels per output embedding.
+        pca: if set, also render the window's false-color pyramid from the embeddings
+            already in memory, rather than reading them back later. Keys are
+            artifact_path, store_path, time_index (into the pca store) and max_level.
+
+    Returns:
+        the window's crop offset, and whether any PCA pixels were written.
     """
     dataset = Dataset(ds_path)
     windows = dataset.load_windows(groups=[PREDICTION_GROUP], names=[window_name])
@@ -335,8 +547,30 @@ def _upload_window_by_name(
             f"expected one window named {window_name} but got {len(windows)}"
         )
     window = windows[0]
-    out_fname = get_output_fname(out_path, window.projection, window.bounds)
-    _upload_window_output(dataset, window, window.projection, out_fname, patch_size)
+    embeddings = _read_window_embeddings(dataset, window, latent_patch_size)
+    zone_number = window.projection.crs.to_epsg() % 100
+    write_window_region(
+        store_path=store_path,
+        zone_number=zone_number,
+        window_bounds=window.bounds,
+        time_index=time_index,
+        embeddings=embeddings,
+        patch_size=latent_patch_size,
+    )
+    crop_offset = [window.bounds[0], window.bounds[1]]
+    if pca is None:
+        return crop_offset, False
+    rendered = render_window(
+        embeddings=embeddings,
+        artifact=PcaArtifact.load(pca["artifact_path"]),
+        pca_store_path=pca["store_path"],
+        zone_number=zone_number,
+        crop_offset=(window.bounds[0], window.bounds[1]),
+        dest_time_index=pca["time_index"],
+        max_level=pca["max_level"],
+        patch_size=latent_patch_size,
+    )
+    return crop_offset, rendered
 
 
 def predict_pipeline(
@@ -344,36 +578,51 @@ def predict_pipeline(
     projection_json: str,
     bounds: PixelBounds,
     time_range: tuple[datetime, datetime],
-    out_path: str,
+    store_path: str,
     completed_path: str,
     checkpoint_path: str,
+    time_index: int,
     patch_size: int = 1,
+    latent_patch_size: int | None = None,
     window_size: int = 16,
     overlap_size: int = 4,
     compile_model: bool = True,
+    searchlight: bool = False,
+    batch_size: int | None = None,
+    num_workers: int | None = None,
     scratch_path: str | None = None,
     upload_workers: int = 16,
+    materialize_only: bool = False,
+    pca_artifact_path: str | None = None,
+    pca_store_path: str | None = None,
+    pca_completed_path: str | None = None,
+    pca_max_level: int = DEFAULT_PCA_MAX_LEVEL,
 ) -> None:
     """Compute quantized OlmoEarth embeddings over one tile.
 
     Args:
         inputs: which input variant to use. Different variants produce different
-            embeddings so they must use different out_path/completed_path.
-        projection_json: JSON-encoded projection, normally a UTM zone with 10 m/pixel
-            resolution.
+            embeddings so they must use different stores.
+        projection_json: JSON-encoded projection, normally the zone's northern UTM CRS
+            (EPSG:326NN) with 10 m/pixel resolution.
         bounds: pixel coordinates within the projection on which to compute outputs.
             Each value must be a multiple of PATCH_SIZE.
         time_range: the reference timestamp as (T, T). The layer time_offset/duration
             derive the twelve monthly mosaics over the following year from this.
-        out_path: directory to write one embedding GeoTIFF per PATCH_SIZE crop.
+        store_path: the GeoZarr store to write embeddings into (must be initialized
+            by init_store first).
         completed_path: directory to write per-tile completion markers.
         checkpoint_path: the OlmoEarth checkpoint to compute embeddings with, e.g.
-            /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000.
+            /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_ndvi_w0p1_tanchor_newsamp_psuniform/step667200.
             Different checkpoints produce different embeddings so they must use
-            different out_path/completed_path (same for patch_size, window_size, and
+            different store and completed_path (same for patch_size, window_size, and
             overlap_size below).
-        patch_size: the encoder patch size; yields one 128-dimensional embedding per
-            patch_size x patch_size pixels (so the output rasters are at 1/patch_size
+        time_index: the index into the store's time axis for this reference year.
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding, defaulting to patch_size. A
+            pix512 model tokenizes at 2 and still emits one embedding per pixel, so
+            the two differ and the output grid follows this one (rasters at
+            1/latent_patch_size
             of the window resolution).
         window_size: the size of the crops the model operates on (much bigger than 16
             fails with the 12 monthly inputs at patch_size=1 due to GPU memory
@@ -381,23 +630,69 @@ def predict_pipeline(
         overlap_size: overlap in pixels between adjacent crops, to mitigate embedding
             seams at crop boundaries.
         compile_model: whether to compile the encoder transformer blocks.
+        searchlight: run each crop as one seam-free forward instead of tiling it.
+        batch_size: crops per batch, or None to keep the config's value. Lower it for
+            a tile whose input stack will not fit in GPU memory.
+        num_workers: data loader processes, or None to keep the config's value. Lower
+            it on a machine with less host memory than a Beaker node.
         scratch_path: optional directory to store the scratch rslearn dataset in
             directly, and keep it afterward (useful for debugging). By default, a
             temporary directory is used and deleted when the tile is done.
-        upload_workers: number of worker processes for uploading the per-crop
-            embedding GeoTIFFs.
+        upload_workers: number of worker processes for writing the per-crop
+            embeddings.
+            (for debugging small runs).
+        materialize_only: only materialize imagery into scratch_path and return. A
+            later call with the same scratch_path skips straight to inference.
+        pca_artifact_path: the fitted global PCA artifact. When set, together with
+            pca_store_path and pca_completed_path, each window's UTM false-color
+            pyramid is rendered from the embeddings in memory and the render stage's
+            marker is written, so that stage has nothing left to do for this tile.
+        pca_store_path: the pca store to render into (see init_pca_store).
+        pca_completed_path: directory for the render stage's completion markers.
+        pca_max_level: deepest pyramid level to render.
     """
-    if PATCH_SIZE % patch_size != 0:
-        raise ValueError(f"patch_size must divide {PATCH_SIZE}, got {patch_size}")
+    if materialize_only and scratch_path is None:
+        raise ValueError("materialize_only requires scratch_path")
+    pca_paths = (pca_artifact_path, pca_store_path, pca_completed_path)
+    if any(p is not None for p in pca_paths) and None in pca_paths:
+        raise ValueError(
+            "pca_artifact_path, pca_store_path and pca_completed_path must be set "
+            "together"
+        )
+    pca = (
+        None
+        if pca_artifact_path is None
+        else {
+            "artifact_path": pca_artifact_path,
+            "store_path": pca_store_path,
+            "completed_path": pca_completed_path,
+            "max_level": pca_max_level,
+        }
+    )
+    # Defaults to the token patch size, which is what every model before the pix512
+    # ones did: one embedding per token.
+    if latent_patch_size is None:
+        latent_patch_size = patch_size
     if window_size % patch_size != 0:
         raise ValueError(
             f"window_size ({window_size}) must be a multiple of patch_size "
             f"({patch_size})"
         )
-    if overlap_size % patch_size != 0:
+    # The remaining divisibility is of the output grid, not the token grid: the crop
+    # offsets, the merger and the store all count in output pixels.
+    if PATCH_SIZE % latent_patch_size != 0:
         raise ValueError(
-            f"overlap_size ({overlap_size}) must be a multiple of patch_size "
-            f"({patch_size})"
+            f"latent_patch_size must divide {PATCH_SIZE}, got {latent_patch_size}"
+        )
+    if window_size % latent_patch_size != 0:
+        raise ValueError(
+            f"window_size ({window_size}) must be a multiple of latent_patch_size "
+            f"({latent_patch_size})"
+        )
+    if overlap_size % latent_patch_size != 0:
+        raise ValueError(
+            f"overlap_size ({overlap_size}) must be a multiple of latent_patch_size "
+            f"({latent_patch_size})"
         )
 
     projection = Projection.deserialize(json.loads(projection_json))
@@ -414,15 +709,22 @@ def predict_pipeline(
                 projection=projection,
                 bounds=bounds,
                 time_range=time_range,
-                out_path=out_path,
+                store_path=store_path,
                 marker_fname=marker_fname,
                 ds_path=UPath(tmp_dir) / "dataset",
                 checkpoint_path=checkpoint_path,
+                time_index=time_index,
                 patch_size=patch_size,
+                latent_patch_size=latent_patch_size,
                 window_size=window_size,
                 overlap_size=overlap_size,
                 compile_model=compile_model,
+                searchlight=searchlight,
+                batch_size=batch_size,
+                num_workers=num_workers,
                 upload_workers=upload_workers,
+                materialize_only=materialize_only,
+                pca=pca,
             )
     else:
         _process_tile(
@@ -430,15 +732,22 @@ def predict_pipeline(
             projection=projection,
             bounds=bounds,
             time_range=time_range,
-            out_path=out_path,
+            store_path=store_path,
             marker_fname=marker_fname,
             ds_path=UPath(scratch_path),
             checkpoint_path=checkpoint_path,
+            time_index=time_index,
             patch_size=patch_size,
+            latent_patch_size=latent_patch_size,
             window_size=window_size,
             overlap_size=overlap_size,
             compile_model=compile_model,
+            searchlight=searchlight,
+            batch_size=batch_size,
+            num_workers=num_workers,
             upload_workers=upload_workers,
+            materialize_only=materialize_only,
+            pca=pca,
         )
 
 
@@ -447,15 +756,22 @@ def _process_tile(
     projection: Projection,
     bounds: PixelBounds,
     time_range: tuple[datetime, datetime],
-    out_path: str,
+    store_path: str,
     marker_fname: UPath,
     ds_path: UPath,
     checkpoint_path: str,
+    time_index: int,
     patch_size: int,
+    latent_patch_size: int,
     window_size: int,
     overlap_size: int,
     compile_model: bool,
+    searchlight: bool,
+    batch_size: int | None,
+    num_workers: int | None,
     upload_workers: int,
+    materialize_only: bool,
+    pca: dict | None,
 ) -> None:
     """Process one tile using the given scratch dataset path.
 
@@ -466,35 +782,62 @@ def _process_tile(
         projection: the projection of the tile.
         bounds: the pixel bounds of the tile.
         time_range: the reference timestamp as (T, T).
-        out_path: directory to write one embedding GeoTIFF per PATCH_SIZE crop.
+        store_path: the GeoZarr store to write embeddings into.
         marker_fname: the per-tile completion marker filename to write.
         ds_path: where to create the temporary rslearn dataset.
         checkpoint_path: the OlmoEarth checkpoint to compute embeddings with.
-        patch_size: the encoder patch size.
+        time_index: the index into the store's time axis for this reference year.
+        patch_size: the encoder's token patch size.
+        latent_patch_size: pixels per output embedding.
         window_size: the size of the crops the model operates on.
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
-        upload_workers: number of worker processes for uploading the per-crop
-            embedding GeoTIFFs.
+        searchlight: run each crop as one seam-free forward instead of tiling it.
+        batch_size: crops per batch, or None to keep the config's value. Lower it
+            for a tile whose full monthly input stack will not fit in GPU memory;
+            batching groups independent crops, so this changes footprint and
+            speed, never the embeddings.
+        num_workers: data loader processes, or None to keep the config's value.
+        upload_workers: number of worker processes for writing the per-crop
+            embeddings.
+        materialize_only: stop after materializing, leaving the dataset for a
+            later call to run inference on.
+        pca: artifact_path, store_path, completed_path and max_level for rendering
+            the UTM false-color pyramid alongside the embeddings, or None to skip it.
     """
-    # Initialize an rslearn dataset in scratch from the predict dataset config.
+    global _LAST_MARKER_TIME
+    # Initialize an rslearn dataset in scratch from the predict dataset config, unless
+    # an earlier materialize_only call already filled it.
     dataset_config_fname = DATASET_CONFIG_FNAME.format(inputs=inputs.value)
     model_config_fname = MODEL_CONFIG_FNAME.format(inputs=inputs.value)
-    ds_path.mkdir(parents=True)
-    shutil.copyfile(dataset_config_fname, ds_path / "config.json")
+    materialized = (ds_path / MATERIALIZED_SENTINEL).exists()
+    if not materialized:
+        ds_path.mkdir(parents=True)
+        shutil.copyfile(dataset_config_fname, ds_path / "config.json")
 
     # Determine which PATCH_SIZE crops to process (see tiling.py), and additionally
-    # skip crops too close to 0/180 longitude.
+    # skip crops touching the antimeridian.
     wedge = get_zone_wedge(projection.crs, projection.x_resolution)
     kept_crops = list_kept_crops(projection, bounds, PATCH_SIZE, wedge=wedge)
 
     dataset = Dataset(ds_path)
+    # The caller passes the window time range as a reference timestamp (T, T): each
+    # layer derives its own request range from time_offset/duration, and
+    # get_request_time_range recomputes the end as start+duration, so the window's own
+    # end never reaches a data source.
+    #
+    # The model does read it. OlmoEarthPeriodTimestamps builds its period grid
+    # backwards from the end of the window's range, and a zero span yields zero
+    # periods and a hard failure on every tile. So give the window the span its layers
+    # already cover. Materialization is unchanged, by the same recompute that made the
+    # end irrelevant in the first place.
+    window_time_range = _window_span(dataset, time_range)
     windows: list[Window] = []
     skipped_longitude: list[list[int]] = []
     for crop_bounds in kept_crops:
         if _crop_crosses_bad_longitude(projection, crop_bounds):
             logger.debug(
-                "skipping crop at %s because it is too close to 0/180 longitude",
+                "skipping crop at %s because it touches the antimeridian",
                 crop_bounds,
             )
             skipped_longitude.append([crop_bounds[0], crop_bounds[1]])
@@ -505,22 +848,30 @@ def _process_tile(
             name=f"{crop_bounds[0] // PATCH_SIZE}_{crop_bounds[1] // PATCH_SIZE}",
             projection=projection,
             bounds=crop_bounds,
-            time_range=time_range,
+            time_range=window_time_range,
             data_factory=dataset.window_data_storage_factory,
         )
-        window.save()
+        if not materialized:
+            window.save()
         windows.append(window)
 
     written: list[list[int]] = []
     skipped_no_data: list[list[int]] = []
+    pca_rendered: list[list[int]] = []
+    pca_empty: list[list[int]] = []
 
-    if len(windows) > 0:
+    if len(windows) > 0 and not materialized:
         # Materialize imagery for the windows.
         logger.info("materialize dataset")
         materialize_dataset(
             ds_path, materialize_pipeline_args=MATERIALIZE_PIPELINE_ARGS
         )
+    if materialize_only:
+        (ds_path / MATERIALIZED_SENTINEL).touch()
+        logger.info("materialized %d windows into %s", len(windows), ds_path)
+        return
 
+    if len(windows) > 0:
         # Run the model only if at least one window has materialized imagery.
         if not any(window.is_layer_completed(SENTINEL2_LAYER) for window in windows):
             logger.info("skipping prediction since no windows seem to have data")
@@ -532,16 +883,33 @@ def _process_tile(
                     model_config_fname=model_config_fname,
                     checkpoint_path=checkpoint_path,
                     patch_size=patch_size,
+                    latent_patch_size=latent_patch_size,
                     window_size=window_size,
                     overlap_size=overlap_size,
                     compile_model=compile_model,
+                    searchlight=searchlight,
+                    batch_size=batch_size,
+                    num_workers=num_workers,
                 ),
             )
 
-        # Upload each window's embedding raster. The uploads are handled by a pool
-        # of worker processes since converting and uploading the rasters is slow. We
-        # use the forkserver context because the CUDA context initialized by
+        # Write each window's embeddings to the store. The writes are handled by a
+        # pool of worker processes since converting and writing the rasters is slow.
+        # We use the forkserver context because the CUDA context initialized by
         # run_model_predict above cannot be safely forked.
+        window_pca = None
+        if pca is not None:
+            window_pca = {
+                "artifact_path": pca["artifact_path"],
+                "store_path": pca["store_path"],
+                "time_index": pca_time_index(
+                    store_path,
+                    projection.crs.to_epsg() % 100,
+                    time_index,
+                    pca["store_path"],
+                ),
+                "max_level": pca["max_level"],
+            }
         upload_kwargs: list[dict] = []
         for window in windows:
             crop_offset = [window.bounds[0], window.bounds[1]]
@@ -551,21 +919,26 @@ def _process_tile(
                 skipped_no_data.append(crop_offset)
                 continue
             upload_kwargs.append(
-                dict(
-                    ds_path=ds_path,
-                    window_name=window.name,
-                    out_path=out_path,
-                    patch_size=patch_size,
-                )
+                {
+                    "ds_path": ds_path,
+                    "window_name": window.name,
+                    "store_path": store_path,
+                    "time_index": time_index,
+                    "latent_patch_size": latent_patch_size,
+                    "pca": window_pca,
+                }
             )
             written.append(crop_offset)
         if len(upload_kwargs) > 0:
             pool = multiprocessing.get_context("forkserver").Pool(upload_workers)
             try:
-                for _ in star_imap_unordered(
-                    pool, _upload_window_by_name, upload_kwargs
+                for crop_offset, rendered in star_imap_unordered(
+                    pool, _write_window_by_name, upload_kwargs
                 ):
-                    pass
+                    if rendered:
+                        pca_rendered.append(crop_offset)
+                    else:
+                        pca_empty.append(crop_offset)
             finally:
                 pool.close()
                 pool.join()
@@ -577,11 +950,30 @@ def _process_tile(
     else:
         logger.info("no crops to process for this tile")
 
+    # Record the source scenes behind this tile's mosaics. Written before the marker so
+    # that a failure here leaves the tile unmarked, and so retried, rather than leaving
+    # a finished tile with no provenance.
+    provenance_fname = get_provenance_fname(marker_fname)
+    provenance_fname.parent.mkdir(parents=True, exist_ok=True)
+    with provenance_fname.open("w") as f:
+        json.dump(
+            {
+                "projection": projection.serialize(),
+                "bounds": list(bounds),
+                "time_range": [time_range[0].isoformat(), time_range[1].isoformat()],
+                "time_index": time_index,
+                "windows": _collect_provenance(windows),
+            },
+            f,
+        )
+    logger.info("wrote provenance file %s", provenance_fname)
+
     # Write the per-tile completion marker.
     marker = {
         "projection": projection.serialize(),
         "bounds": list(bounds),
         "time_range": [time_range[0].isoformat(), time_range[1].isoformat()],
+        "time_index": time_index,
         "written": written,
         "skipped_no_data": skipped_no_data,
         "skipped_longitude": skipped_longitude,
@@ -589,8 +981,27 @@ def _process_tile(
         * (bounds[3] - bounds[1])
         // (PATCH_SIZE * PATCH_SIZE)
         - len(kept_crops),
+        "gpu_seconds": round(time.monotonic() - _LAST_MARKER_TIME, 1),
+        # Markers written before these two were added came from window 480 runs.
+        "window_size": window_size,
+        "worker": os.environ.get(WORKER_NAME_ENV_VAR),
     }
     marker_fname.parent.mkdir(parents=True, exist_ok=True)
     with marker_fname.open("w") as f:
         json.dump(marker, f)
+    _LAST_MARKER_TIME = time.monotonic()
     logger.info("wrote marker file %s", marker_fname)
+
+    # After the predict marker, which the render marker names as its source. A crash
+    # between the two leaves the render stage to redo this tile, which is harmless.
+    if pca is not None:
+        write_pca_marker(
+            marker_fname=get_pca_marker_fname(pca["completed_path"], marker_fname),
+            source_fname=marker_fname,
+            pca_store_path=pca["store_path"],
+            artifact_path=pca["artifact_path"],
+            time_index=time_index,
+            max_level=pca["max_level"],
+            rendered=sorted(pca_rendered),
+            empty=sorted(pca_empty),
+        )
