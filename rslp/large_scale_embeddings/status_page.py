@@ -77,6 +77,13 @@ class TruncatedListingError(RuntimeError):
     """A marker listing came back shorter than one already seen."""
 
 
+# Markers that may vanish between builds before a listing counts as truncated. Markers
+# are deleted on purpose to recompute a few blocks; a cut-short listing loses far more.
+# Up to this many, or this share of those already read if larger, and never half.
+MAX_DELETED_MARKERS = 5
+MAX_DELETED_MARKER_FRACTION = 0.001
+
+
 def year_colors(years: list[int]) -> dict[int, str]:
     """Pick a spectrum color per year, oldest red and newest violet.
 
@@ -116,9 +123,9 @@ def read_markers(
         None for a marker written before markers recorded it.
 
     Raises:
-        TruncatedListingError: if a marker read before is missing from the listing.
-            Markers are never deleted during a run, so this means the listing was
-            cut short, and publishing it would show progress going backwards.
+        TruncatedListingError: if more markers read before are missing from the
+            listing than a deliberate recompute would delete. That means the listing
+            was cut short, and publishing it would show progress going backwards.
     """
     cached: dict[str, tuple[float | None, int, bool]] = {}
     if cache_path.exists():
@@ -130,11 +137,22 @@ def read_markers(
 
     completed = UPath(completed_path)
     names = {p.name for p in completed.iterdir()} if completed.exists() else set()
-    lost = len(cached.keys() - names)
-    if lost:
-        raise TruncatedListingError(
-            f"{lost} marker(s) read earlier are missing from {completed_path}"
+    missing = cached.keys() - names
+    if missing:
+        allowed = max(MAX_DELETED_MARKERS, MAX_DELETED_MARKER_FRACTION * len(cached))
+        if len(missing) > allowed or 2 * len(missing) >= len(cached):
+            raise TruncatedListingError(
+                f"{len(missing)} marker(s) read earlier are missing from {completed_path}"
+            )
+        # Deleted to be recomputed: forget them, and they are read again once rewritten.
+        logger.warning(
+            "%d marker(s) deleted from %s since the last build; dropping them",
+            len(missing),
+            completed_path,
         )
+        for name in missing:
+            del cached[name]
+        cache_path.write_text(json.dumps(cached))
 
     def read_one(name: str) -> tuple[str, tuple[float | None, int, bool]]:
         marker = json.loads((completed / name).read_text())

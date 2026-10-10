@@ -59,6 +59,34 @@ def test_read_markers_refuses_a_shrunken_listing(tmp_path: pathlib.Path) -> None
         status_page.read_markers(str(completed), cache)
 
 
+def test_read_markers_forgets_a_few_deleted_markers(tmp_path: pathlib.Path) -> None:
+    """A handful deleted to be recomputed is dropped, not taken for a truncation.
+
+    Deleting five markers out of 23,000 to recompute their blocks stopped the page
+    rebuilding for good, since the cache still named them.
+    """
+    completed = tmp_path / "completed_2025"
+    cache = UPath(tmp_path / "cache.json")
+    blocks = [(BLOCKS[0][0], (2048 * i, 0, 2048 * (i + 1), 2048)) for i in range(12)]
+    for block in blocks:
+        _write_marker(completed, block, 60.0, 16)
+    assert len(status_page.read_markers(str(completed), cache)) == 12
+
+    get_marker_fname(str(completed), *blocks[3]).unlink()
+    assert len(status_page.read_markers(str(completed), cache)) == 11
+    # Rewritten by the recompute, it is read again.
+    _write_marker(completed, blocks[3], 90.0, 16)
+    assert status_page.read_markers(str(completed), cache)[
+        get_marker_fname(str(completed), *blocks[3]).name
+    ] == (90.0, 16, False)
+
+    # Losing more than the allowance is still a truncated listing.
+    for block in blocks[:7]:
+        get_marker_fname(str(completed), *block).unlink()
+    with pytest.raises(status_page.TruncatedListingError):
+        status_page.read_markers(str(completed), cache)
+
+
 def test_publish_status(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
