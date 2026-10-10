@@ -317,7 +317,9 @@ def test_predict_renders_pca_inline_and_marks_the_render_stage_done(
     monkeypatch.setattr(pp, "run_model_predict", fake_predict)
     monkeypatch.setattr(pp.multiprocessing, "get_context", lambda name: _InProcess)
     monkeypatch.setattr(
-        pp, "_read_window_embeddings", lambda d, w, p: np.zeros((128, 4, 4), np.int8)
+        pp,
+        "_read_window_embeddings",
+        lambda d, w, b, p: np.zeros((128, 4, 4), np.int8),
     )
     monkeypatch.setattr(pp, "write_window_region", lambda **kw: None)
     monkeypatch.setattr(pp, "render_window", fake_render)
@@ -358,6 +360,104 @@ def test_predict_renders_pca_inline_and_marks_the_render_stage_done(
     assert pca_marker["source_marker"] == str(marker_fname)
     # Named the way the render stage looks it up, so that stage skips this tile.
     assert pca_marker_fname.name == f"completed_{marker_fname.name}"
+
+
+def test_context_pixels_pad_the_windows_but_not_what_is_written(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A context margin widens what is materialized and run, not what is written.
+
+    Window names, store offsets, the bounds read back and the marker all stay on the
+    unpadded crop grid, so a padded run writes the same shards as an unpadded one.
+    """
+    import multiprocessing.dummy
+
+    pp = sys.modules["rslp.large_scale_embeddings.predict_pipeline"]
+    windows: dict[str, tuple[int, ...]] = {}
+    reads: list[tuple[int, ...]] = []
+    writes: list[tuple[int, ...]] = []
+
+    def fake_materialize(ds_path: UPath, materialize_pipeline_args: object) -> None:
+        for window in Dataset(ds_path).load_windows(groups=[pp.PREDICTION_GROUP]):
+            windows[window.name] = tuple(window.bounds)
+            window.mark_layer_completed(pp.SENTINEL2_LAYER)
+
+    def fake_predict(*args: object, **kwargs: object) -> None:
+        for window in Dataset(UPath(tmp_path / "scratch")).load_windows(
+            groups=[pp.PREDICTION_GROUP]
+        ):
+            window.mark_layer_completed(pp.OUTPUT_LAYER)
+
+    def fake_read(d: object, w: object, bounds: tuple, p: int) -> np.ndarray:
+        reads.append(tuple(bounds))
+        return np.zeros((128, 4, 4), np.int8)
+
+    class _InProcess:
+        Pool = staticmethod(multiprocessing.dummy.Pool)
+
+    monkeypatch.setattr(pp, "materialize_dataset", fake_materialize)
+    monkeypatch.setattr(pp, "run_model_predict", fake_predict)
+    monkeypatch.setattr(pp.multiprocessing, "get_context", lambda name: _InProcess)
+    monkeypatch.setattr(pp, "_read_window_embeddings", fake_read)
+    monkeypatch.setattr(
+        pp, "write_window_region", lambda **kw: writes.append(kw["window_bounds"])
+    )
+    monkeypatch.setattr(pp, "get_zone_wedge", lambda crs, res: None)
+    monkeypatch.setattr(
+        pp,
+        "list_kept_crops",
+        lambda proj, bounds, size, wedge: [(0, 0, 2048, 2048), (2048, 0, 4096, 2048)],
+    )
+    monkeypatch.setattr(pp, "_crop_crosses_bad_longitude", lambda proj, b: False)
+
+    projection = Projection(CRS.from_epsg(32610), 10, -10)
+    pp.predict_pipeline(
+        inputs=pp.EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+        projection_json=json.dumps(projection.serialize()),
+        bounds=(0, 0, 4096, 2048),
+        time_range=(datetime(2024, 1, 1, tzinfo=UTC),) * 2,
+        store_path=str(tmp_path / "store.zarr"),
+        completed_path=str(tmp_path / "completed"),
+        checkpoint_path=str(tmp_path / "ckpt"),
+        time_index=0,
+        patch_size=2,
+        latent_patch_size=1,
+        context_pixels=112,
+        scratch_path=str(tmp_path / "scratch"),
+    )
+
+    assert windows == {
+        "0_0": (-112, -112, 2160, 2160),
+        "1_0": (1936, -112, 4208, 2160),
+    }
+    assert sorted(reads) == [(0, 0, 2048, 2048), (2048, 0, 4096, 2048)]
+    assert sorted(writes) == sorted(reads)
+    (marker_fname,) = (tmp_path / "completed").iterdir()
+    assert sorted(json.loads(marker_fname.read_text())["written"]) == [
+        [0, 0],
+        [2048, 0],
+    ]
+
+
+@pytest.mark.parametrize("context_pixels", [-2, 3])
+def test_context_pixels_must_fit_the_token_grid(context_pixels: int) -> None:
+    """An odd margin at patch_size 2 would leave a half token at each window edge."""
+    pp = sys.modules["rslp.large_scale_embeddings.predict_pipeline"]
+
+    with pytest.raises(ValueError, match="context_pixels"):
+        pp.predict_pipeline(
+            inputs=pp.EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+            projection_json="{}",
+            bounds=(0, 0, 2048, 2048),
+            time_range=(datetime(2024, 1, 1, tzinfo=UTC),) * 2,
+            store_path="unused",
+            completed_path="unused",
+            checkpoint_path="unused",
+            time_index=0,
+            patch_size=2,
+            latent_patch_size=1,
+            context_pixels=context_pixels,
+        )
 
 
 def test_pca_paths_must_be_set_together() -> None:

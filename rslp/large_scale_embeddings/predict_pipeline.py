@@ -441,8 +441,18 @@ def _crop_crosses_bad_longitude(projection: Projection, bounds: PixelBounds) -> 
     return touches_antimeridian or spans_the_seam
 
 
+def _core_bounds(window: Window, context_pixels: int) -> PixelBounds:
+    """The window's bounds without its context margin, i.e. the crop it writes."""
+    return (
+        window.bounds[0] + context_pixels,
+        window.bounds[1] + context_pixels,
+        window.bounds[2] - context_pixels,
+        window.bounds[3] - context_pixels,
+    )
+
+
 def _read_window_embeddings(
-    dataset: Dataset, window: Window, latent_patch_size: int
+    dataset: Dataset, window: Window, bounds: PixelBounds, latent_patch_size: int
 ) -> np.ndarray:
     """Read the window's int8 embedding raster and mask invalid pixels to nodata.
 
@@ -453,6 +463,8 @@ def _read_window_embeddings(
         dataset: the scratch dataset, used to look up band names from its config rather
             than hardcoding them here.
         window: the window to read.
+        bounds: the part of the window to read, at the window resolution. Smaller than
+            the window's own bounds when it carries a context margin.
         latent_patch_size: pixels per output embedding. The raster is at 1/latent_patch_size
             of the window resolution.
 
@@ -466,10 +478,10 @@ def _read_window_embeddings(
         window.projection.y_resolution * latent_patch_size,
     )
     out_bounds = (
-        window.bounds[0] // latent_patch_size,
-        window.bounds[1] // latent_patch_size,
-        window.bounds[2] // latent_patch_size,
-        window.bounds[3] // latent_patch_size,
+        bounds[0] // latent_patch_size,
+        bounds[1] // latent_patch_size,
+        bounds[2] // latent_patch_size,
+        bounds[3] // latent_patch_size,
     )
     raster = window.data.read_raster(
         OUTPUT_LAYER,
@@ -484,8 +496,8 @@ def _read_window_embeddings(
     # A pixel is valid if any band is nonzero in any of the Sentinel-2 mosaics.
     valid = np.zeros(
         (
-            window.bounds[3] - window.bounds[1],
-            window.bounds[2] - window.bounds[0],
+            bounds[3] - bounds[1],
+            bounds[2] - bounds[0],
         ),
         dtype=bool,
     )
@@ -496,6 +508,7 @@ def _read_window_embeddings(
             SENTINEL2_LAYER,
             dataset.layers[SENTINEL2_LAYER].band_sets[0].bands,
             GeotiffRasterFormat(),
+            bounds=bounds,
             group_idx=group_idx,
             resampling=Resampling.nearest,
         ).get_chw_array()
@@ -519,6 +532,7 @@ def _write_window_by_name(
     store_path: str,
     time_index: int,
     latent_patch_size: int,
+    context_pixels: int = 0,
     pca: dict | None = None,
 ) -> tuple[list[int], bool]:
     """Load one window from the scratch dataset and write its embeddings to the store.
@@ -533,6 +547,8 @@ def _write_window_by_name(
         store_path: the GeoZarr store path.
         time_index: the index into the store's time axis for this reference year.
         latent_patch_size: pixels per output embedding.
+        context_pixels: the margin the window carries on each side, which is read as
+            model input but not written.
         pca: if set, also render the window's false-color pyramid from the embeddings
             already in memory, rather than reading them back later. Keys are
             artifact_path, store_path, time_index (into the pca store) and max_level.
@@ -547,17 +563,18 @@ def _write_window_by_name(
             f"expected one window named {window_name} but got {len(windows)}"
         )
     window = windows[0]
-    embeddings = _read_window_embeddings(dataset, window, latent_patch_size)
+    bounds = _core_bounds(window, context_pixels)
+    embeddings = _read_window_embeddings(dataset, window, bounds, latent_patch_size)
     zone_number = window.projection.crs.to_epsg() % 100
     write_window_region(
         store_path=store_path,
         zone_number=zone_number,
-        window_bounds=window.bounds,
+        window_bounds=bounds,
         time_index=time_index,
         embeddings=embeddings,
         patch_size=latent_patch_size,
     )
-    crop_offset = [window.bounds[0], window.bounds[1]]
+    crop_offset = [bounds[0], bounds[1]]
     if pca is None:
         return crop_offset, False
     rendered = render_window(
@@ -565,7 +582,7 @@ def _write_window_by_name(
         artifact=PcaArtifact.load(pca["artifact_path"]),
         pca_store_path=pca["store_path"],
         zone_number=zone_number,
-        crop_offset=(window.bounds[0], window.bounds[1]),
+        crop_offset=(bounds[0], bounds[1]),
         dest_time_index=pca["time_index"],
         max_level=pca["max_level"],
         patch_size=latent_patch_size,
@@ -588,6 +605,7 @@ def predict_pipeline(
     overlap_size: int = 4,
     compile_model: bool = True,
     searchlight: bool = False,
+    context_pixels: int = 0,
     batch_size: int | None = None,
     num_workers: int | None = None,
     scratch_path: str | None = None,
@@ -631,6 +649,10 @@ def predict_pipeline(
             seams at crop boundaries.
         compile_model: whether to compile the encoder transformer blocks.
         searchlight: run each crop as one seam-free forward instead of tiling it.
+        context_pixels: imagery margin added on each side of every PATCH_SIZE window
+            and given to the model, but not written, so pixels at a window edge see
+            context from both sides. 0 keeps the windows as they were. A nonzero
+            value changes the embeddings, so it needs its own store.
         batch_size: crops per batch, or None to keep the config's value. Lower it for
             a tile whose input stack will not fit in GPU memory.
         num_workers: data loader processes, or None to keep the config's value. Lower
@@ -694,6 +716,13 @@ def predict_pipeline(
             f"overlap_size ({overlap_size}) must be a multiple of latent_patch_size "
             f"({latent_patch_size})"
         )
+    # The padded window is tokenized and read back on the output grid, so the margin
+    # has to divide into both.
+    if context_pixels < 0 or context_pixels % max(patch_size, latent_patch_size) != 0:
+        raise ValueError(
+            f"context_pixels ({context_pixels}) must be a non-negative multiple of "
+            f"patch_size ({patch_size}) and latent_patch_size ({latent_patch_size})"
+        )
 
     projection = Projection.deserialize(json.loads(projection_json))
 
@@ -720,6 +749,7 @@ def predict_pipeline(
                 overlap_size=overlap_size,
                 compile_model=compile_model,
                 searchlight=searchlight,
+                context_pixels=context_pixels,
                 batch_size=batch_size,
                 num_workers=num_workers,
                 upload_workers=upload_workers,
@@ -743,6 +773,7 @@ def predict_pipeline(
             overlap_size=overlap_size,
             compile_model=compile_model,
             searchlight=searchlight,
+            context_pixels=context_pixels,
             batch_size=batch_size,
             num_workers=num_workers,
             upload_workers=upload_workers,
@@ -767,6 +798,7 @@ def _process_tile(
     overlap_size: int,
     compile_model: bool,
     searchlight: bool,
+    context_pixels: int,
     batch_size: int | None,
     num_workers: int | None,
     upload_workers: int,
@@ -793,6 +825,7 @@ def _process_tile(
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
         searchlight: run each crop as one seam-free forward instead of tiling it.
+        context_pixels: imagery margin around each window that is not written.
         batch_size: crops per batch, or None to keep the config's value. Lower it
             for a tile whose full monthly input stack will not fit in GPU memory;
             batching groups independent crops, so this changes footprint and
@@ -835,7 +868,15 @@ def _process_tile(
     windows: list[Window] = []
     skipped_longitude: list[list[int]] = []
     for crop_bounds in kept_crops:
-        if _crop_crosses_bad_longitude(projection, crop_bounds):
+        # The window is materialized and run over the padded bounds, but named and
+        # written by the crop, so the store, shards and markers do not change.
+        window_bounds = (
+            crop_bounds[0] - context_pixels,
+            crop_bounds[1] - context_pixels,
+            crop_bounds[2] + context_pixels,
+            crop_bounds[3] + context_pixels,
+        )
+        if _crop_crosses_bad_longitude(projection, window_bounds):
             logger.debug(
                 "skipping crop at %s because it touches the antimeridian",
                 crop_bounds,
@@ -847,7 +888,7 @@ def _process_tile(
             group=PREDICTION_GROUP,
             name=f"{crop_bounds[0] // PATCH_SIZE}_{crop_bounds[1] // PATCH_SIZE}",
             projection=projection,
-            bounds=crop_bounds,
+            bounds=window_bounds,
             time_range=window_time_range,
             data_factory=dataset.window_data_storage_factory,
         )
@@ -912,7 +953,7 @@ def _process_tile(
             }
         upload_kwargs: list[dict] = []
         for window in windows:
-            crop_offset = [window.bounds[0], window.bounds[1]]
+            crop_offset = list(_core_bounds(window, context_pixels)[:2])
             if not window.is_layer_completed(OUTPUT_LAYER):
                 # Required input layers must have been missing, so no prediction was
                 # made for this window.
@@ -925,6 +966,7 @@ def _process_tile(
                     "store_path": store_path,
                     "time_index": time_index,
                     "latent_patch_size": latent_patch_size,
+                    "context_pixels": context_pixels,
                     "pca": window_pca,
                 }
             )
