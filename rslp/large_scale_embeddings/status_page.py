@@ -516,10 +516,8 @@ if (workers) {
   fleetLine.textContent = "At last check · " + lines.join(" · ");
   fleetLine.hidden = false;
 }
-const started = DATA.layers.filter(layer => layer.done > 0);
-for (const layer of [...started].reverse()) {
-  stat(pct(layer), layer.year + " complete", layer.color);
-}
+// Years with any finished block. Their percentages are on the layer labels.
+const started = DATA.layers.filter(l => l.done > 0).map(l => String(l.year));
 
 // The view and layer choices survive the periodic reload, per tab. Storage can be
 // unavailable (private windows, blocked site data), so every access is guarded.
@@ -578,9 +576,14 @@ for (const layer of [...DATA.layers].reverse()) {
   byKey[layer.year] = lyr;
   overlays[swatch(layer.color, label)] = lyr;
 }
-// By default the coverage area and every year with work are on.
-const shown = saved ? new Set(saved.shown) : new Set(
-  ["coverage", ...DATA.layers.filter(l => l.done > 0).map(l => String(l.year))]);
+// By default the coverage area and every year with work are on. A saved choice wins,
+// except that a year which has started since it was saved is switched on: it is new
+// information, not a layer someone turned off.
+const shown = new Set(saved ? saved.shown : ["coverage", ...started]);
+if (saved) {
+  const before = new Set(saved.started || []);
+  for (const year of started) if (!before.has(year)) shown.add(year);
+}
 for (const [key, lyr] of Object.entries(byKey)) {
   if (shown.has(String(key))) lyr.addTo(map);
 }
@@ -596,6 +599,7 @@ function reload() {
       center: map.getCenter(),
       zoom: map.getZoom(),
       shown: Object.keys(byKey).filter(key => map.hasLayer(byKey[key])),
+      started: started,
     }));
   } catch (e) {}
   location.reload();
