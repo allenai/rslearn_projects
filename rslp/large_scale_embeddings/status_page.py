@@ -590,7 +590,8 @@ overlays[swatch(DATA.coverage.color, "coverage area")] = byKey.coverage;
 DATA.layers.forEach((layer, i) => { layer.z = 1 + DATA.layers.length - i; });
 for (const layer of [...DATA.layers].reverse()) {
   const label = layer.done > 0 ? layer.year + " (" + pct(layer) + ")" : String(layer.year);
-  const lyr = overlay(layer.file, 0.85, layer.z);
+  // Opaque, so where years overlap only the top one shows, not a blend of both.
+  const lyr = overlay(layer.file, 1, layer.z);
   byKey[layer.year] = lyr;
   overlays[swatch(layer.color, label)] = lyr;
 }
