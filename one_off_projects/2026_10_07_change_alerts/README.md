@@ -26,9 +26,10 @@ The generic components are in rslearn under `rslearn.change_alerts` (see
 `rslearn/docs/ChangeAlerts.md`):
 
 - `slots.py`: the dataset layers for time series ("slots") that end at given offsets
-  after the change date.
+  after the change date, plus one infrequent layer shared by the slots.
 - `sampler.py`: `ChangeTimeSeriesSampler`, which builds one time series per example
-  from a slot and derives the category and timestep targets.
+  from the slot with the most frequent images (picking randomly among ties), preceded
+  by the latest infrequent images before it.
 - `metrics.py`: balanced accuracy, change-vs-none AUROC, and timestep accuracy within
   a tolerance.
 
@@ -54,17 +55,22 @@ the change between 7 and 90 days.
 - Randomized slots: each window has its own end offsets drawn uniformly from 7 to 90
   days, as in the LCC model. rand4 has four per window, rand1 only one.
 - History context: 8 quarterly (90-day) mosaics followed by the latest 4 weekly
-  mosaics within the last 60 days. The quarterly mosaics end 60 days before the end of
-  the time series, so if the 4 weekly mosaics are the latest 4 weeks, there is a gap
-  of about a month between the quarterly and weekly mosaics.
-- Recent context: the latest 20 weekly mosaics (within the last 26 weeks).
+  mosaics within the last 63 days. The quarterly mosaics come from one layer shared by
+  all slots (ending 27 days after the change, 63 days before the latest slot end), and
+  the sampler takes the latest 8 that end before the first weekly mosaic. So the gap
+  between the quarterly and weekly mosaics depends on the slot: if the weekly mosaics
+  are the latest 4 weeks, it is 42, 70, 7, and 35 days for the fixed slots, and
+  between 0 and 90 days for randomized slots.
+- Recent context: the latest 20 weekly mosaics within the last 26 weeks.
 - Category head: attention pooling over the timesteps (`SimpleAttentionPool`), or the
   before/after features from a `BreakpointScan`.
 
 All runs predict the timestep of the change with `TokensToChannels` and
 `PerPixelTimestepHead` (12 timesteps for the history context, 20 for the recent
-context). The arms are compared on the change category; the timestep metrics are
-logged too.
+context). `PerPixelTimestepTask` maps the change day (`label_change_day`) to the first
+timestep whose midpoint is on or after it (`mode: AFTER`). `label_change_day` is 65535
+(nodata) for negatives, so they only train the category. The arms are compared on the
+change category; the timestep metrics are logged too.
 
 All runs validate on randomized slot 0, so validation covers the whole detection range
 and is the same across runs. The best checkpoint is selected by
@@ -76,8 +82,10 @@ Each run is tested on time series ending E = 7, 45, and 90 days after the change
 change is only in the latest image, about 6 weeks old, and at the end of the detection
 range. There are two test datasets per source, containing the same test split windows:
 
-- test_history: weekly mosaics covering 63 days and quarterly mosaics for each E.
-- test_recent: weekly mosaics covering 26 weeks for each E.
+- test_history: the latest 4 weekly mosaics within 63 days for each E
+  (`freq_test_{E}`), and quarterly mosaics shared by the scenarios (`infreq_test`).
+- test_recent: the latest 20 weekly mosaics within 26 weeks for each E
+  (`freq_test_{E}`).
 
 ### Paths
 
@@ -114,7 +122,7 @@ CACHE=/weka/dfive-default/rslearn-eai/datasets/change_alerts/20261007/annotation
 python make_config.py --mode train --ds_path $ROOT/train
 python create_windows.py --source $SOURCE --kind train --annotations_cache $CACHE --workers 32
 rslearn dataset prepare --root $ROOT/train --workers 64 --retry-max-attempts 3 \
-    --enabled-layers freq_fixed_0,infreq_fixed_0,freq_fixed_1,infreq_fixed_1,freq_fixed_2,infreq_fixed_2,freq_fixed_3,infreq_fixed_3
+    --enabled-layers freq_hist_fixed_0,freq_hist_fixed_1,freq_hist_fixed_2,freq_hist_fixed_3,freq_recent_fixed_0,freq_recent_fixed_1,freq_recent_fixed_2,freq_recent_fixed_3,infreq
 python prepare_randomized.py --ds_path $ROOT/train --workers 64
 
 # Test datasets.
@@ -125,15 +133,18 @@ for KIND in test_history test_recent; do
 done
 ```
 
-The randomized layers (`freq_rand_{k}` and `infreq_rand_{k}`) must only be prepared
-with `prepare_randomized.py`, not `rslearn dataset prepare`: in config.json they end at
-the change date, and `prepare_randomized.py` shifts each window by its random offset
-when preparing them.
+The training dataset has frequent layers for each context and slot
+(`freq_{hist,recent}_{fixed,rand}_{k}`) and the shared quarterly layer `infreq`. The
+randomized layers (`freq_hist_rand_{k}` and `freq_recent_rand_{k}`) must only be
+prepared with `prepare_randomized.py`, not `rslearn dataset prepare`: in config.json
+they end at the change date, and `prepare_randomized.py` shifts each window by its
+random offset when preparing them. The randomized slots use `infreq` too, since their
+offsets are within the fixed slots' range.
 
 Materialization is slow: each item group (one mosaic) takes about 8 seconds per worker,
 since each of the 12 bands is a separate COG read (plus an OlmoEarth Datasets API
-lookup). A training window has about 280 item groups, and each window is materialized
-by one worker, so it takes over 30 minutes. The windows are spread over 16 groups per
+lookup). A training window has about 200 item groups, and each window is materialized
+by one worker, so it takes about 27 minutes. The windows are spread over 16 groups per
 source (`{source}_00` to `{source}_15`), and each Beaker job materializes one group
 index across all nine dataset roots, e.g. for group 03:
 
@@ -141,30 +152,13 @@ index across all nine dataset roots, e.g. for group 03:
 for SOURCE in forest_loss lcc mangrove; do
     for KIND in train test_history test_recent; do
         rslearn dataset materialize --root $DATASET_ROOT/$SOURCE/$KIND --group ${SOURCE}_03 \
-            --workers 64 --no-use-initial-job --retry-max-attempts 0 --ignore-errors
+            --workers 64 --no-use-initial-job --retry-max-attempts 3 --ignore-errors
     done
 done
 ```
 
 Use `--no-use-initial-job`, otherwise the first window is materialized serially before
 the workers start.
-
-The OlmoEarth Datasets Sentinel-2 items were being renamed in October 2026 (appending
-`_S<time>` to the name). Items that are renamed between prepare and materialize fail
-with "Expected 1 item for X, got 0 from OlmoEarth API", leaving that layer incomplete
-(retrying does not help, so materialize without retries). `remap_renamed.py` finds the
-incomplete layers and replaces the renamed items with their new names (one API search
-per window, and the scenes chosen per period are unchanged); then run materialize
-again, and repeat until no layers are incomplete:
-
-```
-python remap_renamed.py --ds_path $ROOT/train
-rslearn dataset materialize --root $ROOT/train --workers 64 --no-use-initial-job \
-    --retry-max-attempts 0 --ignore-errors
-```
-
-`fix_incomplete.py` instead re-prepares the incomplete layers from scratch, which is
-much slower but also handles items that were removed rather than renamed.
 
 ### Training
 

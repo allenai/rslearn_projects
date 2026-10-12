@@ -24,12 +24,10 @@ from typing import Any
 
 import yaml
 from common import (
-    HISTORY_LOOKBACK,
-    HISTORY_NUM_FREQUENT,
     HISTORY_NUM_INFREQUENT,
+    LAYER_CTX,
     NUM_SLOTS,
     NUM_TIMESTEPS,
-    RECENT_NUM_FREQUENT,
     SOURCE_DATASETS,
     dataset_path,
 )
@@ -92,8 +90,8 @@ RUNS = [
 RUNS_BY_NAME = {run.name: run for run in RUNS}
 
 
-def _image_input(layer: str) -> dict[str, Any]:
-    return {
+def _image_input(layer: str, required: bool = True) -> dict[str, Any]:
+    image_input: dict[str, Any] = {
         "data_type": "raster",
         "layers": [layer],
         "bands": S2_BANDS,
@@ -102,46 +100,34 @@ def _image_input(layer: str) -> dict[str, Any]:
         "load_all_layers": True,
         "load_all_item_groups": True,
     }
+    if not required:
+        image_input["required"] = False
+    return image_input
 
 
-def _slot_inputs(ctx: str, slot: str) -> dict[str, dict[str, Any]]:
-    """Get the inputs (keyed by layer name) for one slot."""
-    layers = [f"freq_{slot}"]
-    if ctx == "history":
-        layers.append(f"infreq_{slot}")
-    return {layer: _image_input(layer) for layer in layers}
-
-
-def _option(ctx: str, slot: str) -> dict[str, str]:
-    option = {"frequent": f"freq_{slot}"}
-    if ctx == "history":
-        option["infrequent"] = f"infreq_{slot}"
-    return option
+def _frequent_layer(ctx: str, slot: str) -> str:
+    """Get the frequent layer name (also used as the input key) of a training slot."""
+    return f"freq_{LAYER_CTX[ctx]}_{slot}"
 
 
 def _sampler(
-    ctx: str, slots: list[str], option_index: int | None, drop_keys: list[str]
+    ctx: str,
+    frequent_keys: list[str],
+    infrequent_key: str,
+    frequent_index: int | None = None,
 ) -> dict[str, Any]:
     init_args: dict[str, Any] = {
-        "options": [_option(ctx, slot) for slot in slots],
+        "frequent_keys": frequent_keys,
         "output_key": "sentinel2_l2a",
-        "category_target": "category",
-        "timestep_target": "timestep",
     }
     if ctx == "history":
         init_args.update(
-            num_frequent=HISTORY_NUM_FREQUENT,
-            frequent_lookback_days=HISTORY_LOOKBACK.days,
-            num_infrequent=HISTORY_NUM_INFREQUENT,
+            infrequent_key=infrequent_key, num_infrequent=HISTORY_NUM_INFREQUENT
         )
-    elif ctx == "recent":
-        init_args.update(num_frequent=RECENT_NUM_FREQUENT)
-    else:
+    elif ctx != "recent":
         raise ValueError(f"unknown ctx {ctx}")
-    if option_index is not None:
-        init_args["option_index"] = option_index
-    if drop_keys:
-        init_args["drop_keys"] = drop_keys
+    if frequent_index is not None:
+        init_args["frequent_index"] = frequent_index
     return {
         "class_path": "rslearn.change_alerts.sampler.ChangeTimeSeriesSampler",
         "init_args": init_args,
@@ -223,8 +209,7 @@ TIMESTEP_DECODER = [
     _upsample(4),
     {
         "class_path": "rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead",
-        # The sampler labels each pixel with the midpoint day of its target timestep,
-        # which maps back to that timestep in either mode.
+        # Each change day maps to the earliest timestep whose midpoint is on or after it.
         "init_args": {"input_key": "sentinel2_l2a", "mode": "AFTER"},
     },
 ]
@@ -237,7 +222,6 @@ def _task(categories: list[str], ctx: str) -> dict[str, Any]:
         "init_args": {
             "input_mapping": {
                 "category": {"label_category": "targets"},
-                # Placeholder: ChangeTimeSeriesSampler overwrites the timestep target.
                 "timestep": {"change_day": "targets"},
             },
             "tasks": {
@@ -291,9 +275,18 @@ def make_train_config(source: str, run: Run, ds_path: str | None = None) -> dict
     if VAL_SLOT not in slots:
         slots.append(VAL_SLOT)
 
-    inputs: dict[str, Any] = {}
-    for slot in slots:
-        inputs.update(_slot_inputs(run.ctx, slot))
+    # Windows without images in the first training slot are skipped. The other slots
+    # may be missing (the sampler then picks another one), except the validation slot,
+    # which the validation sampler always uses.
+    required_slots = {run.train_slots[0], VAL_SLOT}
+    inputs: dict[str, Any] = {
+        _frequent_layer(run.ctx, slot): _image_input(
+            _frequent_layer(run.ctx, slot), required=slot in required_slots
+        )
+        for slot in slots
+    }
+    if run.ctx == "history":
+        inputs["infreq"] = _image_input("infreq")
     inputs["label_category"] = {
         "data_type": "raster",
         "layers": ["label_category"],
@@ -301,24 +294,15 @@ def make_train_config(source: str, run: Run, ds_path: str | None = None) -> dict
         "is_target": True,
         "dtype": "INT32",
     }
-    # The sampler reads the change day from the input dict to derive the targets.
     inputs["change_day"] = {
         "data_type": "raster",
         "layers": ["label_change_day"],
         "bands": ["label"],
         "is_target": True,
-        "passthrough": True,
         "dtype": "INT32",
     }
-
-    val_inputs = list(_slot_inputs(run.ctx, VAL_SLOT).keys())
-    train_drop = [key for key in val_inputs if VAL_SLOT not in run.train_slots]
-    val_drop = [
-        key
-        for slot in run.train_slots
-        if slot != VAL_SLOT
-        for key in _slot_inputs(run.ctx, slot)
-    ]
+    train_keys = [_frequent_layer(run.ctx, slot) for slot in run.train_slots]
+    val_keys = [_frequent_layer(run.ctx, VAL_SLOT)]
 
     return {
         "model": {
@@ -376,7 +360,7 @@ def make_train_config(source: str, run: Run, ds_path: str | None = None) -> dict
                 "num_workers": 16,
                 "train_config": {
                     "transforms": [
-                        _sampler(run.ctx, run.train_slots, None, train_drop),
+                        _sampler(run.ctx, train_keys, "infreq"),
                         FLIP,
                         NORMALIZE,
                     ],
@@ -384,14 +368,14 @@ def make_train_config(source: str, run: Run, ds_path: str | None = None) -> dict
                 },
                 "val_config": {
                     "transforms": [
-                        _sampler(run.ctx, [VAL_SLOT], 0, val_drop),
+                        _sampler(run.ctx, val_keys, "infreq", frequent_index=0),
                         NORMALIZE,
                     ],
                     "tags": {"split": "val"},
                 },
                 "test_config": {
                     "transforms": [
-                        _sampler(run.ctx, [VAL_SLOT], 0, val_drop),
+                        _sampler(run.ctx, val_keys, "infreq", frequent_index=0),
                         NORMALIZE,
                     ],
                     "tags": {"split": "val"},
@@ -426,23 +410,28 @@ def make_test_config(
     """Make the config to test a trained run on one test scenario.
 
     The project_name and run_name are kept so the best checkpoint of the run is
-    loaded. The test datasets have one slot per scenario, freq_test_{E} (and
-    infreq_test_{E} for the history context), with the time series ending E days
-    after the change.
+    loaded. The test datasets have one slot per scenario, freq_test_{E}, with the time
+    series ending E days after the change, and the history test dataset also has the
+    shared infreq_test layer.
     """
     config = copy.deepcopy(train_config)
     init_args = config["data"]["init_args"]
     init_args["path"] = ds_path or dataset_path(source, f"test_{run.ctx}")
-    slot = f"test_{end_days}"
+    frequent_key = f"freq_test_{end_days}"
     inputs = {
         key: value
         for key, value in init_args["inputs"].items()
         if key in ("label_category", "change_day")
     }
-    inputs.update(_slot_inputs(run.ctx, slot))
+    inputs[frequent_key] = _image_input(frequent_key)
+    if run.ctx == "history":
+        inputs["infreq_test"] = _image_input("infreq_test")
     init_args["inputs"] = inputs
     init_args["test_config"] = {
-        "transforms": [_sampler(run.ctx, [slot], 0, []), NORMALIZE],
+        "transforms": [
+            _sampler(run.ctx, [frequent_key], "infreq_test", frequent_index=0),
+            NORMALIZE,
+        ],
         "tags": {"split": "test"},
     }
     # Only the test split is used, but the other splits must not reference inputs

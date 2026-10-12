@@ -9,29 +9,22 @@ FREQUENT_PERIOD = timedelta(days=7)
 INFREQUENT_PERIOD = timedelta(days=90)
 NUM_SLOTS = 4
 
-# The frequent layers cover 26 weeks so that the Recent model (20 weekly images) can
-# fall back to older weeks; the History model only uses the last HISTORY_LOOKBACK of it.
-FREQUENT_DURATION = timedelta(days=182)
-# The History model takes its weekly images from this lookback before the latest
-# weekly image, and the infrequent layers end this long before the slot end.
-HISTORY_LOOKBACK = timedelta(days=60)
+# Frequent layers per context: the duration to look back over, and the number of weekly
+# mosaics (the latest periods within that duration that have images) that the model
+# uses. The history context has HISTORY_NUM_INFREQUENT quarterly mosaics before them.
+FREQUENT_DURATION = {"history": timedelta(days=63), "recent": timedelta(days=182)}
+NUM_FREQUENT = {"history": 4, "recent": 20}
+HISTORY_NUM_INFREQUENT = 8
 INFREQUENT_DURATION = timedelta(days=900)
-# The test_history dataset only needs the frequent images within HISTORY_LOOKBACK.
-TEST_HISTORY_FREQUENT_DURATION = timedelta(days=63)
+NUM_TIMESTEPS = {
+    "history": HISTORY_NUM_INFREQUENT + NUM_FREQUENT["history"],
+    "recent": NUM_FREQUENT["recent"],
+}
+# Context name used in the frequent layer names, e.g. freq_hist_fixed_0.
+LAYER_CTX = {"history": "hist", "recent": "recent"}
 
 # Test scenarios: the time series ends this many days after the change.
 TEST_END_DAYS = [7, 45, 90]
-
-# The number of images input to the model for each context: the history context has
-# 8 quarterly and HISTORY_NUM_FREQUENT weekly images, the recent context has
-# RECENT_NUM_FREQUENT weekly images.
-HISTORY_NUM_INFREQUENT = 8
-HISTORY_NUM_FREQUENT = 4
-RECENT_NUM_FREQUENT = 20
-NUM_TIMESTEPS = {
-    "history": HISTORY_NUM_INFREQUENT + HISTORY_NUM_FREQUENT,
-    "recent": RECENT_NUM_FREQUENT,
-}
 
 # Annotations are only used if their change date is within this range. Earlier changes
 # do not have INFREQUENT_DURATION of Sentinel-2 L2A history before them. Later changes

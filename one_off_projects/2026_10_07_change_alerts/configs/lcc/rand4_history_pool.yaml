@@ -77,10 +77,10 @@ data:
   init_args:
     path: /weka/dfive-default/rslearn-eai/datasets/change_alerts/20261007/lcc/train
     inputs:
-      freq_rand_0:
+      freq_hist_rand_0:
         data_type: raster
         layers:
-        - freq_rand_0
+        - freq_hist_rand_0
         bands:
         - B02
         - B03
@@ -98,10 +98,10 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
-      infreq_rand_0:
+      freq_hist_rand_1:
         data_type: raster
         layers:
-        - infreq_rand_0
+        - freq_hist_rand_1
         bands:
         - B02
         - B03
@@ -119,10 +119,11 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
-      freq_rand_1:
+        required: false
+      freq_hist_rand_2:
         data_type: raster
         layers:
-        - freq_rand_1
+        - freq_hist_rand_2
         bands:
         - B02
         - B03
@@ -140,10 +141,11 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
-      infreq_rand_1:
+        required: false
+      freq_hist_rand_3:
         data_type: raster
         layers:
-        - infreq_rand_1
+        - freq_hist_rand_3
         bands:
         - B02
         - B03
@@ -161,73 +163,11 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
-      freq_rand_2:
+        required: false
+      infreq:
         data_type: raster
         layers:
-        - freq_rand_2
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
-        passthrough: true
-        dtype: FLOAT32
-        load_all_layers: true
-        load_all_item_groups: true
-      infreq_rand_2:
-        data_type: raster
-        layers:
-        - infreq_rand_2
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
-        passthrough: true
-        dtype: FLOAT32
-        load_all_layers: true
-        load_all_item_groups: true
-      freq_rand_3:
-        data_type: raster
-        layers:
-        - freq_rand_3
-        bands:
-        - B02
-        - B03
-        - B04
-        - B08
-        - B05
-        - B06
-        - B07
-        - B8A
-        - B11
-        - B12
-        - B01
-        - B09
-        passthrough: true
-        dtype: FLOAT32
-        load_all_layers: true
-        load_all_item_groups: true
-      infreq_rand_3:
-        data_type: raster
-        layers:
-        - infreq_rand_3
+        - infreq
         bands:
         - B02
         - B03
@@ -260,7 +200,6 @@ data:
         bands:
         - label
         is_target: true
-        passthrough: true
         dtype: INT32
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
@@ -318,20 +257,13 @@ data:
       transforms:
       - class_path: rslearn.change_alerts.sampler.ChangeTimeSeriesSampler
         init_args:
-          options:
-          - frequent: freq_rand_0
-            infrequent: infreq_rand_0
-          - frequent: freq_rand_1
-            infrequent: infreq_rand_1
-          - frequent: freq_rand_2
-            infrequent: infreq_rand_2
-          - frequent: freq_rand_3
-            infrequent: infreq_rand_3
+          frequent_keys:
+          - freq_hist_rand_0
+          - freq_hist_rand_1
+          - freq_hist_rand_2
+          - freq_hist_rand_3
           output_key: sentinel2_l2a
-          category_target: category
-          timestep_target: timestep
-          num_frequent: 4
-          frequent_lookback_days: 60
+          infrequent_key: infreq
           num_infrequent: 8
       - class_path: rslearn.train.transforms.flip.Flip
         init_args:
@@ -363,23 +295,12 @@ data:
       transforms:
       - class_path: rslearn.change_alerts.sampler.ChangeTimeSeriesSampler
         init_args:
-          options:
-          - frequent: freq_rand_0
-            infrequent: infreq_rand_0
+          frequent_keys:
+          - freq_hist_rand_0
           output_key: sentinel2_l2a
-          category_target: category
-          timestep_target: timestep
-          num_frequent: 4
-          frequent_lookback_days: 60
+          infrequent_key: infreq
           num_infrequent: 8
-          option_index: 0
-          drop_keys:
-          - freq_rand_1
-          - infreq_rand_1
-          - freq_rand_2
-          - infreq_rand_2
-          - freq_rand_3
-          - infreq_rand_3
+          frequent_index: 0
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:
@@ -402,23 +323,12 @@ data:
       transforms:
       - class_path: rslearn.change_alerts.sampler.ChangeTimeSeriesSampler
         init_args:
-          options:
-          - frequent: freq_rand_0
-            infrequent: infreq_rand_0
+          frequent_keys:
+          - freq_hist_rand_0
           output_key: sentinel2_l2a
-          category_target: category
-          timestep_target: timestep
-          num_frequent: 4
-          frequent_lookback_days: 60
+          infrequent_key: infreq
           num_infrequent: 8
-          option_index: 0
-          drop_keys:
-          - freq_rand_1
-          - infreq_rand_1
-          - freq_rand_2
-          - infreq_rand_2
-          - freq_rand_3
-          - infreq_rand_3
+          frequent_index: 0
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:

@@ -1,11 +1,12 @@
-"""Prepare the randomized slot layers (freq_rand_{k} / infreq_rand_{k}).
+"""Prepare the randomized slot layers (freq_hist_rand_{k} / freq_recent_rand_{k}).
 
 This is the LCC-style augmentation where each window gets its own random time series
 end offsets, instead of the fixed 7/35/62/90 day offsets. For each slot k, each window
 draws an end offset uniformly from [7, 90] days after the change (seeded by the window
 name and k). The rand layers in config.json end at the window time (the change date),
 so we prepare them on in-memory copies of the windows whose time range is shifted by
-that offset.
+that offset. The randomized slots use the shared infreq layer, which is prepared
+normally.
 
 This works because prepare computes the request time range from the window's time
 range and saves the matched item groups along with the request time range of each
@@ -24,7 +25,7 @@ import random
 from datetime import timedelta
 
 import tqdm
-from common import DETECTION_RANGE, FREQUENT_PERIOD, NUM_SLOTS
+from common import DETECTION_RANGE, FREQUENT_PERIOD, LAYER_CTX, NUM_SLOTS
 from rslearn.dataset import Dataset, Window
 from rslearn.dataset.manage import prepare_dataset_windows
 from upath import UPath
@@ -54,7 +55,7 @@ def prepare_batch(
     for slot in range(NUM_SLOTS):
         slot_dataset = Dataset(
             UPath(ds_path),
-            enabled_layers=[f"freq_rand_{slot}", f"infreq_rand_{slot}"],
+            enabled_layers=[f"freq_{ctx}_rand_{slot}" for ctx in LAYER_CTX.values()],
         )
         prepare_dataset_windows(
             slot_dataset,

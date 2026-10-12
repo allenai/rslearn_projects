@@ -79,10 +79,10 @@ data:
   init_args:
     path: /weka/dfive-default/rslearn-eai/datasets/change_alerts/20261007/mangrove/train
     inputs:
-      freq_fixed_0:
+      freq_recent_fixed_0:
         data_type: raster
         layers:
-        - freq_fixed_0
+        - freq_recent_fixed_0
         bands:
         - B02
         - B03
@@ -100,10 +100,10 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
-      freq_fixed_1:
+      freq_recent_fixed_1:
         data_type: raster
         layers:
-        - freq_fixed_1
+        - freq_recent_fixed_1
         bands:
         - B02
         - B03
@@ -121,10 +121,11 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
-      freq_fixed_2:
+        required: false
+      freq_recent_fixed_2:
         data_type: raster
         layers:
-        - freq_fixed_2
+        - freq_recent_fixed_2
         bands:
         - B02
         - B03
@@ -142,10 +143,11 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
-      freq_fixed_3:
+        required: false
+      freq_recent_fixed_3:
         data_type: raster
         layers:
-        - freq_fixed_3
+        - freq_recent_fixed_3
         bands:
         - B02
         - B03
@@ -163,10 +165,11 @@ data:
         dtype: FLOAT32
         load_all_layers: true
         load_all_item_groups: true
-      freq_rand_0:
+        required: false
+      freq_recent_rand_0:
         data_type: raster
         layers:
-        - freq_rand_0
+        - freq_recent_rand_0
         bands:
         - B02
         - B03
@@ -199,7 +202,6 @@ data:
         bands:
         - label
         is_target: true
-        passthrough: true
         dtype: INT32
     task:
       class_path: rslearn.train.tasks.multi_task.MultiTask
@@ -250,17 +252,12 @@ data:
       transforms:
       - class_path: rslearn.change_alerts.sampler.ChangeTimeSeriesSampler
         init_args:
-          options:
-          - frequent: freq_fixed_0
-          - frequent: freq_fixed_1
-          - frequent: freq_fixed_2
-          - frequent: freq_fixed_3
+          frequent_keys:
+          - freq_recent_fixed_0
+          - freq_recent_fixed_1
+          - freq_recent_fixed_2
+          - freq_recent_fixed_3
           output_key: sentinel2_l2a
-          category_target: category
-          timestep_target: timestep
-          num_frequent: 20
-          drop_keys:
-          - freq_rand_0
       - class_path: rslearn.train.transforms.flip.Flip
         init_args:
           image_selectors:
@@ -291,18 +288,10 @@ data:
       transforms:
       - class_path: rslearn.change_alerts.sampler.ChangeTimeSeriesSampler
         init_args:
-          options:
-          - frequent: freq_rand_0
+          frequent_keys:
+          - freq_recent_rand_0
           output_key: sentinel2_l2a
-          category_target: category
-          timestep_target: timestep
-          num_frequent: 20
-          option_index: 0
-          drop_keys:
-          - freq_fixed_0
-          - freq_fixed_1
-          - freq_fixed_2
-          - freq_fixed_3
+          frequent_index: 0
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:
@@ -325,18 +314,10 @@ data:
       transforms:
       - class_path: rslearn.change_alerts.sampler.ChangeTimeSeriesSampler
         init_args:
-          options:
-          - frequent: freq_rand_0
+          frequent_keys:
+          - freq_recent_rand_0
           output_key: sentinel2_l2a
-          category_target: category
-          timestep_target: timestep
-          num_frequent: 20
-          option_index: 0
-          drop_keys:
-          - freq_fixed_0
-          - freq_fixed_1
-          - freq_fixed_2
-          - freq_fixed_3
+          frequent_index: 0
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
         init_args:
           band_names:

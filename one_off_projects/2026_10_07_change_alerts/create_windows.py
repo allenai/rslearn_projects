@@ -7,7 +7,8 @@ written:
 - label_category: uint8 category ID (1 + index in SourceDataset.categories, 0 =
   nodata) at the annotated pixel(s).
 - label_change_day: uint16 days since 1970-01-01 of the change date at the annotated
-  pixel(s) for positive annotations, 0 elsewhere and for negatives.
+  pixel(s) for positive annotations, 65535 (the PerPixelTimestepTask nodata value)
+  elsewhere and for negatives.
 
 Annotations are skipped if their category is not used or their change date is outside
 [MIN_CHANGE_DATE, MAX_CHANGE_DATE] (see select_annotations).
@@ -47,6 +48,7 @@ from common import (
     dataset_path,
 )
 from rslearn.dataset import Dataset, Window
+from rslearn.train.tasks.per_pixel_timestep import TIMESTAMP_NODATA_VALUE
 from rslearn.utils.geometry import WGS84_PROJECTION, Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.raster_array import RasterArray
@@ -237,7 +239,7 @@ def create_window(
     category = np.zeros(mask.shape, dtype=np.uint8)
     category[mask] = category_id
     write_label(window, dataset, "label_category", category)
-    change_day = np.zeros(mask.shape, dtype=np.uint16)
+    change_day = np.full(mask.shape, TIMESTAMP_NODATA_VALUE, dtype=np.uint16)
     if is_positive:
         change_day[mask] = (change_time - UNIX_EPOCH).days
     write_label(window, dataset, "label_change_day", change_day)

@@ -1,16 +1,22 @@
 """Write the dataset config.json for the training or test datasets.
 
+Each context has its own frequent layers: freq_hist_* hold the latest 4 weekly mosaics
+within 63 days, and freq_recent_* the latest 20 weekly mosaics within 26 weeks.
+
 Training dataset (--mode train):
-- freq_fixed_{k} / infreq_fixed_{k} for k in 0..3: slots ending 7, 35, 62, and 90
-  days after the change.
-- freq_rand_{k} / infreq_rand_{k} for k in 0..3: slots ending at a per-window random
-  offset. In config.json they end at the change date (offset 0); they must be
-  prepared with prepare_randomized.py, which shifts each window's time range by its
-  random offset. Do not prepare them with `rslearn dataset prepare`.
+- freq_{ctx}_fixed_{k} for k in 0..3: slots ending 7, 35, 62, and 90 days after the
+  change.
+- freq_{ctx}_rand_{k} for k in 0..3: slots ending at a per-window random offset. In
+  config.json they end at the change date (offset 0); they must be prepared with
+  prepare_randomized.py, which shifts each window's time range by its random offset.
+  Do not prepare them with `rslearn dataset prepare`.
+- infreq: quarterly mosaics shared by all history slots (fixed and randomized, since
+  the random offsets are also within 7 to 90 days).
 
 Test datasets (--mode test_history or test_recent):
-- freq_test_{E} (and infreq_test_{E} for test_history) for E in 7, 45, 90: time
-  series ending E days after the change.
+- freq_test_{E} for E in 7, 45, 90: time series ending E days after the change, with
+  the history or recent frequent layer settings.
+- infreq_test (test_history only): quarterly mosaics shared by the test slots.
 
 All datasets also have the label_category and label_change_day label layers.
 """
@@ -25,13 +31,13 @@ from common import (
     DETECTION_RANGE,
     FREQUENT_DURATION,
     FREQUENT_PERIOD,
-    HISTORY_LOOKBACK,
     IMAGE_BAND_SETS,
     INFREQUENT_DURATION,
     INFREQUENT_PERIOD,
+    LAYER_CTX,
+    NUM_FREQUENT,
     NUM_SLOTS,
     TEST_END_DAYS,
-    TEST_HISTORY_FREQUENT_DURATION,
 )
 from rslearn.change_alerts.slots import make_slot_layer_configs, slot_end_offsets
 from upath import UPath
@@ -48,27 +54,40 @@ LABEL_LAYERS = {
 }
 
 
-def _slot_layers(
+def _frequent_layers(
+    ctx: str,
     end_offsets: list[timedelta],
-    frequent_duration: timedelta,
-    with_infrequent: bool,
-    slot_name_format: str,
+    layer_name: str,
+    slot_names: list[str] | None = None,
+    infrequent_layer_name: str | None = None,
 ) -> dict[str, dict[str, Any]]:
+    """Make the frequent layers for one context, and optionally the infrequent layer.
+
+    Args:
+        ctx: "history" or "recent".
+        end_offsets: the offset from the change date to the end of each slot.
+        layer_name: format string for the frequent layer names, with a {slot}
+            placeholder.
+        slot_names: the names to substitute for {slot}, defaults to the slot index.
+        infrequent_layer_name: if set, also make an infrequent layer with this name,
+            shared by the slots.
+    """
     infrequent_kwargs: dict[str, Any] = {}
-    if with_infrequent:
+    if infrequent_layer_name is not None:
         infrequent_kwargs = {
             "infrequent_period": INFREQUENT_PERIOD,
             "infrequent_duration": INFREQUENT_DURATION,
-            "infrequent_end_before": HISTORY_LOOKBACK,
+            "infrequent_layer_name": infrequent_layer_name,
         }
     return make_slot_layer_configs(
         end_offsets=end_offsets,
         data_source=DATA_SOURCE,
         band_sets=IMAGE_BAND_SETS,
         frequent_period=FREQUENT_PERIOD,
-        frequent_duration=frequent_duration,
-        frequent_layer_name="freq_" + slot_name_format,
-        infrequent_layer_name="infreq_" + slot_name_format,
+        frequent_duration=FREQUENT_DURATION[ctx],
+        frequent_max_matches=NUM_FREQUENT[ctx],
+        frequent_layer_name=layer_name,
+        slot_names=slot_names,
         **infrequent_kwargs,
     )
 
@@ -78,36 +97,28 @@ def make_config(mode: str) -> dict[str, Any]:
     layers: dict[str, dict[str, Any]] = dict(LABEL_LAYERS)
     if mode == "train":
         fixed_offsets = slot_end_offsets(NUM_SLOTS, DETECTION_RANGE, FREQUENT_PERIOD)
-        layers.update(
-            _slot_layers(fixed_offsets, FREQUENT_DURATION, True, "fixed_{slot}")
-        )
-        layers.update(
-            _slot_layers(
-                [timedelta(0)] * NUM_SLOTS, FREQUENT_DURATION, True, "rand_{slot}"
+        rand_offsets = [timedelta(0)] * NUM_SLOTS
+        for ctx, layer_ctx in LAYER_CTX.items():
+            layers.update(
+                _frequent_layers(
+                    ctx,
+                    fixed_offsets,
+                    f"freq_{layer_ctx}_fixed_{{slot}}",
+                    infrequent_layer_name="infreq" if ctx == "history" else None,
+                )
             )
-        )
+            layers.update(
+                _frequent_layers(ctx, rand_offsets, f"freq_{layer_ctx}_rand_{{slot}}")
+            )
     elif mode in ["test_history", "test_recent"]:
-        test_offsets = [timedelta(days=days) for days in TEST_END_DAYS]
-        frequent_duration = (
-            TEST_HISTORY_FREQUENT_DURATION
-            if mode == "test_history"
-            else FREQUENT_DURATION
-        )
+        ctx = mode.removeprefix("test_")
         layers.update(
-            make_slot_layer_configs(
-                end_offsets=test_offsets,
-                data_source=DATA_SOURCE,
-                band_sets=IMAGE_BAND_SETS,
-                frequent_period=FREQUENT_PERIOD,
-                frequent_duration=frequent_duration,
-                infrequent_period=INFREQUENT_PERIOD if mode == "test_history" else None,
-                infrequent_duration=(
-                    INFREQUENT_DURATION if mode == "test_history" else None
-                ),
-                infrequent_end_before=HISTORY_LOOKBACK,
-                frequent_layer_name="freq_test_{slot}",
-                infrequent_layer_name="infreq_test_{slot}",
+            _frequent_layers(
+                ctx,
+                [timedelta(days=days) for days in TEST_END_DAYS],
+                "freq_test_{slot}",
                 slot_names=[str(days) for days in TEST_END_DAYS],
+                infrequent_layer_name="infreq_test" if ctx == "history" else None,
             )
         )
     else:
