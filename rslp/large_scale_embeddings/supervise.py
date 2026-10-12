@@ -1698,9 +1698,15 @@ def _fleet_summary(config: SuperviseConfig, fleet: dict[str, Any]) -> dict[str, 
     clusters = fleet.get("clusters", {})
     totals = [sum(c[k] for c in clusters.values()) for k in range(3)]
     on_beaker = sum(totals)
-    outside = max(fleet.get("registered", 0) - on_beaker, 0)
+    # Registrations are never removed from a queue and a worker makes a new one every
+    # time it starts, so this counts starts in the last heartbeat window, not GPUs. A
+    # fleet whose workers restart reports far more than it has: one queue held 60,998
+    # registrations for 198 machines, and the page read 2,938 "GPUs working". Report
+    # it as what it is and keep it out of the headline count.
+    registrations = max(fleet.get("registered", 0) - on_beaker, 0)
     return {
-        "working": on_beaker + outside,
+        "working": on_beaker,
+        "outside_registrations": registrations,
         "allocated": [
             [config.worker.priority, totals[0]],
             [config.worker.overflow_priority, totals[1]],
@@ -1717,7 +1723,6 @@ def _fleet_summary(config: SuperviseConfig, fleet: dict[str, Any]) -> dict[str, 
             }
             for name, counts in sorted(clusters.items())
         ],
-        "outside": outside,
         "waiting": fleet.get("waiting", 0),
     }
 

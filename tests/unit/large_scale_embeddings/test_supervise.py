@@ -2041,8 +2041,14 @@ def test_a_run_can_use_its_own_gcp_identity() -> None:
     ), "the supervisor does not pass its configured secret on to the workers"
 
 
-def test_fleet_summary_counts_workers_outside_beaker() -> None:
-    """Registrations beyond the running Beaker workers are reported as outside."""
+def test_fleet_summary_keeps_registrations_out_of_the_gpu_count() -> None:
+    """The headline count is Beaker workers; registrations are reported separately.
+
+    A registration is created every time a worker starts and is never removed, so
+    counting the fresh ones measures restarts, not GPUs. A fleet whose workers were
+    restarting every 12 seconds pushed one queue to 60,998 registrations for 198
+    machines, and the page reported 2,938 "GPUs working".
+    """
     import importlib
 
     sup = importlib.import_module("rslp.large_scale_embeddings.supervise")
@@ -2055,16 +2061,18 @@ def test_fleet_summary_counts_workers_outside_beaker() -> None:
         "waiting": 21,
     }
     summary = sup._fleet_summary(config, fleet)  # type: ignore[arg-type]
-    assert summary["working"] == 258
+    assert summary["working"] == 253, "the headline count must be Beaker workers only"
     assert summary["allocated"] == [["urgent", 95], ["high", 114]]
     assert summary["spare"] == 44
-    assert summary["outside"] == 5
+    assert summary["outside_registrations"] == 5
     assert summary["waiting"] == 21
     assert [c["name"] for c in summary["clusters"]] == ["ceres H100", "jupiter H100"]
     assert summary["clusters"][1]["allocated"] == [["urgent", 56], ["high", 102]]
-    # Workers running but not yet registered do not make outside negative.
+    # Workers running but not yet registered do not make the count negative.
     small = {"clusters": {"jupiter H100": [3, 0, 0]}, "registered": 1}
-    assert sup._fleet_summary(config, small)["working"] == 3  # type: ignore[arg-type]
+    got = sup._fleet_summary(config, small)  # type: ignore[arg-type]
+    assert got["working"] == 3
+    assert got["outside_registrations"] == 0
 
 
 def test_allocated_workers_are_counted_by_min_runtime() -> None:

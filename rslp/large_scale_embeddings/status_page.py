@@ -516,7 +516,7 @@ if (byPool.outside) {
 }
 const workers = DATA.workers;
 if (workers) {
-  stat(fmt(workers.working), "GPUs working");
+  stat(fmt(workers.working), "Beaker GPUs working");
   // One line per cluster: urgent and high from the allocation, then high on spare
   // (unallocated) capacity.
   const tierText = (allocated, spare) => {
@@ -528,7 +528,12 @@ if (workers) {
   const lines = (workers.clusters && workers.clusters.length)
     ? workers.clusters.map(c => c.name + ": " + tierText(c.allocated, c.spare))
     : [tierText(workers.allocated, workers.spare)];
-  if (workers.outside) lines.push("outside Beaker: " + fmt(workers.outside));
+  // Named for what it measures. A registration is created per worker start and never
+  // removed, so this counts recent starts outside Beaker, not machines.
+  if (workers.outside_registrations) {
+    lines.push("outside Beaker, recent queue registrations: "
+               + fmt(workers.outside_registrations));
+  }
   if (workers.waiting) lines.push("waiting for a slot: " + fmt(workers.waiting));
   const fleetLine = document.getElementById("fleet");
   fleetLine.textContent = "At last check · " + lines.join(" · ");
