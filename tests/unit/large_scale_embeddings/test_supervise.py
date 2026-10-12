@@ -2282,3 +2282,70 @@ def test_a_coastal_block_joins_the_tier_it_overlaps(tmp_path: Path) -> None:
 
     got = mod._priority_first([other, block], [_tier(footprint)])
     assert got[0] == block, "the overlapping block did not join the tier"
+
+
+def test_queue_listings_ask_the_server_to_sort() -> None:
+    """Both queue listings must request an explicit sort, newest first.
+
+    Without it the server scans rather than paging from an index, and the difference
+    decides whether a cycle keeps up: the same 75,959 entries took 1,834s unsorted and
+    102s sorted, 73,568 registrations 80s against 5.5s. A 47-minute cycle meant a
+    supervisor restart left the Beaker pool below strength for three hours, because
+    the pool only grows by CAPACITY_MAX_STEP per cycle.
+    """
+    import importlib
+
+    from beaker import beaker_pb2 as pb2
+
+    sup = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    seen: list = []
+
+    class FakeQueueApi:
+        service = types.SimpleNamespace(
+            ListQueueEntries=object(), ListQueueWorkers=object()
+        )
+
+        @staticmethod
+        def rpc_paged_request(method: object, request: object) -> list:
+            seen.append(request)
+            return []
+
+    beaker = types.SimpleNamespace(queue=FakeQueueApi())
+    queue = types.SimpleNamespace(id="q1")
+
+    assert list(sup._sorted_entries(beaker, queue)) == []
+    assert list(sup._sorted_queue_workers(beaker, queue)) == []
+    assert len(seen) == 2, "both listings must go through the sorted path"
+    for request in seen:
+        clause = request.options.sort_clause
+        assert clause.sort_order == pb2.SORT_ORDER_DESCENDING
+        assert clause.HasField("created"), "must sort on created, not insertion order"
+        assert request.options.queue_id == "q1"
+
+
+def test_a_queue_listing_falls_back_rather_than_failing() -> None:
+    """If beaker-py's internals move, the cycle must still get its entries.
+
+    Slower is survivable; a cycle that raises is not, since three failed cycles end
+    the supervisor and nothing then refills the queue.
+    """
+    import importlib
+
+    sup = importlib.import_module("rslp.large_scale_embeddings.supervise")
+
+    class FakeQueueApi:
+        service = types.SimpleNamespace()  # no ListQueueEntries attribute
+
+        @staticmethod
+        def list_entries(queue: object) -> list:
+            return ["entry"]
+
+        @staticmethod
+        def list_workers(queue: object) -> list:
+            return ["worker"]
+
+    beaker = types.SimpleNamespace(queue=FakeQueueApi())
+    queue = types.SimpleNamespace(id="q1")
+
+    assert list(sup._sorted_entries(beaker, queue)) == ["entry"]
+    assert list(sup._sorted_queue_workers(beaker, queue)) == ["worker"]

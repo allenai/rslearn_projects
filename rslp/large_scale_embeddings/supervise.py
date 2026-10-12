@@ -34,14 +34,20 @@ from typing import Any, TypeVar
 
 import shapely
 import shapely.geometry
+from collections.abc import Iterator
+
 from beaker import (
     Beaker,
     BeakerConstraints,
     BeakerExperimentSpec,
     BeakerJobPriority,
+    BeakerSortOrder,
     BeakerTaskResources,
     BeakerWorkloadType,
 )
+from beaker import beaker_pb2 as pb2
+from beaker._service_client import RpcMethod
+from google.protobuf import empty_pb2
 from pyproj import Transformer
 from upath import UPath
 
@@ -107,6 +113,9 @@ DEFAULT_SUPERVISOR_MIN_RUNTIME = timedelta(hours=1)
 # Cap on the workload listing the worker count is drawn from. Scoped to this user's
 # unfinalized experiments, so it only has to cover one person's concurrent runs.
 WORKER_LIST_LIMIT = 500
+
+# Entries and registrations per page when listing a queue. Matches the SDK's own.
+QUEUE_PAGE_SIZE = 1000
 
 # Sentinel for "the child did not report a result" (timed out, crashed, or killed).
 _NO_RESULT = -1
@@ -196,7 +205,7 @@ WORKER_HEARTBEAT_STALE_SECONDS = int(timedelta(minutes=5).total_seconds())
 # that has just lost its workers takes several cycles to get back to the floor it is
 # supposed to hold, and at ~8 minutes a cycle that is most of an hour spent below the
 # level the reserve exists to guarantee.
-CAPACITY_MAX_STEP = 64
+CAPACITY_MAX_STEP = 96
 
 # Smallest allocated pool to target, whatever the allocation arithmetic says.
 #
@@ -589,6 +598,78 @@ def require_config(value: _T | None, field: str, context: str) -> _T:
     return value
 
 
+# Asking for an explicit sort makes the server page from an index instead of scanning,
+# which is the difference between a cycle that keeps up and one that does not: the same
+# 75,959 entries took 1,834s unsorted and 102s sorted, and 73,568 registrations 80s
+# against 5.5s. Both return identical data. beaker-py's own list_entries and
+# list_workers take no sort argument, so these build the request directly; if its
+# internals move, fall back to the plain SDK calls and accept the cost.
+def _sorted_entries(beaker: Any, queue: Any) -> Iterator[Any]:
+    """Every entry in the queue, newest first.
+
+    Args:
+        beaker: an open Beaker client.
+        queue: the queue to list.
+
+    Yields:
+        each queue entry.
+    """
+    opts = pb2.ListQueueEntriesRequest.Opts
+    try:
+        request = pb2.ListQueueEntriesRequest(
+            options=opts(
+                queue_id=queue.id,
+                page_size=QUEUE_PAGE_SIZE,
+                sort_clause=opts.SortClause(
+                    sort_order=pb2.SORT_ORDER_DESCENDING, created=empty_pb2.Empty()
+                ),
+            )
+        )
+        method = RpcMethod[pb2.ListQueueEntriesResponse](
+            beaker.queue.service.ListQueueEntries
+        )
+        pages = beaker.queue.rpc_paged_request(method, request)
+    except (AttributeError, TypeError):
+        logger.warning("sorted entry listing unavailable; falling back to the SDK's")
+        yield from beaker.queue.list_entries(queue)
+        return
+    for response in pages:
+        yield from response.entries
+
+
+def _sorted_queue_workers(beaker: Any, queue: Any) -> Iterator[Any]:
+    """Every worker registration on the queue, newest first.
+
+    Args:
+        beaker: an open Beaker client.
+        queue: the queue to list.
+
+    Yields:
+        each queue worker registration.
+    """
+    opts = pb2.ListQueueWorkersRequest.Opts
+    try:
+        request = pb2.ListQueueWorkersRequest(
+            options=opts(
+                queue_id=queue.id,
+                page_size=QUEUE_PAGE_SIZE,
+                sort_clause=opts.SortClause(
+                    sort_order=pb2.SORT_ORDER_DESCENDING, created=empty_pb2.Empty()
+                ),
+            )
+        )
+        method = RpcMethod[pb2.ListQueueWorkersResponse](
+            beaker.queue.service.ListQueueWorkers
+        )
+        pages = beaker.queue.rpc_paged_request(method, request)
+    except (AttributeError, TypeError):
+        logger.warning("sorted worker listing unavailable; falling back to the SDK's")
+        yield from beaker.queue.list_workers(queue)
+        return
+    for response in pages:
+        yield from response.queue_workers
+
+
 def _state_name(entry: Any) -> str:
     """Get the state enum name for a queue entry (PENDING/CLAIMED/COMPLETED)."""
     status = entry.status
@@ -954,6 +1035,7 @@ def _count_allocated(
         finalized=False,
         workload_type=BeakerWorkloadType.experiment,
         limit=WORKER_LIST_LIMIT,
+        sort_order=BeakerSortOrder.descending,
     ):
         name = getattr(getattr(workload, "experiment", None), "name", "")
         if not name.startswith(name_prefix):
@@ -1128,6 +1210,7 @@ def _release_surplus_workers(
             finalized=False,
             workload_type=BeakerWorkloadType.experiment,
             limit=WORKER_LIST_LIMIT,
+            sort_order=BeakerSortOrder.descending,
         )
         if getattr(getattr(workload, "experiment", None), "name", "").startswith(
             name_prefix
@@ -1242,6 +1325,7 @@ def _count_worker_split(
             finalized=False,
             workload_type=BeakerWorkloadType.experiment,
             limit=WORKER_LIST_LIMIT,
+            sort_order=BeakerSortOrder.descending,
         )
         if getattr(getattr(workload, "experiment", None), "name", "").startswith(
             name_prefix
@@ -1305,7 +1389,7 @@ def _fresh_worker_ids(beaker: Any, queue: Any, now: float) -> set[str]:
         the registration ids heartbeating within the stale window.
     """
     fresh: set[str] = set()
-    for worker in beaker.queue.list_workers(queue):
+    for worker in _sorted_queue_workers(beaker, queue):
         heartbeat = getattr(worker, "heartbeat", None)
         if heartbeat is None or not heartbeat.seconds:
             continue
@@ -1531,6 +1615,7 @@ def _reap_unplaceable_overflow(
         finalized=False,
         workload_type=BeakerWorkloadType.experiment,
         limit=WORKER_LIST_LIMIT,
+        sort_order=BeakerSortOrder.descending,
     ):
         experiment = getattr(workload, "experiment", None)
         if not getattr(experiment, "name", "").startswith(name_prefix):
@@ -1603,6 +1688,7 @@ def _count_urgent_allocated(
         finalized=False,
         workload_type=BeakerWorkloadType.experiment,
         limit=WORKER_LIST_LIMIT,
+        sort_order=BeakerSortOrder.descending,
     ):
         name = getattr(getattr(workload, "experiment", None), "name", "")
         if not name.startswith(name_prefix):
@@ -1651,6 +1737,7 @@ def _count_running_tiers(
         finalized=False,
         workload_type=BeakerWorkloadType.experiment,
         limit=WORKER_LIST_LIMIT,
+        sort_order=BeakerSortOrder.descending,
     ):
         name = getattr(getattr(workload, "experiment", None), "name", "")
         if not name.startswith(name_prefix):
@@ -1820,7 +1907,7 @@ def _run_cycle(
 
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         queue = beaker.queue.get(queue_name)
-        entries = list(beaker.queue.list_entries(queue))
+        entries = list(_sorted_entries(beaker, queue))
         counts: dict[str, int] = {}
         for entry in entries:
             name = _state_name(entry)
