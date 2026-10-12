@@ -83,7 +83,7 @@ IMAGE_BAND_SETS = [
     }
 ]
 
-DATASET_ROOT = "/weka/dfive-default/rslearn-eai/datasets/change_alerts/20261007"
+DATASET_ROOT = "/weka/dfive-default/rslearn-eai/datasets/change_alerts/20261012"
 
 
 @dataclass
