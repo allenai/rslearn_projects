@@ -492,6 +492,7 @@ def get_jobs(
     overlap_size: int = 4,
     compile_model: bool = True,
     searchlight: bool = False,
+    context_pixels: int = 0,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
@@ -530,6 +531,9 @@ def get_jobs(
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
         searchlight: run each crop as one seam-free forward instead of tiling it.
+        context_pixels: imagery margin around each window that is read but not
+            written (see predict_pipeline). 0 adds no argument, so existing
+            entries keep the same args and in-flight matching is unchanged.
         epsg_code: limit tasks to the zone of this UTM EPSG code (326NN or 327NN both
             map to zone NN); default all UTM zones.
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
@@ -641,6 +645,7 @@ def get_jobs(
             "--compile_model",
             "true" if compile_model else "false",
             *(["--searchlight", "true"] if searchlight else []),
+            *(["--context_pixels", str(context_pixels)] if context_pixels else []),
             *pca_args,
         ]
         jobs.append(cur_args)
@@ -661,6 +666,7 @@ def write_jobs(
     overlap_size: int = 4,
     compile_model: bool = True,
     searchlight: bool = False,
+    context_pixels: int = 0,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
     geojson_fname: str | None = None,
@@ -696,6 +702,9 @@ def write_jobs(
         overlap_size: overlap in pixels between adjacent crops.
         compile_model: whether to compile the encoder transformer blocks.
         searchlight: run each crop as one seam-free forward instead of tiling it.
+        context_pixels: imagery margin around each window that is read but not
+            written (see predict_pipeline). 0 adds no argument, so existing
+            entries keep the same args and in-flight matching is unchanged.
         epsg_code: limit tasks to the zone of this UTM EPSG code; default all zones.
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
         geojson_fname: limit tasks to tiles intersecting a feature in this GeoJSON
@@ -732,6 +741,7 @@ def write_jobs(
         overlap_size=overlap_size,
         compile_model=compile_model,
         searchlight=searchlight,
+        context_pixels=context_pixels,
         epsg_code=epsg_code,
         wgs84_bounds=wgs84_bounds,
         geojson_fname=geojson_fname,

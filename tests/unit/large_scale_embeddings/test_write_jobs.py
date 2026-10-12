@@ -238,3 +238,31 @@ def test_a_footprint_covering_the_zone_keeps_every_block(
     )
     unrestricted = enumerate_blocks(job_size=8192, epsg_code=32637)
     assert restricted == unrestricted
+
+
+def test_get_jobs_adds_context_pixels_only_when_set(tmp_path: pathlib.Path) -> None:
+    """A margin reaches the worker as --context_pixels; none leaves the args unchanged.
+
+    Unchanged args matter: in-flight matching compares whole argument lists, so a run
+    without a margin must keep producing exactly the entries it always has.
+    """
+
+    def jobs(**kwargs: object) -> list[list[str]]:
+        return get_jobs(
+            inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+            timestamp=TIMESTAMP,
+            store_path=str(tmp_path / "out"),
+            completed_path=str(tmp_path / "completed"),
+            time_index=0,
+            checkpoint_path="/fake/checkpoint",
+            wgs84_bounds=WGS84_BOUNDS,
+            **kwargs,  # type: ignore[arg-type]
+        )
+
+    plain = jobs()
+    padded = jobs(context_pixels=48)
+    assert plain and all("--context_pixels" not in job for job in plain)
+    for before, after in zip(plain, padded, strict=True):
+        args = dict(zip(after[0::2], after[1::2]))
+        assert args["--context_pixels"] == "48"
+        assert after[: len(before)] == before

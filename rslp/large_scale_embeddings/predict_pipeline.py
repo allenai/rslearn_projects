@@ -652,7 +652,8 @@ def predict_pipeline(
         context_pixels: imagery margin added on each side of every PATCH_SIZE window
             and given to the model, but not written, so pixels at a window edge see
             context from both sides. 0 keeps the windows as they were. A nonzero
-            value changes the embeddings, so it needs its own store.
+            value changes pixels near window edges, so keep it fixed within a year;
+            each block records its value in its marker and provenance.
         batch_size: crops per batch, or None to keep the config's value. Lower it for
             a tile whose input stack will not fit in GPU memory.
         num_workers: data loader processes, or None to keep the config's value. Lower
@@ -1004,6 +1005,14 @@ def _process_tile(
                 "bounds": list(bounds),
                 "time_range": [time_range[0].isoformat(), time_range[1].isoformat()],
                 "time_index": time_index,
+                # Absent in files written before margins existed, which means 0.
+                "context_pixels": context_pixels,
+                # The imagery each window was materialized over. With a margin this is
+                # wider than the crop it writes, and the items below include scenes
+                # that touch only the margin, so the bounds are needed to read them.
+                "window_bounds": {
+                    window.name: list(window.bounds) for window in windows
+                },
                 "windows": _collect_provenance(windows),
             },
             f,
@@ -1027,6 +1036,8 @@ def _process_tile(
         # Markers written before these two were added came from window 480 runs.
         "window_size": window_size,
         "worker": os.environ.get(WORKER_NAME_ENV_VAR),
+        # Absent in markers written before margins existed, which means 0.
+        "context_pixels": context_pixels,
     }
     marker_fname.parent.mkdir(parents=True, exist_ok=True)
     with marker_fname.open("w") as f:
