@@ -777,9 +777,9 @@ def test_queue_depth_counts_workers_outside_beaker(
     )
     sup._run_cycle(config, _Result())
 
-    assert enqueued["count"] == (8 + 20) * 3, (
-        "the queue must be deep enough for both pools, not just the Beaker one"
-    )
+    assert (
+        enqueued["count"] == (8 + 20) * 3
+    ), "the queue must be deep enough for both pools, not just the Beaker one"
     # Only Beaker workers are launched; the others are already running.
     assert enqueued["launched"] == 8
 

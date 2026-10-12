@@ -27,6 +27,7 @@ import multiprocessing
 import random
 import shlex
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from multiprocessing.sharedctypes import Synchronized
@@ -34,8 +35,6 @@ from typing import Any, TypeVar
 
 import shapely
 import shapely.geometry
-from collections.abc import Iterator
-
 from beaker import (
     Beaker,
     BeakerConstraints,
