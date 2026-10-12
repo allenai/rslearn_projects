@@ -420,6 +420,11 @@ class CycleConfig:
 
     seconds: int = 180
     budget_seconds: int = DEFAULT_CYCLE_BUDGET_SECONDS
+    # Where the non-Beaker workers run, so the page can report how many machines are
+    # switched on. None leaves that count off the page rather than guessing it from
+    # queue registrations, which measure worker starts and not GPUs.
+    gce_project: str | None = None
+    gce_worker_label: str = "role=embedding-worker"
     # Where to cache the enumerated block list, or None to re-enumerate every cycle.
     #
     # Each cycle runs in a fresh process, so nothing is cached in memory between them
@@ -1689,6 +1694,51 @@ def _count_running_tiers(
     return by_cluster
 
 
+def count_gce_workers(project: str, label: str) -> int | None:
+    """Running GCE instances carrying `label`, or None if they cannot be counted.
+
+    The queue cannot answer this: a registration is made per worker start and never
+    removed, so counting those measures restarts. Instances are the honest count of
+    what is switched on and billing, though a machine whose container has died still
+    counts, so this is capacity rather than work being done.
+
+    Args:
+        project: the GCP project the instances live in.
+        label: a "key=value" instance label identifying the fleet.
+
+    Returns:
+        the number of RUNNING instances, or None if the lookup failed.
+    """
+    try:
+        import google.auth
+        from googleapiclient import discovery
+
+        key, _, value = label.partition("=")
+        credentials, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/compute.readonly"]
+        )
+        compute = discovery.build(
+            "compute", "v1", credentials=credentials, cache_discovery=False
+        )
+        running = 0
+        request = compute.instances().aggregatedList(
+            project=project, filter=f"labels.{key}={value}"
+        )
+        while request is not None:
+            response = request.execute()
+            for scope in response.get("items", {}).values():
+                for instance in scope.get("instances", []):
+                    if instance.get("status") == "RUNNING":
+                        running += 1
+            request = compute.instances().aggregatedList_next(request, response)
+        return running
+    except Exception:
+        # A missing permission or an API blip must not take the cycle down: the count
+        # is for the status page, and the page can say it does not know.
+        logger.exception("could not count GCE workers in %s", project)
+        return None
+
+
 def _fleet_summary(config: SuperviseConfig, fleet: dict[str, Any]) -> dict[str, Any]:
     """The worker counts for the status page, from one cycle's fleet payload.
 
@@ -1704,9 +1754,15 @@ def _fleet_summary(config: SuperviseConfig, fleet: dict[str, Any]) -> dict[str, 
     # registrations for 198 machines, and the page read 2,938 "GPUs working". Report
     # it as what it is and keep it out of the headline count.
     registrations = max(fleet.get("registered", 0) - on_beaker, 0)
+    gce = (
+        count_gce_workers(config.cycle.gce_project, config.cycle.gce_worker_label)
+        if config.cycle.gce_project
+        else None
+    )
     return {
         "working": on_beaker,
         "outside_registrations": registrations,
+        "gce_instances": gce,
         "allocated": [
             [config.worker.priority, totals[0]],
             [config.worker.overflow_priority, totals[1]],

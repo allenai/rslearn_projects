@@ -2053,7 +2053,10 @@ def test_fleet_summary_keeps_registrations_out_of_the_gpu_count() -> None:
 
     sup = importlib.import_module("rslp.large_scale_embeddings.supervise")
     config = types.SimpleNamespace(
-        worker=types.SimpleNamespace(priority="urgent", overflow_priority="high")
+        worker=types.SimpleNamespace(priority="urgent", overflow_priority="high"),
+        cycle=types.SimpleNamespace(
+            gce_project=None, gce_worker_label="role=embedding-worker"
+        ),
     )
     fleet = {
         "clusters": {"jupiter H100": [56, 102, 44], "ceres H100": [39, 12, 0]},
@@ -2073,6 +2076,8 @@ def test_fleet_summary_keeps_registrations_out_of_the_gpu_count() -> None:
     got = sup._fleet_summary(config, small)  # type: ignore[arg-type]
     assert got["working"] == 3
     assert got["outside_registrations"] == 0
+    # No project configured, so the page is told nothing rather than a guess.
+    assert got["gce_instances"] is None
 
 
 def test_allocated_workers_are_counted_by_min_runtime() -> None:

@@ -517,6 +517,11 @@ if (byPool.outside) {
 const workers = DATA.workers;
 if (workers) {
   stat(fmt(workers.working), "Beaker GPUs working");
+  // Instances, not work: a machine whose container has died still counts. Shown only
+  // when the supervisor could actually read them, so the page never guesses.
+  if (workers.gce_instances != null) {
+    stat(fmt(workers.gce_instances), "A100 instances running");
+  }
   // One line per cluster: urgent and high from the allocation, then high on spare
   // (unallocated) capacity.
   const tierText = (allocated, spare) => {
