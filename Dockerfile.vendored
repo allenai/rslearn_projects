@@ -79,3 +79,8 @@ RUN uv pip install --system --break-system-packages \
       natten==0.21.5+torch290cu128
 
 WORKDIR /opt/rslearn_projects
+
+# Commits of this repo and the vendored checkouts, written into every completion marker
+# and provenance file. Last, so changing it does not invalidate the dependency layers.
+ARG CODE_VERSION=unknown
+ENV RSLP_CODE_VERSION=${CODE_VERSION}

@@ -205,13 +205,18 @@ and were computed at 480. Tiles with existing markers are excluded when
 writing jobs and skipped by the prediction pipeline, so the pipeline is idempotent and
 jobs can safely be re-enqueued to retry failures.
 
-With `--model.context_pixels N`, each window is materialized and run over its crop
+With `--model.context_pixels N` (passed to workers with their own arguments, not in
+queue entries, so workers on an older image keep running unpadded), each window is materialized and run over its crop
 plus an N-pixel margin on every side, and only the central crop is written, so pixels
 at a window edge see context from both sides. Store, shards, window names and
 `written` offsets are unchanged. Markers and provenance files record `context_pixels`
 (absent means 0), and provenance records each window's materialized `window_bounds`,
 since its scene lists then include scenes that touch only the margin. N must be a
 multiple of the encoder patch size; keep it fixed within a year.
+
+Markers and provenance files also record `code_version`: the commits of this repo and
+the vendored rslearn and olmoearth_pretrain checkouts, baked into the image with
+`--build-arg CODE_VERSION=...` (see Dockerfile.vendored). Absent means an older image.
 
 The store must be created once with `init_store` before any prediction jobs run.
 `init_store` writes all group metadata (root, zone groups, arrays, coordinates), so

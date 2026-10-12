@@ -2349,3 +2349,39 @@ def test_a_queue_listing_falls_back_rather_than_failing() -> None:
 
     assert list(sup._sorted_entries(beaker, queue)) == ["entry"]
     assert list(sup._sorted_queue_workers(beaker, queue)) == ["worker"]
+
+
+def test_the_context_margin_goes_to_workers_not_entries() -> None:
+    """Workers get --context_pixels with their own args; entries never carry it.
+
+    A worker on an older image does not know the argument, so putting it in entries
+    would fail every job it claims. Sent to workers, an older one keeps running entries
+    unpadded and its marker records that, while new workers pad.
+    """
+    import ast
+    import importlib
+    import inspect
+    import textwrap
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    worker = types.SimpleNamespace(batch_size=1)
+    padded = types.SimpleNamespace(
+        worker=worker, model=types.SimpleNamespace(context_pixels=48)
+    )
+    plain = types.SimpleNamespace(
+        worker=worker, model=types.SimpleNamespace(context_pixels=0)
+    )
+    assert mod._worker_extra_args(padded) == [
+        "--batch_size",
+        "1",
+        "--context_pixels",
+        "48",
+    ]
+    assert mod._worker_extra_args(plain) == ["--batch_size", "1"]
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(mod._run_cycle)))
+    for call in ast.walk(tree):
+        if isinstance(call, ast.Call) and getattr(call.func, "id", None) == "get_jobs":
+            assert all(
+                k.arg != "context_pixels" for k in call.keywords
+            ), "context_pixels must not be baked into queue entries"

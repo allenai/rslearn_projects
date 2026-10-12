@@ -160,6 +160,10 @@ CHECKPOINT_ARGS = ("model_id", "model_path", "checkpoint_path")
 # rslp.common.worker and on GCE workers by the startup script.
 WORKER_NAME_ENV_VAR = "RSLP_WORKER_NAME"
 
+# Identifies the code that wrote a block, recorded in its marker and provenance. Baked
+# into the image at build time (see Dockerfile.vendored); absent when run elsewhere.
+CODE_VERSION_ENV_VAR = "RSLP_CODE_VERSION"
+
 
 def _checkpoint_arg(checkpoint_path: str) -> str:
     """Which OlmoEarth loader argument `checkpoint_path` should be passed as.
@@ -1007,6 +1011,7 @@ def _process_tile(
                 "time_index": time_index,
                 # Absent in files written before margins existed, which means 0.
                 "context_pixels": context_pixels,
+                "code_version": os.environ.get(CODE_VERSION_ENV_VAR),
                 # The imagery each window was materialized over. With a margin this is
                 # wider than the crop it writes, and the items below include scenes
                 # that touch only the margin, so the bounds are needed to read them.
@@ -1038,6 +1043,7 @@ def _process_tile(
         "worker": os.environ.get(WORKER_NAME_ENV_VAR),
         # Absent in markers written before margins existed, which means 0.
         "context_pixels": context_pixels,
+        "code_version": os.environ.get(CODE_VERSION_ENV_VAR),
     }
     marker_fname.parent.mkdir(parents=True, exist_ok=True)
     with marker_fname.open("w") as f:

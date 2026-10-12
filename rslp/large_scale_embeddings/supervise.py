@@ -317,7 +317,9 @@ class ModelConfig:
     # windows. Needs batch_size 1, a large window_size, and NATTEN in the image on H100.
     searchlight: bool = False
     # Imagery margin around each window that is read but not written, so window edges
-    # see context from both sides. Keep it fixed within a year.
+    # see context from both sides. Sent to workers with their own args, not in queue
+    # entries, so workers on an older image keep running entries unpadded rather than
+    # failing on an argument they do not know; each marker records what was used.
     context_pixels: int = 0
 
 
@@ -2103,7 +2105,6 @@ def _run_cycle(
                     overlap_size=config.model.overlap_size,
                     compile_model=config.model.compile_model,
                     searchlight=config.model.searchlight,
-                    context_pixels=config.model.context_pixels,
                     epsg_code=config.aoi.epsg_code,
                     wgs84_bounds=config.aoi.wgs84_bounds,
                     geojson_fname=config.aoi.geojson_fname,
@@ -2182,7 +2183,7 @@ def _run_cycle(
                     # the worker appends these to each entry and the last value is the
                     # one jsonargparse keeps.
                     rslp.common.worker.WORKER_EXTRA_ARGS_ENV: shlex.join(
-                        ["--batch_size", str(config.worker.batch_size)]
+                        _worker_extra_args(config)
                     ),
                     **(config.worker.env_vars or {}),
                 },
@@ -2321,6 +2322,21 @@ def _tend_status(
     )
     proc.start()
     return proc, now
+
+
+def _worker_extra_args(config: SuperviseConfig) -> list[str]:
+    """Arguments each Beaker worker appends to every entry it runs.
+
+    Args:
+        config: the run configuration.
+
+    Returns:
+        the arguments, as a list.
+    """
+    args = ["--batch_size", str(config.worker.batch_size)]
+    if config.model.context_pixels:
+        args += ["--context_pixels", str(config.model.context_pixels)]
+    return args
 
 
 def launch_supervisor(

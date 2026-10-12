@@ -409,6 +409,7 @@ def test_context_pixels_pad_the_windows_but_not_what_is_written(
         lambda proj, bounds, size, wedge: [(0, 0, 2048, 2048), (2048, 0, 4096, 2048)],
     )
     monkeypatch.setattr(pp, "_crop_crosses_bad_longitude", lambda proj, b: False)
+    monkeypatch.setenv(pp.CODE_VERSION_ENV_VAR, "rslp=abc1234 rslearn=def5678")
 
     projection = Projection(CRS.from_epsg(32610), 10, -10)
     pp.predict_pipeline(
@@ -436,10 +437,12 @@ def test_context_pixels_pad_the_windows_but_not_what_is_written(
     marker = json.loads(marker_fname.read_text())
     assert sorted(marker["written"]) == [[0, 0], [2048, 0]]
     assert marker["context_pixels"] == 112
+    assert marker["code_version"] == "rslp=abc1234 rslearn=def5678"
     # Provenance names the margin and each window's materialized extent, since its
     # scene lists include scenes that touch only the margin.
     provenance = json.loads(pp.get_provenance_fname(UPath(marker_fname)).read_text())
     assert provenance["context_pixels"] == 112
+    assert provenance["code_version"] == "rslp=abc1234 rslearn=def5678"
     assert provenance["window_bounds"] == {
         "0_0": [-112, -112, 2160, 2160],
         "1_0": [1936, -112, 4208, 2160],
