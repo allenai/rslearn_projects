@@ -92,6 +92,12 @@ DRAIN_STALE_SECONDS = 1800
 # How often the prefetch thread and the main loop recheck their stop and idle state.
 PREFETCH_POLL_SECONDS = 1
 
+# Backoff between reopening a closed entry stream, and its ceiling. Linear and small:
+# a close usually means "nothing to hand out just now", so the worker should come back
+# promptly, but never in a tight loop.
+RECONNECT_BACKOFF_SECONDS = 2
+MAX_RECONNECT_SLEEP = 30
+
 # How long to wait for the prefetch thread to stop on exit. It terminates its
 # subprocess when stopped, so this only needs to cover that.
 PREFETCH_JOIN_SECONDS = 60
@@ -293,6 +299,9 @@ class _Prefetcher(threading.Thread):
         # Set while an entry has been taken off the channel but not yet handed over.
         self.busy = threading.Event()
         self.stop = threading.Event()
+        # Set when the server ended the entry stream. Distinct from `stop`, which is
+        # the worker shutting the prefetcher down on its way out.
+        self.channel_closed = threading.Event()
 
     def run(self) -> None:
         """Prefetch entries until stopped or the channel closes."""
@@ -301,8 +310,11 @@ class _Prefetcher(threading.Thread):
                 batch = self.rx.rx.get(block=True, timeout=PREFETCH_POLL_SECONDS)
             except QueueEmpty:
                 continue
-            # The SDK sends None when the channel closes.
+            # The SDK sends None when the server ends the entry stream. That happens
+            # routinely when it has nothing to hand out, so it means "reopen", not
+            # "stop": the caller reconnects and only idle_timeout ends the worker.
             if batch is None:
+                self.channel_closed.set()
                 return
             for worker_input in batch:
                 self.busy.set()
@@ -398,21 +410,26 @@ def worker_pipeline(
         workflow_args = json_data["args"] + extra_args + worker_args
         run_workflow(rslp_project, rslp_workflow, workflow_args)
 
-    def next_ready(prefetcher: _Prefetcher) -> _Claimed | None:
-        # Idle only counts while nothing is being prefetched, since a prefetch can
-        # take minutes.
-        idle_since = time.monotonic()
+    def next_ready(
+        prefetcher: _Prefetcher, idle_since: float
+    ) -> tuple[_Claimed | None, float]:
+        """The next prefetched entry, or None with the idle clock to carry forward.
+
+        Idle only counts while nothing is being prefetched, since a prefetch can take
+        minutes. The clock is returned so it survives a reconnect: a server that keeps
+        ending the stream must not reset the worker's patience each time.
+        """
         while True:
             try:
-                return prefetcher.ready.get(timeout=PREFETCH_POLL_SECONDS)
+                return prefetcher.ready.get(timeout=PREFETCH_POLL_SECONDS), idle_since
             except QueueEmpty:
                 pass
             if not prefetcher.is_alive():
-                return None
+                return None, idle_since
             if prefetcher.busy.is_set():
                 idle_since = time.monotonic()
             elif time.monotonic() - idle_since >= idle_timeout:
-                return None
+                return None, idle_since
 
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         queue = beaker.queue.get(queue_name)
@@ -423,96 +440,129 @@ def worker_pipeline(
         watchdog: threading.Timer | None = None
         worker_name = os.environ.get(WORKER_NAME_ENV_VAR)
         scratch_root = tempfile.mkdtemp(prefix="rslp-prefetch-")
-        with beaker.queue.worker_channel(queue, worker) as (tx, rx):
-            in_flight: set[str] = set()
-            signal.signal(signal.SIGTERM, _release_on_termination(tx, in_flight))
-            prefetcher = _Prefetcher(rx, in_flight, scratch_root, flush_messages)
-            prefetcher.start()
-            try:
-                while True:
-                    # Before taking the next entry, not after. With prefetching the
-                    # next entry may already be claimed, and it is rejected on the
-                    # way out so the supervisor re-offers it.
-                    if drain_path is not None and _should_drain(
-                        drain_path, worker_name
-                    ):
-                        logger.info(
-                            "worker %s is on the drain list; exiting to hand back its "
-                            "slot",
-                            worker_name,
-                        )
-                        break
+        in_flight: set[str] = set()
+        # The server ends the entry stream routinely when it has nothing to hand out,
+        # which the SDK reports as a closed channel rather than an error. Treating that
+        # as the end of the worker made every idle worker exit within seconds, and under
+        # a restarting container that became a hot loop that never claimed anything.
+        # Reopen instead, reusing the same registration, and let idle_timeout decide.
+        idle_since = time.monotonic()
+        reconnects = 0
+        while True:
+            with beaker.queue.worker_channel(queue, worker) as (tx, rx):
+                signal.signal(signal.SIGTERM, _release_on_termination(tx, in_flight))
+                prefetcher = _Prefetcher(rx, in_flight, scratch_root, flush_messages)
+                prefetcher.start()
+                try:
+                    while True:
+                        # Before taking the next entry, not after. With prefetching the
+                        # next entry may already be claimed, and it is rejected on the
+                        # way out so the supervisor re-offers it.
+                        if drain_path is not None and _should_drain(
+                            drain_path, worker_name
+                        ):
+                            logger.info(
+                                "worker %s is on the drain list; exiting to hand back its "
+                                "slot",
+                                worker_name,
+                            )
+                            break
 
-                    claimed = next_ready(prefetcher)
-                    if claimed is None:
-                        break
-                    entry_id = claimed.entry_id
-                    entry_input = claimed.entry_input
-                    logger.info("processing entry %s", entry_id)
+                        claimed, idle_since = next_ready(prefetcher, idle_since)
+                        if claimed is None:
+                            break
+                        entry_id = claimed.entry_id
+                        entry_input = claimed.entry_input
+                        logger.info("processing entry %s", entry_id)
 
-                    try:
-                        if claimed.error is not None:
-                            raise claimed.error
-                        if not flush_messages:
-                            process_message(entry_input, claimed.extra_args)
-                        tx.send(entry_id, done=True)
-                        in_flight.discard(entry_id)
-                        consecutive_errors = 0
-                    except Exception as e:
-                        consecutive_errors += 1
-                        # exc_info so the traceback survives: without it only the
-                        # exception's message reaches the logs, which is rarely
-                        # enough to locate a failure inside the model or dataset.
-                        logger.exception(
-                            "encountered error while processing message %s (%d/%d consecutive errors)",
-                            entry_input,
-                            consecutive_errors,
-                            retries,
-                        )
-                        # Release the claim: Beaker never releases one on its own, so an
-                        # unanswered entry stays CLAIMED and its job counts as in flight
-                        # until the claim goes stale. REJECTED does not, so the
-                        # supervisor re-enqueues on its next cycle.
                         try:
-                            tx.send(
-                                entry_id,
-                                rejection=f"{type(e).__name__}: {e}"[:REJECTION_CHARS],
+                            if claimed.error is not None:
+                                raise claimed.error
+                            if not flush_messages:
+                                process_message(entry_input, claimed.extra_args)
+                            tx.send(entry_id, done=True)
+                            in_flight.discard(entry_id)
+                            consecutive_errors = 0
+                        except Exception as e:
+                            consecutive_errors += 1
+                            # exc_info so the traceback survives: without it only the
+                            # exception's message reaches the logs, which is rarely
+                            # enough to locate a failure inside the model or dataset.
+                            logger.exception(
+                                "encountered error while processing message %s (%d/%d consecutive errors)",
+                                entry_input,
+                                consecutive_errors,
+                                retries,
                             )
-                        except Exception:
-                            # Not worth losing the run over: the entry just goes stale.
-                            logger.exception("could not reject entry %s", entry_id)
-                        in_flight.discard(entry_id)
-                        if consecutive_errors >= retries:
-                            raise
-                        time.sleep(
-                            min(
-                                retry_sleep * 2 ** (consecutive_errors - 1),
-                                max_retry_sleep,
+                            # Release the claim: Beaker never releases one on its own, so an
+                            # unanswered entry stays CLAIMED and its job counts as in flight
+                            # until the claim goes stale. REJECTED does not, so the
+                            # supervisor re-enqueues on its next cycle.
+                            try:
+                                tx.send(
+                                    entry_id,
+                                    rejection=f"{type(e).__name__}: {e}"[
+                                        :REJECTION_CHARS
+                                    ],
+                                )
+                            except Exception:
+                                # Not worth losing the run over: the entry just goes stale.
+                                logger.exception("could not reject entry %s", entry_id)
+                            in_flight.discard(entry_id)
+                            if consecutive_errors >= retries:
+                                raise
+                            time.sleep(
+                                min(
+                                    retry_sleep * 2 ** (consecutive_errors - 1),
+                                    max_retry_sleep,
+                                )
                             )
-                        )
-                    finally:
-                        # The prefetched data is only needed for this one run.
-                        if claimed.extra_args:
-                            shutil.rmtree(
-                                os.path.dirname(claimed.extra_args[-1]),
-                                ignore_errors=True,
-                            )
-            finally:
-                prefetcher.stop.set()
-                prefetcher.join(timeout=PREFETCH_JOIN_SECONDS)
-                # Anything still held was claimed but never run. Hand it back now
-                # rather than leaving it for the claim to go stale.
-                for entry_id in list(in_flight):
-                    try:
-                        tx.send(entry_id, rejection="worker exited before running it")
-                    except Exception:
-                        logger.exception("could not reject entry %s", entry_id)
-                in_flight.clear()
-                shutil.rmtree(scratch_root, ignore_errors=True)
-                # The channel teardown that follows joins a thread that can be stuck
-                # in the SDK's bidirectional stream, which would hang the worker with
-                # its GPU held. Everything durable is written by now, so bound it.
-                watchdog = _force_exit_after(SHUTDOWN_GRACE_SECONDS)
+                        finally:
+                            # The prefetched data is only needed for this one run.
+                            if claimed.extra_args:
+                                shutil.rmtree(
+                                    os.path.dirname(claimed.extra_args[-1]),
+                                    ignore_errors=True,
+                                )
+                finally:
+                    reconnecting = prefetcher.channel_closed.is_set()
+                    prefetcher.stop.set()
+                    prefetcher.join(timeout=PREFETCH_JOIN_SECONDS)
+                    # Anything still held was claimed but never run. Hand it back now
+                    # rather than leaving it for the claim to go stale. On a reconnect
+                    # the channel is already gone, so these go back via the next one.
+                    if not reconnecting:
+                        for entry_id in list(in_flight):
+                            try:
+                                tx.send(
+                                    entry_id,
+                                    rejection="worker exited before running it",
+                                )
+                            except Exception:
+                                logger.exception("could not reject entry %s", entry_id)
+                        in_flight.clear()
+                        shutil.rmtree(scratch_root, ignore_errors=True)
+                        # The channel teardown that follows joins a thread that can be
+                        # stuck in the SDK's bidirectional stream, which would hang the
+                        # worker with its GPU held. Everything durable is written by
+                        # now, so bound it.
+                        watchdog = _force_exit_after(SHUTDOWN_GRACE_SECONDS)
+
+            if not reconnecting:
+                break
+            reconnects += 1
+            idle_for = time.monotonic() - idle_since
+            logger.info(
+                "queue closed the entry stream (reconnect %d, idle %.0fs of %ds)",
+                reconnects,
+                idle_for,
+                idle_timeout,
+            )
+            if idle_for >= idle_timeout:
+                logger.info("idle for %ds; exiting", idle_timeout)
+                break
+            # A server that closes immediately must not become a reconnect spin.
+            time.sleep(min(RECONNECT_BACKOFF_SECONDS * reconnects, MAX_RECONNECT_SLEEP))
 
         # Reaching here means the teardown returned, so the channel closed cleanly and
         # the watchdog has nothing left to guard.
