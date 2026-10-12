@@ -48,6 +48,11 @@ EXTRA_ARGS="$(attr embed-worker-extra-args "")"
 # spaces, for settings that are not worker args (e.g. PYTORCH_CUDA_ALLOC_CONF).
 EXTRA_ENV="$(attr embed-extra-env "")"
 NOFILE="$(attr embed-nofile 65535:524288)"
+# Seconds the worker waits for work before exiting. The 10-second default suits a
+# Beaker worker, whose slot is wanted back; this VM is ours for its whole Flex Start
+# window, and the queue is kept shallow on purpose, so a short timeout here just
+# restarts the container every few seconds and reloads the model each time.
+IDLE_TIMEOUT="$(attr embed-idle-timeout 900)"
 
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/${IMAGE_NAME}:${IMAGE_TAG}"
 echo "image=$IMAGE queue=$QUEUE secrets_from=$SECRET_PROJECT"
@@ -140,7 +145,8 @@ docker run -d --name embedworker \
   -v /weka:/weka \
   -v "${GCP_CREDS_FILE}:/etc/credentials/gcp_credentials.json:ro" \
   "$IMAGE" \
-  python -m rslp.main common worker --queue_name "$QUEUE"
+  python -m rslp.main common worker --queue_name "$QUEUE" \
+  --idle_timeout "$IDLE_TIMEOUT"
 
 echo "=== started ==="
 docker ps --format '{{.Names}} {{.Status}}'
