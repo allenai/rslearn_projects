@@ -757,3 +757,63 @@ def test_a_year_the_store_lacks_is_rejected(monkeypatch: pytest.MonkeyPatch) -> 
         sup._run_cycle(
             _render_cycle_config(stage=sup.STAGE_PREDICT, years=[2025]), _Result()
         )
+
+
+def test_queue_depth_counts_workers_outside_beaker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Workers outside Beaker claim from the same queue, so they set its depth too.
+
+    Sized on the Beaker count alone, the GCE fleet emptied the queue before the Beaker
+    workers reached it: 198 GCE workers against 64 Beaker ones left every Beaker worker
+    idling out having claimed nothing, and a whole cycle's markers came from GCE.
+    """
+    _stub_render_jobs(monkeypatch, 500)
+    monkeypatch.setattr(sup, "count_gce_workers", lambda project, label: 20)
+    enqueued = _install_cycle_fakes(monkeypatch)
+    config = _render_cycle_config(
+        num_workers=8,
+        cycle=sup.CycleConfig(pending_per_worker=3, gce_project="a-project"),
+    )
+    sup._run_cycle(config, _Result())
+
+    assert enqueued["count"] == (8 + 20) * 3, (
+        "the queue must be deep enough for both pools, not just the Beaker one"
+    )
+    # Only Beaker workers are launched; the others are already running.
+    assert enqueued["launched"] == 8
+
+
+def test_queue_depth_ignores_outside_workers_when_none_are_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run with no outside fleet must not pay for a lookup or change its depth."""
+    _stub_render_jobs(monkeypatch, 500)
+
+    def fail(project: str, label: str) -> int:
+        raise AssertionError("no project is configured, so nothing should be counted")
+
+    monkeypatch.setattr(sup, "count_gce_workers", fail)
+    enqueued = _install_cycle_fakes(monkeypatch)
+    config = _render_cycle_config(
+        num_workers=8, cycle=sup.CycleConfig(pending_per_worker=3)
+    )
+    sup._run_cycle(config, _Result())
+
+    assert enqueued["count"] == 24
+
+
+def test_an_uncountable_outside_fleet_falls_back_to_the_beaker_depth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed instance lookup returns None; depth must not become zero or crash."""
+    _stub_render_jobs(monkeypatch, 500)
+    monkeypatch.setattr(sup, "count_gce_workers", lambda project, label: None)
+    enqueued = _install_cycle_fakes(monkeypatch)
+    config = _render_cycle_config(
+        num_workers=8,
+        cycle=sup.CycleConfig(pending_per_worker=3, gce_project="a-project"),
+    )
+    sup._run_cycle(config, _Result())
+
+    assert enqueued["count"] == 24

@@ -1909,7 +1909,17 @@ def _run_cycle(
     # How deep to keep the queue. The default assumes long jobs. A stage of short jobs
     # needs much more: a worker drains its few entries and then idles until the next
     # cycle, making the cycle interval the throughput ceiling.
-    target_pending = num_workers * config.cycle.pending_per_worker
+    #
+    # Workers outside Beaker claim from this queue too but are not in num_workers.
+    # Sizing on num_workers alone lets them empty the queue before the Beaker workers
+    # reach it, and those then idle out having claimed nothing: with 198 GCE workers
+    # against 64 Beaker ones the whole Beaker pool went a cycle writing no markers.
+    outside_workers = (
+        count_gce_workers(config.cycle.gce_project, config.cycle.gce_worker_label) or 0
+        if config.cycle.gce_project
+        else 0
+    )
+    target_pending = (num_workers + outside_workers) * config.cycle.pending_per_worker
     pending = counts.get("PENDING", 0)
     if stats is not None:
         stats[0] = pending
@@ -1918,7 +1928,13 @@ def _run_cycle(
         stats[3] = counts.get("REJECTED", 0)
         stats[4] = live
         stats[5] = num_workers
-    logger.info("queue=%s workers=%d", counts, live)
+    logger.info(
+        "queue=%s workers=%d outside=%d target_pending=%d",
+        counts,
+        live,
+        outside_workers,
+        target_pending,
+    )
 
     # Recompute what is left directly from the completion markers. This doubles as the
     # completion check, so it runs every cycle rather than only when the queue drains.
