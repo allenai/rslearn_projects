@@ -186,6 +186,7 @@ class _FakeExperiment:
     def __init__(self, name: str, created: int) -> None:
         self.name = name
         self.created = _FakeSeconds(created)
+        self.tasks: list[types.SimpleNamespace] = []
 
 
 class _FakeWorkload:
