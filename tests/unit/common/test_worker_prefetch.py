@@ -79,6 +79,7 @@ class _Run:
         self.lock = threading.Lock()
         self.events: list[tuple[str, str]] = []
         self.run_args: dict[str, list[str]] = {}
+        self.prefetch_cmds: dict[str, list[str]] = {}
         self.prefetched: dict[str, threading.Event] = {}
 
     def record(self, kind: str, entry_id: str) -> None:
@@ -139,6 +140,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Any:
 
         def fake_prefetch(cmd: list[str], stop: threading.Event) -> None:
             entry_id = cmd[cmd.index("noop") + 1]
+            run.prefetch_cmds[entry_id] = list(cmd)
             scratch = cmd[cmd.index("--scratch_path") + 1]
             assert "--materialize_only" in cmd
             assert os.path.isdir(os.path.dirname(scratch))
@@ -286,3 +288,20 @@ def test_no_worker_args_leaves_the_entry_untouched(harness: Any) -> None:
     _, run = harness([[_Input("e1", None)]])
 
     assert run.run_args["e1"] == ["e1"]
+
+
+def test_worker_args_reach_the_prefetch_too(
+    harness: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The prefetch must prepare the job with the worker's args, not just the entry's.
+
+    A worker arg like --context_pixels changes what is materialized, and a prefetch
+    without it hands the real run a scratch prepared for a different job.
+    """
+    monkeypatch.setenv(worker_mod.WORKER_EXTRA_ARGS_ENV, "--context_pixels 48")
+    _, run = harness([[_Input("e1", PREFETCH)]])
+
+    cmd = run.prefetch_cmds["e1"]
+    i = cmd.index("--context_pixels")
+    assert cmd[i + 1] == "48"
+    assert i > cmd.index("--materialize_only"), "worker args must follow the entry's"

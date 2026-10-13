@@ -449,6 +449,44 @@ def test_context_pixels_pad_the_windows_but_not_what_is_written(
     }
 
 
+def test_a_scratch_prefetched_with_another_margin_is_refused(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Predicting with a margin the scratch was not materialized with must fail.
+
+    Otherwise the reloaded windows are cropped by a margin they do not have, and the
+    store keeps nodata along every window edge.
+    """
+    pp = sys.modules["rslp.large_scale_embeddings.predict_pipeline"]
+    monkeypatch.setattr(pp, "materialize_dataset", lambda *a, **k: None)
+    monkeypatch.setattr(pp, "run_model_predict", lambda *a, **k: None)
+    monkeypatch.setattr(pp, "get_zone_wedge", lambda crs, res: None)
+    monkeypatch.setattr(
+        pp, "list_kept_crops", lambda proj, bounds, size, wedge: [(0, 0, 2048, 2048)]
+    )
+    monkeypatch.setattr(pp, "_crop_crosses_bad_longitude", lambda proj, b: False)
+
+    projection = Projection(CRS.from_epsg(32610), 10, -10)
+    kwargs = dict(
+        inputs=pp.EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+        projection_json=json.dumps(projection.serialize()),
+        bounds=(0, 0, 2048, 2048),
+        time_range=(datetime(2024, 1, 1, tzinfo=UTC),) * 2,
+        store_path=str(tmp_path / "store.zarr"),
+        completed_path=str(tmp_path / "completed"),
+        checkpoint_path=str(tmp_path / "ckpt"),
+        time_index=0,
+        patch_size=2,
+        latent_patch_size=1,
+        scratch_path=str(tmp_path / "scratch"),
+    )
+    pp.predict_pipeline(materialize_only=True, **kwargs)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="prefetched window 0_0"):
+        pp.predict_pipeline(context_pixels=48, **kwargs)  # type: ignore[arg-type]
+    assert not (tmp_path / "completed").exists()
+
+
 @pytest.mark.parametrize("context_pixels", [-2, 3])
 def test_context_pixels_must_fit_the_token_grid(context_pixels: int) -> None:
     """An odd margin at patch_size 2 would leave a half token at each window edge."""

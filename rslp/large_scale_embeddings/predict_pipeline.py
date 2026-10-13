@@ -901,6 +901,21 @@ def _process_tile(
             window.save()
         windows.append(window)
 
+    if materialized:
+        # The write step reloads each window, so a scratch prepared with another margin
+        # would be cropped as if it had this one, leaving unwritten edges in the store.
+        saved = {
+            w.name: tuple(w.bounds)
+            for w in dataset.load_windows(groups=[PREDICTION_GROUP])
+        }
+        for window in windows:
+            if saved.get(window.name) != tuple(window.bounds):
+                raise ValueError(
+                    f"prefetched window {window.name} has bounds "
+                    f"{saved.get(window.name)} but context_pixels {context_pixels} "
+                    f"needs {tuple(window.bounds)}"
+                )
+
     written: list[list[int]] = []
     skipped_no_data: list[list[int]] = []
     pca_rendered: list[list[int]] = []

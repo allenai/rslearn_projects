@@ -279,7 +279,12 @@ class _Prefetcher(threading.Thread):
     """
 
     def __init__(
-        self, rx: Any, in_flight: set[str], scratch_root: str, flush_messages: bool
+        self,
+        rx: Any,
+        in_flight: set[str],
+        scratch_root: str,
+        flush_messages: bool,
+        worker_args: list[str],
     ) -> None:
         """Set up the prefetcher.
 
@@ -288,12 +293,15 @@ class _Prefetcher(threading.Thread):
             in_flight: ids of entries this worker holds, shared with the main thread.
             scratch_root: directory to create each entry's prefetch directory in.
             flush_messages: skip prefetching, since nothing will run.
+            worker_args: the worker's own args, appended as for the real run so the
+                prefetch prepares the same job the real run expects.
         """
         super().__init__(name="prefetcher", daemon=True)
         self.rx = rx
         self.in_flight = in_flight
         self.scratch_root = scratch_root
         self.flush_messages = flush_messages
+        self.worker_args = worker_args
         # Size one, so at most one entry is prefetched ahead of the running one.
         self.ready: Queue[_Claimed] = Queue(maxsize=1)
         # Set while an entry has been taken off the channel but not yet handed over.
@@ -354,6 +362,7 @@ class _Prefetcher(threading.Thread):
             claimed.entry_input["workflow"],
             *claimed.entry_input["args"],
             *prefetch["args"],
+            *self.worker_args,
             *scratch_args,
         ]
         logger.info("prefetching entry %s", claimed.entry_id)
@@ -451,7 +460,9 @@ def worker_pipeline(
         while True:
             with beaker.queue.worker_channel(queue, worker) as (tx, rx):
                 signal.signal(signal.SIGTERM, _release_on_termination(tx, in_flight))
-                prefetcher = _Prefetcher(rx, in_flight, scratch_root, flush_messages)
+                prefetcher = _Prefetcher(
+                    rx, in_flight, scratch_root, flush_messages, worker_args
+                )
                 prefetcher.start()
                 try:
                     while True:
