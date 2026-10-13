@@ -287,9 +287,16 @@ def export_provenance(
     blocks = [name for name in markers if name in provenance_names]
     logger.info("exporting %d blocks of %d from %s", len(blocks), year, run_path)
 
+    vanished: list[str] = []
+
     def read(name: str) -> tuple[list[dict], list[dict], dict[str, dict]]:
-        marker = json.loads((completed / name).read_text())
-        provenance = json.loads((provenance_dir / name).read_text())
+        try:
+            marker = json.loads((completed / name).read_text())
+            provenance = json.loads((provenance_dir / name).read_text())
+        except FileNotFoundError:
+            # Deleted since the listing, to be recomputed; its rows come next export.
+            vanished.append(name)
+            return [], [], {}
         return _block_rows(marker, provenance, name.removesuffix(".json"))
 
     filesystem, root = pyarrow.fs.FileSystem.from_uri(out_dir)
@@ -332,6 +339,12 @@ def export_provenance(
         f"{root}/windows/{partition}/part-0.parquet",
         geo=True,
     )
+    if vanished:
+        logger.warning(
+            "%d blocks were deleted while exporting and are left out, e.g. %s",
+            len(vanished),
+            vanished[0],
+        )
     n_scenes = _write_table(
         sorted(scenes.values(), key=lambda scene: scene["scene_id"]),
         SCENES_SCHEMA,

@@ -1,5 +1,6 @@
 import json
 import pathlib
+import sys
 
 import pyarrow.parquet as pq
 import pytest
@@ -178,6 +179,28 @@ def test_blocks_without_a_marker_are_left_out(tmp_path: pathlib.Path) -> None:
     _write_block(
         run, 2025, (40960, -540672), [[40960, -540672]], ["20_-264"], with_marker=False
     )
+    out = tmp_path / "out"
+    export_provenance(run_path=str(run), year=2025, out_dir=str(out), workers=1)
+    windows = pq.read_table(out / "windows" / "year=2025").to_pylist()
+    assert [w["block"] for w in windows] == [f"{CRS}_32768_-540672"]
+
+
+def test_a_block_deleted_mid_export_is_skipped(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A marker deleted after the listing, to recompute its block, is left out."""
+    run = tmp_path / "run"
+    _write_block(run, 2025, (32768, -540672), [[32768, -540672]], ["16_-264"])
+    _write_block(run, 2025, (40960, -540672), [[40960, -540672]], ["20_-264"])
+    module = sys.modules["rslp.large_scale_embeddings.export_provenance"]
+    real_block_rows = module._block_rows
+    gone = run / "completed_2025" / f"{CRS}_40960_-540672.json"
+
+    def delete_then_read(marker: dict, provenance: dict, block: str) -> tuple:
+        gone.unlink(missing_ok=True)
+        return real_block_rows(marker, provenance, block)
+
+    monkeypatch.setattr(module, "_block_rows", delete_then_read)
     out = tmp_path / "out"
     export_provenance(run_path=str(run), year=2025, out_dir=str(out), workers=1)
     windows = pq.read_table(out / "windows" / "year=2025").to_pylist()
