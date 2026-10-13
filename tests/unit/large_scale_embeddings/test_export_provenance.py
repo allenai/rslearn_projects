@@ -106,7 +106,9 @@ def test_export_writes_three_tables(tmp_path: pathlib.Path) -> None:
 
     inputs = pq.read_table(out / "inputs" / "year=2025").to_pylist()
     assert len(inputs) == 2 * 3
-    s2 = [r for r in inputs if r["window"] == "16_-264" and r["sensor"] == "sentinel2_l2a"]
+    s2 = [
+        r for r in inputs if r["window"] == "16_-264" and r["sensor"] == "sentinel2_l2a"
+    ]
     assert [(r["rank"], r["scene_id"]) for r in s2] == [(0, "S2_A"), (1, "S2_B")]
     assert s2[0]["period_start"].isoformat() == "2025-12-02T00:00:00+00:00"
 
