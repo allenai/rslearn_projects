@@ -19,7 +19,7 @@ from beaker import (
     BeakerTaskSpec,
 )
 from common import SOURCE_DATASETS
-from make_model_configs import RUNS_BY_NAME
+from make_model_configs import PROJECT_NAME, RUNS_BY_NAME
 
 from rslp import launcher_lib
 from rslp.utils.beaker import (
@@ -30,7 +30,6 @@ from rslp.utils.beaker import (
     get_base_env_vars,
 )
 
-PROJECT_ID = "2026_10_07_change_alerts"
 CODE_EXPERIMENT_ID = "eval_code"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WEKA_MOUNT = WekaMount(bucket_name="dfive-default", mount_path="/weka/dfive-default")
@@ -53,11 +52,11 @@ def main() -> None:
 
     # upload_code archives the current directory.
     os.chdir(REPO_ROOT)
-    launcher_lib.upload_code(PROJECT_ID, CODE_EXPERIMENT_ID)
+    launcher_lib.upload_code(PROJECT_NAME, CODE_EXPERIMENT_ID)
 
     download = (
         "python -c 'from rslp.launcher_lib import download_code; "
-        f'download_code("{PROJECT_ID}", "{CODE_EXPERIMENT_ID}")\''
+        f'download_code("{PROJECT_NAME}", "{CODE_EXPERIMENT_ID}")\''
     )
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         for source in args.sources.split(","):
@@ -82,7 +81,7 @@ def main() -> None:
                 )
                 spec = BeakerExperimentSpec(
                     budget=DEFAULT_BUDGET,
-                    description=f"{PROJECT_ID}/eval/{source}_{run_name}",
+                    description=f"{PROJECT_NAME}/eval/{source}_{run_name}",
                     tasks=[
                         BeakerTaskSpec.new(
                             name="main",
@@ -103,7 +102,9 @@ def main() -> None:
                         )
                     ],
                 )
-                name = f"{PROJECT_ID}_eval_{source}_{run_name}_{str(uuid.uuid4())[:8]}"
+                name = (
+                    f"{PROJECT_NAME}_eval_{source}_{run_name}_{str(uuid.uuid4())[:8]}"
+                )
                 workload = beaker.experiment.create(name=name, spec=spec)
                 print(f"{name}: {workload.experiment.id}", flush=True)
 

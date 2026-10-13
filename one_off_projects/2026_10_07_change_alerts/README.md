@@ -97,7 +97,7 @@ Everything is on WEKA under `/weka/dfive-default/rslearn-eai/datasets/change_ale
 
 `{source}` is one of `forest_loss`, `lcc`, and `mangrove`.
 
-Checkpoints are under `${RSLP_PREFIX}/projects/2026_10_07_change_alerts/{source}_{run}/`.
+Checkpoints are under `${RSLP_PREFIX}/projects/2026_10_12_change_alerts/{source}_{run}/`.
 
 ### Building the Datasets
 

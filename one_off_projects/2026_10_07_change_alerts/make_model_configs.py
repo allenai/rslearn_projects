@@ -32,7 +32,7 @@ from common import (
     dataset_path,
 )
 
-PROJECT_NAME = "2026_10_07_change_alerts"
+PROJECT_NAME = "2026_10_12_change_alerts"
 CONFIG_DIR = Path(__file__).parent / "configs"
 
 # OlmoEarth band order.
