@@ -10,7 +10,11 @@ Three tables, each under ``<table>/year=<year>/`` so a reader can load one year:
     No geometry; join to ``windows`` on (crs, window) and to ``scenes`` on scene_id.
 ``scenes``
     One row per scene used that year, with its capture time and WGS84 footprint, so
-    a footprint is stored once however many windows used it.
+    a footprint is stored once however many windows used it. Scene IDs are our
+    datasets service's, so each scene is also resolved to the public data it came
+    from: the providers our dataset config allows for its sensor, each with its own
+    item ID, collection and asset location, and the provider used when only one is
+    allowed. A reader never needs access to the datasets service.
 
 Only blocks with a completion marker are exported, since a block being recomputed may
 have a provenance file newer than its embeddings. Bounds are in metres in the zone's
@@ -18,6 +22,7 @@ northern CRS (EPSG:326NN), whose northing continues below zero south of the equa
 """
 
 import json
+import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -26,16 +31,21 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.fs
 import pyarrow.parquet as pq
+import requests
 import shapely
 from rasterio.crs import CRS
+from requests.adapters import HTTPAdapter
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import Projection, STGeometry
 from upath import UPath
+from urllib3.util.retry import Retry
 
 from rslp.large_scale_embeddings.predict_pipeline import (
     COMPLETED_DIR_PREFIX,
+    DATASET_CONFIG_FNAME,
     PATCH_SIZE,
     PROVENANCE_DIR_PREFIX,
+    EmbeddingInputs,
 )
 from rslp.log_utils import get_logger
 
@@ -43,6 +53,13 @@ logger = get_logger(__name__)
 
 GEOPARQUET_VERSION = "1.1.0"
 COMPRESSION = "zstd"
+
+# The datasets service the scene IDs belong to, configured as for the workers.
+DATASETS_API_URL_ENV_VAR = "OEDATASETS_API_URL"
+DATASETS_API_TOKEN_ENV_VAR = "DATASETS_API_TOKEN"  # nosec
+DEFAULT_DATASETS_API_URL = "https://datasets.olmoearth.allenai.org"
+LOOKUP_BATCH = 500
+LOOKUP_WORKERS = 8
 
 TIMESTAMP = pa.timestamp("us", tz="UTC")
 BBOX = pa.struct(
@@ -83,11 +100,24 @@ INPUTS_SCHEMA = pa.schema(
         ("scene_id", pa.string()),
     ]
 )
+SOURCE = pa.struct(
+    [
+        ("provider", pa.string()),
+        ("collection", pa.string()),
+        ("item_id", pa.string()),
+        ("asset_prefix", pa.string()),
+    ]
+)
 SCENES_SCHEMA = pa.schema(
     [
         ("scene_id", pa.string()),
         ("sensor", pa.string()),
         ("acquired", TIMESTAMP),
+        ("product_id", pa.string()),
+        ("cloud_cover", pa.float64()),
+        ("provider", pa.string()),
+        ("sources", pa.list_(SOURCE)),
+        ("resolved", pa.bool_()),
         ("geometry", pa.binary()),
         ("bbox", BBOX),
     ]
@@ -212,6 +242,113 @@ def _block_rows(
     return windows, inputs, scenes
 
 
+def provider_excludes(dataset_config_fname: str) -> dict[str, set[str]]:
+    """The providers each layer of a dataset config excludes, by layer name.
+
+    The config names providers by enum member (AWS_USGS_LANDSAT) and the service keys
+    them by value (aws_usgs_landsat), so names are lowercased to match the service.
+    """
+    with UPath(dataset_config_fname).open() as f:
+        layers = json.load(f)["layers"]
+    return {
+        name: {
+            provider.lower()
+            for provider in layer.get("data_source", {})
+            .get("init_args", {})
+            .get("provider_excludes")
+            or []
+        }
+        for name, layer in layers.items()
+    }
+
+
+def _asset_prefix(urls: list[str]) -> str | None:
+    """The deepest directory holding every asset URL."""
+    if not urls:
+        return None
+    return os.path.commonprefix(urls).rsplit("/", 1)[0] + "/"
+
+
+def _lookup_records(
+    scene_ids: list[str], api_url: str, token: str, workers: int = LOOKUP_WORKERS
+) -> dict[str, dict]:
+    """Fetch the datasets service record of each scene ID that it still has."""
+    session = requests.Session()
+    retry = Retry(total=5, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
+    session.mount("https://", HTTPAdapter(max_retries=retry, pool_maxsize=workers))
+    url = f"{api_url.rstrip('/')}/api/v1/items/search"
+
+    def fetch(batch: list[str]) -> list[dict]:
+        response = session.post(
+            url,
+            json={
+                "id": {"inc": batch},
+                "limit": len(batch),
+                "offset": 0,
+                "sign_urls": False,
+            },
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=300,
+        )
+        response.raise_for_status()
+        return response.json()["records"]
+
+    records: dict[str, dict] = {}
+    with ThreadPoolExecutor(workers) as pool:
+        for i, batch_records in enumerate(
+            pool.map(fetch, list(_batches(scene_ids, LOOKUP_BATCH)))
+        ):
+            records.update((record["id"], record) for record in batch_records)
+            if i % 100 == 0:
+                logger.info("resolved %d of %d scenes", len(records), len(scene_ids))
+    return records
+
+
+def _resolve(scene: dict, record: dict | None, excludes: set[str]) -> dict:
+    """Add a scene's public sources from its datasets service record."""
+    if record is None:
+        return {
+            **scene,
+            "product_id": None,
+            "cloud_cover": None,
+            "provider": None,
+            "sources": [],
+            "resolved": False,
+        }
+    sources = [
+        {
+            "provider": name,
+            "collection": provider.get("collection"),
+            "item_id": provider["id"],
+            "asset_prefix": _asset_prefix(
+                [
+                    asset["url"]
+                    for asset in provider.get("assets", [])
+                    if asset.get("url")
+                ]
+            ),
+        }
+        for name, provider in sorted(record["data_providers"].items())
+        if name not in excludes
+    ]
+    properties = record.get("properties", {})
+    # Sentinel-2 records carry the ESA product name; otherwise the providers' own ID,
+    # if they agree on one (the USGS mirrors do).
+    item_ids = {source["item_id"] for source in sources}
+    product_id = properties.get("product_id") or (
+        item_ids.pop() if len(item_ids) == 1 else None
+    )
+    return {
+        **scene,
+        "product_id": product_id,
+        "cloud_cover": properties.get("cloud_cover"),
+        # With several allowed, the reader picked one at random per read.
+        "provider": sources[0]["provider"] if len(sources) == 1 else None,
+        "sources": sources,
+        "resolved": True,
+    }
+
+
 def _geo_metadata(table: pa.Table) -> bytes:
     """GeoParquet metadata for a WKB geometry column in OGC:CRS84 with a bbox covering."""
     shapes = shapely.from_wkb(table.column("geometry").to_numpy(zero_copy_only=False))
@@ -262,8 +399,13 @@ def export_provenance(
     out_dir: str,
     workers: int = 64,
     batch_blocks: int = 1000,
+    inputs: EmbeddingInputs = EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+    resolve_sources: bool = True,
 ) -> None:
     """Export one year's provenance to windows, inputs and scenes GeoParquet tables.
+
+    Resolving sources reads the datasets service's URL and token from the same
+    environment variables the workers use (OEDATASETS_API_URL, DATASETS_API_TOKEN).
 
     Args:
         run_path: the directory holding completed_<year>/ and provenance_<year>/.
@@ -271,7 +413,20 @@ def export_provenance(
         out_dir: where to write the tables, a local path or a pyarrow filesystem URI.
         workers: threads reading marker and provenance files.
         batch_blocks: blocks per row group of the inputs table, which bounds memory.
+        inputs: the input variant the run used, whose dataset config names the
+            providers each sensor excluded.
+        resolve_sources: look each scene up in the datasets service to record the
+            public data it came from. Off leaves those columns empty.
+
+    Raises:
+        ValueError: if resolving sources without a datasets service token.
     """
+    token = os.environ.get(DATASETS_API_TOKEN_ENV_VAR)
+    if resolve_sources and not token:
+        raise ValueError(
+            f"set {DATASETS_API_TOKEN_ENV_VAR} to resolve sources, or pass "
+            "resolve_sources false"
+        )
     completed = UPath(run_path) / f"{COMPLETED_DIR_PREFIX}_{year}"
     provenance_dir = UPath(run_path) / f"{PROVENANCE_DIR_PREFIX}_{year}"
     markers = sorted(p.name for p in completed.iterdir() if p.name.endswith(".json"))
@@ -314,16 +469,16 @@ def export_provenance(
         ) as inputs_writer,
     ):
         for i, batch in enumerate(_batches(blocks, batch_blocks)):
-            inputs: list[dict] = []
+            input_rows: list[dict] = []
             for block_windows, block_inputs, block_scenes in pool.map(read, batch):
                 windows += block_windows
-                inputs += block_inputs
+                input_rows += block_inputs
                 for scene_id, scene in block_scenes.items():
                     scenes.setdefault(scene_id, scene)
             inputs_writer.write_table(
-                pa.Table.from_pylist(inputs, schema=INPUTS_SCHEMA)
+                pa.Table.from_pylist(input_rows, schema=INPUTS_SCHEMA)
             )
-            n_inputs += len(inputs)
+            n_inputs += len(input_rows)
             logger.info(
                 "%d of %d blocks read, %d input rows, %d scenes",
                 min((i + 1) * batch_blocks, len(blocks)),
@@ -345,8 +500,24 @@ def export_provenance(
             len(vanished),
             vanished[0],
         )
+    records: dict[str, dict] = {}
+    if resolve_sources and token:
+        api_url = os.environ.get(DATASETS_API_URL_ENV_VAR, DEFAULT_DATASETS_API_URL)
+        records = _lookup_records(sorted(scenes), api_url, token)
+        unresolved = len(scenes) - len(records.keys() & scenes.keys())
+        if unresolved:
+            logger.warning(
+                "%d of %d scenes are no longer in the datasets service",
+                unresolved,
+                len(scenes),
+            )
+    excludes = provider_excludes(DATASET_CONFIG_FNAME.format(inputs=inputs.value))
+    resolved = [
+        _resolve(scene, records.get(scene_id), excludes.get(scene["sensor"], set()))
+        for scene_id, scene in sorted(scenes.items())
+    ]
     n_scenes = _write_table(
-        sorted(scenes.values(), key=lambda scene: scene["scene_id"]),
+        resolved,
         SCENES_SCHEMA,
         filesystem,
         f"{root}/scenes/{partition}/part-0.parquet",
