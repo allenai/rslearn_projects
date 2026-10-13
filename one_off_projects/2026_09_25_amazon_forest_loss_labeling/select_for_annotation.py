@@ -66,8 +66,8 @@ RECALL_95_THRESHOLDS = {
 MIN_THRESHOLD = 0.01
 
 COUNTRY_SAMPLE_COUNTRIES = ["BR", "BO", "EC"]
-PER_COUNTRY_CATEGORY = 10
-PER_CATEGORY = 25
+PER_COUNTRY_CATEGORY = 25
+PER_CATEGORY = 50
 # Only the lower-accuracy categories get the recall sample.
 RECALL_CATEGORIES = ["airstrip", "none", "landslide", "logging", "hurricane"]
 
