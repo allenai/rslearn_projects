@@ -42,7 +42,7 @@ model:
 data:
   class_path: rslearn.train.data_module.RslearnDataModule
   init_args:
-    path: /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20261012/
+    path: /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20261013/
     inputs:
       image:
         data_type: "raster"
@@ -157,5 +157,5 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 project_name: 2026_10_12_nisar_vessels
-run_name: data_20261012_satlas_00
+run_name: data_20261013_satlas_00
 management_dir: ${RSLP_PREFIX}/projects

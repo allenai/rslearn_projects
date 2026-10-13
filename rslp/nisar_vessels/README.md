@@ -21,6 +21,10 @@ have zero duration and never match). Non-rejected annotations become vessel poin
 hashing the window name. The dataset config (`data/nisar_vessels/config.json`) is
 copied into the dataset root automatically.
 
+Some crops were labeled by several annotators, each in their own task (the tasks
+share the `crop_uid` attribute). If all of them labeled the same number of vessels,
+only the first task becomes a window; if the counts differ, the crop is skipped.
+
 Run from the rslearn_projects root:
 
     export STUDIO_API_KEY=...

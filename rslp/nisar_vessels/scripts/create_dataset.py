@@ -8,6 +8,10 @@ task start/end times. The task's annotations whose "classification" metadata fie
 "category" set to "vessel". Tasks with no such annotations still get an (empty) label
 layer so they serve as negative examples.
 
+Some crops were labeled by several annotators, each in their own task (sharing the
+crop_uid task attribute). If they labeled the same number of vessels, only the first of
+these tasks is used; otherwise the crop is skipped.
+
 Windows are assigned to a "train" or "val" group (~90/10) based on a deterministic
 hash of the window name.
 
@@ -143,6 +147,68 @@ def get_annotations_by_task(
     return by_task
 
 
+def get_crop_key(task: dict[str, Any]) -> tuple[str | None, ...]:
+    """Get the key identifying the scene crop that a task covers.
+
+    Some crops were assigned to several annotators, each getting their own task. These
+    tasks share the crop_uid attribute, or, for tasks without it, the same geometry
+    and time.
+    """
+    crop_uid = (task.get("attributes") or {}).get("crop_uid")
+    if crop_uid:
+        return (crop_uid,)
+    return (task["geom_wkt"], task["start_time"])
+
+
+def dedupe_tasks(
+    tasks: list[dict[str, Any]],
+    annotations_by_task: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Keep one task per crop, dropping crops where the annotators disagree.
+
+    When several tasks cover the same crop, they are treated as agreeing if they have
+    the same number of vessel annotations, in which case the first task is kept and the
+    others dropped. If the counts differ, all of the tasks for that crop are dropped.
+
+    Args:
+        tasks: the tasks to dedupe.
+        annotations_by_task: the vessel annotations of each task, keyed by task ID.
+
+    Returns:
+        the tasks to create windows for.
+    """
+    tasks_by_crop: dict[tuple[str | None, ...], list[dict[str, Any]]] = {}
+    for task in tasks:
+        tasks_by_crop.setdefault(get_crop_key(task), []).append(task)
+
+    kept = []
+    num_merged = 0
+    num_disagree = 0
+    for crop_tasks in tasks_by_crop.values():
+        counts = [len(annotations_by_task.get(task["id"], [])) for task in crop_tasks]
+        if len(set(counts)) > 1:
+            logger.info(
+                "skipping crop of task %s since annotators disagree on vessel count %s",
+                crop_tasks[0]["name"],
+                counts,
+            )
+            num_disagree += 1
+            continue
+        if len(crop_tasks) > 1:
+            num_merged += 1
+        kept.append(crop_tasks[0])
+
+    logger.info(
+        "kept %d of %d tasks: merged %d crops with several agreeing tasks, "
+        "skipped %d crops where the annotators disagree",
+        len(kept),
+        len(tasks),
+        num_merged,
+        num_disagree,
+    )
+    return kept
+
+
 def get_split(window_name: str) -> str:
     """Deterministically assign the window to the train or val split."""
     h = hashlib.sha256(window_name.encode()).hexdigest()
@@ -263,6 +329,7 @@ def create_dataset(project_id: str, ds_path: str) -> None:
         "got %d tasks with status in %s", len(tasks), ",".join(WANTED_TASK_STATUSES)
     )
     annotations_by_task = get_annotations_by_task(client, project_id)
+    tasks = dedupe_tasks(tasks, annotations_by_task)
 
     dataset = Dataset(ds_upath)
     split_counts: dict[str, int] = {}
