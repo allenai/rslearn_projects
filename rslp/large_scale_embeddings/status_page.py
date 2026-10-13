@@ -617,17 +617,27 @@ else map.fitBounds([[-58, -170], [84, 180]]);
 map.attributionControl.addAttribution("Boundaries: Natural Earth");
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
-// Sea below everything, borders above the year layers so blocks stay readable.
-map.createPane("base").style.zIndex = 200;
-// Years sent as outlines, above the image years like the oldest-on-top order.
-map.createPane("outlines").style.zIndex = 420;
-map.getPane("outlines").style.pointerEvents = "none";
-map.createPane("borders").style.zIndex = 450;
-map.getPane("borders").style.pointerEvents = "none";
+// Sea below everything, then the coverage area, then one pane per year with the oldest
+// highest, then borders so blocks stay readable. A pane per year fixes the stacking
+// whatever order layers load or are toggled in: a shared pane stacks by add order, so
+// switching a year off and on again moved it to the top.
+const paneAt = (name, z) => {
+  const pane = map.createPane(name);
+  pane.style.zIndex = z;
+  pane.style.pointerEvents = "none";
+  return name;
+};
+paneAt("base", 200);
+paneAt("coverage", 300);
+const YEAR_Z0 = 400;
+DATA.layers.forEach((layer, i) => {
+  // DATA.layers runs oldest first, so the oldest gets the highest z.
+  layer.pane = paneAt("year-" + layer.year, YEAR_Z0 + DATA.layers.length - i);
+});
+paneAt("borders", YEAR_Z0 + DATA.layers.length + 1);
 // Canvas, not SVG: tens of thousands of country vertices as SVG paths made every pan
 // and zoom slow.
 const baseRenderer = L.canvas({pane: "base"});
-const outlineRenderer = L.canvas({pane: "outlines"});
 const borderRenderer = L.canvas({pane: "borders"});
 const edge = [];
 for (let lat = -90; lat <= 90; lat += 2) edge.push([lat, -180]);
@@ -643,26 +653,23 @@ fetch("countries.json?v=" + DATA.version).then(r => r.json()).then(countries => 
 
 const world = L.bounds([-X, -Y], [X, Y]);
 const bust = "?v=" + DATA.version;
-// Fixed z-order, oldest year on top, so toggling a layer does not restack it.
-const overlay = (file, opacity, zIndex) =>
-  L.Proj.imageOverlay(file + bust, world, {opacity: opacity, zIndex: zIndex, interactive: false});
+const overlay = (file, opacity, pane) =>
+  L.Proj.imageOverlay(file + bust, world, {opacity: opacity, pane: pane, interactive: false});
 const swatch = (color, text) =>
   '<i class="sw" style="background:' + color + '"></i>' + text;
 
 const overlays = {};
-const byKey = {coverage: overlay(DATA.coverage.file, 0.45, 1)};
+const byKey = {coverage: overlay(DATA.coverage.file, 0.45, "coverage")};
 overlays[swatch(DATA.coverage.color, "coverage area")] = byKey.coverage;
-// Listed newest first. DATA.layers runs oldest first, so the oldest gets the top z.
-DATA.layers.forEach((layer, i) => { layer.z = 1 + DATA.layers.length - i; });
+// Listed newest first in the control; stacking comes from each year's pane.
 for (const layer of [...DATA.layers].reverse()) {
   const label = layer.done > 0 ? layer.year + " (" + pct(layer) + ")" : String(layer.year);
   // Opaque, so where years overlap only the top one shows, not a blend of both. A year
-  // with few blocks comes as outlines; listed newest first, so the oldest draws last
-  // and stays on top.
+  // with few blocks comes as outlines, on a canvas of its own in its year's pane.
   const lyr = layer.file
-    ? overlay(layer.file, 1, layer.z)
-    : L.geoJSON(layer.outlines, {pane: "outlines", renderer: outlineRenderer,
-        interactive: false,
+    ? overlay(layer.file, 1, layer.pane)
+    : L.geoJSON(layer.outlines, {pane: layer.pane,
+        renderer: L.canvas({pane: layer.pane}), interactive: false,
         style: {stroke: false, fillColor: layer.color, fillOpacity: 1}});
   byKey[layer.year] = lyr;
   overlays[swatch(layer.color, label)] = lyr;
