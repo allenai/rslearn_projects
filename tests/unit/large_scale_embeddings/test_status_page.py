@@ -46,24 +46,11 @@ def test_year_colors_span_the_spectrum() -> None:
     assert len(set(colors.values())) == 9
 
 
-def test_read_markers_refuses_a_shrunken_listing(tmp_path: pathlib.Path) -> None:
-    """A marker seen before and missing now means a truncated read."""
-    completed = tmp_path / "completed_2025"
-    cache = UPath(tmp_path / "cache.json")
-    _write_marker(completed, BLOCKS[0], 60.0, 16)
-    _write_marker(completed, BLOCKS[1], 30.0, 4)
-    assert len(status_page.read_markers(str(completed), cache)) == 2
-
-    get_marker_fname(str(completed), *BLOCKS[1]).unlink()
-    with pytest.raises(status_page.TruncatedListingError):
-        status_page.read_markers(str(completed), cache)
-
-
 def test_read_markers_forgets_a_few_deleted_markers(tmp_path: pathlib.Path) -> None:
-    """A handful deleted to be recomputed is dropped, not taken for a truncation.
+    """Markers deleted to be recomputed are dropped, not taken for a truncation.
 
-    Deleting five markers out of 23,000 to recompute their blocks stopped the page
-    rebuilding for good, since the cache still named them.
+    Deleting markers to recompute their blocks stopped the page rebuilding for good,
+    first for five out of 23,000 and again for 1,415, since the cache still named them.
     """
     completed = tmp_path / "completed_2025"
     cache = UPath(tmp_path / "cache.json")
@@ -80,11 +67,30 @@ def test_read_markers_forgets_a_few_deleted_markers(tmp_path: pathlib.Path) -> N
         get_marker_fname(str(completed), *blocks[3]).name
     ] == (90.0, 16, False)
 
-    # Losing more than the allowance is still a truncated listing.
+    # Thousands can be deleted at once to recompute them; that is not a truncation.
     for block in blocks[:7]:
         get_marker_fname(str(completed), *block).unlink()
+    assert len(status_page.read_markers(str(completed), cache)) == 5
+
+
+def test_read_markers_refuses_a_listing_that_omits_markers_still_there(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A listing cut short leaves out markers that still exist, and must not publish."""
+    completed = tmp_path / "completed_2025"
+    cache = UPath(tmp_path / "cache.json")
+    blocks = [(BLOCKS[0][0], (2048 * i, 0, 2048 * (i + 1), 2048)) for i in range(12)]
+    for block in blocks:
+        _write_marker(completed, block, 60.0, 16)
+    names = status_page.read_markers(str(completed), cache)
+
+    kept = sorted(names)[:4]
+    monkeypatch.setattr(status_page, "_list_names", lambda completed: set(kept))
     with pytest.raises(status_page.TruncatedListingError):
         status_page.read_markers(str(completed), cache)
+    # The cache is untouched, so the next good listing still finds every marker.
+    monkeypatch.undo()
+    assert len(status_page.read_markers(str(completed), cache)) == 12
 
 
 def test_publish_status(

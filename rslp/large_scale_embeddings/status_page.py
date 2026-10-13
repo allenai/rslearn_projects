@@ -12,6 +12,7 @@ names never change between builds.
 
 import io
 import json
+import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
@@ -77,11 +78,10 @@ class TruncatedListingError(RuntimeError):
     """A marker listing came back shorter than one already seen."""
 
 
-# Markers that may vanish between builds before a listing counts as truncated. Markers
-# are deleted on purpose to recompute a few blocks; a cut-short listing loses far more.
-# Up to this many, or this share of those already read if larger, and never half.
-MAX_DELETED_MARKERS = 5
-MAX_DELETED_MARKER_FRACTION = 0.001
+# How many markers missing from a listing are looked up directly before they are taken
+# as deleted. Markers are deleted on purpose to recompute blocks, sometimes thousands at
+# once; a cut-short listing omits markers that still exist, so any hit means truncation.
+MISSING_MARKER_CHECKS = 50
 
 
 def year_colors(years: list[int]) -> dict[int, str]:
@@ -123,9 +123,9 @@ def read_markers(
         None for a marker written before markers recorded it.
 
     Raises:
-        TruncatedListingError: if more markers read before are missing from the
-            listing than a deliberate recompute would delete. That means the listing
-            was cut short, and publishing it would show progress going backwards.
+        TruncatedListingError: if a marker read before is missing from the listing but
+            still exists. That means the listing was cut short, and publishing it would
+            show progress going backwards.
     """
     cached: dict[str, tuple[float | None, int, bool]] = {}
     if cache_path.exists():
@@ -136,13 +136,20 @@ def read_markers(
             cached = {name: tuple(entry) for name, entry in entries.items()}  # type: ignore[misc]
 
     completed = UPath(completed_path)
-    names = {p.name for p in completed.iterdir()} if completed.exists() else set()
+    names = _list_names(completed)
     missing = cached.keys() - names
     if missing:
-        allowed = max(MAX_DELETED_MARKERS, MAX_DELETED_MARKER_FRACTION * len(cached))
-        if len(missing) > allowed or 2 * len(missing) >= len(cached):
+        checks = random.sample(
+            sorted(missing), min(MISSING_MARKER_CHECKS, len(missing))
+        )
+        with ThreadPoolExecutor(MARKER_READ_THREADS) as pool:
+            still_there = sum(
+                pool.map(lambda name: (completed / name).exists(), checks)
+            )
+        if still_there:
             raise TruncatedListingError(
-                f"{len(missing)} marker(s) read earlier are missing from {completed_path}"
+                f"{len(missing)} marker(s) read earlier are missing from "
+                f"{completed_path}, and {still_there} of {len(checks)} looked up exist"
             )
         # Deleted to be recomputed: forget them, and they are read again once rewritten.
         logger.warning(
@@ -171,6 +178,11 @@ def read_markers(
         cache_path.write_text(json.dumps(cached))
     logger.info("%s: %d markers (%d new)", completed_path, len(cached), len(new))
     return cached
+
+
+def _list_names(completed: UPath) -> set[str]:
+    """The marker names in a directory, empty if it does not exist yet."""
+    return {p.name for p in completed.iterdir()} if completed.exists() else set()
 
 
 def _block_lonlat(projection: Projection, bounds: PixelBounds) -> shapely.Geometry:
