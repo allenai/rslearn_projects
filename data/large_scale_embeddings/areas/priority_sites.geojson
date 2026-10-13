@@ -60,6 +60,21 @@
      -2.55
     ]
    }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "madre_de_dios",
+    "first_year": 2017,
+    "block": "EPSG:32619_32768_139264"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -69.96,
+     -12.96
+    ]
+   }
   }
  ]
 }
