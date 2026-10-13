@@ -16,6 +16,7 @@ olmoearth_run's per-model ``embedding_pca.pkl``, which must exist before the run
     at all. This stage fixes both. CPU only, no model.
 """
 
+from rslp.large_scale_embeddings.export_provenance import export_provenance
 from rslp.large_scale_embeddings.full_run import launch_run_all, run_all
 from rslp.large_scale_embeddings.predict_pipeline import predict_pipeline
 from rslp.large_scale_embeddings.render_pca import (
@@ -36,6 +37,7 @@ from rslp.large_scale_embeddings.zarr_store import init_pca_store
 workflows = {
     "bench_build_variants": build_variants,
     "bench_measure": measure,
+    "export_provenance": export_provenance,
     "init_pca_store": init_pca_store,
     "init_store": init_store,
     "launch_run_all": launch_run_all,
