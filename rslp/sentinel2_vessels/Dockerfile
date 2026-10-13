@@ -15,11 +15,11 @@ ENV MARINE_INFRA_PATH=/opt/rslearn_projects/marine_infrastructure.geojson
 
 # Download detector and attribute checkpoints.
 RUN mkdir -p /project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/ && \
-    mkdir -p /project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/ && \
+    mkdir -p /project_data/projects/2026_09_17_vessel_attribute_l1_01/sentinel2_l1/ && \
     wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessels/data_20250213_02_all_bands/best.ckpt \
         -O /project_data/projects/sentinel2_vessels/data_20250213_02_all_bands/best.ckpt && \
-    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/best.ckpt \
-        -O /project_data/projects/sentinel2_vessel_attribute/data_20250205_regress_00/best.ckpt
+    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_09_17_vessel_attribute_l1_01/sentinel2_l1/best.ckpt \
+        -O /project_data/projects/2026_09_17_vessel_attribute_l1_01/sentinel2_l1/best.ckpt
 ENV RSLP_PREFIX=/project_data
 
 # Run app.py when the container launches

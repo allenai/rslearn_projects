@@ -19,6 +19,8 @@ model:
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
+              init_args:
+                loss_mode: l1
           width:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -27,6 +29,8 @@ model:
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
+              init_args:
+                loss_mode: l1
           speed:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -35,6 +39,8 @@ model:
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
+              init_args:
+                loss_mode: l1
           heading_x:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -43,6 +49,8 @@ model:
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
+              init_args:
+                loss_mode: l1
           heading_y:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -51,6 +59,8 @@ model:
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
+              init_args:
+                loss_mode: l1
           ship_type:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -187,6 +197,6 @@ trainer:
     - class_path: rslearn.train.prediction_writer.RslearnWriter
       init_args:
         output_layer: output
-project_name: 2026_04_22_sentinel1_vessel_attribute
-run_name: swinb_newdata_01
+project_name: 2026_09_17_vessel_attribute_l1
+run_name: sentinel1_l1
 management_dir: ${RSLP_PREFIX}/projects

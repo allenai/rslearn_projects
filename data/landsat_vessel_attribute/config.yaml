@@ -18,6 +18,8 @@ model:
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
+              init_args:
+                loss_mode: l1
           width:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -26,6 +28,8 @@ model:
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
+              init_args:
+                loss_mode: l1
           speed:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -34,6 +38,8 @@ model:
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
+              init_args:
+                loss_mode: l1
           heading_x:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -42,6 +48,8 @@ model:
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
+              init_args:
+                loss_mode: l1
           heading_y:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -50,6 +58,8 @@ model:
                 num_conv_layers: 1
                 num_fc_layers: 2
             - class_path: rslearn.train.tasks.regression.RegressionHead
+              init_args:
+                loss_mode: l1
           ship_type:
             - class_path: rslearn.models.pooling_decoder.PoolingDecoder
               init_args:
@@ -198,6 +208,6 @@ trainer:
         module_selector: ["model", "encoder", 0]
         unfreeze_at_epoch: 5
         unfreeze_lr_factor: 10
-project_name: 2026_04_22_landsat_vessel_attribute
-run_name: olmoearth_base_freeze_newdata_01
+project_name: 2026_09_17_vessel_attribute_l1
+run_name: landsat_l1
 management_dir: ${RSLP_PREFIX}/projects

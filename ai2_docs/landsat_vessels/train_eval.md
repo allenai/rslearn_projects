@@ -19,10 +19,15 @@ using the code in `landsat/existing_dataset_to_utm/`.
 
 The classifier can be trained like this:
 
-    rslearn model fit --config data/landsat_vessels/config_classifier.yaml
+    rslearn model fit --config data/landsat_vessels/config_classifier_20260908.yaml
 
-The data collection process for the classifier is described in
-`one_off_projects/landsat/recheck_landsat_labels/README.md`.
+This is the v1.0.0 classifier (in production): an OlmoEarth-base model trained with the
+previous annotations (`selected_copy`, `phase2a_completed`) and the round-1 annotations
+(`round1_20260803`), validated on `feedback_20260325`. `config_classifier_20260928.yaml` is
+the same recipe with the Skylight feedback groups added (see
+`rslp/landsat_vessels/feedback/README.md`). Round 1 is described in
+`rslp/landsat_vessels/annotations/README.md`, and training results are in
+`rslp/landsat_vessels/README.md`.
 
 ---
 
@@ -103,18 +108,21 @@ This will output the evaluation metrics, including precision, recall, and F1 sco
 
 ### Scenario Checks
 
-1. Launch the prediction jobs for the scenario check scenes:
+Run the pipeline on these scenes and check that the number of detections falls in the
+expected range:
 
-    ```python
-    python rslp/landsat_vessels/job_launcher.py --zip_dir gs://rslearn-eai/projects/landsat_evaluation/scenario_checks/downloads/ --json_dir gs://rslearn-eai/projects/landsat_evaluation/scenario_checks/jsons/
-    ```
+| Scene | Description | Expected |
+|-------|-------------|----------|
+| LC09_L1GT_129107_20241104_20241104_02_T2 | Mostly ice | [0, 10] |
+| LC09_L1TP_001090_20241103_20241103_02_T1 | Mostly whitecaps | [0, 10] |
+| LC09_L1TP_193021_20241104_20241104_02_T1 | Some vessels | [20, 50] |
+| LC09_L1TP_170084_20241103_20241103_02_T1 | Some vessels | [20, 50] |
+| LC09_L1TP_177081_20241104_20241104_02_T1 | Mostly whitecaps | [0, 10] |
+| LC09_L1TP_010012_20241102_20241102_02_T1 | Mostly islands with some ice | [0, 10] |
+| LC09_L1TP_193030_20241104_20241104_02_T1 | Some vessels | [20, 100] |
 
-This will launch multiple beaker jobs. Each job will evaluate the model on one scene and save the results in the `jsons` directory.
+```python
+python -m rslp.main landsat_vessels predict --scene_id LC09_L1TP_193021_20241104_20241104_02_T1 --scratch_path /tmp/scratch --json_path /tmp/out.json
+```
 
-2. Check the results against the targets (expected results) at scene level:
-
-    ```python
-    python rslp/landsat_vessels/evaluation/scenario_checks.py
-    ```
-
-This will output the details of each scene (e.g. scene id, description, location, expected number of detections, actual number of detections), as well as the total number of passes and fails, and the success rate.
+Latest results are in `rslp/landsat_vessels/README.md`.

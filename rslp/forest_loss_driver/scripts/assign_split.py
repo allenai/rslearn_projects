@@ -32,13 +32,15 @@ def assign_split(window: Window) -> None:
     if category in IGNORED_CATEGORIES:
         split = "ignored"
 
-    # Currently we only validate on Brazil/Colombia labels.
+    # Currently we only validate on Brazil/Colombia labels and a small subset of Peru labels.
     # Model config can decide whether to train on Peru or not.
     elif window.group in [
         "20250428_brazil_phase1",
         "20250428_colombia_phase1",
         "20250428_brazil_phase2",
         "20250428_colombia_phase2",
+        "peru3_flagged_in_peru",
+        "peru_interesting",
     ]:
         is_val = hashlib.sha256(window.name.encode()).hexdigest()[0] in [
             "0",
@@ -53,11 +55,10 @@ def assign_split(window: Window) -> None:
 
     elif window.group in [
         "peru3",
-        "peru3_flagged_in_peru",
-        "peru_interesting",
         "nadia2",
         "nadia3",
         "brazil_interesting",
+        "20260112_peru",
     ]:
         split = "train"
 
