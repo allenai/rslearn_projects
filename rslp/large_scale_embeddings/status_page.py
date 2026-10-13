@@ -44,12 +44,18 @@ _TO_MAP = pyproj.Transformer.from_crs("EPSG:4326", MAP_CRS, always_xy=True)
 # Half-width and half-height of the projected world, in metres.
 MAP_X_MAX = abs(_TO_MAP.transform(180.0, 0.0)[0])
 MAP_Y_MAX = abs(_TO_MAP.transform(0.0, 90.0)[1])
-# Overlay size in pixels. At 8192 wide an 8192 px block (82 km) is about 20 px, and the
-# PNGs stay a few hundred KB each.
-MAP_WIDTH = 8192
+# Overlay size in pixels. At 4096 wide an 8192 px block (82 km) is about 8 px. The PNGs
+# are small to download, but a browser holds each decoded at 4 bytes per pixel, so the
+# width sets the page's memory: 8192 cost about 130 MB per layer.
+MAP_WIDTH = 4096
 MAP_HEIGHT = round(MAP_WIDTH * MAP_Y_MAX / MAP_X_MAX)
 # Points per block edge, so a block's outline follows its UTM edges once projected.
 BLOCK_EDGE_POINTS = 8
+# A year with at most this many blocks is sent as outlines rather than a world-sized
+# image, which would cost as much memory as a full year to show a few blocks.
+VECTOR_MAX_BLOCKS = 500
+# Decimal places kept on outline coordinates, about 10 m.
+OUTLINE_DECIMALS = 4
 # Country outlines for the map, published beside the page.
 BASEMAP_RELPATH = "data/large_scale_embeddings/basemap_countries.geojson"
 KM2_PER_CROP = PATCH_SIZE * PATCH_SIZE * RESOLUTION * RESOLUTION / 1e6
@@ -275,6 +281,32 @@ def render_layer(blocks: list[tuple[Projection, PixelBounds]], color: str) -> by
     return buf.getvalue()
 
 
+def layer_outlines(blocks: list[tuple[Projection, PixelBounds]]) -> dict:
+    """Blocks as a GeoJSON MultiPolygon in WGS84, for drawing in the browser.
+
+    Args:
+        blocks: the blocks to outline.
+
+    Returns:
+        the GeoJSON geometry.
+    """
+    polygons = []
+    for projection, bounds in blocks:
+        outline = _block_lonlat(projection, bounds)
+        for part in getattr(outline, "geoms", [outline]):
+            if part.is_empty or part.geom_type != "Polygon":
+                continue
+            polygons.append(
+                [
+                    [
+                        [round(x, OUTLINE_DECIMALS), round(y, OUTLINE_DECIMALS)]
+                        for x, y in part.exterior.coords
+                    ]
+                ]
+            )
+    return {"type": "MultiPolygon", "coordinates": polygons}
+
+
 def _basemap() -> bytes:
     """The country outlines, read from the checkout or the image's working directory."""
     for root in (Path.cwd(), Path(__file__).resolve().parents[2]):
@@ -315,6 +347,7 @@ def publish_status(
     year_blocks_fname: dict[int, str] | None = None,
     enumeration_cache_dir: str | None = None,
     workers: dict[str, Any] | None = None,
+    vector_max_blocks: int = VECTOR_MAX_BLOCKS,
 ) -> None:
     """Rebuild the status page from the markers and upload it.
 
@@ -336,6 +369,8 @@ def publish_status(
         workers: worker counts from the supervisor's latest cycle, or None to leave
             them off the page. Keys: working, allocated ([priority, count] pairs),
             spare, outside, waiting.
+        vector_max_blocks: years with at most this many finished blocks are drawn
+            from outlines instead of an image.
     """
     by_fname: dict[str | None, list] = {}
 
@@ -377,16 +412,17 @@ def publish_status(
                 pool = pools["outside" if outside else "beaker"]
                 pool[0] += seconds
                 pool[1] += crops
-        fname = f"{year}.png"
-        pngs[fname] = render_layer(done, colors[year])
-        layers.append(
-            {
-                "year": year,
-                "color": colors[year],
-                "done": len(done),
-                "file": fname,
-            }
-        )
+        layer: dict[str, Any] = {
+            "year": year,
+            "color": colors[year],
+            "done": len(done),
+        }
+        if len(done) <= vector_max_blocks:
+            layer["outlines"] = layer_outlines(done)
+        else:
+            layer["file"] = f"{year}.png"
+            pngs[layer["file"]] = render_layer(done, colors[year])
+        layers.append(layer)
 
     # The ground any year covers: the grey underlay, and every year's denominator, so a
     # year limited to a small area reads as a small share of the world, not of itself.
@@ -583,17 +619,25 @@ const css = name => getComputedStyle(document.documentElement).getPropertyValue(
 
 // Sea below everything, borders above the year layers so blocks stay readable.
 map.createPane("base").style.zIndex = 200;
+// Years sent as outlines, above the image years like the oldest-on-top order.
+map.createPane("outlines").style.zIndex = 420;
+map.getPane("outlines").style.pointerEvents = "none";
 map.createPane("borders").style.zIndex = 450;
 map.getPane("borders").style.pointerEvents = "none";
+// Canvas, not SVG: tens of thousands of country vertices as SVG paths made every pan
+// and zoom slow.
+const baseRenderer = L.canvas({pane: "base"});
+const outlineRenderer = L.canvas({pane: "outlines"});
+const borderRenderer = L.canvas({pane: "borders"});
 const edge = [];
 for (let lat = -90; lat <= 90; lat += 2) edge.push([lat, -180]);
 for (let lat = 90; lat >= -90; lat -= 2) edge.push([lat, 180]);
 L.polygon(edge, {pane: "base", stroke: true, color: css("--rule"), weight: 1,
   fillColor: css("--sea"), fillOpacity: 1, interactive: false}).addTo(map);
 fetch("countries.json?v=" + DATA.version).then(r => r.json()).then(countries => {
-  L.geoJSON(countries, {pane: "base", interactive: false,
+  L.geoJSON(countries, {pane: "base", renderer: baseRenderer, interactive: false,
     style: {stroke: false, fillColor: css("--land"), fillOpacity: 1}}).addTo(map);
-  L.geoJSON(countries, {pane: "borders", interactive: false,
+  L.geoJSON(countries, {pane: "borders", renderer: borderRenderer, interactive: false,
     style: {color: css("--border"), weight: 0.6, opacity: 0.8, fill: false}}).addTo(map);
 });
 
@@ -612,8 +656,14 @@ overlays[swatch(DATA.coverage.color, "coverage area")] = byKey.coverage;
 DATA.layers.forEach((layer, i) => { layer.z = 1 + DATA.layers.length - i; });
 for (const layer of [...DATA.layers].reverse()) {
   const label = layer.done > 0 ? layer.year + " (" + pct(layer) + ")" : String(layer.year);
-  // Opaque, so where years overlap only the top one shows, not a blend of both.
-  const lyr = overlay(layer.file, 1, layer.z);
+  // Opaque, so where years overlap only the top one shows, not a blend of both. A year
+  // with few blocks comes as outlines; listed newest first, so the oldest draws last
+  // and stays on top.
+  const lyr = layer.file
+    ? overlay(layer.file, 1, layer.z)
+    : L.geoJSON(layer.outlines, {pane: "outlines", renderer: outlineRenderer,
+        interactive: false,
+        style: {stroke: false, fillColor: layer.color, fillOpacity: 1}});
   byKey[layer.year] = lyr;
   overlays[swatch(layer.color, label)] = lyr;
 }

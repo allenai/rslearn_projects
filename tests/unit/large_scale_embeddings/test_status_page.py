@@ -5,6 +5,7 @@ import json
 import pathlib
 
 import pytest
+import shapely
 from PIL import Image
 from rasterio.crs import CRS
 from rslearn.utils.geometry import Projection
@@ -110,6 +111,7 @@ def test_publish_status(
         title="Test coverage",
         cache_dir=str(tmp_path / "cache"),
         workers={"working": 3, "allocated": [], "spare": 0, "outside": 0, "waiting": 1},
+        vector_max_blocks=1,
     )
 
     html = (out / "index.html").read_text()
@@ -126,13 +128,23 @@ def test_publish_status(
     assert data["gpu_hours"] == round(1.5)
     assert data["km2_per_gpu_hour"] == round(32 * status_page.KM2_PER_CROP / 1.5)
 
-    for fname in ("2023.png", "2024.png", "2025.png", "coverage.png"):
+    for fname in ("2025.png", "coverage.png"):
         image = Image.open(io.BytesIO((out / fname).read_bytes()))
         assert image.size == (status_page.MAP_WIDTH, status_page.MAP_HEIGHT)
     assert json.loads((out / "countries.json").read_text())["features"]
     assert data["map"]["crs"] == "EPSG:8857"
-    assert Image.open(out / "2023.png").getbbox() is None
     assert Image.open(out / "2025.png").getbbox() is not None
+
+    # Years with few blocks come as outlines, with no world-sized image behind them.
+    by_year = {layer["year"]: layer for layer in data["layers"]}
+    assert not (out / "2023.png").exists() and not (out / "2024.png").exists()
+    assert by_year[2023]["outlines"] == {"type": "MultiPolygon", "coordinates": []}
+    (polygon,) = by_year[2024]["outlines"]["coordinates"]
+    outline = shapely.Polygon(polygon[0])
+    expected = status_page._block_lonlat(*BLOCKS[0])
+    # Equal up to rounding to OUTLINE_DECIMALS places, about 10 m.
+    assert outline.symmetric_difference(expected).area < 1e-3 * expected.area
+    assert "file" in by_year[2025] and "outlines" not in by_year[2025]
 
 
 def test_every_year_is_a_share_of_the_whole_area(
