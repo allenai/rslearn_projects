@@ -2385,3 +2385,83 @@ def test_the_context_margin_goes_to_workers_not_entries() -> None:
             assert all(
                 k.arg != "context_pixels" for k in call.keywords
             ), "context_pixels must not be baked into queue entries"
+
+
+def _on_image(workload: "_FakeWorkload", image_id: str) -> "_FakeWorkload":
+    """Give a fake worker the image its task runs."""
+    spec = types.SimpleNamespace(image_id=image_id)
+    workload.experiment.tasks = [types.SimpleNamespace(container_spec=spec)]
+    return workload
+
+
+def test_workers_on_an_older_image_are_replaced_a_share_at_a_time(
+    tmp_path: Path,
+) -> None:
+    """Queued old-image workers are cancelled; running ones drain a quarter at a time.
+
+    Cancelling a queued worker costs nothing and its replacement launches on the
+    current image. A running one finishes its job first, and only a share of the pool
+    drains per cycle so a burst of freed allocated slots is not lost to other users.
+    """
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    old_running = [
+        _on_image(_FakeWorkload(f"{prefix}_r{i}", 1000 + i, status=4), "old")
+        for i in range(8)
+    ]
+    new_running = [
+        _on_image(_FakeWorkload(f"{prefix}_n{i}", 2000 + i, status=4), "new")
+        for i in range(4)
+    ]
+    old_waiting = [
+        _on_image(_FakeWorkload(f"{prefix}_w{i}", 3000 + i, status=2), "old")
+        for i in range(3)
+    ]
+    new_waiting = [
+        _on_image(_FakeWorkload(f"{prefix}_v{i}", 4000 + i, status=2), "new")
+        for i in range(2)
+    ]
+    beaker = _ReleaseBeaker(old_running + new_running + old_waiting + new_waiting)
+    drain_path = str(tmp_path / "drain.json")
+
+    freed = mod._release_surplus_workers(
+        beaker,
+        object(),
+        prefix,
+        surplus=0,
+        drain_path=drain_path,
+        current_image_id="new",
+    )
+
+    assert freed == 3
+    assert sorted(w.experiment.name for w in beaker.cancelled) == sorted(
+        w.experiment.name for w in old_waiting
+    ), "only queued workers on the old image are cancelled"
+    drained = _drain_list(drain_path)
+    # 12 running, a quarter is 3, all from the old image, none from the new.
+    assert len(drained) == 3
+    assert set(drained) <= {w.experiment.name for w in old_running}
+
+
+def test_no_current_image_replaces_nothing(tmp_path: Path) -> None:
+    """Without the current image id, old workers are left alone."""
+    import importlib
+
+    mod = importlib.import_module("rslp.large_scale_embeddings.supervise")
+    prefix = "worker_patrickj-q"
+    workers = [
+        _on_image(_FakeWorkload(f"{prefix}_r{i}", 1000 + i, status=4), "old")
+        for i in range(4)
+    ]
+    workers += [_on_image(_FakeWorkload(f"{prefix}_w0", 3000, status=2), "old")]
+    beaker = _ReleaseBeaker(workers)
+    drain_path = str(tmp_path / "drain.json")
+    assert (
+        mod._release_surplus_workers(
+            beaker, object(), prefix, surplus=0, drain_path=drain_path
+        )
+        == 0
+    )
+    assert beaker.cancelled == [] and _drain_list(drain_path) == []

@@ -1167,12 +1167,41 @@ def _publish_drain_list(drain_path: str, worker_names: list[str]) -> None:
         json.dump({"written": time.time(), "workers": worker_names}, f)
 
 
+# Most of the running pool asked to retire in one cycle for being on an older image.
+# Draining all at once would empty a burst of allocated slots that colleagues could take
+# before the replacements land; a quarter per cycle turns the pool over within a few.
+OUTDATED_DRAIN_FRACTION = 0.25
+
+
+def _image_id(beaker: Any, image_name: str) -> str | None:
+    """The id of a Beaker image by name, or None if it cannot be looked up.
+
+    None turns off replacing outdated workers for the cycle rather than failing it.
+    """
+    try:
+        return beaker.image.get(image_name).id
+    except Exception:  # noqa: BLE001 - a lookup failure must not stop a cycle
+        logger.warning(
+            "could not look up image %s; not replacing old workers", image_name
+        )
+        return None
+
+
+def _worker_image_id(workload: Any) -> str | None:
+    """The Beaker image a worker runs, or None if the workload does not say."""
+    tasks = list(getattr(getattr(workload, "experiment", None), "tasks", None) or [])
+    if not tasks:
+        return None
+    return getattr(getattr(tasks[0], "container_spec", None), "image_id", None) or None
+
+
 def _release_surplus_workers(
     beaker: Any,
     workspace: Any,
     name_prefix: str,
     surplus: int,
     drain_path: str | None = None,
+    current_image_id: str | None = None,
 ) -> int:
     """Give capacity back when the pool is over its target.
 
@@ -1200,6 +1229,10 @@ def _release_surplus_workers(
         surplus: how many workers over target the pool is; may be zero, which still
             republishes an empty drain list.
         drain_path: where to publish the drain list, or None to only cancel.
+        current_image_id: the Beaker image new workers launch with. Workers on any
+            other image are replaced: queued ones are cancelled, since they hold
+            nothing, and running ones are drained, at most OUTDATED_DRAIN_FRACTION of
+            the running pool per cycle. None replaces nothing.
 
     Returns:
         the number of workers cancelled, which is the capacity freed immediately.
@@ -1240,8 +1273,20 @@ def _release_surplus_workers(
         w for w in workers if getattr(w, "status", None) in DRAINABLE_WORKLOAD_STATUSES
     ]
 
+    def outdated(workload: Any) -> bool:
+        image = _worker_image_id(workload)
+        return bool(current_image_id and image and image != current_image_id)
+
     cancelled = 0
-    doomed = waiting[:surplus]
+    # Queued workers on an older image are cancelled whatever the surplus: they hold no
+    # work, and the next cycle relaunches them on the current image.
+    stale_waiting = [w for w in waiting if outdated(w)]
+    doomed = (
+        stale_waiting
+        + [w for w in waiting if not outdated(w)][
+            : max(0, surplus - len(stale_waiting))
+        ]
+    )
     if doomed:
         try:
             beaker.workload.cancel(*doomed)
@@ -1261,7 +1306,15 @@ def _release_surplus_workers(
     if drain_path is None:
         return cancelled
 
-    draining = [w.experiment.name for w in running[: surplus - cancelled]]
+    draining = [w.experiment.name for w in running[: max(0, surplus - cancelled)]]
+    # Then running workers on an older image, a share of the pool at a time.
+    stale_running = [
+        w.experiment.name
+        for w in running
+        if outdated(w) and w.experiment.name not in draining
+    ]
+    stale_quota = max(1, int(len(running) * OUTDATED_DRAIN_FRACTION))
+    draining += stale_running[:stale_quota]
     try:
         _publish_drain_list(drain_path, draining)
     except Exception:
@@ -1272,10 +1325,12 @@ def _release_surplus_workers(
     if draining:
         logger.info(
             "asked %d running worker(s) to retire after their current job "
-            "(%d over target, %d cancelled while queued)",
+            "(%d over target, %d cancelled while queued, %d on an older image of %d)",
             len(draining),
             surplus,
             cancelled,
+            min(len(stale_running), stale_quota),
+            len(stale_running),
         )
     return cancelled
 
@@ -1996,6 +2051,7 @@ def _run_cycle(
                 worker_name_prefix(queue_name),
                 live - num_workers,
                 drain_path=drain_path,
+                current_image_id=_image_id(beaker, config.worker.image_name),
             )
     # How deep to keep the queue. The default assumes long jobs. A stage of short jobs
     # needs much more: a worker drains its few entries and then idles until the next
