@@ -12,7 +12,7 @@ import json
 import os
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, Response, jsonify, render_template
 
 
 def create_app(input_path: str) -> Flask:
@@ -35,17 +35,18 @@ def create_app(input_path: str) -> Flask:
     )
 
     @app.route("/")
-    def index():
+    def index() -> str:
         return render_template("index.html")
 
     @app.route("/api/tree")
-    def api_tree():
+    def api_tree() -> Response:
         return jsonify(response)
 
     return app
 
 
 def main() -> None:
+    """CLI: serve the collapsed JSON in the browser."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input", default="collapsed.json", help="JSON produced by collapse.py."

@@ -23,13 +23,19 @@ from tqdm import tqdm
 
 
 def entry_bytes(e: dict) -> int:
-    """Self bytes of an entry: whole-subtree total for recursive (full-scan)
-    entries, direct files only otherwise."""
+    """Self bytes of an entry.
+
+    This is the whole-subtree total for recursive (full-scan) entries, and the
+    direct files only otherwise.
+    """
     return e["total_bytes"] if e.get("recursive") else e.get("direct_bytes", 0)
 
 
 def entry_files(e: dict) -> int:
-    return e["total_file_count"] if e.get("recursive") else e.get("direct_file_count", 0)
+    """Self file count of an entry, analogous to ``entry_bytes``."""
+    return (
+        e["total_file_count"] if e.get("recursive") else e.get("direct_file_count", 0)
+    )
 
 
 def load_nodes(input_path: str, max_depth: int) -> dict[str, dict]:
@@ -142,6 +148,7 @@ def prune(node: dict, threshold: int, max_children: int) -> dict:
 
 
 def main() -> None:
+    """CLI: collapse the scan JSONL into a bounded tree JSON."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input", default="disk_usage.jsonl", help="JSONL produced by disk_usage.py."

@@ -41,6 +41,7 @@ import os
 import queue
 import sys
 import time
+from typing import TextIO
 
 # (path, depth) work items.
 WorkItem = tuple[str, int]
@@ -170,7 +171,7 @@ def load_checkpoint(path: str) -> tuple[list[WorkItem], list[WorkItem]]:
 
 def write_checkpoint(
     path: str,
-    out_file,
+    out_file: TextIO,
     normal_stack: list[WorkItem],
     full_stack: list[WorkItem],
     inflight_items: dict[int, tuple[str, list[WorkItem]]],
@@ -198,6 +199,7 @@ def write_checkpoint(
 
 
 def main() -> None:
+    """CLI: scan a directory tree and write one JSONL line per directory."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, help="Root directory to scan.")
     parser.add_argument(
@@ -264,6 +266,7 @@ def main() -> None:
         p.start()
 
     # Two DFS frontiers owned by main: normal scans and (expensive) full scans.
+    out_file: TextIO
     if os.path.exists(checkpoint_path):
         normal_stack, full_stack = load_checkpoint(checkpoint_path)
         out_file = open(args.output, "a")
