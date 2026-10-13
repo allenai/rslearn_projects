@@ -1,0 +1,65 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "la_palma",
+    "first_year": 2018,
+    "block": "EPSG:32628_16384_-319488"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -17.895,
+     28.61
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "klamath",
+    "first_year": 2019,
+    "block": "EPSG:32610_49152_-466944"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -122.38,
+     41.955
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "cambodia",
+    "first_year": 2019,
+    "block": "EPSG:32648_40960_-131072"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     104.8,
+     11.3
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "name": "kalimantan",
+    "first_year": 2017,
+    "block": "EPSG:32650_16384_24576"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     114.15,
+     -2.55
+    ]
+   }
+  }
+ ]
+}
