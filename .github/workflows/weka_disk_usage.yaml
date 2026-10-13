@@ -24,9 +24,6 @@ on:
     # GitHub cron is UTC and cannot follow DST. Saturday 06:00 UTC is Friday
     # 11:00 PM PDT / 10:00 PM PST, so the report is ready by Monday morning.
     - cron: '0 6 * * 6'
-  push:
-    branches:
-      - favyen/20260921-disk-usage-job
 
 env:
   REGISTRY: ghcr.io
