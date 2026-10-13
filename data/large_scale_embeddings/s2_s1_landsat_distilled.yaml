@@ -18,9 +18,10 @@ model:
               # it lands in the archive's provenance. The first 64 dims are a trained
               # Matryoshka prefix, so consumers can read embeddings[..., :64].
               projected_register_dim: 128
-              # One embedding per 10 m pixel. Overridden by the pipeline
+              # The encoder's token size, 2 x 2 pixels. Output resolution is set by
+              # latent_patch_size below, not by this. Overridden by the pipeline
               # (--patch_size).
-              patch_size: 1
+              patch_size: 2
               embedding_size: 128
               # Required by projected_register_dim: the student only exists under the
               # register bottleneck.
@@ -40,6 +41,11 @@ model:
               # defaults on H100 at this patch and window size, falling back where it
               # is unsupported.
               sdpa_backends: ["cudnn", "flash", "efficient", "math"]
+              forward_kwargs:
+                # One embedding per 10 m pixel, finer than the token grid. rslearn
+                # names no such argument, so it reaches the encoder through
+                # forward_kwargs. Overridden by the pipeline (--latent_patch_size).
+                latent_patch_size: 1
         decoder:
           # Quantizes each embedding to int8 with the AlphaEarth power scheme (-128
           # is reserved for nodata). L2 normalization is off because it discards
@@ -89,9 +95,9 @@ data:
     batch_size: 256
     num_workers: 16
     default_config:
-      # Much bigger fails on GPU memory with the 12 monthly inputs at patch_size 1.
-      # Overridden by the prediction pipeline (--window_size).
-      crop_size: 16
+      # 480 on H100; A100 (40 GB) workers use 384. Overridden by the prediction
+      # pipeline (--window_size).
+      crop_size: 480
       transforms:
         # The Sentinel-1 RTC source delivers linear intensities.
         - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
@@ -103,7 +109,7 @@ data:
       load_all_crops: true
       # Mitigates embedding seams at crop boundaries; the RasterMerger trims half the
       # overlap from each crop. Overridden by the pipeline (--overlap_size).
-      overlap_pixels: 4
+      overlap_pixels: 32
       skip_targets: true
 trainer:
   callbacks:
@@ -115,11 +121,12 @@ trainer:
         merger:
           class_path: rslearn.train.prediction_writer.RasterMerger
           init_args:
-            # Must match the encoder patch_size. Overridden by the pipeline.
+            # Must match latent_patch_size, the pixels per output embedding.
+            # Overridden by the pipeline.
             downsample_factor: 1
-            # predict_config overlap_pixels divided by patch_size, since the merger
-            # operates at the output resolution. Overridden by the pipeline.
-            overlap_pixels: 4
+            # predict_config overlap_pixels divided by latent_patch_size, since the
+            # merger operates at the output resolution. Overridden by the pipeline.
+            overlap_pixels: 32
     # Lightning's progress bar reaches a container log only every 20-30 minutes, so
     # without this a healthy job is indistinguishable from a deadlocked one.
     - class_path: rslp.large_scale_embeddings.model.PredictHeartbeat
