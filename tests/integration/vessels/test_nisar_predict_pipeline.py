@@ -1,9 +1,10 @@
 """Integration tests for the NISAR vessel prediction pipeline.
 
 These run the real rslearn materialize and predict path over a synthetic GCOV granule,
-with the detector shrunk to swin_t and left untrained. What is being checked is the
-plumbing -- that a granule turns into a materialized window, that the model runs over
-it, and that detections come back with crops -- not detection quality.
+with the detector's encoder shrunk to OlmoEarth Nano and no checkpoint restored. What
+is being checked is the plumbing -- that a granule turns into a materialized window,
+that the model runs over it, and that detections come back with crops -- not detection
+quality.
 """
 
 import json
@@ -22,7 +23,7 @@ from upath import UPath
 
 from rslp.nisar_vessels import predict_pipeline as pipeline
 from rslp.vessels import VesselDetection, VesselDetectionSource
-from tests.integration.vessels.helpers import create_tiny_detect_config
+from tests.integration.vessels.helpers import apply_common_config_patches
 from tests.utils.nisar_granule import DUAL_POL_BANDS, write_granule
 
 # Open water in the English Channel. Deliberately not the WGS84_ITEM_BOUNDS the other
@@ -87,17 +88,25 @@ def granule_path(tmp_path: pathlib.Path) -> pathlib.Path:
 
 @pytest.fixture
 def tiny_detector(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Swap in a swin_t detector with no checkpoint to restore, running on the CPU."""
-    detect_cfg = tmp_path / "detect_config.yaml"
-    create_tiny_detect_config(pipeline.DETECT_MODEL_CONFIG, str(detect_cfg))
+    """Swap in an OlmoEarth Nano detector with no checkpoint to restore, on the CPU."""
+    with open(pipeline.DETECT_MODEL_CONFIG) as f:
+        cfg = yaml.safe_load(f)
+
+    model_args = cfg["model"]["init_args"]["model"]["init_args"]
+    model_args["encoder"][0]["init_args"]["model_id"] = "OLMOEARTH_V1_2_NANO"
+    # CPU autocast leaves the encoder output in bfloat16 (CUDA autocast runs the final
+    # LayerNorm in float32), which the float32 Faster R-CNN head rejects.
+    model_args["encoder"][0]["init_args"]["autocast_dtype"] = None
+    # Nano produces 128-dim embeddings vs Tiny's 192.
+    model_args["decoders"]["detect"][0]["init_args"]["num_channels"] = 128
+    apply_common_config_patches(cfg)
 
     # The config's default DDP strategy is rejected outright on an MPS accelerator, so a
     # developer running this on a Mac would never reach the model at all.
-    with detect_cfg.open() as f:
-        cfg = yaml.safe_load(f)
     cfg["trainer"]["accelerator"] = "cpu"
     cfg["trainer"]["strategy"] = "auto"
     cfg["trainer"]["devices"] = 1
+    detect_cfg = tmp_path / "detect_config.yaml"
     with detect_cfg.open("w") as f:
         yaml.dump(cfg, f)
 
