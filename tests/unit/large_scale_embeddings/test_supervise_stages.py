@@ -328,6 +328,23 @@ def test_run_cycle_render_stage_enumerates_from_source_markers(
     assert enqueued["gpus"] == 0
 
 
+def test_render_stage_reads_at_pixels_per_embedding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pix512 model tokenizes at 2 but stores one embedding per pixel.
+
+    The render divides marker offsets by this value to find the window, so passing the
+    token size would read every window from half its true offset.
+    """
+    calls = _stub_render_jobs(monkeypatch, 1)
+    _install_cycle_fakes(monkeypatch)
+    model = sup.ModelConfig(
+        checkpoint_path="/weka/ckpt", patch_size=2, latent_patch_size=1
+    )
+    sup._run_cycle(_render_cycle_config(model=model), _Result())
+    assert calls["patch_size"] == 1
+
+
 def test_worker_launches_are_capped_by_outstanding_jobs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

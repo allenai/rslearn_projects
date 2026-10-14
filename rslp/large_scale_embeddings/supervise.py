@@ -2129,7 +2129,9 @@ def _run_cycle(
                 completed_path=require_config(
                     config.pca.completed_path, "pca.completed_path", stage
                 ),
-                patch_size=config.model.patch_size,
+                # The store grid follows pixels per embedding, not the token size: a
+                # pix512 model tokenizes at 2 but writes one embedding per pixel.
+                patch_size=config.model.latent_patch_size or config.model.patch_size,
                 max_level=config.pca.max_level,
             )
         )
