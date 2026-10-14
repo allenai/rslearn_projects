@@ -484,6 +484,10 @@ def source_shard_positions(store_url: str, zone: str) -> set[tuple[int, int]]:
     destination grid, is hopeless: level 14 has 2048x2048 shard slots, and almost all of
     them are ocean.
 
+    A gs:// URL is listed with credentials, since a bucket served only through a CDN
+    refuses anonymous listing. An https://storage.googleapis.com/ URL is listed
+    anonymously, for public buckets.
+
     Args:
         store_url: the UTM PCA store, as either a gs:// or an
             https://storage.googleapis.com/ URL.
@@ -493,9 +497,8 @@ def source_shard_positions(store_url: str, zone: str) -> set[tuple[int, int]]:
         (y_shard, x_shard) pairs, in units of the UTM array's 2048 px shards.
     """
     url = store_url.rstrip("/")
-    m = re.match(r"https://storage\.googleapis\.com/([^/]+)/(.+)", url) or re.match(
-        r"gs://([^/]+)/(.+)", url
-    )
+    https = re.match(r"https://storage\.googleapis\.com/([^/]+)/(.+)", url)
+    m = https or re.match(r"gs://([^/]+)/(.+)", url)
     if not m:
         raise ValueError(
             f"cannot derive a bucket listing from {store_url}; expected a gs:// or "
@@ -505,6 +508,14 @@ def source_shard_positions(store_url: str, zone: str) -> set[tuple[int, int]]:
     prefix = f"{root}/{zone}/pca_rgb/c/"
 
     out: set[tuple[int, int]] = set()
+    if not https:
+        listed = f"{bucket}/{prefix}"
+        for key in fsspec.filesystem("gs").find(listed):
+            position = _shard_from_chunk_key(key[len(listed) :])
+            if position is not None:
+                out.add(position)
+        return out
+
     token: str | None = None
     for _ in range(200):
         url = (
@@ -519,10 +530,9 @@ def source_shard_positions(store_url: str, zone: str) -> set[tuple[int, int]]:
         for node in doc.getElementsByTagName("Key"):
             if not node.firstChild:
                 continue
-            parts = node.firstChild.data[len(prefix) :].split("/")
-            # <time>/<band>/<y>/<x>; anything else is not a chunk key.
-            if len(parts) == 4 and all(p.isdigit() for p in parts):
-                out.add((int(parts[2]), int(parts[3])))
+            position = _shard_from_chunk_key(node.firstChild.data[len(prefix) :])
+            if position is not None:
+                out.add(position)
         trunc = doc.getElementsByTagName("IsTruncated")
         if not (
             trunc and trunc[0].firstChild and trunc[0].firstChild.data.strip() == "true"
@@ -533,6 +543,50 @@ def source_shard_positions(store_url: str, zone: str) -> set[tuple[int, int]]:
         if not token:
             return out
     return out
+
+
+def _shard_from_chunk_key(rest: str) -> tuple[int, int] | None:
+    """Shard position from a chunk key relative to the array's chunk root.
+
+    Args:
+        rest: the key after ``.../pca_rgb/c/``, i.e. ``<time>/<band>/<y>/<x>``.
+
+    Returns:
+        (y_shard, x_shard), or None for anything that is not a chunk key.
+    """
+    parts = rest.split("/")
+    if len(parts) == 4 and all(p.isdigit() for p in parts):
+        return int(parts[2]), int(parts[3])
+    return None
+
+
+def web_shards_at_zoom(
+    source_store_path: str,
+    zone_numbers: list[int],
+    zoom: int,
+    base_zoom: int = DEFAULT_MAX_ZOOM,
+    source_url: str | None = None,
+) -> set[tuple[int, int]]:
+    """Every output shard at a zoom that the UTM PCA store has data under.
+
+    Args:
+        source_store_path: the UTM PCA store.
+        zone_numbers: UTM zones present in the source.
+        zoom: the zoom level to enumerate.
+        base_zoom: the deepest zoom.
+        source_url: https base of the source, for anonymous listing.
+
+    Returns:
+        (row, col) shard pairs at `zoom`.
+    """
+    listing = source_url or source_store_path
+    shards: set[tuple[int, int]] = set()
+    for zone in zone_numbers:
+        positions = source_shard_positions(listing, f"utm{zone:02d}")
+        shards |= web_shards_for_source(positions, zone, base_zoom)
+    for _ in range(base_zoom - zoom):
+        shards = parent_shards(shards)
+    return shards
 
 
 def web_shards_for_source(
@@ -725,13 +779,9 @@ def get_web_jobs(
     Returns:
         argument lists for the queue.
     """
-    listing = source_url or source_store_path
-    shards: set[tuple[int, int]] = set()
-    for zone in zone_numbers:
-        positions = source_shard_positions(listing, f"utm{zone:02d}")
-        shards |= web_shards_for_source(positions, zone, base_zoom)
-    for _ in range(base_zoom - zoom):
-        shards = parent_shards(shards)
+    shards = web_shards_at_zoom(
+        source_store_path, zone_numbers, zoom, base_zoom, source_url
+    )
 
     done: set[str] = set()
     level_dir = UPath(completed_path) / f"z{zoom}"
@@ -769,3 +819,132 @@ def get_web_jobs(
             )
     logger.info("z%d: %d shard-year(s), %d still to build", zoom, total, len(jobs))
     return jobs
+
+
+def handover_share(zoom: int, start_zoom: int, end_zoom: int) -> float:
+    """Weight of the zoomed-in scheme at a zoom level in a by-zoom handover.
+
+    Zero at `start_zoom` and shallower, one at `end_zoom` and deeper, linear in between.
+
+    Args:
+        zoom: the XYZ zoom level.
+        start_zoom: the deepest zoom that is purely the zoomed-out scheme.
+        end_zoom: the shallowest zoom that is purely the zoomed-in scheme.
+
+    Returns:
+        the zoomed-in scheme's weight, from 0 to 1.
+
+    Raises:
+        ValueError: if the ramp is empty or inverted.
+    """
+    if end_zoom <= start_zoom:
+        raise ValueError(f"end_zoom {end_zoom} must be above start_zoom {start_zoom}")
+    return min(1.0, max(0.0, (zoom - start_zoom) / (end_zoom - start_zoom)))
+
+
+def blend_rgb(base: np.ndarray, overlay: np.ndarray, share: float) -> np.ndarray:
+    """Crossfade two uint8 RGB shards, keeping nodata out of the mix.
+
+    Where both are valid the result is ``(1 - share) * base + share * overlay``; where
+    only one is valid it is that one, so a footprint present in either survives.
+
+    Args:
+        base: the zoomed-out scheme, (bands, h, w) uint8 with 0 as nodata.
+        overlay: the zoomed-in scheme, same shape.
+        share: the overlay's weight, from 0 to 1.
+
+    Returns:
+        the blended (bands, h, w) uint8 array.
+    """
+    base_ok = (base != WEB_NODATA).any(axis=0)
+    over_ok = (overlay != WEB_NODATA).any(axis=0)
+    mixed = np.rint(
+        (1.0 - share) * base.astype(np.float32) + share * overlay.astype(np.float32)
+    )
+    # Valid pixels live in 1-255, so a mix never lands on the nodata value.
+    out = np.clip(mixed, 1, 255).astype(np.uint8)
+    out[:, ~base_ok] = overlay[:, ~base_ok]
+    out[:, ~over_ok] = base[:, ~over_ok]
+    return out
+
+
+def compose_web_shard_pipeline(
+    base_store_path: str,
+    overlay_store_path: str,
+    web_store_path: str,
+    completed_path: str,
+    zoom: int,
+    time_index: int,
+    shard_row: int,
+    shard_col: int,
+    start_zoom: int,
+    end_zoom: int,
+    storage_options: dict[str, Any] | None = None,
+) -> None:
+    """Write one shard of a by-zoom handover from two finished web pyramids.
+
+    The zoomed-out scheme (base) holds at `start_zoom` and shallower, the zoomed-in one
+    (overlay) at `end_zoom` and deeper, and levels in between crossfade the two. The
+    inputs must be complete at this zoom; only the store each share needs is read.
+
+    Args:
+        base_store_path: web store of the zoomed-out scheme.
+        overlay_store_path: web store of the zoomed-in scheme.
+        web_store_path: the web store to write.
+        completed_path: marker directory.
+        zoom: the XYZ zoom level to write.
+        time_index: index on the time axis.
+        shard_row: shard row in the destination.
+        shard_col: shard column in the destination.
+        start_zoom: the deepest zoom that is purely the base.
+        end_zoom: the shallowest zoom that is purely the overlay.
+        storage_options: fsspec options for remote stores.
+    """
+    marker = web_marker_fname(completed_path, zoom, time_index, shard_row, shard_col)
+    if marker.exists():
+        logger.info("marker %s already exists", marker)
+        return
+
+    share = handover_share(zoom, start_zoom, end_zoom)
+    shard = min(WEB_SHARD, web_size(zoom))
+    r0, c0 = shard_row * shard, shard_col * shard
+    region = (time_index, slice(None), slice(r0, r0 + shard), slice(c0, c0 + shard))
+    name = web_array_name(zoom)
+
+    def read(path: str) -> np.ndarray:
+        group = zarr.open_group(_zarr_store(path, storage_options), mode="r")
+        return np.asarray(group[name][region])
+
+    if share == 0.0:
+        out = read(base_store_path)
+    elif share == 1.0:
+        out = read(overlay_store_path)
+    else:
+        out = blend_rgb(read(base_store_path), read(overlay_store_path), share)
+
+    valid = int((out != WEB_NODATA).any(axis=0).sum())
+    if valid:
+        dest = zarr.open_group(_zarr_store(web_store_path, storage_options), mode="a")
+        dest[name][region] = out
+
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    with marker.open("w") as f:
+        json.dump(
+            {
+                "zoom": zoom,
+                "time_index": time_index,
+                "shard": [shard_row, shard_col],
+                "overlay_share": share,
+                "valid_pixels": valid,
+            },
+            f,
+        )
+    logger.info(
+        "z%d t%d shard (%d,%d): overlay share %.2f, %d valid px",
+        zoom,
+        time_index,
+        shard_row,
+        shard_col,
+        share,
+        valid,
+    )

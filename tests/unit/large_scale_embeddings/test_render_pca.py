@@ -557,3 +557,117 @@ def test_render_rejects_a_year_absent_from_the_pca_store(tmp_path: Path) -> None
             completed_path=run["completed_path"],
             max_level=MAX_LEVEL,
         )
+
+
+def test_render_targets_writes_each_store_from_one_read(tmp_path: Path) -> None:
+    """Two schemes rendered in one pass each land in their own store with their own marker."""
+    run = _build_run(tmp_path)
+    second_store = str(tmp_path / "pca_second.zarr")
+    zs.init_pca_store(
+        pca_store_path=second_store,
+        zone_numbers=[ZONE],
+        years=[2024],
+        model_url=MODEL_URL,
+        source_data=SOURCE_DATA,
+        resolution=RESOLUTION,
+        tile_size=TILE_SIZE,
+        chunk_size=CHUNK,
+        shard_size=SHARD,
+        max_level=MAX_LEVEL,
+    )
+    # A second basis: the first one's components with their signs flipped, so the two
+    # stores must differ wherever the projection is off-center.
+    artifact = pca.PcaArtifact.load(run["artifact_path"])
+    flipped = write_olmoearth_run_artifact(
+        tmp_path / "flipped.pkl",
+        pca.PcaArtifact(
+            mean=artifact.mean,
+            components=-artifact.components,
+            norm_bounds=-artifact.norm_bounds[::-1],
+            explained_variance_ratio=artifact.explained_variance_ratio,
+        ),
+    )
+    targets = [
+        {
+            "pca_store_path": run["pca_store_path"],
+            "artifact_path": run["artifact_path"],
+            "completed_path": run["completed_path"],
+        },
+        {
+            "pca_store_path": second_store,
+            "artifact_path": flipped,
+            "completed_path": str(tmp_path / "second_completed"),
+        },
+    ]
+    render_pca.render_pca_targets_pipeline(
+        store_path=run["store_path"],
+        source_marker=run["source_marker"],
+        targets=targets,
+        max_level=MAX_LEVEL,
+    )
+
+    origin_x, origin_y = run["origin"]
+    bx0, by0 = run["written"][0]
+    col0, row0 = bx0 - origin_x, by0 - origin_y
+    first, second = (
+        np.asarray(
+            zarr.open_group(store=s, path=f"utm{ZONE}", mode="r")[zs.PCA_ARRAY][
+                0, :, row0 : row0 + SHARD, col0 : col0 + SHARD
+            ]
+        )
+        for s in (run["pca_store_path"], second_store)
+    )
+    assert first.min() >= 1 and second.min() >= 1
+    assert not np.array_equal(first, second)
+    for target in targets:
+        marker = Path(target["completed_path"]) / render_pca.pca_marker_name(
+            Path(run["source_marker"])
+        )
+        assert json.loads(marker.read_text())["rendered"] == run["written"]
+
+
+def test_render_targets_skips_a_target_already_done(tmp_path: Path) -> None:
+    """A finished target is left alone while an unfinished one is still rendered."""
+    run = _build_run(tmp_path)
+    done = {
+        "pca_store_path": run["pca_store_path"],
+        "artifact_path": run["artifact_path"],
+        "completed_path": run["completed_path"],
+    }
+    render_pca.render_pca_targets_pipeline(
+        store_path=run["store_path"],
+        source_marker=run["source_marker"],
+        targets=[done],
+        max_level=MAX_LEVEL,
+    )
+    marker = Path(run["completed_path"]) / render_pca.pca_marker_name(
+        Path(run["source_marker"])
+    )
+    before = marker.read_text()
+
+    second_store = str(tmp_path / "pca_second.zarr")
+    zs.init_pca_store(
+        pca_store_path=second_store,
+        zone_numbers=[ZONE],
+        years=[2024],
+        model_url=MODEL_URL,
+        source_data=SOURCE_DATA,
+        resolution=RESOLUTION,
+        tile_size=TILE_SIZE,
+        chunk_size=CHUNK,
+        shard_size=SHARD,
+        max_level=MAX_LEVEL,
+    )
+    pending = {
+        "pca_store_path": second_store,
+        "artifact_path": run["artifact_path"],
+        "completed_path": str(tmp_path / "second_completed"),
+    }
+    render_pca.render_pca_targets_pipeline(
+        store_path=run["store_path"],
+        source_marker=run["source_marker"],
+        targets=[done, pending],
+        max_level=MAX_LEVEL,
+    )
+    assert marker.read_text() == before
+    assert (Path(pending["completed_path"]) / marker.name).exists()

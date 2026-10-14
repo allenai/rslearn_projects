@@ -16,15 +16,18 @@ olmoearth_run's per-model ``embedding_pca.pkl``, which must exist before the run
     at all. This stage fixes both. CPU only, no model.
 """
 
+from rslp.large_scale_embeddings.batch_slice import run_batch_slice
 from rslp.large_scale_embeddings.export_provenance import export_provenance
 from rslp.large_scale_embeddings.full_run import launch_run_all, run_all
 from rslp.large_scale_embeddings.predict_pipeline import predict_pipeline
 from rslp.large_scale_embeddings.render_pca import (
     annotate_pca_store,
     render_pca_pipeline,
+    render_pca_targets_pipeline,
     write_render_jobs,
 )
 from rslp.large_scale_embeddings.render_web_pca import (
+    compose_web_shard_pipeline,
     init_web_store,
     render_web_pca_pipeline,
 )
@@ -35,6 +38,8 @@ from rslp.large_scale_embeddings.write_jobs import init_store, write_jobs
 from rslp.large_scale_embeddings.zarr_store import init_pca_store
 
 workflows = {
+    "batch_slice": run_batch_slice,
+    "compose_web_pca": compose_web_shard_pipeline,
     "bench_build_variants": build_variants,
     "bench_measure": measure,
     "export_provenance": export_provenance,
@@ -45,6 +50,7 @@ workflows = {
     "predict": predict_pipeline,
     "publish_status": publish_status,
     "render_utm_pca": render_pca_pipeline,
+    "render_utm_pca_targets": render_pca_targets_pipeline,
     "render_web_pca": render_web_pca_pipeline,
     "init_web_store": init_web_store,
     "run_all": run_all,

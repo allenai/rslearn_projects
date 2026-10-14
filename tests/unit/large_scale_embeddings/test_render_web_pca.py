@@ -168,3 +168,98 @@ def test_enumeration_and_writer_agree_on_the_marker_name() -> None:
     fname = rw.web_marker_fname("gs://b/done", zoom=14, time_index=2, row=7, col=9)
     assert fname.name == rw.web_marker_name(2, 7, 9)
     assert fname.parent.name == "z14"
+
+
+def test_handover_share_ramps_between_the_two_zooms() -> None:
+    """Pure base up to the start zoom, pure overlay from the end zoom, linear between."""
+    assert [rw.handover_share(z, 5, 9) for z in (0, 5, 6, 7, 8, 9, 14)] == [
+        0.0,
+        0.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        1.0,
+    ]
+    with pytest.raises(ValueError, match="must be above"):
+        rw.handover_share(7, 9, 9)
+
+
+def test_blend_keeps_either_footprint_and_never_writes_nodata() -> None:
+    """A pixel valid in only one scheme keeps that scheme; a mix never becomes nodata."""
+    base = np.zeros((3, 1, 3), dtype=np.uint8)
+    overlay = np.zeros((3, 1, 3), dtype=np.uint8)
+    base[:, 0, 0], overlay[:, 0, 0] = 100, 200  # both valid: mixed
+    base[:, 0, 1] = 50  # only base
+    overlay[:, 0, 2] = 1  # only overlay
+    out = rw.blend_rgb(base, overlay, 0.25)
+    assert list(out[:, 0, 0]) == [125, 125, 125]
+    assert list(out[:, 0, 1]) == [50, 50, 50]
+    assert list(out[:, 0, 2]) == [1, 1, 1]
+    assert (
+        rw.blend_rgb(
+            np.full((3, 1, 1), 1, np.uint8), np.full((3, 1, 1), 1, np.uint8), 0.5
+        )
+        == 1
+    ).all()
+
+
+def test_compose_copies_or_blends_by_zoom(tmp_path: pathlib.Path) -> None:
+    """Shallow zooms copy the base, deep ones the overlay, and the ramp blends them."""
+    import json
+
+    import zarr
+
+    stores = {k: str(tmp_path / f"{k}.zarr") for k in ("base", "overlay", "out")}
+    for path in stores.values():
+        rw.init_web_store(path, years=[2025], min_zoom=5, max_zoom=9)
+    for zoom in (5, 7, 9):
+        zarr.open_group(stores["base"], mode="a")[rw.web_array_name(zoom)][
+            0, :, 0:2, 0:2
+        ] = 40
+        zarr.open_group(stores["overlay"], mode="a")[rw.web_array_name(zoom)][
+            0, :, 0:2, 0:2
+        ] = 200
+
+    done = str(tmp_path / "done")
+    for zoom in (5, 7, 9):
+        rw.compose_web_shard_pipeline(
+            base_store_path=stores["base"],
+            overlay_store_path=stores["overlay"],
+            web_store_path=stores["out"],
+            completed_path=done,
+            zoom=zoom,
+            time_index=0,
+            shard_row=0,
+            shard_col=0,
+            start_zoom=5,
+            end_zoom=9,
+        )
+    out = zarr.open_group(stores["out"], mode="r")
+    got = {z: int(out[rw.web_array_name(z)][0, 0, 0, 0]) for z in (5, 7, 9)}
+    assert got == {5: 40, 7: 120, 9: 200}
+    marker = rw.web_marker_fname(done, 7, 0, 0, 0)
+    assert json.loads(marker.read_text())["overlay_share"] == 0.5
+
+
+def test_gs_listing_uses_credentials_not_anonymous_https(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A CDN-only bucket refuses anonymous listing, so gs:// must go through fsspec."""
+    prefix = "bucket/a/pca.zarr/utm10/pca_rgb/c/"
+
+    class FakeGcs:
+        def find(self, path: str) -> list[str]:
+            assert path == prefix
+            return [prefix + "0/0/3/4", prefix + "0/0/3/5", prefix + "zarr.json"]
+
+    monkeypatch.setattr(rw.fsspec, "filesystem", lambda protocol: FakeGcs())
+
+    def no_anonymous(*args: object, **kwargs: object) -> None:
+        raise AssertionError("gs:// must not be listed over anonymous https")
+
+    monkeypatch.setattr(rw.urllib.request, "urlopen", no_anonymous)
+    assert rw.source_shard_positions("gs://bucket/a/pca.zarr", "utm10") == {
+        (3, 4),
+        (3, 5),
+    }

@@ -23,6 +23,7 @@ the windows that were written, so this stage covers precisely that output.
 
 import json
 from datetime import datetime
+from typing import Any
 
 import numpy as np
 import zarr
@@ -223,7 +224,48 @@ def render_pca_pipeline(
         source_marker: path to the predict completion marker naming the windows to
             render.
         completed_path: directory for this step's own completion markers.
-        patch_size: the encoder patch size used when the embeddings were written.
+        patch_size: pixels per output embedding when the embeddings were written.
+        max_level: deepest pyramid level to write, downsampled 2**max_level.
+        storage_options: fsspec storage options for remote stores.
+    """
+    render_pca_targets_pipeline(
+        store_path=store_path,
+        source_marker=source_marker,
+        targets=[
+            {
+                "pca_store_path": pca_store_path,
+                "artifact_path": artifact_path,
+                "completed_path": completed_path,
+            }
+        ],
+        patch_size=patch_size,
+        max_level=max_level,
+        storage_options=storage_options,
+    )
+
+
+def render_pca_targets_pipeline(
+    store_path: str,
+    source_marker: str,
+    targets: list[dict[str, str]],
+    patch_size: int = 1,
+    max_level: int = DEFAULT_PCA_MAX_LEVEL,
+    storage_options: dict | None = None,
+) -> None:
+    """Render one block into several pca stores, reading each window once.
+
+    Reading the embeddings is the expensive part, so two color schemes rendered from one
+    pass cost little more than one. Each target keeps its own store and markers and is
+    idempotent on its own: a target whose marker exists is skipped, and the block is not
+    read at all if every target is done.
+
+    Args:
+        store_path: the GeoZarr store holding the embeddings. Opened read-only.
+        source_marker: path to the predict completion marker naming the windows to
+            render.
+        targets: one dict per output, with keys ``pca_store_path``, ``artifact_path``
+            and ``completed_path``.
+        patch_size: pixels per output embedding when the embeddings were written.
         max_level: deepest pyramid level to write, downsampled 2**max_level.
         storage_options: fsspec storage options for remote stores.
     """
@@ -233,9 +275,14 @@ def render_pca_pipeline(
     written: list[list[int]] = source.get("written") or []
     time_index = source["time_index"]
 
-    marker_fname = get_pca_marker_fname(completed_path, source_fname)
-    if marker_fname.exists():
-        logger.info("marker file %s already exists", marker_fname)
+    pending: list[dict[str, Any]] = []
+    for spec in targets:
+        marker_fname = get_pca_marker_fname(spec["completed_path"], source_fname)
+        if marker_fname.exists():
+            logger.info("marker file %s already exists", marker_fname)
+            continue
+        pending.append({**spec, "marker_fname": marker_fname})
+    if not pending:
         return
 
     projection = Projection.deserialize(source["projection"])
@@ -244,7 +291,6 @@ def render_pca_pipeline(
         raise ValueError(f"projection in {source_fname.name} has no EPSG code")
     zone_number = epsg % 100
 
-    artifact = PcaArtifact.load(artifact_path)
     group = zarr.open_group(
         store=store_path,
         path=zone_group_name(zone_number),
@@ -256,12 +302,17 @@ def render_pca_pipeline(
     origin_y = round(transform[5] / transform[4])
     embeddings_array = group[EMBEDDINGS_ARRAY]
     window_size = embeddings_array.shards[2]
-    dest_time_index = pca_time_index(
-        store_path, zone_number, time_index, pca_store_path, storage_options
-    )
+    for target in pending:
+        target["artifact"] = PcaArtifact.load(target["artifact_path"])
+        target["dest_time_index"] = pca_time_index(
+            store_path,
+            zone_number,
+            time_index,
+            target["pca_store_path"],
+            storage_options,
+        )
+        target["rendered"], target["empty"] = [], []
 
-    rendered: list[list[int]] = []
-    empty: list[list[int]] = []
     for x, y in written:
         row = y // patch_size - origin_y
         col = x // patch_size - origin_x
@@ -270,38 +321,41 @@ def render_pca_pipeline(
                 time_index, :, row : row + window_size, col : col + window_size
             ]
         )
-        if render_window(
-            embeddings=block,
-            artifact=artifact,
-            pca_store_path=pca_store_path,
-            zone_number=zone_number,
-            crop_offset=(x, y),
-            dest_time_index=dest_time_index,
-            max_level=max_level,
-            patch_size=patch_size,
-            storage_options=storage_options,
-        ):
-            rendered.append([x, y])
-        else:
-            empty.append([x, y])
+        for target in pending:
+            if render_window(
+                embeddings=block,
+                artifact=target["artifact"],
+                pca_store_path=target["pca_store_path"],
+                zone_number=zone_number,
+                crop_offset=(x, y),
+                dest_time_index=target["dest_time_index"],
+                max_level=max_level,
+                patch_size=patch_size,
+                storage_options=storage_options,
+            ):
+                target["rendered"].append([x, y])
+            else:
+                target["empty"].append([x, y])
 
-    logger.info(
-        "rendered %d window(s) at levels 0..%d, skipped %d empty, for %s",
-        len(rendered),
-        max_level,
-        len(empty),
-        source_fname.name,
-    )
-    write_pca_marker(
-        marker_fname=marker_fname,
-        source_fname=source_fname,
-        pca_store_path=pca_store_path,
-        artifact_path=artifact_path,
-        time_index=time_index,
-        max_level=max_level,
-        rendered=rendered,
-        empty=empty,
-    )
+    for target in pending:
+        logger.info(
+            "rendered %d window(s) at levels 0..%d, skipped %d empty, for %s into %s",
+            len(target["rendered"]),
+            max_level,
+            len(target["empty"]),
+            source_fname.name,
+            target["pca_store_path"],
+        )
+        write_pca_marker(
+            marker_fname=target["marker_fname"],
+            source_fname=source_fname,
+            pca_store_path=target["pca_store_path"],
+            artifact_path=target["artifact_path"],
+            time_index=time_index,
+            max_level=max_level,
+            rendered=target["rendered"],
+            empty=target["empty"],
+        )
 
 
 def get_render_jobs(
