@@ -99,6 +99,6 @@ def test_backfill_is_visible_through_consolidated_metadata(tmp_path: Path) -> No
 
     consolidated = zarr.open_group(store_path, mode="r", use_consolidated=True)
     for _, group in consolidated.groups():
-        assert group.attrs["license"] == {"url": LICENSE_URL}, (
-            "zone attributes did not reach the consolidated copy"
-        )
+        assert group.attrs["license"] == {
+            "url": LICENSE_URL
+        }, "zone attributes did not reach the consolidated copy"
