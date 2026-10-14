@@ -4,6 +4,10 @@ A driver writes the whole job list once to a JSON file; every task of the array 
 reads it and runs every `task_count`-th job starting at its own index. Each job is an
 idempotent render step that skips work its marker records, so a retried or preempted
 task only redoes what it had not finished.
+
+A list can instead be given as ordered stages, each finished before the next starts, for
+work where a stage reads what the one before wrote (a pyramid's coarser levels). There is
+no barrier across tasks, so a staged list runs as a single task.
 """
 
 import json
@@ -30,13 +34,19 @@ FUNCTIONS: dict[str, Callable[..., None]] = {
 }
 
 
-def write_batch_jobs(jobs_path: str, function: str, jobs: list[dict[str, Any]]) -> None:
+def write_batch_jobs(
+    jobs_path: str,
+    function: str,
+    jobs: list[dict[str, Any]] | None = None,
+    stages: list[list[dict[str, Any]]] | None = None,
+) -> None:
     """Write a job list for `run_batch_slice`.
 
     Args:
         jobs_path: where to write the JSON file.
         function: a key of FUNCTIONS.
         jobs: keyword arguments for each call.
+        stages: instead of jobs, ordered groups of calls run one group at a time.
 
     Raises:
         ValueError: for an unknown function name.
@@ -45,9 +55,17 @@ def write_batch_jobs(jobs_path: str, function: str, jobs: list[dict[str, Any]]) 
         raise ValueError(
             f"unknown function {function}; expected one of {list(FUNCTIONS)}"
         )
+    if (jobs is None) == (stages is None):
+        raise ValueError("give exactly one of jobs and stages")
+    spec: dict[str, Any] = {"function": function}
+    if stages is not None:
+        spec["stages"] = stages
+    else:
+        spec["jobs"] = jobs
     with UPath(jobs_path).open("w") as f:
-        json.dump({"function": function, "jobs": jobs}, f)
-    logger.info("wrote %d %s job(s) to %s", len(jobs), function, jobs_path)
+        json.dump(spec, f)
+    n = sum(len(s) for s in stages) if stages is not None else len(jobs or [])
+    logger.info("wrote %d %s job(s) to %s", n, function, jobs_path)
 
 
 def run_batch_slice(
@@ -75,16 +93,39 @@ def run_batch_slice(
     with UPath(jobs_path).open() as f:
         spec = json.load(f)
     fn = FUNCTIONS[spec["function"]]
-    mine = spec["jobs"][task_index::task_count]
+    if "stages" in spec:
+        if task_count != 1:
+            raise ValueError("a staged job list must run as a single task")
+        stages = spec["stages"]
+    else:
+        stages = [spec["jobs"][task_index::task_count]]
+    total = sum(len(s) for s in stages)
     logger.info(
-        "task %d of %d: %d of %d %s job(s)",
+        "task %d of %d: %d %s job(s) in %d stage(s)",
         task_index,
         task_count,
-        len(mine),
-        len(spec["jobs"]),
+        total,
         spec["function"],
+        len(stages),
     )
 
+    failed = 0
+    for number, mine in enumerate(stages, 1):
+        stage_failed = _run_stage(fn, mine, task_index, workers)
+        failed += stage_failed
+        if stage_failed and number < len(stages):
+            # A later stage reads this one's output, so stop rather than build on gaps.
+            raise RuntimeError(
+                f"{stage_failed} job(s) failed in stage {number} of {len(stages)}"
+            )
+    if failed:
+        raise RuntimeError(f"{failed} of {total} job(s) failed in task {task_index}")
+
+
+def _run_stage(
+    fn: Callable[..., None], mine: list[dict[str, Any]], task_index: int, workers: int
+) -> int:
+    """Run one group of jobs concurrently; returns how many failed."""
     failed = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(fn, **kwargs): kwargs for kwargs in mine}
@@ -98,7 +139,4 @@ def run_batch_slice(
                 logger.info(
                     "task %d: %d/%d done, %d failed", task_index, i, len(mine), failed
                 )
-    if failed:
-        raise RuntimeError(
-            f"{failed} of {len(mine)} job(s) failed in task {task_index}"
-        )
+    return failed

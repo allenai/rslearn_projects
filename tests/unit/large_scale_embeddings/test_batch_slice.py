@@ -61,3 +61,47 @@ def test_write_rejects_an_unknown_function(tmp_path: Path) -> None:
     """A typo in the driver should fail at write time, not on every task."""
     with pytest.raises(ValueError, match="unknown function"):
         batch_slice.write_batch_jobs(str(tmp_path / "j.json"), "nope", [])
+
+
+def test_stages_run_in_order_each_finished_before_the_next(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A coarser pyramid level reads the finer one, so stage order must hold."""
+    seen: list[int] = []
+    monkeypatch.setitem(batch_slice.FUNCTIONS, "fake", lambda i: seen.append(i))
+    path = str(tmp_path / "staged.json")
+    path_obj = Path(path)
+    path_obj.write_text(
+        json.dumps({"function": "fake", "stages": [[{"i": 1}, {"i": 2}], [{"i": 3}]]})
+    )
+    batch_slice.run_batch_slice(path, task_index=0, task_count=1, workers=4)
+    assert sorted(seen[:2]) == [1, 2] and seen[2] == 3
+
+
+def test_a_failed_stage_stops_the_later_ones(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Building a coarser level over a gap would silently bake the gap in."""
+    seen: list[int] = []
+
+    def fake(i: int) -> None:
+        if i == 1:
+            raise OSError("transient")
+        seen.append(i)
+
+    monkeypatch.setitem(batch_slice.FUNCTIONS, "fake", fake)
+    path = tmp_path / "staged.json"
+    path.write_text(
+        json.dumps({"function": "fake", "stages": [[{"i": 1}], [{"i": 2}]]})
+    )
+    with pytest.raises(RuntimeError, match="stage 1 of 2"):
+        batch_slice.run_batch_slice(str(path), task_index=0, task_count=1)
+    assert seen == []
+
+
+def test_staged_lists_refuse_several_tasks(tmp_path: Path) -> None:
+    """There is no barrier across tasks, so a staged list on many tasks would race."""
+    path = tmp_path / "staged.json"
+    path.write_text(json.dumps({"function": "render_web", "stages": [[]]}))
+    with pytest.raises(ValueError, match="single task"):
+        batch_slice.run_batch_slice(str(path), task_index=0, task_count=2)
