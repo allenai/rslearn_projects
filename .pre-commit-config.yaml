@@ -26,7 +26,9 @@ repos:
       - id: check-case-conflict
       - id: check-docstring-first
       - id: check-added-large-files
-        exclude: wheels/*
+        # Block lists for the embedding runs are one ID per line and run to ~1 MB for
+        # the world; the supervisor reads them from the checkout baked into its image.
+        exclude: (wheels/.*|data/large_scale_embeddings/areas/blocks_.*\.json)$
       - id: check-ast
       - id: check-byte-order-marker
       - id: check-executables-have-shebangs
