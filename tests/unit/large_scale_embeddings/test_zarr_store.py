@@ -321,3 +321,42 @@ def test_build_version_never_raises() -> None:
     assert zs._installed_version("no-such-distribution-xyz") is None
     # A component we cannot identify degrades to a placeholder rather than blowing up.
     assert isinstance(zs.build_version(), str)
+
+
+def test_license_convention_is_declared_and_satisfied(tmp_path: Path) -> None:
+    """Declaring the license convention obliges every node to carry the attribute.
+
+    Its schema requires `license` alongside `zarr_conventions`, so a node that lists
+    the convention without the attribute is invalid. The two are added in separate
+    places, which is exactly how they drift apart.
+    """
+    store_path = str(tmp_path / "embeddings.zarr")
+    zs.init_store(
+        store_path=store_path,
+        zone_numbers=[14],
+        years=[2025],
+        model_url="https://example.invalid/model",
+        source_data=["https://example.invalid/s2"],
+        resolution=10,
+        tile_size=2048,
+        dimensions=128,
+        shard_size=2048,
+        license_url="https://example.invalid/LICENSE.txt",
+    )
+    root = zarr.open_group(store_path, mode="r")
+    nodes = [root, root[zs.zone_group_name(14)]]
+    for node in nodes:
+        names = [c["name"] for c in node.attrs["zarr_conventions"]]
+        assert "license" in names, f"convention missing from {node.path or 'root'}"
+        assert node.attrs["license"] == {
+            "url": "https://example.invalid/LICENSE.txt"
+        }, f"license attribute missing from {node.path or 'root'}"
+
+
+def test_license_convention_registration_matches_the_published_schema() -> None:
+    """The registration's constants are fixed by the convention, not ours to invent."""
+    assert zs.LICENSE_CONVENTION["uuid"] == "b77365e5-2b0c-4141-b917-c03b7c68e935"
+    assert zs.LICENSE_CONVENTION["name"] == "license"
+    assert zs.LICENSE_CONVENTION["schema_url"].endswith("/v1/schema.json")
+    # Exactly one of spdx/url/text/file/path, per the spec.
+    assert len(zs.build_license_attrs("https://example.invalid/L.txt")["license"]) == 1

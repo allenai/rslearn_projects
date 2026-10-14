@@ -281,7 +281,27 @@ PROJ_CONVENTION = {
     "name": "proj",
     "description": "Coordinate reference system information for geospatial data",
 }
-ZARR_CONVENTIONS = [GEOEMB_CONVENTION, SPATIAL_CONVENTION, PROJ_CONVENTION]
+LICENSE_CONVENTION = {
+    "schema_url": "https://raw.githubusercontent.com/clbarnes/zarr-convention-license/refs/tags/v1/schema.json",
+    "spec_url": "https://github.com/clbarnes/zarr-convention-license/blob/v1/README.md",
+    "uuid": "b77365e5-2b0c-4141-b917-c03b7c68e935",
+    "name": "license",
+    "description": "License specifier for Zarr data",
+}
+ZARR_CONVENTIONS = [
+    GEOEMB_CONVENTION,
+    SPATIAL_CONVENTION,
+    PROJ_CONVENTION,
+    LICENSE_CONVENTION,
+]
+
+# Where the published licence text lives. The convention takes exactly one of spdx,
+# url, text, file or path; this licence has no SPDX identifier, and a url survives the
+# store being copied somewhere the sibling LICENSE.txt did not follow. Point it at the
+# data endpoint rather than the product page: the latter serves text/html.
+DEFAULT_LICENSE_URL = (
+    "https://data.source.coop/olmoearth/olmoearth-v1-3-embeddings/LICENSE.txt"
+)
 
 # The released encoder these embeddings come from, recorded as geoemb:model. Defaulted
 # rather than passed per invocation: it was retyped on every init_store call and went
@@ -482,6 +502,18 @@ def build_geoemb_attrs(
     }
 
 
+def build_license_attrs(license_url: str) -> dict:
+    """Build the license convention attribute.
+
+    Args:
+        license_url: URL of the full licence text.
+
+    Returns:
+        a dict holding the license attribute.
+    """
+    return {"license": {"url": license_url}}
+
+
 def build_zone_spatial_attrs(
     projection: Projection,
     origin_px: tuple[int, int],
@@ -545,6 +577,7 @@ def init_store(
     storage_options: dict | None = None,
     chunk_max_age: timedelta = DEFAULT_CHUNK_MAX_AGE,
     metadata_max_age: timedelta = DEFAULT_METADATA_MAX_AGE,
+    license_url: str = DEFAULT_LICENSE_URL,
 ) -> None:
     """Create the GeoZarr store skeleton (root, zone groups, arrays, metadata).
 
@@ -575,6 +608,7 @@ def init_store(
         storage_options: fsspec storage options for remote stores.
         chunk_max_age: how long a cache may hold an embedding chunk.
         metadata_max_age: how long a cache may hold zarr.json and the coordinates.
+        license_url: URL of the licence text, recorded under the license convention.
     """
     if tile_size % shard_size != 0:
         raise ValueError(
@@ -605,7 +639,10 @@ def init_store(
         gsd=gsd,
         build_version=build_version,
     )
-    root.attrs.update({"zarr_conventions": ZARR_CONVENTIONS, **geoemb_attrs})
+    license_attrs = build_license_attrs(license_url)
+    root.attrs.update(
+        {"zarr_conventions": ZARR_CONVENTIONS, **geoemb_attrs, **license_attrs}
+    )
 
     years_arr = np.array(years, dtype="int32")
     for zone_number in zone_numbers:
@@ -618,6 +655,7 @@ def init_store(
             {
                 "zarr_conventions": ZARR_CONVENTIONS,
                 **geoemb_attrs,
+                **license_attrs,
                 **build_zone_spatial_attrs(projection, origin_px, shape_px),
             }
         )
@@ -712,6 +750,7 @@ def init_pca_store(
     storage_options: dict | None = None,
     chunk_max_age: timedelta = DEFAULT_CHUNK_MAX_AGE,
     metadata_max_age: timedelta = DEFAULT_METADATA_MAX_AGE,
+    license_url: str = DEFAULT_LICENSE_URL,
 ) -> None:
     """Create the sibling store that holds the derived false-color pyramid.
 
@@ -741,6 +780,7 @@ def init_pca_store(
         storage_options: fsspec storage options for remote stores.
         chunk_max_age: how long a cache may hold an embedding chunk.
         metadata_max_age: how long a cache may hold zarr.json and the coordinates.
+        license_url: URL of the licence text, recorded under the license convention.
     """
     if shard_size % (2**max_level) != 0:
         raise ValueError(
@@ -771,10 +811,12 @@ def init_pca_store(
         }
         for level in range(max_level + 1)
     ]
+    license_attrs = build_license_attrs(license_url)
     root.attrs.update(
         {
             "zarr_conventions": ZARR_CONVENTIONS,
             **geoemb_attrs,
+            **license_attrs,
             "geoemb:multiscales": multiscales,
             "geoemb:note": (
                 "False-color visualization derived from embeddings by PCA. Three "
@@ -795,6 +837,7 @@ def init_pca_store(
             {
                 "zarr_conventions": ZARR_CONVENTIONS,
                 **geoemb_attrs,
+                **license_attrs,
                 **build_zone_spatial_attrs(projection, origin_px, shape_px),
                 "geoemb:multiscales": multiscales,
             }
