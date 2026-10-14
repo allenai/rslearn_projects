@@ -226,6 +226,8 @@ The deployed weights are the `data_20261013_olmoearth_tiny_00` run
 (`config_olmoearth_tiny.yaml`, epoch 78). On the dataset_20261013 val split it reaches
 0.90 recall at 0.80 precision at the default 0.7 threshold.
 
-The OlmoEarth encoder fetches the pretrained OlmoEarth v1.2-Tiny model from Hugging Face
-when the detector is built, before the checkpoint overwrites its weights, so the
-container needs to reach Hugging Face at startup.
+The OlmoEarth encoder loads the pretrained OlmoEarth v1.2-Tiny model when the detector is
+built, before the checkpoint overwrites its weights. The Dockerfile bakes that model's
+config and weights into the Hugging Face cache and sets `HF_HUB_OFFLINE=1`, so the
+container does not reach Hugging Face at startup. Changing `model_id` in
+`DETECT_MODEL_CONFIG` means updating the Dockerfile download too.
