@@ -221,4 +221,11 @@ how the other vessel services are released.
 The Dockerfile downloads the detector checkpoint to the path implied by
 `project_name`/`run_name` in `DETECT_MODEL_CONFIG`, so the two move together: pointing
 the service at a different run means updating the config and the Dockerfile path.
-The deployed weights are the `data_20260828_satlas_02` run (0.749 val mAP).
+That includes retraining, since each new run changes `run_name` in the config.
+The deployed weights are the `data_20261013_olmoearth_tiny_00` run
+(`config_olmoearth_tiny.yaml`, epoch 78). On the dataset_20261013 val split it reaches
+0.90 recall at 0.80 precision at the default 0.7 threshold.
+
+The OlmoEarth encoder fetches the pretrained OlmoEarth v1.2-Tiny model from Hugging Face
+when the detector is built, before the checkpoint overwrites its weights, so the
+container needs to reach Hugging Face at startup.

@@ -14,11 +14,11 @@ RUN wget -q -O /opt/rslearn_projects/marine_infrastructure.geojson \
 ENV MARINE_INFRA_PATH=/opt/rslearn_projects/marine_infrastructure.geojson
 
 # Download the detector checkpoint. The path must match project_name/run_name in
-# DETECT_MODEL_CONFIG (data/nisar_vessels/config_satlas.yaml), since that is where
-# rslearn looks for the weights under RSLP_PREFIX.
-RUN mkdir -p /project_data/projects/2026_08_28_nisar_vessels/data_20260828_satlas_02/ && \
-    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_08_28_nisar_vessels/data_20260828_satlas_02/best.ckpt \
-        -O /project_data/projects/2026_08_28_nisar_vessels/data_20260828_satlas_02/best.ckpt
+# DETECT_MODEL_CONFIG (data/nisar_vessels/config_olmoearth_tiny.yaml), since that is
+# where rslearn looks for the weights under RSLP_PREFIX.
+RUN mkdir -p /project_data/projects/2026_10_12_nisar_vessels/data_20261013_olmoearth_tiny_00/ && \
+    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_10_12_nisar_vessels/data_20261013_olmoearth_tiny_00/best.ckpt \
+        -O /project_data/projects/2026_10_12_nisar_vessels/data_20261013_olmoearth_tiny_00/best.ckpt
 ENV RSLP_PREFIX=/project_data
 
 # Run the API server when the container launches
