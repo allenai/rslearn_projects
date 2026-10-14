@@ -30,16 +30,15 @@ Run from the rslearn_projects root:
     export STUDIO_API_KEY=...
     python -m rslp.nisar_vessels.scripts.create_dataset \
         --project_id c927e5cb-734b-4323-8cad-7f224b3e850d \
-        --ds_path /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20260828/
+        --ds_path /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20261013/
 
 ## 2. Prepare and materialize
 
 This looks up matching NISAR L2 GCOV granules and writes the HHHH/HVHV rasters for
 each window. It requires:
 
-- olmoearth_run installed with the NISAR data source (currently the
-  `patrickj/nisar-rslearn-data-source` branch), since the dataset config references
-  `olmoearth_run...nisar.l2_gcov.NisarL2Gcov`.
+- olmoearth_run (main) installed with its `runner` extra, since the dataset config
+  references `olmoearth_run...nisar.l2_gcov.NisarL2Gcov`.
 - NASA Earthdata credentials in `EARTHDATA_CREDENTIALS` (JSON with `username` and
   `password`) to download the granules from ASF.
 
@@ -47,8 +46,8 @@ The NISAR layer is configured with `ingest: false`, so there is no separate
 `rslearn dataset ingest` step; materialize reads directly from the granules.
 
     export EARTHDATA_CREDENTIALS='{"username": "...", "password": "..."}'
-    rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20260828/ --workers 32
-    rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20260828/ --workers 32
+    rslearn dataset prepare --root /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20261013/ --workers 32
+    rslearn dataset materialize --root /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20261013/ --workers 32
 
 Note that granules that don't have the HHHH/HVHV bands (i.e., acquisitions that are
 not dual-pol H-transmit) are skipped during prepare, so afterwards it is worth
@@ -85,7 +84,7 @@ To train locally instead:
 
     rslearn model fit \
         --config data/nisar_vessels/config_olmoearth_tiny.yaml \
-        --data.init_args.path /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20260828/
+        --data.init_args.path /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20261013/
 
 ## 4. Prediction windows (e.g. for mining hard negatives)
 
@@ -100,12 +99,15 @@ override.
 
 Note the scene volume: globally there are roughly 1500 dual-pol scenes per day, so
 use `--max_scenes` to randomly subsample. For example, 1000 windows of 2048x2048
-over a two-month period:
+from 2026-01-01 through 2026-10-12, in a separate dataset (its config.json must exist
+first):
 
+    mkdir -p /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/predict_20261013/
+    cp data/nisar_vessels/config.json /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/predict_20261013/
     python -m rslp.nisar_vessels.scripts.create_predict_windows \
-        --ds_path /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20260828/ \
-        --start_time 2026-06-01T00:00:00Z \
-        --end_time 2026-08-01T00:00:00Z \
+        --ds_path /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/predict_20261013/ \
+        --start_time 2026-01-01T00:00:00Z \
+        --end_time 2026-10-13T00:00:00Z \
         --window_size 2048 \
         --max_scenes 1000
 
@@ -118,9 +120,13 @@ added back to the dataset as negative examples):
     rslearn model predict \
         --config data/nisar_vessels/config_olmoearth_tiny.yaml \
         --data.init_args.path <ds_path> \
-        --data.init_args.task.init_args.tasks.detect.init_args.score_threshold=0.1
+        --data.init_args.task.init_args.tasks.detect.init_args.score_threshold=0.05
 
-Predictions are written to the `output` layer of each window.
+This uses the `data_20261013_olmoearth_tiny_00` checkpoint named in the config. At
+0.05 the output keeps nearly everything the detector emits (Faster R-CNN drops boxes
+below 0.05 itself), so a stricter threshold can be applied afterwards; on the
+dataset_20261013 val split, 0.24 gave 95% recall at 0.72 precision. Predictions are
+written to the `output` layer of each window.
 
 ## 5. Prediction service
 
