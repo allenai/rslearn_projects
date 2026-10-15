@@ -14,19 +14,17 @@ RUN wget -q -O /opt/rslearn_projects/marine_infrastructure.geojson \
 ENV MARINE_INFRA_PATH=/opt/rslearn_projects/marine_infrastructure.geojson
 
 # Download the detector checkpoint. The path must match project_name/run_name in
-# DETECT_MODEL_CONFIG (data/nisar_vessels/config_olmoearth_tiny.yaml), since that is
-# where rslearn looks for the weights under RSLP_PREFIX.
-RUN mkdir -p /project_data/projects/2026_10_12_nisar_vessels/data_20261013_olmoearth_tiny_00/ && \
-    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_10_12_nisar_vessels/data_20261013_olmoearth_tiny_00/best.ckpt \
-        -O /project_data/projects/2026_10_12_nisar_vessels/data_20261013_olmoearth_tiny_00/best.ckpt
+# DETECT_MODEL_CONFIG (data/nisar_vessels/config_satlas.yaml), since that is where
+# rslearn looks for the weights under RSLP_PREFIX.
+RUN mkdir -p /project_data/projects/2026_10_12_nisar_vessels/data_20261014_satlas_00/ && \
+    wget -q https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_10_12_nisar_vessels/data_20261014_satlas_00/best.ckpt \
+        -O /project_data/projects/2026_10_12_nisar_vessels/data_20261014_satlas_00/best.ckpt
 ENV RSLP_PREFIX=/project_data
 
-# Bake the pretrained OlmoEarth v1.2-Tiny config and weights into the Hugging Face cache.
-# The encoder loads them by model_id when the detector is built, before the checkpoint
-# overwrites the weights, so with HF_HUB_OFFLINE set the container never reaches Hugging
-# Face at startup.
-ENV HF_HOME=/opt/huggingface
-RUN python3 -c "from huggingface_hub import hf_hub_download; from olmoearth_pretrain_minimal import ModelID; [hf_hub_download(repo_id=ModelID.OLMOEARTH_V1_2_TINY.repo_id(), filename=f) for f in ('config.json', 'weights.pth')]"
+# The checkpoint is the only weights file the detector needs. Its Swin backbone is built
+# with pretrained: false, and the config's SatlasPretrain restore_config is only applied
+# when training starts, so nothing is downloaded when the detector is built. Offline mode
+# makes any unexpected Hugging Face download fail instead of reaching the network.
 ENV HF_HUB_OFFLINE=1
 
 # Run the API server when the container launches

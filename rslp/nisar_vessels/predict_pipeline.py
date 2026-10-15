@@ -51,7 +51,7 @@ OUTPUT_LAYER_NAME = "output"
 WINDOW_GROUP = "detector_predict"
 
 DATASET_CONFIG = "data/nisar_vessels/config_predict.json"
-DETECT_MODEL_CONFIG = "data/nisar_vessels/config_olmoearth_tiny.yaml"
+DETECT_MODEL_CONFIG = "data/nisar_vessels/config_satlas.yaml"
 
 # Resolution of the windows the detector runs on. GCOV is posted at 10 m or 20 m; the
 # training windows were all 10 m/pixel.

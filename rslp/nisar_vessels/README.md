@@ -32,6 +32,16 @@ Run from the rslearn_projects root:
         --project_id c927e5cb-734b-4323-8cad-7f224b3e850d \
         --ds_path /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20261013/
 
+The current configs train on `dataset_20261014`, built from `dataset_20261013` with the
+same windows, labels and splits but with each window's imagery taken from exactly the
+granule the annotator labeled (the task's `frame_id` attribute) instead of whichever
+granule `prepare` matched first; that differed for 88 of 768 windows. Train windows
+labeled on a 40 MHz granule (MODE 4005) also got a copy, named `<window>_20mhz`, on a
+20 MHz (MODE 2005) granule from the same pass when one covers the window and all its
+labels (49 windows). Windows with no imagery or all-nodata imagery were dropped. The
+scripts are in `/weka/dfive-default/agent/favyen/2026-10-14-favyen-nisar-frame-granule/`
+(`find_granules.py`, `build_dataset_20261014.py`); `create_dataset` does not do this yet.
+
 ## 2. Prepare and materialize
 
 This looks up matching NISAR L2 GCOV granules and writes the HHHH/HVHV rasters for
@@ -84,7 +94,7 @@ To train locally instead:
 
     rslearn model fit \
         --config data/nisar_vessels/config_olmoearth_tiny.yaml \
-        --data.init_args.path /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20261013/
+        --data.init_args.path /weka/dfive-default/rslearn-eai/datasets/nisar_vessels/dataset_20261014/
 
 ## 4. Prediction windows (e.g. for mining hard negatives)
 
@@ -118,14 +128,14 @@ added back to the dataset as negative examples):
     rslearn dataset prepare --root <ds_path> --group predict --workers 32
     rslearn dataset materialize --root <ds_path> --group predict --workers 32
     rslearn model predict \
-        --config data/nisar_vessels/config_olmoearth_tiny.yaml \
+        --config data/nisar_vessels/config_satlas.yaml \
         --data.init_args.path <ds_path> \
         --data.init_args.task.init_args.tasks.detect.init_args.score_threshold=0.05
 
-This uses the `data_20261013_olmoearth_tiny_00` checkpoint named in the config. At
+This uses the `data_20261014_satlas_00` checkpoint named in the config. At
 0.05 the output keeps nearly everything the detector emits (Faster R-CNN drops boxes
 below 0.05 itself), so a stricter threshold can be applied afterwards; on the
-dataset_20261013 val split, 0.24 gave 95% recall at 0.72 precision. Predictions are
+dataset_20261014 val split, 0.21 gave 95% recall at 0.66 precision. Predictions are
 written to the `output` layer of each window.
 
 ## 5. Prediction service
@@ -222,12 +232,15 @@ The Dockerfile downloads the detector checkpoint to the path implied by
 `project_name`/`run_name` in `DETECT_MODEL_CONFIG`, so the two move together: pointing
 the service at a different run means updating the config and the Dockerfile path.
 That includes retraining, since each new run changes `run_name` in the config.
-The deployed weights are the `data_20261013_olmoearth_tiny_00` run
-(`config_olmoearth_tiny.yaml`, epoch 78). On the dataset_20261013 val split it reaches
-0.90 recall at 0.80 precision at the default 0.7 threshold.
+The deployed weights are the `data_20261014_satlas_00` run (`config_satlas.yaml`). On
+the dataset_20261014 val split (89 vessels) it reaches 0.93 recall at 0.77 precision at
+the default 0.7 threshold (AP 0.937). Recall is lower on 40 MHz granules (0.85 at 0.67
+precision) than on 20 MHz ones (0.98 at 0.83).
 
-The OlmoEarth encoder loads the pretrained OlmoEarth v1.2-Tiny model when the detector is
-built, before the checkpoint overwrites its weights. The Dockerfile bakes that model's
-config and weights into the Hugging Face cache and sets `HF_HUB_OFFLINE=1`, so the
-container does not reach Hugging Face at startup. Changing `model_id` in
-`DETECT_MODEL_CONFIG` means updating the Dockerfile download too.
+The checkpoint is the only weights file the service loads. The Swin backbone is built
+with `pretrained: false`, and the SatlasPretrain `restore_config` (a WEKA path) is only
+applied when training starts, so the container downloads nothing at startup. The
+Dockerfile sets `HF_HUB_OFFLINE=1` so an unexpected Hugging Face download fails instead.
+Switching to a config whose encoder loads pretrained weights when it is built (OlmoEarth
+by `model_id`, or Swin with `pretrained: true`) means baking those weights into the image
+too, as the other vessel service Dockerfiles do.
