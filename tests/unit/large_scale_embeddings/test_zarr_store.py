@@ -360,3 +360,17 @@ def test_license_convention_registration_matches_the_published_schema() -> None:
     assert zs.LICENSE_CONVENTION["schema_url"].endswith("/v1/schema.json")
     # Exactly one of spdx/url/text/file/path, per the spec.
     assert len(zs.build_license_attrs("https://example.invalid/L.txt")["license"]) == 1
+
+
+def test_cache_headers_split_chunks_from_metadata() -> None:
+    """Chunks, time ramps included, are written once and cached for a year; zarr.json is not."""
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+    from fsspec.implementations.memory import MemoryFileSystem
+
+    store = zs.CacheControlStore(AsyncFileSystemWrapper(MemoryFileSystem()), path="s")
+    year = "public, max-age=31536000, immutable"
+    assert store._header_for("utm10/pca_rgb/c/0/0/1/2") == year
+    assert store._header_for("pca_rgb_z14/c/0/0/9/9") == year
+    assert store._header_for("time/c/0") == year
+    assert store._header_for("zarr.json") == "public, max-age=600"
+    assert store._header_for("utm10/pca_rgb/zarr.json") == "public, max-age=600"

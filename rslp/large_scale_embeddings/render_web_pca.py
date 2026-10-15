@@ -49,6 +49,7 @@ from rasterio.enums import Resampling
 from upath import UPath
 from zarr.codecs import ZstdCodec
 
+from rslp.large_scale_embeddings.zarr_store import writable_store
 from rslp.log_utils import get_logger
 
 logger = get_logger(__name__)
@@ -209,7 +210,7 @@ def init_web_store(
         raise ValueError(f"max_zoom {max_zoom} is below min_zoom {min_zoom}")
 
     root = zarr.open_group(
-        _zarr_store(store_path, storage_options), mode="w", zarr_format=3
+        writable_store(store_path, storage_options), mode="w", zarr_format=3
     )
     root.attrs.update(
         {
@@ -714,7 +715,7 @@ def render_web_pca_pipeline(
         logger.info("marker %s already exists", marker)
         return
 
-    dest = zarr.open_group(_zarr_store(web_store_path, storage_options), mode="a")
+    dest = zarr.open_group(writable_store(web_store_path, storage_options), mode="a")
     if zoom == base_zoom:
         src = zarr.open_group(_zarr_store(source_store_path, None), mode="r")
         written = reproject_shard(
@@ -924,7 +925,9 @@ def compose_web_shard_pipeline(
 
     valid = int((out != WEB_NODATA).any(axis=0).sum())
     if valid:
-        dest = zarr.open_group(_zarr_store(web_store_path, storage_options), mode="a")
+        dest = zarr.open_group(
+            writable_store(web_store_path, storage_options), mode="a"
+        )
         dest[name][region] = out
 
     marker.parent.mkdir(parents=True, exist_ok=True)

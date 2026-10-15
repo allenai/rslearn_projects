@@ -671,3 +671,22 @@ def test_render_targets_skips_a_target_already_done(tmp_path: Path) -> None:
     )
     assert marker.read_text() == before
     assert (Path(pending["completed_path"]) / marker.name).exists()
+
+
+def test_annotation_writes_through_the_stamping_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Annotation rewrites zarr.json, so it must keep the metadata Cache-Control."""
+    run = _build_run(tmp_path)
+    opened: list[str] = []
+    real = render_pca.writable_store
+
+    def spy(path: str, storage_options: object = None) -> object:
+        opened.append(path)
+        return real(path, storage_options)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(render_pca, "writable_store", spy)
+    render_pca.annotate_pca_store(
+        run["pca_store_path"], run["artifact_path"], max_level=MAX_LEVEL
+    )
+    assert opened == [run["pca_store_path"]]

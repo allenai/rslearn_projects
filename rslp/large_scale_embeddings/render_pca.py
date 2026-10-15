@@ -37,6 +37,7 @@ from rslp.large_scale_embeddings.zarr_store import (
     EMBEDDINGS_ARRAY,
     get_store_years,
     pca_level_array_name,
+    writable_store,
     write_pca_window_levels,
     zone_group_name,
 )
@@ -496,7 +497,7 @@ def annotate_pca_store(
     metadata["geoemb:pca_annotated_at"] = datetime.now().astimezone().isoformat()
 
     root = zarr.open_group(
-        store=pca_store_path, mode="r+", storage_options=storage_options
+        store=writable_store(pca_store_path, storage_options), mode="r+"
     )
     if zone_numbers is None:
         zones = [name for name in root.group_keys() if name.startswith("utm")]

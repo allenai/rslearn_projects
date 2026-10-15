@@ -263,3 +263,60 @@ def test_gs_listing_uses_credentials_not_anonymous_https(
         (3, 4),
         (3, 5),
     }
+
+
+def _spy_writable_store(monkeypatch: pytest.MonkeyPatch, module: object) -> list[str]:
+    """Record every store path a module opens for writing, passing it through unchanged."""
+    from rslp.large_scale_embeddings import zarr_store
+
+    opened: list[str] = []
+
+    def spy(
+        path: str, storage_options: object = None, *args: object, **kwargs: object
+    ) -> object:
+        opened.append(path)
+        return zarr_store.writable_store(path, storage_options, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(module, "writable_store", spy)
+    return opened
+
+
+def test_web_writers_stamp_cache_headers(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every web-store write goes through writable_store, which stamps Cache-Control remotely."""
+    import zarr
+
+    opened = _spy_writable_store(monkeypatch, rw)
+    stores = {k: str(tmp_path / f"{k}.zarr") for k in ("base", "overlay", "out")}
+    for path in stores.values():
+        rw.init_web_store(path, years=[2025], min_zoom=6, max_zoom=7)
+    assert sorted(opened) == sorted(stores.values())
+
+    for key in ("base", "overlay"):
+        zarr.open_group(stores[key], mode="a")[rw.web_array_name(7)][0, :, 0:2, 0:2] = 9
+    opened.clear()
+    rw.compose_web_shard_pipeline(
+        base_store_path=stores["base"],
+        overlay_store_path=stores["overlay"],
+        web_store_path=stores["out"],
+        completed_path=str(tmp_path / "done"),
+        zoom=7,
+        time_index=0,
+        shard_row=0,
+        shard_col=0,
+        start_zoom=5,
+        end_zoom=9,
+    )
+    rw.render_web_pca_pipeline(
+        source_store_path="unused-below-base-zoom",
+        web_store_path=stores["out"],
+        completed_path=str(tmp_path / "done_web"),
+        zoom=6,
+        time_index=0,
+        shard_row=0,
+        shard_col=0,
+        zone_numbers=[10],
+        base_zoom=7,
+    )
+    assert opened == [stores["out"], stores["out"]]
