@@ -214,10 +214,14 @@ def test_a_failed_prefetch_rejects_the_entry_without_running_it(
     assert "prefetch boom e2" in (tx.sent[1][2] or "")
 
 
-def test_draining_rejects_the_prefetched_entry(
+def test_draining_leaves_the_prefetched_entry_claimed(
     harness: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A retiring worker must hand back the entry it claimed ahead, not strand it."""
+    """A retiring worker sends nothing for the entry it claimed ahead.
+
+    Rejecting it would free a claim slot that Beaker refills at once, handing the
+    exiting worker another entry to strand. The supervisor re-offers it instead.
+    """
     checks = iter([False, True])
     monkeypatch.setattr(worker_mod, "_should_drain", lambda p, n: next(checks))
     monkeypatch.setenv(worker_mod.WORKER_NAME_ENV_VAR, "w")
@@ -225,28 +229,45 @@ def test_draining_rejects_the_prefetched_entry(
         [[_Input("e1", PREFETCH), _Input("e2", PREFETCH)]], drain_path="drain.json"
     )
     assert "e2" not in run.run_args
-    assert tx.sent == [
-        ("e1", "done", None),
-        ("e2", "rejection", "worker exited before running it"),
-    ]
+    assert tx.sent == [("e1", "done", None)]
 
 
-def test_termination_releases_every_held_entry() -> None:
-    """SIGTERM must release the prefetched entry as well as the running one."""
-    import signal
+def test_entries_delivered_while_exiting_are_not_taken(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A batch that arrives as the worker begins exiting is left claimed, not run.
 
-    sent: list[str] = []
+    This is the preemption race: SIGTERM lands and Beaker hands over more entries in
+    the same moment. Taking them would prefetch work the worker can never run.
+    """
+    prefetched: list[list[str]] = []
+    monkeypatch.setattr(
+        worker_mod,
+        "_run_prefetch_subprocess",
+        lambda cmd, stop: prefetched.append(cmd),
+    )
+    monkeypatch.setattr(worker_mod, "pb2_to_dict", lambda d: d)
+    held: set[str] = set()
 
-    class _Tx:
-        def send(self, entry_id: str, **kwargs: Any) -> None:
-            sent.append(entry_id)
+    class _ExitingRx(_Rx):
+        """Delivers its batch at the moment the worker starts exiting."""
 
-    held = {"running", "prefetched"}
-    handler = worker_mod._release_on_termination(_Tx(), held)
-    with pytest.raises(SystemExit):
-        handler(signal.SIGTERM, None)
-    assert sorted(sent) == ["prefetched", "running"]
+        def get(self, block: bool = True, timeout: float | None = None) -> Any:
+            batch = super().get(block, timeout)
+            prefetcher.stop.set()
+            return batch
+
+    prefetcher = worker_mod._Prefetcher(
+        _ExitingRx([[_Input("late1", PREFETCH), _Input("late2", PREFETCH)]]),
+        held,
+        scratch_root="/nonexistent",
+        flush_messages=False,
+        worker_args=[],
+    )
+    prefetcher.run()
     assert held == set()
+    assert prefetched == []
+    assert prefetcher.ready.empty()
 
 
 def test_worker_args_are_appended_after_the_entrys_own(

@@ -120,38 +120,35 @@ def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
     return cleanup_signal_handler
 
 
-def _release_on_termination(tx: Any, in_flight: set[str]) -> Callable[[int, Any], None]:
-    """Make a SIGTERM handler that hands the in-flight entries back to the queue.
+def _stop_on_termination(
+    stop: threading.Event, in_flight: set[str]
+) -> Callable[[int, Any], None]:
+    """Make a SIGTERM handler that stops claiming entries and exits.
 
-    Beaker sends SIGTERM about five minutes before it kills a preempted job. Without
-    this the entries stay CLAIMED and nothing may touch them until the claims go stale,
-    which is `claim_stale_seconds` later; rejecting them means the supervisor re-offers
-    the jobs on its next cycle instead. The work itself is still lost, since a job is
-    only marked complete once every window in it is written.
+    Beaker sends SIGTERM about five minutes before it kills a preempted job. The held
+    entries are deliberately not rejected: Beaker refills a freed claim slot within
+    milliseconds, so each rejection traded one entry for another that the exiting
+    worker then stranded, and the head of the queue (retries first) was what it took.
+    Left claimed, they are re-offered once this worker's heartbeat goes stale. The work
+    itself is lost either way, since a job is only marked complete once every window in
+    it is written.
 
     Args:
-        tx: the queue worker channel to send the rejections on.
-        in_flight: ids of the entries this worker holds, the running one and any
-            prefetched one.
+        stop: set to stop the prefetcher taking entries off the channel.
+        in_flight: ids of the entries this worker holds, for the log.
 
     Returns:
         a handler to pass to signal.signal.
     """
 
     def handler(signo: int, stack_frame: Any) -> None:
-        entry_ids = list(in_flight)
+        stop.set()
         logger.error(
-            "caught signal %d; releasing entries %s back to the queue",
+            "caught signal %d; exiting and leaving entries %s claimed for the "
+            "supervisor to re-offer",
             signo,
-            entry_ids,
+            sorted(in_flight),
         )
-        for entry_id in entry_ids:
-            try:
-                tx.send(entry_id, rejection=f"worker terminated by signal {signo}")
-            except Exception:
-                # The job is going away regardless; the entry just goes stale instead.
-                logger.exception("could not release entry %s", entry_id)
-        in_flight.clear()
         sys.exit(1)
 
     return handler
@@ -325,6 +322,14 @@ class _Prefetcher(threading.Thread):
                 self.channel_closed.set()
                 return
             for worker_input in batch:
+                if self.stop.is_set():
+                    # Delivered after the worker began exiting. Rejecting it would
+                    # only free a slot for Beaker to fill again, so leave it claimed.
+                    logger.info(
+                        "worker is exiting; leaving entry %s claimed",
+                        worker_input.metadata.entry_id,
+                    )
+                    continue
                 self.busy.set()
                 claimed = _Claimed(
                     entry_id=worker_input.metadata.entry_id,
@@ -339,8 +344,7 @@ class _Prefetcher(threading.Thread):
                         break
                     except QueueFull:
                         continue
-                # If stopped, the entry stays in in_flight and the main thread
-                # rejects it on the way out.
+                # If stopped, the entry stays claimed for the supervisor to re-offer.
                 self.busy.clear()
 
     def _prefetch(self, claimed: _Claimed) -> None:
@@ -459,16 +463,18 @@ def worker_pipeline(
         reconnects = 0
         while True:
             with beaker.queue.worker_channel(queue, worker) as (tx, rx):
-                signal.signal(signal.SIGTERM, _release_on_termination(tx, in_flight))
                 prefetcher = _Prefetcher(
                     rx, in_flight, scratch_root, flush_messages, worker_args
+                )
+                signal.signal(
+                    signal.SIGTERM, _stop_on_termination(prefetcher.stop, in_flight)
                 )
                 prefetcher.start()
                 try:
                     while True:
                         # Before taking the next entry, not after. With prefetching the
-                        # next entry may already be claimed, and it is rejected on the
-                        # way out so the supervisor re-offers it.
+                        # next entry may already be claimed; it is left claimed on the
+                        # way out and the supervisor re-offers it.
                         if drain_path is not None and _should_drain(
                             drain_path, worker_name
                         ):
@@ -539,18 +545,17 @@ def worker_pipeline(
                     reconnecting = prefetcher.channel_closed.is_set()
                     prefetcher.stop.set()
                     prefetcher.join(timeout=PREFETCH_JOIN_SECONDS)
-                    # Anything still held was claimed but never run. Hand it back now
-                    # rather than leaving it for the claim to go stale. On a reconnect
-                    # the channel is already gone, so these go back via the next one.
+                    # Anything still held was claimed but never run. It is left claimed
+                    # rather than rejected: a rejection frees a slot that Beaker fills
+                    # at once, handing this exiting worker another entry to strand.
+                    # The supervisor re-offers it once this worker's heartbeat stops.
                     if not reconnecting:
-                        for entry_id in list(in_flight):
-                            try:
-                                tx.send(
-                                    entry_id,
-                                    rejection="worker exited before running it",
-                                )
-                            except Exception:
-                                logger.exception("could not reject entry %s", entry_id)
+                        if in_flight:
+                            logger.info(
+                                "exiting; leaving entries %s claimed for the "
+                                "supervisor to re-offer",
+                                sorted(in_flight),
+                            )
                         in_flight.clear()
                         shutil.rmtree(scratch_root, ignore_errors=True)
                         # The channel teardown that follows joins a thread that can be

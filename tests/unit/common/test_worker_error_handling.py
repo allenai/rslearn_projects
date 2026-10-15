@@ -253,45 +253,32 @@ def test_workers_are_replaced_when_preempted() -> None:
     )
 
 
-def test_termination_releases_the_in_flight_entry() -> None:
-    """SIGTERM must hand the claimed entry back, not leave it CLAIMED.
+def test_termination_stops_claiming_before_exiting() -> None:
+    """SIGTERM must stop the prefetcher taking entries, then exit.
 
-    Beaker gives about five minutes between SIGTERM and the kill. An entry left claimed
-    is untouchable until it goes stale, which is `claim_stale_seconds` later, so the job
-    sits idle for over an hour instead of being re-offered on the next cycle.
+    A preempted worker that kept reading the channel claimed entries it would never
+    run, and those were the head of the queue: the retries, again and again.
     """
     import signal
+    import threading
 
-    from rslp.common.worker import _release_on_termination
+    from rslp.common.worker import _stop_on_termination
 
-    sent: list[dict] = []
-
-    class _Tx:
-        def send(self, entry_id: str | None, **kwargs: Any) -> None:
-            sent.append({"entry_id": entry_id, **kwargs})
-
-    handler = _release_on_termination(_Tx(), {"entry-abc"})
+    stop = threading.Event()
+    handler = _stop_on_termination(stop, {"entry-abc"})
     with pytest.raises(SystemExit):
         handler(signal.SIGTERM, None)
-
-    assert len(sent) == 1, "the in-flight entry was not released"
-    assert sent[0]["entry_id"] == "entry-abc"
-    assert sent[0].get(
-        "rejection"
-    ), "must reject, not mark done: the work is unfinished"
+    assert stop.is_set()
 
 
 def test_termination_with_no_entry_is_harmless() -> None:
-    """A worker killed while idle has nothing to release and must not fail trying."""
+    """A worker killed while idle has nothing held and must still exit cleanly."""
     import signal
+    import threading
 
-    from rslp.common.worker import _release_on_termination
+    from rslp.common.worker import _stop_on_termination
 
-    class _Tx:
-        def send(self, entry_id: str | None, **kwargs: Any) -> None:
-            raise AssertionError("nothing should be sent when no entry is in flight")
-
-    handler = _release_on_termination(_Tx(), set())
+    handler = _stop_on_termination(threading.Event(), set())
     with pytest.raises(SystemExit):
         handler(signal.SIGTERM, None)
 
