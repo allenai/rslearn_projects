@@ -6,7 +6,11 @@ import pyarrow.parquet as pq
 import pytest
 import shapely
 
-from rslp.large_scale_embeddings.export_provenance import export_provenance
+from rslp.large_scale_embeddings.export_provenance import (
+    _split_antimeridian,
+    export_provenance,
+)
+from rslp.large_scale_embeddings.render_web_pca import UTM_ORIGIN_X, UTM_ORIGIN_Y
 
 CRS = "EPSG:32631"
 S2_FOOTPRINT = "POLYGON ((0.4 47.7, 0.8 48.6, 1.2 48.6, 1.1 47.6, 0.4 47.7))"
@@ -55,10 +59,11 @@ def _write_block(
     marker_extra: dict | None = None,
     provenance_extra: dict | None = None,
     with_marker: bool = True,
+    crs: str = CRS,
 ) -> None:
     x, y = origin
-    name = f"{CRS}_{x}_{y}.json"
-    projection = {"crs": CRS, "x_resolution": 10, "y_resolution": -10}
+    name = f"{crs}_{x}_{y}.json"
+    projection = {"crs": crs, "x_resolution": 10, "y_resolution": -10}
     marker = {
         "projection": projection,
         "bounds": [x, y, x + 8192, y + 8192],
@@ -92,11 +97,16 @@ def test_export_writes_three_tables(tmp_path: pathlib.Path) -> None:
         run_path=str(run), year=2025, out_dir=str(out), workers=2, resolve_sources=False
     )
 
-    windows = pq.read_table(out / "windows" / "year=2025").to_pylist()
-    assert [(w["window"], w["written"]) for w in windows] == [
-        ("16_-264", True),
-        ("17_-264", False),
+    windows = sorted(
+        pq.read_table(out / "windows" / "2025.parquet").to_pylist(),
+        key=lambda w: w["col"],
+    )
+    # Zone 31, chunk (16, 200) of utm31/embeddings: rslearn row -264 plus 464.
+    assert [(w["window_id"], w["written"]) for w in windows] == [
+        ("31_16_200", True),
+        ("31_17_200", False),
     ]
+    assert {w["year"] for w in windows} == {2025}
     first = windows[0]
     assert (first["xmin"], first["xmax"]) == (327680.0, 348160.0)
     # Northing is the negated pixel row, so the northern edge is the smaller row.
@@ -107,17 +117,80 @@ def test_export_writes_three_tables(tmp_path: pathlib.Path) -> None:
     assert footprint.bounds[0] == pytest.approx(first["bbox"]["xmin"])
     assert 0 < footprint.centroid.x < 3 and 48 < footprint.centroid.y < 49
 
-    inputs = pq.read_table(out / "inputs" / "year=2025").to_pylist()
+    inputs = pq.read_table(out / "inputs" / "2025.parquet").to_pylist()
     assert len(inputs) == 2 * 3
     s2 = [
-        r for r in inputs if r["window"] == "16_-264" and r["sensor"] == "sentinel2_l2a"
+        r
+        for r in inputs
+        if r["window_id"] == "31_16_200" and r["sensor"] == "sentinel2_l2a"
     ]
     assert [(r["rank"], r["scene_id"]) for r in s2] == [(0, "S2_A"), (1, "S2_B")]
     assert s2[0]["period_start"].isoformat() == "2025-12-02T00:00:00+00:00"
 
-    scenes = pq.read_table(out / "scenes" / "year=2025").to_pylist()
+    scenes = pq.read_table(out / "scenes" / "2025.parquet").to_pylist()
     assert [s["scene_id"] for s in scenes] == ["S1_A", "S2_A", "S2_B"]
+    assert {s["year"] for s in scenes} == {2025}
     assert scenes[1]["acquired"].isoformat() == "2025-12-30T10:57:56+00:00"
+
+
+def test_window_key_is_the_zarr_shard(tmp_path: pathlib.Path) -> None:
+    """col and row index the window's chunk in utm<zone>/embeddings."""
+    run = tmp_path / "run"
+    _write_block(run, 2025, (32768, -540672), [[32768, -540672]], ["16_-264"])
+    out = tmp_path / "out"
+    export_provenance(
+        run_path=str(run), year=2025, out_dir=str(out), workers=1, resolve_sources=False
+    )
+    (window,) = pq.read_table(out / "windows" / "2025.parquet").to_pylist()
+    shard = 2048 * 10
+    assert window["xmin"] == UTM_ORIGIN_X + window["col"] * shard
+    assert window["ymax"] == UTM_ORIGIN_Y - window["row"] * shard
+
+
+def test_inputs_are_sorted_by_zone_then_shard(tmp_path: pathlib.Path) -> None:
+    """A reader finds one window's inputs by row group statistics on its key."""
+    run = tmp_path / "run"
+    # Listed in marker name order: zone 32 sorts after 31, block -548864 before
+    # -540672, so the file order differs from the name order.
+    _write_block(run, 2025, (32768, -540672), [[32768, -540672]], ["17_-264"])
+    _write_block(run, 2025, (32768, -548864), [[32768, -548864]], ["16_-268"])
+    _write_block(
+        run,
+        2025,
+        (32768, -540672),
+        [[32768, -540672]],
+        ["16_-264"],
+        crs="EPSG:32632",
+    )
+    out = tmp_path / "out"
+    export_provenance(
+        run_path=str(run), year=2025, out_dir=str(out), workers=2, resolve_sources=False
+    )
+    inputs = pq.read_table(out / "inputs" / "2025.parquet").to_pylist()
+    keys = [(r["zone"], r["row"], r["col"]) for r in inputs]
+    assert keys == sorted(keys)
+    assert list(dict.fromkeys(r["window_id"] for r in inputs)) == [
+        "31_16_196",
+        "31_17_200",
+        "32_16_200",
+    ]
+    # Within a window, mosaic order is kept.
+    s2 = [r["rank"] for r in inputs[:3] if r["sensor"] == "sentinel2_l2a"]
+    assert s2 == [0, 1]
+
+
+def test_footprints_past_the_antimeridian_are_split() -> None:
+    """An unwrapped footprint becomes two polygons inside ±180, with the same area."""
+    unwrapped = shapely.box(178.0, -18.0, 180.7, -16.0)
+    split = _split_antimeridian(unwrapped)
+    assert split.geom_type == "MultiPolygon"
+    assert sorted(p.bounds for p in split.geoms) == [
+        pytest.approx((-180.0, -18.0, -179.3, -16.0)),
+        pytest.approx((178.0, -18.0, 180.0, -16.0)),
+    ]
+    assert split.area == pytest.approx(unwrapped.area)
+    inside = shapely.box(10, 10, 11, 11)
+    assert _split_antimeridian(inside) is inside
 
 
 def test_tables_carry_geoparquet_metadata(tmp_path: pathlib.Path) -> None:
@@ -130,8 +203,7 @@ def test_tables_carry_geoparquet_metadata(tmp_path: pathlib.Path) -> None:
     )
 
     for table in ("windows", "scenes"):
-        (part,) = (out / table / "year=2025").iterdir()
-        geo = json.loads(pq.read_schema(part).metadata[b"geo"])
+        geo = json.loads(pq.read_schema(out / table / "2025.parquet").metadata[b"geo"])
         column = geo["columns"]["geometry"]
         assert geo["primary_column"] == "geometry"
         assert column["encoding"] == "WKB"
@@ -159,7 +231,7 @@ def test_margin_and_code_version_are_carried(tmp_path: pathlib.Path) -> None:
     export_provenance(
         run_path=str(run), year=2024, out_dir=str(out), workers=1, resolve_sources=False
     )
-    (window,) = pq.read_table(out / "windows" / "year=2024").to_pylist()
+    (window,) = pq.read_table(out / "windows" / "2024.parquet").to_pylist()
     assert window["context_pixels"] == 48
     assert window["code_version"] == "rslp=505ef4b2"
 
@@ -195,7 +267,7 @@ def test_blocks_without_a_marker_are_left_out(tmp_path: pathlib.Path) -> None:
     export_provenance(
         run_path=str(run), year=2025, out_dir=str(out), workers=1, resolve_sources=False
     )
-    windows = pq.read_table(out / "windows" / "year=2025").to_pylist()
+    windows = pq.read_table(out / "windows" / "2025.parquet").to_pylist()
     assert [w["block"] for w in windows] == [f"{CRS}_32768_-540672"]
 
 
@@ -210,16 +282,18 @@ def test_a_block_deleted_mid_export_is_skipped(
     real_block_rows = module._block_rows
     gone = run / "completed_2025" / f"{CRS}_40960_-540672.json"
 
-    def delete_then_read(marker: dict, provenance: dict, block: str) -> tuple:
+    def delete_then_read(
+        marker: dict, provenance: dict, block: str, year: int
+    ) -> tuple:
         gone.unlink(missing_ok=True)
-        return real_block_rows(marker, provenance, block)
+        return real_block_rows(marker, provenance, block, year)
 
     monkeypatch.setattr(module, "_block_rows", delete_then_read)
     out = tmp_path / "out"
     export_provenance(
         run_path=str(run), year=2025, out_dir=str(out), workers=1, resolve_sources=False
     )
-    windows = pq.read_table(out / "windows" / "year=2025").to_pylist()
+    windows = pq.read_table(out / "windows" / "2025.parquet").to_pylist()
     assert [w["block"] for w in windows] == [f"{CRS}_32768_-540672"]
 
 
@@ -304,7 +378,7 @@ def test_scenes_resolve_to_the_public_providers_the_config_allows(
     assert seen == [["S1_A", "S2_A", "S2_B"]]
     scenes = {
         s["scene_id"]: s
-        for s in pq.read_table(out / "scenes" / "year=2025").to_pylist()
+        for s in pq.read_table(out / "scenes" / "2025.parquet").to_pylist()
     }
     s2 = scenes["S2_A"]
     assert s2["provider"] == "planetary_computer"
@@ -340,7 +414,7 @@ def test_a_scene_missing_from_the_service_is_marked_unresolved(
     _write_block(run, 2025, (32768, -540672), [[32768, -540672]], ["16_-264"])
     out = tmp_path / "out"
     export_provenance(run_path=str(run), year=2025, out_dir=str(out), workers=1)
-    scenes = pq.read_table(out / "scenes" / "year=2025").to_pylist()
+    scenes = pq.read_table(out / "scenes" / "2025.parquet").to_pylist()
     assert scenes and not any(s["resolved"] for s in scenes)
     assert all(s["sources"] == [] for s in scenes)
 
