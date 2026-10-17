@@ -834,3 +834,49 @@ def test_an_uncountable_outside_fleet_falls_back_to_the_beaker_depth(
     sup._run_cycle(config, _Result())
 
     assert enqueued["count"] == 24
+
+
+def _gce_lookups(monkeypatch: pytest.MonkeyPatch, results: list) -> list:
+    """Make each GCE lookup return or raise the next of `results`."""
+    calls: list = []
+
+    def lookup(project: str, label: str) -> int:
+        calls.append(project)
+        result = results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(sup, "_list_running_gce", lookup)
+    monkeypatch.setattr(sup, "_LAST_GCE_COUNT", {})
+    return calls
+
+
+def test_a_failed_gce_count_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One DNS blip must not cost the count: the lookup is tried again."""
+    calls = _gce_lookups(monkeypatch, [OSError("name resolution"), 188])
+    assert sup.count_gce_workers("p", "role=embedding-worker") == 188
+    assert len(calls) == 2
+
+
+def test_a_failed_gce_count_falls_back_to_the_last_good_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lookup that keeps failing reports the recent count, not that it is unknown.
+
+    A single failed lookup left the status page without its A100 line for a whole
+    build, with all 188 machines running.
+    """
+    _gce_lookups(monkeypatch, [188, OSError("dns"), OSError("dns")])
+    assert sup.count_gce_workers("p", "role=embedding-worker") == 188
+    assert sup.count_gce_workers("p", "role=embedding-worker") == 188
+
+
+def test_a_stale_gce_count_is_not_reused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Past the age limit the count is unknown again rather than silently old."""
+    _gce_lookups(monkeypatch, [188, OSError("dns"), OSError("dns")])
+    now = [1000.0]
+    monkeypatch.setattr(sup.time, "monotonic", lambda: now[0])
+    assert sup.count_gce_workers("p", "role=embedding-worker") == 188
+    now[0] += sup.GCE_COUNT_MAX_AGE_SECONDS + 1
+    assert sup.count_gce_workers("p", "role=embedding-worker") is None

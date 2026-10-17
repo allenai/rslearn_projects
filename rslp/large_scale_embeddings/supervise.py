@@ -1840,6 +1840,40 @@ def _count_running_tiers(
     return by_cluster
 
 
+# Attempts per GCE count, and how long the last good count stands in when they fail.
+# A single DNS blip on the supervisor's node left the status page without its A100
+# line until the next build; the fleet changes on a scale of hours, not minutes.
+GCE_COUNT_ATTEMPTS = 2
+GCE_COUNT_MAX_AGE_SECONDS = 2 * 3600
+_LAST_GCE_COUNT: dict[tuple[str, str], tuple[int, float]] = {}
+
+
+def _list_running_gce(project: str, label: str) -> int:
+    """Count RUNNING instances carrying `label`, raising if the lookup fails."""
+    import google.auth
+    from googleapiclient import discovery
+
+    key, _, value = label.partition("=")
+    credentials, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/compute.readonly"]
+    )
+    compute = discovery.build(
+        "compute", "v1", credentials=credentials, cache_discovery=False
+    )
+    running = 0
+    request = compute.instances().aggregatedList(
+        project=project, filter=f"labels.{key}={value}"
+    )
+    while request is not None:
+        response = request.execute()
+        for scope in response.get("items", {}).values():
+            for instance in scope.get("instances", []):
+                if instance.get("status") == "RUNNING":
+                    running += 1
+        request = compute.instances().aggregatedList_next(request, response)
+    return running
+
+
 def count_gce_workers(project: str, label: str) -> int | None:
     """Running GCE instances carrying `label`, or None if they cannot be counted.
 
@@ -1848,41 +1882,41 @@ def count_gce_workers(project: str, label: str) -> int | None:
     what is switched on and billing, though a machine whose container has died still
     counts, so this is capacity rather than work being done.
 
+    A failed lookup is retried, then falls back to the last good count if it is
+    recent enough.
+
     Args:
         project: the GCP project the instances live in.
         label: a "key=value" instance label identifying the fleet.
 
     Returns:
-        the number of RUNNING instances, or None if the lookup failed.
+        the number of RUNNING instances, or None if it is unknown.
     """
-    try:
-        import google.auth
-        from googleapiclient import discovery
-
-        key, _, value = label.partition("=")
-        credentials, _ = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/compute.readonly"]
-        )
-        compute = discovery.build(
-            "compute", "v1", credentials=credentials, cache_discovery=False
-        )
-        running = 0
-        request = compute.instances().aggregatedList(
-            project=project, filter=f"labels.{key}={value}"
-        )
-        while request is not None:
-            response = request.execute()
-            for scope in response.get("items", {}).values():
-                for instance in scope.get("instances", []):
-                    if instance.get("status") == "RUNNING":
-                        running += 1
-            request = compute.instances().aggregatedList_next(request, response)
+    key = (project, label)
+    for attempt in range(1, GCE_COUNT_ATTEMPTS + 1):
+        try:
+            running = _list_running_gce(project, label)
+        except Exception:
+            # A missing permission or an API blip must not take the cycle down: the
+            # count is for the status page, and the page can say it does not know.
+            logger.exception(
+                "could not count GCE workers in %s (attempt %d of %d)",
+                project,
+                attempt,
+                GCE_COUNT_ATTEMPTS,
+            )
+            continue
+        _LAST_GCE_COUNT[key] = (running, time.monotonic())
         return running
-    except Exception:
-        # A missing permission or an API blip must not take the cycle down: the count
-        # is for the status page, and the page can say it does not know.
-        logger.exception("could not count GCE workers in %s", project)
-        return None
+    last = _LAST_GCE_COUNT.get(key)
+    if last is not None and time.monotonic() - last[1] <= GCE_COUNT_MAX_AGE_SECONDS:
+        logger.warning(
+            "using the last GCE count, %d, from %.0fs ago",
+            last[0],
+            time.monotonic() - last[1],
+        )
+        return last[0]
+    return None
 
 
 def _fleet_summary(config: SuperviseConfig, fleet: dict[str, Any]) -> dict[str, Any]:
