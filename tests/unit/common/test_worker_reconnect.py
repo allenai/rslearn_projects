@@ -9,6 +9,9 @@ that replaced it.
 """
 
 import contextlib
+import os
+import pathlib
+import tempfile
 import threading
 from collections.abc import Iterator
 from typing import Any
@@ -94,7 +97,10 @@ def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
     """
 
     def go(
-        scripts: list[list[list[_Input]] | None], **kwargs: Any
+        scripts: list[list[list[_Input]] | None],
+        on_open: Any = None,
+        prefetch_hook: Any = None,
+        **kwargs: Any,
     ) -> tuple[Any, list, int]:
         rx = _ClosingRx(scripts)
         tx = FakeTx()
@@ -104,6 +110,8 @@ def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
         @contextlib.contextmanager
         def fake_channel(queue: Any, w: Any) -> Iterator[tuple[FakeTx, Any]]:
             rx.open()
+            if on_open is not None:
+                on_open(rx.channels)
             yield tx, rx
 
         class FakeQueueClient:
@@ -128,7 +136,8 @@ def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
                 return cm()
 
         def fake_prefetch(cmd: list[str], stop: threading.Event) -> None:
-            return None
+            if prefetch_hook is not None:
+                prefetch_hook(cmd)
 
         def fake_run_workflow(project: str, workflow: str, args: list[str]) -> None:
             ran.append(args[0])
@@ -185,3 +194,57 @@ def test_the_idle_clock_is_not_reset_by_reconnecting(reconnecting: Any) -> None:
     assert ran == [], "nothing should have run"
     # Bounded: it exits on the idle timeout rather than reopening indefinitely.
     assert rx.channels <= 3, f"reopened {rx.channels} times despite a zero idle timeout"
+
+
+PREFETCH = {"args": ["--materialize_only", "true"], "scratch_arg": "--scratch_path"}
+
+
+def test_a_reconnect_clears_prefetched_data_left_on_disk(
+    reconnecting: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """Prefetch data from a closed channel must not survive into the next one.
+
+    A job prefetched but not run when the stream closes is dropped with its
+    prefetcher. Its tens of GB stayed on disk for the life of the container, which
+    filled 291 GB A100 disks in about a day.
+    """
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    roots: list[str] = []
+    seen: dict[int, list[str]] = {}
+
+    def prefetch_hook(cmd: list[str]) -> None:
+        scratch = cmd[cmd.index("--scratch_path") + 1]
+        root = os.path.dirname(os.path.dirname(scratch))
+        roots.append(root)
+        # Stands in for a job prefetched on this channel and abandoned with it.
+        os.makedirs(os.path.join(root, "abandoned", "scratch"))
+
+    def on_open(channel: int) -> None:
+        if roots:
+            seen[channel] = sorted(os.listdir(roots[0]))
+
+    entry = _Input("e1", PREFETCH)
+    reconnecting([[[entry]], None, None], on_open=on_open, prefetch_hook=prefetch_hook)
+
+    assert roots, "nothing was prefetched, so this proves nothing"
+    assert seen.get(2) == [], f"left on disk into the next channel: {seen.get(2)}"
+
+
+def test_stale_prefetch_roots_are_removed_at_startup(
+    reconnecting: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """Roots left by a worker that exited abnormally are deleted when one starts."""
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    stale = tmp_path / f"{worker_mod.PREFETCH_ROOT_PREFIX}old"
+    (stale / "entry" / "scratch").mkdir(parents=True)
+    unrelated = tmp_path / "keep-me"
+    unrelated.mkdir()
+    seen: dict[str, bool] = {}
+
+    def on_open(channel: int) -> None:
+        seen.setdefault("stale", stale.exists())
+
+    reconnecting([None], on_open=on_open, idle_timeout=0)
+
+    assert seen["stale"] is False, "the stale root was still there once running"
+    assert unrelated.exists(), "only prefetch roots may be removed"

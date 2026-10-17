@@ -1,5 +1,6 @@
 """Worker to process jobs in a list of jobs."""
 
+import glob
 import json
 import os
 import shlex
@@ -101,6 +102,9 @@ MAX_RECONNECT_SLEEP = 30
 # How long to wait for the prefetch thread to stop on exit. It terminates its
 # subprocess when stopped, so this only needs to cover that.
 PREFETCH_JOIN_SECONDS = 60
+
+# Prefix of the directory a worker creates under the temp dir for prefetched data.
+PREFETCH_ROOT_PREFIX = "rslp-prefetch-"
 
 
 def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
@@ -379,6 +383,26 @@ class _Prefetcher(threading.Thread):
             claimed.error = e
 
 
+def _remove_stale_scratch_roots() -> None:
+    """Delete prefetch roots left by earlier workers in this container.
+
+    A worker that exits without its normal teardown (SIGTERM, too many errors, the
+    shutdown watchdog) leaves its root behind, and a restarted worker starts a new one
+    in the same container. One worker runs per container, so any root found at startup
+    is garbage; each can hold tens of GB of imagery.
+    """
+    pattern = os.path.join(tempfile.gettempdir(), PREFETCH_ROOT_PREFIX + "*")
+    for root in glob.glob(pattern):
+        logger.info("removing stale prefetch directory %s", root)
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _empty_dir(path: str) -> None:
+    """Delete everything inside a directory, keeping the directory."""
+    shutil.rmtree(path, ignore_errors=True)
+    os.makedirs(path, exist_ok=True)
+
+
 def worker_pipeline(
     queue_name: str,
     retries: int = 3,
@@ -452,7 +476,8 @@ def worker_pipeline(
         consecutive_errors = 0
         watchdog: threading.Timer | None = None
         worker_name = os.environ.get(WORKER_NAME_ENV_VAR)
-        scratch_root = tempfile.mkdtemp(prefix="rslp-prefetch-")
+        _remove_stale_scratch_roots()
+        scratch_root = tempfile.mkdtemp(prefix=PREFETCH_ROOT_PREFIX)
         in_flight: set[str] = set()
         # The server ends the entry stream routinely when it has nothing to hand out,
         # which the SDK reports as a closed channel rather than an error. Treating that
@@ -549,7 +574,13 @@ def worker_pipeline(
                     # rather than rejected: a rejection frees a slot that Beaker fills
                     # at once, handing this exiting worker another entry to strand.
                     # The supervisor re-offers it once this worker's heartbeat stops.
-                    if not reconnecting:
+                    if reconnecting:
+                        # Nothing is running now. A job prefetched on this channel but
+                        # not yet run is dropped with its prefetcher, and its data would
+                        # otherwise stay on disk for the life of the container. The entry
+                        # is delivered again or re-offered, and prefetched afresh.
+                        _empty_dir(scratch_root)
+                    else:
                         if in_flight:
                             logger.info(
                                 "exiting; leaving entries %s claimed for the "
