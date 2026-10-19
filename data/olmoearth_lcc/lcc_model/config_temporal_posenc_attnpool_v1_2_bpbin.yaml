@@ -375,6 +375,6 @@ trainer:
       init_args:
         monitor: val_post_change/accuracy
         mode: max
-project_name: 2026_10_07b_lcc
+project_name: 2026_10_19_lcc
 run_name: temporal_posenc_attnpool_v1_2_bpbin_00
 management_dir: ${RSLP_PREFIX}/projects

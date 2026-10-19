@@ -618,6 +618,6 @@ trainer:
     init_args:
       monitor: val_post_change/accuracy
       mode: max
-project_name: 2026_10_07b_lcc
+project_name: 2026_10_19_lcc
 run_name: rslearn_bpcat_temporal
 management_dir: ${RSLP_PREFIX}/projects
