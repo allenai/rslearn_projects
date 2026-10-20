@@ -13,7 +13,12 @@ This script takes one or more v2 annotation JSONs and creates an rslearn dataset
   dates of each positive point, as days since 1970-01-01 (65535 = nodata)
 
 The time range for each window covers all annotation-derived frequent blocks and
-enough preceding quarterly history. Frequent image options can extend up to
+QUARTERLY_LOOKBACK of preceding quarterly history. The 90-day quarterly periods are
+aligned so that one ends exactly at the start of the earliest frequent block, and
+they reach back QUARTERLY_LOOKBACK from there, matching the prediction dataset config
+(sentinel2_quarterly = [T - 1890d, T - 90d] for reference timestamp T). So for a
+window whose earliest frequent block is [T - 90d, T], the first training option sees
+the same 22-image stack as prediction at T. Frequent image options can extend up to
 post_change + 2 years, so some samples have the change further in the past. No
 frequent block extends past IMAGE_CUTOFF or the earliest positive point's
 optional stop_date.
@@ -66,6 +71,11 @@ FREQUENT_PERIOD = timedelta(days=7)
 # Deterministic options end this long after the annotation date so the block
 # covers that date.
 OPTION_MARGIN = timedelta(days=6)
+
+QUARTERLY_PERIOD = timedelta(days=90)
+# How far before the earliest frequent block the quarterly layer reaches (20
+# periods), matching the duration of sentinel2_quarterly in config_predict.json.
+QUARTERLY_LOOKBACK = timedelta(days=1800)
 
 # Annotation was done using imagery up to this date, so no frequent option should
 # sample imagery after it (otherwise it could contain unannotated changes).
@@ -254,9 +264,11 @@ def _search_oedatasets(
 
 QUARTERLY_QUERY_CONFIG = QueryConfig(
     space_mode=SpaceMode.MOSAIC,
-    max_matches=40,
+    # Enough periods to cover the whole window time range, since rslearn keeps the
+    # most recent periods when max_matches truncates.
+    max_matches=100,
     min_matches=1,
-    period_duration=timedelta(days=90),
+    period_duration=QUARTERLY_PERIOD,
     per_period_mosaic_reverse_time_order=False,
 )
 
@@ -414,6 +426,26 @@ def _compute_frequent_block_ends(
     block_ends = [min(end, cutoff) for end in block_ends]
 
     return block_ends[:NUM_FREQUENT_OPTIONS]
+
+
+def _compute_window_time_range(
+    block_starts: list[datetime], block_ends: list[datetime]
+) -> tuple[datetime, datetime]:
+    """Compute the window time range from the frequent blocks.
+
+    rslearn builds period mosaics backwards from the end of the time range, so the
+    end is extended (by less than one quarterly period) past the latest block end
+    to land on the 90-day grid through the earliest block start. Then one quarterly
+    period ends exactly where the earliest frequent block begins, like the
+    prediction dataset's quarterly layer (which ends at T - 90d), and the
+    quarterly images line up with prediction for the earliest option. The start
+    is QUARTERLY_LOOKBACK before the earliest block start.
+    """
+    earliest_start = min(block_starts)
+    num_periods = math.ceil((max(block_ends) - earliest_start) / QUARTERLY_PERIOD)
+    window_end = earliest_start + num_periods * QUARTERLY_PERIOD
+    window_start = earliest_start - QUARTERLY_LOOKBACK
+    return (window_start, window_end)
 
 
 def _write_label_layer(
@@ -835,9 +867,7 @@ def _process_entry(
     )
     block_starts = [end - FREQUENT_BLOCK_DURATION for end in block_ends]
 
-    window_end = max(block_ends)
-    window_start = min(start - timedelta(days=16 * 90) for start in block_starts)
-    window_time_range = (window_start, window_end)
+    window_time_range = _compute_window_time_range(block_starts, block_ends)
 
     split_hash = hashlib.sha256(f"{window_group}/{window_name}".encode()).hexdigest()
     split = "val" if split_hash[0] in "01" else "train"
@@ -873,7 +903,15 @@ def _process_entry(
         all_items.extend(chunk_items)
         chunk_start = chunk_end
 
-    least_cloudy_items = sorted(all_items, key=lambda x: x["cloud_cover"])
+    # Sort by cloud cover. Scenes the prediction pipeline used for this window (the
+    # optional prediction_items entry key, set for windows sampled from
+    # predictions) win cloud-cover ties, since the API orders ties arbitrarily;
+    # this way the mosaics for the earliest option pick the same scenes as
+    # prediction did.
+    prediction_items = set(entry.get("prediction_items") or [])
+    least_cloudy_items = sorted(
+        all_items, key=lambda x: (x["cloud_cover"], x["id"] not in prediction_items)
+    )
 
     quarterly_data = _build_quarterly_layer_data(
         least_cloudy_items, window_time_range, projection, bounds

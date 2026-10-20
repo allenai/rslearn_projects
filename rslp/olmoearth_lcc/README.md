@@ -296,7 +296,19 @@ The prepare script:
   post-change contexts up to post_change + 2 years. Every block ends on/before
   min(2026-01-01, stop_date), where 2026-01-01 is the annotation cutoff and
   stop_date is the earliest optional per-point stop date.
-- Window time_range is derived from the annotations (no fixed 10-year range).
+- Window time_range is derived from the annotations (no fixed 10-year range): it
+  starts 1800 days (20 quarterly periods) before the earliest frequent block and
+  ends on the 90-day grid through that block's start (just past the latest block
+  end). rslearn builds the quarterly mosaics backwards from the end, so one
+  quarterly period ends exactly where the earliest option's frequent block begins,
+  the same as the prediction config's `sentinel2_quarterly` (`[T - 1890d, T - 90d]`).
+  A negative-only entry with `anchor_date = T - 6d` therefore gets an option 0 that
+  sees the same 22 images as prediction at reference timestamp T. (Windows created
+  before 2026-10-20 used a 16-period lookback aligned to the latest block end.)
+  The API orders scenes with equal cloud cover arbitrarily, so an entry may also
+  list `prediction_items` (the scene names from the prediction tile's
+  `_meta.json`); prepare prefers those scenes on cloud-cover ties, which makes the
+  mosaics identical to what prediction used.
 - Rasterizes point labels into label_binary/label_src/label_dst layers, the
   label_pre_change/label_post_change/label_same_change category layers, and the
   label_ts_start/label_ts_end layers. The last two hold each positive point's own

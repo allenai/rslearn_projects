@@ -5,7 +5,9 @@ creating PATCH_SIZE windows, materializing Sentinel-2 imagery from the OlmoEarth
 Datasets source, running the model, and polygonizing the resulting change raster
 into a per-tile GeoJSON. Optionally the merged output_change raster (full uint16,
 write_raster) and/or the compact uint8 summary raster (write_summary_raster) are
-also written.
+also written. A small per-tile ``_meta.json`` records the reference timestamp and
+the Sentinel-2 item groups (period time ranges and scene names) that each window's
+input layers were built from.
 
 Unlike the satlas pipeline, there is no rtree index: the OlmoEarth Datasets source
 queries its API per window, and all imagery is derived from a single reference
@@ -103,6 +105,7 @@ def get_output_fname(
     bounds: PixelBounds,
     raster: bool = False,
     summary: bool = False,
+    meta: bool = False,
 ) -> UPath:
     """Get the output filename to use for this task.
 
@@ -115,11 +118,14 @@ def get_output_fname(
         summary: whether this is the uint8 summary raster (implies raster);
             named with a _summary suffix so it can coexist with the full
             raster in the same output directory.
+        meta: whether this is the per-tile JSON metadata sidecar (_meta.json).
 
     Returns:
         the output filename.
     """
-    if summary:
+    if meta:
+        suffix = "_meta.json"
+    elif summary:
         suffix = "_summary.tif"
     elif raster:
         suffix = ".tif"
@@ -196,6 +202,73 @@ def merge_and_upload_raster(
         logger.info("wrote merged raster to %s", out_fname)
 
 
+def write_meta(
+    out_fname: UPath,
+    projection: Projection,
+    bounds: PixelBounds,
+    time_range: tuple[datetime, datetime],
+    windows: list[Window],
+) -> None:
+    """Write the per-tile metadata sidecar.
+
+    For each window, records every input layer's item groups: the request time
+    range of the group (the 90-day or 7-day period for these period-mosaic layers)
+    and the names and capture time ranges of the scenes in it. This lets later
+    steps (e.g. creating annotation windows from predictions) reproduce or check
+    the exact images the model saw.
+
+    Args:
+        out_fname: where to write the JSON.
+        projection: the tile projection.
+        bounds: the tile bounds.
+        time_range: the reference timestamp as (T, T).
+        windows: the prediction windows of this tile.
+    """
+    window_metas = []
+    for window in windows:
+        layers = {}
+        for layer_name, layer_data in window.load_layer_datas().items():
+            group_time_ranges = layer_data.group_time_ranges or [None] * len(
+                layer_data.serialized_item_groups
+            )
+            groups = []
+            for group, group_time_range in zip(
+                layer_data.serialized_item_groups, group_time_ranges
+            ):
+                groups.append(
+                    dict(
+                        time_range=(
+                            [t.isoformat() for t in group_time_range]
+                            if group_time_range is not None
+                            else None
+                        ),
+                        items=[
+                            dict(
+                                name=item["name"],
+                                time_range=item["geometry"].get("time_range"),
+                            )
+                            for item in group
+                        ],
+                    )
+                )
+            layers[layer_name] = dict(
+                materialized=window.is_layer_completed(layer_name), groups=groups
+            )
+        window_metas.append(
+            dict(name=window.name, bounds=list(window.bounds), layers=layers)
+        )
+
+    meta = dict(
+        projection=projection.serialize(),
+        bounds=list(bounds),
+        time_range=[t.isoformat() for t in time_range],
+        windows=window_metas,
+    )
+    with out_fname.open("w") as f:
+        json.dump(meta, f)
+    logger.info("wrote metadata to %s", out_fname)
+
+
 def predict_pipeline(
     projection_json: str,
     bounds: PixelBounds,
@@ -231,6 +304,7 @@ def predict_pipeline(
     out_fname = get_output_fname(out_path, projection, bounds)
     raster_fname = get_output_fname(out_path, projection, bounds, raster=True)
     summary_fname = get_output_fname(out_path, projection, bounds, summary=True)
+    meta_fname = get_output_fname(out_path, projection, bounds, meta=True)
     if (
         out_fname.exists()
         and (not write_raster or raster_fname.exists())
@@ -294,6 +368,10 @@ def predict_pipeline(
     logger.info("materialize dataset")
     materialize_dataset(
         ds_path, materialize_pipeline_args=CHANGE_FINDER_MATERIALIZE_PIPELINE_ARGS
+    )
+
+    write_meta(
+        meta_fname, projection, bounds, time_range, list(tile_to_window.values())
     )
 
     # Run the model only if at least one window has materialized imagery.
