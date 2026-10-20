@@ -320,6 +320,7 @@ The prepare script:
 
 `lcc_model/filter_v2_jsons.py` applies the same window-level rules as the prepare
 script to produce filtered copies of the annotation JSONs (e.g. for publishing).
+The copies omit the `description` and `fld` entry fields.
 
 #### Training
 
