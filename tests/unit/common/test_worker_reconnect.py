@@ -100,6 +100,7 @@ def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
         scripts: list[list[list[_Input]] | None],
         on_open: Any = None,
         prefetch_hook: Any = None,
+        run_hook: Any = None,
         **kwargs: Any,
     ) -> tuple[Any, list, int]:
         rx = _ClosingRx(scripts)
@@ -141,6 +142,8 @@ def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
 
         def fake_run_workflow(project: str, workflow: str, args: list[str]) -> None:
             ran.append(args[0])
+            if run_hook is not None:
+                run_hook(args)
 
         monkeypatch.setattr(worker_mod, "Beaker", FakeBeaker)
         monkeypatch.setattr(worker_mod, "pb2_to_dict", lambda d: d)
@@ -248,3 +251,41 @@ def test_stale_prefetch_roots_are_removed_at_startup(
 
     assert seen["stale"] is False, "the stale root was still there once running"
     assert unrelated.exists(), "only prefetch roots may be removed"
+
+
+def test_a_failed_prefetch_leaves_nothing_on_disk(
+    reconnecting: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """A prefetch that fails after downloading most of a block must not keep it.
+
+    Scenes missing on a provider fail a block's download about 45 minutes in, with
+    most of its imagery already written. The stream stays open for hours while the
+    queue is busy, so each failure left ~50 GB behind until the disk filled.
+    """
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    failed: list[str] = []
+    seen_while_running: dict[str, bool] = {}
+
+    def prefetch_hook(cmd: list[str]) -> None:
+        scratch = cmd[cmd.index("--scratch_path") + 1]
+        os.makedirs(scratch)
+        (pathlib.Path(scratch) / "imagery.tif").write_bytes(b"x" * 1024)
+        if cmd[cmd.index("noop") + 1] == "e1":
+            failed.append(scratch)
+            raise RuntimeError("prefetch exited with code 1")
+
+    def run_hook(args: list[str]) -> None:
+        # Checked on the same channel, before any teardown could clean up.
+        if args[0] == "e2" and failed:
+            seen_while_running["e1_left"] = os.path.exists(os.path.dirname(failed[0]))
+
+    reconnecting(
+        [[[_Input("e1", PREFETCH), _Input("e2", PREFETCH)]], None],
+        prefetch_hook=prefetch_hook,
+        run_hook=run_hook,
+    )
+
+    assert failed, "nothing failed, so this proves nothing"
+    assert seen_while_running == {
+        "e1_left": False
+    }, "the failed prefetch's data was still on disk while the next job ran"

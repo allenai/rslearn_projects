@@ -381,6 +381,9 @@ class _Prefetcher(threading.Thread):
         except Exception as e:
             logger.exception("prefetch failed for entry %s", claimed.entry_id)
             claimed.error = e
+            # The run that would delete it never happens for a failed prefetch, and a
+            # download that fails late leaves most of a block's imagery behind.
+            shutil.rmtree(entry_dir, ignore_errors=True)
 
 
 def _remove_stale_scratch_roots() -> None:
