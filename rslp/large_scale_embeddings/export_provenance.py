@@ -5,36 +5,44 @@ file read on its own still says which year it holds and a glob over all years ne
 no partitioning scheme:
 
 ``windows``
-    One row per 2048 px window: the block and code that wrote it, its context margin,
-    whether it was written, and its footprint in WGS84. Rows follow a Hilbert curve
-    in small row groups, so a bbox query against a remote file reads a few of them.
-``inputs``
-    One row per scene per monthly mosaic per sensor per window, in mosaic order.
-    No geometry; join to ``windows`` on window_id and to ``scenes`` on scene_id.
-    Sorted by (zone, row, col), so a lookup of one window reads one row group.
+    One row per 2048 px (20.48 km) window of one UTM zone and year. Each window is
+    exactly one shard of the embeddings zarr. Holds the block that wrote it, its
+    context margin, whether it was written, and its footprint in WGS84. Rows follow a
+    Hilbert curve in small row groups, so a bbox query against a remote file reads a
+    few of them.
+``window_scenes``
+    Which scenes went into each window: one row per scene per monthly mosaic per
+    modality per window. ``mosaic_order`` 0 is the scene that supplies most pixels;
+    later scenes only fill pixels the earlier ones left empty, since the run
+    composites by first valid pixel. No geometry; join to ``windows`` on window_id
+    and to ``scenes`` on scene_id. Sorted by (zone, row, col), so a lookup of one
+    window reads one row group.
 ``scenes``
-    One row per scene used that year, with its capture time and WGS84 footprint, so
-    a footprint is stored once however many windows used it. Scene IDs are our
-    datasets service's, so each scene is also resolved to the public data it came
-    from: the providers our dataset config allows for its sensor, each with its own
-    item ID, collection and asset location, and the provider used when only one is
-    allowed. A reader never needs access to the datasets service. Sorted by scene_id
-    in small row groups, so looking up a window's scenes by ID reads a few of them.
+    One row per scene used that year, keyed by ``scene_id``, the scene's item ID in
+    our datasets service. Other columns follow the service's names: ``data_provider``,
+    ``collection`` and ``vendor_id`` name the one provider our dataset config allows
+    for the scene's modality, with that provider's own ID for it. ``stac_item_url``
+    links the scene in a public STAC catalog, which lists its files, so a reader
+    never needs access to the datasets service. The WGS84 footprint is stored once
+    however many windows used the scene. Sorted by scene_id in small row groups, so
+    looking up a window's scenes by ID reads a few of them.
 
-A window is keyed by its shard in the embeddings zarr: ``zone`` names the
-zero-padded ``utm<NN>`` group (utm02 for zone 2), and ``col`` and ``row`` are the shard's chunk indices there,
+A window is keyed by its shard in the zarr: ``zone`` names the zero-padded ``utm<NN>``
+group (utm02 for zone 2), and ``col`` and ``row`` are the shard's chunk indices there,
 joined as ``window_id`` "<zone>_<col>_<row>".
 
 Only blocks with a completion marker are exported, since a block being recomputed may
-have a provenance file newer than its embeddings. Bounds are in metres in the zone's
-northern CRS (EPSG:326NN), whose northing continues below zero south of the equator.
+have a provenance file newer than its embeddings. UTM bounds are in metres in the
+zone's northern CRS (EPSG:326NN), whose northing continues below zero south of the
+equator. Bbox coverings are float32, rounded outward so they still contain the
+geometry.
 """
 
 import json
 import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -70,17 +78,17 @@ logger = get_logger(__name__)
 GEOPARQUET_VERSION = "1.1.0"
 COMPRESSION = "zstd"
 # Rows per row group: small for the geometry tables so a remote reader skips most of
-# them by bbox or scene_id, larger for inputs where one window is ~50 rows.
+# them by bbox or scene_id, larger for window_scenes where one window is ~50 rows.
 WINDOWS_ROW_GROUP = 10_000
 SCENES_ROW_GROUP = 10_000
-INPUTS_ROW_GROUP = 100_000
-INPUTS_SORT = [
+WINDOW_SCENES_ROW_GROUP = 100_000
+WINDOW_SCENES_SORT = [
     ("zone", "ascending"),
     ("row", "ascending"),
     ("col", "ascending"),
-    ("sensor", "ascending"),
+    ("modality", "ascending"),
     ("period_start", "ascending"),
-    ("rank", "ascending"),
+    ("mosaic_order", "ascending"),
 ]
 HILBERT_ORDER = 16
 WORLD = shapely.box(-180, -90, 180, 90)
@@ -90,81 +98,232 @@ DATASETS_API_URL_ENV_VAR = "OEDATASETS_API_URL"
 DATASETS_API_TOKEN_ENV_VAR = "DATASETS_API_TOKEN"  # nosec
 DEFAULT_DATASETS_API_URL = "https://datasets.olmoearth.allenai.org"
 LOOKUP_BATCH = 500
+# Public STAC item URLs by data provider. Planetary Computer's collection IDs match
+# the service's; USGS-on-GCS Landsat Level-1 is catalogued by USGS as landsat-c2l1.
+PLANETARY_COMPUTER_ITEM_URL = (
+    "https://planetarycomputer.microsoft.com/api/stac/v1/collections/"
+    "{collection}/items/{vendor_id}"
+)
+STAC_ITEM_URLS = {
+    ("gcs_usgs_landsat", "landsat-8-9-c2-l1"): (
+        "https://landsatlook.usgs.gov/stac-server/collections/landsat-c2l1/items/"
+        "{vendor_id}"
+    ),
+}
 LOOKUP_WORKERS = 8
 
 TIMESTAMP = pa.timestamp("us", tz="UTC")
 BBOX = pa.struct(
     [
-        ("xmin", pa.float64()),
-        ("ymin", pa.float64()),
-        ("xmax", pa.float64()),
-        ("ymax", pa.float64()),
-    ]
-)
-
-WINDOWS_SCHEMA = pa.schema(
-    [
-        ("year", pa.int32()),
-        ("window_id", pa.string()),
-        ("zone", pa.int16()),
-        ("col", pa.int32()),
-        ("row", pa.int32()),
-        ("crs", pa.string()),
-        ("block", pa.string()),
-        ("xmin", pa.float64()),
-        ("ymin", pa.float64()),
-        ("xmax", pa.float64()),
-        ("ymax", pa.float64()),
-        ("context_pixels", pa.int16()),
-        ("written", pa.bool_()),
-        ("window_size", pa.int16()),
-        ("worker", pa.string()),
-        ("code_version", pa.string()),
-        ("geometry", pa.binary()),
-        ("bbox", BBOX),
-    ]
-)
-INPUTS_SCHEMA = pa.schema(
-    [
-        ("year", pa.int32()),
-        ("window_id", pa.string()),
-        ("zone", pa.int16()),
-        ("col", pa.int32()),
-        ("row", pa.int32()),
-        ("sensor", pa.string()),
-        ("period_start", TIMESTAMP),
-        ("period_end", TIMESTAMP),
-        ("rank", pa.int8()),
-        ("scene_id", pa.string()),
-    ]
-)
-SOURCE = pa.struct(
-    [
-        ("provider", pa.string()),
-        ("collection", pa.string()),
-        ("item_id", pa.string()),
-        ("asset_prefix", pa.string()),
-    ]
-)
-SCENES_SCHEMA = pa.schema(
-    [
-        ("year", pa.int32()),
-        ("scene_id", pa.string()),
-        ("sensor", pa.string()),
-        ("acquired", TIMESTAMP),
-        ("product_id", pa.string()),
-        ("cloud_cover", pa.float64()),
-        ("provider", pa.string()),
-        ("sources", pa.list_(SOURCE)),
-        ("resolved", pa.bool_()),
-        ("geometry", pa.binary()),
-        ("bbox", BBOX),
+        ("xmin", pa.float32()),
+        ("ymin", pa.float32()),
+        ("xmax", pa.float32()),
+        ("ymax", pa.float32()),
     ]
 )
 
 
-def _timestamp(value: str | None) -> datetime | None:
-    return datetime.fromisoformat(value) if value is not None else None
+def _schema(fields: list[tuple[str, pa.DataType, str]]) -> pa.Schema:
+    """A schema whose fields carry their descriptions as Arrow field metadata."""
+    return pa.schema(
+        [
+            pa.field(name, dtype, metadata={"description": description})
+            for name, dtype, description in fields
+        ]
+    )
+
+
+YEAR_DESCRIPTION = "The reference year of the embeddings this row belongs to."
+BBOX_DESCRIPTION = (
+    "The footprint's bounding box in WGS84, rounded outward, which readers use to "
+    "skip row groups."
+)
+WINDOWS_SCHEMA = _schema(
+    [
+        ("year", pa.int32(), YEAR_DESCRIPTION),
+        (
+            "window_id",
+            pa.string(),
+            'The window\'s key, "<zone>_<col>_<row>", which joins it to window_scenes.',
+        ),
+        (
+            "zone",
+            pa.int16(),
+            "The UTM zone, whose zarr group is the zero-padded utm<NN>.",
+        ),
+        (
+            "col",
+            pa.int32(),
+            "The window's shard index along x in utm<NN>/embeddings, counting east "
+            "from 0 m easting in steps of 20,480 m.",
+        ),
+        (
+            "row",
+            pa.int32(),
+            "The window's shard index along y in utm<NN>/embeddings, counting south "
+            "from 9,502,720 m northing in steps of 20,480 m.",
+        ),
+        (
+            "crs",
+            pa.string(),
+            "The zone's northern UTM CRS (EPSG:326NN) that the UTM bounds are given "
+            "in.",
+        ),
+        (
+            "block",
+            pa.string(),
+            "The name of the processing block that wrote this window, which links it "
+            "to the run's internal records.",
+        ),
+        ("utm_xmin", pa.int32(), "The window's western edge in metres of easting."),
+        ("utm_ymin", pa.int32(), "The window's southern edge in metres of northing."),
+        ("utm_xmax", pa.int32(), "The window's eastern edge in metres of easting."),
+        ("utm_ymax", pa.int32(), "The window's northern edge in metres of northing."),
+        (
+            "context_pixels",
+            pa.int16(),
+            "The margin of extra pixels read around the window at inference (0 or "
+            "48), so its edges are computed with surrounding context.",
+        ),
+        (
+            "written",
+            pa.bool_(),
+            "Whether the window has embeddings; false when it had no Sentinel-2 "
+            "imagery, which the model requires.",
+        ),
+        (
+            "inference_crop_size",
+            pa.int16(),
+            "Size in pixels of the crops the model ran on within the window (480 on "
+            "H100s, 384 on A100s). Crops overlap by 32 px and are merged. Null where "
+            "the run didn't record it.",
+        ),
+        ("geometry", pa.binary(), "The window's footprint in WGS84."),
+        ("bbox", BBOX, BBOX_DESCRIPTION),
+    ]
+)
+WINDOW_SCENES_SCHEMA = _schema(
+    [
+        ("year", pa.int32(), YEAR_DESCRIPTION),
+        (
+            "window_id",
+            pa.string(),
+            "The window that used this scene, which joins to windows.",
+        ),
+        (
+            "zone",
+            pa.int16(),
+            "The window's UTM zone, repeated so readers can find a window's rows from "
+            "row-group statistics.",
+        ),
+        ("col", pa.int32(), "The window's shard column, repeated for the same reason."),
+        ("row", pa.int32(), "The window's shard row, repeated for the same reason."),
+        (
+            "modality",
+            pa.string(),
+            "The model input this scene filled: sentinel2_l2a, sentinel1 or landsat.",
+        ),
+        (
+            "period_start",
+            pa.date32(),
+            "The first day of the 30-day period whose mosaic this scene went into.",
+        ),
+        (
+            "period_end",
+            pa.date32(),
+            "The day after that period ends, which is 30 days after period_start.",
+        ),
+        (
+            "mosaic_order",
+            pa.int8(),
+            "The scene's priority in that period's mosaic: 0 is the main scene, and "
+            "higher numbers only fill pixels the earlier scenes left empty.",
+        ),
+        (
+            "scene_id",
+            pa.string(),
+            "The scene's datasets-service item ID, which joins to scenes.",
+        ),
+    ]
+)
+SCENES_SCHEMA = _schema(
+    [
+        ("year", pa.int32(), YEAR_DESCRIPTION),
+        (
+            "scene_id",
+            pa.string(),
+            "The scene's datasets-service item ID, the table's key.",
+        ),
+        (
+            "modality",
+            pa.string(),
+            "The model input the scene fed: sentinel2_l2a, sentinel1 or landsat.",
+        ),
+        (
+            "satellite",
+            pa.string(),
+            "The satellite that captured the scene, as the service codes it, such as "
+            "S2A, S1C or LC09.",
+        ),
+        (
+            "collected_at",
+            TIMESTAMP,
+            "The scene's collection time, as the service records it.",
+        ),
+        (
+            "product_id",
+            pa.string(),
+            "The ESA SAFE product name for Sentinel-2 scenes, which includes the "
+            "processing baseline. Null for other modalities, whose vendor_id is "
+            "already the product name.",
+        ),
+        (
+            "cloud_cover",
+            pa.float64(),
+            "The scene's cloud cover percentage, null for Sentinel-1 radar.",
+        ),
+        (
+            "data_provider",
+            pa.string(),
+            "The service's name for the provider the run read the scene from "
+            "(planetary_computer or gcs_usgs_landsat).",
+        ),
+        (
+            "collection",
+            pa.string(),
+            "The service's collection name for that provider, such as "
+            "sentinel-2-l2a.",
+        ),
+        ("vendor_id", pa.string(), "The data provider's own ID for the scene."),
+        (
+            "stac_item_url",
+            pa.string(),
+            "The scene's item in a public STAC catalog, which lists its files: Planetary "
+            "Computer, or USGS landsat-c2l1 for Landsat.",
+        ),
+        (
+            "geometry",
+            pa.binary(),
+            "The scene's footprint in WGS84, split into two parts if it crosses "
+            "+/-180 degrees.",
+        ),
+        ("bbox", BBOX, BBOX_DESCRIPTION),
+    ]
+)
+
+
+def _date(value: str | None) -> date | None:
+    """The UTC date of a period boundary, which the run always puts at midnight.
+
+    Raises:
+        ValueError: if the boundary is not midnight UTC, so a date would lose time.
+    """
+    if value is None:
+        return None
+    moment = datetime.fromisoformat(value).astimezone(timezone.utc)
+    if moment.time() != datetime.min.time():
+        raise ValueError(f"period boundary {value} is not midnight UTC")
+    return moment.date()
 
 
 def _wgs84(geometry: STGeometry) -> shapely.Geometry:
@@ -225,7 +384,7 @@ def _hilbert_order(table: pa.Table) -> np.ndarray:
 
 
 def _window_key(projection: Projection, col: int, row: int) -> tuple[int, int, int]:
-    """The zone and zarr chunk indices of the window at (col, row) in 2048 px units.
+    """The zone and zarr shard indices of the window at (col, row) in 2048 px units.
 
     Raises:
         ValueError: if the projection is not a northern UTM zone on the store's grid.
@@ -244,8 +403,23 @@ def _window_key(projection: Projection, col: int, row: int) -> tuple[int, int, i
 
 
 def _bbox(shp: shapely.Geometry) -> dict[str, float]:
+    """The geometry's bounds in float32, each rounded away from the geometry."""
     xmin, ymin, xmax, ymax = shp.bounds
-    return {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}
+
+    def outward(value: float, toward: float) -> float:
+        rounded = np.float32(value)
+        # Compare as float64: NumPy 2 casts a Python float to float32 to compare it
+        # with a float32, which hides the rounding this checks for.
+        if (float(rounded) > value) if toward < 0 else (float(rounded) < value):
+            rounded = np.nextafter(rounded, np.float32(toward))
+        return float(rounded)
+
+    return {
+        "xmin": outward(xmin, -np.inf),
+        "ymin": outward(ymin, -np.inf),
+        "xmax": outward(xmax, np.inf),
+        "ymax": outward(ymax, np.inf),
+    }
 
 
 def _block_rows(
@@ -260,7 +434,7 @@ def _block_rows(
         year: the reference year, stamped on every row.
 
     Returns:
-        the block's windows rows, inputs rows, and scenes keyed by scene_id.
+        the block's windows rows, window_scenes rows, and scenes keyed by scene_id.
 
     Raises:
         ValueError: if a window's recorded bounds are not its crop plus the margin,
@@ -278,7 +452,7 @@ def _block_rows(
     written = {tuple(origin) for origin in marker.get("written", [])}
 
     windows: list[dict] = []
-    inputs: list[dict] = []
+    window_scenes: list[dict] = []
     scenes: dict[str, dict] = {}
     for name, layers in provenance["windows"].items():
         col, row = (int(v) for v in name.split("_"))
@@ -315,31 +489,29 @@ def _block_rows(
                 **key,
                 "crs": crs,
                 "block": block,
-                "xmin": core[0] * x_res,
-                "ymin": core[3] * y_res,
-                "xmax": core[2] * x_res,
-                "ymax": core[1] * y_res,
+                "utm_xmin": round(core[0] * x_res),
+                "utm_ymin": round(core[3] * y_res),
+                "utm_xmax": round(core[2] * x_res),
+                "utm_ymax": round(core[1] * y_res),
                 "context_pixels": context_pixels,
                 "written": (core[0], core[1]) in written,
-                "window_size": marker.get("window_size"),
-                "worker": marker.get("worker"),
-                "code_version": provenance.get("code_version"),
+                "inference_crop_size": marker.get("window_size"),
                 "geometry": shapely.to_wkb(footprint),
                 "bbox": _bbox(footprint),
             }
         )
-        for sensor, groups in layers.items():
+        for modality, groups in layers.items():
             for group in groups:
                 period = group["time_range"] or [None, None]
-                for rank, item in enumerate(group["items"]):
+                for mosaic_order, item in enumerate(group["items"]):
                     scene_id = item["name"]
-                    inputs.append(
+                    window_scenes.append(
                         {
                             **key,
-                            "sensor": sensor,
-                            "period_start": _timestamp(period[0]),
-                            "period_end": _timestamp(period[1]),
-                            "rank": rank,
+                            "modality": modality,
+                            "period_start": _date(period[0]),
+                            "period_end": _date(period[1]),
+                            "mosaic_order": mosaic_order,
                             "scene_id": scene_id,
                         }
                     )
@@ -349,8 +521,8 @@ def _block_rows(
                         scenes[scene_id] = {
                             "year": year,
                             "scene_id": scene_id,
-                            "sensor": sensor,
-                            "acquired": (
+                            "modality": modality,
+                            "collected_at": (
                                 geometry.time_range[0]
                                 if geometry.time_range is not None
                                 else None
@@ -358,7 +530,7 @@ def _block_rows(
                             "geometry": shapely.to_wkb(shp),
                             "bbox": _bbox(shp),
                         }
-    return windows, inputs, scenes
+    return windows, window_scenes, scenes
 
 
 def provider_excludes(dataset_config_fname: str) -> dict[str, set[str]]:
@@ -379,13 +551,6 @@ def provider_excludes(dataset_config_fname: str) -> dict[str, set[str]]:
         }
         for name, layer in layers.items()
     }
-
-
-def _asset_prefix(urls: list[str]) -> str | None:
-    """The deepest directory holding every asset URL."""
-    if not urls:
-        return None
-    return os.path.commonprefix(urls).rsplit("/", 1)[0] + "/"
 
 
 def _lookup_records(
@@ -423,48 +588,66 @@ def _lookup_records(
     return records
 
 
+def _stac_item_url(data_provider: str, collection: str, vendor_id: str) -> str | None:
+    """The scene's item in a public STAC catalog, if its provider has one we know."""
+    if data_provider == "planetary_computer":
+        return PLANETARY_COMPUTER_ITEM_URL.format(
+            collection=collection, vendor_id=vendor_id
+        )
+    template = STAC_ITEM_URLS.get((data_provider, collection))
+    return template.format(vendor_id=vendor_id) if template else None
+
+
 def _resolve(scene: dict, record: dict | None, excludes: set[str]) -> dict:
-    """Add a scene's public sources from its datasets service record."""
+    """Add a scene's public source from its datasets service record.
+
+    A scene the service no longer has, or one whose only providers are excluded, keeps
+    null source columns.
+
+    Raises:
+        ValueError: if the config allows more than one provider for the scene. The
+            reader then picked one at random per read, so the source is unknown.
+    """
+    empty = {
+        "satellite": None,
+        "product_id": None,
+        "cloud_cover": None,
+        "data_provider": None,
+        "collection": None,
+        "vendor_id": None,
+        "stac_item_url": None,
+    }
     if record is None:
-        return {
-            **scene,
-            "product_id": None,
-            "cloud_cover": None,
-            "provider": None,
-            "sources": [],
-            "resolved": False,
-        }
-    sources = [
-        {
-            "provider": name,
-            "collection": provider.get("collection"),
-            "item_id": provider["id"],
-            "asset_prefix": _asset_prefix(
-                [
-                    asset["url"]
-                    for asset in provider.get("assets", [])
-                    if asset.get("url")
-                ]
-            ),
-        }
-        for name, provider in sorted(record["data_providers"].items())
+        return {**scene, **empty}
+    allowed = sorted(
+        (name, provider)
+        for name, provider in record["data_providers"].items()
         if name not in excludes
-    ]
-    properties = record.get("properties", {})
-    # Sentinel-2 records carry the ESA product name; otherwise the providers' own ID,
-    # if they agree on one (the USGS mirrors do).
-    item_ids = {source["item_id"] for source in sources}
-    product_id = properties.get("product_id") or (
-        item_ids.pop() if len(item_ids) == 1 else None
     )
+    if len(allowed) > 1:
+        raise ValueError(
+            f"{scene['scene_id']} has {len(allowed)} allowed providers "
+            f"({', '.join(name for name, _ in allowed)}), so its source is unknown"
+        )
+    properties = record.get("properties", {})
+    known = {
+        "satellite": properties.get("satellite"),
+        # Only Sentinel-2 records carry one, the ESA SAFE name; elsewhere vendor_id
+        # is already the product name.
+        "product_id": properties.get("product_id"),
+        "cloud_cover": properties.get("cloud_cover"),
+    }
+    if not allowed:
+        return {**scene, **empty, **known}
+    ((name, provider),) = allowed
+    collection = provider.get("collection")
     return {
         **scene,
-        "product_id": product_id,
-        "cloud_cover": properties.get("cloud_cover"),
-        # With several allowed, the reader picked one at random per read.
-        "provider": sources[0]["provider"] if len(sources) == 1 else None,
-        "sources": sources,
-        "resolved": True,
+        **known,
+        "data_provider": name,
+        "collection": collection,
+        "vendor_id": provider["id"],
+        "stac_item_url": _stac_item_url(name, collection, provider["id"]),
     }
 
 
@@ -516,9 +699,9 @@ def _zone_of_block(name: str) -> int:
     return int(name.split("_", 1)[0].removeprefix("EPSG:"))
 
 
-def _batches(items: list[str], size: int) -> Iterator[list[str]]:
-    for start in range(0, len(items), size):
-        yield items[start : start + size]
+def _batches(values: list[str], size: int) -> Iterator[list[str]]:
+    for start in range(0, len(values), size):
+        yield values[start : start + size]
 
 
 def export_provenance(
@@ -529,7 +712,7 @@ def export_provenance(
     inputs: EmbeddingInputs = EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
     resolve_sources: bool = True,
 ) -> None:
-    """Export one year's provenance to windows, inputs and scenes GeoParquet tables.
+    """Export one year's provenance to windows, window_scenes and scenes GeoParquet tables.
 
     Resolving sources reads the datasets service's URL and token from the same
     environment variables the workers use (OEDATASETS_API_URL, DATASETS_API_TOKEN).
@@ -540,7 +723,7 @@ def export_provenance(
         out_dir: where to write the tables, a local path or a pyarrow filesystem URI.
         workers: threads reading marker and provenance files.
         inputs: the input variant the run used, whose dataset config names the
-            providers each sensor excluded.
+            providers each modality excluded.
         resolve_sources: look each scene up in the datasets service to record the
             public data it came from. Off leaves those columns empty.
 
@@ -582,8 +765,8 @@ def export_provenance(
 
     filesystem, root = pyarrow.fs.FileSystem.from_uri(out_dir)
     fname = f"{year}.parquet"
-    inputs_path = f"{root}/inputs/{fname}"
-    filesystem.create_dir(inputs_path.rsplit("/", 1)[0], recursive=True)
+    window_scenes_path = f"{root}/window_scenes/{fname}"
+    filesystem.create_dir(window_scenes_path.rsplit("/", 1)[0], recursive=True)
 
     # One zone at a time, which bounds memory and keeps row groups within a zone.
     by_zone: dict[int, list[str]] = {}
@@ -592,37 +775,40 @@ def export_provenance(
 
     windows: list[dict] = []
     scenes: dict[str, dict] = {}
-    n_inputs = 0
+    n_window_scenes = 0
     n_read = 0
     with (
         ThreadPoolExecutor(workers) as pool,
         pq.ParquetWriter(
-            inputs_path, INPUTS_SCHEMA, filesystem=filesystem, compression=COMPRESSION
-        ) as inputs_writer,
+            window_scenes_path,
+            WINDOW_SCENES_SCHEMA,
+            filesystem=filesystem,
+            compression=COMPRESSION,
+        ) as window_scenes_writer,
     ):
         for zone in sorted(by_zone):
-            input_rows: list[dict] = []
-            for block_windows, block_inputs, block_scenes in pool.map(
+            window_scene_rows: list[dict] = []
+            for block_windows, block_window_scenes, block_scenes in pool.map(
                 read, by_zone[zone]
             ):
                 windows += block_windows
-                input_rows += block_inputs
+                window_scene_rows += block_window_scenes
                 for scene_id, scene in block_scenes.items():
                     scenes.setdefault(scene_id, scene)
-            if input_rows:
-                inputs_writer.write_table(
-                    pa.Table.from_pylist(input_rows, schema=INPUTS_SCHEMA).sort_by(
-                        INPUTS_SORT
-                    ),
-                    row_group_size=INPUTS_ROW_GROUP,
+            if window_scene_rows:
+                window_scenes_writer.write_table(
+                    pa.Table.from_pylist(
+                        window_scene_rows, schema=WINDOW_SCENES_SCHEMA
+                    ).sort_by(WINDOW_SCENES_SORT),
+                    row_group_size=WINDOW_SCENES_ROW_GROUP,
                 )
-            n_inputs += len(input_rows)
+            n_window_scenes += len(window_scene_rows)
             n_read += len(by_zone[zone])
             logger.info(
-                "%d of %d blocks read, %d input rows, %d scenes",
+                "%d of %d blocks read, %d window_scenes rows, %d scenes",
                 n_read,
                 len(blocks),
-                n_inputs,
+                n_window_scenes,
                 len(scenes),
             )
 
@@ -652,7 +838,7 @@ def export_provenance(
             )
     excludes = provider_excludes(DATASET_CONFIG_FNAME.format(inputs=inputs.value))
     resolved = [
-        _resolve(scene, records.get(scene_id), excludes.get(scene["sensor"], set()))
+        _resolve(scene, records.get(scene_id), excludes.get(scene["modality"], set()))
         for scene_id, scene in sorted(scenes.items())
     ]
     n_scenes = _write_geo_table(
@@ -662,9 +848,9 @@ def export_provenance(
         SCENES_ROW_GROUP,
     )
     logger.info(
-        "wrote %d windows, %d input rows and %d scenes for %d to %s",
+        "wrote %d windows, %d window_scenes rows and %d scenes for %d to %s",
         n_windows,
-        n_inputs,
+        n_window_scenes,
         n_scenes,
         year,
         out_dir,
