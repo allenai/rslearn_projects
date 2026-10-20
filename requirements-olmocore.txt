@@ -1,2 +1,2 @@
 # Required for loading distributed checkpoints via checkpoint_path in OlmoEarth.
-ai2-olmo-core==2.3.0
+ai2-olmo-core==2.6.0
