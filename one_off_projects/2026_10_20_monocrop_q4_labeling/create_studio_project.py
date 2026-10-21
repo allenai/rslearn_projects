@@ -7,7 +7,9 @@ before numbering and task attributes only hold event_uid and country. The predic
 stay in events_for_annotation.geojson, matched through {out_dir}/studio_tasks.json.
 
 The project has the same annotation fields as the earlier monocrop projects:
-monoculture_tag (the seven raw classes, required) and confidence (high/medium/low).
+monoculture_tag (the seven raw classes, required) and confidence (high/medium/low),
+and the same basemaps as Monocrop - Phase 2 (OSM, ESRI and Planet monthly mosaics,
+Planet 2026-05 by default).
 
 Each task:
 - name "[#001] 2025-03-08 at -3.9997, -46.6966" (date, then lat, lon of the event
@@ -48,6 +50,19 @@ PROJECT_DESCRIPTION = (
     "20260914 monocrop classifier. Predicted class is not shown."
 )
 BOX_SIZE_M = 2560
+# Monocrop - Phase 2, whose basemap settings are copied.
+BASEMAP_SOURCE_PROJECT_ID = "ffe01218-87d6-4ebe-85c8-70b5515b951a"
+BASEMAP_KEYS = [
+    "name",
+    "url",
+    "type",
+    "tile_size",
+    "max_zoom",
+    "min_zoom",
+    "display_order",
+    "attribution",
+    "default",
+]
 # (name, display name, color), as in the Monocrop - Peru project.
 FIELDS = {
     "monoculture_tag": (
@@ -126,6 +141,31 @@ def ensure_fields(studio: Studio, project_id: str) -> None:
         )
 
 
+def copy_basemaps(studio: Studio, project_id: str) -> None:
+    """Make the project's basemaps match BASEMAP_SOURCE_PROJECT_ID (matched by name).
+
+    Basemaps of the source project are created if missing, and existing ones with the
+    same name are updated so default and display_order match. URLs are not printed
+    since the Planet ones contain an API key.
+    """
+    source = studio.get_project(BASEMAP_SOURCE_PROJECT_ID)["settings"]["basemaps"]
+    settings = studio.get_project(project_id)["settings"]
+    existing = {basemap["name"]: basemap for basemap in settings["basemaps"]}
+    for basemap in sorted(source, key=lambda b: b["display_order"]):
+        data = {key: basemap[key] for key in BASEMAP_KEYS}
+        current = existing.get(basemap["name"])
+        if current is None:
+            print(f"creating basemap {basemap['name']}")
+            studio.request(
+                "POST",
+                "/basemaps",
+                json={**data, "project_settings_id": settings["id"]},
+            )
+        elif any(current.get(key) != data[key] for key in BASEMAP_KEYS):
+            print(f"updating basemap {basemap['name']}")
+            studio.request("PUT", f"/basemaps/{current['id']}", json=data)
+
+
 def main(cli_args: argparse.Namespace) -> None:
     """Create the project (if needed), fields, tasks and annotations."""
     out_dir = UPath(cli_args.out_dir)
@@ -163,6 +203,7 @@ def main(cli_args: argparse.Namespace) -> None:
         )["records"][0]["id"]
         print(f"created project {project_id}")
     ensure_fields(studio, project_id)
+    copy_basemaps(studio, project_id)
 
     mapping_fname = out_dir / "studio_tasks.json"
     mapping = {"project_id": project_id, "tasks": {}}
