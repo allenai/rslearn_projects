@@ -236,7 +236,9 @@ def main(cli_args: argparse.Namespace) -> None:
     )
     with (out_dir / "events_for_annotation_counts.csv").open("w") as f:
         writer = csv.writer(f)
-        writer.writerow(["country", "predicted_class", "available", "country", "fill", "recall"])
+        writer.writerow(
+            ["country", "predicted_class", "available", "sampled_country", "sampled_fill", "sampled_recall"]
+        )
         for country in COUNTRIES:
             for cls in PREDICTED_CLASSES:
                 writer.writerow(
