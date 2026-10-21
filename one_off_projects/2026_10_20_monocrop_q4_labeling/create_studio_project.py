@@ -21,7 +21,6 @@ Each task:
 Re-running skips tasks whose name already exists in the project.
 
 Example:
-
     STUDIO_API_KEY=... python create_studio_project.py --out_dir /path/to/out --dry_run
 """
 
@@ -38,7 +37,9 @@ import tqdm
 from upath import UPath
 
 sys.path.append(
-    os.path.join(os.path.dirname(__file__), "..", "2026_09_25_amazon_forest_loss_labeling")
+    os.path.join(
+        os.path.dirname(__file__), "..", "2026_09_25_amazon_forest_loss_labeling"
+    )
 )
 from studio_api import Studio  # noqa: E402
 

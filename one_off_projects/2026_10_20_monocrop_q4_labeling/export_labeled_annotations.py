@@ -8,7 +8,6 @@ Unlabeled Phase 2 tasks are not exported, so new tasks may duplicate them.
 Output: {out_dir}/labeled_monocrop_annotations.geojson.
 
 Example:
-
     STUDIO_API_KEY=... python export_labeled_annotations.py --out_dir /path/to/out
 """
 

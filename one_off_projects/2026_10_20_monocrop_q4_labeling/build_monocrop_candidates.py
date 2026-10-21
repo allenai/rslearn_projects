@@ -19,7 +19,6 @@ Each output feature keeps the event properties and gets:
 Output: {out_dir}/monocrop_candidates.geojson and {out_dir}/monocrop_candidates_counts.csv.
 
 Example:
-
     python build_monocrop_candidates.py --out_dir /path/to/out \
         --source 2023_2025=/path/to/events_2023_2025/events_with_new_model_predictions.geojson
 """
@@ -74,7 +73,10 @@ class ExclusionIndex:
         project = local_metric_transformer(center.x, center.y).transform
         geometry_m = transform(project, geometry)
         for idx in hits:
-            if geometry_m.distance(transform(project, self.geometries[idx])) < distance_m:
+            if (
+                geometry_m.distance(transform(project, self.geometries[idx]))
+                < distance_m
+            ):
                 return True
         return False
 
@@ -94,7 +96,10 @@ def main(cli_args: argparse.Namespace) -> None:
     out_dir = UPath(cli_args.out_dir)
     with (out_dir / "labeled_monocrop_annotations.geojson").open() as f:
         exclusion = ExclusionIndex(
-            [shapely.geometry.shape(feat["geometry"]) for feat in json.load(f)["features"]]
+            [
+                shapely.geometry.shape(feat["geometry"])
+                for feat in json.load(f)["features"]
+            ]
         )
 
     stats: Counter[tuple[str, str, str]] = Counter()
@@ -133,7 +138,9 @@ def main(cli_args: argparse.Namespace) -> None:
     selected = []
     for country, year in sorted(strata):
         quota = round(cli_args.per_country * months_per_year[year] / total_months)
-        pool = sorted(strata[(country, year)], key=lambda f: f["properties"]["event_uid"])
+        pool = sorted(
+            strata[(country, year)], key=lambda f: f["properties"]["event_uid"]
+        )
         rng = random.Random(f"{cli_args.seed}:{country}:{year}")
         sample = rng.sample(pool, min(quota, len(pool)))
         for feat in sample:
@@ -144,7 +151,14 @@ def main(cli_args: argparse.Namespace) -> None:
 
     with (out_dir / "monocrop_candidates.geojson").open("w") as f:
         json.dump({"type": "FeatureCollection", "features": selected}, f)
-    columns = ["out_of_range", "in_range", "agriculture", "near_labeled", "eligible", "sampled"]
+    columns = [
+        "out_of_range",
+        "in_range",
+        "agriculture",
+        "near_labeled",
+        "eligible",
+        "sampled",
+    ]
     with (out_dir / "monocrop_candidates_counts.csv").open("w") as f:
         writer = csv.writer(f)
         writer.writerow(["source", "country"] + columns)

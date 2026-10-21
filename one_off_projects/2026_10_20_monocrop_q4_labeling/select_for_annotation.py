@@ -24,7 +24,6 @@ Output: {out_dir}/events_for_annotation.geojson (with predicted_class, probs and
 sample_stratum properties) and {out_dir}/events_for_annotation_counts.csv.
 
 Example:
-
     python select_for_annotation.py --out_dir /path/to/out --ds_path /path/to/predict_ds
 """
 
@@ -130,7 +129,10 @@ def load_predictions(ds_path: UPath, candidates: list[dict]) -> list[dict]:
         probs = output["probs"]
         if len(probs) != len(CLASSES):
             raise ValueError(f"unexpected probs {probs} in {fname}")
-        if CLASSES[max(range(len(probs)), key=probs.__getitem__)] != output["class_name"]:
+        if (
+            CLASSES[max(range(len(probs)), key=probs.__getitem__)]
+            != output["class_name"]
+        ):
             raise ValueError(f"argmax(probs) != class_name in {fname}")
         props = dict(feat["properties"])
         props["window_name"] = name
@@ -172,7 +174,9 @@ def main(cli_args: argparse.Namespace) -> None:
     selector = Selector(cli_args.min_distance_m)
     # Per (country, class): remaining shuffled events, consumed from the front.
     queues = {
-        (country, cls): shuffled(by_stratum[(country, cls)], cli_args.seed, f"{country}:{cls}")
+        (country, cls): shuffled(
+            by_stratum[(country, cls)], cli_args.seed, f"{country}:{cls}"
+        )
         for country in COUNTRIES
         for cls in PREDICTED_CLASSES
     }
@@ -189,7 +193,9 @@ def main(cli_args: argparse.Namespace) -> None:
         shortfall = 0
         for country in COUNTRIES:
             got = 0
-            while got < PER_COUNTRY_CLASS and take(country, cls, f"country:{country}:{cls}"):
+            while got < PER_COUNTRY_CLASS and take(
+                country, cls, f"country:{country}:{cls}"
+            ):
                 got += 1
             shortfall += PER_COUNTRY_CLASS - got
         while shortfall > 0:
@@ -226,24 +232,40 @@ def main(cli_args: argparse.Namespace) -> None:
     for event in selector.selected:
         props = dict(event["properties"])
         props["sample_stratum"] = event["stratum"]
-        features.append({"type": "Feature", "properties": props, "geometry": event["geometry"]})
+        features.append(
+            {"type": "Feature", "properties": props, "geometry": event["geometry"]}
+        )
     with (out_dir / "events_for_annotation.geojson").open("w") as f:
         json.dump({"type": "FeatureCollection", "features": features}, f)
 
     counts = Counter(
-        (f["properties"]["country"], f["properties"]["predicted_class"], f["properties"]["sample_stratum"].split(":")[0])
+        (
+            f["properties"]["country"],
+            f["properties"]["predicted_class"],
+            f["properties"]["sample_stratum"].split(":")[0],
+        )
         for f in features
     )
     with (out_dir / "events_for_annotation_counts.csv").open("w") as f:
         writer = csv.writer(f)
         writer.writerow(
-            ["country", "predicted_class", "available", "sampled_country", "sampled_fill", "sampled_recall"]
+            [
+                "country",
+                "predicted_class",
+                "available",
+                "sampled_country",
+                "sampled_fill",
+                "sampled_recall",
+            ]
         )
         for country in COUNTRIES:
             for cls in PREDICTED_CLASSES:
                 writer.writerow(
                     [country, cls, available[(country, cls)]]
-                    + [counts[(country, cls, kind)] for kind in ("country", "fill", "recall")]
+                    + [
+                        counts[(country, cls, kind)]
+                        for kind in ("country", "fill", "recall")
+                    ]
                 )
     print(f"selected {len(features)} events ({num_country} country/fill)")
 
