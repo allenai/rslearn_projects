@@ -24,7 +24,6 @@ from rslearn.utils.vector_format import GeojsonCoordinateMode, GeojsonVectorForm
 from upath import UPath
 
 from olmoearth_projects.projects.forest_loss_driver.deploy import (
-    EVENTS_PER_STUDIO_JOB,
     get_prediction_result,
     simplify_features_to_centroids,
 )
@@ -37,6 +36,9 @@ MODELS = {
     "peru_phase2": "dc7772b0-4c50-40f3-9177-4bd4922da4e4",  # 20260401_forest_loss_driver_peru_phase2_config.yaml_airstripfix_02
 }
 JOB_NAME_PREFIX = "amazon_labeling_20260925"
+
+# Events per Studio job, as in the deploy pipeline (which no longer exports it).
+EVENTS_PER_STUDIO_JOB = 10000
 
 # Refuse to start jobs if the selection is unexpectedly large.
 MAX_EVENTS = 200000
@@ -81,9 +83,10 @@ def run_launch(cli_args: argparse.Namespace) -> None:
 
     job_ids = load_job_ids(out_dir)
     client = None if cli_args.dry_run else StudioClient.from_env()
-    for model_name, model_id in MODELS.items():
+    for model_name in cli_args.models:
+        model_id = MODELS[model_name]
         for chunk_idx, chunk in enumerate(chunks):
-            job_name = f"{JOB_NAME_PREFIX}_{model_name}_chunk_{chunk_idx}"
+            job_name = f"{cli_args.job_name_prefix}_{model_name}_chunk_{chunk_idx}"
             if job_name in job_ids:
                 print(f"skipping {job_name} (already started as {job_ids[job_name]})")
                 continue
@@ -155,6 +158,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dry_run", action="store_true", help="launch: only print what would be sent"
     )
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        choices=list(MODELS),
+        default=list(MODELS),
+        help="launch: the models to run",
+    )
+    parser.add_argument("--job_name_prefix", default=JOB_NAME_PREFIX)
     cli_args = parser.parse_args()
     {"launch": run_launch, "status": run_status, "download": run_download}[
         cli_args.stage

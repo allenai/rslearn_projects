@@ -48,6 +48,7 @@ from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.feature import Feature
 from rslearn.utils.fsspec import open_rasterio_upath_reader
 from rslearn.utils.geometry import STGeometry
+from rslearn.utils.get_utm_ups_crs import get_utm_ups_projection
 from rslearn.utils.mp import star_imap_unordered
 from rslearn.utils.raster_format import get_raster_projection_and_bounds
 from rslearn.utils.vector_format import GeojsonCoordinateMode, GeojsonVectorFormat
@@ -87,6 +88,10 @@ COUNTRY_DATA_PATH = "/weka/dfive-default/rslearn-eai/artifacts/natural_earth_cou
 
 EARTH_RADIUS_M = 6371008.8
 
+# Upper bound on the area of one GLAD pixel (1e-4 degrees, at the equator) in m^2, used to
+# turn --min_area_ha into a conservative min_area (in pixels) for extract_events_for_window.
+MAX_GLAD_PIXEL_AREA_M2 = 124.0
+
 VECTOR_FORMAT = GeojsonVectorFormat(coordinate_mode=GeojsonCoordinateMode.WGS84)
 
 
@@ -118,6 +123,7 @@ def extract_tile(
     out_fname: UPath,
     block_size: int,
     block_margin: int,
+    min_area_ha: float | None = None,
 ) -> tuple[str, int, float, float]:
     """Extract candidate events from one GLAD tile for each month.
 
@@ -130,6 +136,9 @@ def extract_tile(
     events whose center pixel falls in the block core, so events are not duplicated
     and connected components smaller than block_margin are extracted exactly as they
     would be on the whole tile.
+
+    If min_area_ha is set, each event gets an area_ha property (area of its polygon in
+    the local UTM zone) and events smaller than min_area_ha are dropped before sampling.
 
     Returns:
         (tif_fname, number of events, elapsed seconds, peak RSS in GB)
@@ -187,6 +196,21 @@ def extract_tile(
                     feat.properties["center_pixel"] = (center_col, center_row)
                     events_for_month.append(feat)
 
+        if min_area_ha is not None:
+            large_events = []
+            for feat in events_for_month:
+                centroid = feat.geometry.shp.centroid
+                # 100 m pixels, so the projected area is in hectares.
+                utm_projection = get_utm_ups_projection(
+                    centroid.x, centroid.y, 100, -100
+                )
+                area_ha = feat.geometry.to_projection(utm_projection).shp.area
+                if area_ha < min_area_ha:
+                    continue
+                feat.properties["area_ha"] = area_ha
+                large_events.append(feat)
+            events_for_month = large_events
+
         num_before_sampling = len(events_for_month)
         if len(events_for_month) > args.max_number_of_events:
             events_for_month = random.sample(
@@ -226,7 +250,14 @@ def run_extract(cli_args: argparse.Namespace) -> None:
 
     months = get_months(cli_args.start_month, cli_args.end_month)
     tiles = cli_args.tiles or TILES
+    extra_args = {}
+    if cli_args.min_area_ha is not None:
+        # Cheap pre-filter on the pixel count; the exact area is checked per event.
+        extra_args["min_area"] = math.floor(
+            cli_args.min_area_ha * 1e4 / MAX_GLAD_PIXEL_AREA_M2
+        )
     args = ExtractAlertsArgs(
+        **extra_args,
         gcs_tiff_filenames=tiles,
         out_fname=str(out_dir / "unused.geojson"),
         country_data_path=COUNTRY_DATA_PATH,
@@ -254,6 +285,7 @@ def run_extract(cli_args: argparse.Namespace) -> None:
                 out_fname=out_fname,
                 block_size=cli_args.block_size,
                 block_margin=cli_args.block_margin,
+                min_area_ha=cli_args.min_area_ha,
             )
         )
 
@@ -379,6 +411,12 @@ if __name__ == "__main__":
         action=argparse.BooleanOptionalAction,
         default=False,
         help="smooth event polygons (the 2026-09-25 run used smoothing; default off)",
+    )
+    extract_parser.add_argument(
+        "--min_area_ha",
+        type=float,
+        default=None,
+        help="only keep events whose polygon is at least this many hectares",
     )
     extract_parser.add_argument("--workers", type=int, default=7)
     extract_parser.add_argument("--block_size", type=int, default=10000)

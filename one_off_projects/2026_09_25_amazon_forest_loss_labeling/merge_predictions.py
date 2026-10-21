@@ -42,14 +42,14 @@ CLASSES = [
     "none",
 ]
 
-# Output name -> job name prefix in studio_job_ids.json (see studio_jobs.py).
+# Output name -> studio_jobs.py model name.
 MODELS = {
-    "new": "amazon_labeling_20260925_utm_chunk_",
-    "old": "amazon_labeling_20260925_peru_phase2_chunk_",
+    "new": "utm",
+    "old": "peru_phase2",
 }
 
 
-def main(out_dir: UPath) -> None:
+def main(out_dir: UPath, job_name_prefix: str) -> None:
     """Write the per-model events_with_*_model_predictions.geojson files."""
     with (out_dir / "selected_events.geojson").open() as f:
         events = json.load(f)["features"]
@@ -62,7 +62,11 @@ def main(out_dir: UPath) -> None:
     with (out_dir / "studio_job_ids.json").open() as f:
         job_names = list(json.load(f).keys())
 
-    for model_name, prefix in MODELS.items():
+    for model_name, studio_model_name in MODELS.items():
+        prefix = f"{job_name_prefix}_{studio_model_name}_chunk_"
+        if not any(job_name.startswith(prefix) for job_name in job_names):
+            print(f"{model_name}: no jobs with prefix {prefix}, skipping")
+            continue
         outputs = []
         for job_name in job_names:
             if not job_name.startswith(prefix):
@@ -124,4 +128,10 @@ def main(out_dir: UPath) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out_dir", required=True)
-    main(UPath(parser.parse_args().out_dir))
+    parser.add_argument(
+        "--job_name_prefix",
+        default="amazon_labeling_20260925",
+        help="job name prefix passed to studio_jobs.py",
+    )
+    args = parser.parse_args()
+    main(UPath(args.out_dir), args.job_name_prefix)
