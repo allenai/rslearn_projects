@@ -597,6 +597,51 @@ python -m rslp.main common launch \
 
 Each worker pulls tasks from the queue and runs the `predict_multi` workflow.
 
+#### 3. Fuse yearly runs into a quarterly series (LCC Viewer lab)
+
+Each run reports at most one change per pixel (the most recent one in the 30
+months before T). Running the same area once a year (e.g. T = Oct 20 of
+2022..2026, each with `--write_summary_raster true`) and fusing the runs gives a
+per-pixel series of change events by quarter, which the LCC Viewer lab in
+olmoearth_studio shows next to the yearly runs.
+
+First convert each run's `*_summary.tif` tiles to web-mercator COGs, plus the
+low-zoom overview, with the scripts in allenai/olmoearth_lcc_viewer (one output
+directory per run; both scripts work on local directories, so copy the result to
+GCS afterwards if the lab should read it from there):
+
+```bash
+python scripts/make_cogs.py --src_dir /path/to/end_20241020 --out_dir viewer/end_20241020
+python scripts/make_overview.py --data_dir viewer/end_20241020
+gsutil -m rsync -r viewer/end_20241020 gs://bucket/viewer/end_20241020
+```
+
+Then fuse them. `--run` takes `DIR=END_DATE` for each run; directories can be
+local or `gs://`:
+
+```bash
+python -m rslp.olmoearth_lcc.lcc_model.fuse_quarterly \
+    --run gs://bucket/viewer/end_20221020=2022-10-20 \
+    --run gs://bucket/viewer/end_20231020=2023-10-20 \
+    --run gs://bucket/viewer/end_20241020=2024-10-20 \
+    --run gs://bucket/viewer/end_20251020=2025-10-20 \
+    --run gs://bucket/viewer/end_20261020=2026-10-20 \
+    --out_dir gs://bucket/viewer/quarterly --workers 32
+```
+
+This writes the fused COGs (one per tile, 3 x quarters + 6 uint8 bands: event code,
+land cover and confidence per quarter, then per-pixel summary bands), `index.json`
+and `overview.tif` to `--out_dir`, and the lab's `manifest.json` (default: next to
+`--out_dir`, here `gs://bucket/viewer/manifest.json`). Quarters run from 3 quarters
+before the earliest end date to the latest end date (`--first_quarter 2022Q1`
+overrides the start). The fusion rules and thresholds (`--thr`, `--thr_single`,
+`--min_support`) are described in the module docstring. Tiles whose fused COG
+already exists are skipped unless `--overwrite` is set; `index.json`, the overview
+and the manifest are always rewritten.
+
+To view the result, open Labs -> LCC Viewer in Studio and enter the manifest's path
+(the bucket must be publicly readable).
+
 #### Random 2048x2048 land tiles (diagnostic sampling)
 
 To get diverse predictions from random locations worldwide (useful for spotting
