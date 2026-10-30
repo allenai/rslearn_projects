@@ -198,6 +198,7 @@ data:
           num_infrequent: 8
           output_key: sentinel2_l2a
           select: random
+          stand_in_min_gap: 45 days, 0:00:00
           category_target: category
           change_day_target: timestep
       - class_path: rslearn.train.transforms.flip.Flip
@@ -236,6 +237,7 @@ data:
           num_infrequent: 8
           output_key: sentinel2_l2a
           select: latest
+          stand_in_min_gap: 45 days, 0:00:00
           category_target: category
           change_day_target: timestep
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
@@ -266,6 +268,7 @@ data:
           num_infrequent: 8
           output_key: sentinel2_l2a
           select: latest
+          stand_in_min_gap: 45 days, 0:00:00
           category_target: category
           change_day_target: timestep
       - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize

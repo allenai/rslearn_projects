@@ -13,7 +13,8 @@ ChangeTimeSeriesSampler):
 - Training: the sampler picks 4 consecutive weekly mosaics at a random position in the
   training window (so the change is between 1 and 13 weeks before the end of the time
   series), sometimes keeps only the latest 1-3 of them, and adds the 8 quarterly
-  mosaics before them (with a stand-in weekly mosaic if there is a gap).
+  mosaics before them, with a stand-in weekly mosaic for the latest quarterly mosaic
+  when the pick starts at least 45 days into the training window.
 - Validation and test: prediction windows (the 4 weeks before E days after the change)
   with the sampler using the latest frequent images (select: latest). The val split
   has all scenarios E in END_DAYS; make_test_config selects one scenario of the test
@@ -34,6 +35,7 @@ from typing import Any
 
 import yaml
 from common import (
+    INFREQUENT_PERIOD,
     NUM_INFREQUENT,
     NUM_TIMESTEPS,
     ROUND2_DATASET_ROOT,
@@ -61,6 +63,8 @@ S2_BANDS = [
     "B09",
 ]
 EMBED_DIM = 768
+# jsonargparse parses timedelta from str(timedelta).
+STAND_IN_MIN_GAP = str(INFREQUENT_PERIOD / 2)
 
 
 @dataclass(frozen=True)
@@ -127,6 +131,10 @@ def _sampler(select: str) -> dict[str, Any]:
         "num_infrequent": NUM_INFREQUENT,
         "output_key": "sentinel2_l2a",
         "select": select,
+        # Use a stand-in weekly mosaic for the latest quarterly mosaic when the pick
+        # starts at least half a quarter after the first weekly mosaic (only possible in
+        # training windows).
+        "stand_in_min_gap": STAND_IN_MIN_GAP,
         # Every pixel in a window has the same change date, so this only matters if the
         # change is after the time series, which the windows rule out; it is set to be
         # safe.
