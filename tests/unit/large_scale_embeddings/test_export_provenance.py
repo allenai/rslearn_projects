@@ -136,7 +136,10 @@ def test_export_writes_three_tables(tmp_path: pathlib.Path) -> None:
     assert s2[0]["period_start"].isoformat() == "2025-12-02"
     assert s2[0]["period_end"].isoformat() == "2026-01-01"
 
-    scenes = pq.read_table(out / "scenes" / "2025.parquet").to_pylist()
+    scenes = sorted(
+        pq.read_table(out / "scenes" / "2025.parquet").to_pylist(),
+        key=lambda s: s["scene_id"],
+    )
     assert [s["scene_id"] for s in scenes] == ["S1_A", "S2_A", "S2_B"]
     assert {s["year"] for s in scenes} == {2025}
     assert scenes[1]["collected_at"].isoformat() == "2025-12-30T10:57:56+00:00"

@@ -24,8 +24,8 @@ no partitioning scheme:
     for the scene's modality, with that provider's own ID for it. ``stac_item_url``
     links the scene in a public STAC catalog, which lists its files, so a reader
     never needs access to the datasets service. The WGS84 footprint is stored once
-    however many windows used the scene. Sorted by scene_id in small row groups, so
-    looking up a window's scenes by ID reads a few of them.
+    however many windows used the scene. Rows follow a Hilbert curve in small row
+    groups, like ``windows``.
 
 A window is keyed by its shard in the zarr: ``zone`` names the zero-padded ``utm<NN>``
 group (utm02 for zone 2), and ``col`` and ``row`` are the shard's chunk indices there,
@@ -841,8 +841,9 @@ def export_provenance(
         _resolve(scene, records.get(scene_id), excludes.get(scene["modality"], set()))
         for scene_id, scene in sorted(scenes.items())
     ]
+    scenes_table = pa.Table.from_pylist(resolved, schema=SCENES_SCHEMA)
     n_scenes = _write_geo_table(
-        pa.Table.from_pylist(resolved, schema=SCENES_SCHEMA),
+        scenes_table.take(_hilbert_order(scenes_table)),
         filesystem,
         f"{root}/scenes/{fname}",
         SCENES_ROW_GROUP,
