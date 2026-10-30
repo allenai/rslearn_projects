@@ -11,3 +11,5 @@ Weekly 6-image marine infrastructure dataset and models (2026-10-30).
   - `satlas.yaml`: SatlasPretrain Swin-B multi-image init (as in production), all six images required.
   - `olmoearth_v1_2_small.yaml`, `olmoearth_v1_2_base.yaml`, `olmoearth_v1_3_base.yaml`: OlmoEarth
     patch size 8 with real timestamps, Faster R-CNN head, all available weekly images.
+  - `olmoearth_*_llrd.yaml`: the same OlmoEarth models with Studio's default fine-tuning recipe: `LayerDecayAdamW`
+    lr 1e-3, layer_decay_rate 0.65, num_layers 12, no encoder freezing.
