@@ -21,6 +21,13 @@ NUM_TIMESTEPS = NUM_INFREQUENT + TIMING.num_frequent
 # Val and test scenarios: prediction windows whose time to alert on is this many days
 # after the change.
 END_DAYS = [7, 45, 90]
+# Extra test scenarios: every week of the detection range, so that the timestep metrics
+# are not biased towards scenarios that match particular training offsets (e.g. the
+# round 2 fixed slots at 7, 35, 62, and 90 days).
+WEEKLY_END_DAYS = list(range(7, 92, 7))
+TEST_END_DAYS = sorted(set(END_DAYS) | set(WEEKLY_END_DAYS))
+# The round 2 test_history datasets only have these scenarios.
+ROUND2_END_DAYS = [7, 45, 90]
 
 # Annotations are only used if their change date is within this range. These are the
 # same dates as in round 2 (2026_10_07_change_alerts), so the windows are the same.

@@ -64,23 +64,37 @@ S2_BANDS = [
 ]
 EMBED_DIM = 768
 # jsonargparse parses timedelta from str(timedelta).
+# The stand-in rule of the history_* runs (rslearn 91ee8e28; later rslearn versions
+# replace it with virtual history).
 STAND_IN_MIN_GAP = str(INFREQUENT_PERIOD / 2)
+# The virtual history of the vhist_* runs.
+INFREQUENT_PERIOD_STR = str(INFREQUENT_PERIOD)
 
 
 @dataclass(frozen=True)
 class Run:
-    """One run: the category head and the seed."""
+    """One run: the category head, the seed, and the training history.
+
+    history is "stand_in" for the first round 3 runs (history_*: a stand-in weekly
+    mosaic for the latest quarterly mosaic when the pick starts at least 45 days into
+    the training window, trained with rslearn 91ee8e28) or "virtual" (vhist_*: virtual
+    quarterly history between the quarterly mosaics and the pick).
+    """
 
     head: str = "pool"
     seed: int = 0
+    history: str = "stand_in"
 
     @property
     def name(self) -> str:
         """The run name, also used as the config filename."""
-        return f"history_{self.head}_s{self.seed}"
+        prefix = {"stand_in": "history", "virtual": "vhist"}[self.history]
+        return f"{prefix}_{self.head}_s{self.seed}"
 
 
-RUNS = [Run("pool", seed) for seed in range(3)]
+RUNS = [Run("pool", seed) for seed in range(3)] + [
+    Run("pool", seed, "virtual") for seed in range(3)
+]
 RUNS_BY_NAME = {run.name: run for run in RUNS}
 
 
@@ -123,7 +137,7 @@ def _inputs(frequent_layer: str, infrequent_layer: str) -> dict[str, Any]:
     }
 
 
-def _sampler(select: str) -> dict[str, Any]:
+def _sampler(select: str, history: str = "stand_in") -> dict[str, Any]:
     init_args: dict[str, Any] = {
         "frequent_key": "freq",
         "num_frequent": TIMING.num_frequent,
@@ -131,16 +145,22 @@ def _sampler(select: str) -> dict[str, Any]:
         "num_infrequent": NUM_INFREQUENT,
         "output_key": "sentinel2_l2a",
         "select": select,
-        # Use a stand-in weekly mosaic for the latest quarterly mosaic when the pick
-        # starts at least half a quarter after the first weekly mosaic (only possible in
-        # training windows).
-        "stand_in_min_gap": STAND_IN_MIN_GAP,
         # Every pixel in a window has the same change date, so this only matters if the
         # change is after the time series, which the windows rule out; it is set to be
         # safe.
         "category_target": "category",
         "change_day_target": "timestep",
     }
+    # The stand-in and virtual history only apply to training windows: in prediction
+    # windows (select: latest), the pick starts at the first weekly mosaic.
+    if select == "random" and history == "stand_in":
+        # Use a stand-in weekly mosaic for the latest quarterly mosaic when the pick
+        # starts at least half a quarter after the first weekly mosaic.
+        init_args["stand_in_min_gap"] = STAND_IN_MIN_GAP
+    elif select == "random" and history == "virtual":
+        # Use weekly mosaics between the quarterly mosaics and the pick as virtual
+        # quarterly history.
+        init_args["infrequent_period"] = INFREQUENT_PERIOD_STR
     return {
         "class_path": "rslearn.change_alerts.sampler.ChangeTimeSeriesSampler",
         "init_args": init_args,
@@ -334,6 +354,7 @@ def _make_config(
     run_name: str,
     ds_path: str | None = None,
     seed: int = 0,
+    history: str = "stand_in",
 ) -> dict:
     categories = SOURCE_DATASETS[source].categories
     eval_split = {
@@ -352,7 +373,7 @@ def _make_config(
                 "batch_size": 8,
                 "num_workers": 16,
                 "train_config": {
-                    "transforms": [_sampler("random"), FLIP, NORMALIZE],
+                    "transforms": [_sampler("random", history), FLIP, NORMALIZE],
                     "tags": {"split": "train"},
                 },
                 "val_config": eval_split,
@@ -390,6 +411,7 @@ def make_train_config(source: str, run: Run, ds_path: str | None = None) -> dict
         f"{source}_{run.name}",
         ds_path=ds_path,
         seed=run.seed,
+        history=run.history,
     )
 
 
@@ -425,6 +447,10 @@ def make_test_config(train_config: dict, end_days: int) -> dict:
         "transforms": [_sampler("latest"), NORMALIZE],
         "tags": {"split": "test", "end_days": end_days},
     }
+    # Only the test split is used. The training sampler options can differ between
+    # rslearn versions (stand_in_min_gap was replaced), so they are not parsed.
+    for split in ("train_config", "val_config"):
+        init_args[split] = init_args["test_config"]
     return config
 
 
@@ -475,12 +501,17 @@ def main() -> None:
         "--sources", default=",".join(SOURCE_DATASETS), help="Comma-separated sources"
     )
     parser.add_argument("--out_dir", default=str(CONFIG_DIR))
+    parser.add_argument(
+        "--runs",
+        default=",".join(RUNS_BY_NAME),
+        help="Comma-separated run names to write configs for",
+    )
     args = parser.parse_args()
 
     for source in args.sources.split(","):
         source_dir = Path(args.out_dir) / source
         source_dir.mkdir(parents=True, exist_ok=True)
-        for run in RUNS:
+        for run in [RUNS_BY_NAME[name] for name in args.runs.split(",")]:
             out_fname = source_dir / f"{run.name}.yaml"
             write_config(make_train_config(source, run), out_fname)
             print(f"wrote {out_fname}")

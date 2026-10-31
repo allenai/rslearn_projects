@@ -33,7 +33,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from common import END_DAYS, SOURCE_DATASETS
+from common import ROUND2_END_DAYS, SOURCE_DATASETS, TEST_END_DAYS
 from lightning.pytorch import LightningDataModule, LightningModule
 from make_model_configs import (
     RUNS_BY_NAME,
@@ -91,7 +91,12 @@ def main() -> None:
         help="Comma-separated round 3 run names and round 1/2 {project}/{run} names",
     )
     parser.add_argument("--test_sets", default=",".join(TEST_SETS))
-    parser.add_argument("--end_days", default=",".join(str(days) for days in END_DAYS))
+    parser.add_argument(
+        "--end_days",
+        default=",".join(str(days) for days in TEST_END_DAYS),
+        help="Comma-separated scenarios E; the round2 test set only uses those in "
+        "ROUND2_END_DAYS",
+    )
     parser.add_argument("--out", required=True, help="Output CSV filename")
     parser.add_argument(
         "--management_dir", default=None, help="Override the management directory"
@@ -118,6 +123,8 @@ def main() -> None:
                         if test_set == "round3":
                             config = make_test_config(model_config, end_days)
                         elif test_set == "round2":
+                            if end_days not in ROUND2_END_DAYS:
+                                continue
                             config = make_round2_test_config(
                                 model_config, source, end_days
                             )

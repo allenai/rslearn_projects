@@ -5,7 +5,8 @@ on it, all in one dataset:
 
 - train split: one training window, with time range TIMING.train_time_range(change
   date), i.e. (change date - 21 days, change date + 91 days).
-- val and test splits: one prediction window per scenario E in END_DAYS, named
+- val and test splits: one prediction window per scenario E in --end_days (default
+  END_DAYS; the test split also has WEEKLY_END_DAYS, created with --end_days), named
   "{annotation ID}_e{E}" with time range TIMING.predict_time_range(change date + E),
   i.e. the 4 weeks before E days after the change. The end_days window option holds E.
 
@@ -201,7 +202,11 @@ def write_label(
 
 
 def create_window(
-    ds_path: str, source: str, splits: list[str], ann: dict[str, Any]
+    ds_path: str,
+    source: str,
+    splits: list[str],
+    end_days_list: list[int],
+    ann: dict[str, Any],
 ) -> str | None:
     """Create the window(s) for one annotation.
 
@@ -235,7 +240,7 @@ def create_window(
                 TIMING.predict_time_range(change_time + timedelta(days=end_days)),
                 end_days,
             )
-            for end_days in END_DAYS
+            for end_days in end_days_list
         ]
 
     mask = rasterize(geom, projection, bounds)
@@ -287,6 +292,11 @@ def main() -> None:
         help="Comma-separated splits to create windows for",
     )
     parser.add_argument(
+        "--end_days",
+        default=",".join(str(days) for days in END_DAYS),
+        help="Comma-separated scenarios E to create val/test windows for",
+    )
+    parser.add_argument(
         "--annotations_cache",
         default=None,
         help="Optional JSON file to cache the Studio tasks and annotations in "
@@ -303,6 +313,7 @@ def main() -> None:
 
     ds_path = args.ds_path or dataset_path(args.source)
     splits = args.splits.split(",")
+    end_days_list = [int(days) for days in args.end_days.split(",")]
 
     if args.annotations_cache and UPath(args.annotations_cache).exists():
         with UPath(args.annotations_cache).open() as f:
@@ -317,7 +328,13 @@ def main() -> None:
         annotations = sorted(annotations, key=lambda ann: ann["id"])[: args.limit]
 
     jobs = [
-        {"ds_path": ds_path, "source": args.source, "splits": splits, "ann": ann}
+        {
+            "ds_path": ds_path,
+            "source": args.source,
+            "splits": splits,
+            "end_days_list": end_days_list,
+            "ann": ann,
+        }
         for ann in annotations
     ]
     counts: dict[str, int] = {}
