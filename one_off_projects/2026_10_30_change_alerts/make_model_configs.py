@@ -434,14 +434,20 @@ def make_round2_test_config(train_config: dict, source: str, end_days: int) -> d
     The round 2 test_history dataset has the frequent layer freq_test_{E} (the latest 4
     weekly mosaics within 63 days, ending E days after the change) and the quarterly
     layer infreq_test. With select: latest, the sampler uses all of freq_test_{E} and
-    the latest 8 quarterly mosaics that end before it, as the round 2 sampler did.
+    the latest 8 quarterly mosaics that end before it, as the round 2 sampler did. The
+    two layers overlap, so DropOverlappingInfrequent first drops the quarterly mosaics
+    that do not end strictly before the first weekly mosaic (see round2_filter.py).
     """
     config = copy.deepcopy(train_config)
     init_args = config["data"]["init_args"]
     init_args["path"] = f"{ROUND2_DATASET_ROOT}/{source}/test_history"
     init_args["inputs"] = _inputs(f"freq_test_{end_days}", "infreq_test")
+    drop_overlapping = {
+        "class_path": "round2_filter.DropOverlappingInfrequent",
+        "init_args": {"frequent_key": "freq", "infrequent_key": "infreq"},
+    }
     init_args["test_config"] = {
-        "transforms": [_sampler("latest"), NORMALIZE],
+        "transforms": [drop_overlapping, _sampler("latest"), NORMALIZE],
         "tags": {"split": "test"},
     }
     # Only the test split is used, but the other splits must not reference the round 3
