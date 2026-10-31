@@ -1,6 +1,7 @@
 interrogate>=1.7
 pre-commit
-pytest>=8.2
+# pytest-forked 1.7.5 fails every test with exit status 3 on pytest 9.2.0.
+pytest>=8.2,<9.2
 pytest-forked
 pytest-xdist
 ruff>=0.7
