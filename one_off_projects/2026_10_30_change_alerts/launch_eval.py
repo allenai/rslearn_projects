@@ -51,6 +51,12 @@ def main() -> None:
     parser.add_argument("--sources", default=",".join(SOURCE_DATASETS))
     parser.add_argument("--models", default=",".join(list(RUNS_BY_NAME) + OLD_MODELS))
     parser.add_argument("--priority", default="high")
+    parser.add_argument(
+        "--extra_args",
+        default="",
+        help="Extra space-separated arguments for rslearn model test, e.g. "
+        "--load_checkpoint_mode last",
+    )
     args = parser.parse_args()
 
     # upload_code archives the current directory.
@@ -76,6 +82,8 @@ def main() -> None:
                         model,
                         "--out",
                         out,
+                        "--extra_args",
+                        args.extra_args,
                     ]
                 )
                 script = (
