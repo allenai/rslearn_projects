@@ -1,0 +1,87 @@
+{
+  "layers": {
+    "label": {
+      "type": "vector"
+    },
+    "mask": {
+      "band_sets": [
+        {
+          "bands": [
+            "mask"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.SingleImageRasterFormat",
+            "init_args": {
+              "format": "png"
+            }
+          }
+        }
+      ],
+      "type": "raster"
+    },
+    "output": {
+      "vector_format": {
+        "class_path": "rslearn.utils.vector_format.GeojsonVectorFormat",
+        "init_args": {
+          "coordinate_mode": "PIXEL"
+        }
+      },
+      "type": "vector"
+    },
+    "sentinel2": {
+      "type": "raster",
+      "band_sets": [
+        {
+          "bands": [
+            "B01",
+            "B02",
+            "B03",
+            "B04",
+            "B05",
+            "B06",
+            "B07",
+            "B08",
+            "B8A",
+            "B09",
+            "B11",
+            "B12"
+          ],
+          "dtype": "uint16"
+        }
+      ],
+      "data_source": {
+        "class_path": "olmoearth_run.runner.tools.rslearn_data_sources.olmoearth_datasets.sentinel2_l2a.Sentinel2L2A",
+        "init_args": {
+          "cache_dir": "cache/olmoearth_datasets",
+          "harmonize": true,
+          "query": {
+            "cloud_cover": {
+              "lt": 50
+            },
+            "sort_by": "CLOUD_COVER",
+            "sort_direction": "ASC"
+          },
+          "timeout": "0:0:30"
+        },
+        "ingest": false,
+        "query_config": {
+          "space_mode": "MOSAIC",
+          "period_duration": "7d",
+          "max_matches": 12,
+          "per_period_mosaic_reverse_time_order": false
+        }
+      }
+    }
+  },
+  "tile_store": {
+    "class_path": "rslearn.tile_stores.default.DefaultTileStore",
+    "init_args": {
+      "geotiff_options": {
+        "compress": "zstd",
+        "predictor": 2,
+        "zstd_level": 1
+      }
+    }
+  }
+}
