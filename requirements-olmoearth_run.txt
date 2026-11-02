@@ -1,2 +1,1 @@
-# Requires rslearn[extra]>=0.1.19, so a vendored rslearn must be at least that version.
 olmoearth-runner>=2026.11.2
