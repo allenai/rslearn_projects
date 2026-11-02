@@ -1,2 +1,2 @@
-# Pins rslearn[extra] to an exact version, so a vendored rslearn must match it.
-olmoearth-runner>=2026.10.30
+# Requires rslearn[extra]>=0.1.19, so a vendored rslearn must be at least that version.
+olmoearth-runner>=2026.11.2
