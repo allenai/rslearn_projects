@@ -4,6 +4,8 @@ The training data has separate groups for ascending orbit direction versus desce
 orbit direction. This is because the model only performs well with historical images,
 and the historical images are aligned with the current image when they share the same
 orbit direction (otherwise, terrain correction is needed, which is expensive).
+Starting with dataset version 20261103, the historical images also share the target's
+relative orbit (same track), so they have the same viewing geometry as well.
 
 
 config.json
@@ -36,3 +38,13 @@ Dataset Versions
   It corresponds to the first subset of annotations which are included in 20250521. These
   annotations may be higher quality but we seem to get better performance from 20250521, so
   this dataset should not be used.
+- 20261103: 20250521 with new historical images and static labels removed. See
+  `one_off_projects/2026_11_03_s1_static_labels/README.md`.
+  - `sentinel1_historical` has up to 4 item groups from the target's relative orbit (same
+    track, not just same orbit direction), one random pass per 30-day period from 5 to 155
+    days before the target, most recent first (group 0 = `sentinel1_historical`).
+  - 2,590 training labels on static objects (platforms, turbines, islands, permanently
+    anchored vessels) are deleted; their windows stay as hard negatives.
+  - Training configs: `20261103_static_labels/config_1hist.yaml` and `config_2hist.yaml`.
+    The prediction pipeline still selects historicals the old way, so a model trained on
+    this dataset should not be deployed until it is updated to match.
