@@ -13,6 +13,10 @@ Applies the same window-level rules as ``rslp.olmoearth_lcc.lcc_model.prepare``:
 
 No rule omits individual points; mixed entries drop the whole window.
 
+Kept entries are written unchanged except that the EXCLUDED_ENTRY_FIELDS
+(freeform annotator descriptions and internal provenance such as the phase20
+FLD/Studio metadata) are removed.
+
 Each input JSON produces an output JSON with the same basename in the output
 directory, which may be a GCS path (gs://...).
 """
@@ -30,6 +34,11 @@ from rslp.olmoearth_lcc.lcc_model.prepare import (
     _get_positive_points_missing_dates,
     _parse_date,
 )
+
+# Entry-level fields removed from the filtered copies: the freeform annotator
+# description, and the phase20 FLD provenance (Studio task/project IDs, raw
+# partner labels, polygons).
+EXCLUDED_ENTRY_FIELDS = ("description", "fld")
 
 
 def _positive_point_dates_valid(entry: dict[str, Any]) -> bool:
@@ -105,7 +114,13 @@ def filter_v2_jsons(v2_json_paths: list[str], out_dir: str) -> None:
             else:
                 seen_window_keys.add(window_key)
                 counts["kept"] += 1
-                kept.append(entry)
+                kept.append(
+                    {
+                        key: value
+                        for key, value in entry.items()
+                        if key not in EXCLUDED_ENTRY_FIELDS
+                    }
+                )
 
         out_path = out_upath / in_upath.name
         with out_path.open("w") as f:
