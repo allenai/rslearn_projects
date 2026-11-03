@@ -113,10 +113,10 @@ class ChangeModel(nn.Module):
         self,
         encoder: OlmoEarth,
         num_classes_binary: int = 3,
-        num_classes_src: int = 13,
-        num_classes_dst: int = 13,
-        num_classes_pre_change: int = 11,
-        num_classes_post_change: int = 15,
+        num_classes_src: int = 14,
+        num_classes_dst: int = 14,
+        num_classes_pre_change: int = 8,
+        num_classes_post_change: int = 21,
         num_timesteps: int = 22,
         num_pass1: int | None = 11,
         embedding_dim: int = 768,
@@ -142,8 +142,7 @@ class ChangeModel(nn.Module):
             num_classes_src: number of source land cover classes.
             num_classes_dst: number of destination land cover classes.
             num_classes_pre_change: number of pre_change_category classes
-                (including nodata and "none", and the merged same_change
-                categories; see tasks.MERGED_PRE_SAME_CATEGORY_NAMES).
+                (including nodata and "none").
             num_classes_post_change: number of post_change_category classes
                 (including nodata and "none").
             num_timesteps: number of input timesteps in ``sentinel2_l2a`` (22).

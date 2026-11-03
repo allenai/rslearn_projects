@@ -6,8 +6,7 @@ tile: ``<tile>_summary.tif`` and the ``<tile>_meta.json`` sidecar). This script:
 1. For each tile and each change class the model predicts there, picks one random
    pixel of that class within a connected component of at least ``min_pixels``
    pixels (the polygonization threshold). Classes are the categories of the
-   merged pre+same head (pre-change and same-change categories) and of the
-   post-change head; "none" is not a class.
+   pre-change and post-change heads; "none" is not a class.
 2. Samples up to ``per_class`` of those pixels per class (at most one per tile
    for each class) and writes one v2 annotation entry per pixel, shuffled.
 
@@ -58,7 +57,6 @@ from rslp.olmoearth_lcc.annotation_scripts.phase12_mining_predictions.create_min
 )
 from rslp.olmoearth_lcc.lcc_model.postprocess import (
     LC_CLASS_NAMES,
-    MERGED_SAME_CATEGORY_START,
     NONE_CATEGORY_IDX,
     POST_CHANGE_CATEGORY_NAMES,
     PRE_CHANGE_CATEGORY_NAMES,
@@ -90,8 +88,7 @@ def class_keys() -> list[tuple[str, str, int]]:
     for idx, name in enumerate(PRE_CHANGE_CATEGORY_NAMES):
         if idx <= NONE_CATEGORY_IDX:
             continue
-        kind = "same" if idx >= MERGED_SAME_CATEGORY_START else "pre"
-        keys.append((f"{kind}:{name}", "pre", idx))
+        keys.append((f"pre:{name}", "pre", idx))
     for idx, name in enumerate(POST_CHANGE_CATEGORY_NAMES):
         if idx <= NONE_CATEGORY_IDX:
             continue
@@ -173,13 +170,6 @@ def candidate_to_entry(
 
     pre_idx = pixel[SUMMARY_PRE_CLASS_BAND]
     post_idx = pixel[SUMMARY_POST_CLASS_BAND]
-    # Split the merged pre+same head back into the pre/same annotation fields.
-    if pre_idx >= MERGED_SAME_CATEGORY_START:
-        pre_value = ""
-        same_value = PRE_CHANGE_CATEGORY_NAMES[pre_idx]
-    else:
-        pre_value = _change_category_value(PRE_CHANGE_CATEGORY_NAMES, pre_idx)
-        same_value = ""
     pre_change_date = _month_value_to_date(pixel[SUMMARY_TS_PRE_MONTH_BAND])
 
     point = {
@@ -187,11 +177,12 @@ def candidate_to_entry(
         "lat": lat,
         "pre_category": LC_CLASS_NAMES[pixel[SUMMARY_SRC_CLASS_BAND]],
         "post_category": LC_CLASS_NAMES[pixel[SUMMARY_DST_CLASS_BAND]],
-        "pre_change_category": pre_value,
+        "pre_change_category": _change_category_value(
+            PRE_CHANGE_CATEGORY_NAMES, pre_idx
+        ),
         "post_change_category": _change_category_value(
             POST_CHANGE_CATEGORY_NAMES, post_idx
         ),
-        "same_change_category": same_value,
         "pre_change": pre_change_date.date().isoformat(),
     }
 

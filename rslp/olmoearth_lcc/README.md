@@ -79,21 +79,36 @@ one 128x128 spatial window:
 
 Land cover categories (`pre_category` / `post_category`): nodata, bare, burnt, crops,
 fallow/shifting cultivation, grassland, Lichen and moss, shrub, snow and ice, tree,
-urban/built-up, water, wetland (herbaceous).
+urban/built-up, water, wetland (herbaceous), mangrove.
 
-Positive points may also carry fine-grained change-category fields. A point is
-annotated with one `pre_change_category` and/or one `post_change_category`, or one
-`same_change_category`. These were introduced partway through annotation, so some
-points have none of them; during training the change-category heads are only
-supervised at points that have at least one of these fields.
+Positive points may also carry change-category fields: one `pre_change_category`
+(what was removed or lost) and/or one `post_change_category` (what appeared or
+what happened). These were introduced partway through annotation, so some points
+have neither; during training the change-category heads are only supervised at
+points that have at least one of these fields. The annotation lab's labels are
+documented in `olmoearth_studio/ui/labs/lcc-annotator/FIELDS.md`. The model is
+trained on these classes:
 
-- `pre_change_category` (what was removed or lost): deforestation, urban_erosion,
-  wetland_loss, water_contract, removed_crop_structure.
-- `post_change_category` (what appeared): vegetation_growth, new_building, new_road,
-  new_infrastructure, new_crop_field, new_aquafarm, site_clearing, water_expand,
-  mining, new_crop_structure, selective_logging, landslide, settlement.
-- `same_change_category` (disturbed but not permanently converted):
-  agricultural_activity, wildfire, ice_motion, flooding.
+- Pre-change: deforestation, urban_erosion, wetland_loss, water_contract,
+  removed_crop_structure, mangrove_loss.
+- Post-change: vegetation_growth, new_building, new_road, new_infrastructure,
+  new_crop_field, new_aquafarm, site_clearing, water_expand, mining,
+  new_crop_structure, selective_logging, landslide, settlement,
+  agricultural_activity, wildfire, ice_motion, flooding, storm_damage,
+  vegetation_dieback.
+
+The finer lab labels are mapped onto those classes by `prepare.py`:
+
+| Annotation value | Field | Trained as |
+| --- | --- | --- |
+| river_channel_migration, river_contract, lake_level_drop, reservoir_level_drop, water_contract_other | pre | water_contract |
+| river_channel_migration, river_flooding, lake_level_rise, reservoir_level_rise, coastal_erosion | post | water_expand |
+| borrow_pit | post | new_road |
+| land_reclamation | post | pre-change water_contract (post-change none), unless the point has a pre-change category |
+
+Older annotations had a separate `same_change_category` field (agricultural_activity,
+wildfire, ice_motion, flooding); those categories are now post-change categories
+and prepare ignores the old field.
 ### Ten-Year Dataset
 
 The ten-year dataset has 128x128 windows (10 m/pixel, UTM) with ten `sentinel2_yN`
@@ -310,7 +325,8 @@ The prepare script:
   `_meta.json`); prepare prefers those scenes on cloud-cover ties, which makes the
   mosaics identical to what prediction used.
 - Rasterizes point labels into label_binary/label_src/label_dst layers, the
-  label_pre_change/label_post_change/label_same_change category layers, and the
+  label_pre_change/label_post_change category layers (after mapping annotation
+  values onto the training classes, see above), and the
   label_ts_start/label_ts_end layers. The last two hold each positive point's own
   pre_change and post_change (plus `--gap-days`) as uint16 days since 1970-01-01
   (65535 = nodata). Re-running prepare on an existing dataset adds them in place
@@ -473,14 +489,18 @@ builds the 22-image stack without needing annotations or multiple frequent optio
 
 #### Output
 
-Per-window output at `<window>/layers/output_change/<bandset>/geotiff.tif` (58 bands):
+Per-window output at `<window>/layers/output_change/<bandset>/geotiff.tif` (62 bands):
 - `binary`: 3-channel probability map (nodata / no_change / change)
-- `src`: 13-channel source category probabilities
-- `dst`: 13-channel destination category probabilities
+- `src`: 14-channel source category probabilities
+- `dst`: 14-channel destination category probabilities
 - `ts_pre_days` / `ts_post_days`: predicted pre/post change dates as integer days
   since the timestamp epoch
-- `pre_change` / `post_change` / `same_change`: 7/14/6-channel change-category
-  probabilities (class layout [nodata, none, <options...>])
+- `pre_change` / `post_change`: 8/21-channel change-category probabilities (class
+  layout [nodata, none, <options...>])
+
+Models trained before 2026-11-03 used a different layout (57 bands, with the
+former same-change categories in the pre-change head), so they are not compatible
+with the current postprocess code.
 
 #### 4. Postprocess: raster to GeoJSON
 
@@ -518,8 +538,7 @@ python -m rslp.olmoearth_lcc.lcc_model.postprocess \
 Polygonization operates on the summary representation (`SUMMARY_BANDS`; full
 per-window rasters are converted on the fly via `summary_window_array`):
 - A pixel is a change pixel if its argmax pre or post change category is a real
-  category (not "none"). The pre head is the merged pre+same head, so the former
-  same-change categories (e.g. wildfire) count as pre categories.
+  category (not "none").
 - Finds connected components separately for each unique (pre category, post
   category) combination, so each polygon represents a single category combo.
 - Per polygon, majority-votes the src/dst land cover classes and the change
@@ -562,7 +581,7 @@ that may be missed.
 
 Per-tile pipeline: create 2048x2048 windows -> materialize Sentinel-2 imagery ->
 run the model -> polygonize the `output_change` raster into a per-tile GeoJSON
-(`{EPSG}_{col}_{row}.geojson`). Optionally the full merged 57-band uint16 raster
+(`{EPSG}_{col}_{row}.geojson`). Optionally the full merged 62-band uint16 raster
 (`{EPSG}_{col}_{row}.tif`, with the per-category scores) and/or the compact 9-band
 uint8 summary raster (`{EPSG}_{col}_{row}_summary.tif`, consumed directly by
 olmoearth_lcc_viewer; see `postprocess.SUMMARY_BANDS`) are also written, and/or each
@@ -592,7 +611,7 @@ Optional flags:
   WGS84 bounding box.
 - `--batch_size 4`: tiles per worker job.
 - `--count 100`: randomly sample at most this many tiles (for testing).
-- `--write_raster true`: also write the full merged 57-band uint16 raster per tile
+- `--write_raster true`: also write the full merged 62-band uint16 raster per tile
   (includes the per-category scores).
 - `--write_summary_raster true`: also write the compact 9-band uint8 summary
   raster per tile (preferred at scale; the viewer consumes it directly).
@@ -620,7 +639,7 @@ coordinate arrays (pixel centers). Each zone group holds two arrays:
      `lc_class_names`).
   3. `post_lc`: post-change land cover class (same encoding).
   4. `pre_change_category`: 0 = no prediction, 1 = none, otherwise an index into
-     `pre_change_category_names` (the merged pre+same head).
+     `pre_change_category_names`.
   5. `post_change_category`: same, indexing `post_change_category_names`.
   6. `post_change_score`: probability (0-255) of the post change category.
 - `change_dates`: uint16, dimensions `(change_dates_band, y, x)`:
@@ -699,7 +718,7 @@ Arguments:
   reference timestamp.
 - `--count 500`: number of land tiles to enqueue.
 - `--batch_size 4`: tiles per worker job.
-- `--write_raster true`: also write the full merged 57-band uint16 raster per tile.
+- `--write_raster true`: also write the full merged 62-band uint16 raster per tile.
 - `--write_summary_raster true`: also write the compact 9-band uint8 summary
   raster per tile.
 

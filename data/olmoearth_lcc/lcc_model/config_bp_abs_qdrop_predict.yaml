@@ -12,10 +12,10 @@ model:
             token_pooling: false
             use_legacy_timestamps: false
         num_classes_binary: 3
-        num_classes_src: 13
-        num_classes_dst: 13
-        num_classes_pre_change: 11
-        num_classes_post_change: 15
+        num_classes_src: 14
+        num_classes_dst: 14
+        num_classes_pre_change: 8
+        num_classes_post_change: 21
         num_timesteps: 22
         num_pass1: 11
         embedding_dim: 768
@@ -74,22 +74,22 @@ data:
           src:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 13
+              num_classes: 14
               nodata_value: 0
           dst:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 13
+              num_classes: 14
               nodata_value: 0
           pre_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 11
+              num_classes: 8
               nodata_value: 0
           post_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 15
+              num_classes: 21
               nodata_value: 0
           ts_start:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
@@ -119,6 +119,6 @@ trainer:
       init_args:
         output_layer: output_change
         selector: []
-project_name: 2026_10_19_lcc
+project_name: 2026_11_03_lcc
 run_name: bp_abs_qdrop
 management_dir: ${RSLP_PREFIX}/projects

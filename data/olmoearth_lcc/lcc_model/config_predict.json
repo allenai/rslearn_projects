@@ -20,6 +20,7 @@
             "src_urban",
             "src_water",
             "src_wetland",
+            "src_mangrove",
             "dst_nodata",
             "dst_bare",
             "dst_burnt",
@@ -33,6 +34,7 @@
             "dst_urban",
             "dst_water",
             "dst_wetland",
+            "dst_mangrove",
             "ts_pre_days",
             "ts_post_days",
             "pre_change_nodata",
@@ -42,10 +44,7 @@
             "pre_change_wetland_loss",
             "pre_change_water_contract",
             "pre_change_removed_crop_structure",
-            "pre_change_agricultural_activity",
-            "pre_change_wildfire",
-            "pre_change_ice_motion",
-            "pre_change_flooding",
+            "pre_change_mangrove_loss",
             "post_change_nodata",
             "post_change_none",
             "post_change_vegetation_growth",
@@ -60,7 +59,13 @@
             "post_change_new_crop_structure",
             "post_change_selective_logging",
             "post_change_landslide",
-            "post_change_settlement"
+            "post_change_settlement",
+            "post_change_agricultural_activity",
+            "post_change_wildfire",
+            "post_change_ice_motion",
+            "post_change_flooding",
+            "post_change_storm_damage",
+            "post_change_vegetation_dieback"
           ],
           "dtype": "uint16"
         }

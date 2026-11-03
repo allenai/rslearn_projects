@@ -1,9 +1,8 @@
 """Task and metrics for the LCC change model.
 
 - ``LCCMultiTask``: injects per-window annotation metadata (consumed by
-  ``transforms.StackSampler``), merges the same_change label raster into the
-  pre_change raster so a single head predicts both, and stacks the per-task
-  outputs into the uint16 raster consumed by ``postprocess``.
+  ``transforms.StackSampler``) and stacks the per-task outputs into the uint16
+  raster consumed by ``postprocess``.
 - ``BalancedBinaryMetric``: sample-balanced accuracy / AUROC / PRAUC for the
   binary change task.
 - ``TimestepToleranceAccuracy``: accuracy of the per-pixel start/end timestep
@@ -31,20 +30,8 @@ from torchmetrics.utilities import dim_zero_cat
 from typing_extensions import override
 from upath import UPath
 
-from .prepare import PRE_CHANGE_CATEGORY_NAMES, SAME_CHANGE_CATEGORY_NAMES
 from .timestamp_output import start_end_day_bands
 from .transforms import ANNOTATION_KEY, TS_END_KEY, TS_START_KEY
-
-# Class names for the merged pre+same change-category head: the pre_change
-# classes followed by the same_change option classes (their nodata/none classes
-# fold into pre's).
-MERGED_PRE_SAME_CATEGORY_NAMES = (
-    PRE_CHANGE_CATEGORY_NAMES + SAME_CHANGE_CATEGORY_NAMES[2:]
-)
-
-# Offset added to same_change option classes (>= 2) when merging them into the
-# pre_change label raster (same class 2 becomes the first class after pre's).
-SAME_TO_MERGED_OFFSET = len(PRE_CHANGE_CATEGORY_NAMES) - 2
 
 
 def _parse_date(s: str) -> datetime:
@@ -276,14 +263,8 @@ class LCCMultiTask(MultiTask):
 
     ``process_output`` only supports ``ChangeModel`` outputs. With
     ``PerPixelTimestepHead`` the per-task outputs are dicts, so models built from
-    rslearn components predict with the ``config_rslearn_*_predict.yaml`` configs,
-    which use a plain ``MultiTask``.
-
-    The same_change label raster is merged into the pre_change raster so a
-    single head predicts both (class layout ``MERGED_PRE_SAME_CATEGORY_NAMES``).
-    On conflict (a point with both a pre and a same category) the pre category
-    wins. The config must therefore have no same_change task and a pre_change
-    task with the merged number of classes.
+      rslearn components predict with the ``config_rslearn_*_predict.yaml`` configs,
+      which use a plain ``MultiTask``.
     """
 
     def __init__(
@@ -316,25 +297,11 @@ class LCCMultiTask(MultiTask):
         metadata: SampleMetadata,
         load_targets: bool = True,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Merge same into pre, process inputs, and inject annotation metadata.
+        """Process inputs and inject annotation metadata.
 
-        When load_targets=False (predict mode), neither the merge nor the
-        annotation injection happens since there are no label rasters and the
-        StackSampler transform is not used during prediction.
+        When load_targets=False (predict mode), the annotation injection does not
+        happen since the StackSampler transform is not used during prediction.
         """
-        if load_targets:
-            raw_inputs = dict(raw_inputs)
-            pre = raw_inputs["label_pre_change"]
-            same = raw_inputs.pop("label_same_change")
-            assert isinstance(pre, RasterImage) and isinstance(same, RasterImage)
-            # Both label rasters share the same valid mask (class 0 = nodata,
-            # class 1 = "none" when a sibling category field is set), so the
-            # merge only fills same categories where pre has no category.
-            merged = pre.image.clone()
-            fill = (pre.image == 1) & (same.image >= 2)
-            merged[fill] = same.image[fill] + SAME_TO_MERGED_OFFSET
-            raw_inputs["label_pre_change"] = RasterImage(image=merged)
-
         input_dict, target_dict = super().process_inputs(
             raw_inputs, metadata=metadata, load_targets=load_targets
         )
@@ -357,7 +324,7 @@ class LCCMultiTask(MultiTask):
     def process_output(
         self, raw_output: Any, metadata: SampleMetadata
     ) -> npt.NDArray[np.uint16]:
-        """Stack per-task outputs into a 57-band uint16 CHW array.
+        """Stack per-task outputs into a 62-band uint16 CHW array.
 
         The two timestamp bands hold the predicted pre-change and post-change
         dates as integer days since ``TIMESTAMP_EPOCH``, derived from the per-pixel
@@ -367,12 +334,12 @@ class LCCMultiTask(MultiTask):
 
         Band layout (see ``postprocess.OUTPUT_BANDS``):
         0..2   = binary (softmax probs)
-        3..15  = src (softmax probs)
-        16..28 = dst (softmax probs)
-        29     = ts_pre_days (days since epoch)
-        30     = ts_post_days (days since epoch)
-        31..41 = pre_change, merged pre+same categories (softmax probs)
-        42..56 = post_change (softmax probs)
+        3..16  = src (softmax probs)
+        17..30 = dst (softmax probs)
+        31     = ts_pre_days (days since epoch)
+        32     = ts_post_days (days since epoch)
+        33..40 = pre_change (softmax probs)
+        41..61 = post_change (softmax probs)
         """
         parts: list[npt.NDArray[np.uint16]] = []
         for task_name in ("binary", "src", "dst"):

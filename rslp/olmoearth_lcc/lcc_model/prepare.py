@@ -7,8 +7,9 @@ This script takes one or more v2 annotation JSONs and creates an rslearn dataset
   the least-cloudy mosaic of each of the six most recent 7-day periods in that
   block that have imagery (blocks with fewer than six such periods are skipped)
 - label_binary, label_src, label_dst: Pre-rasterized point labels
-- label_pre_change, label_post_change, label_same_change: Pre-rasterized point
-  labels for the pre/post/same change-category heads (class 1 = "none")
+- label_pre_change, label_post_change: Pre-rasterized point labels for the
+  pre/post change-category heads (class 1 = "none"). Fine-grained annotation
+  categories are mapped to the training classes (see the *_ALIASES dicts).
 - label_ts_start, label_ts_end: Pre-rasterized uint16 pre_change / post_change
   dates of each positive point, as days since 1970-01-01 (65535 = nodata)
 
@@ -43,6 +44,7 @@ import json
 import math
 import os
 import random
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -101,13 +103,15 @@ CATEGORY_NAMES = [
     "urban/built-up",
     "water",
     "wetland (herbaceous)",
+    "mangrove",
 ]
 
-# Change-category names for the pre/post/same_change_category annotation fields.
+# Change-category classes for the pre/post_change_category annotation fields.
 # Class layout is [nodata, none, <options...>]: class 0 = nodata (masked, no point
-# or none of the three fields set); class 1 = "none" (this field unset but a
-# sibling field is set); classes >= 2 = the annotated options. Option lists mirror
-# the annotation app (annotation_app/static/app.js).
+# or neither field set); class 1 = "none" (this field unset but the other field is
+# set); classes >= 2 = the annotated options. The annotation lab
+# (olmoearth_studio/ui/labs/lcc-annotator/FIELDS.md) offers finer categories,
+# mapped onto these classes by the aliases below.
 PRE_CHANGE_CATEGORY_NAMES = [
     "nodata",
     "none",
@@ -116,6 +120,7 @@ PRE_CHANGE_CATEGORY_NAMES = [
     "wetland_loss",
     "water_contract",
     "removed_crop_structure",
+    "mangrove_loss",
 ]
 
 POST_CHANGE_CATEGORY_NAMES = [
@@ -134,23 +139,49 @@ POST_CHANGE_CATEGORY_NAMES = [
     "selective_logging",
     "landslide",
     "settlement",
-]
-
-SAME_CHANGE_CATEGORY_NAMES = [
-    "nodata",
-    "none",
     "agricultural_activity",
     "wildfire",
     "ice_motion",
     "flooding",
+    "storm_damage",
+    "vegetation_dieback",
 ]
+
+# Annotation categories that train as another class of the same field.
+PRE_CHANGE_CATEGORY_ALIASES = {
+    "river_channel_migration": "water_contract",
+    "river_contract": "water_contract",
+    "lake_level_drop": "water_contract",
+    "reservoir_level_drop": "water_contract",
+    "water_contract_other": "water_contract",
+}
+POST_CHANGE_CATEGORY_ALIASES = {
+    "river_channel_migration": "water_expand",
+    "river_flooding": "water_expand",
+    "lake_level_rise": "water_expand",
+    "reservoir_level_rise": "water_expand",
+    "coastal_erosion": "water_expand",
+    "borrow_pit": "new_road",
+}
+# Post-change annotation categories that train as a pre-change class instead (the
+# post field then counts as unset). A pre_change_category on the same point takes
+# precedence.
+POST_TO_PRE_CHANGE_CATEGORIES = {
+    "land_reclamation": "water_contract",
+}
 
 # Maps positive-point annotation field -> (label layer name, class-name list).
 CHANGE_CATEGORY_FIELDS = {
     "pre_change_category": ("label_pre_change", PRE_CHANGE_CATEGORY_NAMES),
     "post_change_category": ("label_post_change", POST_CHANGE_CATEGORY_NAMES),
-    "same_change_category": ("label_same_change", SAME_CHANGE_CATEGORY_NAMES),
 }
+CHANGE_CATEGORY_ALIASES = {
+    "pre_change_category": PRE_CHANGE_CATEGORY_ALIASES,
+    "post_change_category": POST_CHANGE_CATEGORY_ALIASES,
+}
+# Former annotation field whose categories are now post-change categories. Values
+# still found in it are ignored.
+LEGACY_SAME_CHANGE_FIELD = "same_change_category"
 
 ANNOTATIONS_SIDECAR_FNAME = "lcc_annotations.json"
 
@@ -195,6 +226,55 @@ def _change_category_to_id(value: str, class_names: list[str]) -> int:
         return class_names.index(value)
     except ValueError:
         return 0
+
+
+def _get_change_categories(pt: dict[str, Any]) -> dict[str, str]:
+    """Get a positive point's change categories as training class names.
+
+    Applies CHANGE_CATEGORY_ALIASES and POST_TO_PRE_CHANGE_CATEGORIES. Unset fields
+    are "", and unknown values are returned unchanged (they rasterize as nodata).
+
+    Returns:
+        map from change-category field (CHANGE_CATEGORY_FIELDS) to class name.
+    """
+    values = {field: pt.get(field) or "" for field in CHANGE_CATEGORY_FIELDS}
+    post_value = values["post_change_category"]
+    if post_value in POST_TO_PRE_CHANGE_CATEGORIES:
+        values["post_change_category"] = ""
+        if not values["pre_change_category"]:
+            values["pre_change_category"] = POST_TO_PRE_CHANGE_CATEGORIES[post_value]
+    return {
+        field: CHANGE_CATEGORY_ALIASES[field].get(value, value)
+        for field, value in values.items()
+    }
+
+
+def _get_unknown_categories(entries: list[dict[str, Any]]) -> Counter[str]:
+    """Count category values of positive points that have no training class.
+
+    These are unknown land cover or change categories, and any value in the legacy
+    same_change_category field. Their field rasterizes as nodata, or as "none" for
+    a change field when the other change field is set.
+
+    Returns:
+        counts keyed by "field: value".
+    """
+    counts: Counter[str] = Counter()
+    for entry in entries:
+        for pt in entry.get("positive_points", []):
+            for field in ("pre_category", "post_category"):
+                value = pt.get(field)
+                if value and value not in CATEGORY_NAMES[1:]:
+                    counts[f"{field}: {value}"] += 1
+            for field, value in _get_change_categories(pt).items():
+                class_names = CHANGE_CATEGORY_FIELDS[field][1]
+                if value and value not in class_names[2:]:
+                    counts[f"{field}: {value}"] += 1
+            if pt.get(LEGACY_SAME_CHANGE_FIELD):
+                counts[
+                    f"{LEGACY_SAME_CHANGE_FIELD}: {pt[LEGACY_SAME_CHANGE_FIELD]}"
+                ] += 1
+    return counts
 
 
 def _search_oedatasets(
@@ -499,7 +579,7 @@ def _compute_label_arrays(
     # rslearn's PerPixelTimestepTask.
     ts_start = np.full((h, w), TS_LABEL_NODATA, dtype=np.uint16)
     ts_end = np.full((h, w), TS_LABEL_NODATA, dtype=np.uint16)
-    # One label raster per change-category field (pre/post/same). Class 0 = nodata
+    # One label raster per change-category field (pre/post). Class 0 = nodata
     # (masked); at a positive point with at least one change-category field set,
     # every field's raster is written (unset fields become class 1 = "none").
     change_labels = {
@@ -528,10 +608,11 @@ def _compute_label_arrays(
                     _parse_date(pt["post_change"]) + gap
                 )
 
-            # Only train the change-category heads when at least one of the three
-            # fields is set; otherwise leave nodata (masked) for all three.
+            # Only train the change-category heads when at least one field is set;
+            # otherwise leave nodata (masked) for both.
+            change_values = _get_change_categories(pt)
             change_ids = {
-                layer_name: _change_category_to_id(pt.get(field, ""), class_names)
+                layer_name: _change_category_to_id(change_values[field], class_names)
                 for field, (layer_name, class_names) in CHANGE_CATEGORY_FIELDS.items()
             }
             if any(cid > 0 for cid in change_ids.values()):
@@ -1023,6 +1104,12 @@ def prepare(
         f"{skipped_duplicate_input} duplicate inputs, "
         f"{len(mixed_warnings)} skipped for mixed positive points"
     )
+
+    unknown_categories = _get_unknown_categories(pending)
+    if unknown_categories:
+        print("Positive point categories without a training class (ignored):")
+        for key, count in unknown_categories.most_common():
+            print(f"  {key} ({count} points)")
 
     kwargs_list = [
         dict(

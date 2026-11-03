@@ -44,7 +44,8 @@
         "tree",
         "urban/built-up",
         "water",
-        "wetland (herbaceous)"
+        "wetland (herbaceous)",
+        "mangrove"
       ],
       "type": "raster"
     },
@@ -75,7 +76,13 @@
         "new_crop_structure",
         "selective_logging",
         "landslide",
-        "settlement"
+        "settlement",
+        "agricultural_activity",
+        "wildfire",
+        "ice_motion",
+        "flooding",
+        "storm_damage",
+        "vegetation_dieback"
       ],
       "type": "raster"
     },
@@ -98,29 +105,8 @@
         "urban_erosion",
         "wetland_loss",
         "water_contract",
-        "removed_crop_structure"
-      ],
-      "type": "raster"
-    },
-    "label_same_change": {
-      "band_sets": [
-        {
-          "bands": [
-            "label"
-          ],
-          "dtype": "uint8",
-          "format": {
-            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
-          }
-        }
-      ],
-      "class_names": [
-        "nodata",
-        "none",
-        "agricultural_activity",
-        "wildfire",
-        "ice_motion",
-        "flooding"
+        "removed_crop_structure",
+        "mangrove_loss"
       ],
       "type": "raster"
     },
@@ -149,7 +135,8 @@
         "tree",
         "urban/built-up",
         "water",
-        "wetland (herbaceous)"
+        "wetland (herbaceous)",
+        "mangrove"
       ],
       "type": "raster"
     },
@@ -203,6 +190,7 @@
             "src_urban",
             "src_water",
             "src_wetland",
+            "src_mangrove",
             "dst_nodata",
             "dst_bare",
             "dst_burnt",
@@ -216,6 +204,7 @@
             "dst_urban",
             "dst_water",
             "dst_wetland",
+            "dst_mangrove",
             "ts_pre_days",
             "ts_post_days",
             "pre_change_nodata",
@@ -225,6 +214,7 @@
             "pre_change_wetland_loss",
             "pre_change_water_contract",
             "pre_change_removed_crop_structure",
+            "pre_change_mangrove_loss",
             "post_change_nodata",
             "post_change_none",
             "post_change_vegetation_growth",
@@ -240,12 +230,12 @@
             "post_change_selective_logging",
             "post_change_landslide",
             "post_change_settlement",
-            "same_change_nodata",
-            "same_change_none",
-            "same_change_agricultural_activity",
-            "same_change_wildfire",
-            "same_change_ice_motion",
-            "same_change_flooding"
+            "post_change_agricultural_activity",
+            "post_change_wildfire",
+            "post_change_ice_motion",
+            "post_change_flooding",
+            "post_change_storm_damage",
+            "post_change_vegetation_dieback"
           ],
           "dtype": "uint16",
           "format": {

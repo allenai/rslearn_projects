@@ -4,7 +4,7 @@ Polygonization operates on the compact uint8 summary representation (see
 SUMMARY_BANDS / summary_window_array):
 
 1. A pixel is a change pixel if the argmax pre or post change category is a
-   real category (not "none"; the pre head is the merged pre+same head).
+   real category (not "none").
 2. Vectorize connected components of pixels sharing the same (pre category,
    post category) combination to WGS-84 polygons, using a single
    rasterio.features.shapes pass over the raster.
@@ -70,14 +70,14 @@ from upath import UPath
 
 from .timestamp_encoding import TIMESTAMP_EPOCH
 
+NUM_LC_CLASSES = 14
 BINARY_CHANGE_BAND = 2
 SRC_BAND_OFFSET = 3
-DST_BAND_OFFSET = 16
+DST_BAND_OFFSET = SRC_BAND_OFFSET + NUM_LC_CLASSES
 # The timestamp section is two bands holding the predicted pre/post change dates
 # encoded as integer days since TIMESTAMP_EPOCH (see timestamp_encoding.py).
-TS_PRE_DAYS_BAND = 29
-TS_POST_DAYS_BAND = 30
-NUM_LC_CLASSES = 13
+TS_PRE_DAYS_BAND = DST_BAND_OFFSET + NUM_LC_CLASSES
+TS_POST_DAYS_BAND = TS_PRE_DAYS_BAND + 1
 
 LC_CLASS_NAMES = [
     "nodata",
@@ -93,13 +93,12 @@ LC_CLASS_NAMES = [
     "urban/built-up",
     "water",
     "wetland (herbaceous)",
+    "mangrove",
 ]
 
 # Change-category output bands, in the same order as the model output and the
-# output_change layer in config.json (class layout [nodata, none, <options...>]).
-# The pre_change head is the merged pre+same head: the former same_change
-# categories are appended after the pre categories (see
-# tasks.LCCMultiTask / MERGED_PRE_SAME_CATEGORY_NAMES).
+# output_change layer in config.json (class layout [nodata, none, <options...>],
+# matching prepare.PRE_CHANGE_CATEGORY_NAMES / POST_CHANGE_CATEGORY_NAMES).
 PRE_CHANGE_BANDS = [
     "pre_change_nodata",
     "pre_change_none",
@@ -108,10 +107,7 @@ PRE_CHANGE_BANDS = [
     "pre_change_wetland_loss",
     "pre_change_water_contract",
     "pre_change_removed_crop_structure",
-    "pre_change_agricultural_activity",
-    "pre_change_wildfire",
-    "pre_change_ice_motion",
-    "pre_change_flooding",
+    "pre_change_mangrove_loss",
 ]
 POST_CHANGE_BANDS = [
     "post_change_nodata",
@@ -129,6 +125,12 @@ POST_CHANGE_BANDS = [
     "post_change_selective_logging",
     "post_change_landslide",
     "post_change_settlement",
+    "post_change_agricultural_activity",
+    "post_change_wildfire",
+    "post_change_ice_motion",
+    "post_change_flooding",
+    "post_change_storm_damage",
+    "post_change_vegetation_dieback",
 ]
 
 # Band offsets of the two change-category sections within the output raster.
@@ -138,10 +140,6 @@ POST_CHANGE_BAND_OFFSET = PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)
 # Plain category names (class layout [nodata, none, <options...>]).
 PRE_CHANGE_CATEGORY_NAMES = [b.removeprefix("pre_change_") for b in PRE_CHANGE_BANDS]
 POST_CHANGE_CATEGORY_NAMES = [b.removeprefix("post_change_") for b in POST_CHANGE_BANDS]
-
-# Class index within the merged pre+same head where the former same_change
-# categories start (they are appended after the original pre categories).
-MERGED_SAME_CATEGORY_START = PRE_CHANGE_CATEGORY_NAMES.index("agricultural_activity")
 
 OUTPUT_LAYER = "output_change"
 OUTPUT_BANDS = [
@@ -413,9 +411,7 @@ def _shape_to_feature(
         "area_hectares": area_hectares,
         "binary_change_score": round(binary_change_score, 2),
         "category_change_score": round(category_change_score, 2),
-        # The component's defining change categories. The pre head is the
-        # merged pre+same head, so pre_change_category may also be one of the
-        # former same_change categories.
+        # The component's defining change categories.
         "pre_change_category": PRE_CHANGE_CATEGORY_NAMES[pre_idx],
         "post_change_category": POST_CHANGE_CATEGORY_NAMES[post_idx],
         "src_class": LC_CLASS_NAMES[src_id],

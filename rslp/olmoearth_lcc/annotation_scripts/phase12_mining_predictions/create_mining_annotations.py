@@ -1,7 +1,7 @@
 """Create a v2 annotation JSON of predicted mining pixels from write_raster outputs.
 
 The random-2048 prediction runs (``write_jobs_random_2048``) produce, for each
-2048x2048 tile, a 57-band ``output_change`` GeoTIFF (when ``write_raster`` is set)
+2048x2048 tile, a full ``output_change`` GeoTIFF (when ``write_raster`` is set)
 plus a sibling GeoJSON with the same basename. This script:
 
 1. Scans every ``.tif`` in the input directory.
@@ -13,9 +13,7 @@ plus a sibling GeoJSON with the same basename. This script:
    One qualifying pixel per tile is randomly (but deterministically) selected.
 3. Reads the per-pixel argmax source/destination land cover category, the
    predicted change categories, and the predicted pre-change date (decoded from
-   the day-encoded timestamp band) at that pixel. The pre head is the merged
-   pre+same head, so its prediction is split back into the separate
-   pre/same annotation fields.
+   the day-encoded timestamp band) at that pixel.
 4. Emits a v2 annotation entry (a 128x128 window centered on the pixel, with one
    positive point) suitable for
    ``rslp.olmoearth_lcc.annotation_app.create_windows``.
@@ -50,7 +48,6 @@ from upath import UPath
 from rslp.olmoearth_lcc.lcc_model.postprocess import (
     DST_BAND_OFFSET,
     LC_CLASS_NAMES,
-    MERGED_SAME_CATEGORY_START,
     NUM_LC_CLASSES,
     POST_CHANGE_BAND_OFFSET,
     POST_CHANGE_CATEGORY_NAMES,
@@ -135,7 +132,7 @@ def process_tile(
     src_probs = arr[SRC_BAND_OFFSET : SRC_BAND_OFFSET + NUM_LC_CLASSES, row, col]
     dst_probs = arr[DST_BAND_OFFSET : DST_BAND_OFFSET + NUM_LC_CLASSES, row, col]
 
-    # Skip class 0 (nodata) by taking argmax over classes 1..12 and adding 1.
+    # Skip class 0 (nodata) by taking argmax over the other classes and adding 1.
     src_idx = int(src_probs[1:].argmax()) + 1
     dst_idx = int(dst_probs[1:].argmax()) + 1
 
@@ -151,18 +148,6 @@ def process_tile(
     pre_cat_idx = int(pre_cat_probs[1:].argmax()) + 1
     post_cat_idx = int(post_cat_probs[1:].argmax()) + 1
 
-    # The pre head is the merged pre+same head; split its prediction back into
-    # the separate pre/same annotation fields (the former same categories are
-    # appended after the pre categories).
-    if pre_cat_idx >= MERGED_SAME_CATEGORY_START:
-        pre_change_value = ""
-        same_change_value = PRE_CHANGE_CATEGORY_NAMES[pre_cat_idx]
-    else:
-        pre_change_value = _change_category_value(
-            PRE_CHANGE_CATEGORY_NAMES, pre_cat_idx
-        )
-        same_change_value = ""
-
     # Predicted pre-change date, decoded from the day-encoded timestamp band.
     pre_change_date = days_to_date(int(arr[TS_PRE_DAYS_BAND, row, col]))
 
@@ -175,11 +160,12 @@ def process_tile(
         "lat": lat,
         "pre_category": LC_CLASS_NAMES[src_idx],
         "post_category": LC_CLASS_NAMES[dst_idx],
-        "pre_change_category": pre_change_value,
+        "pre_change_category": _change_category_value(
+            PRE_CHANGE_CATEGORY_NAMES, pre_cat_idx
+        ),
         "post_change_category": _change_category_value(
             POST_CHANGE_CATEGORY_NAMES, post_cat_idx
         ),
-        "same_change_category": same_change_value,
     }
 
     time_range: list[str] | None = None

@@ -12,10 +12,10 @@ model:
             token_pooling: false
             use_legacy_timestamps: false
         num_classes_binary: 3
-        num_classes_src: 13
-        num_classes_dst: 13
-        num_classes_pre_change: 11
-        num_classes_post_change: 15
+        num_classes_src: 14
+        num_classes_dst: 14
+        num_classes_pre_change: 8
+        num_classes_post_change: 21
         num_timesteps: 22
         num_pass1: 11
         embedding_dim: 768
@@ -152,12 +152,6 @@ data:
         bands: ["label"]
         is_target: true
         dtype: INT32
-      label_same_change:
-        data_type: "raster"
-        layers: ["label_same_change"]
-        bands: ["label"]
-        is_target: true
-        dtype: INT32
     task:
       class_path: rslp.olmoearth_lcc.lcc_model.tasks.LCCMultiTask
       init_args:
@@ -209,25 +203,25 @@ data:
           src:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 13
+              num_classes: 14
               nodata_value: 0
               enable_confusion_matrix: true
-              class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
+              class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)", "mangrove"]
               metric_kwargs:
                 average: "micro"
           dst:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 13
+              num_classes: 14
               nodata_value: 0
               enable_confusion_matrix: true
-              class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)"]
+              class_names: ["nodata", "bare", "burnt", "crops", "fallow/shifting cultivation", "grassland", "Lichen and moss", "shrub", "snow and ice", "tree", "urban/built-up", "water", "wetland (herbaceous)", "mangrove"]
               metric_kwargs:
                 average: "micro"
           pre_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 11
+              num_classes: 8
               nodata_value: 0
               enable_confusion_matrix: true
               enable_f1_metric: true
@@ -246,13 +240,13 @@ data:
                 - 0.9
                 - 0.95
                 - 0.99
-              class_names: ["nodata", "none", "deforestation", "urban_erosion", "wetland_loss", "water_contract", "removed_crop_structure", "agricultural_activity", "wildfire", "ice_motion", "flooding"]
+              class_names: ["nodata", "none", "deforestation", "urban_erosion", "wetland_loss", "water_contract", "removed_crop_structure", "mangrove_loss"]
               metric_kwargs:
                 average: "micro"
           post_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 15
+              num_classes: 21
               nodata_value: 0
               enable_confusion_matrix: true
               enable_f1_metric: true
@@ -271,7 +265,7 @@ data:
                 - 0.9
                 - 0.95
                 - 0.99
-              class_names: ["nodata", "none", "vegetation_growth", "new_building", "new_road", "new_infrastructure", "new_crop_field", "new_aquafarm", "site_clearing", "water_expand", "mining", "new_crop_structure", "selective_logging", "landslide", "settlement"]
+              class_names: ["nodata", "none", "vegetation_growth", "new_building", "new_road", "new_infrastructure", "new_crop_field", "new_aquafarm", "site_clearing", "water_expand", "mining", "new_crop_structure", "selective_logging", "landslide", "settlement", "agricultural_activity", "wildfire", "ice_motion", "flooding", "storm_damage", "vegetation_dieback"]
               metric_kwargs:
                 average: "micro"
           # Classes are the 22 input timestep indices; valid only at change points.
@@ -363,6 +357,6 @@ trainer:
       init_args:
         monitor: val_post_change/accuracy
         mode: max
-project_name: 2026_10_19_lcc
+project_name: 2026_11_03_lcc
 run_name: pass20_v1_2_00
 management_dir: ${RSLP_PREFIX}/projects

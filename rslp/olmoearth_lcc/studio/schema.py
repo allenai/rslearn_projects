@@ -1,7 +1,8 @@
 """The Studio project template for LCC annotations: field names and vocabularies.
 
 The lab (olmoearth_studio/ui/labs/lcc-annotator/src/schema.ts) resolves the same
-fields by name, so keep the two in sync.
+fields by name, and its FIELDS.md lists the labels each field offers, so keep them
+in sync. The training classes these labels map onto are in lcc_model/prepare.py.
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ DATE_FIELDS = (
     "stop_date",
 )
 
-# Copied from the old annotation app (annotation_app/static/app.js).
 LAND_COVER_CATEGORIES = (
     "bare",
     "burnt",
@@ -37,12 +37,19 @@ LAND_COVER_CATEGORIES = (
     "urban/built-up",
     "water",
     "wetland (herbaceous)",
+    "mangrove",
 )
 PRE_CHANGE_CATEGORIES = (
     "deforestation",
+    "mangrove_loss",
     "urban_erosion",
     "wetland_loss",
     "water_contract",
+    "river_channel_migration",
+    "river_contract",
+    "reservoir_level_drop",
+    "lake_level_drop",
+    "water_contract_other",
     "removed_crop_structure",
 )
 POST_CHANGE_CATEGORIES = (
@@ -55,11 +62,26 @@ POST_CHANGE_CATEGORIES = (
     "site_clearing",
     "water_expand",
     "mining",
+    "borrow_pit",
     "new_crop_structure",
     "selective_logging",
     "landslide",
     "settlement",
+    "coastal_erosion",
+    "land_reclamation",
+    "river_flooding",
+    "flooding",
+    "reservoir_level_rise",
+    "lake_level_rise",
+    "storm_damage",
+    "vegetation_dieback",
+    "agricultural_activity",
+    "wildfire",
+    "ice_motion",
+    "river_channel_migration",
 )
+# Legacy: these are now post-change categories and the lab ignores this field, but
+# it is kept so old values still round-trip.
 SAME_CHANGE_CATEGORIES = (
     "agricultural_activity",
     "wildfire",
@@ -112,7 +134,7 @@ FIELD_DISPLAY_NAMES = {
     "post_category": "Post land cover",
     "pre_change_category": "Pre-change category",
     "post_change_category": "Post-change category",
-    "same_change_category": "Same-change category",
+    "same_change_category": "Same-change category (legacy)",
     "fine_change_category": "Fine change category (legacy)",
 }
 

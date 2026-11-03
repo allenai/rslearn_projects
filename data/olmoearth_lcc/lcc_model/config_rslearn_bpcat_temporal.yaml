@@ -89,7 +89,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 128
-              out_channels: 13
+              out_channels: 14
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -112,7 +112,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 128
-              out_channels: 13
+              out_channels: 14
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -135,7 +135,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 128
-              out_channels: 11
+              out_channels: 8
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -158,7 +158,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 128
-              out_channels: 15
+              out_channels: 21
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -341,14 +341,6 @@ data:
         - label
         is_target: true
         dtype: INT32
-      label_same_change:
-        data_type: raster
-        layers:
-        - label_same_change
-        bands:
-        - label
-        is_target: true
-        dtype: INT32
       label_ts_start:
         data_type: raster
         layers:
@@ -434,7 +426,7 @@ data:
           src:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 13
+              num_classes: 14
               nodata_value: 0
               enable_confusion_matrix: true
               class_names: &lc_class_names
@@ -451,12 +443,13 @@ data:
               - urban/built-up
               - water
               - wetland (herbaceous)
+              - mangrove
               metric_kwargs:
                 average: micro
           dst:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 13
+              num_classes: 14
               nodata_value: 0
               enable_confusion_matrix: true
               class_names: *lc_class_names
@@ -465,7 +458,7 @@ data:
           pre_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 11
+              num_classes: 8
               nodata_value: 0
               enable_confusion_matrix: true
               enable_f1_metric: true
@@ -492,16 +485,13 @@ data:
               - wetland_loss
               - water_contract
               - removed_crop_structure
-              - agricultural_activity
-              - wildfire
-              - ice_motion
-              - flooding
+              - mangrove_loss
               metric_kwargs:
                 average: micro
           post_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 15
+              num_classes: 21
               nodata_value: 0
               enable_confusion_matrix: true
               enable_f1_metric: true
@@ -523,6 +513,12 @@ data:
               - selective_logging
               - landslide
               - settlement
+              - agricultural_activity
+              - wildfire
+              - ice_motion
+              - flooding
+              - storm_damage
+              - vegetation_dieback
               metric_kwargs:
                 average: micro
           # Classes are the 22 input timestep indices (mapped from the labeled dates
@@ -618,6 +614,6 @@ trainer:
     init_args:
       monitor: val_post_change/accuracy
       mode: max
-project_name: 2026_10_19_lcc
+project_name: 2026_11_03_lcc
 run_name: rslearn_bpcat_temporal
 management_dir: ${RSLP_PREFIX}/projects
