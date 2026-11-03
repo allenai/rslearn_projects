@@ -157,8 +157,20 @@ class QuantizedEmbeddingHead(Predictor):
             )
         self._log_clipping(features)
 
+        # NaN would otherwise cast to int8 0, which reads as real data. Mark any pixel
+        # with a non-finite coordinate as nodata instead.
+        quantized = quantize_embeddings(features)
+        non_finite = ~torch.isfinite(features).all(dim=1, keepdim=True)
+        if non_finite.any():
+            logger.warning(
+                "%d of %d pixels have non-finite embeddings; writing them as nodata",
+                int(non_finite.sum()),
+                non_finite.numel(),
+            )
+            quantized = quantized.masked_fill(non_finite, NODATA_VALUE)
+
         return ModelOutput(
-            outputs=quantize_embeddings(features),
+            outputs=quantized,
             loss_dict={"loss": 0},
         )
 

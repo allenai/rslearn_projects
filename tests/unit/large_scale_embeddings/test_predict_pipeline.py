@@ -14,8 +14,10 @@ from rslearn.dataset.window import WindowLayerData
 from rslearn.utils.geometry import Projection
 from upath import UPath
 
+from rslp.large_scale_embeddings.model import NODATA_VALUE
 from rslp.large_scale_embeddings.predict_pipeline import (
     _collect_provenance,
+    _mask_invalid_pixels,
     get_provenance_fname,
 )
 
@@ -524,3 +526,16 @@ def test_pca_paths_must_be_set_together() -> None:
             time_index=0,
             pca_artifact_path="gs://bucket/basis",
         )
+
+
+def test_mask_invalid_pixels_masks_no_input_and_all_zero_vectors() -> None:
+    """Pixels without input data and all-zero vectors both become nodata."""
+    embeddings = np.ones((4, 1, 3), np.int8)
+    # Pixel 1 is all zero (a NaN model output); pixel 2 has a zero coordinate only.
+    embeddings[:, 0, 1] = 0
+    embeddings[0, 0, 2] = 0
+    valid = np.array([[False, True, True]])
+    masked = _mask_invalid_pixels(embeddings, valid)
+    assert (masked[:, 0, 0] == NODATA_VALUE).all()
+    assert (masked[:, 0, 1] == NODATA_VALUE).all()
+    assert masked[:, 0, 2].tolist() == [0, 1, 1, 1]

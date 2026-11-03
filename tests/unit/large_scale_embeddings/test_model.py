@@ -60,3 +60,18 @@ def test_head_without_normalization() -> None:
     output = head(FeatureMaps([features]), context=None)
     expected = torch.tensor([[[[64]], [[-127]]]], dtype=torch.int8)
     assert torch.equal(output.outputs, expected)
+
+
+def test_head_writes_non_finite_pixels_as_nodata() -> None:
+    """A pixel with any NaN or inf coordinate is nodata, not a quantized zero."""
+    # One sample with C=2, H=1, W=3: a finite pixel, a NaN pixel and an inf pixel.
+    features = torch.tensor(
+        [[[[0.25, float("nan"), 0.25]], [[-1.0, 0.5, float("inf")]]]]
+    )
+    head = QuantizedEmbeddingHead(l2_normalize=False)
+    output = head(FeatureMaps([features]), context=None)
+    expected = torch.tensor(
+        [[[[64, NODATA_VALUE, NODATA_VALUE]], [[-127, NODATA_VALUE, NODATA_VALUE]]]],
+        dtype=torch.int8,
+    )
+    assert torch.equal(output.outputs, expected)

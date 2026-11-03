@@ -526,7 +526,30 @@ def _read_window_embeddings(
             valid.shape[1] // latent_patch_size,
             latent_patch_size,
         ).any(axis=(1, 3))
-    embeddings[:, ~valid] = NODATA_VALUE
+    return _mask_invalid_pixels(embeddings, valid)
+
+
+def _mask_invalid_pixels(embeddings: np.ndarray, valid: np.ndarray) -> np.ndarray:
+    """Set pixels outside the valid mask, and all-zero vectors, to NODATA_VALUE.
+
+    An all-zero vector is what a NaN model output quantizes to, never a real
+    embedding, so it is treated as invalid even where the inputs had data.
+
+    Args:
+        embeddings: int8 array of shape (band, height, width), modified in place.
+        valid: bool array of shape (height, width), True where the inputs had data.
+
+    Returns:
+        the masked embeddings array.
+    """
+    all_zero = valid & ~embeddings.any(axis=0)
+    if all_zero.any():
+        logger.warning(
+            "%d of %d valid pixels have all-zero embeddings; writing them as nodata",
+            int(all_zero.sum()),
+            int(valid.sum()),
+        )
+    embeddings[:, ~valid | all_zero] = NODATA_VALUE
     return embeddings
 
 
