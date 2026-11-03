@@ -6,7 +6,8 @@ south of the equator, so a single zone covers both hemispheres (matching the geo
 ``utm_zones`` layout used by the GeoZarr store). Enumerating tiles over a zone's
 projected bounding box covers a lot of area that belongs to neighboring zones, so
 tiles and windows are only kept if they intersect their own zone's canonical
-6-degree longitude wedge (80S to 84N).
+6-degree longitude wedge (80S to 84N). Windows with no land (per global_land_mask,
+sampled on a LAND_STEP_SIZE lattice) are skipped too.
 """
 
 import functools
@@ -15,6 +16,7 @@ from collections.abc import Generator
 
 import numpy as np
 import shapely
+from global_land_mask import globe
 from pyproj import Transformer
 from rasterio.crs import CRS
 from rslearn.utils.geometry import PixelBounds, Projection
@@ -41,6 +43,9 @@ PATCH_SIZE = 2048
 # Tile size used by the job writer and to snap the per-zone grid (and so the GeoZarr
 # array extents). The prediction pipeline supports any multiple of PATCH_SIZE.
 TILE_SIZE = 16384
+# Spacing in pixels of the lattice (including corners and edges) sampled to decide
+# whether a window has land.
+LAND_STEP_SIZE = 512
 
 
 def zone_number_from_epsg(epsg_code: int) -> int:
@@ -192,3 +197,39 @@ def window_in_zone_wedge(projection: Projection, bounds: PixelBounds) -> bool:
         return True
     wedge = get_zone_wedge(projection.crs, projection.x_resolution)
     return wedge.intersects(shapely.box(*bounds))
+
+
+@functools.cache
+def _get_to_wgs84_transformer(crs_wkt: str) -> Transformer:
+    """Get a cached transformer from the CRS to WGS84 lon/lat."""
+    return Transformer.from_crs(CRS.from_wkt(crs_wkt), "EPSG:4326", always_xy=True)
+
+
+def window_has_land(
+    projection: Projection, bounds: PixelBounds, step: int = LAND_STEP_SIZE
+) -> bool:
+    """Check whether any point on a lattice within the bounds is land.
+
+    The lattice is spaced step pixels apart and includes the corners and edges of
+    the bounds. Land is determined by global_land_mask (about 1 km resolution), so
+    islands smaller than that may be missed.
+
+    Args:
+        projection: the projection of the bounds.
+        bounds: the pixel bounds to check.
+        step: the lattice spacing in pixels.
+
+    Returns:
+        whether at least one sampled point is land.
+    """
+    xs_px = np.append(np.arange(bounds[0], bounds[2], step), bounds[2])
+    ys_px = np.append(np.arange(bounds[1], bounds[3], step), bounds[3])
+    xs_m, ys_m = np.meshgrid(
+        xs_px * projection.x_resolution, ys_px * projection.y_resolution
+    )
+    transformer = _get_to_wgs84_transformer(projection.crs.to_wkt())
+    lons, lats = transformer.transform(xs_m, ys_m)
+    # Wrap/clip into the domain expected by global_land_mask.
+    lons = ((np.asarray(lons) + 180) % 360) - 180
+    lats = np.clip(np.asarray(lats), -89.99, 89.99)
+    return bool(globe.is_land(lats, lons).any())

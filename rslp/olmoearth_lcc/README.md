@@ -554,7 +554,11 @@ tiles over each zone's projected bounding box (as the job writer did before, in
 both 326NN and 327NN) predicted most locations in more than one zone: about 1.7x
 over Africa and 2.4x over Europe. Southern-hemisphere tiles therefore have
 EPSG:326NN filenames, with negative northings (positive pixel rows, since the y
-resolution is negative).
+resolution is negative). Windows are also skipped if no point on a 512-pixel lattice
+(25 points including corners and edges) is land according to `global_land_mask`.
+That includes all-water windows within Sentinel-2's coastal coverage, which would
+otherwise be predicted. The mask is about 1 km resolution, so islands smaller than
+that may be missed.
 
 Per-tile pipeline: create 2048x2048 windows -> materialize Sentinel-2 imagery ->
 run the model -> polygonize the `output_change` raster into a per-tile GeoJSON

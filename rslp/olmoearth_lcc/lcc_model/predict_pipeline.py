@@ -12,7 +12,8 @@ names) that each window's input layers were built from. It is written last, so i
 also serves as the tile's completion marker in GeoZarr mode.
 
 Windows outside the UTM zone's canonical wedge are skipped (see tiling.py), since
-neighboring zones cover them.
+neighboring zones cover them. Windows with no land on a 512-pixel lattice (per
+global_land_mask) are skipped too, including coastal water that Sentinel-2 images.
 
 Unlike the satlas pipeline, there is no rtree index: the OlmoEarth Datasets source
 queries its API per window, and all imagery is derived from a single reference
@@ -60,7 +61,7 @@ from .postprocess import (
     geozarr_window_arrays,
     summary_window_array,
 )
-from .tiling import PATCH_SIZE, window_in_zone_wedge
+from .tiling import PATCH_SIZE, window_has_land, window_in_zone_wedge
 
 logger = get_logger(__name__)
 
@@ -436,6 +437,15 @@ def predict_pipeline(
             if not window_in_zone_wedge(projection, window_bounds):
                 logger.debug(
                     "skipping window at column %d row %d because it is outside the zone wedge",
+                    tile_col,
+                    tile_row,
+                )
+                continue
+
+            # Skip windows that are entirely water.
+            if not window_has_land(projection, window_bounds):
+                logger.debug(
+                    "skipping window at column %d row %d because it has no land",
                     tile_col,
                     tile_row,
                 )

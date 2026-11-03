@@ -1,5 +1,6 @@
 import numpy as np
 import shapely
+from global_land_mask import globe
 from pyproj import Transformer
 from rasterio.crs import CRS
 from rslearn.utils.geometry import Projection
@@ -12,6 +13,7 @@ from rslp.olmoearth_lcc.lcc_model.tiling import (
     get_zone_grid,
     get_zone_projection,
     get_zone_wedge,
+    window_has_land,
     window_in_zone_wedge,
     zone_number_from_epsg,
 )
@@ -74,6 +76,44 @@ def test_window_in_zone_wedge() -> None:
     assert window_in_zone_wedge(
         Projection(CRS.from_epsg(3857), 10, -10), (0, 0, PATCH_SIZE, PATCH_SIZE)
     )
+
+
+def test_window_has_land() -> None:
+    projection = get_zone_projection(10, RESOLUTION)
+    # Inland Washington, open Pacific, and Pacific south of the equator.
+    for lon, lat, expected in [
+        (-121, 47.5, True),
+        (-125, 40, False),
+        (-123, -30, False),
+    ]:
+        col, row = _lonlat_to_pixel(10, lon, lat)
+        col -= col % PATCH_SIZE
+        row -= row % PATCH_SIZE
+        bounds = (col, row, col + PATCH_SIZE, row + PATCH_SIZE)
+        assert window_has_land(projection, bounds) == expected
+
+
+def test_window_has_land_between_corners() -> None:
+    # A window centered on San Nicolas Island (about 14 km long) has water at all
+    # four corners but is kept.
+    projection = get_zone_projection(11, RESOLUTION)
+    center_col, center_row = _lonlat_to_pixel(11, -119.5, 33.25)
+    bounds = (
+        center_col - PATCH_SIZE // 2,
+        center_row - PATCH_SIZE // 2,
+        center_col + PATCH_SIZE // 2,
+        center_row + PATCH_SIZE // 2,
+    )
+    transformer = Transformer.from_crs("EPSG:32611", "EPSG:4326", always_xy=True)
+    for col, row in [
+        (bounds[0], bounds[1]),
+        (bounds[2], bounds[1]),
+        (bounds[0], bounds[3]),
+        (bounds[2], bounds[3]),
+    ]:
+        lon, lat = transformer.transform(col * RESOLUTION, -row * RESOLUTION)
+        assert not globe.is_land(lat, lon)
+    assert window_has_land(projection, bounds)
 
 
 def test_get_tasks_epsg_hemispheres_match() -> None:
