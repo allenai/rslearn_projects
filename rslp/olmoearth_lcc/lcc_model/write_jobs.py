@@ -8,7 +8,7 @@ user-provided reference timestamp. Tasks are batched and written to a Beaker que
 where they are processed by rslp.common workers running the ``predict_multi``
 workflow.
 
-The tile size is fixed to 32768x32768 here; the prediction pipeline itself accepts any
+The tile size is fixed to 16384x16384 here; the prediction pipeline itself accepts any
 tile size that is a multiple of PATCH_SIZE.
 """
 

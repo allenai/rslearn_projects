@@ -19,7 +19,7 @@ queries its API per window, and all imagery is derived from a single reference
 timestamp T via the layer time_offset/duration in config_predict.json.
 
 This module is tile-size-agnostic: it accepts any ``bounds`` whose extents are
-multiples of PATCH_SIZE. The fixed 32768x32768 tiling is defined in tiling.py and
+multiples of PATCH_SIZE. The fixed 16384x16384 tiling is defined in tiling.py and
 used by write_jobs.py.
 """
 

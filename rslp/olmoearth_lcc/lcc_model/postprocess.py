@@ -620,8 +620,8 @@ def collect_features_from_summaries(
 
     These are the merged summary rasters written by the prediction pipeline
     (write_summary_raster). Each tile is processed whole, so components are
-    not split at window boundaries; a full 32768x32768 tile is ~10 GB in
-    memory, so keep workers low.
+    not split at window boundaries; a full 16384x16384 tile is ~2.4 GB in
+    memory (~10 GB for the older 32768x32768 tiles), so keep workers low.
 
     If out_dir is set, each tile's features are written to
     ``<out_dir>/<tile>_summary.geojson`` from within the worker job. Returns

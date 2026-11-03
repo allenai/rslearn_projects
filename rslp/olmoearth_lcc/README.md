@@ -504,7 +504,8 @@ files can be numerous.
 Alternatively, run over the merged 9-band summary rasters written by the scaled
 prediction pipeline (`--write_summary_raster`); each `*_summary.tif` tile is
 processed whole so polygons are not split at 2048-window boundaries (a full
-32768x32768 tile is ~10 GB in memory, so keep `--workers` low). Here
+16384x16384 tile is ~2.4 GB in memory, and ~10 GB for tiles from older
+32768x32768 runs, so keep `--workers` low). Here
 `--out_dir` writes one `<tile>_summary.geojson` per tile:
 
 ```bash
@@ -538,7 +539,8 @@ Each GeoJSON feature includes: `num_pixels`, `area_hectares` (10 m pixels =
 ### Scaled Prediction (global tiled inference)
 
 To apply the LCC model at scale (e.g. globally), the world is divided into
-32768x32768 UTM tiles (10 m/pixel). Each tile, for a single reference timestamp,
+16384x16384 UTM tiles (10 m/pixel, 64 windows of 2048x2048 each; about 24,800 tiles
+globally). Each tile, for a single reference timestamp,
 becomes one task that is written to a Beaker queue and processed by the
 `rslp.common` worker system. This is analogous to `rslp.satlas` but
 self-contained: it uses the OlmoEarth Datasets imagery source (no rtree index) and
@@ -566,7 +568,9 @@ GeoJSONs into a single layer and converting to vector tiles is handled separatel
 (not yet implemented).
 
 The prediction pipeline accepts any tile size that is a multiple of 2048; only the
-job-writer fixes the tile size to 32768.
+job-writer fixes the tile size to 16384 (`tiling.TILE_SIZE`). Output filenames
+include the tile bounds, so don't resume an output directory from a run with a
+different tile size (earlier runs used 32768).
 
 #### 1. Enqueue tiles for a reference timestamp
 

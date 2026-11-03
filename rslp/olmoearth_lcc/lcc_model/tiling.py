@@ -40,7 +40,7 @@ RESOLUTION = 10
 PATCH_SIZE = 2048
 # Tile size used by the job writer and to snap the per-zone grid (and so the GeoZarr
 # array extents). The prediction pipeline supports any multiple of PATCH_SIZE.
-TILE_SIZE = 32768
+TILE_SIZE = 16384
 
 
 def zone_number_from_epsg(epsg_code: int) -> int:
