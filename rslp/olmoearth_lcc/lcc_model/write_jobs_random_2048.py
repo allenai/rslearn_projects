@@ -24,11 +24,10 @@ import rslp.common.worker
 from rslp.log_utils import get_logger
 
 from .predict_pipeline import (
-    PATCH_SIZE,
-    RESOLUTION,
     PredictTaskArgs,
     get_output_fname,
 )
+from .tiling import PATCH_SIZE, RESOLUTION
 
 logger = get_logger(__name__)
 

@@ -543,14 +543,26 @@ becomes one task that is written to a Beaker queue and processed by the
 self-contained: it uses the OlmoEarth Datasets imagery source (no rtree index) and
 the LCC-specific pre/post-processing.
 
+Tiling (`lcc_model/tiling.py`): each UTM zone number (1-60) is processed once, in its
+northern CRS (EPSG:326NN), with a continuous northing axis that goes negative south
+of the equator, so one zone covers 80S to 84N. Tiles and 2048x2048 windows are only
+kept if they intersect their zone's canonical 6-degree longitude wedge. Enumerating
+tiles over each zone's projected bounding box (as the job writer did before, in
+both 326NN and 327NN) predicted most locations in more than one zone: about 1.7x
+over Africa and 2.4x over Europe. Southern-hemisphere tiles therefore have
+EPSG:326NN filenames, with negative northings (positive pixel rows, since the y
+resolution is negative).
+
 Per-tile pipeline: create 2048x2048 windows -> materialize Sentinel-2 imagery ->
 run the model -> polygonize the `output_change` raster into a per-tile GeoJSON
 (`{EPSG}_{col}_{row}.geojson`). Optionally the full merged 57-band uint16 raster
 (`{EPSG}_{col}_{row}.tif`, with the per-category scores) and/or the compact 9-band
 uint8 summary raster (`{EPSG}_{col}_{row}_summary.tif`, consumed directly by
-olmoearth_lcc_viewer; see `postprocess.SUMMARY_BANDS`) are also written. Merging
-the per-tile GeoJSONs into a single layer and converting to vector tiles is
-handled separately (not yet implemented).
+olmoearth_lcc_viewer; see `postprocess.SUMMARY_BANDS`) are also written, and/or each
+window is written into a GeoZarr store (see below). A `{EPSG}_{col}_{row}_meta.json`
+recording the input scenes of each window is written last. Merging the per-tile
+GeoJSONs into a single layer and converting to vector tiles is handled separately
+(not yet implemented).
 
 The prediction pipeline accepts any tile size that is a multiple of 2048; only the
 job-writer fixes the tile size to 32768.
@@ -565,7 +577,8 @@ python -m rslp.main olmoearth_lcc write_jobs \
 ```
 
 Optional flags:
-- `--epsg_code 32651`: restrict to one UTM zone.
+- `--epsg_code 32651`: restrict to one UTM zone (326NN and 327NN select the same
+  zone, which covers both hemispheres).
 - `--wgs84_bounds '[-122.5, 47.0, -121.5, 48.0]'`: restrict to tiles intersecting a
   WGS84 bounding box.
 - `--batch_size 4`: tiles per worker job.
@@ -574,8 +587,65 @@ Optional flags:
   (includes the per-category scores).
 - `--write_summary_raster true`: also write the compact 9-band uint8 summary
   raster per tile (preferred at scale; the viewer consumes it directly).
+- `--zarr_store_path /path/to/lcc_20250601.zarr`: also write predictions into a
+  GeoZarr store (see below). It is created with default settings if missing.
+- `--write_geojson false`: skip the per-tile GeoJSON (requires `--zarr_store_path`).
 
 Tiles whose outputs already exist in `out_path` are skipped, so re-running resumes.
+Normally that means the GeoJSON; with `--zarr_store_path` it means the `_meta.json`.
+
+#### GeoZarr output
+
+Each store holds the predictions for one reference timestamp (e.g. a new store per
+month for monthly prediction). It is a Zarr v3 store with one group per UTM zone,
+`utm01` to `utm60`, each in EPSG:326NN at 10 m/pixel using the grid from
+`tiling.get_zone_grid`. Group attributes follow the
+[spatial](https://github.com/zarr-conventions/spatial) and
+[proj](https://github.com/zarr-conventions/proj) conventions (`proj:code`,
+`spatial:transform`, `spatial:shape`, `spatial:bbox`). Each group also has x/y
+coordinate arrays (pixel centers). Each zone group holds two arrays:
+
+- `change`: uint8, dimensions `(change_band, y, x)`:
+  1. `binary_change`: binary change probability (0-255).
+  2. `pre_lc`: pre-change land cover class (0 = nodata, otherwise an index into
+     `lc_class_names`).
+  3. `post_lc`: post-change land cover class (same encoding).
+  4. `pre_change_category`: 0 = no prediction, 1 = none, otherwise an index into
+     `pre_change_category_names` (the merged pre+same head).
+  5. `post_change_category`: same, indexing `post_change_category_names`.
+  6. `post_change_score`: probability (0-255) of the post change category.
+- `change_dates`: uint16, dimensions `(change_dates_band, y, x)`:
+  1. `change_start`: predicted change start, days since 1970-01-01 (0 = nodata).
+  2. `change_end`: predicted change end, same encoding.
+
+Pixels with no prediction are 0 in every band. Where both change categories are
+none and `binary_change < 128`, `pre_lc`, `post_lc`, `post_change_score` and both
+dates are also 0. The class-name lists, reference timestamp and model config are
+stored in the root attributes.
+
+The shards are 2048x2048, one per prediction window, so concurrent workers never
+write the same object. Inner chunks are 256x256 and use zstd level 3 by default; a
+store with other settings can be created before calling `write_jobs`:
+
+```bash
+python -m rslp.main olmoearth_lcc init_geozarr \
+    --store_path /path/to/lcc_20250601.zarr \
+    --timestamp 2025-06-01T00:00:00+00:00 \
+    --chunk_size 512 --compressor blosc_lz4 --level 5
+```
+
+`--compressor` is one of `zstd`, `blosc_zstd`, `blosc_lz4` or `none`. No multiscale
+pyramid is written.
+
+```python
+import xarray as xr
+
+ds = xr.open_zarr("/path/to/lcc_20250601.zarr", group="utm10", consolidated=False)
+ds["change"].sel(change_band="post_change_category")
+```
+
+xarray decodes `change_dates` to datetimes (nodata becomes NaT) from its `units`
+attribute; pass `decode_times=False` to get the raw day values.
 
 #### 2. Launch workers
 

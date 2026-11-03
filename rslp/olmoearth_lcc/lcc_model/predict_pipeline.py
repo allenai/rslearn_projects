@@ -5,16 +5,22 @@ creating PATCH_SIZE windows, materializing Sentinel-2 imagery from the OlmoEarth
 Datasets source, running the model, and polygonizing the resulting change raster
 into a per-tile GeoJSON. Optionally the merged output_change raster (full uint16,
 write_raster) and/or the compact uint8 summary raster (write_summary_raster) are
-also written. A small per-tile ``_meta.json`` records the reference timestamp and
-the Sentinel-2 item groups (period time ranges and scene names) that each window's
-input layers were built from.
+also written, and/or each window is written into a GeoZarr store
+(zarr_store_path, see geozarr.py). A small per-tile ``_meta.json`` records the
+reference timestamp and the Sentinel-2 item groups (period time ranges and scene
+names) that each window's input layers were built from. It is written last, so it
+also serves as the tile's completion marker in GeoZarr mode.
+
+Windows outside the UTM zone's canonical wedge are skipped (see tiling.py), since
+neighboring zones cover them.
 
 Unlike the satlas pipeline, there is no rtree index: the OlmoEarth Datasets source
 queries its API per window, and all imagery is derived from a single reference
 timestamp T via the layer time_offset/duration in config_predict.json.
 
 This module is tile-size-agnostic: it accepts any ``bounds`` whose extents are
-multiples of PATCH_SIZE. The fixed 32768x32768 tiling lives only in write_jobs.py.
+multiples of PATCH_SIZE. The fixed 32768x32768 tiling is defined in tiling.py and
+used by write_jobs.py.
 """
 
 import json
@@ -29,6 +35,7 @@ import rasterio
 from rslearn.const import WGS84_PROJECTION
 from rslearn.dataset import Dataset, Window
 from rslearn.utils.geometry import PixelBounds, Projection
+from rslearn.utils.mp import make_pool_and_star_imap_unordered
 from rslearn.utils.raster_array import RasterArray
 from rslearn.utils.raster_format import GeotiffRasterFormat
 from upath import UPath
@@ -44,13 +51,16 @@ from rslp.utils.rslearn import (
     run_model_predict,
 )
 
+from . import geozarr
 from .postprocess import (
     OUTPUT_BANDS,
     OUTPUT_LAYER,
     SUMMARY_BANDS,
     collect_features,
+    geozarr_window_arrays,
     summary_window_array,
 )
+from .tiling import PATCH_SIZE, window_in_zone_wedge
 
 logger = get_logger(__name__)
 
@@ -59,15 +69,15 @@ MODEL_CONFIG_FNAME = (
     "data/olmoearth_lcc/lcc_model/config_bp_abs_qdrop_bpcat_1pass_predict.yaml"
 )
 
-# Per-window size. The tile size (passed via bounds) must be a multiple of this.
-PATCH_SIZE = 2048
-RESOLUTION = 10
-
 PREDICTION_GROUP = "predict"
 
 # Default postprocessing parameters (match postprocess.py CLI defaults).
 DEFAULT_MIN_PIXELS = 10
 DEFAULT_POSTPROCESS_WORKERS = 32
+
+# Parallel workers for writing windows to the GeoZarr store. Each holds one full
+# window output (about 480 MB) in memory.
+DEFAULT_GEOZARR_WORKERS = 16
 
 CHANGE_FINDER_MATERIALIZE_PIPELINE_ARGS = MaterializePipelineArgs(
     disabled_layers=[],
@@ -269,6 +279,73 @@ def write_meta(
     logger.info("wrote metadata to %s", out_fname)
 
 
+def _write_geozarr_window(
+    tif_path: UPath, store_path: str, projection_json: str, bounds: PixelBounds
+) -> bool:
+    """Encode one window's output_change raster and write it to the GeoZarr store.
+
+    Args:
+        tif_path: the window's output_change GeoTIFF.
+        store_path: the GeoZarr store.
+        projection_json: the JSON-encoded window projection.
+        bounds: the window bounds.
+
+    Returns:
+        whether the window had a prediction to write.
+    """
+    if not tif_path.exists():
+        # Required input layers must have been missing, so no prediction was made.
+        return False
+    with tif_path.open("rb") as f:
+        with rasterio.open(f) as src:
+            arr = src.read()
+    change, change_dates = geozarr_window_arrays(arr)
+    geozarr.write_window(
+        store_path,
+        Projection.deserialize(json.loads(projection_json)),
+        bounds,
+        change,
+        change_dates,
+    )
+    return True
+
+
+def write_geozarr(
+    store_path: str, windows: list[Window], workers: int = DEFAULT_GEOZARR_WORKERS
+) -> None:
+    """Write each window's predictions into the GeoZarr store.
+
+    Each window is one shard of the store's arrays, so windows can be written in
+    parallel. Windows without a prediction are not written (they read as nodata).
+
+    Args:
+        store_path: the GeoZarr store, created beforehand by geozarr.init_store.
+        windows: the windows that were used for prediction.
+        workers: number of parallel worker processes.
+    """
+    kwargs_list = [
+        dict(
+            tif_path=window.get_raster_dir(OUTPUT_LAYER, OUTPUT_BANDS) / "geotiff.tif",
+            store_path=store_path,
+            projection_json=json.dumps(window.projection.serialize()),
+            bounds=window.bounds,
+        )
+        for window in windows
+    ]
+    num_written = 0
+    with make_pool_and_star_imap_unordered(
+        workers, _write_geozarr_window, kwargs_list
+    ) as results:
+        for written in results:
+            num_written += int(written)
+    logger.info(
+        "wrote %d of %d windows to GeoZarr store %s",
+        num_written,
+        len(windows),
+        store_path,
+    )
+
+
 def predict_pipeline(
     projection_json: str,
     bounds: PixelBounds,
@@ -279,18 +356,21 @@ def predict_pipeline(
     write_summary_raster: bool = False,
     min_pixels: int = DEFAULT_MIN_PIXELS,
     workers: int = DEFAULT_POSTPROCESS_WORKERS,
+    zarr_store_path: str | None = None,
+    write_geojson: bool = True,
+    geozarr_workers: int = DEFAULT_GEOZARR_WORKERS,
 ) -> None:
     """Compute LCC model outputs over one tile.
 
     Args:
-        projection_json: JSON-encoded projection, normally a UTM zone with 10 m/pixel
-            resolution.
+        projection_json: JSON-encoded projection, normally a northern UTM zone
+            (EPSG:326NN, spanning both hemispheres) with 10 m/pixel resolution.
         bounds: pixel coordinates within the projection on which to compute outputs.
             Each value must be a multiple of PATCH_SIZE.
         time_range: the reference timestamp as (T, T). The layer time_offset/duration
             derive the quarterly lookback and frequent lookforward from this.
-        out_path: directory to write the outputs (per-tile GeoJSON, optionally a
-            per-tile GeoTIFF named based on the bounds).
+        out_path: directory to write the outputs (per-tile GeoJSON and _meta.json,
+            optionally a per-tile GeoTIFF named based on the bounds).
         scratch_path: where to store the temporary rslearn dataset.
         write_raster: also write the full merged output_change raster GeoTIFF
             (all OUTPUT_BANDS, uint16; includes the per-category scores).
@@ -298,14 +378,26 @@ def predict_pipeline(
             (SUMMARY_BANDS), which the olmoearth_lcc_viewer consumes directly.
         min_pixels: minimum connected-component size for polygonization.
         workers: parallel workers for polygonization.
+        zarr_store_path: also write each window into this GeoZarr store, which must
+            have been created for this reference timestamp (geozarr.init_store).
+            The projection must then be EPSG:326NN. The tile is considered complete
+            once its _meta.json exists.
+        write_geojson: whether to write the per-tile GeoJSON.
+        geozarr_workers: parallel workers for writing to the GeoZarr store.
     """
+    if zarr_store_path is None and not write_geojson:
+        raise ValueError("write_geojson=false requires zarr_store_path")
     projection = Projection.deserialize(json.loads(projection_json))
 
     out_fname = get_output_fname(out_path, projection, bounds)
     raster_fname = get_output_fname(out_path, projection, bounds, raster=True)
     summary_fname = get_output_fname(out_path, projection, bounds, summary=True)
     meta_fname = get_output_fname(out_path, projection, bounds, meta=True)
-    if (
+    if zarr_store_path is not None:
+        if meta_fname.exists():
+            logger.info(f"tile marker {meta_fname} already exists")
+            return
+    elif (
         out_fname.exists()
         and (not write_raster or raster_fname.exists())
         and (not write_summary_raster or summary_fname.exists())
@@ -340,6 +432,15 @@ def predict_pipeline(
                 time_range=time_range,
             )
 
+            # Skip windows belonging to a neighboring UTM zone.
+            if not window_in_zone_wedge(projection, window_bounds):
+                logger.debug(
+                    "skipping window at column %d row %d because it is outside the zone wedge",
+                    tile_col,
+                    tile_row,
+                )
+                continue
+
             # Skip windows too close to or crossing 0/180 longitude.
             epsilon = 1e-4
             wgs84_geom = window.get_geometry().to_projection(WGS84_PROJECTION)
@@ -370,10 +471,6 @@ def predict_pipeline(
         ds_path, materialize_pipeline_args=CHANGE_FINDER_MATERIALIZE_PIPELINE_ARGS
     )
 
-    write_meta(
-        meta_fname, projection, bounds, time_range, list(tile_to_window.values())
-    )
-
     # Run the model only if at least one window has materialized imagery.
     completed_fnames = list(
         ds_path.glob(
@@ -385,26 +482,35 @@ def predict_pipeline(
     else:
         run_model_predict(MODEL_CONFIG_FNAME, ds_path)
 
+    windows = list(tile_to_window.values())
+
+    if zarr_store_path is not None:
+        write_geozarr(zarr_store_path, windows, workers=geozarr_workers)
+
     # Polygonize the change raster into a per-tile GeoJSON.
-    _, features = collect_features(
-        dataset_path=str(ds_path),
-        min_pixels=min_pixels,
-        workers=workers,
-    )
-    fc = {"type": "FeatureCollection", "features": features}
-    with out_fname.open("w") as f:
-        json.dump(fc, f)
-    logger.info("wrote %d features to %s", len(features), out_fname)
+    if write_geojson:
+        _, features = collect_features(
+            dataset_path=str(ds_path),
+            min_pixels=min_pixels,
+            workers=workers,
+        )
+        fc = {"type": "FeatureCollection", "features": features}
+        with out_fname.open("w") as f:
+            json.dump(fc, f)
+        logger.info("wrote %d features to %s", len(features), out_fname)
 
     # Optionally also write the merged output_change raster(s).
     if write_raster or write_summary_raster:
         merge_and_upload_raster(
             projection,
             bounds,
-            list(tile_to_window.values()),
+            windows,
             raster_fname if write_raster else None,
             summary_fname if write_summary_raster else None,
         )
+
+    # Written last so that its existence marks the tile as complete.
+    write_meta(meta_fname, projection, bounds, time_range, windows)
 
 
 class PredictTaskArgs:
@@ -445,6 +551,8 @@ def predict_multi(
     tasks: str,
     write_raster: bool = False,
     write_summary_raster: bool = False,
+    zarr_store_path: str | None = None,
+    write_geojson: bool = True,
 ) -> None:
     """Run multiple prediction tasks sequentially.
 
@@ -457,6 +565,8 @@ def predict_multi(
         write_raster: also write the full merged output_change raster GeoTIFF per
             tile.
         write_summary_raster: also write the compact uint8 summary raster per tile.
+        zarr_store_path: also write each tile into this GeoZarr store.
+        write_geojson: whether to write the per-tile GeoJSON.
     """
     os.makedirs(scratch_path, exist_ok=True)
     for task in json.loads(tasks):
@@ -475,4 +585,6 @@ def predict_multi(
                 scratch_path=os.path.join(tmp_dir, "scratch"),
                 write_raster=write_raster,
                 write_summary_raster=write_summary_raster,
+                zarr_store_path=zarr_store_path,
+                write_geojson=write_geojson,
             )

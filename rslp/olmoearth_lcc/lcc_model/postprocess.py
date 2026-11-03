@@ -197,6 +197,15 @@ SUMMARY_TS_POST_MONTH_BAND = SUMMARY_BANDS.index("ts_post_month")
 # means no prediction).
 NONE_CATEGORY_IDX = 1
 
+# Add to a day value since TIMESTAMP_EPOCH to get days since 1970-01-01.
+UNIX_EPOCH_DAY_OFFSET = (
+    TIMESTAMP_EPOCH - datetime(1970, 1, 1, tzinfo=timezone.utc)
+).days
+
+# Binary change probability (0-255) below which pixels with no change category get
+# their land cover classes, post change score, and dates zeroed in the GeoZarr output.
+GEOZARR_CHANGE_THRESHOLD = 128
+
 
 def _days_to_month_values(days: np.ndarray) -> np.ndarray:
     """Convert day-since-epoch values to the summary month encoding.
@@ -277,6 +286,57 @@ def summary_window_array(arr: np.ndarray) -> np.ndarray:
             months["post"],
         ]
     )
+
+
+def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Derive the GeoZarr change and change_dates arrays from a full window array.
+
+    See geozarr.CHANGE_BANDS and geozarr.CHANGE_DATES_BANDS for the layout. Pixels
+    with no prediction are all zero. Where both change categories are "none" and the
+    binary change probability is below GEOZARR_CHANGE_THRESHOLD, the land cover
+    classes, post change score, and change dates are zeroed too.
+
+    Args:
+        arr: (len(OUTPUT_BANDS), H, W) array with probabilities scaled 0-255.
+
+    Returns:
+        tuple of the (6, H, W) uint8 change array and the (2, H, W) uint16
+        change_dates array (days since 1970-01-01, 0 = nodata).
+    """
+    summary = summary_window_array(arr)
+    valid = summary[SUMMARY_PRE_CLASS_BAND] > 0
+
+    change = np.stack(
+        [
+            summary[SUMMARY_BINARY_CHANGE_BAND],
+            summary[SUMMARY_SRC_CLASS_BAND],
+            summary[SUMMARY_DST_CLASS_BAND],
+            summary[SUMMARY_PRE_CLASS_BAND],
+            summary[SUMMARY_POST_CLASS_BAND],
+            summary[SUMMARY_POST_SCORE_BAND],
+        ]
+    )
+    change[:, ~valid] = 0
+
+    dates = np.stack(
+        [
+            arr[TS_PRE_DAYS_BAND].astype(np.int64) + UNIX_EPOCH_DAY_OFFSET,
+            arr[TS_POST_DAYS_BAND].astype(np.int64) + UNIX_EPOCH_DAY_OFFSET,
+        ]
+    )
+    dates = np.clip(dates, 0, np.iinfo(np.uint16).max).astype(np.uint16)
+    dates[:, ~valid] = 0
+
+    no_change = (
+        (summary[SUMMARY_PRE_CLASS_BAND] == NONE_CATEGORY_IDX)
+        & (summary[SUMMARY_POST_CLASS_BAND] == NONE_CATEGORY_IDX)
+        & (summary[SUMMARY_BINARY_CHANGE_BAND] < GEOZARR_CHANGE_THRESHOLD)
+    )
+    # Land cover classes (bands 1, 2) and the post change score (band 5).
+    change[1:3, no_change] = 0
+    change[5, no_change] = 0
+    dates[:, no_change] = 0
+    return change, dates
 
 
 def _get_geotiff_path(window_dir: UPath) -> UPath | None:

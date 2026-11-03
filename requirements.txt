@@ -5,3 +5,4 @@ PyYAML>=6
 rslearn>=0.1.16
 s3fs>=2025.2.0
 wandb>=0.21
+zarr>=3

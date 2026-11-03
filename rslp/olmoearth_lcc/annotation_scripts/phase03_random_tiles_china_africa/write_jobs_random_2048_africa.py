@@ -28,11 +28,10 @@ from upath import UPath
 import rslp.common.worker
 from rslp.log_utils import get_logger
 from rslp.olmoearth_lcc.lcc_model.predict_pipeline import (
-    PATCH_SIZE,
-    RESOLUTION,
     PredictTaskArgs,
     get_output_fname,
 )
+from rslp.olmoearth_lcc.lcc_model.tiling import PATCH_SIZE, RESOLUTION
 
 logger = get_logger(__name__)
 
