@@ -7,9 +7,10 @@ This module contains:
 ## olmoearth_pretrain.Dockerfile
 
 Create a copy of `rslearn_projects` repository with subfolders `docker_build/rslearn`
-(containing https://github.com/allenai/rslearn), `docker_build/olmoearth_pretrain`
-(containing https://github.com/allenai/olmoearth_pretrain), and `docker_build/olmoearth_run`.
-Then run:
+(containing https://github.com/allenai/rslearn) and `docker_build/olmoearth_pretrain`
+(containing https://github.com/allenai/olmoearth_pretrain). olmoearth_run comes from
+the `olmoearth-runner` package on PyPI, which requires rslearn 0.1.19 or newer, so
+`docker_build/rslearn` must be checked out at that version or later. Then run:
 
     DOCKER_BUILDKIT=1 docker build -t rslpomp -f olmoearth_pretrain.Dockerfile .
     beaker image create --name rslpomp rslpomp

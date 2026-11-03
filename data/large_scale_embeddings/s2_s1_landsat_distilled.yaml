@@ -1,0 +1,119 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model_period_timestamps.OlmoEarthPeriodTimestamps
+            init_args:
+              # The checkpoint is supplied at run time, so none is named here.
+              # The 128-dim distilled student rather than the 768-dim teacher. Its
+              # first 64 dims are a trained Matryoshka prefix, so a consumer can read
+              # embeddings[..., :64] and get a usable 64-dim embedding.
+              projected_location_token_dim: 128
+              # Required by projected_location_token_dim: the student exists only on
+              # the AttentionPooler.
+              use_location_token_output: true
+              # The encoder's token size, 2 x 2 pixels. Output resolution is set by
+              # latent_patch_size below, not by this.
+              patch_size: 2
+              embedding_size: 128
+              # The normalization stats expect dB, hence Sentinel1ToDecibels below.
+              normalize: true
+              autocast_dtype: bfloat16
+              # Assign images to a fixed period grid rather than aligning modalities
+              # greedily. These two match the layers' query_config in the dataset
+              # config, so the model's periods and the mosaics it is handed agree.
+              # jsonargparse parses timedelta as "d days, h:m:s"; "30d" is rejected.
+              period_duration: "30 days, 0:00:00"
+              max_matches: 12
+              compile_model: true
+              # Prefer the cuDNN attention kernel, measured 21% faster than the
+              # defaults on H100 at this patch and window size, falling back where it
+              # is unsupported.
+              sdpa_backends: ["cudnn", "flash", "efficient", "math"]
+              forward_kwargs:
+                # One embedding per 10 m pixel, finer than the token grid. rslearn
+                # names no such argument, so it reaches the encoder through
+                # forward_kwargs.
+                latent_patch_size: 1
+        decoder:
+          # Quantizes each embedding to int8 with the AlphaEarth power scheme (-128
+          # is reserved for nodata). L2 normalization is off because it discards
+          # magnitude, which the evals score on; the head's LayerNorm already leaves
+          # coordinates inside the scheme's [-1, 1] range.
+          - class_path: rslp.large_scale_embeddings.model.QuantizedEmbeddingHead
+            init_args:
+              l2_normalize: false
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    # The dataset to read; supplied at run time.
+    path: placeholder
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2_l2a"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel1:
+        data_type: "raster"
+        layers: ["sentinel1"]
+        bands: ["vv", "vh"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        # Best-effort: windows missing it are still processed without it.
+        required: false
+      landsat:
+        data_type: "raster"
+        layers: ["landsat"]
+        bands: ["B8", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B9", "B10", "B11"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        # Best-effort: windows missing it are still processed without it.
+        required: false
+    task:
+      # Inference-only: no targets or loss; writes the head's int8 output.
+      class_path: rslearn.train.tasks.embedding.EmbeddingTask
+    # Crops are tiny, so throughput needs a large batch. Tune with num_workers per GPU.
+    batch_size: 256
+    num_workers: 16
+    default_config:
+      # 480 on H100; A100 (40 GB) workers use 384.
+      crop_size: 480
+      transforms:
+        # The Sentinel-1 RTC source delivers linear intensities.
+        - class_path: rslearn.train.transforms.sentinel1.Sentinel1ToDecibels
+          init_args:
+            selectors: ["sentinel1"]
+            # Sentinel-1 is optional, per required: false above.
+            skip_missing: true
+    predict_config:
+      load_all_crops: true
+      # Mitigates embedding seams at crop boundaries; the RasterMerger trims half the
+      # overlap from each crop.
+      overlap_pixels: 32
+      skip_targets: true
+trainer:
+  callbacks:
+    # Writes the int8 128-band embedding raster to the "output" layer.
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        output_layer: output
+        selector: []
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            # Must match latent_patch_size, the pixels per output embedding.
+            downsample_factor: 1
+            # predict_config overlap_pixels divided by latent_patch_size, since the
+            # merger operates at the output resolution.
+            overlap_pixels: 32
