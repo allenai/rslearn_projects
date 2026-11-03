@@ -99,7 +99,8 @@ What the numbers say
 narrower than 64 is worth testing now that 64 is the narrowest width the encoder emits.
 
 **zstd 3 is settled.** Against level 1 at the same shape it stores 2.9% less and moves
-4.0% fewer bytes on the AOI, with no time penalty. The saving comes off storage *and*
+4.0% fewer bytes on the AOI, with no time penalty. The choice of zstd over lz4, blosc
+and the gzip family is measured separately in COMPRESSION.md. The saving comes off storage *and*
 off every read, since a range request moves compressed bytes. Level 3 is also what the
 comparable AlphaEarth mosaic uses, so a like-for-like read comparison stays honest.
 

@@ -1,0 +1,1262 @@
+[
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "zstd-1",
+    "compressed_bytes": 369404912,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.6880702674388885,
+    "raw_bytes": 536870912,
+    "seconds": 1.0
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "zstd-3",
+    "compressed_bytes": 349688789,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.6513461265712976,
+    "raw_bytes": 536870912,
+    "seconds": 1.9
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 337541355,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.6287197675555944,
+    "raw_bytes": 536870912,
+    "seconds": 1.2
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "lz4",
+    "compressed_bytes": 456619914,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.8505208678543568,
+    "raw_bytes": 536870912,
+    "seconds": 0.6
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "gzip-1",
+    "compressed_bytes": 328113831,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.611159635707736,
+    "raw_bytes": 536870912,
+    "seconds": 7.3
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-1",
+    "compressed_bytes": 343976106,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.6407054252922535,
+    "raw_bytes": 536870912,
+    "seconds": 0.9
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-3",
+    "compressed_bytes": 332185838,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.6187443397939205,
+    "raw_bytes": 536870912,
+    "seconds": 1.8
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 317374455,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.5911559890955687,
+    "raw_bytes": 536870912,
+    "seconds": 1.2
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "lz4",
+    "compressed_bytes": 453862964,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.8453856483101845,
+    "raw_bytes": 536870912,
+    "seconds": 0.6
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "gzip-1",
+    "compressed_bytes": 324199107,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.603867894038558,
+    "raw_bytes": 536870912,
+    "seconds": 6.9
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-9",
+    "compressed_bytes": 321188857,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.5982608664780855,
+    "raw_bytes": 536870912,
+    "seconds": 8.0
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-19",
+    "compressed_bytes": 299948776,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.5586981326341629,
+    "raw_bytes": 536870912,
+    "seconds": 121.3
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zlib-6",
+    "compressed_bytes": 313198459,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.5833775904029608,
+    "raw_bytes": 536870912,
+    "seconds": 28.3
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "zstd-1",
+    "compressed_bytes": 324672147,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.6047489996999502,
+    "raw_bytes": 536870912,
+    "seconds": 0.9
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "zstd-3",
+    "compressed_bytes": 316094595,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.5887720640748739,
+    "raw_bytes": 536870912,
+    "seconds": 1.9
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 322193084,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.6001313850283623,
+    "raw_bytes": 536870912,
+    "seconds": 1.3
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "lz4",
+    "compressed_bytes": 454189288,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.8459934741258621,
+    "raw_bytes": 536870912,
+    "seconds": 0.7
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "gzip-1",
+    "compressed_bytes": 325830164,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.6069059744477272,
+    "raw_bytes": 536870912,
+    "seconds": 7.1
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "zstd-1",
+    "compressed_bytes": 329648874,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.614018876105547,
+    "raw_bytes": 536870912,
+    "seconds": 1.0
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "zstd-3",
+    "compressed_bytes": 318995009,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.5941745061427355,
+    "raw_bytes": 536870912,
+    "seconds": 2.1
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 330334832,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.6152965724468231,
+    "raw_bytes": 536870912,
+    "seconds": 1.4
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "lz4",
+    "compressed_bytes": 456041011,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.8494425769895315,
+    "raw_bytes": 536870912,
+    "seconds": 0.7
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "gzip-1",
+    "compressed_bytes": 331965698,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.6183342970907688,
+    "raw_bytes": 536870912,
+    "seconds": 7.1
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "zstd-1",
+    "compressed_bytes": 335919974,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.6256997101008892,
+    "raw_bytes": 536870912,
+    "seconds": 0.9
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "zstd-3",
+    "compressed_bytes": 323269690,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.6021367199718952,
+    "raw_bytes": 536870912,
+    "seconds": 2.0
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 338360233,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.6302450466901064,
+    "raw_bytes": 536870912,
+    "seconds": 1.4
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "lz4",
+    "compressed_bytes": 458261221,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.8535780403763056,
+    "raw_bytes": 536870912,
+    "seconds": 0.7
+  },
+  {
+    "block": [
+      57344,
+      499712
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "gzip-1",
+    "compressed_bytes": 336560420,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.6268926337361336,
+    "raw_bytes": 536870912,
+    "seconds": 7.1
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "zstd-1",
+    "compressed_bytes": 445873590,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.8305042795836926,
+    "raw_bytes": 536870912,
+    "seconds": 0.5
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "zstd-3",
+    "compressed_bytes": 443170401,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.8254691977053881,
+    "raw_bytes": 536870912,
+    "seconds": 1.1
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 422474898,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.7869208194315434,
+    "raw_bytes": 536870912,
+    "seconds": 0.6
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "lz4",
+    "compressed_bytes": 538302421,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 1.0026663932949305,
+    "raw_bytes": 536870912,
+    "seconds": 0.1
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "gzip-1",
+    "compressed_bytes": 411141839,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.7658113520592451,
+    "raw_bytes": 536870912,
+    "seconds": 9.6
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-1",
+    "compressed_bytes": 423841427,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.7894661780446768,
+    "raw_bytes": 536870912,
+    "seconds": 0.6
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-3",
+    "compressed_bytes": 421383345,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.7848876435309649,
+    "raw_bytes": 536870912,
+    "seconds": 1.2
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 397959599,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.7412575166672468,
+    "raw_bytes": 536870912,
+    "seconds": 0.6
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "lz4",
+    "compressed_bytes": 538260199,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 1.0025877486914396,
+    "raw_bytes": 536870912,
+    "seconds": 0.1
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "gzip-1",
+    "compressed_bytes": 402087241,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.7489458490163088,
+    "raw_bytes": 536870912,
+    "seconds": 8.8
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-9",
+    "compressed_bytes": 411823431,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.7670809160917997,
+    "raw_bytes": 536870912,
+    "seconds": 6.4
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-19",
+    "compressed_bytes": 392813347,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.7316718753427267,
+    "raw_bytes": 536870912,
+    "seconds": 105.8
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zlib-6",
+    "compressed_bytes": 400791665,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.7465326506644487,
+    "raw_bytes": 536870912,
+    "seconds": 14.3
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "zstd-1",
+    "compressed_bytes": 400182347,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.7453977074474096,
+    "raw_bytes": 536870912,
+    "seconds": 0.5
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "zstd-3",
+    "compressed_bytes": 398765032,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.7427577525377274,
+    "raw_bytes": 536870912,
+    "seconds": 1.3
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 399453303,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.7440397571772337,
+    "raw_bytes": 536870912,
+    "seconds": 0.6
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "lz4",
+    "compressed_bytes": 538355070,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 1.0027644596993923,
+    "raw_bytes": 536870912,
+    "seconds": 0.4
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "gzip-1",
+    "compressed_bytes": 400101277,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.7452467028051615,
+    "raw_bytes": 536870912,
+    "seconds": 8.8
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "zstd-1",
+    "compressed_bytes": 401863818,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.7485296912491322,
+    "raw_bytes": 536870912,
+    "seconds": 0.6
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "zstd-3",
+    "compressed_bytes": 400496658,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.7459831573069096,
+    "raw_bytes": 536870912,
+    "seconds": 1.4
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 402179118,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.7491169832646847,
+    "raw_bytes": 536870912,
+    "seconds": 0.6
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "lz4",
+    "compressed_bytes": 538591189,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 1.0032042656093836,
+    "raw_bytes": 536870912,
+    "seconds": 0.3
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "gzip-1",
+    "compressed_bytes": 401104487,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.7471153270453215,
+    "raw_bytes": 536870912,
+    "seconds": 8.7
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "zstd-1",
+    "compressed_bytes": 406064919,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.7563548516482115,
+    "raw_bytes": 536870912,
+    "seconds": 0.5
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "zstd-3",
+    "compressed_bytes": 404615067,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.7536542918533087,
+    "raw_bytes": 536870912,
+    "seconds": 1.4
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 406787966,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.7577016316354275,
+    "raw_bytes": 536870912,
+    "seconds": 0.6
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "lz4",
+    "compressed_bytes": 538935039,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 1.0038447361439466,
+    "raw_bytes": 536870912,
+    "seconds": 0.1
+  },
+  {
+    "block": [
+      55296,
+      497664
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "gzip-1",
+    "compressed_bytes": 403493474,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.7515651620924473,
+    "raw_bytes": 536870912,
+    "seconds": 8.8
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "zstd-1",
+    "compressed_bytes": 412389196,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.7681347355246544,
+    "raw_bytes": 536870912,
+    "seconds": 0.6
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "zstd-3",
+    "compressed_bytes": 403715745,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.751979174092412,
+    "raw_bytes": 536870912,
+    "seconds": 1.2
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 386392699,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.7197124864906073,
+    "raw_bytes": 536870912,
+    "seconds": 0.9
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "lz4",
+    "compressed_bytes": 502502961,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.9359847027808428,
+    "raw_bytes": 536870912,
+    "seconds": 0.3
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 128,
+    "chunks_per_shard": 256,
+    "codec": "gzip-1",
+    "compressed_bytes": 378099745,
+    "index_bytes": 4096,
+    "nodata_frac": 0.0,
+    "ratio": 0.7042656559497118,
+    "raw_bytes": 536870912,
+    "seconds": 8.5
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-1",
+    "compressed_bytes": 390253547,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.7269038762897253,
+    "raw_bytes": 536870912,
+    "seconds": 0.7
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-3",
+    "compressed_bytes": 384737411,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.716629272326827,
+    "raw_bytes": 536870912,
+    "seconds": 1.4
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 365910980,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.6815623119473457,
+    "raw_bytes": 536870912,
+    "seconds": 0.9
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "lz4",
+    "compressed_bytes": 501595058,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.9342936016619205,
+    "raw_bytes": 536870912,
+    "seconds": 0.3
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "gzip-1",
+    "compressed_bytes": 371842625,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.6926108617335558,
+    "raw_bytes": 536870912,
+    "seconds": 8.0
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-9",
+    "compressed_bytes": 375984748,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.7003261670470238,
+    "raw_bytes": 536870912,
+    "seconds": 6.5
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zstd-19",
+    "compressed_bytes": 356690526,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.6643878780305386,
+    "raw_bytes": 536870912,
+    "seconds": 98.4
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 256,
+    "chunks_per_shard": 64,
+    "codec": "zlib-6",
+    "compressed_bytes": 366270292,
+    "index_bytes": 1024,
+    "nodata_frac": 0.0,
+    "ratio": 0.6822315827012062,
+    "raw_bytes": 536870912,
+    "seconds": 20.2
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "zstd-1",
+    "compressed_bytes": 370601788,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.6902996227145195,
+    "raw_bytes": 536870912,
+    "seconds": 0.7
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "zstd-3",
+    "compressed_bytes": 366115220,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.6819427385926247,
+    "raw_bytes": 536870912,
+    "seconds": 1.6
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 369688649,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.6885987687855959,
+    "raw_bytes": 536870912,
+    "seconds": 1.0
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "lz4",
+    "compressed_bytes": 502256387,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.9355254229158163,
+    "raw_bytes": 536870912,
+    "seconds": 0.4
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 512,
+    "chunks_per_shard": 16,
+    "codec": "gzip-1",
+    "compressed_bytes": 372144054,
+    "index_bytes": 256,
+    "nodata_frac": 0.0,
+    "ratio": 0.6931723169982433,
+    "raw_bytes": 536870912,
+    "seconds": 8.4
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "zstd-1",
+    "compressed_bytes": 373964527,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.6965632122009993,
+    "raw_bytes": 536870912,
+    "seconds": 0.8
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "zstd-3",
+    "compressed_bytes": 368263906,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.6859449781477451,
+    "raw_bytes": 536870912,
+    "seconds": 1.7
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 374667498,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.6978725977241993,
+    "raw_bytes": 536870912,
+    "seconds": 1.1
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "lz4",
+    "compressed_bytes": 503504877,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.9378509167581797,
+    "raw_bytes": 536870912,
+    "seconds": 0.5
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 1024,
+    "chunks_per_shard": 4,
+    "codec": "gzip-1",
+    "compressed_bytes": 374759708,
+    "index_bytes": 64,
+    "nodata_frac": 0.0,
+    "ratio": 0.6980443522334099,
+    "raw_bytes": 536870912,
+    "seconds": 8.9
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "zstd-1",
+    "compressed_bytes": 381119955,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.7098912354558706,
+    "raw_bytes": 536870912,
+    "seconds": 0.7
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "zstd-3",
+    "compressed_bytes": 372946350,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.6946667097508907,
+    "raw_bytes": 536870912,
+    "seconds": 1.8
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "blosc-zstd-1-shuffle",
+    "compressed_bytes": 383210937,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.7137859929352999,
+    "raw_bytes": 536870912,
+    "seconds": 1.1
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "lz4",
+    "compressed_bytes": 505527070,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.9416175447404385,
+    "raw_bytes": 536870912,
+    "seconds": 0.4
+  },
+  {
+    "block": [
+      59392,
+      495616
+    ],
+    "chunk_px": 2048,
+    "chunks_per_shard": 1,
+    "codec": "gzip-1",
+    "compressed_bytes": 382254666,
+    "index_bytes": 16,
+    "nodata_frac": 0.0,
+    "ratio": 0.7120047993957996,
+    "raw_bytes": 536870912,
+    "seconds": 8.2
+  }
+]

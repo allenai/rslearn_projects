@@ -93,6 +93,7 @@ DEFAULT_SHARD_SIZE = 2048
 # Compression is off the pipeline's critical path (seconds of CPU per shard against
 # minutes of GPU inference), so this is set for read cost, not write cost. Level 3 also
 # matches the AlphaEarth mosaic, keeping like-for-like read comparisons honest.
+# See COMPRESSION.md for why zstd rather than lz4, blosc or gzip.
 DEFAULT_ZSTD_LEVEL = 3
 # Dimensions per inner chunk along the band axis.
 #
