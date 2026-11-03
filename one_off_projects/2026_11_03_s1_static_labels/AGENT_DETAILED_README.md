@@ -207,13 +207,27 @@ can't express "same track + random pick".
 - Each edited file is written and then `os.replace`d, so only the 20261103 link changes; the
   20250521 files were verified byte-identical.
 
+**Val labels** (`review/val_cleanup.py` → `review/val_label_edits.json`). The same static check on the
+val groups (`val_static_check.py` + `train_static_ncc.py`) finds 348 of 6,056 val labels (5.7%,
+the same rate as train), 109 of them within 100 m of mapped infrastructure. There is no manual
+review for val: the 109 are deleted, and argon_ext decides the other 239 (fixed_structure 120,
+island 27, permanently_anchored 37 deleted; vessel 55 kept; about $3). 293 features were removed
+in 150 windows.
+
+**Split.** The train/val groups come from the original sentinel-vessel-detection labeling
+database (`metadata.sqlite3`, one train/val split per collection period, about 10% val). The
+split is by window, not by region: val windows are a median 5.5 km from the nearest train
+window, and 79% share a scene with train windows. The Sentinel-1 labels there have no category
+field (everything is a vessel). The `sargassum_train`/`sargassum_val` splits in that database
+belong to the Sentinel-2 vessel dataset, not Sentinel-1.
+
 
 6. Open items
 -------------
 
 - Train with `data/sentinel1_vessels/20261103_static_labels/config_{1,2}hist.yaml`.
-  - Val numbers are not comparable to the June runs, since the val historicals changed.
-    Evaluate the current production checkpoint on the 20261103 val set too.
+  - Val numbers are not comparable to the June runs, since the val historicals and labels
+    changed. Evaluate the current production checkpoint on the 20261103 val set too.
   - The val set barely tests infrastructure false positives, so also re-run the 34 AOI
     scenes with same-track 5–35 d historicals.
 - Prediction pipeline: restrict historical candidates to the target's relative orbit and

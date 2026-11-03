@@ -44,16 +44,18 @@ is unchanged).
      are kept, but the layer is not completed, so training skips them.
    - Group 0 (`sentinel1_historical`, what the 1-hist model reads) comes from 5–35 days
      before the target for 98.7% of windows (it was 30–90 days in 20250521).
-2. Labels: 2,590 of the 3,133 static labels are deleted. The windows stay in the dataset as
-   hard negatives. 61,655 labels → 59,065.
+2. Labels: 2,590 of the 3,133 static train labels and 293 of the 348 static val labels are
+   deleted. The windows stay in the dataset as hard negatives. 61,655 labels → 58,772.
    - The 876 labels near mapped infrastructure are deleted (875; favyen marked one as a
      moored vessel).
    - For the other 2,257, favyen's manual labels (142 of them reviewed) take priority. Otherwise
      Gemini (`gemini-4-argon`, five images: target + 4 historicals) decides: fixed structure,
      island and permanently anchored vessel are deleted; vessel and unsure are kept. On
      favyen's labels it deleted 98/103 bad labels and 2/27 correct vessel labels.
-   - Only train-split windows had labels removed; val labels are unchanged (val windows do
-     have the new historicals).
+   - Val gets the same treatment, minus the manual review: 109 labels near mapped
+     infrastructure deleted, plus 184 of the other 239 that Gemini flags. Val had the same
+     static-label rate as train (5.7%), so the old val mAP partly rewarded detecting
+     infrastructure.
 
 
 Training

@@ -43,8 +43,8 @@ Dataset Versions
   - `sentinel1_historical` has up to 4 item groups from the target's relative orbit (same
     track, not just same orbit direction), one random pass per 30-day period from 5 to 155
     days before the target, most recent first (group 0 = `sentinel1_historical`).
-  - 2,590 training labels on static objects (platforms, turbines, islands, permanently
-    anchored vessels) are deleted; their windows stay as hard negatives.
+  - 2,590 train and 293 val labels on static objects (platforms, turbines, islands,
+    permanently anchored vessels) are deleted; their windows stay as hard negatives.
   - Training configs: `20261103_static_labels/config_1hist.yaml` and `config_2hist.yaml`.
     The prediction pipeline still selects historicals the old way, so a model trained on
     this dataset should not be deployed until it is updated to match.
