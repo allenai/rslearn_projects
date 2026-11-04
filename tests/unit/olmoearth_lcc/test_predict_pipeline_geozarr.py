@@ -108,6 +108,16 @@ def test_predict_pipeline_geozarr(
         str(out_path), projection, bounds, meta=True
     )
     assert meta_fname.exists()
+    with meta_fname.open() as f:
+        timings = json.load(f)["timings"]
+    assert set(timings) == {
+        "create_windows",
+        "materialize",
+        "predict",
+        "write_geozarr",
+        "write_geojson",
+        "total",
+    }
     with predict_pipeline.get_output_fname(
         str(out_path), projection, bounds
     ).open() as f:

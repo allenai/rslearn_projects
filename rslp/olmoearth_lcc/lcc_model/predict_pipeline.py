@@ -28,6 +28,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -219,6 +220,7 @@ def write_meta(
     bounds: PixelBounds,
     time_range: tuple[datetime, datetime],
     windows: list[Window],
+    timings: dict[str, float] | None = None,
 ) -> None:
     """Write the per-tile metadata sidecar.
 
@@ -234,6 +236,7 @@ def write_meta(
         bounds: the tile bounds.
         time_range: the reference timestamp as (T, T).
         windows: the prediction windows of this tile.
+        timings: optional seconds spent in each stage of the pipeline.
     """
     window_metas = []
     for window in windows:
@@ -275,6 +278,8 @@ def write_meta(
         time_range=[t.isoformat() for t in time_range],
         windows=window_metas,
     )
+    if timings is not None:
+        meta["timings"] = timings
     with out_fname.open("w") as f:
         json.dump(meta, f)
     logger.info("wrote metadata to %s", out_fname)
@@ -406,6 +411,17 @@ def predict_pipeline(
         logger.info(f"output file {out_fname} already exists")
         return
 
+    # Seconds spent in each stage, recorded in _meta.json.
+    timings: dict[str, float] = {}
+    start_time = time.monotonic()
+    stage_start = start_time
+
+    def end_stage(name: str) -> None:
+        nonlocal stage_start
+        now = time.monotonic()
+        timings[name] = now - stage_start
+        stage_start = now
+
     # Initialize an rslearn dataset in scratch from the predict dataset config.
     ds_path = UPath(scratch_path)
     ds_path.mkdir(parents=True)
@@ -475,11 +491,14 @@ def predict_pipeline(
             window.save()
             tile_to_window[(tile_col, tile_row)] = window
 
+    end_stage("create_windows")
+
     # Materialize imagery for the windows.
     logger.info("materialize dataset")
     materialize_dataset(
         ds_path, materialize_pipeline_args=CHANGE_FINDER_MATERIALIZE_PIPELINE_ARGS
     )
+    end_stage("materialize")
 
     # Run the model only if at least one window has materialized imagery.
     completed_fnames = list(
@@ -491,11 +510,13 @@ def predict_pipeline(
         logger.info("skipping prediction since no windows seem to have data")
     else:
         run_model_predict(MODEL_CONFIG_FNAME, ds_path)
+    end_stage("predict")
 
     windows = list(tile_to_window.values())
 
     if zarr_store_path is not None:
         write_geozarr(zarr_store_path, windows, workers=geozarr_workers)
+        end_stage("write_geozarr")
 
     # Polygonize the change raster into a per-tile GeoJSON.
     if write_geojson:
@@ -508,6 +529,7 @@ def predict_pipeline(
         with out_fname.open("w") as f:
             json.dump(fc, f)
         logger.info("wrote %d features to %s", len(features), out_fname)
+        end_stage("write_geojson")
 
     # Optionally also write the merged output_change raster(s).
     if write_raster or write_summary_raster:
@@ -518,9 +540,12 @@ def predict_pipeline(
             raster_fname if write_raster else None,
             summary_fname if write_summary_raster else None,
         )
+        end_stage("write_raster")
 
-    # Written last so that its existence marks the tile as complete.
-    write_meta(meta_fname, projection, bounds, time_range, windows)
+    # Written last so that its existence marks the tile as complete. The total
+    # excludes writing the metadata itself.
+    timings["total"] = time.monotonic() - start_time
+    write_meta(meta_fname, projection, bounds, time_range, windows, timings=timings)
 
 
 class PredictTaskArgs:
