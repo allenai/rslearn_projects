@@ -906,12 +906,19 @@ def write_pca_window_levels(
         chunk_max_age: how long a cache may hold an embedding chunk.
         metadata_max_age: how long a cache may hold zarr.json and the coordinates.
     """
+    # Read each array's own zarr.json rather than the zone group's consolidated
+    # snapshot. Consolidation is written per group, and re-consolidating the root does
+    # not refresh a nested group's copy, so a store whose time axis grew after creation
+    # can leave a zone claiming the original length. A writer that trusts that snapshot
+    # addresses a shorter axis than the array really has and fails here on a year the
+    # store does hold.
     group = zarr.open_group(
         store=writable_store(
             pca_store_path, storage_options, chunk_max_age, metadata_max_age
         ),
         path=zone_group_name(zone_number),
         mode="r+",
+        use_consolidated=False,
     )
     row_offset, col_offset = _window_offsets(group, window_bounds, patch_size)
     for level, rgb in sorted(levels.items()):

@@ -374,3 +374,51 @@ def test_cache_headers_split_chunks_from_metadata() -> None:
     assert store._header_for("time/c/0") == year
     assert store._header_for("zarr.json") == "public, max-age=600"
     assert store._header_for("utm10/pca_rgb/zarr.json") == "public, max-age=600"
+
+
+def test_pca_write_survives_a_stale_zone_consolidation(tmp_path: Path) -> None:
+    """Consolidation is per group, so a nested copy can outlive the arrays it describes.
+
+    Re-consolidating the root leaves a zone group's own snapshot untouched. A writer
+    that trusted it would address the time axis the store had at creation, not the one
+    it has now, and fail on a year the store does hold.
+    """
+    import json
+
+    pca_store_path = str(tmp_path / "pca.zarr")
+    zone, shard, chunk = 10, 512, 256
+    zs.init_pca_store(
+        pca_store_path=pca_store_path,
+        zone_numbers=[zone],
+        years=[2024, 2025],
+        model_url=MODEL_URL,
+        source_data=SOURCE_DATA,
+        resolution=RESOLUTION,
+        tile_size=2048,
+        chunk_size=chunk,
+        shard_size=shard,
+        max_level=0,
+    )
+
+    # Give the zone group its own snapshot, as a store consolidated per group has, then
+    # stale it to the single year it would have held before the time axis grew.
+    zarr.consolidate_metadata(pca_store_path, path=zs.zone_group_name(zone))
+    zone_json = tmp_path / "pca.zarr" / zs.zone_group_name(zone) / "zarr.json"
+    meta = json.loads(zone_json.read_text())
+    entry = meta["consolidated_metadata"]["metadata"][zs.pca_level_array_name(0)]
+    entry["shape"] = [1, *entry["shape"][1:]]
+    zone_json.write_text(json.dumps(meta))
+
+    _, (origin_x, origin_y), _ = get_zone_grid(zone, RESOLUTION, 2048)
+    rgb = np.full((zs.PCA_BANDS, shard, shard), 7, dtype=np.uint8)
+    zs.write_pca_window_levels(
+        pca_store_path=pca_store_path,
+        zone_number=zone,
+        window_bounds=(origin_x, origin_y, origin_x + shard, origin_y + shard),
+        time_index=1,
+        levels={0: rgb},
+    )
+
+    written = zarr.open_group(pca_store_path, mode="r")[zs.zone_group_name(zone)]
+    stored = written[zs.pca_level_array_name(0)][1, :, :shard, :shard]
+    assert np.array_equal(np.asarray(stored), rgb)
