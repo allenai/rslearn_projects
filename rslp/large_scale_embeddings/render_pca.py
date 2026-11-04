@@ -468,7 +468,7 @@ def write_render_jobs(
         logger.info("nothing to render; every source marker already has output")
         return
     rslp.common.worker.write_jobs(
-        queue_name, "large_scale_embeddings", "render_pca", jobs
+        queue_name, "large_scale_embeddings", "render_utm_pca", jobs
     )
 
 

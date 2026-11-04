@@ -690,3 +690,42 @@ def test_annotation_writes_through_the_stamping_store(
         run["pca_store_path"], run["artifact_path"], max_level=MAX_LEVEL
     )
     assert opened == [run["pca_store_path"]]
+
+
+def test_render_jobs_name_a_registered_workflow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unregistered name is only caught on the cluster, after every worker rejects.
+
+    The entry carries no error text, so the stage looks like it is running slowly
+    rather than failing.
+    """
+    import importlib
+
+    import rslp.common.worker
+
+    run = _build_run(tmp_path)
+    sent: list[tuple[str, str]] = []
+
+    def spy(
+        queue_name: str,
+        rslp_project: str,
+        rslp_workflow: str,
+        args_list: list[list[str]],
+        **kwargs: object,
+    ) -> None:
+        sent.append((rslp_project, rslp_workflow))
+
+    monkeypatch.setattr(rslp.common.worker, "write_jobs", spy)
+    render_pca.write_render_jobs(
+        store_path=run["store_path"],
+        pca_store_path=run["pca_store_path"],
+        artifact_path=run["artifact_path"],
+        source_completed_paths=[run["source_completed"]],
+        completed_path=run["completed_path"],
+        queue_name="a-queue",
+        max_level=MAX_LEVEL,
+    )
+    assert sent, "no jobs were enqueued, so the name was never checked"
+    project, workflow = sent[0]
+    assert workflow in importlib.import_module(f"rslp.{project}").workflows
