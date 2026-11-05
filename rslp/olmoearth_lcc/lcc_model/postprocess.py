@@ -204,6 +204,11 @@ UNIX_EPOCH_DAY_OFFSET = (
 # their land cover classes, post change score, and dates zeroed in the GeoZarr output.
 GEOZARR_CHANGE_THRESHOLD = 128
 
+# Binary change probability (0-255) below which the GeoZarr binary_change band itself
+# is zeroed (in any pixel). Low probabilities carry little information but are most
+# of the compressed output size; values at or above this keep full 0-255 resolution.
+GEOZARR_BINARY_ZERO_THRESHOLD = 16
+
 
 def _days_to_month_values(days: np.ndarray) -> np.ndarray:
     """Convert day-since-epoch values to the summary month encoding.
@@ -292,7 +297,8 @@ def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     See geozarr.CHANGE_BANDS and geozarr.CHANGE_DATES_BANDS for the layout. Pixels
     with no prediction are all zero. Where both change categories are "none" and the
     binary change probability is below GEOZARR_CHANGE_THRESHOLD, the land cover
-    classes, post change score, and change dates are zeroed too.
+    classes, post change score, and change dates are zeroed too. binary_change
+    values below GEOZARR_BINARY_ZERO_THRESHOLD are set to 0.
 
     Args:
         arr: (len(OUTPUT_BANDS), H, W) array with probabilities scaled 0-255.
@@ -334,6 +340,9 @@ def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     change[1:3, no_change] = 0
     change[5, no_change] = 0
     dates[:, no_change] = 0
+    # Binary change (band 0); valid pixels stay distinguishable from nodata through
+    # the change category bands.
+    change[0, change[0] < GEOZARR_BINARY_ZERO_THRESHOLD] = 0
     return change, dates
 
 
@@ -541,10 +550,9 @@ def process_summary_tif(
     Returns the feature count and the features themselves (empty list if
     return_features is False).
     """
-    with tif_path.open("rb") as f:
-        with rasterio.open(f) as src:
-            summary = src.read()
-            projection, bounds = get_raster_projection_and_bounds(src)
+    with tif_path.open("rb") as f, rasterio.open(f) as src:
+        summary = src.read()
+        projection, bounds = get_raster_projection_and_bounds(src)
 
     if summary.shape[0] != len(SUMMARY_BANDS):
         raise ValueError(

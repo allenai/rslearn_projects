@@ -74,11 +74,15 @@ def test_geozarr_window_arrays_encoding() -> None:
             _pixel(200, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX),
             # No prediction.
             np.zeros(len(OUTPUT_BANDS), dtype=np.uint16),
+            # Binary change below GEOZARR_BINARY_ZERO_THRESHOLD is stored as 0.
+            _pixel(10, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX),
+            # Same with a change category: only binary_change is zeroed.
+            _pixel(10, NONE_CATEGORY_IDX, new_building),
         ]
     )
     change, dates = geozarr_window_arrays(arr)
-    assert change.dtype == np.uint8 and change.shape == (6, 1, 4)
-    assert dates.dtype == np.uint16 and dates.shape == (2, 1, 4)
+    assert change.dtype == np.uint8 and change.shape == (6, 1, 6)
+    assert dates.dtype == np.uint16 and dates.shape == (2, 1, 6)
 
     np.testing.assert_array_equal(
         change[:, 0, 0], [200, 9, 10, NONE_CATEGORY_IDX, new_building, 170]
@@ -99,6 +103,16 @@ def test_geozarr_window_arrays_encoding() -> None:
 
     assert not change[:, 0, 3].any()
     assert not dates[:, 0, 3].any()
+
+    np.testing.assert_array_equal(
+        change[:, 0, 4], [0, 0, 0, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 0]
+    )
+    np.testing.assert_array_equal(dates[:, 0, 4], [0, 0])
+
+    np.testing.assert_array_equal(
+        change[:, 0, 5], [0, 9, 10, NONE_CATEGORY_IDX, new_building, 170]
+    )
+    assert (dates[:, 0, 5] > 0).all()
 
 
 def _first_window(zone_number: int) -> tuple[Projection, tuple[int, int, int, int]]:

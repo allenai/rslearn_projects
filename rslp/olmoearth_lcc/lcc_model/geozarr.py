@@ -15,7 +15,8 @@ northern CRS (EPSG:326NN) with a continuous northing axis spanning both hemisphe
   days since 1970-01-01 (0 = nodata).
 
 Where both change categories are "none" and the binary change probability is below
-128, the land cover classes, post change score, and dates are zeroed (see
+128, the land cover classes, post change score, and dates are zeroed, and binary
+change probabilities below 16 are stored as 0 (see
 postprocess.geozarr_window_arrays).
 
 The store is created once by ``init_store`` (root, all zone groups, arrays, and
@@ -36,6 +37,7 @@ from zarr.codecs import BloscCodec, BloscShuffle, ZstdCodec
 from rslp.log_utils import get_logger
 
 from .postprocess import (
+    GEOZARR_BINARY_ZERO_THRESHOLD,
     GEOZARR_CHANGE_THRESHOLD,
     LC_CLASS_NAMES,
     POST_CHANGE_CATEGORY_NAMES,
@@ -72,9 +74,9 @@ CHANGE_DATES_BAND_DIM = "change_dates_band"
 NODATA_VALUE = 0
 
 SHARD_SIZE = PATCH_SIZE
-DEFAULT_CHUNK_SIZE = 256
+DEFAULT_CHUNK_SIZE = 512
 DEFAULT_COMPRESSOR = "zstd"
-DEFAULT_COMPRESSION_LEVEL = 3
+DEFAULT_COMPRESSION_LEVEL = 9
 COMPRESSORS = ["zstd", "blosc_zstd", "blosc_lz4", "none"]
 
 # Chunk size (in elements) for the 1-D x/y coordinate arrays.
@@ -211,6 +213,7 @@ def init_store(
             "pre_change_category_names": PRE_CHANGE_CATEGORY_NAMES,
             "post_change_category_names": POST_CHANGE_CATEGORY_NAMES,
             "no_change_threshold": GEOZARR_CHANGE_THRESHOLD,
+            "binary_change_zero_threshold": GEOZARR_BINARY_ZERO_THRESHOLD,
             "description": (
                 "OlmoEarth LCC land cover change predictions. change: binary_change "
                 "and post_change_score are probabilities scaled 0-255; pre_lc/post_lc "
@@ -218,7 +221,8 @@ def init_store(
                 "pre/post_change_category_names (0 = no prediction, 1 = none). "
                 "change_dates: days since 1970-01-01 (0 = nodata). Where both change "
                 "categories are none and binary_change < no_change_threshold, "
-                "pre_lc, post_lc, post_change_score and change_dates are 0."
+                "pre_lc, post_lc, post_change_score and change_dates are 0. "
+                "binary_change < binary_change_zero_threshold is stored as 0."
             ),
         }
     )

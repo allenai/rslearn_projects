@@ -648,11 +648,12 @@ coordinate arrays (pixel centers). Each zone group holds two arrays:
 
 Pixels with no prediction are 0 in every band. Where both change categories are
 none and `binary_change < 128`, `pre_lc`, `post_lc`, `post_change_score` and both
-dates are also 0. The class-name lists, reference timestamp and model config are
+dates are also 0, and `binary_change < 16` is stored as 0 everywhere (these low
+probabilities were most of the compressed size). The class-name lists, reference timestamp and model config are
 stored in the root attributes.
 
 The shards are 2048x2048, one per prediction window, so concurrent workers never
-write the same object. Inner chunks are 256x256 and use zstd level 3 by default; a
+write the same object. Inner chunks are 512x512 and use zstd level 9 by default; a
 store with other settings can be created before calling `write_jobs`:
 
 ```bash
