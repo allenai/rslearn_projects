@@ -31,6 +31,15 @@ QUANTIZE_CLIP_THRESHOLD = (127.0 / QUANTIZE_SCALE) ** QUANTIZE_POWER
 NODATA_VALUE = -128
 
 
+class NonFiniteEmbeddingError(Exception):
+    """A model output carried a non-finite coordinate.
+
+    Raised rather than masked so the queue entry is rejected and re-run. The fault
+    behind this is intermittent: every block that produced it once was clean on a
+    re-run, so a retry recovers the pixels that masking would leave as holes.
+    """
+
+
 def quantize_embeddings(embeddings: torch.Tensor) -> torch.Tensor:
     """Quantize float embeddings to int8 using the power-based scheme.
 
@@ -76,6 +85,7 @@ class QuantizedEmbeddingHead(Predictor):
         l2_normalize: bool = False,
         epsilon: float = 1e-8,
         log_every_n_batches: int = 200,
+        fail_on_non_finite: bool = True,
     ):
         """Create a new QuantizedEmbeddingHead.
 
@@ -84,11 +94,15 @@ class QuantizedEmbeddingHead(Predictor):
                 dimension. Discards magnitude, which the evals score on.
             epsilon: minimum norm to avoid division by zero.
             log_every_n_batches: how often to log the round-trip diagnostic.
+            fail_on_non_finite: raise on a non-finite coordinate instead of writing
+                that pixel as nodata. Set False to finish a block with holes rather
+                than reject it, which trades those pixels for not retrying.
         """
         super().__init__()
         self.l2_normalize = l2_normalize
         self.epsilon = epsilon
         self.log_every_n_batches = log_every_n_batches
+        self.fail_on_non_finite = fail_on_non_finite
         self._batches = 0
 
     def _log_clipping(self, features: torch.Tensor) -> None:
@@ -157,15 +171,22 @@ class QuantizedEmbeddingHead(Predictor):
             )
         self._log_clipping(features)
 
-        # NaN would otherwise cast to int8 0, which reads as real data. Mark any pixel
-        # with a non-finite coordinate as nodata instead.
+        # NaN would otherwise cast to int8 0, which reads as real data.
         quantized = quantize_embeddings(features)
         non_finite = ~torch.isfinite(features).all(dim=1, keepdim=True)
         if non_finite.any():
+            count, total = int(non_finite.sum()), non_finite.numel()
+            if self.fail_on_non_finite:
+                # The entry is rejected and the supervisor re-enqueues it. The count
+                # reaches the queue in the rejection text, which is what makes the
+                # recurrence rate measurable at all.
+                raise NonFiniteEmbeddingError(
+                    f"{count} of {total} pixels have non-finite embeddings"
+                )
             logger.warning(
                 "%d of %d pixels have non-finite embeddings; writing them as nodata",
-                int(non_finite.sum()),
-                non_finite.numel(),
+                count,
+                total,
             )
             quantized = quantized.masked_fill(non_finite, NODATA_VALUE)
 

@@ -165,6 +165,15 @@ WORKER_NAME_ENV_VAR = "RSLP_WORKER_NAME"
 CODE_VERSION_ENV_VAR = "RSLP_CODE_VERSION"
 
 
+class AllZeroEmbeddingError(Exception):
+    """A written pixel held an all-zero vector where the inputs had data.
+
+    Nodata is -128, so an all-zero vector is indistinguishable from real data to
+    every consumer of the store. Raised rather than masked so the block is rejected
+    and re-run; see NonFiniteEmbeddingError for why a retry is expected to succeed.
+    """
+
+
 def _checkpoint_arg(checkpoint_path: str) -> str:
     """Which OlmoEarth loader argument `checkpoint_path` should be passed as.
 
@@ -474,6 +483,9 @@ def _read_window_embeddings(
 
     Returns:
         the int8 embedding array of shape (band, height, width).
+
+    Raises:
+        AllZeroEmbeddingError: if any pixel the inputs covered is all-zero.
     """
     # The embedding raster is at 1/latent_patch_size of the window resolution.
     out_projection = Projection(
@@ -530,10 +542,11 @@ def _read_window_embeddings(
 
 
 def _mask_invalid_pixels(embeddings: np.ndarray, valid: np.ndarray) -> np.ndarray:
-    """Set pixels outside the valid mask, and all-zero vectors, to NODATA_VALUE.
+    """Set pixels outside the valid mask to NODATA_VALUE, and reject all-zero vectors.
 
-    An all-zero vector is what a NaN model output quantizes to, never a real
-    embedding, so it is treated as invalid even where the inputs had data.
+    An all-zero vector is what a NaN model output quantizes to. The head's own guard
+    should have raised before one reaches here, so this is a backstop against a path
+    that bypasses it, and it fails the block rather than writing holes.
 
     Args:
         embeddings: int8 array of shape (band, height, width), modified in place.
@@ -541,15 +554,17 @@ def _mask_invalid_pixels(embeddings: np.ndarray, valid: np.ndarray) -> np.ndarra
 
     Returns:
         the masked embeddings array.
+
+    Raises:
+        AllZeroEmbeddingError: if any valid pixel holds an all-zero vector.
     """
     all_zero = valid & ~embeddings.any(axis=0)
     if all_zero.any():
-        logger.warning(
-            "%d of %d valid pixels have all-zero embeddings; writing them as nodata",
-            int(all_zero.sum()),
-            int(valid.sum()),
+        raise AllZeroEmbeddingError(
+            f"{int(all_zero.sum())} of {int(valid.sum())} valid pixels have "
+            "all-zero embeddings"
         )
-    embeddings[:, ~valid | all_zero] = NODATA_VALUE
+    embeddings[:, ~valid] = NODATA_VALUE
     return embeddings
 
 

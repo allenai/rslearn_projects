@@ -16,6 +16,7 @@ from upath import UPath
 
 from rslp.large_scale_embeddings.model import NODATA_VALUE
 from rslp.large_scale_embeddings.predict_pipeline import (
+    AllZeroEmbeddingError,
     _collect_provenance,
     _mask_invalid_pixels,
     get_provenance_fname,
@@ -528,14 +529,38 @@ def test_pca_paths_must_be_set_together() -> None:
         )
 
 
-def test_mask_invalid_pixels_masks_no_input_and_all_zero_vectors() -> None:
-    """Pixels without input data and all-zero vectors both become nodata."""
+def test_mask_invalid_pixels_masks_pixels_without_input() -> None:
+    """A pixel the inputs did not cover becomes nodata; a stray zero coordinate does not.
+
+    Only an all-zero vector signals a NaN model output. A single zero coordinate is
+    an ordinary value and must survive.
+    """
     embeddings = np.ones((4, 1, 3), np.int8)
-    # Pixel 1 is all zero (a NaN model output); pixel 2 has a zero coordinate only.
-    embeddings[:, 0, 1] = 0
     embeddings[0, 0, 2] = 0
     valid = np.array([[False, True, True]])
     masked = _mask_invalid_pixels(embeddings, valid)
     assert (masked[:, 0, 0] == NODATA_VALUE).all()
-    assert (masked[:, 0, 1] == NODATA_VALUE).all()
+    assert masked[:, 0, 1].tolist() == [1, 1, 1, 1]
     assert masked[:, 0, 2].tolist() == [0, 1, 1, 1]
+
+
+def test_mask_invalid_pixels_rejects_all_zero_vectors() -> None:
+    """An all-zero vector where the inputs had data fails the block.
+
+    Nodata is -128, so masking it to nodata would silently drop pixels that a re-run
+    recovers, and leave no record that the fault occurred.
+    """
+    embeddings = np.ones((4, 1, 3), np.int8)
+    embeddings[:, 0, 1] = 0
+    valid = np.array([[False, True, True]])
+    with pytest.raises(AllZeroEmbeddingError, match="1 of 2 valid pixels"):
+        _mask_invalid_pixels(embeddings, valid)
+
+
+def test_mask_invalid_pixels_ignores_all_zero_outside_valid() -> None:
+    """An all-zero vector the inputs did not cover is just nodata, not a failure."""
+    embeddings = np.ones((4, 1, 2), np.int8)
+    embeddings[:, 0, 0] = 0
+    valid = np.array([[False, True]])
+    masked = _mask_invalid_pixels(embeddings, valid)
+    assert (masked[:, 0, 0] == NODATA_VALUE).all()

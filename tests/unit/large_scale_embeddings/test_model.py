@@ -1,10 +1,12 @@
 """Unit tests for rslp.large_scale_embeddings.model."""
 
+import pytest
 import torch
 from rslearn.models.component import FeatureMaps
 
 from rslp.large_scale_embeddings.model import (
     NODATA_VALUE,
+    NonFiniteEmbeddingError,
     QuantizedEmbeddingHead,
     dequantize_embeddings,
     quantize_embeddings,
@@ -62,16 +64,36 @@ def test_head_without_normalization() -> None:
     assert torch.equal(output.outputs, expected)
 
 
-def test_head_writes_non_finite_pixels_as_nodata() -> None:
-    """A pixel with any NaN or inf coordinate is nodata, not a quantized zero."""
-    # One sample with C=2, H=1, W=3: a finite pixel, a NaN pixel and an inf pixel.
-    features = torch.tensor(
-        [[[[0.25, float("nan"), 0.25]], [[-1.0, 0.5, float("inf")]]]]
-    )
+def _non_finite_features() -> torch.Tensor:
+    """One sample, C=2, H=1, W=3: a finite pixel, a NaN pixel and an inf pixel."""
+    return torch.tensor([[[[0.25, float("nan"), 0.25]], [[-1.0, 0.5, float("inf")]]]])
+
+
+def test_head_rejects_non_finite_pixels() -> None:
+    """A non-finite coordinate fails the block so the entry is retried.
+
+    Masking it would leave holes in pixels a re-run recovers, and would leave no
+    record that the fault happened at all.
+    """
     head = QuantizedEmbeddingHead(l2_normalize=False)
-    output = head(FeatureMaps([features]), context=None)
+    with pytest.raises(NonFiniteEmbeddingError, match="2 of 3 pixels"):
+        head(FeatureMaps([_non_finite_features()]), context=None)
+
+
+def test_head_writes_non_finite_pixels_as_nodata_when_not_failing() -> None:
+    """With fail_on_non_finite off, a non-finite pixel is nodata, not a zero."""
+    head = QuantizedEmbeddingHead(l2_normalize=False, fail_on_non_finite=False)
+    output = head(FeatureMaps([_non_finite_features()]), context=None)
     expected = torch.tensor(
         [[[[64, NODATA_VALUE, NODATA_VALUE]], [[-127, NODATA_VALUE, NODATA_VALUE]]]],
         dtype=torch.int8,
     )
     assert torch.equal(output.outputs, expected)
+
+
+def test_head_passes_finite_features_through() -> None:
+    """The guard does not fire on ordinary output, whichever mode it is in."""
+    features = torch.tensor([[[[0.25, 0.25]], [[-1.0, 0.5]]]])
+    for fail in (True, False):
+        head = QuantizedEmbeddingHead(l2_normalize=False, fail_on_non_finite=fail)
+        assert torch.isfinite(head(FeatureMaps([features]), context=None).outputs).all()
