@@ -54,6 +54,7 @@ from rslp.utils.rslearn import (
 )
 
 from . import geozarr
+from .fast_inference import prepare_fast_inference
 from .postprocess import (
     OUTPUT_BANDS,
     OUTPUT_LAYER,
@@ -221,6 +222,7 @@ def write_meta(
     time_range: tuple[datetime, datetime],
     windows: list[Window],
     timings: dict[str, float] | None = None,
+    fast_inference: bool = False,
 ) -> None:
     """Write the per-tile metadata sidecar.
 
@@ -237,6 +239,8 @@ def write_meta(
         time_range: the reference timestamp as (T, T).
         windows: the prediction windows of this tile.
         timings: optional seconds spent in each stage of the pipeline.
+        fast_inference: whether the predictions used fast inference (see
+            fast_inference.py).
     """
     window_metas = []
     for window in windows:
@@ -276,6 +280,7 @@ def write_meta(
         projection=projection.serialize(),
         bounds=list(bounds),
         time_range=[t.isoformat() for t in time_range],
+        fast_inference=fast_inference,
         windows=window_metas,
     )
     if timings is not None:
@@ -365,6 +370,7 @@ def predict_pipeline(
     zarr_store_path: str | None = None,
     write_geojson: bool = True,
     geozarr_workers: int = DEFAULT_GEOZARR_WORKERS,
+    fast_inference: bool = False,
 ) -> None:
     """Compute LCC model outputs over one tile.
 
@@ -390,6 +396,8 @@ def predict_pipeline(
             once its _meta.json exists.
         write_geojson: whether to write the per-tile GeoJSON.
         geozarr_workers: parallel workers for writing to the GeoZarr store.
+        fast_inference: compile the encoder and use cuDNN attention (see
+            fast_inference.py). Requires torch>=2.8 and a CUDA GPU.
     """
     if zarr_store_path is None and not write_geojson:
         raise ValueError("write_geojson=false requires zarr_store_path")
@@ -410,6 +418,9 @@ def predict_pipeline(
     ):
         logger.info(f"output file {out_fname} already exists")
         return
+
+    # Prepare fast inference before materializing so that it fails early.
+    model_extra_args = prepare_fast_inference() if fast_inference else []
 
     # Seconds spent in each stage, recorded in _meta.json.
     timings: dict[str, float] = {}
@@ -509,7 +520,7 @@ def predict_pipeline(
     if len(completed_fnames) == 0:
         logger.info("skipping prediction since no windows seem to have data")
     else:
-        run_model_predict(MODEL_CONFIG_FNAME, ds_path)
+        run_model_predict(MODEL_CONFIG_FNAME, ds_path, extra_args=model_extra_args)
     end_stage("predict")
 
     windows = list(tile_to_window.values())
@@ -545,7 +556,15 @@ def predict_pipeline(
     # Written last so that its existence marks the tile as complete. The total
     # excludes writing the metadata itself.
     timings["total"] = time.monotonic() - start_time
-    write_meta(meta_fname, projection, bounds, time_range, windows, timings=timings)
+    write_meta(
+        meta_fname,
+        projection,
+        bounds,
+        time_range,
+        windows,
+        timings=timings,
+        fast_inference=fast_inference,
+    )
 
 
 class PredictTaskArgs:
@@ -588,6 +607,7 @@ def predict_multi(
     write_summary_raster: bool = False,
     zarr_store_path: str | None = None,
     write_geojson: bool = True,
+    fast_inference: bool = False,
 ) -> None:
     """Run multiple prediction tasks sequentially.
 
@@ -602,6 +622,7 @@ def predict_multi(
         write_summary_raster: also write the compact uint8 summary raster per tile.
         zarr_store_path: also write each tile into this GeoZarr store.
         write_geojson: whether to write the per-tile GeoJSON.
+        fast_inference: compile the encoder and use cuDNN attention.
     """
     os.makedirs(scratch_path, exist_ok=True)
     for task in json.loads(tasks):
@@ -622,4 +643,5 @@ def predict_multi(
                 write_summary_raster=write_summary_raster,
                 zarr_store_path=zarr_store_path,
                 write_geojson=write_geojson,
+                fast_inference=fast_inference,
             )

@@ -142,6 +142,7 @@ def get_jobs(
     write_summary_raster: bool = False,
     zarr_store_path: str | None = None,
     write_geojson: bool = True,
+    fast_inference: bool = False,
 ) -> list[list[str]]:
     """Get batches of prediction tasks.
 
@@ -161,6 +162,8 @@ def get_jobs(
             summary raster.
         zarr_store_path: GeoZarr store that workers should write into.
         write_geojson: whether workers should write the per-tile GeoJSON.
+        fast_inference: whether workers should use fast inference (compiled
+            encoder with cuDNN attention, see fast_inference.py).
 
     Returns:
         a list of worker argument lists, one per batch of TILE_SIZE tiles.
@@ -216,6 +219,8 @@ def get_jobs(
             cur_args += ["--zarr_store_path", zarr_store_path]
         if not write_geojson:
             cur_args += ["--write_geojson", "false"]
+        if fast_inference:
+            cur_args += ["--fast_inference", "true"]
         jobs.append(cur_args)
 
     return jobs
@@ -265,6 +270,7 @@ def write_jobs(
     write_summary_raster: bool = False,
     zarr_store_path: str | None = None,
     write_geojson: bool = True,
+    fast_inference: bool = False,
 ) -> None:
     """Enumerate tiles for one reference timestamp and write jobs to a Beaker queue.
 
@@ -284,6 +290,8 @@ def write_jobs(
             reference timestamp). It is created with default settings if missing; an
             existing store must have been created for the same timestamp.
         write_geojson: whether workers should write the per-tile GeoJSON.
+        fast_inference: whether workers should use fast inference (compiled
+            encoder with cuDNN attention, see fast_inference.py).
     """
     if zarr_store_path is None and not write_geojson:
         raise ValueError("write_geojson=false requires zarr_store_path")
@@ -303,6 +311,7 @@ def write_jobs(
         write_summary_raster=write_summary_raster,
         zarr_store_path=zarr_store_path,
         write_geojson=write_geojson,
+        fast_inference=fast_inference,
     )
     # Shuffle so outputs start appearing from random parts of the world (aids debugging).
     random.shuffle(jobs)

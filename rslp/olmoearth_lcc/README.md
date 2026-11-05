@@ -618,6 +618,10 @@ Optional flags:
 - `--zarr_store_path /path/to/lcc_20250601.zarr`: also write predictions into a
   GeoZarr store (see below). It is created with default settings if missing.
 - `--write_geojson false`: skip the per-tile GeoJSON (requires `--zarr_store_path`).
+- `--fast_inference true`: compile the OlmoEarth encoder with `torch.compile` and use
+  cuDNN attention (see `lcc_model/fast_inference.py`). Same speed as eager at batch
+  size 8 but about 1.7 GB instead of 16.5 GB of GPU memory. Requires torch 2.8 or
+  newer; only tested on H100. The setting is recorded in each tile's `_meta.json`.
 
 Tiles whose outputs already exist in `out_path` are skipped, so re-running resumes.
 Normally that means the GeoJSON; with `--zarr_store_path` it means the `_meta.json`.
@@ -688,12 +692,17 @@ python -m rslp.main common launch \
     --image_name favyen/rslp_image \
     --queue_name favyen/lcc-prediction-queue \
     --num_workers 50 --gpus 1 --shared_memory 256GiB \
-    --cluster '["ai2/jupiter", "ai2/neptune", "ai2/saturn"]' \
+    --cluster '["ai2/jupiter", "ai2/ceres"]' \
     --weka_mounts '[{"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}]' \
     --extra_env_vars '[{"name":"OEDATASETS_API_URL","value":"https://datasets.olmoearth.allenai.org"},{"name":"DATASETS_API_TOKEN","secret":"LCC_DATASETS_API_TOKEN"},{"name":"RSLP_PREFIX","value":"/weka/dfive-default/rslearn-eai"}]'
 ```
 
 Each worker pulls tasks from the queue and runs the `predict_multi` workflow.
+
+With `--fast_inference true`, compiled kernels are cached in inductor's default
+directory on the worker's local disk (`/tmp/torchinductor_<user>`) and reused across
+tasks. Don't point `TORCHINDUCTOR_CACHE_DIR` at a directory shared with non-cuDNN
+runs (e.g. on Weka): the inductor FX cache doesn't key on the SDPA backend.
 
 #### Random 2048x2048 land tiles (diagnostic sampling)
 
