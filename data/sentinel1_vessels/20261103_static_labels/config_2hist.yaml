@@ -219,5 +219,5 @@ trainer:
         monitor: val_detect/mAP
         mode: max
 project_name: 20261103_static_labels
-run_name: data_20261103_model_20261103_satlaspretrain_unfreeze4_13_2hist
+run_name: data_20261103c2_model_20261105_satlaspretrain_unfreeze4_13_2hist
 management_dir: ${RSLP_PREFIX}/projects

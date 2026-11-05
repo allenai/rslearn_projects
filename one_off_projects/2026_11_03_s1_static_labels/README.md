@@ -70,3 +70,28 @@ Note for deployment: the prediction pipeline (`rslp/sentinel1_vessels/predict_pi
 still picks the historical from [t-60d, t-30d] by orbit direction only. It must be updated
 (same relative orbit, the same 30-day periods) before a model trained on 20261103 is
 deployed.
+
+
+Cleanup round 2 and retrain (2026-11-05)
+----------------------------------------
+
+The 20261103 labels were cleaned a second time, in place:
+- 2,248 labels that look static against the most recent same-track historical (VH or VV
+  peak/NCC test) but were not candidates on 11-03 were checked with Gemini (merged prompt:
+  infrastructure covers turbines, platforms and anchored structures; no separate anchored
+  class). 1,322 were deleted.
+- The 336 labels deleted on 11-03 as "permanently anchored vessel" were re-checked the same
+  way; 161 were restored from 20250521.
+- Labels: 61,655 in 20250521, 57,611 in 20261103 now. On a random 100 of the Gemini deletions,
+  65 of 66 that favyen labeled were infrastructure.
+
+The earlier 1hist/2hist runs on 20261103 were stopped. Five new runs (run names
+`data_20261103c2_model_20261105_*`, so they do not resume the old checkpoints):
+- `config_1hist.yaml`, `config_2hist.yaml`: as before.
+- `config_cmp_swin_imagenet.yaml`: 1hist, but a torchvision ImageNet Swin-v2-B encoder
+  (4-channel input, randomly initialized patch embedding, no freezing) with the same SAR
+  normalization.
+- `config_1hist_randhist.yaml`, `config_cmp_swin_imagenet_randhist.yaml`: the historical is
+  picked at random from the up-to-4 same-track historicals (rslearn picks one completed entry
+  of `layers` per example; train re-picks each time, val/test fixed per window), instead of
+  always the most recent one.
