@@ -142,7 +142,7 @@ def get_jobs(
     write_summary_raster: bool = False,
     zarr_store_path: str | None = None,
     write_geojson: bool = True,
-    fast_inference: bool = False,
+    fast_inference: bool = True,
 ) -> list[list[str]]:
     """Get batches of prediction tasks.
 
@@ -163,7 +163,8 @@ def get_jobs(
         zarr_store_path: GeoZarr store that workers should write into.
         write_geojson: whether workers should write the per-tile GeoJSON.
         fast_inference: whether workers should use fast inference (compiled
-            encoder with cuDNN attention, see fast_inference.py).
+            encoder with cuDNN attention, see fast_inference.py); set false to run
+            the model eagerly.
 
     Returns:
         a list of worker argument lists, one per batch of TILE_SIZE tiles.
@@ -219,8 +220,8 @@ def get_jobs(
             cur_args += ["--zarr_store_path", zarr_store_path]
         if not write_geojson:
             cur_args += ["--write_geojson", "false"]
-        if fast_inference:
-            cur_args += ["--fast_inference", "true"]
+        if not fast_inference:
+            cur_args += ["--fast_inference", "false"]
         jobs.append(cur_args)
 
     return jobs
@@ -270,7 +271,7 @@ def write_jobs(
     write_summary_raster: bool = False,
     zarr_store_path: str | None = None,
     write_geojson: bool = True,
-    fast_inference: bool = False,
+    fast_inference: bool = True,
 ) -> None:
     """Enumerate tiles for one reference timestamp and write jobs to a Beaker queue.
 
@@ -291,7 +292,8 @@ def write_jobs(
             existing store must have been created for the same timestamp.
         write_geojson: whether workers should write the per-tile GeoJSON.
         fast_inference: whether workers should use fast inference (compiled
-            encoder with cuDNN attention, see fast_inference.py).
+            encoder with cuDNN attention, see fast_inference.py); set false to run
+            the model eagerly.
     """
     if zarr_store_path is None and not write_geojson:
         raise ValueError("write_geojson=false requires zarr_store_path")

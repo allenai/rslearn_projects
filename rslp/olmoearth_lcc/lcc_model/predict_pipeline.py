@@ -370,7 +370,7 @@ def predict_pipeline(
     zarr_store_path: str | None = None,
     write_geojson: bool = True,
     geozarr_workers: int = DEFAULT_GEOZARR_WORKERS,
-    fast_inference: bool = False,
+    fast_inference: bool = True,
 ) -> None:
     """Compute LCC model outputs over one tile.
 
@@ -397,7 +397,8 @@ def predict_pipeline(
         write_geojson: whether to write the per-tile GeoJSON.
         geozarr_workers: parallel workers for writing to the GeoZarr store.
         fast_inference: compile the encoder and use cuDNN attention (see
-            fast_inference.py). Requires torch>=2.8 and a CUDA GPU.
+            fast_inference.py). Requires torch>=2.8 and a CUDA GPU. Set false to
+            run the model eagerly.
     """
     if zarr_store_path is None and not write_geojson:
         raise ValueError("write_geojson=false requires zarr_store_path")
@@ -607,7 +608,7 @@ def predict_multi(
     write_summary_raster: bool = False,
     zarr_store_path: str | None = None,
     write_geojson: bool = True,
-    fast_inference: bool = False,
+    fast_inference: bool = True,
 ) -> None:
     """Run multiple prediction tasks sequentially.
 
@@ -622,7 +623,8 @@ def predict_multi(
         write_summary_raster: also write the compact uint8 summary raster per tile.
         zarr_store_path: also write each tile into this GeoZarr store.
         write_geojson: whether to write the per-tile GeoJSON.
-        fast_inference: compile the encoder and use cuDNN attention.
+        fast_inference: compile the encoder and use cuDNN attention; set false to
+            run the model eagerly.
     """
     os.makedirs(scratch_path, exist_ok=True)
     for task in json.loads(tasks):

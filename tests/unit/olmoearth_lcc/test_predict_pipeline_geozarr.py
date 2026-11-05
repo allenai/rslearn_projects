@@ -101,6 +101,7 @@ def test_predict_pipeline_geozarr(
         workers=0,
         zarr_store_path=store_path,
         geozarr_workers=0,
+        fast_inference=False,
     )
     predict_pipeline.predict_pipeline(scratch_path=str(tmp_path / "scratch"), **kwargs)
 
