@@ -3,7 +3,9 @@
 Applies the same window-level rules as ``rslp.olmoearth_lcc.lcc_model.prepare``:
 - Entries with invalid positive-point date ordering (expected
   pre_change < first_date_change_noticeable <= post_change < stop_date, with
-  stop_date optional) are omitted (prepare.py raises on these).
+  stop_date optional, and first_date_change_noticeable <= transition_date <
+  post_change for the optional transition_date) are omitted (prepare.py raises on
+  these).
 - "Mixed" entries where some positive points have all three date fields and
   some don't are omitted.
 - Entries without complete annotations (no fully-annotated positive point, and
@@ -32,36 +34,13 @@ from upath import UPath
 from rslp.olmoearth_lcc.lcc_model.prepare import (
     _entry_has_complete_annotations,
     _get_positive_points_missing_dates,
-    _parse_date,
+    positive_point_dates_valid,
 )
 
 # Entry-level fields removed from the filtered copies: the freeform annotator
 # description, and the phase20 FLD provenance (Studio task/project IDs, raw
 # partner labels, polygons).
 EXCLUDED_ENTRY_FIELDS = ("description", "fld")
-
-
-def _positive_point_dates_valid(entry: dict[str, Any]) -> bool:
-    """Check date ordering of fully-annotated positive points.
-
-    Same check as prepare._validate_positive_point_dates, but returns False
-    instead of raising so the entry can be omitted.
-    """
-    for pt in entry.get("positive_points", []):
-        if not (
-            pt.get("pre_change")
-            and pt.get("post_change")
-            and pt.get("first_date_change_noticeable")
-        ):
-            continue
-        pre_change = _parse_date(pt["pre_change"])
-        post_change = _parse_date(pt["post_change"])
-        first_observable = _parse_date(pt["first_date_change_noticeable"])
-        if pre_change >= first_observable or first_observable > post_change:
-            return False
-        if pt.get("stop_date") and _parse_date(pt["stop_date"]) <= post_change:
-            return False
-    return True
 
 
 def filter_v2_jsons(v2_json_paths: list[str], out_dir: str) -> None:
@@ -94,7 +73,7 @@ def filter_v2_jsons(v2_json_paths: list[str], out_dir: str) -> None:
 
         for entry in entries:
             window_key = (entry.get("group"), entry.get("window_name"))
-            if not _positive_point_dates_valid(entry):
+            if not positive_point_dates_valid(entry):
                 counts["invalid_dates"] += 1
                 print(
                     f"  omitting {window_key[0]}/{window_key[1]}: "

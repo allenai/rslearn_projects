@@ -1,9 +1,9 @@
 ## OlmoEarth LCC: Land Cover Change
 
 OlmoEarth LCC (land cover change) detects recent land cover change from Sentinel-2
-time series. It inputs 16 quarterly images (to establish a historical baseline) and 4
-recent biweekly images (to detect changes soon after they occur) and predicts, per
-pixel, whether a land cover change occurred, the source and destination land cover
+time series. It inputs 16 quarterly mosaics (to establish a historical baseline) and
+6 recent weekly mosaics from the last 90 days (to detect changes soon after they
+occur) and predicts, per pixel, whether a land cover change occurred, the source and destination land cover
 categories, the start and end dates of the change, and a fine-grained change category.
 
 The model is trained on manually verified point annotations. See
@@ -17,8 +17,6 @@ Package layout:
   mine candidate changes.
 - `land_cover/`: train a per-pixel land cover model and apply it to the ten-year
   dataset to find candidate change pixels (see its [README](./land_cover/README.md)).
-- `annotation_app/`: Flask UI for verifying and labeling points (legacy; see
-  `studio/`).
 - `studio/`: upload/download v2 JSONs to/from OlmoEarth Studio for the LCC
   Annotator lab.
 - `annotation_scripts/`: per-phase scripts that produce candidate annotation JSONs.
@@ -76,6 +74,12 @@ one 128x128 spatial window:
   be used for training, e.g. because another unannotated change happens later. It
   must be after `post_change`. When set, the training dataset only samples frequent
   blocks that end on/before the earliest `stop_date` among the entry's points.
+- `transition_date`, `transition_category`, `transition_change_category` (optional,
+  positive points only): an intermediate stage of a multi-stage change (e.g.
+  mangrove -> bare -> crops): the date it appears, its land cover category, and its
+  change category (one of the post-change categories, from the same Studio
+  labelset as `post_change_category`). `transition_date` must satisfy
+  `first_date_change_noticeable <= transition_date < post_change`.
 
 Land cover categories (`pre_category` / `post_category`): nodata, bare, burnt, crops,
 fallow/shifting cultivation, grassland, Lichen and moss, shrub, snow and ice, tree,
@@ -183,77 +187,37 @@ keys are kept in the task's attributes; each point is an annotation whose
 entries exactly, except that empty-string point fields are dropped (prepare.py
 treats them the same as missing ones).
 
-#### Legacy Flask app
-
-The Flask app in `annotation_app/` still works against a materialized rslearn
-dataset:
-
-The annotation app is a Flask web UI for browsing entries and labeling points.
-
-```bash
-# 1. Create the rslearn dataset windows (for imagery)
-mkdir -p /path/to/dataset/
-cp data/olmoearth_lcc/annotation_app/config.json /path/to/dataset/config.json
-python -m rslp.olmoearth_lcc.annotation_app.create_windows \
-    annotations.json \
-    /path/to/dataset/
-
-# 2. Materialize Sentinel-2 imagery
-rslearn dataset prepare --root /path/to/dataset/ --workers 32 --retry-max-attempts 5 --retry-backoff-seconds 5
-rslearn dataset materialize --root /path/to/dataset/ --workers 128 --retry-max-attempts 5 --retry-backoff-seconds 5
-
-# 3. Launch the annotation app
-python -m rslp.olmoearth_lcc.annotation_app.server \
-    --json annotations.json \
-    --ds-path /path/to/dataset/ \
-    --port 8080
-```
-
-The UI:
-- Displays up to 12 monthly Sentinel-2 images per year in a 2-row grid.
-- Toggle overlay to see positive (green) and negative (red) points.
-- Left-click on overlay to add a positive point; right-click to add negative.
-- Click existing points to remove them.
-- Iterate through positive points with the point navigator at the top.
-- Edit the sample-level `anchor_date` and `description` in the Sample section.
-- Edit annotation fields (pre_change, first_date_change_noticeable, post_change,
-  the optional stop_date, pre_category, post_category, and the optional
-  change-category fields) for the selected positive point.
-- Saving: the Save button writes the whole entry (Sample fields, the selected
-  point's fields, and all points). Adding, removing, or converting points and
-  "Apply to all" save immediately, including any typed-but-unsaved values.
-  Switching between points keeps typed values until the next save, but moving to
-  another entry discards them.
-- Click timestamps below images to copy them to clipboard.
-- Navigation: Prev/Next buttons to move between entries. URL hash tracks position.
-
-For high-resolution context, copy the window coordinates into the Google Earth
-desktop app.
-
 ---
 
 ### Model
 
 #### Architecture
 
-The LCC (land cover change) model uses a dual-forward-pass architecture:
+The production model (`config_bp_abs_qdrop_bpcat_1pass.yaml`) is
+`rslp.olmoearth_lcc.lcc_model.model.ChangeModel` (its module docstring describes the
+options the other configs use):
 
 - **Input**: 22 images: 16 quarterly mosaics followed by 6 frequent images (the
   least-cloudy mosaic of each of the 6 most recent 7-day periods with imagery in
   a 90-day block).
-- **Encoder**: OlmoEarth-v1-Base (shared weights, patch_size=4). Processes two
-  sets of 11 images separately.
-- **Pass 1**: 11 quarterly images (historical baseline, ~2.75 years).
-- **Pass 2**: 5 quarterly images + 6 frequent images (recent conditions).
-- **Decoder**: Features from both passes concatenated (1536ch @ 1/4 res) →
-  shared 1x1 conv (768ch) → per-task linear heads reshaping to full resolution
-  via 4x4 patch prediction.
+- **Encoder**: OlmoEarth-v1.2-Base (patch_size=4, no token pooling) over all 22
+  images in a single pass (`num_pass1: null`), giving one token per timestep at
+  1/4 resolution.
+- **Binary head**: a learned breakpoint scan. For every split of the time series it
+  compares the before and after means of the tokens, and change evidence is
+  max-pooled over the splits.
+- **Other heads**: src decodes the split-attention-weighted before aggregate and dst
+  the after aggregate; the pre/post change-category heads decode both concatenated.
+  The decoders are small conv stacks that upsample to full resolution.
+  `ts_start` / `ts_end` are a per-token logit over the 22 timesteps.
 
 Tasks (all per-pixel, loss masked to annotated points only):
-- `binary`: change classification (3 cls: nodata / no_change / change)
-- `src`: source land cover category (13 cls)
-- `dst`: destination land cover category (13 cls)
-- `pre_change` / `post_change`: change-category classification (11 / 15 cls)
+- `binary`: change classification (3 cls: nodata / no_change / change; loss weight
+  2)
+- `src`: source land cover category (14 cls, including nodata)
+- `dst`: destination land cover category (14 cls)
+- `pre_change` / `post_change`: change-category classification (8 / 21 cls,
+  including nodata and none)
 - `ts_start` / `ts_end`: index of the input timestep at which the change starts /
   ends (22 cls, one per input image; supervised only at change points)
 
@@ -285,20 +249,19 @@ python -m rslp.olmoearth_lcc.lcc_model.prepare \
 rslearn dataset materialize --root "$OUT" --workers 128 --retry-backoff-seconds 5 --retry-max-attempts 5 --no-use-initial-job
 ```
 
-The prepare script is **idempotent**: windows that already exist are skipped, so
-you can re-run it after adding new annotations and only the new windows will be
-created. Then run `rslearn dataset materialize` again to download imagery for
-the new windows.
-
-Datasets prepared before the switch to 90-day frequent blocks (four 15-day
-periods, 20-image stack) are not compatible with the current model and cannot be
-upgraded in place (the idempotency check does not detect the old frequent
-layers), so prepare into a new dataset directory and retrain.
+The prepare script can be re-run on an existing dataset, e.g. after adding new
+annotations. Each window is compared with the existing one: unchanged windows are
+skipped, windows whose labels changed get their label layers rewritten in place, and
+windows whose geometry or dates changed are recreated (and need materializing again).
+Then run `rslearn dataset materialize` again to download imagery for the new and
+recreated windows.
 
 The prepare script:
 - Only processes entries with fully annotated positive points (all of pre_change,
   post_change, first_date_change_noticeable, pre_category, post_category present).
-- Skips windows that already exist in the dataset.
+- Skips windows that are unchanged, rewrites the label layers of windows whose
+  labels changed, and recreates windows whose geometry or dates changed (see
+  above).
 - Skips duplicate `group`/`window_name` entries across the provided JSON inputs.
 - Creates up to 8 frequent-image options per window. Each option is a 90-day
   block split into 7-day periods counted back from the block end (only full
@@ -306,9 +269,12 @@ The prepare script:
   cloud threshold) of each of the 6 most recent periods that have imagery, and
   options with fewer than 6 such periods are skipped. This is the same matching
   as the prediction config's `sentinel2_frequent_0`. Options are defined by where
-  the block ends: right after first_noticeable (+1 day), 15-60 days after
-  first_noticeable, right after post_change (+1 day), and random later
-  post-change contexts up to post_change + 2 years. Every block ends on/before
+  the block ends: right after first_noticeable (+6 days), 15-60 days after
+  first_noticeable, right after post_change (+6 days), right after the reference
+  point's transition_date (+6 days, if it has one), and random later
+  post-change contexts up to post_change + 2 years. The transition option comes
+  after the post_change option, so validation (option 2) is unchanged; it takes
+  the place of one random option. Every block ends on/before
   min(2026-01-01, stop_date), where 2026-01-01 is the annotation cutoff and
   stop_date is the earliest optional per-point stop date.
 - Window time_range is derived from the annotations (no fixed 10-year range): it
@@ -318,8 +284,7 @@ The prepare script:
   quarterly period ends exactly where the earliest option's frequent block begins,
   the same as the prediction config's `sentinel2_quarterly` (`[T - 1890d, T - 90d]`).
   A negative-only entry with `anchor_date = T - 6d` therefore gets an option 0 that
-  sees the same 22 images as prediction at reference timestamp T. (Windows created
-  before 2026-10-20 used a 16-period lookback aligned to the latest block end.)
+  sees the same 22 images as prediction at reference timestamp T.
   The API orders scenes with equal cloud cover arbitrarily, so an entry may also
   list `prediction_items` (the scene names from the prediction tile's
   `_meta.json`); prepare prefers those scenes on cloud-cover ties, which makes the
@@ -328,9 +293,20 @@ The prepare script:
   label_pre_change/label_post_change category layers (after mapping annotation
   values onto the training classes, see above), and the
   label_ts_start/label_ts_end layers. The last two hold each positive point's own
-  pre_change and post_change (plus `--gap-days`) as uint16 days since 1970-01-01
+  pre_change and post_change (plus `--gap_days`) as uint16 days since 1970-01-01
   (65535 = nodata). Re-running prepare on an existing dataset adds them in place
   without re-materializing imagery.
+- Rasterizes each positive point's transition into the label_transition_date
+  (uint16 days like label_ts_end, plus `--gap_days`), label_transition_dst (land
+  cover class like label_dst) and label_transition_post_change (post-change class
+  like label_post_change) layers. A missing transition category is nodata.
+  `transition_change_category` goes through the post-change aliases, but
+  land_reclamation is not moved to the pre-change head: it is nodata for now.
+  These layers are new in `config.json`, so copy their entries into the
+  `config.json` of an existing dataset before re-running prepare. Windows whose
+  reference point has a transition_date are recreated (for the new frequent
+  option) and need re-materialization; other windows get the new label layers in
+  place.
 - Writes `lcc_annotations.json` sidecar for training-time annotation injection
   (merges with existing sidecar on re-runs).
 
@@ -341,40 +317,62 @@ The copies omit the `description` and `fld` entry fields.
 #### Training
 
 ```bash
-rslearn model fit --config data/olmoearth_lcc/lcc_model/config_bp_abs_season_qdrop.yaml
+rslearn model fit --config data/olmoearth_lcc/lcc_model/config_bp_abs_qdrop_bpcat_1pass.yaml
 ```
 
 Training details:
-- Encoder frozen for 10 epochs, then unfrozen with 10x lower LR (effective
-  encoder LR = 1e-5 vs decoder 1e-4).
-- Optimizer: AdamW lr=1e-4 with ReduceLROnPlateau (factor=0.2, patience=2).
-- At each training step, one of 8 frequent-image options is randomly sampled.
-  The 16 quarterly images preceding that option's earliest frequent image are
-  selected, and the 22-image stack is split 11/11 across the two encoder passes.
+- The encoder is trained from the start, with layer-wise learning rate decay:
+  LayerDecayAdamW (lr=1e-4, layer_decay_rate=0.65 over the 12 encoder layers) and
+  PlateauScheduler (factor=0.2, patience=5, cooldown=10). The best checkpoint is
+  chosen by `val_post_change/accuracy`.
+- At each training step, one of the (up to 8) frequent-image options is randomly
+  sampled, and the 16 quarterly images preceding that option's earliest frequent
+  image are selected. At train time each quarterly image is also dropped with
+  probability 0.25 (keeping at least 8), so the model sees different mosaic
+  compositions of the same window.
 - Val/test uses option 2 deterministically.
+- The dst and post_change heads are only trained on what the sampled images can
+  show. Per positive point, with `end` the end of the latest frequent image: if
+  `end >= post_change` they use post_category / post_change_category; else if the
+  point has a transition and `end >= transition_date` they use
+  transition_category / transition_change_category (each masked if unset);
+  otherwise (the change is still in progress) they are masked. The `ts_end` target
+  is post_change, or transition_date between the transition and post_change. While
+  the change is in progress it is the next of those dates, after the stack, so it
+  maps to the last timestep. The `ts_start` target is each point's own pre_change.
+  Negative points still train the change-category heads as "none". The per-point
+  dates come from the label_ts_start, label_ts_end and label_transition_* layers,
+  which the training configs pass through to `StackSampler` (as optional inputs, so
+  older datasets without the transition layers still load); without label_ts_start
+  or label_ts_end, the window's sidecar pre_change or post_change is used. Which
+  images are sampled still depends only on the window's reference point (the first
+  fully dated positive point).
 - Augmentation: random horizontal/vertical flips.
-- crop_size: 64, batch_size: 8, 100 epochs max.
+- crop_size: 64, batch_size: 4, 100 epochs max.
 
 The other `config_*.yaml` files in `data/olmoearth_lcc/lcc_model/` are variants that
 were tried along the way; `config_bp_abs_qdrop_bpcat_1pass.yaml` (and its `_predict`
 counterpart) is the one used by the prediction pipeline.
 
-`config_rslearn_bpcat_notemporal.yaml` and `config_rslearn_bpcat_temporal.yaml` express
-the model with generic rslearn components (`BreakpointScan`, `TokensToChannels`,
-`TemporalTransformer`) instead of `rslp.olmoearth_lcc.lcc_model.model.ChangeModel`, so
-the checkpoints can be run by systems that depend on rslearn alone. Their `_predict`
-counterparts contain no `rslp` imports at all.
+`config_rslearn_bpcat_notemporal.yaml` expresses the model with generic rslearn
+components (`BreakpointScan`, `TokensToChannels`) instead of
+`rslp.olmoearth_lcc.lcc_model.model.ChangeModel`, so the checkpoint can be run by
+systems that depend on rslearn alone. Its `_predict` counterpart contains no `rslp`
+imports at all.
 
-In these configs, `ts_start` / `ts_end` use rslearn's `PerPixelTimestepHead` and
+In this config, `ts_start` / `ts_end` use rslearn's `PerPixelTimestepHead` and
 `PerPixelTimestepTask`. Their labels come from the `label_ts_start` / `label_ts_end`
-layers (per-point dates) rather than from the window's sidecar dates via
-`StackSampler`, which these configs run with `emit_timestep_targets: false`. The head
+layers (per-point dates) as day targets, instead of the timestep indices that
+`StackSampler` computes, which this config runs with `emit_timestep_targets: false`. The head
 maps each labeled date to an index of the sampled 22-image stack: `ts_start` uses
 `mode: BEFORE` (the latest image on or before pre_change) and `ts_end` uses
-`mode: AFTER` (the earliest image on or after post_change), compared at day
-granularity. Pixels where no image qualifies are excluded from the loss. Training is
+`mode: AFTER` (the earliest image on or after post_change, or the transition_date
+as described above), compared at day granularity. `ts_end` sets
+`fallback_to_closest_timestep_if_no_match`, so a date after the stack maps to the
+last timestep; for `ts_start`, pixels where no image qualifies are excluded from
+the loss. Training is
 then a 22-way classification over the input timestep index, but at prediction the
-`_predict` configs write each pixel's
+`_predict` config writes each pixel's
 predicted change start/end as a date, in uint16 days since 1970-01-01 (65535 =
 nodata), to the `output_ts_start` / `output_ts_end` layers of
 `config_predict_rslearn.json`, instead of the timestep index. The date is the midpoint
@@ -498,60 +496,7 @@ Per-window output at `<window>/layers/output_change/<bandset>/geotiff.tif` (62 b
 - `pre_change` / `post_change`: 8/21-channel change-category probabilities (class
   layout [nodata, none, <options...>])
 
-Models trained before 2026-11-03 used a different layout (57 bands, with the
-former same-change categories in the pre-change head), so they are not compatible
-with the current postprocess code.
-
-#### 4. Postprocess: raster to GeoJSON
-
-Convert prediction rasters to GeoJSONs of change polygons. By default (with
-`--out_dir`) each worker job writes one GeoJSON per input raster, so features
-are not retained in memory across jobs; pass `--output` instead (or in
-addition) to merge all features into a single GeoJSON file.
-
-```bash
-python -m rslp.olmoearth_lcc.lcc_model.postprocess \
-    --dataset_path "$PREDICT_DS" \
-    --out_dir changes/ \
-    --min_pixels 10 \
-    --workers 32
-```
-
-With `--dataset_path`, `--out_dir` writes one `<window_name>.geojson` per
-prediction window, so polygons remain split at 2048-window boundaries and the
-files can be numerous.
-
-Alternatively, run over the merged 9-band summary rasters written by the scaled
-prediction pipeline (`--write_summary_raster`); each `*_summary.tif` tile is
-processed whole so polygons are not split at 2048-window boundaries (a full
-16384x16384 tile is ~2.4 GB in memory, and ~10 GB for tiles from older
-32768x32768 runs, so keep `--workers` low). Here
-`--out_dir` writes one `<tile>_summary.geojson` per tile:
-
-```bash
-python -m rslp.olmoearth_lcc.lcc_model.postprocess \
-    --summary_path /path/to/tile_outputs/ \
-    --out_dir changes/ \
-    --workers 4
-```
-
-Polygonization operates on the summary representation (`SUMMARY_BANDS`; full
-per-window rasters are converted on the fly via `summary_window_array`):
-- A pixel is a change pixel if its argmax pre or post change category is a real
-  category (not "none").
-- Finds connected components separately for each unique (pre category, post
-  category) combination, so each polygon represents a single category combo.
-- Per polygon, majority-votes the src/dst land cover classes and the change
-  start/end months (dates are month granularity, first of the month).
-- Averages the binary change score over the polygon, and averages the
-  per-pixel argmax score of each head predicting a real category (one head
-  usually; two for combos like deforestation+mining).
-
-Each GeoJSON feature includes: `num_pixels`, `area_hectares` (10 m pixels =
-0.01 ha each, rounded to 2 decimals), `binary_change_score` and
-`category_change_score` (0-255 scale), `pre_change_category`,
-`post_change_category`, `src_class`, `src_class_idx`, `dst_class`,
-`dst_class_idx`, `pre_change_date`, `post_change_date`.
+The band layout is defined in `lcc_model/output_bands.py`.
 
 ---
 
@@ -559,78 +504,162 @@ Each GeoJSON feature includes: `num_pixels`, `area_hectares` (10 m pixels =
 
 To apply the LCC model at scale (e.g. globally), the world is divided into
 16384x16384 UTM tiles (10 m/pixel, 64 windows of 2048x2048 each; about 24,800 tiles
-globally). Each tile, for a single reference timestamp,
-becomes one task that is written to a Beaker queue and processed by the
-`rslp.common` worker system. This is analogous to `rslp.satlas` but
-self-contained: it uses the OlmoEarth Datasets imagery source (no rtree index) and
-the LCC-specific pre/post-processing.
+globally). Each tile, for a single reference timestamp, becomes one task file in a
+job directory on WEKA, which workers on Beaker claim and predict one tile at a time
+(see "Job directory" below). Imagery comes from the OlmoEarth Datasets source.
 
 Tiling (`lcc_model/tiling.py`): each UTM zone number (1-60) is processed once, in its
 northern CRS (EPSG:326NN), with a continuous northing axis that goes negative south
-of the equator, so one zone covers 80S to 84N. Tiles and 2048x2048 windows are only
-kept if they intersect their zone's canonical 6-degree longitude wedge. Enumerating
-tiles over each zone's projected bounding box (as the job writer did before, in
-both 326NN and 327NN) predicted most locations in more than one zone: about 1.7x
-over Africa and 2.4x over Europe. Southern-hemisphere tiles therefore have
-EPSG:326NN filenames, with negative northings (positive pixel rows, since the y
-resolution is negative). Windows are also skipped if no point on a 512-pixel lattice
-(25 points including corners and edges) is land according to `global_land_mask`.
-That includes all-water windows within Sentinel-2's coastal coverage, which would
+of the equator, so one zone covers 80S to 84N. Southern-hemisphere tiles therefore
+have EPSG:326NN names, with negative northings (positive pixel rows, since the y
+resolution is negative). Tiles and 2048x2048 windows are only kept if they intersect
+their zone's canonical 6-degree longitude wedge, so each location is predicted in
+(nearly) one zone. Windows are also skipped if no point on a 512-pixel lattice (25
+points including corners and edges) is land according to `global_land_mask`. That
+includes all-water windows within Sentinel-2's coastal coverage, which would
 otherwise be predicted. The mask is about 1 km resolution, so islands smaller than
 that may be missed.
 
-Per-tile pipeline: create 2048x2048 windows -> materialize Sentinel-2 imagery ->
-run the model -> polygonize the `output_change` raster into a per-tile GeoJSON
-(`{EPSG}_{col}_{row}.geojson`). Optionally the full merged 62-band uint16 raster
-(`{EPSG}_{col}_{row}.tif`, with the per-category scores) and/or the compact 9-band
-uint8 summary raster (`{EPSG}_{col}_{row}_summary.tif`, consumed directly by
-olmoearth_lcc_viewer; see `postprocess.SUMMARY_BANDS`) are also written, and/or each
-window is written into a GeoZarr store (see below). A `{EPSG}_{col}_{row}_meta.json`
-recording the input scenes of each window is written last. Merging the per-tile
-GeoJSONs into a single layer and converting to vector tiles is handled separately
-(not yet implemented).
+Per-tile pipeline (`lcc_model/predict_pipeline.py`): create 2048x2048 windows and
+materialize their Sentinel-2 imagery (`prepare_tile`), then run the model
+(`predict_tile`). The model's outputs go to `LCCTileWriter`
+(`lcc_model/prediction_writer.py`), which replaces the predict config's
+`RslearnWriter` through a `--trainer.callbacks` override. It merges each window's
+crops in memory and, in background threads, writes the window into the GeoZarr
+store (see below), so no per-window GeoTIFF is written or read back. The pipeline
+then writes the tile's pyramid levels if a pyramid store is given, and last a
+`<CRS>_<x>_<y>_meta.json` (e.g. `EPSG:32610_49152_-540672_meta.json`, with x/y the
+pixel coordinates of the tile's top-left corner) recording the input scenes of each
+window and the per-stage timings.
+
+The worker (`lcc_model/worker.py`) claims the next tile and prepares it in a
+background process (spawned, so it doesn't inherit CUDA state) while the current
+tile is predicted on the GPU, so only a worker's first tile waits for
+materialization. Each tile gets its own scratch directory, so the scratch disk holds
+two tiles of imagery at once. The `materialize_wait` timing in `_meta.json` is how
+long prediction waited for the tile's preparation, and `write_wait` how long it
+waited for the writer threads after the last batch.
 
 The prediction pipeline accepts any tile size that is a multiple of 2048; only the
-job-writer fixes the tile size to 16384 (`tiling.TILE_SIZE`). Output filenames
+job writer fixes the tile size to 16384 (`tiling.TILE_SIZE`). Output filenames
 include the tile bounds, so don't resume an output directory from a run with a
-different tile size (earlier runs used 32768).
+different tile size.
 
-#### 1. Enqueue tiles for a reference timestamp
+#### 1. Write tiles for a reference timestamp to a job directory
 
 ```bash
 python -m rslp.main olmoearth_lcc write_jobs \
     --timestamp 2025-06-01T00:00:00+00:00 \
     --out_path /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_outputs_20260529/ \
-    --queue_name favyen/lcc-prediction-queue
+    --job_dir /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_jobs_20250601/ \
+    --zarr_store_path /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_20250601.zarr
 ```
 
+`--job_dir` is the job directory (see "Job directory" below). It must be a path on
+the WEKA mount that the workers also see (not a `gs://` or other URL).
+
+`--zarr_store_path` is required: the GeoZarr store to write predictions into (see
+below). It is created if missing.
+
 Optional flags:
+- `--zarr_detail full`: create the store in full mode, with the per-head
+  probabilities (meant for small runs; default `compact`).
+- `--zarr_pyramid_path /path/to/lcc_20250601_pyramid.zarr`: also write each tile's
+  overviews into a separate pyramid store (see below), created if missing.
 - `--epsg_code 32651`: restrict to one UTM zone (326NN and 327NN select the same
   zone, which covers both hemispheres).
 - `--wgs84_bounds '[-122.5, 47.0, -121.5, 48.0]'`: restrict to tiles intersecting a
   WGS84 bounding box.
-- `--batch_size 4`: tiles per worker job.
 - `--count 100`: randomly sample at most this many tiles (for testing).
-- `--write_raster true`: also write the full merged 62-band uint16 raster per tile
-  (includes the per-category scores).
-- `--write_summary_raster true`: also write the compact 9-band uint8 summary
-  raster per tile (preferred at scale; the viewer consumes it directly).
-- `--zarr_store_path /path/to/lcc_20250601.zarr`: also write predictions into a
-  GeoZarr store (see below). It is created with default settings if missing.
-- `--write_geojson false`: skip the per-tile GeoJSON (requires `--zarr_store_path`).
 - `--fast_inference false`: run the model eagerly. By default the OlmoEarth encoder
   is compiled with `torch.compile` and uses cuDNN attention (see
   `lcc_model/fast_inference.py`): same speed as eager at batch size 8 but about
   1.7 GB instead of 16.5 GB of GPU memory. That requires torch 2.8 or newer and has
   only been tested on H100. The setting is recorded in each tile's `_meta.json`.
 
-Tiles whose outputs already exist in `out_path` are skipped, so re-running resumes.
-Normally that means the GeoJSON; with `--zarr_store_path` it means the `_meta.json`.
+These settings are stored in the job directory's `config.json`, which the workers
+read. Tiles whose `_meta.json` already exists in `out_path`, or that already have a
+task file, are skipped, so re-running resumes or extends the job (with the same
+settings).
+
+#### 2. Launch workers
+
+The model's imagery source needs the OlmoEarth Datasets credentials, passed via
+`--extra_env_secrets` (the `LCC_DATASETS_API_TOKEN` secret must exist in the
+`ai2/earth-systems` Beaker workspace). Start one worker first to warm caches, then
+scale up.
+
+```bash
+python -m rslp.main olmoearth_lcc launch_workers \
+    --job_dir /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_jobs_20250601/ \
+    --image_name favyen/rslp_image \
+    --num_workers 50 --gpus 1 --shared_memory 256GiB \
+    --cluster '["ai2/jupiter", "ai2/ceres"]' \
+    --weka_mounts '[{"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}]' \
+    --extra_env_vars '{"OEDATASETS_API_URL":"https://datasets.olmoearth.allenai.org","RSLP_PREFIX":"/weka/dfive-default/rslearn-eai"}' \
+    --extra_env_secrets '{"DATASETS_API_TOKEN":"LCC_DATASETS_API_TOKEN"}'
+```
+
+Each worker runs the `worker` workflow on the job directory: it predicts tiles until
+none is claimable, then exits.
+
+With fast inference (the default), compiled kernels are cached in inductor's default
+directory on the worker's local disk (`/tmp/torchinductor_<user>`) and reused across
+tiles. Don't point `TORCHINDUCTOR_CACHE_DIR` at a directory shared with non-cuDNN
+runs (e.g. on Weka): the inductor FX cache doesn't key on the SDPA backend.
+
+#### 3. Check progress
+
+```bash
+python -m rslp.main olmoearth_lcc job_status \
+    --job_dir /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_jobs_20250601/
+```
+
+It logs how many tiles are done (have a `_meta.json`) and, of the remaining tasks,
+how many are claimed, stale, failed or unclaimed.
+
+#### Job directory
+
+Instead of a Beaker queue, tasks live in a job directory on WEKA
+(`lcc_model/job_dir.py`, whose docstring has the details), accessed with plain POSIX
+calls:
+
+```
+<job_dir>/
+  config.json                    # shared worker settings (from write_jobs)
+  tasks/<tile>.json              # one task per tile
+  claims/<tile>.claim.<gen>      # versioned claims, refreshed by the holder
+  failures/<tile>.<uuid>         # one marker (with the traceback) per failed attempt
+```
+
+`<tile>` is the stem of the tile's `_meta.json` (`<CRS>_<x>_<y>`).
+
+- **Claiming:** a worker picks a random task and exclusively creates
+  `claims/<tile>.claim.<g+1>`, where `g` is the newest existing generation; only one
+  worker can win, even across nodes.
+- **Stale claims:** each worker refreshes the mtime of the claims it holds every
+  `refresh_seconds`. A claim not refreshed for `stale_seconds` can be taken over
+  by creating the next generation. On SIGTERM (e.g. preemption) a worker releases
+  its claims right away.
+- **Completion:** after writing a tile's `_meta.json` (still the completion marker),
+  the worker deletes the task file and then the tile's claims. Tiles that already
+  have a `_meta.json` are skipped and cleaned up.
+- **Failures:** a failed tile gets a failure marker and its claim is deleted, so
+  another worker can retry it; a worker doesn't retry tiles that failed in it.
+  Tiles with `max_failures` markers are skipped. A worker exits after
+  `max_consecutive_errors` failures in a row.
+
+Since workers exit once nothing is claimable, tiles held by workers that died (e.g.
+preempted without SIGTERM) become claimable only after `stale_seconds`; launch a
+few more workers later to pick them up. To retry tiles that hit `max_failures`,
+delete their markers in `failures/`.
 
 #### GeoZarr output
 
-Each store holds the predictions for one reference timestamp (e.g. a new store per
-month for monthly prediction). It is a Zarr v3 store with one group per UTM zone,
+A store normally holds the predictions for one reference timestamp, named in its
+path (e.g. a new store per month for monthly prediction); the random-tile job
+writers instead put tiles with different timestamps into one store. It is a Zarr v3
+store with one group per UTM zone,
 `utm01` to `utm60`, each in EPSG:326NN at 10 m/pixel using the grid from
 `tiling.get_zone_grid`. Group attributes follow the
 [spatial](https://github.com/zarr-conventions/spatial) and
@@ -654,22 +683,26 @@ coordinate arrays (pixel centers). Each zone group holds two arrays:
 Pixels with no prediction are 0 in every band. Where both change categories are
 none and `binary_change < 128`, `pre_lc`, `post_lc`, `post_change_score` and both
 dates are also 0, and `binary_change < 16` is stored as 0 everywhere (these low
-probabilities were most of the compressed size). The class-name lists, reference timestamp and model config are
-stored in the root attributes.
+probabilities were most of the compressed size). The class-name lists, detail mode
+and model config are stored in the root attributes.
+
+The store's detail mode (`detail` root attribute) is set at creation. Compact stores
+(the default) hold only the two arrays above. Full stores (`--zarr_detail full`,
+meant for small runs) add one uint8 array per classification head with the softmax
+probabilities scaled 0-255, without the nodata class and without zeroing. Each has
+its own band dimension, with the class names as band coordinates:
+
+- `src_probs` / `dst_probs` (`src_probs_band` / `dst_probs_band`): the 13 land
+  cover classes.
+- `pre_change_probs` (`pre_change_probs_band`): "none" plus the 6 pre-change
+  categories.
+- `post_change_probs` (`post_change_probs_band`): "none" plus the 19 post-change
+  categories.
+
+`write_jobs` fails if an existing store has a different detail mode.
 
 The shards are 2048x2048, one per prediction window, so concurrent workers never
-write the same object. Inner chunks are 512x512 and use zstd level 9 by default; a
-store with other settings can be created before calling `write_jobs`:
-
-```bash
-python -m rslp.main olmoearth_lcc init_geozarr \
-    --store_path /path/to/lcc_20250601.zarr \
-    --timestamp 2025-06-01T00:00:00+00:00 \
-    --chunk_size 512 --compressor blosc_lz4 --level 5
-```
-
-`--compressor` is one of `zstd`, `blosc_zstd`, `blosc_lz4` or `none`. No multiscale
-pyramid is written.
+write the same object. Inner chunks are 512x512 and all arrays use zstd level 9.
 
 ```python
 import xarray as xr
@@ -681,58 +714,70 @@ ds["change"].sel(change_band="post_change_category")
 xarray decodes `change_dates` to datetimes (nodata becomes NaT) from its `units`
 attribute; pass `decode_times=False` to get the raw day values.
 
-#### 2. Launch workers
+#### GeoZarr pyramid
 
-The model's imagery source needs the OlmoEarth Datasets credentials, passed via
-`--extra_env_vars` (the `DATASETS_API_TOKEN` secret must exist in the
-`ai2/earth-systems` Beaker workspace). Start one worker first to warm caches, then
-scale up.
+With `--zarr_pyramid_path`, each tile's overviews are written into a separate
+GeoZarr store (see `lcc_model/geozarr_pyramid.py`), so the 10 m store keeps its
+layout; a web client reads level 0 from the 10 m store and the overviews from the
+pyramid store, using the same zone group names.
 
-```bash
-python -m rslp.main common launch \
-    --image_name favyen/rslp_image \
-    --queue_name favyen/lcc-prediction-queue \
-    --num_workers 50 --gpus 1 --shared_memory 256GiB \
-    --cluster '["ai2/jupiter", "ai2/ceres"]' \
-    --weka_mounts '[{"bucket_name":"dfive-default","mount_path":"/weka/dfive-default"}]' \
-    --extra_env_vars '[{"name":"OEDATASETS_API_URL","value":"https://datasets.olmoearth.allenai.org"},{"name":"DATASETS_API_TOKEN","secret":"LCC_DATASETS_API_TOKEN"},{"name":"RSLP_PREFIX","value":"/weka/dfive-default/rslearn-eai"}]'
+Each zone group `utmNN` of the pyramid store has child groups `1` to `5` (20, 40, 80,
+160 and 320 m/pixel), each with the `change` and `change_dates` arrays (same bands
+and encodings as level 0, for both compact and full main stores), band coordinates
+and x/y. The zone group has a
+[multiscales](https://github.com/zarr-conventions/multiscales) attribute listing the
+levels with their `spatial:transform` / `spatial:shape`; level 1 is derived from
+level 0 in the main store, which the root `source_store` and zone group
+`source_group` attributes record. `write_jobs` fails if an existing pyramid store
+records a different `source_store`. Pyramids need tiles aligned to 16384, so the
+random-tile job writer can't write one.
+
+Each level is a 2x reduction of the previous one: every output pixel copies all
+bands from one pixel of its 2x2 block, picking the one that maximizes
+`valid + 2 * binary_change + 512 * pre_or_post_change` (pre_or_post_change: a pre or
+post change category other than none; valid: any prediction). The bands stay
+consistent with each other and small changes stay visible at coarse levels. Each
+tile's job writes its own overviews, so there is no global pass and resuming still
+works.
+
+```python
+ds = xr.open_zarr("/path/to/lcc_20250601_pyramid.zarr", group="utm10/3", consolidated=False)
 ```
-
-Each worker pulls tasks from the queue and runs the `predict_multi` workflow.
-
-With fast inference (the default), compiled kernels are cached in inductor's default
-directory on the worker's local disk (`/tmp/torchinductor_<user>`) and reused across
-tasks. Don't point `TORCHINDUCTOR_CACHE_DIR` at a directory shared with non-cuDNN
-runs (e.g. on Weka): the inductor FX cache doesn't key on the SDPA backend.
 
 #### Random 2048x2048 land tiles (diagnostic sampling)
 
 To get diverse predictions from random locations worldwide (useful for spotting
 model mispredictions and iterating on annotations), use `write_jobs_random_2048`.
-It samples random lat/lon points, snaps them to 2048-pixel-aligned UTM tiles, and
-keeps tiles where at least one corner is on land.
+It samples random lat/lon points, snaps them to 2048-pixel-aligned tiles in their
+UTM zone's northern projection (EPSG:326NN, like the GeoZarr store), and keeps tiles
+with land (the same check the prediction pipeline applies to its windows).
 
 ```bash
 python -m rslp.main olmoearth_lcc write_jobs_random_2048 \
     --start_time 2025-01-01T00:00:00+00:00 \
     --end_time 2025-06-01T00:00:00+00:00 \
     --out_path /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_outputs_20260529/ \
-    --queue_name favyen/lcc-prediction-queue \
+    --job_dir /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_random_jobs_20260529/ \
+    --zarr_store_path /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_random_20260529.zarr \
     --count 500
 ```
 
 Each tile gets a randomly chosen reference timestamp between `start_time` and
-`end_time`.
+`end_time` (recorded in its `_meta.json`), so the GeoZarr store (created if
+missing) holds tiles with different timestamps.
+Tiles are deduplicated by location within the run. Sampled tiles that already have
+a `_meta.json` in `out_path` or a task file in the job directory are not queued
+again (so a rerun may queue fewer than `--count` new tiles).
 
 Arguments:
 - `--start_time` / `--end_time`: range from which to uniformly sample each tile's
   reference timestamp.
-- `--count 500`: number of land tiles to enqueue.
-- `--batch_size 4`: tiles per worker job.
-- `--write_raster true`: also write the full merged 62-band uint16 raster per tile.
-- `--write_summary_raster true`: also write the compact 9-band uint8 summary
-  raster per tile.
+- `--zarr_store_path`: the GeoZarr store (required); `--zarr_detail full` for
+  the per-head probabilities.
+- `--job_dir`: the job directory to write the tasks to.
+- `--region china` / `--region africa`: sample within a rough polygon of mainland
+  China or sub-Saharan Africa instead of worldwide (`global`, the default).
+- `--count 500`: number of land tiles to write.
+- `--fast_inference false`: as for `write_jobs`.
 
-Launch workers the same way as for scaled prediction above. The
-`write_jobs_random_2048_china` and `write_jobs_random_2048_africa` workflows (in
-`annotation_scripts/phase03_random_tiles_china_africa/`) are regional variants.
+Launch workers on the job directory the same way as for scaled prediction above.

@@ -1,4 +1,4 @@
-"""Check that the LCC configs match the class layouts in prepare.py and postprocess.py."""
+"""Check that the LCC configs match the class layouts in output_bands.py."""
 
 import json
 import pathlib
@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 import yaml
 
-from rslp.olmoearth_lcc.lcc_model import postprocess
-from rslp.olmoearth_lcc.lcc_model.prepare import (
-    CATEGORY_NAMES,
+from rslp.olmoearth_lcc.lcc_model import output_bands
+from rslp.olmoearth_lcc.lcc_model.output_bands import (
+    LC_CLASS_NAMES,
     POST_CHANGE_CATEGORY_NAMES,
     PRE_CHANGE_CATEGORY_NAMES,
 )
@@ -18,8 +18,8 @@ CONFIG_DIR = pathlib.Path(__file__).parents[3] / "data" / "olmoearth_lcc" / "lcc
 MODEL_CONFIGS = sorted(CONFIG_DIR.glob("*.yaml"))
 
 CLASS_NAMES = {
-    "src": CATEGORY_NAMES,
-    "dst": CATEGORY_NAMES,
+    "src": LC_CLASS_NAMES,
+    "dst": LC_CLASS_NAMES,
     "pre_change": PRE_CHANGE_CATEGORY_NAMES,
     "post_change": POST_CHANGE_CATEGORY_NAMES,
 }
@@ -74,38 +74,35 @@ def test_model_config_class_layout(path: pathlib.Path) -> None:
 def test_dataset_config_layers() -> None:
     layers = _load_json("config.json")["layers"]
     assert "label_same_change" not in layers
-    assert layers["label_src"]["class_names"] == CATEGORY_NAMES
-    assert layers["label_dst"]["class_names"] == CATEGORY_NAMES
+    assert layers["label_src"]["class_names"] == LC_CLASS_NAMES
+    assert layers["label_dst"]["class_names"] == LC_CLASS_NAMES
     assert layers["label_pre_change"]["class_names"] == PRE_CHANGE_CATEGORY_NAMES
     assert layers["label_post_change"]["class_names"] == POST_CHANGE_CATEGORY_NAMES
-    assert _bands(layers["output_change"]) == postprocess.OUTPUT_BANDS
+    assert _bands(layers["output_change"]) == output_bands.OUTPUT_BANDS
 
 
 def test_predict_config_output_bands() -> None:
     layers = _load_json("config_predict.json")["layers"]
-    assert _bands(layers["output_change"]) == postprocess.OUTPUT_BANDS
+    assert _bands(layers["output_change"]) == output_bands.OUTPUT_BANDS
 
 
 def test_predict_rslearn_config_output_bands() -> None:
     layers = _load_json("config_predict_rslearn.json")["layers"]
     assert (
         _bands(layers["output_src"])
-        == postprocess.OUTPUT_BANDS[
-            postprocess.SRC_BAND_OFFSET : postprocess.DST_BAND_OFFSET
+        == output_bands.OUTPUT_BANDS[
+            output_bands.SRC_BAND_OFFSET : output_bands.DST_BAND_OFFSET
         ]
     )
     assert (
         _bands(layers["output_dst"])
-        == postprocess.OUTPUT_BANDS[
-            postprocess.DST_BAND_OFFSET : postprocess.TS_PRE_DAYS_BAND
+        == output_bands.OUTPUT_BANDS[
+            output_bands.DST_BAND_OFFSET : output_bands.TS_PRE_DAYS_BAND
         ]
     )
-    assert _bands(layers["output_pre_change"]) == postprocess.PRE_CHANGE_BANDS
-    assert _bands(layers["output_post_change"]) == postprocess.POST_CHANGE_BANDS
+    assert _bands(layers["output_pre_change"]) == output_bands.PRE_CHANGE_BANDS
+    assert _bands(layers["output_post_change"]) == output_bands.POST_CHANGE_BANDS
 
 
-def test_postprocess_matches_prepare() -> None:
-    assert postprocess.LC_CLASS_NAMES == CATEGORY_NAMES
-    assert postprocess.PRE_CHANGE_CATEGORY_NAMES == PRE_CHANGE_CATEGORY_NAMES
-    assert postprocess.POST_CHANGE_CATEGORY_NAMES == POST_CHANGE_CATEGORY_NAMES
-    assert len(postprocess.OUTPUT_BANDS) == 62
+def test_output_band_count() -> None:
+    assert len(output_bands.OUTPUT_BANDS) == 62

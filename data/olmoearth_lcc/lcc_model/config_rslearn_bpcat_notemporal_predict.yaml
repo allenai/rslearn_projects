@@ -1,8 +1,7 @@
 # Prediction config for config_rslearn_bpcat_notemporal.yaml using only rslearn
 # components (no rslp imports), so the checkpoint can be run by systems that depend on
-# rslearn alone (e.g. OlmoEarth Studio). Same as config_rslearn_bpcat_temporal_predict.yaml
-# but without the TemporalTransformer encoder entry: the OlmoEarth per-timestep tokens
-# feed the decoders directly.
+# rslearn alone (e.g. OlmoEarth Studio). There is no TemporalTransformer encoder entry:
+# the OlmoEarth per-timestep tokens feed the decoders directly.
 #
 # The model block is identical to the training config except that the binary head is
 # the plain SegmentationHead (the training-time BalancedBinarySegmentationHead only
@@ -164,7 +163,10 @@ model:
           - class_path: rslearn.models.upsample.Upsample
             init_args: {scale_factor: 4}
           - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
-            init_args: {input_key: sentinel2_l2a, mode: AFTER}
+            init_args:
+              input_key: sentinel2_l2a
+              mode: AFTER
+              fallback_to_closest_timestep_if_no_match: true
         loss_weights:
           binary: 2.0
 data:

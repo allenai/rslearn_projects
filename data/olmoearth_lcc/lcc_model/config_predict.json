@@ -162,7 +162,7 @@
           "timeout": "0:0:10"
         },
         "query_config": {
-          "max_matches": 20,
+          "max_matches": 16,
           "min_matches": 16,
           "per_period_mosaic_reverse_time_order": false,
           "period_duration": "90d",

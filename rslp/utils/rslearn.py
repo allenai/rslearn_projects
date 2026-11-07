@@ -1,7 +1,9 @@
 """Utilities for using rslearn datasets and models."""
 
+import json
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
+from typing import Any
 
 from rslearn.arg_parser import RslearnArgumentParser
 from rslearn.dataset import Dataset
@@ -136,7 +138,8 @@ def run_model_predict(
     ds_path: UPath,
     groups: list[str] = [],
     extra_args: list[str] = [],
-) -> None:
+    callbacks: list[dict[str, Any]] | None = None,
+) -> RslearnLightningCLI:
     """Call rslearn model predict.
 
     Args:
@@ -144,8 +147,18 @@ def run_model_predict(
         ds_path: the dataset root path.
         groups: the groups to predict.
         extra_args: additional arguments to pass to model predict.
+        callbacks: if set, replace the trainer callbacks of the model config with
+            these (class_path / init_args dicts), e.g. to use a different prediction
+            writer. The instances are available in the returned CLI's
+            trainer.callbacks.
+
+    Returns:
+        the CLI, whose trainer holds the callbacks after prediction.
     """
-    RslearnLightningCLI(
+    callback_args = (
+        ["--trainer.callbacks", json.dumps(callbacks)] if callbacks is not None else []
+    )
+    return RslearnLightningCLI(
         model_class=RslearnLightningModule,
         datamodule_class=RslearnDataModule,
         args=[
@@ -156,6 +169,7 @@ def run_model_predict(
             str(ds_path),
         ]
         + (["--data.init_args.predict_config.groups", str(groups)] if groups else [])
+        + callback_args
         + extra_args,
         subclass_mode_model=True,
         subclass_mode_data=True,

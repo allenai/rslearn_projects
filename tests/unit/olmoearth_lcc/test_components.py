@@ -83,6 +83,25 @@ def test_stack_sampler_timestep_targets() -> None:
         assert valid.sum() == 1 and valid[2, 3] == 1
 
 
+def test_stack_sampler_per_point_ts_start() -> None:
+    """Each change point's ts_start uses its own pre_change from label_ts_start.
+
+    Points without one (nodata) fall back to the window's pre_change.
+    """
+    input_dict, target_dict = _stack_inputs()
+    target_dict["binary"]["classes"].image[0, 0, 5, 6] = 2
+    q_ts = input_dict[QUARTERLY_KEY].timestamps
+    days = torch.full((CROP, CROP), 65535, dtype=torch.long)
+    days[5, 6] = (q_ts[10][0] + timedelta(days=1) - UNIX_EPOCH).days
+    input_dict["label_ts_start"] = RasterImage(image=days[None, None])
+
+    input_dict, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert "label_ts_start" not in input_dict
+    classes = target_dict[TS_START_KEY]["classes"].get_hw_tensor()
+    assert classes[5, 6] == 10
+    assert classes[2, 3] == 13
+
+
 def test_stack_sampler_without_timestep_targets() -> None:
     """With emit_timestep_targets=False, ts targets come from the day label rasters.
 
@@ -120,6 +139,224 @@ def test_stack_sampler_without_timestep_targets() -> None:
         valid = targets["valid"].get_hw_tensor()
         assert classes[2, 3] == expected_idx
         assert valid.sum() == 1 and valid[2, 3] == 1
+
+
+POINT = (2, 3)
+NEGATIVE = (0, 0)
+DST, POST_CHANGE = 10, 3
+TRANSITION_DST, TRANSITION_POST_CHANGE = 1, 8
+
+
+def _days(date: datetime) -> int:
+    return (date - UNIX_EPOCH).days
+
+
+def _label(value: int, fill: int = 0) -> RasterImage:
+    """A passthrough label raster with value at the positive point."""
+    image = torch.full((CROP, CROP), fill, dtype=torch.long)
+    image[POINT] = value
+    return RasterImage(image=image[None, None])
+
+
+def _gating_inputs(
+    post_change: datetime,
+    transition: datetime | None,
+    transition_classes: tuple[int, int] = (TRANSITION_DST, TRANSITION_POST_CHANGE),
+    with_rasters: bool = True,
+) -> tuple[dict, dict]:
+    """Stack inputs with dst/post_change targets and the per-pixel date rasters.
+
+    The window's sidecar post_change is left as in _stack_inputs (before the end of
+    the frequent images), so the rasters decide the gating unless absent.
+    """
+    input_dict, target_dict = _stack_inputs()
+    target_dict["binary"]["classes"].image[0, 0][NEGATIVE] = 1
+    for name, value in (("dst", DST), ("post_change", POST_CHANGE)):
+        classes = torch.zeros(CROP, CROP, dtype=torch.long)
+        classes[POINT] = value
+        target_dict[name] = {
+            "classes": RasterImage(image=classes[None, None]),
+            "valid": RasterImage(image=(classes > 0).float()[None, None]),
+        }
+    if with_rasters:
+        input_dict["label_ts_end"] = _label(_days(post_change), fill=65535)
+        if transition is not None:
+            input_dict["label_transition_date"] = _label(_days(transition), fill=65535)
+            input_dict["label_transition_dst"] = _label(transition_classes[0])
+            input_dict["label_transition_post_change"] = _label(transition_classes[1])
+        else:
+            input_dict["label_transition_date"] = _label(65535, fill=65535)
+            input_dict["label_transition_dst"] = _label(0)
+            input_dict["label_transition_post_change"] = _label(0)
+    return input_dict, target_dict
+
+
+def _frequent_ts(input_dict: dict) -> list[tuple[datetime, datetime]]:
+    return input_dict[f"{FREQUENT_KEY_PREFIX}0"].timestamps
+
+
+def _at_point(target_dict: dict, name: str) -> tuple[int, float]:
+    classes = target_dict[name]["classes"].get_hw_tensor()
+    valid = target_dict[name]["valid"].get_hw_tensor()
+    return int(classes[POINT]), float(valid[POINT])
+
+
+@pytest.mark.parametrize(
+    "regime,expected_dst,expected_post_change,expected_end_idx",
+    [
+        # The images reach post_change: the post labels are trained.
+        ("post", (DST, 1.0), (POST_CHANGE, 1.0), NUM_QUARTERLY + 1),
+        # Between the transition and post_change: the transition labels.
+        (
+            "transition",
+            (TRANSITION_DST, 1.0),
+            (TRANSITION_POST_CHANGE, 1.0),
+            NUM_QUARTERLY + 3,
+        ),
+        # Before the transition (still in progress): masked, and ts_end targets the
+        # transition date, which maps to the last timestep.
+        (
+            "in_progress",
+            (DST, 0.0),
+            (POST_CHANGE, 0.0),
+            NUM_QUARTERLY + NUM_FREQUENT - 1,
+        ),
+        # No transition and before post_change: masked, ts_end at the last timestep.
+        (
+            "no_transition",
+            (DST, 0.0),
+            (POST_CHANGE, 0.0),
+            NUM_QUARTERLY + NUM_FREQUENT - 1,
+        ),
+    ],
+)
+def test_stack_sampler_date_gating(
+    regime: str,
+    expected_dst: tuple[int, float],
+    expected_post_change: tuple[int, float],
+    expected_end_idx: int,
+) -> None:
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    end = f_ts[-1][1]
+    later = end + timedelta(days=30)
+    post_change, transition = {
+        "post": (f_ts[1][0], None),
+        "transition": (later, f_ts[3][0]),
+        "in_progress": (later, end + timedelta(days=10)),
+        "no_transition": (later, None),
+    }[regime]
+    input_dict, target_dict = _gating_inputs(post_change, transition)
+
+    input_dict, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _at_point(target_dict, "dst") == expected_dst
+    assert _at_point(target_dict, "post_change") == expected_post_change
+    classes = target_dict[TS_END_KEY]["classes"].get_hw_tensor()
+    assert classes[POINT] == expected_end_idx
+    # The label rasters are consumed, so they don't reach the model.
+    assert not any(key.startswith("label_") for key in input_dict)
+    # Negative points still train the change-category heads as "none".
+    neg_classes = target_dict["post_change"]["classes"].get_hw_tensor()
+    neg_valid = target_dict["post_change"]["valid"].get_hw_tensor()
+    assert neg_classes[NEGATIVE] == 1 and neg_valid[NEGATIVE] == 1
+
+
+def test_stack_sampler_masks_unset_transition_categories() -> None:
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    input_dict, target_dict = _gating_inputs(
+        f_ts[-1][1] + timedelta(days=30), f_ts[3][0], transition_classes=(0, 0)
+    )
+    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _at_point(target_dict, "dst")[1] == 0.0
+    assert _at_point(target_dict, "post_change")[1] == 0.0
+    # ts_end still targets the transition date.
+    classes = target_dict[TS_END_KEY]["classes"].get_hw_tensor()
+    assert classes[POINT] == NUM_QUARTERLY + 3
+
+
+def test_stack_sampler_falls_back_to_sidecar_post_change() -> None:
+    """Without the label rasters, the window's post_change gates the targets."""
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    input_dict, target_dict = _gating_inputs(f_ts[1][0], None, with_rasters=False)
+    _, kept = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _at_point(kept, "dst") == (DST, 1.0)
+    assert _at_point(kept, "post_change") == (POST_CHANGE, 1.0)
+
+    input_dict, target_dict = _gating_inputs(f_ts[1][0], None, with_rasters=False)
+    input_dict[ANNOTATION_KEY]["post_change"] = f_ts[-1][1] + timedelta(days=30)
+    _, masked = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _at_point(masked, "dst")[1] == 0.0
+    assert _at_point(masked, "post_change")[1] == 0.0
+
+
+@pytest.mark.parametrize("use_label_raster", [True, False])
+def test_stack_sampler_rewrites_per_pixel_ts_end_days(use_label_raster: bool) -> None:
+    """With PerPixelTimestepTask targets, ts_end days move to the transition date.
+
+    The post_change dates come from the label_ts_end passthrough raster, or from
+    the ts_end days target itself when the raster is not passed through.
+    """
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    post_change = f_ts[-1][1] + timedelta(days=30)
+    transition = f_ts[3][0]
+    input_dict, target_dict = _gating_inputs(post_change, transition)
+    if not use_label_raster:
+        del input_dict["label_ts_end"]
+    days = torch.full((CROP, CROP), 65535, dtype=torch.long)
+    days[POINT] = _days(post_change)
+    target_dict[TS_END_KEY] = {
+        "days": RasterImage(image=days[None, None]),
+        "valid": RasterImage(image=(days != 65535).float()[None, None]),
+    }
+
+    input_dict, target_dict = StackSampler(
+        deterministic=True, emit_timestep_targets=False
+    )(input_dict, target_dict)
+    assert _at_point(target_dict, "dst") == (TRANSITION_DST, 1.0)
+    ts_end = target_dict[TS_END_KEY]
+    assert ts_end["days"].get_hw_tensor()[POINT] == _days(transition)
+    valid = ts_end["valid"].get_hw_tensor()
+    assert valid.sum() == 1 and valid[POINT] == 1
+
+    # PerPixelTimestepHead maps it to the transition's timestep.
+    num_timesteps = NUM_QUARTERLY + NUM_FREQUENT
+    context = ModelContext(inputs=[input_dict], metadatas=[])
+    logits = FeatureMaps([torch.zeros(1, num_timesteps, CROP, CROP)])
+    head = PerPixelTimestepHead(input_key=INPUT_KEY, mode=DateToTimestepMode.AFTER)
+    targets = head(logits, context, [ts_end]).outputs[0]["targets"]
+    assert targets["classes"].get_hw_tensor()[POINT] == NUM_QUARTERLY + 3
+
+
+def test_per_pixel_ts_end_in_progress_maps_to_last_timestep() -> None:
+    """With the fallback, a ts_end date after the stack maps to the last timestep."""
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    post_change = f_ts[-1][1] + timedelta(days=30)
+    input_dict, target_dict = _gating_inputs(post_change, None)
+    days = torch.full((CROP, CROP), 65535, dtype=torch.long)
+    days[POINT] = _days(post_change)
+    target_dict[TS_END_KEY] = {
+        "days": RasterImage(image=days[None, None]),
+        "valid": RasterImage(image=(days != 65535).float()[None, None]),
+    }
+    input_dict, target_dict = StackSampler(
+        deterministic=True, emit_timestep_targets=False
+    )(input_dict, target_dict)
+
+    num_timesteps = NUM_QUARTERLY + NUM_FREQUENT
+    context = ModelContext(inputs=[input_dict], metadatas=[])
+    logits = FeatureMaps([torch.zeros(1, num_timesteps, CROP, CROP)])
+    head = PerPixelTimestepHead(
+        input_key=INPUT_KEY,
+        mode=DateToTimestepMode.AFTER,
+        fallback_to_closest_timestep_if_no_match=True,
+    )
+    targets = head(logits, context, [target_dict[TS_END_KEY]]).outputs[0]["targets"]
+    assert targets["classes"].get_hw_tensor()[POINT] == num_timesteps - 1
+    assert targets["valid"].get_hw_tensor()[POINT] == 1
 
 
 def _centers(timestamps: list[tuple[datetime, datetime]]) -> list[datetime]:

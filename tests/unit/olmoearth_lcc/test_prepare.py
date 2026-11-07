@@ -5,33 +5,56 @@ import pytest
 from rasterio.crs import CRS
 from rslearn.utils.geometry import Projection
 
-from rslp.olmoearth_lcc.lcc_model.prepare import (
-    CATEGORY_NAMES,
-    FREQUENT_BLOCK_DURATION,
-    OPTION_MARGIN,
+from rslp.olmoearth_lcc.lcc_model.output_bands import (
+    LC_CLASS_NAMES,
     POST_CHANGE_CATEGORY_NAMES,
     PRE_CHANGE_CATEGORY_NAMES,
+)
+from rslp.olmoearth_lcc.lcc_model.prepare import (
+    FREQUENT_BLOCK_DURATION,
+    OPTION_MARGIN,
     QUARTERLY_LOOKBACK,
-    QUARTERLY_PERIOD,
     _compute_frequent_block_ends,
     _compute_label_arrays,
     _compute_window_time_range,
     _get_unknown_categories,
     _lonlat_to_pixel,
+    _sidecar_dates_match,
+    _validate_positive_point_dates,
+    positive_point_dates_valid,
 )
+from rslp.olmoearth_lcc.lcc_model.timestamp_encoding import DAYS_NODATA, UNIX_EPOCH
+from rslp.olmoearth_lcc.lcc_model.transforms import QUARTERLY_PERIOD
 
 PROJECTION = Projection(CRS.from_epsg(32610), 10, -10)
 LON, LAT = -122.3, 47.6
 HALF = 4
 
 
-def _labels_at_point(point: dict[str, Any]) -> dict[str, int]:
+def _labels_at_point(
+    point: dict[str, Any], gap: timedelta = timedelta(0)
+) -> dict[str, int]:
     """Rasterize one positive point and get each label layer's value at it."""
     col, row = _lonlat_to_pixel(LON, LAT, PROJECTION, (0, 0, 0, 0))
     bounds = (col - HALF, row - HALF, col + HALF, row + HALF)
     entry = {"positive_points": [{"lon": LON, "lat": LAT, **point}]}
-    arrays = _compute_label_arrays(entry, PROJECTION, bounds)
+    arrays = _compute_label_arrays(entry, PROJECTION, bounds, gap=gap)
     return {name: int(array[HALF, HALF]) for name, array in arrays.items()}
+
+
+def _days(date: str) -> int:
+    return (datetime.fromisoformat(date).replace(tzinfo=timezone.utc) - UNIX_EPOCH).days
+
+
+DATED_POINT = {
+    "pre_change": "2020-01-15",
+    "first_date_change_noticeable": "2020-02-01",
+    "post_change": "2020-09-01",
+    "pre_category": "mangrove",
+    "post_category": "crops",
+    "pre_change_category": "mangrove_loss",
+    "post_change_category": "new_crop_field",
+}
 
 
 def _change_labels(point: dict[str, Any]) -> tuple[str, str]:
@@ -88,8 +111,8 @@ def test_change_category_labels(
 
 def test_mangrove_land_cover() -> None:
     labels = _labels_at_point({"pre_category": "mangrove", "post_category": "bare"})
-    assert CATEGORY_NAMES[labels["label_src"]] == "mangrove"
-    assert CATEGORY_NAMES[labels["label_dst"]] == "bare"
+    assert LC_CLASS_NAMES[labels["label_src"]] == "mangrove"
+    assert LC_CLASS_NAMES[labels["label_dst"]] == "bare"
     assert "label_same_change" not in labels
 
 
@@ -121,6 +144,138 @@ def test_label_arrays_have_no_change_labels_without_categories() -> None:
     labels = _labels_at_point({"pre_category": "tree", "post_category": "bare"})
     assert labels["label_pre_change"] == 0
     assert labels["label_post_change"] == 0
+
+
+def test_transition_label_arrays() -> None:
+    gap = timedelta(days=10)
+    labels = _labels_at_point(
+        {
+            **DATED_POINT,
+            "transition_date": "2020-04-01",
+            "transition_category": "bare",
+            "transition_change_category": "site_clearing",
+        },
+        gap=gap,
+    )
+    # The transition date gets the gap, like label_ts_end.
+    assert labels["label_transition_date"] == _days("2020-04-01") + 10
+    assert labels["label_ts_end"] == _days("2020-09-01") + 10
+    assert LC_CLASS_NAMES[labels["label_transition_dst"]] == "bare"
+    assert (
+        POST_CHANGE_CATEGORY_NAMES[labels["label_transition_post_change"]]
+        == "site_clearing"
+    )
+
+
+@pytest.mark.parametrize(
+    "transition,expected",
+    [
+        # Aliases apply as for post_change_category.
+        ({"transition_change_category": "borrow_pit"}, "new_road"),
+        # land_reclamation is not moved to the pre-change head; it is nodata.
+        ({"transition_change_category": "land_reclamation"}, "nodata"),
+        # A missing transition change category is nodata (masked).
+        ({"transition_category": "bare"}, "nodata"),
+    ],
+)
+def test_transition_change_category(transition: dict[str, Any], expected: str) -> None:
+    labels = _labels_at_point(
+        {**DATED_POINT, "transition_date": "2020-04-01", **transition}
+    )
+    assert POST_CHANGE_CATEGORY_NAMES[labels["label_transition_post_change"]] == (
+        expected
+    )
+    # The regular post change category is unaffected.
+    assert POST_CHANGE_CATEGORY_NAMES[labels["label_post_change"]] == "new_crop_field"
+
+
+def test_no_transition_labels_without_transition() -> None:
+    labels = _labels_at_point(DATED_POINT)
+    assert labels["label_transition_date"] == DAYS_NODATA
+    assert labels["label_transition_dst"] == 0
+    assert labels["label_transition_post_change"] == 0
+    # A transition on a point without dates is not rasterized either.
+    labels = _labels_at_point(
+        {"transition_date": "2020-04-01", "transition_category": "bare"}
+    )
+    assert labels["label_transition_date"] == DAYS_NODATA
+    assert labels["label_transition_dst"] == 0
+
+
+@pytest.mark.parametrize(
+    "transition_date,valid",
+    [
+        ("2020-02-01", True),
+        ("2020-08-31", True),
+        ("2020-01-31", False),
+        ("2020-09-01", False),
+    ],
+)
+def test_validate_transition_date(transition_date: str, valid: bool) -> None:
+    entry = {
+        "positive_points": [
+            {"lon": LON, "lat": LAT, **DATED_POINT, "transition_date": transition_date}
+        ]
+    }
+    if valid:
+        _validate_positive_point_dates(entry)
+    else:
+        with pytest.raises(ValueError, match="transition_date"):
+            _validate_positive_point_dates(entry)
+    # filter_v2_jsons omits the entries that would raise.
+    assert positive_point_dates_valid(entry) == valid
+
+
+def test_transition_frequent_option() -> None:
+    first = datetime(2020, 2, 1, tzinfo=timezone.utc)
+    post = datetime(2020, 9, 1, tzinfo=timezone.utc)
+    transition = datetime(2020, 4, 1, tzinfo=timezone.utc)
+    cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    without = _compute_frequent_block_ends(first, post, "w", cutoff)
+    with_transition = _compute_frequent_block_ends(
+        first, post, "w", cutoff, transition_date=transition
+    )
+    assert len(with_transition) == len(without)
+    # The deterministic options (including option 2, used for validation) stay,
+    # the transition option comes next, and it replaces the last random option.
+    assert with_transition[:3] == without[:3]
+    assert with_transition[3] == transition + OPTION_MARGIN
+    assert with_transition[4:] == without[3:-1]
+
+
+def test_sidecar_dates_match_transition() -> None:
+    old = {
+        "pre_change": "2020-01-15",
+        "post_change": "2020-09-01T00:00:00+00:00",
+        "first_noticeable": "2020-02-01T00:00:00+00:00",
+        "stop_date": None,
+    }
+    # Sidecars written before transition_date existed match windows without one.
+    assert _sidecar_dates_match(old, {**old, "transition_date": None})
+    assert not _sidecar_dates_match(
+        old, {**old, "transition_date": "2020-04-01T00:00:00+00:00"}
+    )
+
+
+def test_unknown_transition_categories() -> None:
+    entries = [
+        {
+            "positive_points": [
+                {
+                    "transition_category": "lava",
+                    "transition_change_category": "land_reclamation",
+                },
+                {
+                    "transition_category": "bare",
+                    "transition_change_category": "borrow_pit",
+                },
+            ]
+        }
+    ]
+    assert dict(_get_unknown_categories(entries)) == {
+        "transition_category: lava": 1,
+        "transition_change_category: land_reclamation": 1,
+    }
 
 
 def test_window_time_range_aligns_quarterly_with_prediction() -> None:

@@ -140,6 +140,88 @@
       ],
       "type": "raster"
     },
+    "label_transition_date": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
+      "type": "raster"
+    },
+    "label_transition_dst": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "bare",
+        "burnt",
+        "crops",
+        "fallow/shifting cultivation",
+        "grassland",
+        "Lichen and moss",
+        "shrub",
+        "snow and ice",
+        "tree",
+        "urban/built-up",
+        "water",
+        "wetland (herbaceous)",
+        "mangrove"
+      ],
+      "type": "raster"
+    },
+    "label_transition_post_change": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "none",
+        "vegetation_growth",
+        "new_building",
+        "new_road",
+        "new_infrastructure",
+        "new_crop_field",
+        "new_aquafarm",
+        "site_clearing",
+        "water_expand",
+        "mining",
+        "new_crop_structure",
+        "selective_logging",
+        "landslide",
+        "settlement",
+        "agricultural_activity",
+        "wildfire",
+        "ice_motion",
+        "flooding",
+        "storm_damage",
+        "vegetation_dieback"
+      ],
+      "type": "raster"
+    },
     "label_ts_end": {
       "band_sets": [
         {

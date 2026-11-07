@@ -17,12 +17,12 @@ from typing import Any
 from rslearn.utils.fsspec import open_atomic
 from upath import UPath
 
-from rslp.olmoearth_lcc.studio.client import StudioClient
 from rslp.olmoearth_lcc.studio.mapping import (
     task_and_annotations_to_entry,
     task_index,
 )
-from rslp.olmoearth_lcc.studio.schema import resolve_schema
+from rslp.olmoearth_lcc.studio.schema import make_client, resolve_schema
+from rslp.utils.studio import StudioClient
 
 
 def download_entries(client: StudioClient, project_id: str) -> list[dict[str, Any]]:
@@ -30,8 +30,8 @@ def download_entries(client: StudioClient, project_id: str) -> list[dict[str, An
     schema = resolve_schema(client.get_project(project_id))
 
     tasks = list(
-        client.search_all(
-            "/tasks/search",
+        client.iter_search(
+            "tasks",
             {
                 "project_id": {"eq": project_id},
                 "include_images": False,
@@ -43,8 +43,8 @@ def download_entries(client: StudioClient, project_id: str) -> list[dict[str, An
 
     annotations_by_task: dict[str, list[dict[str, Any]]] = defaultdict(list)
     num_annotations = 0
-    for annotation in client.search_all(
-        "/annotations/search", {"project_id": {"eq": project_id}}
+    for annotation in client.iter_search(
+        "annotations", {"project_id": {"eq": project_id}}
     ):
         if annotation.get("task_id"):
             annotations_by_task[annotation["task_id"]].append(annotation)
@@ -88,7 +88,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    client = StudioClient(args.base_url)
+    client = make_client(args.base_url)
     entries = download_entries(client, args.project_id)
     with open_atomic(UPath(args.out), "w") as f:
         json.dump(entries, f, indent=2)

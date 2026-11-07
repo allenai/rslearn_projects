@@ -2,7 +2,7 @@
 
 - ``LCCMultiTask``: injects per-window annotation metadata (consumed by
   ``transforms.StackSampler``) and stacks the per-task outputs into the uint16
-  raster consumed by ``postprocess``.
+  raster described by ``output_bands``.
 - ``BalancedBinaryMetric``: sample-balanced accuracy / AUROC / PRAUC for the
   binary change task.
 - ``TimestepToleranceAccuracy``: accuracy of the per-pixel start/end timestep
@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -30,13 +30,38 @@ from torchmetrics.utilities import dim_zero_cat
 from typing_extensions import override
 from upath import UPath
 
-from .timestamp_output import start_end_day_bands
+from .output_bands import OUTPUT_BANDS
+from .timestamp_encoding import MAX_DAY_VALUE, parse_date
 from .transforms import ANNOTATION_KEY, TS_END_KEY, TS_START_KEY
 
 
-def _parse_date(s: str) -> datetime:
-    """Parse ISO date string to UTC datetime."""
-    return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+def start_end_day_bands(
+    start_probs: torch.Tensor,
+    end_probs: torch.Tensor,
+    timestep_days: Sequence[int],
+) -> torch.Tensor:
+    """Two day bands from start/end timestep distributions via per-pixel argmax.
+
+    The per-timestep day values come from the model output
+    (``raw_output["timestep_days"]``), which the model forward passes through from
+    its input image timestamps, since ``process_output`` and ``SampleMetadata`` have
+    no access to the per-timestep acquisition dates.
+
+    Args:
+        start_probs: (T, H, W) softmax over timesteps for the change-start boundary.
+        end_probs: (T, H, W) softmax over timesteps for the change-end boundary.
+        timestep_days: per-timestep day-values (days since TIMESTAMP_EPOCH, length T).
+
+    Returns:
+        (2, H, W) tensor of clamped day-values (pre, post).
+    """
+    days = torch.tensor(
+        list(timestep_days), dtype=torch.float32, device=start_probs.device
+    )
+    pre_idx = start_probs.argmax(dim=0)  # (H, W)
+    post_idx = end_probs.argmax(dim=0)  # (H, W)
+    bands = torch.stack([days[pre_idx], days[post_idx]], dim=0)
+    return bands.clamp(0, MAX_DAY_VALUE).round()
 
 
 # ---------------------------------------------------------------------------
@@ -315,9 +340,8 @@ class LCCMultiTask(MultiTask):
                     f"{metadata.window_name} in {self.annotations_path}"
                 )
             input_dict[ANNOTATION_KEY] = {
-                "pre_change": _parse_date(ann["pre_change"]),
-                "post_change": _parse_date(ann["post_change"]),
-                "first_noticeable": _parse_date(ann["first_noticeable"]),
+                "pre_change": parse_date(ann["pre_change"]),
+                "post_change": parse_date(ann["post_change"]),
             }
         return input_dict, target_dict
 
@@ -332,7 +356,7 @@ class LCCMultiTask(MultiTask):
         real dates via ``raw_output["timestep_days"]``). Probability bands are
         stored as 0..255 within the uint16 raster.
 
-        Band layout (see ``postprocess.OUTPUT_BANDS``):
+        Band layout (see ``output_bands.OUTPUT_BANDS``):
         0..2   = binary (softmax probs)
         3..16  = src (softmax probs)
         17..30 = dst (softmax probs)
@@ -364,4 +388,9 @@ class LCCMultiTask(MultiTask):
                 (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
             )
 
-        return np.concatenate(parts, axis=0)
+        output = np.concatenate(parts, axis=0)
+        if output.shape[0] != len(OUTPUT_BANDS):
+            raise ValueError(
+                f"expected {len(OUTPUT_BANDS)} output bands but got {output.shape[0]}"
+            )
+        return output

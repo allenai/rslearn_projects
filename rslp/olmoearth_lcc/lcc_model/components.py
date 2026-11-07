@@ -5,7 +5,8 @@ as an ``rslearn.models.multitask.MultiTaskModel`` built from generic rslearn
 components (OlmoEarth, TemporalTransformer, BreakpointScan, TokensToChannels, Conv,
 Upsample, SegmentationHead). ``BalancedBinarySegmentationHead`` is a drop-in
 replacement for ``rslearn.train.tasks.segmentation.SegmentationHead`` that uses the
-per-sample balanced cross-entropy from ``ChangeModel._balanced_binary_loss``. It is
+per-sample balanced cross-entropy (``balanced_binary_loss``, which ChangeModel also
+uses). It is
 only needed at training time and carries no parameters, so the predict config can
 use the plain rslearn head while loading the same checkpoint.
 """

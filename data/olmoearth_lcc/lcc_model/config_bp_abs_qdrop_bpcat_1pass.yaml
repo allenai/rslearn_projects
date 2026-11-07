@@ -292,6 +292,59 @@ data:
         - label
         is_target: true
         dtype: INT32
+      # Per-point pre_change, post_change and transition dates and classes, consumed
+      # by StackSampler for the ts_start/ts_end targets and to gate the dst and
+      # post_change targets (see prepare.py).
+      label_ts_end:
+        data_type: raster
+        layers:
+        - label_ts_end
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_ts_start:
+        data_type: raster
+        layers:
+        - label_ts_start
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_transition_date:
+        data_type: raster
+        layers:
+        - label_transition_date
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_transition_dst:
+        data_type: raster
+        layers:
+        - label_transition_dst
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_transition_post_change:
+        data_type: raster
+        layers:
+        - label_transition_post_change
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
     task:
       class_path: rslp.olmoearth_lcc.lcc_model.tasks.LCCMultiTask
       init_args:

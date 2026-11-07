@@ -10,8 +10,8 @@ from rslearn.models.component import TokenFeatureMaps
 from rslearn.train.model_context import ModelContext, RasterImage
 
 from rslp.olmoearth_lcc.lcc_model.model import ChangeModel
-from rslp.olmoearth_lcc.lcc_model.prepare import (
-    CATEGORY_NAMES,
+from rslp.olmoearth_lcc.lcc_model.output_bands import (
+    LC_CLASS_NAMES,
     POST_CHANGE_CATEGORY_NAMES,
     PRE_CHANGE_CATEGORY_NAMES,
 )
@@ -224,8 +224,8 @@ def test_forward_shapes_and_losses(kwargs: dict) -> None:
     assert len(out.outputs) == batch_size
     o = out.outputs[0]
     assert o["binary"].shape == (3, CROP, CROP)
-    assert o["src"].shape == (len(CATEGORY_NAMES), CROP, CROP)
-    assert o["dst"].shape == (len(CATEGORY_NAMES), CROP, CROP)
+    assert o["src"].shape == (len(LC_CLASS_NAMES), CROP, CROP)
+    assert o["dst"].shape == (len(LC_CLASS_NAMES), CROP, CROP)
     assert o["pre_change"].shape == (len(PRE_CHANGE_CATEGORY_NAMES), CROP, CROP)
     assert o["post_change"].shape == (len(POST_CHANGE_CATEGORY_NAMES), CROP, CROP)
     assert o[TS_START_KEY].shape == (T, CROP, CROP)

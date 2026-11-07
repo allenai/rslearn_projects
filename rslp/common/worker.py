@@ -129,9 +129,9 @@ def worker_pipeline(
 
 def launch_workers(
     image_name: str,
-    queue_name: str,
     num_workers: int,
     cluster: list[str],
+    queue_name: str | None = None,
     gpus: int = 0,
     shared_memory: str | None = None,
     priority: BeakerJobPriority = BeakerJobPriority.low,
@@ -139,14 +139,15 @@ def launch_workers(
     extra_env_vars: dict[str, str] | None = None,
     extra_env_secrets: dict[str, str] | None = None,
     min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
+    worker_args: list[str] | None = None,
 ) -> None:
     """Start workers for the prediction jobs.
 
     Args:
         image_name: the Beaker image name to use for the jobs.
-        queue_name: the Beaker queue name.
         num_workers: number of workers to launch
         cluster: clusters to target.
+        queue_name: the Beaker queue to run worker_pipeline on.
         gpus: number of GPUs to request per worker.
         shared_memory: shared memory string like "256GiB".
         priority: priority to assign the Beaker jobs.
@@ -158,7 +159,15 @@ def launch_workers(
             secret (in the target workspace) to read its value from.
         min_runtime: how long to protect each (preemptible) worker job from
             preemption.
+        worker_args: the rslp.main arguments each worker runs, instead of the
+            Beaker queue worker (exactly one of queue_name and worker_args must be
+            set).
     """
+    if (queue_name is None) == (worker_args is None):
+        raise ValueError("exactly one of queue_name and worker_args must be set")
+    if worker_args is None:
+        assert queue_name is not None
+        worker_args = ["common", "worker", "--queue_name", queue_name]
     if extra_env_vars is None:
         extra_env_vars = {}
     if extra_env_secrets is None:
@@ -185,12 +194,7 @@ def launch_workers(
                 beaker_image=image_name,
                 priority=priority,
                 command=["python", "-m", "rslp.main"],
-                arguments=[
-                    "common",
-                    "worker",
-                    "--queue_name",
-                    queue_name,
-                ],
+                arguments=worker_args,
                 constraints=BeakerConstraints(
                     cluster=cluster,
                 ),

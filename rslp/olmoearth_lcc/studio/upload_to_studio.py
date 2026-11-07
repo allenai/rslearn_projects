@@ -25,7 +25,6 @@ from typing import Any
 import tqdm
 from upath import UPath
 
-from rslp.olmoearth_lcc.studio.client import StudioClient
 from rslp.olmoearth_lcc.studio.mapping import (
     KNOWN_ENTRY_KEYS,
     entry_to_task_payload,
@@ -39,9 +38,11 @@ from rslp.olmoearth_lcc.studio.schema import (
     POSITIVE,
     ProjectSchema,
     ensure_template,
+    make_client,
     required_labels,
     resolve_schema,
 )
+from rslp.utils.studio import StudioClient
 
 
 def iter_points(entry: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
@@ -111,8 +112,8 @@ def check_existing(
     """Warn about existing tasks whose annotation count differs from the JSON."""
     counts: Counter[str] = Counter(
         annotation["task_id"]
-        for annotation in client.search_all(
-            "/annotations/search", {"project_id": {"eq": project_id}}
+        for annotation in client.iter_search(
+            "annotations", {"project_id": {"eq": project_id}}
         )
     )
     mismatched = []
@@ -162,15 +163,13 @@ def main() -> None:
         # Fail on a malformed entry before anything is written.
         entry_to_task_payload(index, entry)
 
-    client = StudioClient(args.base_url)
+    client = make_client(args.base_url)
     project = client.get_project(args.project_id)
     print(f"Project: {project['name']} ({client.base_url})")
 
     existing_tasks = {
         task["name"]: task["id"]
-        for task in client.search_all(
-            "/tasks/search", {"project_id": {"eq": args.project_id}}
-        )
+        for task in client.iter_search("tasks", {"project_id": {"eq": args.project_id}})
     }
     todo = [
         (index, entry)

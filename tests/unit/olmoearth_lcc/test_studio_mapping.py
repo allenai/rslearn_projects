@@ -20,7 +20,10 @@ from rslp.olmoearth_lcc.studio.schema import (
     ALL_FIELDS,
     NEGATIVE,
     POSITIVE,
+    POST_CHANGE_CATEGORIES,
+    ensure_template,
     is_labelset_field,
+    labelset_owner,
     required_labels,
 )
 
@@ -62,9 +65,15 @@ class FakeStudio:
 
     def __init__(self, entries: list[dict[str, Any]]):
         self.field_ids = {name: f"field-{name}" for name in ALL_FIELDS}
-        self.label_ids = {
+        labelset_ids = {
             name: {label: f"label-{name}-{label}" for label in labels}
             for name, labels in required_labels(entries).items()
+        }
+        # Fields that share a labelset get the same label ids.
+        self.label_ids = {
+            name: labelset_ids[labelset_owner(name)]
+            for name in ALL_FIELDS
+            if is_labelset_field(name)
         }
         self.field_names = {v: k for k, v in self.field_ids.items()}
         self.label_names = {
@@ -292,6 +301,141 @@ def test_every_field_is_labelset_or_date() -> None:
     assert [name for name in ALL_FIELDS if not is_labelset_field(name)] == [
         "pre_change",
         "first_date_change_noticeable",
+        "transition_date",
         "post_change",
         "stop_date",
     ]
+
+
+def test_transition_fields_round_trip() -> None:
+    point = {
+        "lon": 1.0,
+        "lat": 2.0,
+        "pre_change": "2020-01-15",
+        "first_date_change_noticeable": "2020-02-01",
+        "transition_date": "2020-04-01",
+        "post_change": "2020-09-01",
+        "pre_category": "mangrove",
+        "transition_category": "bare",
+        "post_category": "crops",
+        "pre_change_category": "mangrove_loss",
+        "post_change_category": "new_crop_field",
+        "transition_change_category": "site_clearing",
+    }
+    entry = make_entry(positive_points=[point])
+    studio = FakeStudio([entry])
+    # transition_change_category labels come from post_change_category's labelset.
+    assert studio.label_ids["transition_change_category"]["site_clearing"] == (
+        "label-post_change_category-site_clearing"
+    )
+    assert_entries_equal(studio.round_trip(0, entry), entry)
+    assert not unmapped_point_keys(point, POSITIVE)
+
+
+def test_shared_labelset_collects_unseen_values() -> None:
+    entry = make_entry(
+        positive_points=[
+            {"lon": 1.0, "lat": 2.0, "transition_change_category": "legacy_value"}
+        ]
+    )
+    labels = required_labels([entry])
+    assert "transition_change_category" not in labels
+    assert labels["post_change_category"][-1] == "legacy_value"
+    assert_entries_equal(FakeStudio([entry]).round_trip(0, entry), entry)
+
+
+class FakeStudioClient:
+    """In-memory project settings for ensure_template."""
+
+    def __init__(self, fields: list[dict[str, Any]], labelsets: list[dict[str, Any]]):
+        self.settings: dict[str, Any] = {
+            "id": "settings",
+            "name": "settings",
+            "label_geometry": "point",
+            "annotation_metadata_fields": fields,
+            "labelsets": labelsets,
+        }
+        self._ids = itertools.count()
+        self.label_posts: list[tuple[str, list[str]]] = []
+
+    def _new_id(self, prefix: str) -> str:
+        return f"{prefix}-{next(self._ids)}"
+
+    def get_project(self, project_id: str) -> dict[str, Any]:
+        return {"id": project_id, "settings": copy.deepcopy(self.settings)}
+
+    def create(self, path: str, body: Any) -> dict[str, Any]:
+        return self.request("POST", path, json=body)["records"][0]
+
+    def request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        body: Any = kwargs["json"]
+        if path == "/labelsets":
+            labelset = {
+                "id": self._new_id("labelset"),
+                "name": body["name"],
+                "labels": [
+                    {"id": self._new_id("label"), "name": label["name"]}
+                    for label in body["labels"]
+                ],
+            }
+            self.settings["labelsets"].append(labelset)
+            return {"records": [labelset]}
+        if path == "/annotation_metadata_fields":
+            field = {**body, "id": self._new_id("field")}
+            self.settings["annotation_metadata_fields"].append(field)
+            return {"records": [field]}
+        if path == "/labels":
+            labelset_id = body[0]["labelset_id"]
+            self.label_posts.append((labelset_id, [label["name"] for label in body]))
+            (labelset,) = (
+                ls for ls in self.settings["labelsets"] if ls["id"] == labelset_id
+            )
+            records = [
+                {"id": self._new_id("label"), "name": label["name"]} for label in body
+            ]
+            labelset["labels"].extend(records)
+            return {"records": records}
+        raise AssertionError(f"unexpected request {method} {path}")
+
+
+def test_ensure_template_shares_post_change_labelset() -> None:
+    client = FakeStudioClient([], [])
+    entry = make_entry(
+        positive_points=[
+            {"lon": 1.0, "lat": 2.0, "transition_change_category": "legacy_value"}
+        ]
+    )
+    schema = ensure_template(client, "project", [entry])  # type: ignore[arg-type]
+    fields = {
+        field["name"]: field for field in client.settings["annotation_metadata_fields"]
+    }
+    assert set(fields) == set(ALL_FIELDS)
+    assert (
+        fields["transition_change_category"]["labelset_id"]
+        == fields["post_change_category"]["labelset_id"]
+    )
+    assert (
+        fields["transition_category"]["labelset_id"]
+        != fields["post_category"]["labelset_id"]
+    )
+    assert "transition_change_category" not in {
+        labelset["name"] for labelset in client.settings["labelsets"]
+    }
+    # The unseen value is part of the shared labelset from creation, so nothing is
+    # added afterwards, and both fields resolve it.
+    assert client.label_posts == []
+    assert (
+        schema.label_ids["transition_change_category"]["legacy_value"]
+        == schema.label_ids["post_change_category"]["legacy_value"]
+    )
+
+    # Re-running with another unseen value adds it once, to the shared labelset.
+    entry["positive_points"][0]["transition_change_category"] = "another_value"
+    schema = ensure_template(client, "project", [entry])  # type: ignore[arg-type]
+    assert client.label_posts == [
+        (fields["post_change_category"]["labelset_id"], ["another_value"])
+    ]
+    assert "another_value" in schema.label_ids["transition_change_category"]
+    assert set(POST_CHANGE_CATEGORIES) <= set(
+        schema.label_ids["transition_change_category"]
+    )

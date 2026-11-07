@@ -198,7 +198,6 @@ class _ShuffledSkipExistingDataset(torch.utils.data.IterableDataset):
 
 @dataclass
 class _BestChange:
-    score: float
     row: int
     col: int
     pivot_year_idx: int
@@ -240,7 +239,7 @@ def _load_model(checkpoint_path: str, device: str) -> torch.nn.Module:
 
 def _build_model_dataset(
     ds_path: str, workers: int, group: str | None = None
-) -> tuple[Dataset, ModelDataset]:
+) -> ModelDataset:
     """Create an rslearn ModelDataset for the ten-year Sentinel-2 inputs."""
     dataset = Dataset(UPath(ds_path))
     modality_names = [f"sentinel2_y{i}" for i in range(NUM_YEARS)]
@@ -271,7 +270,7 @@ def _build_model_dataset(
         ),
         workers=workers,
     )
-    return dataset, model_dataset
+    return model_dataset
 
 
 def _get_center_crop_bounds(
@@ -386,10 +385,7 @@ def _score_crop(
         ].mean(dim=0)
         src_class_id = class_idx + 1
         dst_class_id = int(post_avg.argmax().item()) + 1
-        score = float((pre_min - post_max)[class_idx, local_row, local_col].item())
-
         return _BestChange(
-            score=score,
             row=row,
             col=col,
             pivot_year_idx=pivot_idx,
@@ -529,7 +525,7 @@ def apply_per_pixel_land_cover(
     dst_class_idx = _category_to_class_idx(dst_category, "dst_category")
     output_root = UPath(output_dir)
     print("Building the ModelDataset")
-    _dataset, model_dataset = _build_model_dataset(ds_path, workers, group)
+    model_dataset = _build_model_dataset(ds_path, workers, group)
     print("Building the shuffled skip dataset wrapper")
     iter_dataset = _ShuffledSkipExistingDataset(
         base=model_dataset,

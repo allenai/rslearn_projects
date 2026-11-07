@@ -1,4 +1,4 @@
-# Ablation of config_rslearn_bpcat_temporal.yaml with the TemporalTransformer removed:
+# The LCC model built from generic rslearn components, without a TemporalTransformer:
 # the OlmoEarth per-timestep tokens feed directly into the decoders, so the only
 # temporal reasoning after the encoder is each decoder's own BreakpointScan (or the
 # per-token linear in TokensToChannels for ts_start/ts_end).
@@ -172,7 +172,12 @@ model:
             init_args: {scale_factor: 4}
           - class_path: rslearn.train.tasks.per_pixel_timestep.PerPixelTimestepHead
             # Target: the earliest input image on or after the annotated post_change.
-            init_args: {input_key: sentinel2_l2a, mode: AFTER}
+            init_args:
+              input_key: sentinel2_l2a
+              mode: AFTER
+              # A post_change after the stack (change still in progress) maps to
+              # the last timestep.
+              fallback_to_closest_timestep_if_no_match: true
         loss_weights:
           binary: 2.0
     optimizer:
@@ -351,6 +356,39 @@ data:
         bands:
         - label
         is_target: true
+        passthrough: true
+        dtype: INT32
+      # Per-point post_change and transition dates and classes, consumed by
+      # StackSampler to gate the dst and post_change targets (see prepare.py).
+      label_transition_date:
+        data_type: raster
+        layers:
+        - label_transition_date
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_transition_dst:
+        data_type: raster
+        layers:
+        - label_transition_dst
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_transition_post_change:
+        data_type: raster
+        layers:
+        - label_transition_post_change
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
         dtype: INT32
     task:
       class_path: rslp.olmoearth_lcc.lcc_model.tasks.LCCMultiTask

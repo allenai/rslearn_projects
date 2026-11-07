@@ -12,6 +12,12 @@ This script takes one or more v2 annotation JSONs and creates an rslearn dataset
   categories are mapped to the training classes (see the *_ALIASES dicts).
 - label_ts_start, label_ts_end: Pre-rasterized uint16 pre_change / post_change
   dates of each positive point, as days since 1970-01-01 (65535 = nodata)
+- label_transition_date, label_transition_dst, label_transition_post_change: the
+  optional transition (intermediate stage of a multi-stage change) of each positive
+  point: its uint16 date like label_ts_end, its land cover class like label_dst,
+  and its change category (transition_change_category, a post-change category)
+  like label_post_change. StackSampler trains the dst and post_change heads on these
+  when the sampled images end between the transition and post_change.
 
 The time range for each window covers all annotation-derived frequent blocks and
 QUARTERLY_LOOKBACK of preceding quarterly history. The 90-day quarterly periods are
@@ -64,17 +70,22 @@ from rslearn.utils.mp import make_pool_and_star_imap_unordered
 from rslearn.utils.raster_array import RasterArray
 from upath import UPath
 
+from .output_bands import (
+    LC_CLASS_NAMES,
+    POST_CHANGE_CATEGORY_NAMES,
+    PRE_CHANGE_CATEGORY_NAMES,
+)
+from .timestamp_encoding import DAYS_NODATA, UNIX_EPOCH, parse_date
+from .transforms import NUM_FREQUENT, NUM_FREQUENT_OPTIONS, QUARTERLY_PERIOD
+
 COLLECTION = "sentinel-2-l2a"
 
-NUM_FREQUENT_OPTIONS = 8
-NUM_FREQUENT_IMAGES = 6
 FREQUENT_BLOCK_DURATION = timedelta(days=90)
 FREQUENT_PERIOD = timedelta(days=7)
 # Deterministic options end this long after the annotation date so the block
 # covers that date.
 OPTION_MARGIN = timedelta(days=6)
 
-QUARTERLY_PERIOD = timedelta(days=90)
 # How far before the earliest frequent block the quarterly layer reaches (20
 # periods), matching the duration of sentinel2_quarterly in config_predict.json.
 QUARTERLY_LOOKBACK = timedelta(days=1800)
@@ -85,67 +96,8 @@ IMAGE_CUTOFF = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 WINDOW_SIZE = 128
 
-BIN_NODATA = 0
 BIN_NO_CHANGE = 1
 BIN_CHANGE = 2
-
-CATEGORY_NAMES = [
-    "nodata",
-    "bare",
-    "burnt",
-    "crops",
-    "fallow/shifting cultivation",
-    "grassland",
-    "Lichen and moss",
-    "shrub",
-    "snow and ice",
-    "tree",
-    "urban/built-up",
-    "water",
-    "wetland (herbaceous)",
-    "mangrove",
-]
-
-# Change-category classes for the pre/post_change_category annotation fields.
-# Class layout is [nodata, none, <options...>]: class 0 = nodata (masked, no point
-# or neither field set); class 1 = "none" (this field unset but the other field is
-# set); classes >= 2 = the annotated options. The annotation lab
-# (olmoearth_studio/ui/labs/lcc-annotator/FIELDS.md) offers finer categories,
-# mapped onto these classes by the aliases below.
-PRE_CHANGE_CATEGORY_NAMES = [
-    "nodata",
-    "none",
-    "deforestation",
-    "urban_erosion",
-    "wetland_loss",
-    "water_contract",
-    "removed_crop_structure",
-    "mangrove_loss",
-]
-
-POST_CHANGE_CATEGORY_NAMES = [
-    "nodata",
-    "none",
-    "vegetation_growth",
-    "new_building",
-    "new_road",
-    "new_infrastructure",
-    "new_crop_field",
-    "new_aquafarm",
-    "site_clearing",
-    "water_expand",
-    "mining",
-    "new_crop_structure",
-    "selective_logging",
-    "landslide",
-    "settlement",
-    "agricultural_activity",
-    "wildfire",
-    "ice_motion",
-    "flooding",
-    "storm_damage",
-    "vegetation_dieback",
-]
 
 # Annotation categories that train as another class of the same field.
 PRE_CHANGE_CATEGORY_ALIASES = {
@@ -185,14 +137,13 @@ LEGACY_SAME_CHANGE_FIELD = "same_change_category"
 
 ANNOTATIONS_SIDECAR_FNAME = "lcc_annotations.json"
 
-UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
-# Value of label_ts_start / label_ts_end at pixels without a dated positive point.
-TS_LABEL_NODATA = 65535
 
-
-def _parse_date(s: str) -> datetime:
-    """Parse ISO date string to UTC datetime."""
-    return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+# Optional transition fields of a positive point: an intermediate stage between pre
+# and post (e.g. mangrove -> bare -> crops) with its date, land cover category, and
+# change category (one of the post-change categories).
+TRANSITION_DATE_FIELD = "transition_date"
+TRANSITION_CATEGORY_FIELD = "transition_category"
+TRANSITION_CHANGE_CATEGORY_FIELD = "transition_change_category"
 
 
 def _lonlat_to_pixel(
@@ -209,7 +160,7 @@ def _lonlat_to_pixel(
 def _category_to_id(category: str) -> int:
     """Convert category name to class ID (1-indexed, 0 = nodata)."""
     try:
-        return CATEGORY_NAMES.index(category)
+        return LC_CLASS_NAMES.index(category)
     except ValueError:
         return 0
 
@@ -249,12 +200,25 @@ def _get_change_categories(pt: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _get_transition_change_category(pt: dict[str, Any]) -> str:
+    """Get a positive point's transition change category as a training class name.
+
+    Applies POST_CHANGE_CATEGORY_ALIASES. Unlike post_change_category, categories in
+    POST_TO_PRE_CHANGE_CATEGORIES are not moved to the pre-change head (it has no
+    transition counterpart); they are returned unchanged and rasterize as nodata.
+    Unset is "".
+    """
+    value = pt.get(TRANSITION_CHANGE_CATEGORY_FIELD) or ""
+    return POST_CHANGE_CATEGORY_ALIASES.get(value, value)
+
+
 def _get_unknown_categories(entries: list[dict[str, Any]]) -> Counter[str]:
     """Count category values of positive points that have no training class.
 
-    These are unknown land cover or change categories, and any value in the legacy
-    same_change_category field. Their field rasterizes as nodata, or as "none" for
-    a change field when the other change field is set.
+    These are unknown land cover or change categories (including the transition
+    fields), and any value in the legacy same_change_category field. Their field
+    rasterizes as nodata, or as "none" for a change field when the other change
+    field is set.
 
     Returns:
         counts keyed by "field: value".
@@ -262,14 +226,19 @@ def _get_unknown_categories(entries: list[dict[str, Any]]) -> Counter[str]:
     counts: Counter[str] = Counter()
     for entry in entries:
         for pt in entry.get("positive_points", []):
-            for field in ("pre_category", "post_category"):
+            for field in ("pre_category", "post_category", TRANSITION_CATEGORY_FIELD):
                 value = pt.get(field)
-                if value and value not in CATEGORY_NAMES[1:]:
+                if value and value not in LC_CLASS_NAMES[1:]:
                     counts[f"{field}: {value}"] += 1
             for field, value in _get_change_categories(pt).items():
                 class_names = CHANGE_CATEGORY_FIELDS[field][1]
                 if value and value not in class_names[2:]:
                     counts[f"{field}: {value}"] += 1
+            transition_value = _get_transition_change_category(pt)
+            if transition_value and (
+                transition_value not in POST_CHANGE_CATEGORY_NAMES[2:]
+            ):
+                counts[f"{TRANSITION_CHANGE_CATEGORY_FIELD}: {transition_value}"] += 1
             if pt.get(LEGACY_SAME_CHANGE_FIELD):
                 counts[
                     f"{LEGACY_SAME_CHANGE_FIELD}: {pt[LEGACY_SAME_CHANGE_FIELD]}"
@@ -329,7 +298,7 @@ def _search_oedatasets(
             items.append(
                 {
                     "id": item["id"],
-                    "collected_at": _parse_date(props["collected_at"]),
+                    "collected_at": parse_date(props["collected_at"]),
                     "cloud_cover": cloud_cover,
                     "geometry_geojson": props["geometry"],
                 }
@@ -353,30 +322,20 @@ QUARTERLY_QUERY_CONFIG = QueryConfig(
 )
 
 # Walks back from the block end one 7-day period at a time, skipping periods with no
-# imagery, until NUM_FREQUENT_IMAGES periods have a mosaic; blocks with fewer are
+# imagery, until NUM_FREQUENT periods have a mosaic; blocks with fewer are
 # rejected. Matches sentinel2_frequent_0 in the prediction dataset config.
 FREQUENT_QUERY_CONFIG = QueryConfig(
     space_mode=SpaceMode.MOSAIC,
-    max_matches=NUM_FREQUENT_IMAGES,
-    min_matches=NUM_FREQUENT_IMAGES,
+    max_matches=NUM_FREQUENT,
+    min_matches=NUM_FREQUENT,
     period_duration=FREQUENT_PERIOD,
     per_period_mosaic_reverse_time_order=False,
 )
 
 
-def _build_quarterly_layer_data(
-    items: list[dict[str, Any]],
-    time_range: tuple[datetime, datetime],
-    projection: Projection,
-    bounds: tuple[int, ...],
-) -> WindowLayerData:
-    """Build quarterly mosaics using rslearn's match_candidate_items_to_window.
-
-    Matches the MOSAIC + period_duration=90d behavior used in the prediction pipeline.
-    Items must be sorted by cloud cover ascending so the MOSAIC matcher sees the
-    clearest candidates first within each period.
-    """
-    rslearn_items = [
+def _to_rslearn_items(items: list[dict[str, Any]]) -> list[Item]:
+    """Convert OlmoEarth Datasets search results to rslearn Items, keeping order."""
+    return [
         Item(
             item["id"],
             STGeometry(
@@ -388,6 +347,19 @@ def _build_quarterly_layer_data(
         for item in items
     ]
 
+
+def _build_quarterly_layer_data(
+    rslearn_items: list[Item],
+    time_range: tuple[datetime, datetime],
+    projection: Projection,
+    bounds: tuple[int, ...],
+) -> WindowLayerData:
+    """Build quarterly mosaics using rslearn's match_candidate_items_to_window.
+
+    Matches the MOSAIC + period_duration=90d behavior used in the prediction pipeline.
+    Items must be sorted by cloud cover ascending so the MOSAIC matcher sees the
+    clearest candidates first within each period.
+    """
     window_geom = STGeometry(
         projection,
         shapely.box(bounds[0], bounds[1], bounds[2], bounds[3]),
@@ -413,7 +385,7 @@ def _build_quarterly_layer_data(
 
 
 def _build_frequent_layer_data(
-    items: list[dict[str, Any]],
+    rslearn_items: list[Item],
     block_start: datetime,
     projection: Projection,
     bounds: tuple[int, ...],
@@ -421,24 +393,12 @@ def _build_frequent_layer_data(
 ) -> WindowLayerData | None:
     """Build WindowLayerData for one frequent option.
 
-    Selects the least-cloudy mosaic in each of the NUM_FREQUENT_IMAGES most recent
+    Selects the least-cloudy mosaic in each of the NUM_FREQUENT most recent
     7-day periods with imagery in the 90-day block starting at block_start, in
     chronological order. Items must be sorted by cloud cover ascending so the
     MOSAIC matcher sees the clearest candidates first within each period. Returns
-    None if fewer than NUM_FREQUENT_IMAGES periods have imagery.
+    None if fewer than NUM_FREQUENT periods have imagery.
     """
-    rslearn_items = [
-        Item(
-            item["id"],
-            STGeometry(
-                WGS84_PROJECTION,
-                shapely.geometry.shape(item["geometry_geojson"]),
-                (item["collected_at"], item["collected_at"]),
-            ),
-        )
-        for item in items
-    ]
-
     window_geom = STGeometry(
         projection,
         shapely.box(bounds[0], bounds[1], bounds[2], bounds[3]),
@@ -468,11 +428,16 @@ def _compute_frequent_block_ends(
     post_change: datetime,
     window_name: str,
     cutoff: datetime,
+    transition_date: datetime | None = None,
 ) -> list[datetime]:
     """Compute 90-day frequent-image block ends for training options.
 
     Each option's block is [end - FREQUENT_BLOCK_DURATION, end]. Every end is
     clamped to ``cutoff`` so no option samples imagery after it.
+
+    With a transition_date, an option ending right after it is added after the
+    deterministic options, in place of one random option, so the option that
+    validation uses (index 2) does not change.
 
     Randomness is derived from window_name so results are deterministic per window.
     """
@@ -489,6 +454,10 @@ def _compute_frequent_block_ends(
     # Option 2: the block ends right after post_change, if meaningfully different.
     if (post_change - first_noticeable).days > 5:
         block_ends.append(post_change + OPTION_MARGIN)
+
+    # Transition option: the block ends right after the transition date.
+    if transition_date is not None:
+        block_ends.append(transition_date + OPTION_MARGIN)
 
     # Remaining random options: later post-change contexts up to post_change + 2y.
     random_start = first_noticeable + timedelta(days=60)
@@ -553,7 +522,7 @@ def _write_label_layer(
 def _date_to_unix_days(date: datetime) -> int:
     """Days since 1970-01-01 (UTC) of a timezone-aware datetime."""
     days = (date - UNIX_EPOCH) // timedelta(days=1)
-    if days < 0 or days >= TS_LABEL_NODATA:
+    if days < 0 or days >= DAYS_NODATA:
         raise ValueError(f"{date} cannot be represented as uint16 days since 1970")
     return days
 
@@ -567,7 +536,8 @@ def _compute_label_arrays(
     """Rasterize point labels into per-layer arrays (no I/O).
 
     gap is added to each point's post_change for the label_ts_end raster, matching
-    the post_change written to the annotations sidecar.
+    the post_change written to the annotations sidecar, and likewise to the
+    transition_date for the label_transition_date raster.
     """
     h = bounds[3] - bounds[1]
     w = bounds[2] - bounds[0]
@@ -577,8 +547,8 @@ def _compute_label_arrays(
     dst_label = np.zeros((h, w), dtype=np.uint8)
     # Per-point change start/end dates as days since 1970-01-01, consumed by
     # rslearn's PerPixelTimestepTask.
-    ts_start = np.full((h, w), TS_LABEL_NODATA, dtype=np.uint16)
-    ts_end = np.full((h, w), TS_LABEL_NODATA, dtype=np.uint16)
+    ts_start = np.full((h, w), DAYS_NODATA, dtype=np.uint16)
+    ts_end = np.full((h, w), DAYS_NODATA, dtype=np.uint16)
     # One label raster per change-category field (pre/post). Class 0 = nodata
     # (masked); at a positive point with at least one change-category field set,
     # every field's raster is written (unset fields become class 1 = "none").
@@ -586,6 +556,12 @@ def _compute_label_arrays(
         layer_name: np.zeros((h, w), dtype=np.uint8)
         for layer_name, _ in CHANGE_CATEGORY_FIELDS.values()
     }
+    # The optional transition of each positive point. A missing transition category
+    # is nodata, so StackSampler masks that head between the transition and
+    # post_change.
+    transition_date = np.full((h, w), DAYS_NODATA, dtype=np.uint16)
+    transition_dst = np.zeros((h, w), dtype=np.uint8)
+    transition_post_change = np.zeros((h, w), dtype=np.uint8)
 
     for pt in entry.get("negative_points", []):
         col, row = _lonlat_to_pixel(pt["lon"], pt["lat"], projection, bounds)
@@ -603,10 +579,21 @@ def _compute_label_arrays(
             if dst_id > 0:
                 dst_label[row, col] = dst_id
             if pt.get("pre_change") and pt.get("post_change"):
-                ts_start[row, col] = _date_to_unix_days(_parse_date(pt["pre_change"]))
+                ts_start[row, col] = _date_to_unix_days(parse_date(pt["pre_change"]))
                 ts_end[row, col] = _date_to_unix_days(
-                    _parse_date(pt["post_change"]) + gap
+                    parse_date(pt["post_change"]) + gap
                 )
+                if pt.get(TRANSITION_DATE_FIELD):
+                    transition_date[row, col] = _date_to_unix_days(
+                        parse_date(pt[TRANSITION_DATE_FIELD]) + gap
+                    )
+                    transition_dst[row, col] = _category_to_id(
+                        pt.get(TRANSITION_CATEGORY_FIELD, "")
+                    )
+                    transition_post_change[row, col] = _change_category_to_id(
+                        _get_transition_change_category(pt),
+                        POST_CHANGE_CATEGORY_NAMES,
+                    )
 
             # Only train the change-category heads when at least one field is set;
             # otherwise leave nodata (masked) for both.
@@ -620,12 +607,15 @@ def _compute_label_arrays(
                     # Unset (cid == 0) but a sibling is set -> class 1 ("none").
                     change_labels[layer_name][row, col] = cid if cid > 0 else 1
 
-    label_arrays = {
+    label_arrays: dict[str, np.ndarray] = {
         "label_binary": binary,
         "label_src": src_label,
         "label_dst": dst_label,
         "label_ts_start": ts_start,
         "label_ts_end": ts_end,
+        "label_transition_date": transition_date,
+        "label_transition_dst": transition_dst,
+        "label_transition_post_change": transition_post_change,
     }
     label_arrays.update(change_labels)
     return label_arrays
@@ -670,8 +660,9 @@ def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
 
     Expected ordering is pre_change < first_observable <= post_change < stop_date,
     where first_observable is the first_date_change_noticeable field and
-    stop_date is optional. Raises ValueError on any positive point that violates
-    this.
+    stop_date is optional. The optional transition_date must satisfy
+    first_observable <= transition_date < post_change. Raises ValueError on any
+    positive point that violates this.
     """
     for pt in entry.get("positive_points", []):
         if not (
@@ -680,9 +671,9 @@ def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
             and pt.get("first_date_change_noticeable")
         ):
             continue
-        pre_change = _parse_date(pt["pre_change"])
-        post_change = _parse_date(pt["post_change"])
-        first_observable = _parse_date(pt["first_date_change_noticeable"])
+        pre_change = parse_date(pt["pre_change"])
+        post_change = parse_date(pt["post_change"])
+        first_observable = parse_date(pt["first_date_change_noticeable"])
         if pre_change >= first_observable or first_observable > post_change:
             raise ValueError(
                 f"Invalid date ordering for positive point in window "
@@ -692,19 +683,43 @@ def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
                 f"first_observable={pt['first_date_change_noticeable']}, "
                 f"post_change={pt['post_change']}"
             )
-        if pt.get("stop_date") and _parse_date(pt["stop_date"]) <= post_change:
+        if pt.get("stop_date") and parse_date(pt["stop_date"]) <= post_change:
             raise ValueError(
                 f"Invalid stop_date for positive point in window "
                 f"{entry.get('group')}/{entry.get('window_name')}: "
                 f"expected post_change < stop_date, got "
                 f"post_change={pt['post_change']}, stop_date={pt['stop_date']}"
             )
+        if pt.get(TRANSITION_DATE_FIELD):
+            transition_date = parse_date(pt[TRANSITION_DATE_FIELD])
+            if not first_observable <= transition_date < post_change:
+                raise ValueError(
+                    f"Invalid transition_date for positive point in window "
+                    f"{entry.get('group')}/{entry.get('window_name')}: "
+                    f"expected first_observable <= transition_date < post_change, "
+                    f"got first_observable={pt['first_date_change_noticeable']}, "
+                    f"transition_date={pt[TRANSITION_DATE_FIELD]}, "
+                    f"post_change={pt['post_change']}"
+                )
+
+
+def positive_point_dates_valid(entry: dict[str, Any]) -> bool:
+    """Check the positive point dates like _validate_positive_point_dates.
+
+    Returns:
+        False where _validate_positive_point_dates would raise, otherwise True.
+    """
+    try:
+        _validate_positive_point_dates(entry)
+    except ValueError:
+        return False
+    return True
 
 
 def _get_stop_date(entry: dict[str, Any]) -> datetime | None:
     """Get the earliest stop_date across the entry's positive points, if any."""
     stop_dates = [
-        _parse_date(pt["stop_date"])
+        parse_date(pt["stop_date"])
         for pt in entry.get("positive_points", [])
         if pt.get("stop_date")
     ]
@@ -771,10 +786,10 @@ def _negative_only_anchor(entry: dict[str, Any]) -> datetime:
     anchor_date if set, otherwise the midpoint of its time_range.
     """
     if entry.get("anchor_date"):
-        return _parse_date(entry["anchor_date"])
+        return parse_date(entry["anchor_date"])
     tr = entry["time_range"]
-    t_start = _parse_date(tr[0])
-    t_end = _parse_date(tr[1])
+    t_start = parse_date(tr[0])
+    t_end = parse_date(tr[1])
     return t_start + (t_end - t_start) / 2
 
 
@@ -800,9 +815,16 @@ def _sidecar_dates_match(
     """
     if existing_value is None:
         return False
+    # Sidecars written before transition_date existed lack it, which matches None.
     return all(
         existing_value.get(key) == new_value[key]
-        for key in ("pre_change", "post_change", "first_noticeable", "stop_date")
+        for key in (
+            "pre_change",
+            "post_change",
+            "first_noticeable",
+            "stop_date",
+            "transition_date",
+        )
     )
 
 
@@ -860,6 +882,7 @@ def _process_entry(
             ref_point = pt
             break
 
+    transition_date: datetime | None = None
     if ref_point is None:
         if not entry.get("negative_points"):
             raise ValueError("Entry has no positive or negative points")
@@ -869,8 +892,10 @@ def _process_entry(
         first_noticeable = anchor + gap
     else:
         center_point = ref_point
-        post_change = _parse_date(ref_point["post_change"]) + gap
-        first_noticeable = _parse_date(ref_point["first_date_change_noticeable"]) + gap
+        post_change = parse_date(ref_point["post_change"]) + gap
+        first_noticeable = parse_date(ref_point["first_date_change_noticeable"]) + gap
+        if ref_point.get(TRANSITION_DATE_FIELD):
+            transition_date = parse_date(ref_point[TRANSITION_DATE_FIELD]) + gap
 
     # Center 128x128 window on the reference point.
     st = STGeometry(
@@ -907,8 +932,7 @@ def _process_entry(
             "post_change": post_change.isoformat(),
             "first_noticeable": first_noticeable.isoformat(),
             "stop_date": None,
-            "positive_pixel_coords": [],
-            "is_negative_only": True,
+            "transition_date": None,
         }
     else:
         sidecar_value = {
@@ -916,7 +940,9 @@ def _process_entry(
             "post_change": post_change.isoformat(),
             "first_noticeable": first_noticeable.isoformat(),
             "stop_date": stop_date.isoformat() if stop_date is not None else None,
-            "positive_pixel_coords": positive_pixels,
+            "transition_date": (
+                transition_date.isoformat() if transition_date is not None else None
+            ),
         }
 
     # Decide what to do if the window already exists.
@@ -944,7 +970,11 @@ def _process_entry(
         status = "recreated"
 
     block_ends = _compute_frequent_block_ends(
-        first_noticeable, post_change, window_name, cutoff
+        first_noticeable,
+        post_change,
+        window_name,
+        cutoff,
+        transition_date=transition_date,
     )
     block_starts = [end - FREQUENT_BLOCK_DURATION for end in block_ends]
 
@@ -994,8 +1024,9 @@ def _process_entry(
         all_items, key=lambda x: (x["cloud_cover"], x["id"] not in prediction_items)
     )
 
+    rslearn_items = _to_rslearn_items(least_cloudy_items)
     quarterly_data = _build_quarterly_layer_data(
-        least_cloudy_items, window_time_range, projection, bounds
+        rslearn_items, window_time_range, projection, bounds
     )
     layer_datas = window.load_layer_datas()
     layer_datas["sentinel2_quarterly"] = quarterly_data
@@ -1004,7 +1035,7 @@ def _process_entry(
     for block_start in block_starts:
         layer_name = f"sentinel2_frequent_{frequent_idx}"
         freq_data = _build_frequent_layer_data(
-            least_cloudy_items, block_start, projection, bounds, layer_name
+            rslearn_items, block_start, projection, bounds, layer_name
         )
         if freq_data is not None:
             layer_datas[layer_name] = freq_data

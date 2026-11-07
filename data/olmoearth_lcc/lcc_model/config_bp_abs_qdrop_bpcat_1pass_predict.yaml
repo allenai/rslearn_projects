@@ -120,6 +120,11 @@ trainer:
       init_args:
         output_layer: output_change
         selector: []
+        # Must match predict_config.overlap_pixels.
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            overlap_pixels: 16
 project_name: 2026_11_03_lcc
 run_name: bp_abs_qdrop_bpcat_1pass
 management_dir: ${RSLP_PREFIX}/projects

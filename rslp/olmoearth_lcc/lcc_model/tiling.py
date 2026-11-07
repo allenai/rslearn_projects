@@ -20,7 +20,7 @@ from global_land_mask import globe
 from pyproj import Transformer
 from rasterio.crs import CRS
 from rslearn.utils.geometry import PixelBounds, Projection
-from rslearn.utils.get_utm_ups_crs import get_wgs84_bounds
+from rslearn.utils.get_utm_ups_crs import get_utm_ups_crs, get_wgs84_bounds
 
 # Number of vertices to use when densifying the wedge meridian (north-south) and
 # parallel (east-west) edges. The meridian edges are curved in projected coordinates
@@ -48,6 +48,12 @@ TILE_SIZE = 16384
 LAND_STEP_SIZE = 512
 
 
+def check_bounds_aligned(bounds: PixelBounds, multiple: int) -> None:
+    """Raise ValueError unless every value of the pixel bounds is a multiple."""
+    if any(value % multiple != 0 for value in bounds):
+        raise ValueError(f"bounds {bounds} must be multiples of {multiple}")
+
+
 def zone_number_from_epsg(epsg_code: int) -> int:
     """Get the UTM zone number (1-60) from a 326NN or 327NN EPSG code."""
     if NORTH_EPSG_BASE < epsg_code <= NORTH_EPSG_BASE + 60:
@@ -62,6 +68,30 @@ def get_zone_projection(zone_number: int, resolution: float) -> Projection:
     return Projection(
         CRS.from_epsg(NORTH_EPSG_BASE + zone_number), resolution, -resolution
     )
+
+
+def get_lonlat_zone_projection(
+    lon: float, lat: float, resolution: float
+) -> Projection | None:
+    """Get the northern UTM projection (EPSG:326NN) of the zone containing a point.
+
+    Args:
+        lon: the longitude.
+        lat: the latitude.
+        resolution: the projection resolution in m/pixel.
+
+    Returns:
+        the zone's northern projection, or None if the point is in a UPS (polar)
+        zone.
+    """
+    epsg_code = get_utm_ups_crs(lon, lat).to_epsg()
+    if epsg_code is None:
+        return None
+    try:
+        zone_number = zone_number_from_epsg(epsg_code)
+    except ValueError:
+        return None
+    return get_zone_projection(zone_number, resolution)
 
 
 @functools.cache

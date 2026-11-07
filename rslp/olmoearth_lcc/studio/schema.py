@@ -2,15 +2,18 @@
 
 The lab (olmoearth_studio/ui/labs/lcc-annotator/src/schema.ts) resolves the same
 fields by name, and its FIELDS.md lists the labels each field offers, so keep them
-in sync. The training classes these labels map onto are in lcc_model/prepare.py.
+in sync. The training classes these labels map onto are in
+lcc_model/output_bands.py (mapped by lcc_model/prepare.py).
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
-from rslp.olmoearth_lcc.studio.client import StudioClient
+from rslp.olmoearth_lcc.lcc_model.output_bands import LC_CLASS_NAMES
+from rslp.utils.studio import BASE_URL, StudioClient
 
 POINT_TYPE_FIELD = "point_type"
 POSITIVE = "positive"
@@ -20,25 +23,13 @@ POINT_TYPE_COLORS = {POSITIVE: "#2ca02c", NEGATIVE: "#d62728"}
 DATE_FIELDS = (
     "pre_change",
     "first_date_change_noticeable",
+    "transition_date",
     "post_change",
     "stop_date",
 )
 
-LAND_COVER_CATEGORIES = (
-    "bare",
-    "burnt",
-    "crops",
-    "fallow/shifting cultivation",
-    "grassland",
-    "Lichen and moss",
-    "shrub",
-    "snow and ice",
-    "tree",
-    "urban/built-up",
-    "water",
-    "wetland (herbaceous)",
-    "mangrove",
-)
+# The training land cover classes without nodata.
+LAND_COVER_CATEGORIES = tuple(LC_CLASS_NAMES[1:])
 PRE_CHANGE_CATEGORIES = (
     "deforestation",
     "mangrove_loss",
@@ -114,12 +105,18 @@ FINE_CHANGE_CATEGORIES = (
 
 CATEGORY_FIELDS: dict[str, tuple[str, ...]] = {
     "pre_category": LAND_COVER_CATEGORIES,
+    "transition_category": LAND_COVER_CATEGORIES,
     "post_category": LAND_COVER_CATEGORIES,
     "pre_change_category": PRE_CHANGE_CATEGORIES,
     "post_change_category": POST_CHANGE_CATEGORIES,
+    "transition_change_category": POST_CHANGE_CATEGORIES,
     "same_change_category": SAME_CHANGE_CATEGORIES,
     "fine_change_category": FINE_CHANGE_CATEGORIES,
 }
+
+# Fields that use another field's labelset instead of their own: {field: owner}.
+# The owner must come earlier in ALL_FIELDS.
+SHARED_LABELSETS = {"transition_change_category": "post_change_category"}
 
 # Positive point fields in v2 JSON order.
 POSITIVE_POINT_FIELDS = DATE_FIELDS + tuple(CATEGORY_FIELDS)
@@ -128,12 +125,15 @@ FIELD_DISPLAY_NAMES = {
     POINT_TYPE_FIELD: "Point type",
     "pre_change": "Pre-change date",
     "first_date_change_noticeable": "First date change noticeable",
+    "transition_date": "Transition date (optional)",
     "post_change": "Post-change date",
     "stop_date": "Stop date",
     "pre_category": "Pre land cover",
+    "transition_category": "Transition category (optional)",
     "post_category": "Post land cover",
     "pre_change_category": "Pre-change category",
     "post_change_category": "Post-change category",
+    "transition_change_category": "Transition change category (optional)",
     "same_change_category": "Same-change category (legacy)",
     "fine_change_category": "Fine change category (legacy)",
 }
@@ -178,6 +178,11 @@ def field_vocabulary(field_name: str) -> tuple[str, ...]:
     return CATEGORY_FIELDS[field_name]
 
 
+def labelset_owner(field_name: str) -> str:
+    """The field whose labelset a labelset field uses (usually itself)."""
+    return SHARED_LABELSETS.get(field_name, field_name)
+
+
 def label_color(field_name: str, label_name: str, index: int) -> str:
     """Colour for a new label: fixed for point types, else from the palette."""
     if field_name == POINT_TYPE_FIELD and label_name in POINT_TYPE_COLORS:
@@ -186,22 +191,25 @@ def label_color(field_name: str, label_name: str, index: int) -> str:
 
 
 def required_labels(entries: list[dict[str, Any]]) -> dict[str, list[str]]:
-    """Labels each labelset field needs: its vocabulary plus unseen values in entries.
+    """Labels each labelset needs: its vocabulary plus unseen values in entries.
 
-    Values not in the vocabulary (e.g. legacy categories) are appended in the
-    order they are first seen, so they survive a round trip.
+    The result is keyed by the labelset's owner field (see labelset_owner), so
+    fields that share a labelset contribute to one list. Values not in the
+    vocabulary (e.g. legacy categories) are appended in the order they are first
+    seen, so they survive a round trip.
     """
     labels = {
         name: list(field_vocabulary(name))
         for name in ALL_FIELDS
-        if is_labelset_field(name)
+        if is_labelset_field(name) and labelset_owner(name) == name
     }
     for entry in entries:
         for point in entry.get("positive_points", []):
             for field_name in CATEGORY_FIELDS:
                 value = point.get(field_name)
-                if value and value not in labels[field_name]:
-                    labels[field_name].append(value)
+                owner_labels = labels[labelset_owner(field_name)]
+                if value and value not in owner_labels:
+                    owner_labels.append(value)
     return labels
 
 
@@ -253,6 +261,9 @@ def resolve_schema(project: dict[str, Any]) -> ProjectSchema:
     }
     field_ids: dict[str, str] = {}
     label_ids: dict[str, dict[str, str]] = {}
+    # Fields on the same labelset share one {label name: label id} dict, so labels
+    # added for one field are visible to the others.
+    labels_by_labelset: dict[str, dict[str, str]] = {}
     for field in settings.get("annotation_metadata_fields") or []:
         name = field["name"]
         if name not in ALL_FIELDS:
@@ -264,11 +275,31 @@ def resolve_schema(project: dict[str, Any]) -> ProjectSchema:
             )
         field_ids[name] = field["id"]
         if expected == "labelset":
-            labelset = labelsets.get(field["labelset_id"]) or {}
-            label_ids[name] = {
-                label["name"]: label["id"] for label in labelset.get("labels") or []
-            }
+            labelset_id = field["labelset_id"]
+            if labelset_id not in labels_by_labelset:
+                labelset = labelsets.get(labelset_id) or {}
+                labels_by_labelset[labelset_id] = {
+                    label["name"]: label["id"] for label in labelset.get("labels") or []
+                }
+            label_ids[name] = labels_by_labelset[labelset_id]
     return ProjectSchema(settings["id"], field_ids, label_ids)
+
+
+def make_client(base_url: str | None = None) -> StudioClient:
+    """Create the Studio client used by the upload and download scripts.
+
+    Args:
+        base_url: API root including /api/v1. Defaults to $STUDIO_API_URL, else
+            production.
+
+    Returns:
+        the client, which reads the API key from $STUDIO_API_KEY.
+    """
+    return StudioClient(
+        base_url=base_url or os.environ.get("STUDIO_API_URL") or BASE_URL,
+        timeout=60,
+        max_retries=6,
+    )
 
 
 def ensure_template(
@@ -276,7 +307,8 @@ def ensure_template(
 ) -> ProjectSchema:
     """Create any missing LCC fields and labels in the project, then resolve them.
 
-    Also sets the project's label geometry to point. Safe to re-run.
+    Also sets the project's label geometry to point. Safe to re-run. Fields in
+    SHARED_LABELSETS are created on their owner field's labelset.
     """
     project = client.get_project(project_id)
     settings = project_settings(project)
@@ -312,7 +344,11 @@ def ensure_template(
             "read_only": False,
             "display_order": order,
         }
-        if is_labelset_field(name):
+        if is_labelset_field(name) and labelset_owner(name) != name:
+            field["labelset_id"] = _field_labelset_id(
+                client, project_id, labelset_owner(name)
+            )
+        elif is_labelset_field(name):
             labelset = labelsets_by_name.get(name)
             if labelset is None:
                 print(f"Creating labelset {name!r}")
@@ -333,8 +369,18 @@ def ensure_template(
         client.create("/annotation_metadata_fields", field)
 
     schema = resolve_schema(client.get_project(project_id))
-    for name, labels in needed.items():
+    # Fields on one labelset share their label_ids dict, so each labelset is filled
+    # once. A field in SHARED_LABELSETS that still has its own labelset (from an
+    # older project) is filled separately.
+    filled: set[int] = set()
+    for name in ALL_FIELDS:
+        if not is_labelset_field(name):
+            continue
         existing = schema.label_ids[name]
+        if id(existing) in filled:
+            continue
+        filled.add(id(existing))
+        labels = needed[labelset_owner(name)]
         missing = [label for label in labels if label not in existing]
         if not missing:
             continue

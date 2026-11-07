@@ -3,9 +3,8 @@
 This document has details about the different phases of the OlmoEarth LCC dataset.
 The published version is at https://huggingface.co/datasets/allenai/olmoearth_lcc.
 
-All the parts are in JSON files compatible with the annotation app
-(`rslp.olmoearth_lcc.annotation_app`), see [README.md](./README.md) for more details
-about the format and how to run the app. Annotation JSONs are stored under
+All the parts are in the v2 annotation JSON format, see [README.md](./README.md) for
+more details about the format. Annotation JSONs are stored under
 `/weka/dfive-default/rslearn-eai/datasets/change_finder/ten_year_dataset_v2_annotation_20260523/`.
 
 All phases were verified manually in the annotation app, which shows monthly
@@ -26,7 +25,11 @@ Many phases were created with `rslp.olmoearth_lcc.lcc_model.write_jobs_random_20
 `rslp.olmoearth_lcc.annotation_scripts.phase02_output_sampling.create_v2_annotations`
 (sample up to one pixel predicted as change per output tile and write a v2 annotation
 entry with one positive point centered on it). Below this is called the
-**output-based pipeline**.
+**output-based pipeline**. Its annotation scripts (`create_v2_annotations` and the
+phase 12 `create_mining_annotations`) read per-tile GeoTIFF outputs that the
+prediction pipeline no longer writes, so they have been removed; the phase 21 script
+(`annotation_scripts/phase21_class_balanced`) samples from the GeoZarr store
+instead.
 
 ### Phase 1: Annotate based on ten years of land cover
 
@@ -71,9 +74,8 @@ even though the model had achieved 80% precision @ >0.5 threshold in the test se
 
 ### Phase 3: Annotate more random outputs (China)
 
-Phase 3 uses
-`rslp.olmoearth_lcc.annotation_scripts.phase03_random_tiles_china_africa.write_jobs_random_2048_china`
-to compute model outputs on random 2048x2048 tiles in China since there is a high rate
+Phase 3 uses `write_jobs_random_2048` with `--region china` (then a separate
+`write_jobs_random_2048_china` workflow) to compute model outputs on random 2048x2048 tiles in China since there is a high rate
 of change there (including diverse changes like renewable energy deployment and
 re-development). Otherwise it is the output-based pipeline as in Phase 2.
 
@@ -141,7 +143,8 @@ Output-based pipeline, but using
 instead of `create_v2_annotations`: it selects pixels where the post-change-category
 head predicts `mining` (argmax, or `post_change_mining` probability above
 `--threshold`) and samples one qualifying pixel per tile. Some of these phases also
-used `write_jobs_random_2048_africa` to focus on sub-Saharan Africa.
+used `write_jobs_random_2048` with `--region africa` to focus on sub-Saharan
+Africa.
 
 ### Phase 16: Mining annotations seeded from external datasets
 

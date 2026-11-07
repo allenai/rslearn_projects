@@ -1,5 +1,4 @@
 import pathlib
-from datetime import datetime, timezone
 from typing import cast
 
 import numpy as np
@@ -9,7 +8,7 @@ from rasterio.crs import CRS
 from rslearn.utils.geometry import Projection
 
 from rslp.olmoearth_lcc.lcc_model import geozarr
-from rslp.olmoearth_lcc.lcc_model.postprocess import (
+from rslp.olmoearth_lcc.lcc_model.output_bands import (
     BINARY_CHANGE_BAND,
     DST_BAND_OFFSET,
     NONE_CATEGORY_IDX,
@@ -20,7 +19,6 @@ from rslp.olmoearth_lcc.lcc_model.postprocess import (
     SRC_BAND_OFFSET,
     TS_POST_DAYS_BAND,
     TS_PRE_DAYS_BAND,
-    geozarr_window_arrays,
 )
 from rslp.olmoearth_lcc.lcc_model.tiling import (
     PATCH_SIZE,
@@ -30,7 +28,6 @@ from rslp.olmoearth_lcc.lcc_model.tiling import (
     get_zone_projection,
 )
 
-TIMESTAMP = datetime(2025, 6, 1, tzinfo=timezone.utc)
 # 2015-01-01 (the model timestamp epoch) in days since 1970-01-01.
 EPOCH_2015_UNIX_DAYS = 16436
 
@@ -80,7 +77,7 @@ def test_geozarr_window_arrays_encoding() -> None:
             _pixel(10, NONE_CATEGORY_IDX, new_building),
         ]
     )
-    change, dates = geozarr_window_arrays(arr)
+    change, dates = geozarr.geozarr_window_arrays(arr)
     assert change.dtype == np.uint8 and change.shape == (6, 1, 6)
     assert dates.dtype == np.uint16 and dates.shape == (2, 1, 6)
 
@@ -129,13 +126,13 @@ def _first_window(zone_number: int) -> tuple[Projection, tuple[int, int, int, in
 
 def test_store_round_trip(tmp_path: pathlib.Path) -> None:
     store_path = str(tmp_path / "lcc.zarr")
-    geozarr.init_store(store_path, TIMESTAMP, zone_numbers=[10])
-    assert geozarr.get_store_timestamp(store_path) == TIMESTAMP
-    assert geozarr.get_store_timestamp(str(tmp_path / "missing.zarr")) is None
-    # Existing store for the same timestamp is reused; another timestamp fails.
-    geozarr.ensure_store(store_path, TIMESTAMP)
+    geozarr.init_store(store_path, zone_numbers=[10])
+    assert geozarr.read_store_detail(store_path) == geozarr.DETAIL_COMPACT
+    assert geozarr.read_store_detail(str(tmp_path / "missing.zarr")) is None
+    # An existing store with the same detail mode is reused; another one fails.
+    geozarr.ensure_store(store_path)
     with pytest.raises(ValueError):
-        geozarr.ensure_store(store_path, datetime(2025, 7, 1, tzinfo=timezone.utc))
+        geozarr.ensure_store(store_path, detail=geozarr.DETAIL_FULL)
 
     projection, bounds = _first_window(10)
     rng = np.random.default_rng(0)
@@ -174,10 +171,69 @@ def test_store_round_trip(tmp_path: pathlib.Path) -> None:
         chunk_dir = tmp_path / "lcc.zarr" / "utm10" / name / "c"
         assert len([p for p in chunk_dir.rglob("*") if p.is_file()]) == 1
 
+    # read_window returns the same data; compact stores have no probabilities.
+    arrays = geozarr.read_window(store_path, projection, bounds)
+    assert set(arrays) == {geozarr.CHANGE_ARRAY, geozarr.CHANGE_DATES_ARRAY}
+    np.testing.assert_array_equal(arrays[geozarr.CHANGE_ARRAY], change)
+    np.testing.assert_array_equal(arrays[geozarr.CHANGE_DATES_ARRAY], dates)
+
+    # Compact stores have no probability arrays.
+    with pytest.raises(KeyError):
+        geozarr.write_window(
+            store_path,
+            projection,
+            bounds,
+            change,
+            dates,
+            prob_arrays=geozarr.prob_window_arrays(
+                np.zeros((len(OUTPUT_BANDS), PATCH_SIZE, PATCH_SIZE), dtype=np.uint16)
+            ),
+        )
+
+
+def test_full_store(tmp_path: pathlib.Path) -> None:
+    store_path = str(tmp_path / "lcc.zarr")
+    geozarr.init_store(store_path, detail=geozarr.DETAIL_FULL, zone_numbers=[10])
+    assert geozarr.read_store_detail(store_path) == geozarr.DETAIL_FULL
+    geozarr.ensure_store(store_path, detail=geozarr.DETAIL_FULL)
+    with pytest.raises(ValueError):
+        geozarr.ensure_store(store_path)
+
+    new_building = POST_CHANGE_CATEGORY_NAMES.index("new_building")
+    pixel = _pixel(200, NONE_CATEGORY_IDX, new_building)
+    arr = np.broadcast_to(
+        pixel[:, None, None], (len(OUTPUT_BANDS), PATCH_SIZE, PATCH_SIZE)
+    ).copy()
+    change, dates = geozarr.geozarr_window_arrays(arr)
+    prob_arrays = geozarr.prob_window_arrays(arr)
+    assert {name: a.shape[0] for name, a in prob_arrays.items()} == {
+        "src_probs": 13,
+        "dst_probs": 13,
+        "pre_change_probs": 7,
+        "post_change_probs": 20,
+    }
+    projection, bounds = _first_window(10)
+    geozarr.write_window(
+        store_path, projection, bounds, change, dates, prob_arrays=prob_arrays
+    )
+
+    arrays = geozarr.read_window(store_path, projection, bounds)
+    post_probs = arrays["post_change_probs"]
+    # Band 0 is "none" (the nodata class is not stored).
+    assert post_probs.dtype == np.uint8
+    assert post_probs[new_building - 1, 0, 0] == 170
+    assert arrays["src_probs"][9 - 1, 0, 0] == 200
+    assert arrays["pre_change_probs"][NONE_CATEGORY_IDX - 1, 0, 0] == 180
+
+    group = zarr.open_group(store_path, path="utm10", mode="r")
+    band_coord = group["post_change_probs_band"]
+    assert isinstance(band_coord, zarr.Array)
+    assert np.asarray(band_coord[:2]).tolist() == ["none", "vegetation_growth"]
+
 
 def test_write_window_rejects_southern_crs(tmp_path: pathlib.Path) -> None:
     store_path = str(tmp_path / "lcc.zarr")
-    geozarr.init_store(store_path, TIMESTAMP, zone_numbers=[10])
+    geozarr.init_store(store_path, zone_numbers=[10])
     projection = Projection(CRS.from_epsg(32710), RESOLUTION, -RESOLUTION)
     change = np.zeros((6, PATCH_SIZE, PATCH_SIZE), dtype=np.uint8)
     dates = np.zeros((2, PATCH_SIZE, PATCH_SIZE), dtype=np.uint16)

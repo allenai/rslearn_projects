@@ -63,6 +63,7 @@ import torch.nn.functional as F
 from rslearn.models.olmoearth_pretrain.model import OlmoEarth
 from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 
+from .components import balanced_binary_loss
 from .timestamp_encoding import timestamps_to_days
 from .transforms import INPUT_KEY, TS_END_KEY, TS_START_KEY
 
@@ -578,36 +579,11 @@ class ChangeModel(nn.Module):
         logits: torch.Tensor,
         targets: list[dict[str, Any]],
     ) -> torch.Tensor:
-        """Balanced binary loss with per-sample balancing.
-
-        For each sample, the loss is the mean over its change points plus the
-        mean over its no-change points (each group divided by its own point
-        count). Every sample with any valid points contributes equally.
-        """
+        """Balanced binary loss with per-sample balancing (see balanced_binary_loss)."""
         labels = torch.stack(
             [t["binary"]["classes"].get_hw_tensor() for t in targets], dim=0
         ).long()
         valid = torch.stack(
             [t["binary"]["valid"].get_hw_tensor() for t in targets], dim=0
         ).bool()
-
-        if not valid.any():
-            return torch.tensor(0.0, device=logits.device, requires_grad=True)
-
-        loss = F.cross_entropy(logits, labels, reduction="none")  # (B, H, W)
-
-        change_mask = (valid & (labels == 2)).flatten(1).float()  # (B, H*W)
-        nochange_mask = (valid & (labels == 1)).flatten(1).float()
-        loss_flat = loss.flatten(1)  # (B, H*W)
-
-        pos_count = change_mask.sum(dim=1)  # (B,)
-        neg_count = nochange_mask.sum(dim=1)
-        has_pos = pos_count > 0
-        has_neg = neg_count > 0
-
-        pos_mean = (loss_flat * change_mask).sum(dim=1) / pos_count.clamp(min=1)
-        neg_mean = (loss_flat * nochange_mask).sum(dim=1) / neg_count.clamp(min=1)
-
-        sample_loss = pos_mean * has_pos + neg_mean * has_neg  # (B,)
-        has_any = has_pos | has_neg
-        return sample_loss[has_any].mean()
+        return balanced_binary_loss(logits, labels, valid)

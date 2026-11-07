@@ -1,19 +1,17 @@
-"""Enqueue OlmoEarth LCC prediction jobs on a Beaker queue.
+"""Write OlmoEarth LCC prediction tasks to a job directory.
 
 The world is divided into TILE_SIZE x TILE_SIZE tiles, one UTM zone number at a time,
 each in its northern CRS (EPSG:326NN) spanning both hemispheres (see tiling.py). Only
 tiles intersecting their zone's canonical wedge are kept, so each location is
 processed in (nearly) one zone. Each tile becomes one prediction task for a single
-user-provided reference timestamp. Tasks are batched and written to a Beaker queue,
-where they are processed by rslp.common workers running the ``predict_multi``
-workflow.
+user-provided reference timestamp. Tasks are written to a job directory (see
+job_dir.py), where workers (see worker.py) claim and predict them one tile at a
+time.
 
 The tile size is fixed to 16384x16384 here; the prediction pipeline itself accepts any
 tile size that is a multiple of PATCH_SIZE.
 """
 
-import json
-import random
 from datetime import datetime
 
 import shapely
@@ -21,17 +19,12 @@ import tqdm
 from rslearn.const import WGS84_PROJECTION
 from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_wgs84_bounds
-from upath import UPath
 
-import rslp.common.worker
 from rslp.log_utils import get_logger
 
-from . import geozarr
-from .predict_pipeline import (
-    MODEL_CONFIG_FNAME,
-    PredictTaskArgs,
-    get_output_fname,
-)
+from . import geozarr, geozarr_pyramid
+from .job_dir import JobConfig, PredictTaskArgs, check_local_path, write_job_dir
+from .predict_pipeline import MODEL_CONFIG_FNAME
 from .tiling import (
     RESOLUTION,
     TILE_SIZE,
@@ -131,190 +124,101 @@ def get_tasks(
     return tasks
 
 
-def get_jobs(
-    timestamp: datetime,
+def write_tasks(
+    job_dir: str,
+    tasks: list[PredictTaskArgs],
     out_path: str,
-    epsg_code: int | None = None,
-    wgs84_bounds: tuple[float, float, float, float] | None = None,
-    batch_size: int = 1,
+    zarr_store_path: str,
+    zarr_detail: str = geozarr.DETAIL_COMPACT,
+    zarr_pyramid_path: str | None = None,
     count: int | None = None,
-    write_raster: bool = False,
-    write_summary_raster: bool = False,
-    zarr_store_path: str | None = None,
-    write_geojson: bool = True,
     fast_inference: bool = True,
-) -> list[list[str]]:
-    """Get batches of prediction tasks.
+) -> None:
+    """Create the output stores if needed and write tasks to a job directory.
 
-    Tasks whose outputs already exist are excluded: the per-tile GeoJSON normally,
-    or the per-tile ``_meta.json`` (written last) when writing to a GeoZarr store.
+    Tiles whose ``_meta.json`` already exists in out_path, or that already have a
+    task file, are skipped.
 
     Args:
-        timestamp: the reference timestamp. Must have timezone.
-        out_path: the output directory.
-        epsg_code: limit tasks to this UTM zone (326NN or 327NN EPSG code); default
-            all UTM zones.
-        wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
-        batch_size: how many tasks to run per worker job.
-        count: limit to this many tasks (randomly sampled).
-        write_raster: whether workers should also write the full merged raster.
-        write_summary_raster: whether workers should also write the compact uint8
-            summary raster.
-        zarr_store_path: GeoZarr store that workers should write into.
-        write_geojson: whether workers should write the per-tile GeoJSON.
+        job_dir: the job directory (see job_dir.py), a local POSIX path that the
+            workers mount.
+        tasks: the tasks to write.
+        out_path: the output directory for the per-tile _meta.json.
+        zarr_store_path: the GeoZarr store, created if missing; an existing store
+            must have been created with the same detail mode.
+        zarr_detail: the detail mode of the store, one of geozarr.DETAILS.
+        zarr_pyramid_path: also write each tile's overviews into this pyramid store
+            (see geozarr_pyramid.py), created if missing.
+        count: write at most this many of the remaining tasks (randomly sampled).
         fast_inference: whether workers should use fast inference (compiled
             encoder with cuDNN attention, see fast_inference.py); set false to run
             the model eagerly.
-
-    Returns:
-        a list of worker argument lists, one per batch of TILE_SIZE tiles.
     """
-    time_range = (timestamp, timestamp)
-    tasks = get_tasks(epsg_code=epsg_code, wgs84_bounds=wgs84_bounds)
-    logger.info("Got %d total tasks", len(tasks))
-
-    # Remove tasks where outputs are already computed.
-    out_upath = UPath(out_path)
-    if out_upath.exists():
-        existing_output_fnames = {fname.name for fname in out_upath.iterdir()}
-        tasks = [
-            (projection, bounds)
-            for projection, bounds in tasks
-            if get_output_fname(
-                out_path, projection, bounds, meta=zarr_store_path is not None
-            ).name
-            not in existing_output_fnames
-        ]
-    logger.info("Got %d tasks that are uncompleted", len(tasks))
-
-    # Sample down to count if requested.
-    if count is not None and len(tasks) > count:
-        tasks = random.sample(tasks, count)
-        logger.info("Randomly sampled %d tasks", len(tasks))
-
-    # Convert tasks to batched worker jobs.
-    jobs = []
-    for i in range(0, len(tasks), batch_size):
-        cur_tasks = tasks[i : i + batch_size]
-        predict_tasks = [
-            PredictTaskArgs(
-                projection_json=projection.serialize(),
-                bounds=bounds,
-                time_range=time_range,
-            )
-            for projection, bounds in cur_tasks
-        ]
-        cur_args = [
-            "--out_path",
-            out_path,
-            "--scratch_path",
-            "/tmp/scratch/",
-            "--tasks",
-            json.dumps([predict_task.serialize() for predict_task in predict_tasks]),
-        ]
-        if write_raster:
-            cur_args += ["--write_raster", "true"]
-        if write_summary_raster:
-            cur_args += ["--write_summary_raster", "true"]
-        if zarr_store_path is not None:
-            cur_args += ["--zarr_store_path", zarr_store_path]
-        if not write_geojson:
-            cur_args += ["--write_geojson", "false"]
-        if not fast_inference:
-            cur_args += ["--fast_inference", "false"]
-        jobs.append(cur_args)
-
-    return jobs
-
-
-def init_geozarr(
-    store_path: str,
-    timestamp: datetime,
-    chunk_size: int = geozarr.DEFAULT_CHUNK_SIZE,
-    compressor: str = geozarr.DEFAULT_COMPRESSOR,
-    level: int = geozarr.DEFAULT_COMPRESSION_LEVEL,
-    overwrite: bool = False,
-) -> None:
-    """Create a GeoZarr store for one reference timestamp with custom settings.
-
-    write_jobs creates the store with default settings if it is missing, so this is
-    only needed to use a non-default chunk size or compressor.
-
-    Args:
-        store_path: the Zarr store path or URL.
-        timestamp: the reference timestamp. Must have timezone.
-        chunk_size: inner chunk spatial size; must divide the 2048 shard size.
-        compressor: one of geozarr.COMPRESSORS.
-        level: the compression level.
-        overwrite: whether to overwrite an existing store.
-    """
-    geozarr.init_store(
-        store_path,
-        timestamp,
-        model_config=MODEL_CONFIG_FNAME,
-        chunk_size=chunk_size,
-        compressor=compressor,
-        level=level,
-        overwrite=overwrite,
+    check_local_path(job_dir)
+    geozarr.ensure_store(
+        zarr_store_path, model_config=MODEL_CONFIG_FNAME, detail=zarr_detail
     )
+    if zarr_pyramid_path is not None:
+        geozarr_pyramid.ensure_pyramid_store(zarr_pyramid_path, zarr_store_path)
+    config = JobConfig(
+        out_path=out_path,
+        zarr_store_path=zarr_store_path,
+        zarr_pyramid_path=zarr_pyramid_path,
+        fast_inference=fast_inference,
+    )
+    write_job_dir(job_dir, config, tasks, count=count)
 
 
 def write_jobs(
     timestamp: datetime,
     out_path: str,
-    queue_name: str,
+    job_dir: str,
+    zarr_store_path: str,
+    zarr_detail: str = geozarr.DETAIL_COMPACT,
+    zarr_pyramid_path: str | None = None,
     epsg_code: int | None = None,
     wgs84_bounds: tuple[float, float, float, float] | None = None,
-    batch_size: int = 1,
     count: int | None = None,
-    write_raster: bool = False,
-    write_summary_raster: bool = False,
-    zarr_store_path: str | None = None,
-    write_geojson: bool = True,
     fast_inference: bool = True,
 ) -> None:
-    """Enumerate tiles for one reference timestamp and write jobs to a Beaker queue.
+    """Enumerate tiles for one reference timestamp and write them to a job directory.
+
+    Tiles whose ``_meta.json`` already exists in out_path, or that already have a
+    task file, are skipped, so re-running resumes or extends the job.
 
     Args:
         timestamp: the reference timestamp. Must have timezone.
-        out_path: the output directory.
-        queue_name: the Beaker queue to write the job entries to.
+        out_path: the output directory for the per-tile _meta.json.
+        job_dir: the job directory (see job_dir.py), a local POSIX path that the
+            workers mount.
+        zarr_store_path: write outputs into this GeoZarr store (normally one store
+            per reference timestamp). It is created if missing; an existing store
+            must have been created with the same detail mode.
+        zarr_detail: the detail mode of the store, one of geozarr.DETAILS.
+        zarr_pyramid_path: also write each tile's overviews into this pyramid store
+            (see geozarr_pyramid.py), created if missing.
         epsg_code: limit tasks to this UTM zone (326NN or 327NN EPSG code); default
             all UTM zones.
         wgs84_bounds: limit tasks to ones intersecting these WGS84 bounds.
-        batch_size: how many tasks to run per worker job.
-        count: limit to this many tasks (randomly sampled).
-        write_raster: whether workers should also write the full merged raster.
-        write_summary_raster: whether workers should also write the compact uint8
-            summary raster.
-        zarr_store_path: also write outputs into this GeoZarr store (one store per
-            reference timestamp). It is created with default settings if missing; an
-            existing store must have been created for the same timestamp.
-        write_geojson: whether workers should write the per-tile GeoJSON.
+        count: write at most this many of the remaining tasks (randomly sampled).
         fast_inference: whether workers should use fast inference (compiled
             encoder with cuDNN attention, see fast_inference.py); set false to run
             the model eagerly.
     """
-    if zarr_store_path is None and not write_geojson:
-        raise ValueError("write_geojson=false requires zarr_store_path")
-    if zarr_store_path is not None:
-        geozarr.ensure_store(
-            zarr_store_path, timestamp, model_config=MODEL_CONFIG_FNAME
-        )
-
-    jobs = get_jobs(
-        timestamp=timestamp,
+    tasks = get_tasks(epsg_code=epsg_code, wgs84_bounds=wgs84_bounds)
+    logger.info("Got %d total tasks", len(tasks))
+    write_tasks(
+        job_dir,
+        [
+            PredictTaskArgs(
+                projection=projection, bounds=bounds, time_range=(timestamp, timestamp)
+            )
+            for projection, bounds in tasks
+        ],
         out_path=out_path,
-        epsg_code=epsg_code,
-        wgs84_bounds=wgs84_bounds,
-        batch_size=batch_size,
-        count=count,
-        write_raster=write_raster,
-        write_summary_raster=write_summary_raster,
         zarr_store_path=zarr_store_path,
-        write_geojson=write_geojson,
+        zarr_detail=zarr_detail,
+        zarr_pyramid_path=zarr_pyramid_path,
+        count=count,
         fast_inference=fast_inference,
     )
-    # Shuffle so outputs start appearing from random parts of the world (aids debugging).
-    random.shuffle(jobs)
-    rslp.common.worker.write_jobs(queue_name, "olmoearth_lcc", "predict_multi", jobs)

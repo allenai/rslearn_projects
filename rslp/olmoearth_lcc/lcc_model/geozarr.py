@@ -1,10 +1,12 @@
 """GeoZarr store for scaled OlmoEarth LCC predictions.
 
-One store holds the predictions for one reference timestamp. It uses the
-``utm_zones`` layout: one group per UTM zone number named ``utm{NN}``, each in its
-northern CRS (EPSG:326NN) with a continuous northing axis spanning both hemispheres
-(see tiling.get_zone_grid). Each zone group holds two arrays with dimensions
-``(<array>_band, y, x)`` plus band-name and x/y coordinate arrays:
+A store usually holds the predictions for one reference timestamp (recorded in the
+store name), but random-tile runs write tiles with different timestamps into one
+store. Each tile's reference timestamp is recorded in its ``_meta.json``. The store
+uses the ``utm_zones`` layout: one group per UTM zone number named ``utm{NN}``, each in
+its northern CRS (EPSG:326NN) with a continuous northing axis spanning both
+hemispheres (see tiling.get_zone_grid). Each zone group holds two arrays with
+dimensions ``(<array>_band, y, x)`` plus band-name and x/y coordinate arrays:
 
 - ``change`` (uint8, CHANGE_BANDS): binary change probability (0-255), pre/post land
   cover class (0 = nodata, otherwise an index into LC_CLASS_NAMES), pre/post change
@@ -17,7 +19,14 @@ northern CRS (EPSG:326NN) with a continuous northing axis spanning both hemisphe
 Where both change categories are "none" and the binary change probability is below
 128, the land cover classes, post change score, and dates are zeroed, and binary
 change probabilities below 16 are stored as 0 (see
-postprocess.geozarr_window_arrays).
+geozarr_window_arrays).
+
+Stores have a detail mode (the ``detail`` root attribute). Compact stores hold only the
+two arrays above. Full stores (meant for small runs) also hold one uint8 array per
+classification head with the softmax probabilities scaled 0-255 and no zeroing (see
+PROB_ARRAYS): ``src_probs`` and ``dst_probs`` over the land cover classes, and
+``pre_change_probs`` and ``post_change_probs`` over "none" plus the change categories.
+The nodata class of each head is not stored.
 
 The store is created once by ``init_store`` (root, all zone groups, arrays, and
 consolidated metadata). Prediction workers then only write data regions via
@@ -26,28 +35,39 @@ size (PATCH_SIZE), so each window writes exactly one shard per array and concurr
 writes of disjoint windows are safe without locking.
 """
 
-from datetime import datetime
+from dataclasses import dataclass
 from typing import Any, cast
 
 import numpy as np
 import zarr
 from rslearn.utils.geometry import PixelBounds, Projection
-from zarr.codecs import BloscCodec, BloscShuffle, ZstdCodec
+from zarr.codecs import ZstdCodec
 
 from rslp.log_utils import get_logger
 
-from .postprocess import (
-    GEOZARR_BINARY_ZERO_THRESHOLD,
-    GEOZARR_CHANGE_THRESHOLD,
+from .output_bands import (
+    BINARY_CHANGE_BAND,
+    DST_BAND_OFFSET,
     LC_CLASS_NAMES,
+    NONE_CATEGORY_IDX,
+    NUM_LC_CLASSES,
+    POST_CHANGE_BAND_OFFSET,
+    POST_CHANGE_BANDS,
     POST_CHANGE_CATEGORY_NAMES,
+    PRE_CHANGE_BAND_OFFSET,
+    PRE_CHANGE_BANDS,
     PRE_CHANGE_CATEGORY_NAMES,
+    SRC_BAND_OFFSET,
+    TS_POST_DAYS_BAND,
+    TS_PRE_DAYS_BAND,
+    UNIX_EPOCH_DAY_OFFSET,
 )
 from .tiling import (
     NORTH_EPSG_BASE,
     PATCH_SIZE,
     RESOLUTION,
     TILE_SIZE,
+    check_bounds_aligned,
     get_zone_grid,
 )
 
@@ -69,15 +89,58 @@ CHANGE_DATES_BANDS = ["change_start", "change_end"]
 CHANGE_BAND_DIM = "change_band"
 CHANGE_DATES_BAND_DIM = "change_dates_band"
 
+DETAIL_COMPACT = "compact"
+DETAIL_FULL = "full"
+DETAILS = [DETAIL_COMPACT, DETAIL_FULL]
+
+
+@dataclass(frozen=True)
+class ProbArray:
+    """A full-mode probability array: one classification head's softmax outputs."""
+
+    name: str
+    # Class names of the stored bands (the head's classes without nodata).
+    bands: list[str]
+    # Index of the first stored band within output_bands.OUTPUT_BANDS.
+    output_band_offset: int
+
+    @property
+    def band_dim(self) -> str:
+        """The name of the array's band dimension."""
+        return f"{self.name}_band"
+
+
+PROB_ARRAYS = [
+    ProbArray("src_probs", LC_CLASS_NAMES[1:NUM_LC_CLASSES], SRC_BAND_OFFSET + 1),
+    ProbArray("dst_probs", LC_CLASS_NAMES[1:NUM_LC_CLASSES], DST_BAND_OFFSET + 1),
+    ProbArray(
+        "pre_change_probs", PRE_CHANGE_CATEGORY_NAMES[1:], PRE_CHANGE_BAND_OFFSET + 1
+    ),
+    ProbArray(
+        "post_change_probs",
+        POST_CHANGE_CATEGORY_NAMES[1:],
+        POST_CHANGE_BAND_OFFSET + 1,
+    ),
+]
+
+# Binary change probability (0-255) below which pixels with no change category get
+# their land cover classes, post change score, and dates zeroed in the GeoZarr output.
+GEOZARR_CHANGE_THRESHOLD = 128
+
+# Binary change probability (0-255) below which the GeoZarr binary_change band itself
+# is zeroed (in any pixel). Low probabilities carry little information but are most
+# of the compressed output size; values at or above this keep full 0-255 resolution.
+GEOZARR_BINARY_ZERO_THRESHOLD = 16
+
 # Value used for nodata in both arrays (also the zarr fill value, so all-nodata
 # chunks are not stored).
 NODATA_VALUE = 0
 
 SHARD_SIZE = PATCH_SIZE
-DEFAULT_CHUNK_SIZE = 512
-DEFAULT_COMPRESSOR = "zstd"
-DEFAULT_COMPRESSION_LEVEL = 9
-COMPRESSORS = ["zstd", "blosc_zstd", "blosc_lz4", "none"]
+CHUNK_SIZE = 512
+# zstd level for every array. Decompression speed barely depends on the level, so a
+# high level only costs CPU in the (background) writer threads.
+ZSTD_LEVEL = 9
 
 # Chunk size (in elements) for the 1-D x/y coordinate arrays.
 COORD_CHUNK_SIZE = 65536
@@ -98,33 +161,12 @@ PROJ_CONVENTION = {
 }
 ZARR_CONVENTIONS = [SPATIAL_CONVENTION, PROJ_CONVENTION]
 
-REFERENCE_TIMESTAMP_ATTR = "reference_timestamp"
+DETAIL_ATTR = "detail"
 
 
 def zone_group_name(zone_number: int) -> str:
     """Get the group name for a UTM zone number (e.g. 10 -> 'utm10')."""
     return f"utm{zone_number:02d}"
-
-
-def get_compressors(compressor: str, level: int) -> list[Any]:
-    """Get the zarr compressors list for a compressor name.
-
-    Args:
-        compressor: one of COMPRESSORS.
-        level: the compression level.
-
-    Returns:
-        the list of codecs to pass as compressors.
-    """
-    if compressor == "zstd":
-        return [ZstdCodec(level=level)]
-    if compressor == "blosc_zstd":
-        return [BloscCodec(cname="zstd", clevel=level, shuffle=BloscShuffle.shuffle)]
-    if compressor == "blosc_lz4":
-        return [BloscCodec(cname="lz4", clevel=level, shuffle=BloscShuffle.shuffle)]
-    if compressor == "none":
-        return []
-    raise ValueError(f"unknown compressor {compressor}, expected one of {COMPRESSORS}")
 
 
 def build_zone_spatial_attrs(
@@ -167,13 +209,147 @@ def build_zone_spatial_attrs(
     }
 
 
+@dataclass(frozen=True)
+class ArraySpec:
+    """A (band, y, x) data array within a zone group."""
+
+    name: str
+    bands: list[str]
+    band_dim: str
+    dtype: str
+    attrs: dict[str, Any]
+
+
+CHANGE_ARRAY_SPECS = [
+    ArraySpec(
+        CHANGE_ARRAY,
+        CHANGE_BANDS,
+        CHANGE_BAND_DIM,
+        "uint8",
+        {
+            "bands": CHANGE_BANDS,
+            "class_names": {
+                "pre_lc": LC_CLASS_NAMES,
+                "post_lc": LC_CLASS_NAMES,
+                "pre_change_category": PRE_CHANGE_CATEGORY_NAMES,
+                "post_change_category": POST_CHANGE_CATEGORY_NAMES,
+            },
+        },
+    ),
+    ArraySpec(
+        CHANGE_DATES_ARRAY,
+        CHANGE_DATES_BANDS,
+        CHANGE_DATES_BAND_DIM,
+        "uint16",
+        {"bands": CHANGE_DATES_BANDS, "units": "days since 1970-01-01"},
+    ),
+]
+
+PROB_ARRAY_SPECS = [
+    ArraySpec(
+        prob_array.name,
+        prob_array.bands,
+        prob_array.band_dim,
+        "uint8",
+        {"bands": prob_array.bands, "units": "probability scaled 0-255"},
+    )
+    for prob_array in PROB_ARRAYS
+]
+
+
+def get_array_specs(detail: str) -> list[ArraySpec]:
+    """Get the data arrays of each zone group for a store detail mode."""
+    if detail == DETAIL_COMPACT:
+        return CHANGE_ARRAY_SPECS
+    if detail == DETAIL_FULL:
+        return CHANGE_ARRAY_SPECS + PROB_ARRAY_SPECS
+    raise ValueError(f"unknown detail {detail}, expected one of {DETAILS}")
+
+
+def create_zone_group(
+    parent: zarr.Group,
+    path: str,
+    projection: Projection,
+    origin_px: tuple[int, int],
+    shape_px: tuple[int, int],
+    array_specs: list[ArraySpec],
+    chunk_size: int,
+    shard_size: int,
+    attrs: dict[str, Any] | None = None,
+) -> zarr.Group:
+    """Create one zone (or pyramid level) group with its arrays and coordinates.
+
+    Args:
+        parent: the group to create it in.
+        path: the path of the new group within parent.
+        projection: the group's projection (its resolution is the pixel size).
+        origin_px: the (x, y) pixel coordinate of the arrays' top-left corner.
+        shape_px: the (height, width) of the arrays in pixels.
+        array_specs: the data arrays to create.
+        chunk_size: inner chunk spatial size; must divide shard_size.
+        shard_size: shard spatial size.
+        attrs: additional group attributes.
+
+    Returns:
+        the new group.
+    """
+    height, width = shape_px
+    group = parent.create_group(path)
+    group.attrs.update(
+        {
+            "zarr_conventions": ZARR_CONVENTIONS,
+            **build_zone_spatial_attrs(projection, origin_px, shape_px),
+            **(attrs or {}),
+        }
+    )
+
+    for spec in array_specs:
+        group.create_array(
+            spec.name,
+            shape=(len(spec.bands), height, width),
+            chunks=(len(spec.bands), chunk_size, chunk_size),
+            shards=(len(spec.bands), shard_size, shard_size),
+            dtype=spec.dtype,
+            fill_value=NODATA_VALUE,
+            compressors=[ZstdCodec(level=ZSTD_LEVEL)],
+            dimension_names=(spec.band_dim, "y", "x"),
+            attributes={**spec.attrs, "nodata": NODATA_VALUE},
+        )
+        band_coord = group.create_array(
+            spec.band_dim,
+            shape=(len(spec.bands),),
+            dtype=str,
+            dimension_names=(spec.band_dim,),
+        )
+        band_coord[:] = np.array(spec.bands)
+
+    # Coordinate arrays (pixel centers) for xarray friendliness.
+    origin_x, origin_y = origin_px
+    x_coord = group.create_array(
+        "x",
+        shape=(width,),
+        dtype="float64",
+        chunks=(min(width, COORD_CHUNK_SIZE),),
+        compressors=[ZstdCodec(level=ZSTD_LEVEL)],
+        dimension_names=("x",),
+    )
+    x_coord[:] = (np.arange(width) + origin_x + 0.5) * projection.x_resolution
+    y_coord = group.create_array(
+        "y",
+        shape=(height,),
+        dtype="float64",
+        chunks=(min(height, COORD_CHUNK_SIZE),),
+        compressors=[ZstdCodec(level=ZSTD_LEVEL)],
+        dimension_names=("y",),
+    )
+    y_coord[:] = (np.arange(height) + origin_y + 0.5) * projection.y_resolution
+    return group
+
+
 def init_store(
     store_path: str,
-    timestamp: datetime,
     model_config: str | None = None,
-    chunk_size: int = DEFAULT_CHUNK_SIZE,
-    compressor: str = DEFAULT_COMPRESSOR,
-    level: int = DEFAULT_COMPRESSION_LEVEL,
+    detail: str = DETAIL_COMPACT,
     zone_numbers: list[int] | None = None,
     overwrite: bool = False,
 ) -> None:
@@ -184,28 +360,36 @@ def init_store(
 
     Args:
         store_path: the Zarr store path or URL (e.g. gs://bucket/lcc_20250601.zarr).
-        timestamp: the reference timestamp of the predictions in this store.
         model_config: the model config used for prediction, recorded in the
             attributes.
-        chunk_size: inner chunk spatial size; must divide SHARD_SIZE.
-        compressor: the compressor to use, one of COMPRESSORS.
-        level: the compression level.
+        detail: the detail mode, one of DETAILS.
         zone_numbers: the UTM zone numbers to create groups for (default all 60).
         overwrite: whether to overwrite an existing store.
     """
-    if SHARD_SIZE % chunk_size != 0:
-        raise ValueError(
-            f"shard size {SHARD_SIZE} must be a multiple of chunk_size {chunk_size}"
-        )
+    array_specs = get_array_specs(detail)
     if zone_numbers is None:
         zone_numbers = list(range(1, 61))
-    compressors = get_compressors(compressor, level)
+
+    description = (
+        "OlmoEarth Land Change predictions. binary_change and post_change_score "
+        "are probabilities scaled 0-255; pre_lc/post_lc index lc_class_names (0 = nodata); "
+        "pre/post_change_category index pre/post_change_category_names (0 = no prediction, 1 = none). "
+        "change_dates: days since 1970-01-01 (0 = nodata). Where both change "
+        "categories are none and binary_change < no_change_threshold, "
+        "pre_lc, post_lc, post_change_score and change_dates are 0. "
+        "binary_change < binary_change_zero_threshold is stored as 0."
+    )
+    if detail == DETAIL_FULL:
+        description += (
+            " The *_probs arrays hold each head's softmax probabilities scaled "
+            "0-255 (without the nodata class and without zeroing)."
+        )
 
     root = zarr.open_group(store=store_path, mode="w" if overwrite else "w-")
     root.attrs.update(
         {
             "zarr_conventions": ZARR_CONVENTIONS,
-            REFERENCE_TIMESTAMP_ATTR: timestamp.isoformat(),
+            DETAIL_ATTR: detail,
             "model_config": model_config,
             "spatial_layout": "utm_zones",
             "gsd": float(RESOLUTION),
@@ -214,16 +398,7 @@ def init_store(
             "post_change_category_names": POST_CHANGE_CATEGORY_NAMES,
             "no_change_threshold": GEOZARR_CHANGE_THRESHOLD,
             "binary_change_zero_threshold": GEOZARR_BINARY_ZERO_THRESHOLD,
-            "description": (
-                "OlmoEarth LCC land cover change predictions. change: binary_change "
-                "and post_change_score are probabilities scaled 0-255; pre_lc/post_lc "
-                "index lc_class_names (0 = nodata); pre/post_change_category index "
-                "pre/post_change_category_names (0 = no prediction, 1 = none). "
-                "change_dates: days since 1970-01-01 (0 = nodata). Where both change "
-                "categories are none and binary_change < no_change_threshold, "
-                "pre_lc, post_lc, post_change_score and change_dates are 0. "
-                "binary_change < binary_change_zero_threshold is stored as 0."
-            ),
+            "description": description,
         }
     )
 
@@ -231,76 +406,16 @@ def init_store(
         projection, origin_px, shape_px = get_zone_grid(
             zone_number, RESOLUTION, TILE_SIZE
         )
-        height, width = shape_px
-        zone_group = root.create_group(zone_group_name(zone_number))
-        zone_group.attrs.update(
-            {
-                "zarr_conventions": ZARR_CONVENTIONS,
-                **build_zone_spatial_attrs(projection, origin_px, shape_px),
-            }
+        create_zone_group(
+            root,
+            zone_group_name(zone_number),
+            projection,
+            origin_px,
+            shape_px,
+            array_specs,
+            chunk_size=CHUNK_SIZE,
+            shard_size=SHARD_SIZE,
         )
-
-        array_specs: list[tuple[str, list[str], str, str, dict[str, Any]]] = [
-            (
-                CHANGE_ARRAY,
-                CHANGE_BANDS,
-                CHANGE_BAND_DIM,
-                "uint8",
-                {
-                    "bands": CHANGE_BANDS,
-                    "class_names": {
-                        "pre_lc": LC_CLASS_NAMES,
-                        "post_lc": LC_CLASS_NAMES,
-                        "pre_change_category": PRE_CHANGE_CATEGORY_NAMES,
-                        "post_change_category": POST_CHANGE_CATEGORY_NAMES,
-                    },
-                },
-            ),
-            (
-                CHANGE_DATES_ARRAY,
-                CHANGE_DATES_BANDS,
-                CHANGE_DATES_BAND_DIM,
-                "uint16",
-                {"bands": CHANGE_DATES_BANDS, "units": "days since 1970-01-01"},
-            ),
-        ]
-        for name, bands, band_dim, dtype, attrs in array_specs:
-            zone_group.create_array(
-                name,
-                shape=(len(bands), height, width),
-                chunks=(len(bands), chunk_size, chunk_size),
-                shards=(len(bands), SHARD_SIZE, SHARD_SIZE),
-                dtype=dtype,
-                fill_value=NODATA_VALUE,
-                compressors=compressors,
-                dimension_names=(band_dim, "y", "x"),
-                attributes={**attrs, "nodata": NODATA_VALUE},
-            )
-            band_coord = zone_group.create_array(
-                band_dim, shape=(len(bands),), dtype=str, dimension_names=(band_dim,)
-            )
-            band_coord[:] = np.array(bands)
-
-        # Coordinate arrays (pixel centers) for xarray friendliness.
-        origin_x, origin_y = origin_px
-        x_coord = zone_group.create_array(
-            "x",
-            shape=(width,),
-            dtype="float64",
-            chunks=(min(width, COORD_CHUNK_SIZE),),
-            compressors=[ZstdCodec(level=DEFAULT_COMPRESSION_LEVEL)],
-            dimension_names=("x",),
-        )
-        x_coord[:] = (np.arange(width) + origin_x + 0.5) * projection.x_resolution
-        y_coord = zone_group.create_array(
-            "y",
-            shape=(height,),
-            dtype="float64",
-            chunks=(min(height, COORD_CHUNK_SIZE),),
-            compressors=[ZstdCodec(level=DEFAULT_COMPRESSION_LEVEL)],
-            dimension_names=("y",),
-        )
-        y_coord[:] = (np.arange(height) + origin_y + 0.5) * projection.y_resolution
         logger.debug(
             "created zone group %s with shape %s",
             zone_group_name(zone_number),
@@ -311,45 +426,209 @@ def init_store(
     logger.info("initialized store %s with %d zones", store_path, len(zone_numbers))
 
 
-def get_store_timestamp(store_path: str) -> datetime | None:
-    """Get the reference timestamp of an existing store.
+def read_store_detail(store_path: str) -> str | None:
+    """Read the detail mode of an existing store.
 
     Args:
         store_path: the Zarr store path or URL.
 
     Returns:
-        the store's reference timestamp, or None if the store does not exist.
+        the detail mode (one of DETAILS), or None if the store does not exist.
     """
     try:
         root = zarr.open_group(store=store_path, mode="r")
     except FileNotFoundError:
         return None
-    return datetime.fromisoformat(str(root.attrs[REFERENCE_TIMESTAMP_ATTR]))
+    return str(root.attrs[DETAIL_ATTR])
 
 
 def ensure_store(
-    store_path: str, timestamp: datetime, model_config: str | None = None
+    store_path: str,
+    model_config: str | None = None,
+    detail: str = DETAIL_COMPACT,
 ) -> None:
-    """Create the store with default settings unless it already exists.
+    """Create the store unless it already exists.
 
     Args:
         store_path: the Zarr store path or URL.
-        timestamp: the reference timestamp of the predictions.
         model_config: the model config used for prediction.
+        detail: the detail mode, one of DETAILS.
 
     Raises:
-        ValueError: if the store exists but was created for a different timestamp.
+        ValueError: if the store exists but was created with a different detail
+            mode.
     """
-    store_timestamp = get_store_timestamp(store_path)
-    if store_timestamp is None:
-        init_store(store_path, timestamp, model_config=model_config)
+    existing_detail = read_store_detail(store_path)
+    if existing_detail is None:
+        init_store(store_path, model_config=model_config, detail=detail)
         return
-    if store_timestamp != timestamp:
+    if existing_detail != detail:
         raise ValueError(
-            f"store {store_path} is for reference timestamp {store_timestamp}, "
-            f"not {timestamp}"
+            f"store {store_path} has detail {existing_detail}, not {detail}"
         )
     logger.info("using existing store %s", store_path)
+
+
+def _head_argmax(probs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Get the argmax class (skipping the nodata class 0) and its probability.
+
+    Args:
+        probs: (num classes, H, W) probabilities of one head, scaled 0-255.
+
+    Returns:
+        tuple of the uint8 (H, W) class indices (at least 1) and uint8 (H, W)
+        probabilities of those classes.
+    """
+    classes = probs[1:].argmax(axis=0) + 1
+    scores = np.take_along_axis(probs, classes[None], axis=0)[0]
+    return classes.astype(np.uint8), np.clip(scores, 0, 255).astype(np.uint8)
+
+
+def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Derive the GeoZarr change and change_dates arrays from a full window array.
+
+    See CHANGE_BANDS and CHANGE_DATES_BANDS for the layout. Each head is reduced to
+    its argmax class (skipping nodata). Pixels with no prediction are all zero.
+    Where both change categories are "none" and the binary change probability is
+    below GEOZARR_CHANGE_THRESHOLD, the land cover classes, post change score, and
+    change dates are zeroed too. binary_change values below
+    GEOZARR_BINARY_ZERO_THRESHOLD are set to 0.
+
+    Args:
+        arr: (len(OUTPUT_BANDS), H, W) array with probabilities scaled 0-255.
+
+    Returns:
+        tuple of the (6, H, W) uint8 change array and the (2, H, W) uint16
+        change_dates array (days since 1970-01-01, 0 = nodata).
+    """
+    # Pixels with no prediction were left all-zero; use the binary head to detect
+    # them.
+    valid = arr[0 : BINARY_CHANGE_BAND + 1].max(axis=0) > 0
+    binary_change = np.clip(arr[BINARY_CHANGE_BAND], 0, 255).astype(np.uint8)
+    src, _ = _head_argmax(arr[SRC_BAND_OFFSET : SRC_BAND_OFFSET + NUM_LC_CLASSES])
+    dst, _ = _head_argmax(arr[DST_BAND_OFFSET : DST_BAND_OFFSET + NUM_LC_CLASSES])
+    pre, _ = _head_argmax(
+        arr[PRE_CHANGE_BAND_OFFSET : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)]
+    )
+    post, post_score = _head_argmax(
+        arr[POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)]
+    )
+
+    change = np.stack([binary_change, src, dst, pre, post, post_score])
+    change[:, ~valid] = 0
+
+    dates = np.stack(
+        [
+            arr[TS_PRE_DAYS_BAND].astype(np.int64) + UNIX_EPOCH_DAY_OFFSET,
+            arr[TS_POST_DAYS_BAND].astype(np.int64) + UNIX_EPOCH_DAY_OFFSET,
+        ]
+    )
+    dates = np.clip(dates, 0, np.iinfo(np.uint16).max).astype(np.uint16)
+    dates[:, ~valid] = 0
+
+    no_change = (
+        (pre == NONE_CATEGORY_IDX)
+        & (post == NONE_CATEGORY_IDX)
+        & (binary_change < GEOZARR_CHANGE_THRESHOLD)
+    )
+    # Land cover classes (bands 1, 2) and the post change score (band 5).
+    change[1:3, no_change] = 0
+    change[5, no_change] = 0
+    dates[:, no_change] = 0
+    # Binary change (band 0); valid pixels stay distinguishable from nodata through
+    # the change category bands.
+    change[0, change[0] < GEOZARR_BINARY_ZERO_THRESHOLD] = 0
+    return change, dates
+
+
+def prob_window_arrays(arr: np.ndarray) -> dict[str, np.ndarray]:
+    """Derive the full-mode probability arrays from a full output window array.
+
+    Args:
+        arr: (len(OUTPUT_BANDS), H, W) array with probabilities scaled 0-255.
+
+    Returns:
+        map from PROB_ARRAYS name to its uint8 (num bands, H, W) array.
+    """
+    return {
+        prob_array.name: np.clip(
+            arr[
+                prob_array.output_band_offset : prob_array.output_band_offset
+                + len(prob_array.bands)
+            ],
+            0,
+            255,
+        ).astype(np.uint8)
+        for prob_array in PROB_ARRAYS
+    }
+
+
+def check_zone_projection(projection: Projection) -> int:
+    """Check that a projection is a northern UTM zone at RESOLUTION.
+
+    Args:
+        projection: the projection to check.
+
+    Returns:
+        the UTM zone number.
+    """
+    epsg_code = projection.crs.to_epsg()
+    if epsg_code is None or not NORTH_EPSG_BASE < epsg_code <= NORTH_EPSG_BASE + 60:
+        raise ValueError(
+            f"expected a northern UTM projection (EPSG:326NN) but got {projection}"
+        )
+    if projection.x_resolution != RESOLUTION or projection.y_resolution != -RESOLUTION:
+        raise ValueError(f"expected resolution {RESOLUTION} but got {projection}")
+    return epsg_code - NORTH_EPSG_BASE
+
+
+def get_group_offset(group: zarr.Group, bounds: PixelBounds) -> tuple[int, int]:
+    """Get the (row, col) array offset of pixel bounds within a zone group.
+
+    Args:
+        group: the zone (or pyramid level) group.
+        bounds: pixel bounds at the group's resolution.
+
+    Returns:
+        the (row, col) of the bounds' top-left corner within the group's arrays.
+    """
+    transform = cast(list[float], group.attrs["spatial:transform"])
+    shape = cast(list[int], group.attrs["spatial:shape"])
+    origin_x = round(transform[2] / transform[0])
+    origin_y = round(transform[5] / transform[4])
+    row = bounds[1] - origin_y
+    col = bounds[0] - origin_x
+    height = bounds[3] - bounds[1]
+    width = bounds[2] - bounds[0]
+    if row < 0 or col < 0 or row + height > shape[0] or col + width > shape[1]:
+        raise ValueError(f"bounds {bounds} are outside the grid of group {group.path}")
+    return row, col
+
+
+def write_arrays(
+    group: zarr.Group, bounds: PixelBounds, arrays: dict[str, np.ndarray]
+) -> None:
+    """Write (band, y, x) arrays into a group's arrays at the given bounds.
+
+    Args:
+        group: the zone (or pyramid level) group.
+        bounds: pixel bounds at the group's resolution.
+        arrays: map from array name to the data to write, which must match the
+            zarr array's dtype and band count and the bounds' size.
+    """
+    row, col = get_group_offset(group, bounds)
+    height = bounds[3] - bounds[1]
+    width = bounds[2] - bounds[0]
+    for name, array in arrays.items():
+        zarr_array = group[name]
+        assert isinstance(zarr_array, zarr.Array)
+        expected_shape = (zarr_array.shape[0], height, width)
+        if array.dtype != zarr_array.dtype or array.shape != expected_shape:
+            raise ValueError(
+                f"{name}: expected {zarr_array.dtype} array of shape "
+                f"{expected_shape} but got {array.dtype} {array.shape}"
+            )
+        zarr_array[:, row : row + height, col : col + width] = array
 
 
 def write_window(
@@ -358,6 +637,7 @@ def write_window(
     bounds: PixelBounds,
     change: np.ndarray,
     change_dates: np.ndarray,
+    prob_arrays: dict[str, np.ndarray] | None = None,
 ) -> None:
     """Write one window's outputs into its zone's arrays.
 
@@ -372,42 +652,48 @@ def write_window(
         bounds: the window's pixel bounds.
         change: the uint8 (len(CHANGE_BANDS), H, W) array.
         change_dates: the uint16 (len(CHANGE_DATES_BANDS), H, W) array.
+        prob_arrays: the full-mode probability arrays (see prob_window_arrays), for
+            full stores.
     """
-    epsg_code = projection.crs.to_epsg()
-    if epsg_code is None or not NORTH_EPSG_BASE < epsg_code <= NORTH_EPSG_BASE + 60:
-        raise ValueError(
-            f"expected a northern UTM projection (EPSG:326NN) but got {projection}"
-        )
-    if projection.x_resolution != RESOLUTION or projection.y_resolution != -RESOLUTION:
-        raise ValueError(f"expected resolution {RESOLUTION} but got {projection}")
-    if any(value % SHARD_SIZE != 0 for value in bounds):
-        raise ValueError(f"bounds {bounds} must be multiples of {SHARD_SIZE}")
-
+    zone_number = check_zone_projection(projection)
+    check_bounds_aligned(bounds, SHARD_SIZE)
     group = zarr.open_group(
-        store=store_path,
-        path=zone_group_name(epsg_code - NORTH_EPSG_BASE),
-        mode="r+",
+        store=store_path, path=zone_group_name(zone_number), mode="r+"
     )
-    transform = cast(list[float], group.attrs["spatial:transform"])
-    shape = cast(list[int], group.attrs["spatial:shape"])
-    origin_x = round(transform[2] / transform[0])
-    origin_y = round(transform[5] / transform[4])
-    row = bounds[1] - origin_y
-    col = bounds[0] - origin_x
+    write_arrays(
+        group,
+        bounds,
+        {CHANGE_ARRAY: change, CHANGE_DATES_ARRAY: change_dates, **(prob_arrays or {})},
+    )
+
+
+def read_window(
+    store_path: str, projection: Projection, bounds: PixelBounds
+) -> dict[str, np.ndarray]:
+    """Read the data arrays of a region of a zone.
+
+    Args:
+        store_path: the Zarr store path or URL.
+        projection: the northern UTM projection (EPSG:326NN) at RESOLUTION.
+        bounds: the pixel bounds to read.
+
+    Returns:
+        map from array name to its (band, y, x) data: change and change_dates, plus
+        the probability arrays in full stores.
+    """
+    zone_number = check_zone_projection(projection)
+    group = zarr.open_group(
+        store=store_path, path=zone_group_name(zone_number), mode="r"
+    )
+    row, col = get_group_offset(group, bounds)
     height = bounds[3] - bounds[1]
     width = bounds[2] - bounds[0]
-    if row < 0 or col < 0 or row + height > shape[0] or col + width > shape[1]:
-        raise ValueError(f"bounds {bounds} are outside the zone grid of {projection}")
-
-    for name, array, dtype in [
-        (CHANGE_ARRAY, change, np.uint8),
-        (CHANGE_DATES_ARRAY, change_dates, np.uint16),
-    ]:
-        if array.dtype != dtype or array.shape[1:] != (height, width):
-            raise ValueError(
-                f"{name}: expected {dtype} array of size {height}x{width} but got "
-                f"{array.dtype} {array.shape}"
-            )
+    names = [CHANGE_ARRAY, CHANGE_DATES_ARRAY] + [
+        prob_array.name for prob_array in PROB_ARRAYS if prob_array.name in group
+    ]
+    arrays = {}
+    for name in names:
         zarr_array = group[name]
         assert isinstance(zarr_array, zarr.Array)
-        zarr_array[:, row : row + height, col : col + width] = array
+        arrays[name] = np.asarray(zarr_array[:, row : row + height, col : col + width])
+    return arrays
