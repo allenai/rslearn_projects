@@ -12,7 +12,7 @@ from rslearn.train.tasks.per_pixel_timestep import (
 )
 from rslearn.train.tasks.segmentation import SegmentationHead
 
-from rslp.olmoearth_lcc.lcc_model.components import BalancedBinarySegmentationHead
+from rslp.olmoearth_lcc.lcc_model.components import BalancedSegmentationHead
 from rslp.olmoearth_lcc.lcc_model.tasks import TimestepToleranceAccuracy
 from rslp.olmoearth_lcc.lcc_model.transforms import (
     ANNOTATION_KEY,
@@ -458,7 +458,7 @@ def _seg_targets(labels: torch.Tensor, valid: torch.Tensor) -> list[dict]:
     ]
 
 
-def test_balanced_binary_head_matches_segmentation_head_outputs() -> None:
+def test_balanced_head_binary_matches_segmentation_head_outputs() -> None:
     """Outputs match SegmentationHead; the loss balances change vs no-change."""
     torch.manual_seed(0)
     logits = torch.randn(2, 3, CROP, CROP)
@@ -469,7 +469,7 @@ def test_balanced_binary_head_matches_segmentation_head_outputs() -> None:
     targets = _seg_targets(labels, valid)
     context = ModelContext(inputs=[], metadatas=[])
 
-    balanced = BalancedBinarySegmentationHead()(FeatureMaps([logits]), context, targets)
+    balanced = BalancedSegmentationHead()(FeatureMaps([logits]), context, targets)
     plain = SegmentationHead()(FeatureMaps([logits]), context, targets)
     assert torch.allclose(balanced.outputs, plain.outputs)
     assert set(balanced.loss_dict) == {"cls"}
@@ -482,6 +482,50 @@ def test_balanced_binary_head_matches_segmentation_head_outputs() -> None:
         neg = valid[i] & (labels[i] == 1)
         expected.append(per_pixel[i][pos].mean() + per_pixel[i][neg].mean())
     assert torch.allclose(balanced.loss_dict["cls"], torch.stack(expected).mean())
+
+
+def test_balanced_head_multiclass() -> None:
+    """Per-class means are summed within a sample, then averaged over samples."""
+    torch.manual_seed(0)
+    num_classes = 8
+    logits = torch.randn(3, num_classes, CROP, CROP)
+    labels = torch.ones(3, CROP, CROP, dtype=torch.long)
+    labels[0, 0, :] = 3  # sample 0: many "none" points, one row of class 3
+    labels[0, 1, :2] = 5  # and two points of class 5
+    labels[1] = 4  # sample 1: a single class
+    valid = torch.zeros(3, CROP, CROP, dtype=torch.bool)
+    valid[0] = True
+    valid[1, 0, :2] = True
+    # Sample 2 has no valid points and must not contribute.
+    context = ModelContext(inputs=[], metadatas=[])
+
+    out = BalancedSegmentationHead()(
+        FeatureMaps([logits]), context, _seg_targets(labels, valid)
+    )
+
+    per_pixel = torch.nn.functional.cross_entropy(logits, labels, reduction="none")
+    expected = []
+    for i in range(2):
+        sample_labels = labels[i][valid[i]]
+        sample_loss = per_pixel[i][valid[i]]
+        expected.append(
+            sum(sample_loss[sample_labels == c].mean() for c in sample_labels.unique())
+        )
+    assert torch.allclose(out.loss_dict["cls"], torch.stack(expected).mean())
+
+
+def test_balanced_head_no_valid_points() -> None:
+    """With no valid points the loss is a differentiable zero."""
+    logits = torch.randn(2, 4, CROP, CROP)
+    labels = torch.ones(2, CROP, CROP, dtype=torch.long)
+    valid = torch.zeros(2, CROP, CROP, dtype=torch.bool)
+    context = ModelContext(inputs=[], metadatas=[])
+
+    out = BalancedSegmentationHead()(
+        FeatureMaps([logits]), context, _seg_targets(labels, valid)
+    )
+    assert out.loss_dict["cls"].item() == 0.0
+    assert out.loss_dict["cls"].requires_grad
 
 
 def test_timestep_tolerance_accuracy() -> None:

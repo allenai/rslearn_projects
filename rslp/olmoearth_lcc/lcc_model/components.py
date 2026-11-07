@@ -3,12 +3,12 @@
 The rslearn-native LCC configs (``config_rslearn_*.yaml``) express the change model
 as an ``rslearn.models.multitask.MultiTaskModel`` built from generic rslearn
 components (OlmoEarth, TemporalTransformer, BreakpointScan, TokensToChannels, Conv,
-Upsample, SegmentationHead). ``BalancedBinarySegmentationHead`` is a drop-in
-replacement for ``rslearn.train.tasks.segmentation.SegmentationHead`` that uses the
-per-sample balanced cross-entropy (``balanced_binary_loss``, which ChangeModel also
-uses). It is
-only needed at training time and carries no parameters, so the predict config can
-use the plain rslearn head while loading the same checkpoint.
+Upsample, SegmentationHead). ``BalancedSegmentationHead`` is a drop-in replacement
+for ``rslearn.train.tasks.segmentation.SegmentationHead`` that uses the per-sample
+class-balanced cross-entropy (``balanced_loss``, which ChangeModel also uses for the
+binary and pre/post change-category tasks). It is only needed at training time and
+carries no parameters, so the predict config can use the plain rslearn head while
+loading the same checkpoint.
 """
 
 from __future__ import annotations
@@ -20,24 +20,21 @@ import torch.nn.functional as F
 from rslearn.models.component import FeatureMaps, Predictor
 from rslearn.train.model_context import ModelContext, ModelOutput
 
-# Binary label convention shared with the label rasters and the ChangeModel.
-NO_CHANGE_CLASS = 1
-CHANGE_CLASS = 2
 
-
-def balanced_binary_loss(
+def balanced_loss(
     logits: torch.Tensor, labels: torch.Tensor, valid: torch.Tensor
 ) -> torch.Tensor:
-    """Per-sample class-balanced cross-entropy for the binary change task.
+    """Per-sample class-balanced cross-entropy.
 
-    For each sample, the loss is the mean over its change points plus the mean over
-    its no-change points (each group divided by its own point count), so every
-    sample with any valid points contributes equally and samples with many
-    auto-annotated negatives do not dominate.
+    For each sample, the loss is the sum over the classes present among its valid
+    points of the mean loss over that class's points (each class divided by its own
+    point count). The batch loss is the mean over samples with any valid points, so
+    samples with many points (e.g. auto-annotated negatives) do not dominate samples
+    with few, and within a sample a frequent class does not dominate a rare one.
 
     Args:
         logits: (B, C, H, W) class logits.
-        labels: (B, H, W) integer labels (1 = no_change, 2 = change).
+        labels: (B, H, W) integer labels in [0, C).
         valid: (B, H, W) boolean validity mask.
 
     Returns:
@@ -46,29 +43,23 @@ def balanced_binary_loss(
     if not valid.any():
         return torch.tensor(0.0, device=logits.device, requires_grad=True)
 
-    loss = F.cross_entropy(logits, labels, reduction="none")  # (B, H, W)
+    batch_size, num_classes = logits.shape[:2]
+    loss = F.cross_entropy(logits, labels, reduction="none").flatten(1)  # (B, H*W)
+    weight = valid.flatten(1).to(loss.dtype)
+    index = labels.flatten(1)
 
-    change_mask = (valid & (labels == CHANGE_CLASS)).flatten(1).float()  # (B, H*W)
-    nochange_mask = (valid & (labels == NO_CHANGE_CLASS)).flatten(1).float()
-    loss_flat = loss.flatten(1)
+    zeros = loss.new_zeros(batch_size, num_classes)
+    class_sum = zeros.scatter_add(1, index, loss * weight)  # (B, C)
+    class_count = zeros.scatter_add(1, index, weight)
+    class_mean = class_sum / class_count.clamp(min=1)
 
-    pos_count = change_mask.sum(dim=1)  # (B,)
-    neg_count = nochange_mask.sum(dim=1)
-    has_pos = pos_count > 0
-    has_neg = neg_count > 0
-
-    pos_mean = (loss_flat * change_mask).sum(dim=1) / pos_count.clamp(min=1)
-    neg_mean = (loss_flat * nochange_mask).sum(dim=1) / neg_count.clamp(min=1)
-
-    sample_loss = pos_mean * has_pos + neg_mean * has_neg  # (B,)
-    has_any = has_pos | has_neg
-    if not has_any.any():
-        return torch.tensor(0.0, device=logits.device, requires_grad=True)
+    sample_loss = class_mean.sum(dim=1)  # (B,)
+    has_any = class_count.sum(dim=1) > 0
     return sample_loss[has_any].mean()
 
 
-class BalancedBinarySegmentationHead(Predictor):
-    """SegmentationHead variant with the per-sample balanced binary change loss.
+class BalancedSegmentationHead(Predictor):
+    """SegmentationHead variant with the per-sample class-balanced loss.
 
     The forward output (softmax probabilities) matches
     ``rslearn.train.tasks.segmentation.SegmentationHead`` so the two are
@@ -94,12 +85,10 @@ class BalancedBinarySegmentationHead(Predictor):
             ModelOutput with per-sample softmax probabilities and a "cls" loss.
         """
         if not isinstance(intermediates, FeatureMaps):
-            raise ValueError(
-                "input to BalancedBinarySegmentationHead must be a FeatureMaps"
-            )
+            raise ValueError("input to BalancedSegmentationHead must be a FeatureMaps")
         if len(intermediates.feature_maps) != 1:
             raise ValueError(
-                "input to BalancedBinarySegmentationHead must have one feature map, "
+                "input to BalancedSegmentationHead must have one feature map, "
                 f"but got {len(intermediates.feature_maps)}"
             )
 
@@ -114,6 +103,6 @@ class BalancedBinarySegmentationHead(Predictor):
             valid = torch.stack(
                 [target["valid"].get_hw_tensor() for target in targets], dim=0
             ).bool()
-            losses["cls"] = balanced_binary_loss(logits, labels, valid)
+            losses["cls"] = balanced_loss(logits, labels, valid)
 
         return ModelOutput(outputs=outputs, loss_dict=losses)

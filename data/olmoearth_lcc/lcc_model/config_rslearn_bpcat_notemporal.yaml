@@ -23,8 +23,9 @@
 # 2 if it OOMs.
 #
 # Training-only pieces come from rslp (StackSampler, LCCMultiTask annotation
-# injection, BalancedBinarySegmentationHead, TimestepToleranceAccuracy); none of them
-# carry parameters, so the checkpoint loads directly into the pure-rslearn
+# injection, BalancedSegmentationHead for binary/pre_change/post_change,
+# TimestepToleranceAccuracy); none of them carry parameters, so the checkpoint loads
+# directly into the pure-rslearn
 # config_rslearn_bpcat_notemporal_predict.yaml. The model block and the ts_start/ts_end
 # task blocks below must stay in sync with that file (and with the OlmoEarth Studio
 # config derived from it in olmoearth_projects/olmoearth_run_data/olmoearth_lcc/).
@@ -64,7 +65,7 @@ model:
               out_channels: 3
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
-          - class_path: rslp.olmoearth_lcc.lcc_model.components.BalancedBinarySegmentationHead
+          - class_path: rslp.olmoearth_lcc.lcc_model.components.BalancedSegmentationHead
           src:
           - class_path: rslearn.models.breakpoint_scan.BreakpointScan
             init_args:
@@ -133,7 +134,7 @@ model:
               out_channels: 8
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
-          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          - class_path: rslp.olmoearth_lcc.lcc_model.components.BalancedSegmentationHead
           post_change:
           - class_path: rslearn.models.breakpoint_scan.BreakpointScan
             init_args:
@@ -156,7 +157,7 @@ model:
               out_channels: 21
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
-          - class_path: rslearn.train.tasks.segmentation.SegmentationHead
+          - class_path: rslp.olmoearth_lcc.lcc_model.components.BalancedSegmentationHead
           ts_start:
           - class_path: rslearn.models.tokens_to_channels.TokensToChannels
             init_args: {in_dim: 768, out_dim: 1}

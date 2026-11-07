@@ -63,7 +63,7 @@ import torch.nn.functional as F
 from rslearn.models.olmoearth_pretrain.model import OlmoEarth
 from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 
-from .components import balanced_binary_loss
+from .components import balanced_loss
 from .timestamp_encoding import timestamps_to_days
 from .transforms import INPUT_KEY, TS_END_KEY, TS_START_KEY
 
@@ -513,14 +513,14 @@ class ChangeModel(nn.Module):
 
         losses: dict[str, torch.Tensor] = {}
         if targets is not None:
-            losses["binary_cls"] = self.binary_loss_weight * self._balanced_binary_loss(
-                logits_binary, targets
+            losses["binary_cls"] = self.binary_loss_weight * self._balanced_loss(
+                logits_binary, targets, "binary"
             )
             losses["src_cls"] = self._seg_loss(logits_src, targets, "src")
             losses["dst_cls"] = self._seg_loss(logits_dst, targets, "dst")
             for name, logits in change_logits.items():
                 if name in targets[0]:
-                    losses[f"{name}_cls"] = self._seg_loss(logits, targets, name)
+                    losses[f"{name}_cls"] = self._balanced_loss(logits, targets, name)
             # Masked CE over the T timesteps, averaged over valid (change) pixels.
             losses["start_ce"] = self._seg_loss(start_logits, targets, TS_START_KEY)
             losses["end_ce"] = self._seg_loss(end_logits, targets, TS_END_KEY)
@@ -554,6 +554,19 @@ class ChangeModel(nn.Module):
     # Losses
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _stack_targets(
+        targets: list[dict[str, Any]], task_name: str
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Stack a task's per-sample labels and valid masks into (B, H, W) tensors."""
+        labels = torch.stack(
+            [t[task_name]["classes"].get_hw_tensor() for t in targets], dim=0
+        ).long()
+        valid = torch.stack(
+            [t[task_name]["valid"].get_hw_tensor() for t in targets], dim=0
+        ).bool()
+        return labels, valid
+
     def _seg_loss(
         self,
         logits: torch.Tensor,
@@ -561,12 +574,7 @@ class ChangeModel(nn.Module):
         task_name: str,
     ) -> torch.Tensor:
         """Compute masked cross-entropy loss for a segmentation task."""
-        labels = torch.stack(
-            [t[task_name]["classes"].get_hw_tensor() for t in targets], dim=0
-        ).long()
-        valid = torch.stack(
-            [t[task_name]["valid"].get_hw_tensor() for t in targets], dim=0
-        ).bool()
+        labels, valid = self._stack_targets(targets, task_name)
 
         if not valid.any():
             return torch.tensor(0.0, device=logits.device, requires_grad=True)
@@ -574,16 +582,12 @@ class ChangeModel(nn.Module):
         loss = F.cross_entropy(logits, labels, reduction="none")
         return (loss * valid).sum() / valid.sum()
 
-    def _balanced_binary_loss(
+    def _balanced_loss(
         self,
         logits: torch.Tensor,
         targets: list[dict[str, Any]],
+        task_name: str,
     ) -> torch.Tensor:
-        """Balanced binary loss with per-sample balancing (see balanced_binary_loss)."""
-        labels = torch.stack(
-            [t["binary"]["classes"].get_hw_tensor() for t in targets], dim=0
-        ).long()
-        valid = torch.stack(
-            [t["binary"]["valid"].get_hw_tensor() for t in targets], dim=0
-        ).bool()
-        return balanced_binary_loss(logits, labels, valid)
+        """Per-sample class-balanced cross-entropy (see balanced_loss)."""
+        labels, valid = self._stack_targets(targets, task_name)
+        return balanced_loss(logits, labels, valid)

@@ -3,9 +3,10 @@
 # rslearn alone (e.g. OlmoEarth Studio). There is no TemporalTransformer encoder entry:
 # the OlmoEarth per-timestep tokens feed the decoders directly.
 #
-# The model block is identical to the training config except that the binary head is
-# the plain SegmentationHead (the training-time BalancedBinarySegmentationHead only
-# changes the loss and has no parameters), so the training checkpoint loads directly.
+# The model block is identical to the training config except that the binary,
+# pre_change, and post_change heads are the plain SegmentationHead (the training-time
+# BalancedSegmentationHead only changes the loss and has no parameters), so the
+# training checkpoint loads directly.
 #
 # The Studio config in olmoearth_projects (olmoearth_run_data/olmoearth_lcc/) is derived
 # from this file; keep the model block in sync.
