@@ -12,8 +12,8 @@ change to exclude boundary artifacts at forest edges.
 Emits a GeoJSON of Point features at each qualifying connected component's
 centroid.
 
-Follows the same libraries/patterns as
-``rslp.change_finder.scripts.create_land_cover_change_geojson``.
+Follows the same libraries/patterns as the (since removed) crop-input land cover
+change pipeline that preceded ``rslp.olmoearth_lcc.land_cover.find_change``.
 """
 
 import argparse
