@@ -92,6 +92,8 @@ def init_pyramid_store(
 ) -> None:
     """Create the pyramid store skeleton (root, zone and level groups, arrays).
 
+    Each object is written once (see geozarr.write_store_skeleton).
+
     Args:
         store_path: the pyramid Zarr store path or URL.
         source_store: the main (level 0) store path or URL, recorded in the
@@ -99,78 +101,78 @@ def init_pyramid_store(
         zone_numbers: the UTM zone numbers to create groups for (default all 60).
         overwrite: whether to overwrite an existing store.
     """
-    if zone_numbers is None:
-        zone_numbers = list(range(1, 61))
+    zones = list(range(1, 61)) if zone_numbers is None else zone_numbers
 
-    root = zarr.open_group(store=store_path, mode="w" if overwrite else "w-")
-    root.attrs.update(
-        {
-            "zarr_conventions": PYRAMID_ZARR_CONVENTIONS,
-            SOURCE_STORE_ATTR: source_store,
-            "spatial_layout": "utm_zones",
-            "lc_class_names": LC_CLASS_NAMES,
-            "pre_change_category_names": PRE_CHANGE_CATEGORY_NAMES,
-            "post_change_category_names": POST_CHANGE_CATEGORY_NAMES,
-            "resampling_method": RESAMPLING_METHOD,
-            "description": (
-                "Overviews (levels 1-5, 20-320 m/pixel) of the OlmoEarth Land Change GeoZarr "
-                "store in source_store, which holds level 0 (10 m/pixel). Arrays and band "
-                "encodings match the source store. Each pixel at a level one higher copies "
-                "all bands from one pixel of its 2x2 block in the previous level, preferring "
-                "changes with a pre or post category, then higher binary_change, then valid "
-                "pixels over nodata."
-            ),
-        }
-    )
-
-    for zone_number in zone_numbers:
-        projection, origin_px, shape_px = get_zone_grid(
-            zone_number, RESOLUTION, TILE_SIZE
-        )
-        zone_group = root.create_group(geozarr.zone_group_name(zone_number))
-        layout: list[dict[str, Any]] = []
-        for level in PYRAMID_LEVELS:
-            cur_projection = level_projection(projection, level)
-            cur_origin = (origin_px[0] >> level, origin_px[1] >> level)
-            cur_shape = (shape_px[0] >> level, shape_px[1] >> level)
-            shard_size = level_shard_size(level)
-            level_group = geozarr.create_zone_group(
-                zone_group,
-                str(level),
-                cur_projection,
-                cur_origin,
-                cur_shape,
-                geozarr.CHANGE_ARRAY_SPECS,
-                chunk_size=min(geozarr.CHUNK_SIZE, shard_size),
-                shard_size=shard_size,
-            )
-            entry: dict[str, Any] = {
-                "asset": str(level),
-                "spatial:transform": level_group.attrs["spatial:transform"],
-                "spatial:shape": level_group.attrs["spatial:shape"],
-            }
-            if level > PYRAMID_LEVELS[0]:
-                entry["derived_from"] = str(level - 1)
-                entry["transform"] = {"scale": [2.0, 2.0], "translation": [0.0, 0.0]}
-            layout.append(entry)
-
-        zone_group.attrs.update(
+    def build(root: zarr.Group) -> None:
+        root.attrs.update(
             {
                 "zarr_conventions": PYRAMID_ZARR_CONVENTIONS,
-                "proj:code": f"EPSG:{projection.crs.to_epsg()}",
-                "spatial:dimensions": ["y", "x"],
-                SOURCE_GROUP_ATTR: geozarr.zone_group_name(zone_number),
-                "multiscales": {
-                    "layout": layout,
-                    "resampling_method": RESAMPLING_METHOD,
-                },
+                SOURCE_STORE_ATTR: source_store,
+                "spatial_layout": "utm_zones",
+                "lc_class_names": LC_CLASS_NAMES,
+                "pre_change_category_names": PRE_CHANGE_CATEGORY_NAMES,
+                "post_change_category_names": POST_CHANGE_CATEGORY_NAMES,
+                "resampling_method": RESAMPLING_METHOD,
+                "description": (
+                    "Overviews (levels 1-5, 20-320 m/pixel) of the OlmoEarth Land Change GeoZarr "
+                    "store in source_store, which holds level 0 (10 m/pixel). Arrays and band "
+                    "encodings match the source store. Each pixel at a level one higher copies "
+                    "all bands from one pixel of its 2x2 block in the previous level, preferring "
+                    "changes with a pre or post category, then higher binary_change, then valid "
+                    "pixels over nodata."
+                ),
             }
         )
 
-    zarr.consolidate_metadata(root.store)
-    logger.info(
-        "initialized pyramid store %s with %d zones", store_path, len(zone_numbers)
-    )
+        for zone_number in zones:
+            projection, origin_px, shape_px = get_zone_grid(
+                zone_number, RESOLUTION, TILE_SIZE
+            )
+            zone_group = root.create_group(geozarr.zone_group_name(zone_number))
+            layout: list[dict[str, Any]] = []
+            for level in PYRAMID_LEVELS:
+                cur_projection = level_projection(projection, level)
+                cur_origin = (origin_px[0] >> level, origin_px[1] >> level)
+                cur_shape = (shape_px[0] >> level, shape_px[1] >> level)
+                shard_size = level_shard_size(level)
+                level_group = geozarr.create_zone_group(
+                    zone_group,
+                    str(level),
+                    cur_projection,
+                    cur_origin,
+                    cur_shape,
+                    geozarr.CHANGE_ARRAY_SPECS,
+                    chunk_size=min(geozarr.CHUNK_SIZE, shard_size),
+                    shard_size=shard_size,
+                )
+                entry: dict[str, Any] = {
+                    "asset": str(level),
+                    "spatial:transform": level_group.attrs["spatial:transform"],
+                    "spatial:shape": level_group.attrs["spatial:shape"],
+                }
+                if level > PYRAMID_LEVELS[0]:
+                    entry["derived_from"] = str(level - 1)
+                    entry["transform"] = {
+                        "scale": [2.0, 2.0],
+                        "translation": [0.0, 0.0],
+                    }
+                layout.append(entry)
+
+            zone_group.attrs.update(
+                {
+                    "zarr_conventions": PYRAMID_ZARR_CONVENTIONS,
+                    "proj:code": f"EPSG:{projection.crs.to_epsg()}",
+                    "spatial:dimensions": ["y", "x"],
+                    SOURCE_GROUP_ATTR: geozarr.zone_group_name(zone_number),
+                    "multiscales": {
+                        "layout": layout,
+                        "resampling_method": RESAMPLING_METHOD,
+                    },
+                }
+            )
+
+    geozarr.write_store_skeleton(store_path, build, overwrite=overwrite)
+    logger.info("initialized pyramid store %s with %d zones", store_path, len(zones))
 
 
 def read_pyramid_source_store(store_path: str) -> str | None:

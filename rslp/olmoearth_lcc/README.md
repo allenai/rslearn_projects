@@ -275,8 +275,14 @@ The prepare script:
   post-change contexts up to post_change + 2 years. The transition option comes
   after the post_change option, so validation (option 2) is unchanged; it takes
   the place of one random option. Every block ends on/before
-  min(2026-01-01, stop_date), where 2026-01-01 is the annotation cutoff and
-  stop_date is the earliest optional per-point stop date.
+  min(cutoff, stop_date), where cutoff is the annotation imagery cutoff and
+  stop_date is the earliest optional per-point stop date. The cutoff is
+  2026-01-01, except for groups listed in `GROUP_IMAGE_CUTOFFS` in `prepare.py`
+  (phase23, annotated with imagery up to 2026-11-08). It is recorded in the
+  sidecar, so changing a group's cutoff recreates its windows. Options whose
+  block ends coincide after clamping are kept once, so e.g. a negative anchored
+  two weeks before the cutoff gets two options (anchor + 6 days and the cutoff)
+  rather than seven copies of the cutoff block.
 - Window time_range is derived from the annotations (no fixed 10-year range): it
   starts 1800 days (20 quarterly periods) before the earliest frequent block and
   ends on the 90-day grid through that block's start (just past the latest block
@@ -703,6 +709,12 @@ its own band dimension, with the class names as band coordinates:
 
 The shards are 2048x2048, one per prediction window, so concurrent workers never
 write the same object. Inner chunks are 512x512 and all arrays use zstd level 9.
+
+`write_jobs` creates the store (and the pyramid store below) by building its groups,
+arrays and consolidated metadata in memory, then uploading each object once, with the
+root `zarr.json` last. Building in place
+writes and reads placeholder metadata before overwriting it, and on GCS a cached copy
+of a placeholder can end up in the consolidated metadata.
 
 ```python
 import xarray as xr

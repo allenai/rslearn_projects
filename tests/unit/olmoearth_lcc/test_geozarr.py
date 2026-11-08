@@ -1,3 +1,4 @@
+import json
 import pathlib
 from typing import cast
 
@@ -122,6 +123,20 @@ def _first_window(zone_number: int) -> tuple[Projection, tuple[int, int, int, in
         row * TILE_SIZE + PATCH_SIZE,
     )
     return get_zone_projection(zone_number, RESOLUTION), bounds
+
+
+def test_init_store_consolidated_metadata(tmp_path: pathlib.Path) -> None:
+    store_path = tmp_path / "lcc.zarr"
+    geozarr.init_store(str(store_path), zone_numbers=[10, 11])
+    root = json.loads((store_path / "zarr.json").read_text())
+    assert root["attributes"][geozarr.DETAIL_ATTR] == geozarr.DETAIL_COMPACT
+    consolidated = root["consolidated_metadata"]["metadata"]
+    for zone in ["utm10", "utm11"]:
+        own = json.loads((store_path / zone / "zarr.json").read_text())
+        assert "spatial:transform" in own["attributes"]
+        assert consolidated[zone]["attributes"] == own["attributes"]
+    with pytest.raises(FileExistsError):
+        geozarr.init_store(str(store_path), zone_numbers=[10])
 
 
 def test_store_round_trip(tmp_path: pathlib.Path) -> None:

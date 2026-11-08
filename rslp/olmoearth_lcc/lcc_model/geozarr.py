@@ -29,19 +29,28 @@ PROB_ARRAYS): ``src_probs`` and ``dst_probs`` over the land cover classes, and
 The nodata class of each head is not stored.
 
 The store is created once by ``init_store`` (root, all zone groups, arrays, and
-consolidated metadata). Prediction workers then only write data regions via
+consolidated metadata). It builds the skeleton in memory and uploads each object
+once, the root zarr.json last (see write_store_skeleton), since on GCS a cached
+read of an overwritten metadata document can be stale. Prediction workers then only
+write data regions via
 ``write_window``, never mutating metadata. The shard spatial size equals the window
 size (PATCH_SIZE), so each window writes exactly one shard per array and concurrent
 writes of disjoint windows are safe without locking.
 """
 
+import posixpath
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
+import fsspec
 import numpy as np
 import zarr
+from fsspec.implementations.local import LocalFileSystem
 from rslearn.utils.geometry import PixelBounds, Projection
 from zarr.codecs import ZstdCodec
+from zarr.core.buffer import Buffer
+from zarr.storage import MemoryStore
 
 from rslp.log_utils import get_logger
 
@@ -162,6 +171,9 @@ PROJ_CONVENTION = {
 ZARR_CONVENTIONS = [SPATIAL_CONVENTION, PROJ_CONVENTION]
 
 DETAIL_ATTR = "detail"
+
+# Name of the metadata document of each group and array.
+ZARR_JSON = "zarr.json"
 
 
 def zone_group_name(zone_number: int) -> str:
@@ -346,6 +358,52 @@ def create_zone_group(
     return group
 
 
+def write_store_skeleton(
+    store_path: str, build: Callable[[zarr.Group], None], overwrite: bool = False
+) -> None:
+    """Create a store's skeleton, writing each object to the store only once.
+
+    ``build`` creates the groups, arrays and attributes in an in-memory store, which
+    is then consolidated and uploaded, with the root zarr.json last so that a store
+    whose root exists is complete. Building in place would write placeholder group
+    metadata, read it back (zarr checks each parent before creating a child), and
+    only then overwrite it. GCS caches publicly readable objects, so a later read,
+    e.g. by consolidate_metadata, could get the stale placeholder.
+
+    With overwrite, objects at the same paths are written again, so readers of a
+    public bucket may still get cached copies of the old store for a while.
+
+    Args:
+        store_path: the Zarr store path or URL.
+        build: creates the hierarchy under the given (empty) root group.
+        overwrite: whether to replace an existing store.
+
+    Raises:
+        FileExistsError: if the store exists and overwrite is False.
+    """
+    store_dict: dict[str, Buffer] = {}
+    root = zarr.open_group(store=MemoryStore(store_dict), mode="w")
+    build(root)
+    zarr.consolidate_metadata(root.store)
+
+    fs, path = fsspec.core.url_to_fs(store_path)
+    path = path.rstrip("/")
+    root_path = f"{path}/{ZARR_JSON}"
+    if fs.exists(root_path) and not overwrite:
+        raise FileExistsError(f"store {store_path} already exists")
+    if overwrite and fs.exists(path):
+        fs.rm(path, recursive=True)
+
+    objects = {f"{path}/{key}": value.to_bytes() for key, value in store_dict.items()}
+    root_data = objects.pop(root_path)
+    if isinstance(fs, LocalFileSystem):
+        # Object stores have no directories, but local files need their parents.
+        for parent in sorted({posixpath.dirname(p) for p in objects}):
+            fs.makedirs(parent, exist_ok=True)
+    fs.pipe(objects)
+    fs.pipe_file(root_path, root_data)
+
+
 def init_store(
     store_path: str,
     model_config: str | None = None,
@@ -356,7 +414,8 @@ def init_store(
     """Create the GeoZarr store skeleton (root, zone groups, arrays, metadata).
 
     This must run once before any prediction workers write to the store. Workers only
-    write data regions, so all metadata is created here to avoid races.
+    write data regions, so all metadata is created here to avoid races. Each object
+    is written once (see write_store_skeleton).
 
     Args:
         store_path: the Zarr store path or URL (e.g. gs://bucket/lcc_20250601.zarr).
@@ -367,8 +426,7 @@ def init_store(
         overwrite: whether to overwrite an existing store.
     """
     array_specs = get_array_specs(detail)
-    if zone_numbers is None:
-        zone_numbers = list(range(1, 61))
+    zones = list(range(1, 61)) if zone_numbers is None else zone_numbers
 
     description = (
         "OlmoEarth Land Change predictions. binary_change and post_change_score "
@@ -385,45 +443,45 @@ def init_store(
             "0-255 (without the nodata class and without zeroing)."
         )
 
-    root = zarr.open_group(store=store_path, mode="w" if overwrite else "w-")
-    root.attrs.update(
-        {
-            "zarr_conventions": ZARR_CONVENTIONS,
-            DETAIL_ATTR: detail,
-            "model_config": model_config,
-            "spatial_layout": "utm_zones",
-            "gsd": float(RESOLUTION),
-            "lc_class_names": LC_CLASS_NAMES,
-            "pre_change_category_names": PRE_CHANGE_CATEGORY_NAMES,
-            "post_change_category_names": POST_CHANGE_CATEGORY_NAMES,
-            "no_change_threshold": GEOZARR_CHANGE_THRESHOLD,
-            "binary_change_zero_threshold": GEOZARR_BINARY_ZERO_THRESHOLD,
-            "description": description,
-        }
-    )
-
-    for zone_number in zone_numbers:
-        projection, origin_px, shape_px = get_zone_grid(
-            zone_number, RESOLUTION, TILE_SIZE
-        )
-        create_zone_group(
-            root,
-            zone_group_name(zone_number),
-            projection,
-            origin_px,
-            shape_px,
-            array_specs,
-            chunk_size=CHUNK_SIZE,
-            shard_size=SHARD_SIZE,
-        )
-        logger.debug(
-            "created zone group %s with shape %s",
-            zone_group_name(zone_number),
-            shape_px,
+    def build(root: zarr.Group) -> None:
+        root.attrs.update(
+            {
+                "zarr_conventions": ZARR_CONVENTIONS,
+                DETAIL_ATTR: detail,
+                "model_config": model_config,
+                "spatial_layout": "utm_zones",
+                "gsd": float(RESOLUTION),
+                "lc_class_names": LC_CLASS_NAMES,
+                "pre_change_category_names": PRE_CHANGE_CATEGORY_NAMES,
+                "post_change_category_names": POST_CHANGE_CATEGORY_NAMES,
+                "no_change_threshold": GEOZARR_CHANGE_THRESHOLD,
+                "binary_change_zero_threshold": GEOZARR_BINARY_ZERO_THRESHOLD,
+                "description": description,
+            }
         )
 
-    zarr.consolidate_metadata(root.store)
-    logger.info("initialized store %s with %d zones", store_path, len(zone_numbers))
+        for zone_number in zones:
+            projection, origin_px, shape_px = get_zone_grid(
+                zone_number, RESOLUTION, TILE_SIZE
+            )
+            create_zone_group(
+                root,
+                zone_group_name(zone_number),
+                projection,
+                origin_px,
+                shape_px,
+                array_specs,
+                chunk_size=CHUNK_SIZE,
+                shard_size=SHARD_SIZE,
+            )
+            logger.debug(
+                "created zone group %s with shape %s",
+                zone_group_name(zone_number),
+                shape_px,
+            )
+
+    write_store_skeleton(store_path, build, overwrite=overwrite)
+    logger.info("initialized store %s with %d zones", store_path, len(zones))
 
 
 def read_store_detail(store_path: str) -> str | None:

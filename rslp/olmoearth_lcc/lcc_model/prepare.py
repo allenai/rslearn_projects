@@ -27,8 +27,9 @@ they reach back QUARTERLY_LOOKBACK from there, matching the prediction dataset c
 window whose earliest frequent block is [T - 90d, T], the first training option sees
 the same 22-image stack as prediction at T. Frequent image options can extend up to
 post_change + 2 years, so some samples have the change further in the past. No
-frequent block extends past IMAGE_CUTOFF or the earliest positive point's
-optional stop_date.
+frequent block extends past the imagery cutoff (IMAGE_CUTOFF, or the group's
+entry in GROUP_IMAGE_CUTOFFS) or the earliest positive point's optional stop_date.
+Options whose blocks coincide after clamping to the cutoff are kept only once.
 
 Scene metadata is fetched from the OlmoEarth Datasets API. Required env vars:
 - OEDATASETS_API_URL: e.g. https://datasets.olmoearth.allenai.org
@@ -93,6 +94,8 @@ QUARTERLY_LOOKBACK = timedelta(days=1800)
 # Annotation was done using imagery up to this date, so no frequent option should
 # sample imagery after it (otherwise it could contain unannotated changes).
 IMAGE_CUTOFF = datetime(2026, 1, 1, tzinfo=timezone.utc)
+# Groups annotated with imagery past IMAGE_CUTOFF, mapped to their own cutoff.
+GROUP_IMAGE_CUTOFFS = {"phase23": datetime(2026, 11, 8, tzinfo=timezone.utc)}
 
 WINDOW_SIZE = 128
 
@@ -433,7 +436,9 @@ def _compute_frequent_block_ends(
     """Compute 90-day frequent-image block ends for training options.
 
     Each option's block is [end - FREQUENT_BLOCK_DURATION, end]. Every end is
-    clamped to ``cutoff`` so no option samples imagery after it.
+    clamped to ``cutoff`` so no option samples imagery after it, and ends that
+    coincide after clamping are kept once (in order), so windows annotated close
+    to the cutoff get fewer options rather than duplicate ones.
 
     With a transition_date, an option ending right after it is added after the
     deterministic options, in place of one random option, so the option that
@@ -473,6 +478,7 @@ def _compute_frequent_block_ends(
             block_ends.append(random_start)
 
     block_ends = [min(end, cutoff) for end in block_ends]
+    block_ends = list(dict.fromkeys(block_ends))
 
     return block_ends[:NUM_FREQUENT_OPTIONS]
 
@@ -815,7 +821,8 @@ def _sidecar_dates_match(
     """
     if existing_value is None:
         return False
-    # Sidecars written before transition_date existed lack it, which matches None.
+    # Sidecars written before transition_date / image_cutoff existed lack them,
+    # which matches None.
     return all(
         existing_value.get(key) == new_value[key]
         for key in (
@@ -824,6 +831,7 @@ def _sidecar_dates_match(
             "first_noticeable",
             "stop_date",
             "transition_date",
+            "image_cutoff",
         )
     )
 
@@ -922,7 +930,12 @@ def _process_entry(
         positive_pixels.append({"col": col, "row": row})
 
     stop_date = _get_stop_date(entry)
-    cutoff = IMAGE_CUTOFF if stop_date is None else min(IMAGE_CUTOFF, stop_date)
+    image_cutoff = GROUP_IMAGE_CUTOFFS.get(window_group, IMAGE_CUTOFF)
+    cutoff = image_cutoff if stop_date is None else min(image_cutoff, stop_date)
+    # None for the default cutoff, so sidecars written before this key existed match.
+    sidecar_image_cutoff = (
+        None if image_cutoff == IMAGE_CUTOFF else image_cutoff.isoformat()
+    )
 
     sidecar_key = f"{window_group}/{window_name}"
     sidecar_value: dict[str, Any]
@@ -933,6 +946,7 @@ def _process_entry(
             "first_noticeable": first_noticeable.isoformat(),
             "stop_date": None,
             "transition_date": None,
+            "image_cutoff": sidecar_image_cutoff,
         }
     else:
         sidecar_value = {
@@ -943,6 +957,7 @@ def _process_entry(
             "transition_date": (
                 transition_date.isoformat() if transition_date is not None else None
             ),
+            "image_cutoff": sidecar_image_cutoff,
         }
 
     # Decide what to do if the window already exists.

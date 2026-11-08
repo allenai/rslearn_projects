@@ -250,11 +250,42 @@ def test_sidecar_dates_match_transition() -> None:
         "first_noticeable": "2020-02-01T00:00:00+00:00",
         "stop_date": None,
     }
+    new: dict[str, str | None] = {**old, "transition_date": None, "image_cutoff": None}
     # Sidecars written before transition_date existed match windows without one.
-    assert _sidecar_dates_match(old, {**old, "transition_date": None})
+    assert _sidecar_dates_match(old, new)
     assert not _sidecar_dates_match(
-        old, {**old, "transition_date": "2020-04-01T00:00:00+00:00"}
+        old, {**new, "transition_date": "2020-04-01T00:00:00+00:00"}
     )
+
+
+def test_sidecar_dates_match_image_cutoff() -> None:
+    old = {
+        "pre_change": "2020-01-15",
+        "post_change": "2020-09-01T00:00:00+00:00",
+        "first_noticeable": "2020-02-01T00:00:00+00:00",
+        "stop_date": None,
+        "transition_date": None,
+    }
+    # Sidecars written before image_cutoff existed match the default cutoff (None).
+    assert _sidecar_dates_match(old, {**old, "image_cutoff": None})
+    cutoff = "2026-11-08T00:00:00+00:00"
+    assert not _sidecar_dates_match(old, {**old, "image_cutoff": cutoff})
+    assert not _sidecar_dates_match(
+        {**old, "image_cutoff": "2026-06-01T00:00:00+00:00"},
+        {**old, "image_cutoff": cutoff},
+    )
+
+
+def test_recent_negative_frequent_options_deduplicated() -> None:
+    """A negative anchored shortly before the cutoff gets two distinct options.
+
+    Option 1 and every random option fall after the cutoff, so they are all
+    clamped to it and kept once.
+    """
+    cutoff = datetime(2026, 11, 8, tzinfo=timezone.utc)
+    anchor = cutoff - timedelta(days=13)
+    block_ends = _compute_frequent_block_ends(anchor, anchor, "some_window", cutoff)
+    assert block_ends == [anchor + OPTION_MARGIN, cutoff]
 
 
 def test_unknown_transition_categories() -> None:

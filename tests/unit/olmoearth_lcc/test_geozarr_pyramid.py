@@ -1,3 +1,4 @@
+import json
 import pathlib
 from typing import Any, cast
 
@@ -114,6 +115,34 @@ def test_init_pyramid_store(tmp_path: pathlib.Path) -> None:
         shard = min(2048, TILE_SIZE // scale)
         assert change.shards == (len(geozarr.CHANGE_BANDS), shard, shard)
         assert change.chunks == (len(geozarr.CHANGE_BANDS), 512, 512)
+
+
+def test_init_pyramid_store_consolidated_metadata(tmp_path: pathlib.Path) -> None:
+    store_path = tmp_path / "pyramid.zarr"
+    geozarr_pyramid.init_pyramid_store(
+        str(store_path), "lcc.zarr", zone_numbers=[10, 11]
+    )
+    root = json.loads((store_path / "zarr.json").read_text())
+    consolidated = root["consolidated_metadata"]["metadata"]
+    for zone in ["utm10", "utm11"]:
+        own = json.loads((store_path / zone / "zarr.json").read_text())
+        assert "multiscales" in own["attributes"]
+        assert consolidated[zone]["attributes"] == own["attributes"]
+        for level in geozarr_pyramid.PYRAMID_LEVELS:
+            level_path = f"{zone}/{level}"
+            own = json.loads((store_path / level_path / "zarr.json").read_text())
+            assert consolidated[level_path]["attributes"] == own["attributes"]
+
+
+def test_init_pyramid_store_existing(tmp_path: pathlib.Path) -> None:
+    store_path = str(tmp_path / "pyramid.zarr")
+    geozarr_pyramid.init_pyramid_store(store_path, "a.zarr", zone_numbers=[10])
+    with pytest.raises(FileExistsError):
+        geozarr_pyramid.init_pyramid_store(store_path, "b.zarr", zone_numbers=[10])
+    geozarr_pyramid.init_pyramid_store(
+        store_path, "b.zarr", zone_numbers=[10], overwrite=True
+    )
+    assert geozarr_pyramid.read_pyramid_source_store(store_path) == "b.zarr"
 
 
 def test_ensure_pyramid_store(tmp_path: pathlib.Path) -> None:
