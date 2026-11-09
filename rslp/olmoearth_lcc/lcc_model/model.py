@@ -59,6 +59,9 @@ Downstream heads all operate on the per-timestep tokens:
   index without a split (start = last image, end = first image) gets a logit
   from that edge token. The timestep labels then supervise the same split
   attention that picks the src/dst and change-category aggregates.
+- ``loss_keys``: if set, only these entries of the loss dict are trained (e.g.
+  ``["pre_change_cls", "post_change_cls"]``); the other heads still produce
+  outputs but get no gradient. ``None`` (default) trains all of LOSS_KEYS.
 
 Annual embedding history (``history_years`` K > 0): the ``v13_embeddings`` input
 holds K annual OlmoEarth v1.3 embeddings (built by the stack transforms). Each year
@@ -98,6 +101,17 @@ from rslearn.models.olmoearth_pretrain.model import OlmoEarth
 from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 
 from .components import balanced_loss
+
+# Every entry of the loss dict returned by ChangeModel.forward.
+LOSS_KEYS = (
+    "binary_cls",
+    "src_cls",
+    "dst_cls",
+    "pre_change_cls",
+    "post_change_cls",
+    "start_ce",
+    "end_ce",
+)
 from .timestamp_encoding import timestamps_to_days
 from .transforms import (
     EMBEDDING_KEY,
@@ -203,6 +217,7 @@ class ChangeModel(nn.Module):
         history_input_dim: int = 128,
         history_hidden: int = 256,
         ts_input: str = "token",
+        loss_keys: list[str] | None = None,
     ):
         """Initialize the LCC change model.
 
@@ -257,6 +272,7 @@ class ChangeModel(nn.Module):
             history_hidden: width of the year features and history vector.
             ts_input: ``"token"`` or ``"breakpoint"`` (see module docstring).
                 ``"breakpoint"`` requires ``binary_mode="breakpoint"``.
+            loss_keys: subset of LOSS_KEYS to train (None = all).
         """
         super().__init__()
         if decoder_stages is None:
@@ -303,6 +319,10 @@ class ChangeModel(nn.Module):
             raise ValueError(f"unknown ts_input {ts_input!r}")
         if ts_input == "breakpoint" and binary_mode != "breakpoint":
             raise ValueError("ts_input='breakpoint' requires binary_mode='breakpoint'")
+        if loss_keys is not None:
+            unknown = set(loss_keys) - set(LOSS_KEYS)
+            if unknown or not loss_keys:
+                raise ValueError(f"loss_keys must be a non-empty subset of {LOSS_KEYS}")
 
         self.encoder = encoder
         self.embedding_dim = embedding_dim
@@ -315,6 +335,7 @@ class ChangeModel(nn.Module):
         self.src_dst_input = src_dst_input
         self.change_category_input = change_category_input
         self.ts_input = ts_input
+        self.loss_keys = None if loss_keys is None else set(loss_keys)
         self.temporal_time_enc = temporal_time_enc
         self.history_years = history_years
         self.history_context = history_context
@@ -847,6 +868,8 @@ class ChangeModel(nn.Module):
             # Masked CE over the T timesteps, averaged over valid (change) pixels.
             losses["start_ce"] = self._seg_loss(start_logits, targets, TS_START_KEY)
             losses["end_ce"] = self._seg_loss(end_logits, targets, TS_END_KEY)
+            if self.loss_keys is not None:
+                losses = {k: v for k, v in losses.items() if k in self.loss_keys}
 
         outputs: list[dict[str, Any]] = []
         for i in range(len(context.inputs)):

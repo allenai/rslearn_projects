@@ -299,6 +299,25 @@ def test_invalid_options() -> None:
         _model(binary_mode="breakpoint", ts_input="split")
     with pytest.raises(ValueError, match="change_category_input"):
         _model(change_category_input="breakpoint")
+    with pytest.raises(ValueError, match="loss_keys"):
+        _model(loss_keys=["post_change"])
+    with pytest.raises(ValueError, match="loss_keys"):
+        _model(loss_keys=[])
+
+
+def test_loss_keys_trains_only_selected_heads() -> None:
+    """loss_keys drops the other losses, so their heads get no gradient."""
+    model = _model(
+        binary_mode="breakpoint",
+        change_category_input="breakpoint",
+        loss_keys=["pre_change_cls", "post_change_cls"],
+    )
+    out = model(_context(2), _targets(2))
+    assert set(out.loss_dict) == {"pre_change_cls", "post_change_cls"}
+    sum(out.loss_dict.values()).backward()
+    assert all(p.grad is None for p in model.decoder_src.parameters())
+    assert all(p.grad is None for p in model.start_head.parameters())
+    assert all(p.grad is not None for p in model.decoder_post_change.parameters())
 
 
 def test_feature_routing_options() -> None:
