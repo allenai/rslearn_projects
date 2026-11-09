@@ -15,7 +15,7 @@ from rslp.olmoearth_lcc.lcc_model.output_bands import (
 )
 
 CONFIG_DIR = pathlib.Path(__file__).parents[3] / "data" / "olmoearth_lcc" / "lcc_model"
-MODEL_CONFIGS = sorted(CONFIG_DIR.glob("*.yaml"))
+MODEL_CONFIGS = sorted(CONFIG_DIR.glob("*.yaml")) + sorted(CONFIG_DIR.glob("emb_v13/*.yaml"))
 
 CLASS_NAMES = {
     "src": LC_CLASS_NAMES,

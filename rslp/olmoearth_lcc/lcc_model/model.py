@@ -50,6 +50,31 @@ Downstream heads all operate on the per-timestep tokens:
   to full resolution, trained with cross-entropy at change pixels. These are
   segmentation-style outputs/targets (T classes = timestep indices), matching the
   ``SegmentationTask`` entries of the same names in the task config.
+
+Annual embedding history (``history_years`` K > 0): the ``v13_embeddings`` input
+holds K annual OlmoEarth v1.3 embeddings (built by the stack transforms). Each year
+is dequantized, averaged over the patch_size x patch_size pixels of each token
+(ignoring nodata pixels) and projected by a small MLP plus a learned per-slot
+embedding. They can be used in three ways, independently:
+
+- ``history_context``: a per-location history vector (masked mean and mean absolute
+  deviation of the K year features, through an MLP) is concatenated onto the input
+  of the breakpoint split scorer and of the src/dst and change-category decoders,
+  so change evidence can depend on what the pixel normally looks like. The scan
+  itself and the timestep heads still see only the image tokens.
+- ``history_memory``: the K year features become extra tokens of the temporal
+  transformer (requires ``temporal_depth > 0``), with nodata years masked out as
+  keys. By default they are dropped after the transformer, so the scan, decoders
+  and timestep heads are unchanged; the image tokens have read the history.
+- ``history_in_scan`` (requires ``history_memory``): the year tokens are kept after
+  the transformer as the earliest K timesteps of the breakpoint scan and of the
+  timestep heads (so the heads have K + T classes; the transform must index the
+  targets over the same timeline).
+
+``temporal_time_enc`` replaces the learned per-slot positional embedding of the
+temporal transformer with an embedding of each token's actual time: sin/cos of its
+age (days before the last image) at several periods plus month-of-year. Year
+tokens use the year's midpoint and also get a learned type embedding.
 """
 
 from __future__ import annotations
@@ -65,7 +90,13 @@ from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 
 from .components import balanced_loss
 from .timestamp_encoding import timestamps_to_days
-from .transforms import INPUT_KEY, TS_END_KEY, TS_START_KEY
+from .transforms import (
+    EMBEDDING_KEY,
+    EMBEDDING_NODATA,
+    INPUT_KEY,
+    TS_END_KEY,
+    TS_START_KEY,
+)
 
 # A stage is a list of (out_channels, kernel_size) conv specs.
 StageSpec = list[tuple[int, int]]
@@ -77,6 +108,29 @@ NODATA_LOGIT = -10.0
 # 1-channel evidence decoder (which must upsample as many times as decoder_stages).
 BREAKPOINT_HIDDEN = 256
 BREAKPOINT_EVIDENCE_STAGES: list[StageSpec] = [[(256, 3)], [(128, 3)], [(64, 3)]]
+
+# Periods (days) of the sin/cos features of a token's age used by temporal_time_enc;
+# two month-of-year features are added to these.
+TIME_ENC_PERIODS = (30.0, 91.0, 365.0, 730.0, 1461.0)
+TIME_ENC_DIM = 2 * len(TIME_ENC_PERIODS) + 2
+
+
+def _midpoints(timestamps: list[tuple[Any, Any]]) -> list[Any]:
+    return [t0 + (t1 - t0) / 2 for t0, t1 in timestamps]
+
+
+def _time_features(timestamps: list[tuple[Any, Any]], ref: Any) -> torch.Tensor:
+    """(T, TIME_ENC_DIM) features of each timestep's midpoint relative to ``ref``."""
+    rows = []
+    for mid in _midpoints(timestamps):
+        age = (ref - mid).total_seconds() / 86400.0
+        feats = []
+        for period in TIME_ENC_PERIODS:
+            feats += [math.sin(2 * math.pi * age / period), math.cos(2 * math.pi * age / period)]
+        frac = (mid.month - 1 + (mid.day - 1) / 31.0) / 12.0
+        feats += [math.sin(2 * math.pi * frac), math.cos(2 * math.pi * frac)]
+        rows.append(feats)
+    return torch.tensor(rows, dtype=torch.float32)
 
 
 def _make_decoder(
@@ -132,6 +186,13 @@ class ChangeModel(nn.Module):
         temporal_pos_enc: bool = False,
         src_dst_input: str = "auto",
         change_category_input: str = "pooled",
+        temporal_time_enc: bool = False,
+        history_years: int = 0,
+        history_context: bool = False,
+        history_memory: bool = False,
+        history_in_scan: bool = False,
+        history_input_dim: int = 128,
+        history_hidden: int = 256,
     ):
         """Initialize the LCC change model.
 
@@ -172,6 +233,18 @@ class ChangeModel(nn.Module):
                 ``binary_mode="breakpoint"``.
             change_category_input: ``"pooled"`` or ``"breakpoint"`` (see module
                 docstring). ``"breakpoint"`` requires ``binary_mode="breakpoint"``.
+            temporal_time_enc: embed each token's actual time before the temporal
+                transformer (see module docstring). Requires ``temporal_depth > 0``;
+                exclusive with ``temporal_pos_enc``.
+            history_years: number of annual embedding years K in the
+                ``v13_embeddings`` input (0 = not used).
+            history_context: feed a per-location history vector to the split
+                scorer and decoders.
+            history_memory: add the year tokens to the temporal transformer.
+            history_in_scan: keep the year tokens in the breakpoint scan and
+                timestep heads. Requires ``history_memory``.
+            history_input_dim: dimensions of each annual embedding (128).
+            history_hidden: width of the year features and history vector.
         """
         super().__init__()
         if decoder_stages is None:
@@ -200,6 +273,20 @@ class ChangeModel(nn.Module):
             raise ValueError(
                 "change_category_input='breakpoint' requires binary_mode='breakpoint'"
             )
+        if temporal_time_enc and (temporal_depth <= 0 or temporal_pos_enc):
+            raise ValueError(
+                "temporal_time_enc requires temporal_depth > 0 and no temporal_pos_enc"
+            )
+        uses_history = history_context or history_memory or history_in_scan
+        if uses_history != (history_years > 0):
+            raise ValueError(
+                "history_years > 0 requires (and is required by) history_context, "
+                "history_memory or history_in_scan"
+            )
+        if history_memory and temporal_depth <= 0:
+            raise ValueError("history_memory requires temporal_depth > 0")
+        if history_in_scan and not history_memory:
+            raise ValueError("history_in_scan requires history_memory")
 
         self.encoder = encoder
         self.embedding_dim = embedding_dim
@@ -211,6 +298,11 @@ class ChangeModel(nn.Module):
         self.season_embed = season_embed
         self.src_dst_input = src_dst_input
         self.change_category_input = change_category_input
+        self.temporal_time_enc = temporal_time_enc
+        self.history_years = history_years
+        self.history_context = history_context
+        self.history_memory = history_memory
+        self.history_in_scan = history_in_scan
 
         self.num_classes_binary = num_classes_binary
         self.num_classes_src = num_classes_src
@@ -234,8 +326,10 @@ class ChangeModel(nn.Module):
                 dim_feedforward=dim_feedforward,
                 batch_first=True,
             )
+            # No nested tensors: with a key padding mask they would zero the outputs
+            # of masked (nodata) year tokens in eval mode only.
             self.temporal_encoder: nn.TransformerEncoder | None = nn.TransformerEncoder(
-                encoder_layer, num_layers=temporal_depth
+                encoder_layer, num_layers=temporal_depth, enable_nested_tensor=False
             )
             if temporal_pos_enc:
                 self.temporal_pos: nn.Parameter | None = nn.Parameter(
@@ -246,6 +340,38 @@ class ChangeModel(nn.Module):
         else:
             self.temporal_encoder = None
             self.temporal_pos = None
+
+        if temporal_time_enc:
+            self.time_mlp = nn.Sequential(
+                nn.Linear(TIME_ENC_DIM, embedding_dim // 4),
+                nn.ReLU(inplace=True),
+                nn.Linear(embedding_dim // 4, embedding_dim),
+            )
+
+        # Annual embedding history.
+        ctx_dim = 0
+        if history_years > 0:
+            self.hist_proj = nn.Sequential(
+                nn.Linear(history_input_dim, history_hidden),
+                nn.GELU(),
+                nn.Linear(history_hidden, history_hidden),
+                nn.LayerNorm(history_hidden),
+            )
+            self.hist_slot = nn.Parameter(
+                torch.randn(history_years, history_hidden) * 0.02
+            )
+        if history_context:
+            self.hist_ctx = nn.Sequential(
+                nn.Linear(2 * history_hidden, history_hidden),
+                nn.GELU(),
+                nn.Linear(history_hidden, history_hidden),
+            )
+            # Used at locations with no valid year.
+            self.hist_null = nn.Parameter(torch.zeros(history_hidden))
+            ctx_dim = history_hidden
+        if history_memory:
+            self.hist_to_token = nn.Linear(history_hidden, embedding_dim)
+            self.hist_type = nn.Parameter(torch.randn(embedding_dim) * 0.02)
 
         # Learned attention pooling over time (temporal_aggregation="attn").
         if temporal_aggregation == "attn":
@@ -259,7 +385,7 @@ class ChangeModel(nn.Module):
         else:
             # Shared scorer applied to |after - before| at every split.
             self.split_proj = nn.Sequential(
-                nn.Conv2d(embedding_dim, BREAKPOINT_HIDDEN, kernel_size=1),
+                nn.Conv2d(embedding_dim + ctx_dim, BREAKPOINT_HIDDEN, kernel_size=1),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(BREAKPOINT_HIDDEN, BREAKPOINT_HIDDEN, kernel_size=1),
                 nn.ReLU(inplace=True),
@@ -278,14 +404,18 @@ class ChangeModel(nn.Module):
             )
 
         # Segmentation decoders on the (pooled or breakpoint-weighted) feature.
-        self.decoder_src = _make_decoder(embedding_dim, decoder_stages, num_classes_src)
-        self.decoder_dst = _make_decoder(embedding_dim, decoder_stages, num_classes_dst)
+        self.decoder_src = _make_decoder(
+            embedding_dim + ctx_dim, decoder_stages, num_classes_src
+        )
+        self.decoder_dst = _make_decoder(
+            embedding_dim + ctx_dim, decoder_stages, num_classes_dst
+        )
         # The change-category decoders take concat(before, after) in breakpoint mode.
         category_in_dim = (
             2 * embedding_dim
             if change_category_input == "breakpoint"
             else embedding_dim
-        )
+        ) + ctx_dim
         self.decoder_pre_change = _make_decoder(
             category_in_dim, decoder_stages, num_classes_pre_change
         )
@@ -377,15 +507,121 @@ class ChangeModel(nn.Module):
         emb = self.month_mlp(months)  # (B, T, C)
         return emb.permute(0, 2, 1)[:, :, None, None, :]  # (B, C, 1, 1, T)
 
-    def _apply_temporal_encoder(self, feature: torch.Tensor) -> torch.Tensor:
-        """Run the temporal transformer over the T tokens at each location."""
+    def _time_embedding(
+        self,
+        timestamps: list[list[tuple[Any, Any]]],
+        refs: list[Any],
+        ref_tensor: torch.Tensor,
+    ) -> torch.Tensor:
+        """(B, T, C) time embeddings of per-sample timestamps (temporal_time_enc)."""
+        feats = torch.stack(
+            [_time_features(ts, ref) for ts, ref in zip(timestamps, refs)], dim=0
+        ).to(device=ref_tensor.device)
+        return self.time_mlp(feats).to(ref_tensor.dtype)
+
+    @staticmethod
+    def _input_timestamps(
+        context: ModelContext, key: str
+    ) -> list[list[tuple[Any, Any]]]:
+        out = []
+        for inp in context.inputs:
+            image = inp[key]
+            if not isinstance(image, RasterImage) or image.timestamps is None:
+                raise ValueError(f"{key} must have timestamps")
+            out.append(list(image.timestamps))
+        return out
+
+    def _history_features(
+        self, context: ModelContext, h: int, w: int
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Per-year token features of the annual embeddings.
+
+        Returns:
+            (features, valid): (B, K, hidden, h, w) year features at the token grid
+            and the (B, K, h, w) mask of tokens with at least one valid pixel.
+        """
+        q = torch.stack(
+            [inp[EMBEDDING_KEY].image for inp in context.inputs], dim=0
+        ).float()  # (B, D, K, H, W)
+        B, D, K, H, W = q.shape
+        if K != self.history_years:
+            raise ValueError(f"expected {self.history_years} embedding years, got {K}")
+        if H % h or W % w:
+            raise ValueError(f"embedding size {(H, W)} not a multiple of {(h, w)}")
+        valid_px = (q[:, 0] != EMBEDDING_NODATA).float()  # (B, K, H, W)
+        # Signed power-2 dequantization (OlmoEarth embedding store convention).
+        deq = torch.sign(q) * (q.abs() / 127.5) ** 2 * valid_px[:, None]
+        p = (H // h, W // w)
+        summed = F.avg_pool2d(deq.permute(0, 2, 1, 3, 4).reshape(B * K, D, H, W), p)
+        frac = F.avg_pool2d(valid_px.reshape(B * K, 1, H, W), p)
+        mean = (summed / frac.clamp_min(1e-6)).reshape(B, K, D, h, w)
+        valid = (frac > 0).reshape(B, K, h, w)
+        feat = self.hist_proj(mean.permute(0, 1, 3, 4, 2))  # (B, K, h, w, hidden)
+        feat = feat + self.hist_slot[None, :, None, None, :]
+        return feat.permute(0, 1, 4, 2, 3), valid
+
+    def _history_context_vector(
+        self, feat: torch.Tensor, valid: torch.Tensor
+    ) -> torch.Tensor:
+        """(B, hidden, h, w) history vector from the masked year features."""
+        v = valid[:, :, None].to(feat.dtype)  # (B, K, 1, h, w)
+        n = v.sum(dim=1)  # (B, 1, h, w)
+        mean = (feat * v).sum(dim=1) / n.clamp_min(1)
+        dev = ((feat - mean[:, None]).abs() * v).sum(dim=1) / n.clamp_min(1)
+        ctx = self.hist_ctx(torch.cat([mean, dev], dim=1).permute(0, 2, 3, 1))
+        ctx = ctx.permute(0, 3, 1, 2)
+        null = self.hist_null[None, :, None, None].to(ctx.dtype).expand_as(ctx)
+        return torch.where(n > 0, ctx, null)
+
+    def _apply_temporal_encoder(
+        self,
+        feature: torch.Tensor,
+        context: ModelContext,
+        history: tuple[torch.Tensor, torch.Tensor] | None = None,
+    ) -> torch.Tensor:
+        """Run the temporal transformer over the T tokens at each location.
+
+        With ``history_memory`` the K year tokens are prepended (nodata years
+        masked as keys) and, unless ``history_in_scan``, dropped from the output.
+        """
         assert self.temporal_encoder is not None
         b, c, h, w, t = feature.shape
-        x = feature.permute(0, 2, 3, 4, 1).reshape(b * h * w, t, c)
+        # The encoder may return bfloat16 tokens; the transformer runs in float32.
+        x = feature.float().permute(0, 2, 3, 4, 1).reshape(b * h * w, t, c)
         if self.temporal_pos is not None:
             x = x + self.temporal_pos
-        x = self.temporal_encoder(x)
-        return x.reshape(b, h, w, t, c).permute(0, 4, 1, 2, 3)
+        refs = None
+        if self.temporal_time_enc:
+            raw_ts = self._input_timestamps(context, INPUT_KEY)
+            refs = [_midpoints(ts)[-1] for ts in raw_ts]
+            x = x + self._time_embedding(raw_ts, refs, x).repeat_interleave(
+                h * w, dim=0
+            )
+        mask = None
+        k = 0
+        if self.history_memory:
+            assert history is not None
+            feat, valid = history
+            k = feat.shape[1]
+            tok = self.hist_to_token(feat.permute(0, 3, 4, 1, 2).reshape(b * h * w, k, -1))
+            tok = tok + self.hist_type.to(tok.dtype)
+            if self.temporal_time_enc:
+                assert refs is not None
+                emb_ts = self._input_timestamps(context, EMBEDDING_KEY)
+                tok = tok + self._time_embedding(emb_ts, refs, tok).repeat_interleave(
+                    h * w, dim=0
+                )
+            x = torch.cat([tok, x], dim=1)
+            pad = ~valid.permute(0, 2, 3, 1).reshape(b * h * w, k)
+            mask = torch.cat(
+                [pad, torch.zeros(b * h * w, t, dtype=torch.bool, device=pad.device)],
+                dim=1,
+            )
+        x = self.temporal_encoder(x, src_key_padding_mask=mask)
+        if self.history_memory and not self.history_in_scan:
+            x = x[:, k:]
+        tt = x.shape[1]
+        return x.reshape(b, h, w, tt, c).permute(0, 4, 1, 2, 3)
 
     def _pool_time(self, feature: torch.Tensor) -> torch.Tensor:
         """Aggregate (B, C, H, W, T) tokens over time -> (B, C, H, W)."""
@@ -400,12 +636,14 @@ class ChangeModel(nn.Module):
         return feature.mean(dim=-1)
 
     def _breakpoint_features(
-        self, feature: torch.Tensor
+        self, feature: torch.Tensor, ctx: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Changepoint scan over the T timesteps.
 
         Args:
             feature: (B, C, H, W, T) per-timestep tokens.
+            ctx: optional (B, ctx_dim, H, W) history vector, concatenated onto the
+                split scorer input at every split.
 
         Returns:
             (evidence_feat, src_feat, dst_feat): max-pooled per-split hidden
@@ -423,6 +661,8 @@ class ChangeModel(nn.Module):
 
         # Shared scorer over all splits: fold S into the batch dimension.
         con = con.permute(0, 4, 1, 2, 3).reshape(B * S, C, H, W)
+        if ctx is not None:
+            con = torch.cat([con, ctx.repeat_interleave(S, dim=0)], dim=1)
         hidden = self.split_proj(con)  # (B*S, hidden, H, W)
         scores = self.split_score(hidden)  # (B*S, 1, H, W)
         hidden = hidden.reshape(B, S, -1, H, W)
@@ -460,8 +700,14 @@ class ChangeModel(nn.Module):
             feature = feature + self._month_embedding(
                 context, feature.shape[-1], feature
             )
+        history = None
+        ctx = None
+        if self.history_years > 0:
+            history = self._history_features(context, feature.shape[2], feature.shape[3])
+            if self.history_context:
+                ctx = self._history_context_vector(*history)
         if self.temporal_encoder is not None:
-            feature = self._apply_temporal_encoder(feature)
+            feature = self._apply_temporal_encoder(feature, context, history)
 
         pooled = self._pool_time(feature)  # (B, C, H, W)
 
@@ -469,7 +715,7 @@ class ChangeModel(nn.Module):
             logits_binary = self.decoder_binary(pooled)
             before_feat = after_feat = None
         else:
-            bp_feat, before_feat, after_feat = self._breakpoint_features(feature)
+            bp_feat, before_feat, after_feat = self._breakpoint_features(feature, ctx)
             evidence = self.evidence_decoder(bp_feat)  # (B, 1, H', W')
             logits_binary = torch.cat(
                 [
@@ -491,6 +737,10 @@ class ChangeModel(nn.Module):
             category_in = torch.cat([before_feat, after_feat], dim=1)  # (B, 2C, H, W)
         else:
             category_in = pooled
+        if ctx is not None:
+            src_in = torch.cat([src_in, ctx], dim=1)
+            dst_in = torch.cat([dst_in, ctx], dim=1)
+            category_in = torch.cat([category_in, ctx], dim=1)
 
         logits_src = self.decoder_src(src_in)
         logits_dst = self.decoder_dst(dst_in)
@@ -533,6 +783,10 @@ class ChangeModel(nn.Module):
                 if isinstance(ts_image, RasterImage) and ts_image.timestamps is not None
                 else None
             )
+            if self.history_in_scan and timestep_days is not None:
+                # The timestep heads also cover the K year tokens (oldest first).
+                emb_image = context.inputs[i][EMBEDDING_KEY]
+                timestep_days = timestamps_to_days(emb_image.timestamps) + timestep_days
             outputs.append(
                 {
                     "binary": F.softmax(logits_binary[i], dim=0),

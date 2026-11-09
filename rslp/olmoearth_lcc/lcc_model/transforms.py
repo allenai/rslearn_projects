@@ -1,6 +1,6 @@
-"""Transforms that build the 22-image ``sentinel2_l2a`` stack for the LCC model.
+"""Transforms that build the ``sentinel2_l2a`` stack for the LCC model.
 
-The stack is 16 quarterly mosaics followed by 6 frequent images. A frequent layer
+The stack is 16 quarterly mosaics (configurable) followed by 6 frequent images. A frequent layer
 holds the least-cloudy mosaic of each of the 6 most recent 7-day periods with
 imagery in a 90-day block.
 
@@ -20,7 +20,7 @@ imagery in a 90-day block.
 from __future__ import annotations
 
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import torch
@@ -34,6 +34,16 @@ QUARTERLY_KEY = "sentinel2_quarterly"
 FREQUENT_KEY_PREFIX = "sentinel2_frequent_"
 ANNOTATION_KEY = "_lcc_annotation"
 INPUT_KEY = "sentinel2_l2a"
+
+# Annual OlmoEarth v1.3 embeddings (see the README's "Annual embeddings" section).
+# The window layer holds every year in EMBEDDING_YEARS as one raster with
+# len(EMBEDDING_YEARS) * EMBEDDING_DIMS int8 bands (year-major), -128 = nodata. The
+# samplers replace it with the K most recent eligible years as a (EMBEDDING_DIMS, K,
+# H, W) RasterImage under the same key, oldest first, one timestamp per year.
+EMBEDDING_KEY = "v13_embeddings"
+EMBEDDING_YEARS = list(range(2017, 2026))
+EMBEDDING_DIMS = 128
+EMBEDDING_NODATA = -128
 
 # Task names of the per-pixel start/end timestep-index targets. Each is a
 # segmentation-style ``{"classes", "valid"}`` target over the input timesteps, valid
@@ -79,13 +89,72 @@ def _change_index(centers: list[datetime], target: datetime, is_start: bool) -> 
     return candidates[0] if candidates else len(centers) - 1
 
 
+def select_embedding_years(
+    embeddings: RasterImage | None,
+    boundary: datetime,
+    num_years: int,
+    drop_latest: bool = False,
+    image_hw: tuple[int, int] | None = None,
+) -> RasterImage:
+    """Pick the ``num_years`` most recent annual embeddings that end by ``boundary``.
+
+    A year Y is eligible when it ends (Jan 1 of Y+1) on or before ``boundary``, the
+    start of the earliest frequent image, so no embedding overlaps the frequent
+    block. ``drop_latest`` skips the most recent eligible year, simulating the lag
+    before a year's embeddings are published. The K slots are the consecutive years
+    ending at the latest selected year; slots for years outside EMBEDDING_YEARS (or
+    a missing layer) are filled with EMBEDDING_NODATA.
+
+    Args:
+        embeddings: the window's embedding raster (len(EMBEDDING_YEARS) *
+            EMBEDDING_DIMS bands, one timestep), or None if the window lacks it.
+        boundary: start of the earliest frequent image.
+        num_years: K, the number of year slots to return.
+        drop_latest: whether to skip the most recent eligible year.
+        image_hw: (H, W) to use when ``embeddings`` is None.
+
+    Returns:
+        (EMBEDDING_DIMS, K, H, W) float RasterImage, oldest year first, with
+        timestamps [(Jan 1 Y, Jan 1 Y+1)] per slot.
+    """
+    tz = boundary.tzinfo or timezone.utc
+    # Jan 1 of boundary.year is always <= boundary, so the previous year is the latest
+    # one that has ended.
+    latest = boundary.year - 1
+    if drop_latest:
+        latest -= 1
+    years = list(range(latest - num_years + 1, latest + 1))
+
+    if embeddings is not None:
+        H, W = embeddings.image.shape[-2:]
+        all_years = embeddings.image.reshape(
+            len(EMBEDDING_YEARS), EMBEDDING_DIMS, H, W
+        ).float()
+    else:
+        assert image_hw is not None
+        H, W = image_hw
+        all_years = None
+    out = torch.full(
+        (EMBEDDING_DIMS, num_years, H, W), float(EMBEDDING_NODATA), dtype=torch.float32
+    )
+    for k, year in enumerate(years):
+        if all_years is not None and year in EMBEDDING_YEARS:
+            out[:, k] = all_years[EMBEDDING_YEARS.index(year)]
+    timestamps = [
+        (datetime(y, 1, 1, tzinfo=tz), datetime(y + 1, 1, 1, tzinfo=tz)) for y in years
+    ]
+    return RasterImage(image=out, timestamps=timestamps)
+
+
 def _build_quarterly_stack(
-    quarterly: RasterImage, valid_indices: list[int]
+    quarterly: RasterImage,
+    valid_indices: list[int],
+    num_quarterly: int = NUM_QUARTERLY,
 ) -> tuple[torch.Tensor, list[tuple[datetime, datetime]]]:
-    """Build exactly NUM_QUARTERLY quarterly images and their timestamps.
+    """Build exactly ``num_quarterly`` quarterly images and their timestamps.
 
     Uses the (already-trimmed) ``valid_indices`` in chronological order. When
-    fewer than NUM_QUARTERLY are available, prepends copies of the earliest
+    fewer than ``num_quarterly`` are available, prepends copies of the earliest
     selected image with progressively-older fake timestamps so the encoder sees
     distinct timesteps (it rejects duplicate timestamps within a modality when
     ``token_pooling=False``).
@@ -97,8 +166,8 @@ def _build_quarterly_stack(
     if valid_indices:
         img_parts.append(quarterly.image[:, valid_indices, :, :])
 
-    if len(valid_indices) < NUM_QUARTERLY:
-        deficit = NUM_QUARTERLY - len(valid_indices)
+    if len(valid_indices) < num_quarterly:
+        deficit = num_quarterly - len(valid_indices)
         base_idx = valid_indices[0] if valid_indices else 0
         base_ts = q_ts[0][0] if q_ts else quarterly.timestamps[0][0]
         pad_img = quarterly.image[:, base_idx : base_idx + 1, :, :].repeat(
@@ -252,11 +321,20 @@ def gate_post_change_targets(
 
 
 class StackSampler(Transform):
-    """Pick a frequent option, take 16 quarterly, build sentinel2_l2a + idx targets.
+    """Pick a frequent option, take N quarterly, build sentinel2_l2a + idx targets.
 
-    Builds the 22-image stack (16 quarterly + 6 frequent) in chronological order
-    and emits the per-pixel start/end timestep-index targets consumed by the
-    start/end heads.
+    Builds the stack (``num_quarterly`` quarterly + 6 frequent, 16 + 6 = 22 by
+    default) in chronological order and emits the per-pixel start/end
+    timestep-index targets consumed by the start/end heads.
+
+    With ``embedding_years > 0`` it also replaces the window's annual embedding
+    raster (``EMBEDDING_KEY``) with the K most recent years that end before the
+    chosen option's earliest frequent image (see select_embedding_years). At train
+    time ``embedding_lag_drop_prob`` is the probability of skipping the most recent
+    eligible year, so the model also sees the lag before a year is published. With
+    ``timestep_targets_include_embeddings``, the start/end targets index the
+    combined [K embedding years + stack] timeline (for models that keep the
+    embedding tokens in the breakpoint scan and timestep heads).
 
     With ``quarterly_dropout > 0`` (train only), each available quarterly image is
     independently dropped before sampling (keeping at least ``min_keep``), so
@@ -281,6 +359,10 @@ class StackSampler(Transform):
         quarterly_dropout: float = 0.0,
         min_keep: int = 8,
         emit_timestep_targets: bool = True,
+        num_quarterly: int = NUM_QUARTERLY,
+        embedding_years: int = 0,
+        embedding_lag_drop_prob: float = 0.0,
+        timestep_targets_include_embeddings: bool = False,
     ) -> None:
         """Initialize the transform.
 
@@ -292,12 +374,27 @@ class StackSampler(Transform):
             min_keep: minimum number of quarterly images to keep under dropout.
             emit_timestep_targets: whether to compute the ``ts_start`` / ``ts_end``
                 timestep-index targets from the window's annotation dates.
+            num_quarterly: number of quarterly images in the stack.
+            embedding_years: number of annual embedding years K to provide (0 = the
+                embeddings are not used).
+            embedding_lag_drop_prob: train-time probability of skipping the most
+                recent eligible embedding year.
+            timestep_targets_include_embeddings: index the start/end targets over
+                [K embedding years + stack] instead of the stack alone.
         """
         super().__init__()
         self.deterministic = deterministic
         self.quarterly_dropout = quarterly_dropout
         self.min_keep = min_keep
         self.emit_timestep_targets = emit_timestep_targets
+        self.num_quarterly = num_quarterly
+        self.embedding_years = embedding_years
+        self.embedding_lag_drop_prob = embedding_lag_drop_prob
+        self.timestep_targets_include_embeddings = timestep_targets_include_embeddings
+        if timestep_targets_include_embeddings and embedding_years <= 0:
+            raise ValueError(
+                "timestep_targets_include_embeddings requires embedding_years > 0"
+            )
 
     def _drop_quarterly(self, quarterly: RasterImage) -> RasterImage:
         """Randomly drop quarterly images (train-time augmentation)."""
@@ -364,7 +461,7 @@ class StackSampler(Transform):
     def forward(
         self, input_dict: dict[str, Any], target_dict: dict[str, Any]
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Sample a frequent option, take 16 quarterly, produce sentinel2_l2a."""
+        """Sample a frequent option, take N quarterly, produce sentinel2_l2a."""
         ann = input_dict.pop(ANNOTATION_KEY, None)
         if ann is None:
             raise KeyError(
@@ -411,13 +508,35 @@ class StackSampler(Transform):
         valid_indices = [
             i for i, ts in enumerate(quarterly.timestamps) if ts[1] < earliest_freq_ts
         ]
-        # Take the most recent NUM_QUARTERLY candidates (consecutive, no skipping).
-        valid_indices = valid_indices[-NUM_QUARTERLY:]
-        q_img, q_ts = _build_quarterly_stack(quarterly, valid_indices)
+        # Take the most recent num_quarterly candidates (consecutive, no skipping).
+        valid_indices = valid_indices[-self.num_quarterly :]
+        q_img, q_ts = _build_quarterly_stack(
+            quarterly, valid_indices, self.num_quarterly
+        )
 
         combined_img = torch.cat([q_img, chosen_frequent.image], dim=1)
         combined_ts = q_ts + chosen_frequent.timestamps
         input_dict[INPUT_KEY] = RasterImage(image=combined_img, timestamps=combined_ts)
+
+        # The embedding raster is passed through only when the model uses it.
+        raw_embeddings = input_dict.pop(EMBEDDING_KEY, None)
+        target_ts = combined_ts
+        if self.embedding_years > 0:
+            drop_latest = (
+                not self.deterministic
+                and random.random() < self.embedding_lag_drop_prob
+            )
+            emb = select_embedding_years(
+                raw_embeddings,
+                earliest_freq_ts,
+                self.embedding_years,
+                drop_latest=drop_latest,
+                image_hw=(combined_img.shape[2], combined_img.shape[3]),
+            )
+            input_dict[EMBEDDING_KEY] = emb
+            if self.timestep_targets_include_embeddings:
+                assert emb.timestamps is not None
+                target_ts = list(emb.timestamps) + combined_ts
 
         # The model can't predict the destination land cover or post-change category
         # before the imagery shows them, so gate those targets on the dates.
@@ -443,7 +562,7 @@ class StackSampler(Transform):
 
         if self.emit_timestep_targets:
             self._set_timestep_targets(
-                target_dict, combined_ts, ts_start_days, ts_end_days, quarterly
+                target_dict, target_ts, ts_start_days, ts_end_days, quarterly
             )
 
         # Train the change-category heads to predict "none" at negative points.
@@ -457,20 +576,29 @@ class PredictStackBuilder(Transform):
 
     At prediction time there is one ``sentinel2_frequent_0`` layer with six
     weekly least-cloudy mosaics from [T - 90d, T], and no annotation sidecar. The
-    quarterly layer already ends at T - 90d, so this takes the last 16 quarterly
-    images as-is and concatenates 16 quarterly + 6 frequent = 22 into
-    ``sentinel2_l2a``, matching the 22-timestep stack the model is trained on.
+    quarterly layer already ends at T - 90d, so this takes the last
+    ``num_quarterly`` (16) quarterly images as-is and concatenates them with the 6
+    frequent images into ``sentinel2_l2a``, matching the stack the model is trained
+    on. With ``embedding_years > 0`` it selects the annual embeddings the same way
+    as StackSampler (without the lag drop).
     """
 
-    def __init__(self) -> None:
-        """Initialize the prediction stack builder."""
+    def __init__(self, num_quarterly: int = NUM_QUARTERLY, embedding_years: int = 0) -> None:
+        """Initialize the prediction stack builder.
+
+        Args:
+            num_quarterly: number of quarterly images in the stack.
+            embedding_years: number of annual embedding years K (0 = not used).
+        """
         super().__init__()
+        self.num_quarterly = num_quarterly
+        self.embedding_years = embedding_years
 
     @override
     def forward(
         self, input_dict: dict[str, Any], target_dict: dict[str, Any]
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Concatenate last 16 quarterly + 6 frequent into sentinel2_l2a."""
+        """Concatenate last N quarterly + 6 frequent into sentinel2_l2a."""
         quarterly: RasterImage = input_dict.pop(QUARTERLY_KEY)
         if quarterly.timestamps is None:
             raise ValueError("sentinel2_quarterly must have timestamps")
@@ -483,11 +611,22 @@ class PredictStackBuilder(Transform):
             )
 
         T = quarterly.image.shape[1]
-        indices = list(range(max(0, T - NUM_QUARTERLY), T))
-        q_img, q_ts = _build_quarterly_stack(quarterly, indices)
+        indices = list(range(max(0, T - self.num_quarterly), T))
+        q_img, q_ts = _build_quarterly_stack(quarterly, indices, self.num_quarterly)
 
         combined_img = torch.cat([q_img, frequent.image], dim=1)
         combined_ts = q_ts + (frequent.timestamps or [])
         input_dict[INPUT_KEY] = RasterImage(image=combined_img, timestamps=combined_ts)
+
+        raw_embeddings = input_dict.pop(EMBEDDING_KEY, None)
+        if self.embedding_years > 0:
+            if not frequent.timestamps:
+                raise ValueError("Frequent layer must have timestamps")
+            input_dict[EMBEDDING_KEY] = select_embedding_years(
+                raw_embeddings,
+                min(ts[0] for ts in frequent.timestamps),
+                self.embedding_years,
+                image_hw=(combined_img.shape[2], combined_img.shape[3]),
+            )
 
         return input_dict, target_dict

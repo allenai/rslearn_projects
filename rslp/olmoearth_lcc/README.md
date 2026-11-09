@@ -385,6 +385,37 @@ nodata), to the `output_ts_start` / `output_ts_end` layers of
 of the predicted input image's time range. For a mosaic, that is the time range of its
 first (least cloudy) item, not of the 7-day or 90-day period.
 
+#### Annual embeddings (experimental)
+
+The model can also read annual OlmoEarth v1.3 embeddings as long-term history, so it
+can tell seasonal change (e.g. a short rainy season that the least-cloudy quarterly
+mosaics usually miss) from land cover change. The embeddings come from the public
+store `s3://olmoearth/olmoearth-v1-3-embeddings/embeddings.zarr` (endpoint
+`https://data.source.coop`, anonymous; calendar years 2017-2025, 128 int8 dims at
+10 m, built from monthly Sentinel-2, Sentinel-1 and Landsat). Its UTM zone grid is the
+same as the scaled-prediction grid, so a 2048x2048 prediction window is one store shard
+per year.
+
+- Training data: the `v13_embeddings` layer in `config.json` holds every year for the
+  window as one int8 raster (bands `e<year>_<dim>`, -128 = nodata). Fill it after
+  prepare with
+  `python -m rslp.olmoearth_lcc.lcc_model.fetch_embeddings "$OUT" --workers 6 --shard i --num_shards n`
+  (one process per shard; about 30 min for ~6,000 windows with 12 shards). Windows
+  whose layer is already completed are skipped.
+- `StackSampler` / `PredictStackBuilder` with `embedding_years: K` replace the raster with the K most
+  recent calendar years that end on or before the earliest frequent image (so no
+  embedding overlaps the frequent block), oldest first; years outside the store are
+  nodata. At train time `embedding_lag_drop_prob` skips the most recent eligible year,
+  simulating the delay before a year is published. They also take `num_quarterly` (16 by default).
+- `ChangeModel` options `history_years`, `history_context`, `history_memory`,
+  `history_in_scan` and `temporal_time_enc` (see the module docstring) choose how the
+  embeddings are used: as a context vector for the split scorer and decoders, as
+  memory tokens of a temporal transformer, and/or as extra steps of the breakpoint
+  scan and timestep heads (`timestep_targets_include_embeddings` in `StackSampler`).
+- The Stage 1 comparison configs are in `data/olmoearth_lcc/lcc_model/emb_v13/`
+  (16 or 8 quarterly images, K = 4 years, lag drop 0.5). The prediction pipeline does
+  not read the embedding store yet.
+
 #### OlmoEarth Studio (olmoearth_run)
 
 The Studio configs for the `rslearn_bpcat_notemporal` model live in olmoearth_projects

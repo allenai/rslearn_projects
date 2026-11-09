@@ -16,6 +16,8 @@ from rslp.olmoearth_lcc.lcc_model.output_bands import (
     PRE_CHANGE_CATEGORY_NAMES,
 )
 from rslp.olmoearth_lcc.lcc_model.transforms import (
+    EMBEDDING_KEY,
+    EMBEDDING_NODATA,
     INPUT_KEY,
     TS_END_KEY,
     TS_START_KEY,
@@ -63,11 +65,31 @@ def _timestamps(n: int) -> list[tuple[datetime, datetime]]:
     ]
 
 
-def _context(batch_size: int) -> ModelContext:
+def _context(batch_size: int, history_years: int = 0) -> ModelContext:
     inputs = []
     for b in range(batch_size):
         image = torch.full((3, T, CROP, CROP), float(b + 1))
-        inputs.append({INPUT_KEY: RasterImage(image=image, timestamps=_timestamps(T))})
+        inp: dict[str, Any] = {
+            INPUT_KEY: RasterImage(image=image, timestamps=_timestamps(T))
+        }
+        if history_years:
+            emb = torch.randint(-127, 128, (8, history_years, CROP, CROP)).float()
+            # Sample 0: oldest year entirely nodata, one nodata pixel in the next.
+            if b == 0:
+                emb[:, 0] = EMBEDDING_NODATA
+                emb[:, 1, 0, 0] = EMBEDDING_NODATA
+            years = range(2020 - history_years, 2020)
+            inp[EMBEDDING_KEY] = RasterImage(
+                image=emb,
+                timestamps=[
+                    (
+                        datetime(y, 1, 1, tzinfo=timezone.utc),
+                        datetime(y + 1, 1, 1, tzinfo=timezone.utc),
+                    )
+                    for y in years
+                ],
+            )
+        inputs.append(inp)
     return ModelContext(inputs=inputs, metadatas=[None] * batch_size)
 
 
@@ -276,3 +298,89 @@ def test_feature_routing_options() -> None:
     assert m.decoder_post_change[0].in_channels == 2 * DIM
     assert m.decoder_src[0].in_channels == DIM
     assert _model().decoder_pre_change[0].in_channels == DIM
+
+
+HISTORY = dict(
+    num_pass1=None,
+    binary_mode="breakpoint",
+    change_category_input="breakpoint",
+    history_years=3,
+    history_input_dim=8,
+    history_hidden=8,
+)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        dict(history_context=True),
+        dict(temporal_depth=1, temporal_heads=2, temporal_time_enc=True),
+        dict(
+            history_memory=True,
+            temporal_depth=1,
+            temporal_heads=2,
+            temporal_time_enc=True,
+        ),
+        dict(
+            history_context=True,
+            history_memory=True,
+            temporal_depth=1,
+            temporal_heads=2,
+            temporal_time_enc=True,
+        ),
+        dict(
+            history_memory=True,
+            history_in_scan=True,
+            temporal_depth=1,
+            temporal_heads=2,
+            temporal_time_enc=True,
+        ),
+    ],
+)
+def test_history_forward(kwargs: dict) -> None:
+    """Every annual-embedding mode runs, with finite losses, in train and eval."""
+    uses_history = kwargs.get("history_context") or kwargs.get("history_memory")
+    args = {**HISTORY, **kwargs}
+    if not uses_history:
+        args = {k: v for k, v in args.items() if not k.startswith("history")}
+    k = args.get("history_years", 0)
+    n_ts = T + (k if kwargs.get("history_in_scan") else 0)
+    model = _model(**args)
+    batch_size = 2
+    for train in (True, False):
+        model.train(train)
+        targets = _targets(batch_size)
+        out = model(_context(batch_size, k), targets)
+        for loss in out.loss_dict.values():
+            assert torch.isfinite(loss)
+        o = out.outputs[0]
+        assert o[TS_START_KEY].shape == (n_ts, CROP, CROP)
+        assert len(o["timestep_days"]) == n_ts
+        for value in o.values():
+            if isinstance(value, torch.Tensor):
+                assert torch.isfinite(value).all()
+
+
+def test_history_all_nodata_uses_null_context() -> None:
+    model = _model(**HISTORY, history_context=True)
+    model.eval()
+    context = _context(1, 3)
+    context.inputs[0][EMBEDDING_KEY].image[:] = EMBEDDING_NODATA
+    feat, valid = model._history_features(context, CROP // PATCH, CROP // PATCH)
+    assert not valid.any()
+    ctx = model._history_context_vector(feat, valid)
+    expected = model.hist_null[None, :, None, None].expand_as(ctx)
+    torch.testing.assert_close(ctx, expected)
+
+
+def test_history_invalid_options() -> None:
+    with pytest.raises(ValueError):
+        _model(**{**HISTORY, "history_years": 0}, history_context=True)
+    with pytest.raises(ValueError):
+        _model(**HISTORY)  # history_years without a mode
+    with pytest.raises(ValueError):
+        _model(**HISTORY, history_memory=True)  # needs temporal_depth
+    with pytest.raises(ValueError):
+        _model(**HISTORY, history_context=True, history_in_scan=True)
+    with pytest.raises(ValueError):
+        _model(temporal_depth=1, temporal_heads=2, temporal_pos_enc=True, temporal_time_enc=True)

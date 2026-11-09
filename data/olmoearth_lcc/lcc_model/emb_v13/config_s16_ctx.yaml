@@ -1,0 +1,665 @@
+# Stage 1 annual-embedding arm s16_ctx (card t-4hitzy), generated from
+# config_bp_abs_qdrop_bpcat_1pass.yaml by the session's make_configs.py:
+# 16 quarterly + 6 frequent images; history_context=True, temporal transformer=False (depth 2, time encoding), history_memory=False, history_in_scan=False; seed 0.
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslp.olmoearth_lcc.lcc_model.model.ChangeModel
+      init_args:
+        encoder:
+          class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+          init_args:
+            model_id: OLMOEARTH_V1_2_BASE
+            patch_size: 4
+            token_pooling: false
+            use_legacy_timestamps: false
+        num_classes_binary: 3
+        num_classes_src: 14
+        num_classes_dst: 14
+        num_classes_pre_change: 8
+        num_classes_post_change: 21
+        num_timesteps: 22
+        num_pass1: null
+        embedding_dim: 768
+        decoder_stages:
+        - - - 768
+            - 3
+        - - - 256
+            - 3
+        - - - 128
+            - 3
+        binary_loss_weight: 2.0
+        binary_mode: breakpoint
+        change_category_input: breakpoint
+        history_years: 4
+        history_context: true
+        history_memory: false
+        history_in_scan: false
+    optimizer:
+      class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
+      init_args:
+        lr: 0.0001
+        layer_decay_rate: 0.65
+        num_layers: 12
+        encoder_prefix: model.encoder
+    scheduler:
+      class_path: rslearn.train.scheduler.PlateauScheduler
+      init_args:
+        factor: 0.2
+        patience: 5
+        min_lr: 0
+        cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20261005/
+    inputs:
+      sentinel2_quarterly:
+        data_type: raster
+        layers:
+        - sentinel2_quarterly
+        bands:
+        - B02
+        - B03
+        - B04
+        - B08
+        - B05
+        - B06
+        - B07
+        - B8A
+        - B11
+        - B12
+        - B01
+        - B09
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_0:
+        data_type: raster
+        layers:
+        - sentinel2_frequent_0
+        bands:
+        - B02
+        - B03
+        - B04
+        - B08
+        - B05
+        - B06
+        - B07
+        - B8A
+        - B11
+        - B12
+        - B01
+        - B09
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+      sentinel2_frequent_1:
+        data_type: raster
+        layers:
+        - sentinel2_frequent_1
+        bands:
+        - B02
+        - B03
+        - B04
+        - B08
+        - B05
+        - B06
+        - B07
+        - B8A
+        - B11
+        - B12
+        - B01
+        - B09
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_2:
+        data_type: raster
+        layers:
+        - sentinel2_frequent_2
+        bands:
+        - B02
+        - B03
+        - B04
+        - B08
+        - B05
+        - B06
+        - B07
+        - B8A
+        - B11
+        - B12
+        - B01
+        - B09
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_3:
+        data_type: raster
+        layers:
+        - sentinel2_frequent_3
+        bands:
+        - B02
+        - B03
+        - B04
+        - B08
+        - B05
+        - B06
+        - B07
+        - B8A
+        - B11
+        - B12
+        - B01
+        - B09
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_4:
+        data_type: raster
+        layers:
+        - sentinel2_frequent_4
+        bands:
+        - B02
+        - B03
+        - B04
+        - B08
+        - B05
+        - B06
+        - B07
+        - B8A
+        - B11
+        - B12
+        - B01
+        - B09
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_5:
+        data_type: raster
+        layers:
+        - sentinel2_frequent_5
+        bands:
+        - B02
+        - B03
+        - B04
+        - B08
+        - B05
+        - B06
+        - B07
+        - B8A
+        - B11
+        - B12
+        - B01
+        - B09
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_6:
+        data_type: raster
+        layers:
+        - sentinel2_frequent_6
+        bands:
+        - B02
+        - B03
+        - B04
+        - B08
+        - B05
+        - B06
+        - B07
+        - B8A
+        - B11
+        - B12
+        - B01
+        - B09
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      sentinel2_frequent_7:
+        data_type: raster
+        layers:
+        - sentinel2_frequent_7
+        bands:
+        - B02
+        - B03
+        - B04
+        - B08
+        - B05
+        - B06
+        - B07
+        - B8A
+        - B11
+        - B12
+        - B01
+        - B09
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+        required: false
+      label_binary:
+        data_type: raster
+        layers:
+        - label_binary
+        bands:
+        - label
+        is_target: true
+        dtype: INT32
+      label_src:
+        data_type: raster
+        layers:
+        - label_src
+        bands:
+        - label
+        is_target: true
+        dtype: INT32
+      label_dst:
+        data_type: raster
+        layers:
+        - label_dst
+        bands:
+        - label
+        is_target: true
+        dtype: INT32
+      label_pre_change:
+        data_type: raster
+        layers:
+        - label_pre_change
+        bands:
+        - label
+        is_target: true
+        dtype: INT32
+      label_post_change:
+        data_type: raster
+        layers:
+        - label_post_change
+        bands:
+        - label
+        is_target: true
+        dtype: INT32
+      label_ts_end:
+        data_type: raster
+        layers:
+        - label_ts_end
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_ts_start:
+        data_type: raster
+        layers:
+        - label_ts_start
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_transition_date:
+        data_type: raster
+        layers:
+        - label_transition_date
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_transition_dst:
+        data_type: raster
+        layers:
+        - label_transition_dst
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_transition_post_change:
+        data_type: raster
+        layers:
+        - label_transition_post_change
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      v13_embeddings:
+        data_type: raster
+        layers:
+        - v13_embeddings
+        bands: [e2017_000, e2017_001, e2017_002, e2017_003, e2017_004, e2017_005, e2017_006, e2017_007, e2017_008, e2017_009, e2017_010, e2017_011, e2017_012, e2017_013, e2017_014, e2017_015, e2017_016, e2017_017, e2017_018, e2017_019, e2017_020, e2017_021, e2017_022, e2017_023, e2017_024, e2017_025, e2017_026, e2017_027, e2017_028, e2017_029, e2017_030, e2017_031, e2017_032, e2017_033, e2017_034, e2017_035, e2017_036, e2017_037, e2017_038, e2017_039, e2017_040, e2017_041, e2017_042, e2017_043, e2017_044, e2017_045, e2017_046, e2017_047, e2017_048, e2017_049, e2017_050, e2017_051, e2017_052, e2017_053, e2017_054, e2017_055, e2017_056, e2017_057, e2017_058, e2017_059, e2017_060, e2017_061, e2017_062, e2017_063, e2017_064, e2017_065, e2017_066, e2017_067, e2017_068, e2017_069, e2017_070, e2017_071, e2017_072, e2017_073, e2017_074, e2017_075, e2017_076, e2017_077, e2017_078, e2017_079, e2017_080, e2017_081, e2017_082, e2017_083, e2017_084, e2017_085, e2017_086, e2017_087, e2017_088, e2017_089, e2017_090, e2017_091, e2017_092, e2017_093, e2017_094, e2017_095, e2017_096, e2017_097, e2017_098, e2017_099, e2017_100, e2017_101, e2017_102, e2017_103, e2017_104, e2017_105, e2017_106, e2017_107, e2017_108, e2017_109, e2017_110, e2017_111, e2017_112, e2017_113, e2017_114, e2017_115, e2017_116, e2017_117, e2017_118, e2017_119, e2017_120, e2017_121, e2017_122, e2017_123, e2017_124, e2017_125, e2017_126, e2017_127, e2018_000, e2018_001, e2018_002, e2018_003, e2018_004, e2018_005, e2018_006, e2018_007, e2018_008, e2018_009, e2018_010, e2018_011, e2018_012, e2018_013, e2018_014, e2018_015, e2018_016, e2018_017, e2018_018, e2018_019, e2018_020, e2018_021, e2018_022, e2018_023, e2018_024, e2018_025, e2018_026, e2018_027, e2018_028, e2018_029, e2018_030, e2018_031, e2018_032, e2018_033, e2018_034, e2018_035, e2018_036, e2018_037, e2018_038, e2018_039, e2018_040, e2018_041, e2018_042, e2018_043, e2018_044, e2018_045, e2018_046, e2018_047, e2018_048, e2018_049, e2018_050, e2018_051, e2018_052, e2018_053, e2018_054, e2018_055, e2018_056, e2018_057, e2018_058, e2018_059, e2018_060, e2018_061, e2018_062, e2018_063, e2018_064, e2018_065, e2018_066, e2018_067, e2018_068, e2018_069, e2018_070, e2018_071, e2018_072, e2018_073, e2018_074, e2018_075, e2018_076, e2018_077, e2018_078, e2018_079, e2018_080, e2018_081, e2018_082, e2018_083, e2018_084, e2018_085, e2018_086, e2018_087, e2018_088, e2018_089, e2018_090, e2018_091, e2018_092, e2018_093, e2018_094, e2018_095, e2018_096, e2018_097, e2018_098, e2018_099, e2018_100, e2018_101, e2018_102, e2018_103, e2018_104, e2018_105, e2018_106, e2018_107, e2018_108, e2018_109, e2018_110, e2018_111, e2018_112, e2018_113, e2018_114, e2018_115, e2018_116, e2018_117, e2018_118, e2018_119, e2018_120, e2018_121, e2018_122, e2018_123, e2018_124, e2018_125, e2018_126, e2018_127, e2019_000, e2019_001, e2019_002, e2019_003, e2019_004, e2019_005, e2019_006, e2019_007, e2019_008, e2019_009, e2019_010, e2019_011, e2019_012, e2019_013, e2019_014, e2019_015, e2019_016, e2019_017, e2019_018, e2019_019, e2019_020, e2019_021, e2019_022, e2019_023, e2019_024, e2019_025, e2019_026, e2019_027, e2019_028, e2019_029, e2019_030, e2019_031, e2019_032, e2019_033, e2019_034, e2019_035, e2019_036, e2019_037, e2019_038, e2019_039, e2019_040, e2019_041, e2019_042, e2019_043, e2019_044, e2019_045, e2019_046, e2019_047, e2019_048, e2019_049, e2019_050, e2019_051, e2019_052, e2019_053, e2019_054, e2019_055, e2019_056, e2019_057, e2019_058, e2019_059, e2019_060, e2019_061, e2019_062, e2019_063, e2019_064, e2019_065, e2019_066, e2019_067, e2019_068, e2019_069, e2019_070, e2019_071, e2019_072, e2019_073, e2019_074, e2019_075, e2019_076, e2019_077, e2019_078, e2019_079, e2019_080, e2019_081, e2019_082, e2019_083, e2019_084, e2019_085, e2019_086, e2019_087, e2019_088, e2019_089, e2019_090, e2019_091, e2019_092, e2019_093, e2019_094, e2019_095, e2019_096, e2019_097, e2019_098, e2019_099, e2019_100, e2019_101, e2019_102, e2019_103, e2019_104, e2019_105, e2019_106, e2019_107, e2019_108, e2019_109, e2019_110, e2019_111, e2019_112, e2019_113, e2019_114, e2019_115, e2019_116, e2019_117, e2019_118, e2019_119, e2019_120, e2019_121, e2019_122, e2019_123, e2019_124, e2019_125, e2019_126, e2019_127, e2020_000, e2020_001, e2020_002, e2020_003, e2020_004, e2020_005, e2020_006, e2020_007, e2020_008, e2020_009, e2020_010, e2020_011, e2020_012, e2020_013, e2020_014, e2020_015, e2020_016, e2020_017, e2020_018, e2020_019, e2020_020, e2020_021, e2020_022, e2020_023, e2020_024, e2020_025, e2020_026, e2020_027, e2020_028, e2020_029, e2020_030, e2020_031, e2020_032, e2020_033, e2020_034, e2020_035, e2020_036, e2020_037, e2020_038, e2020_039, e2020_040, e2020_041, e2020_042, e2020_043, e2020_044, e2020_045, e2020_046, e2020_047, e2020_048, e2020_049, e2020_050, e2020_051, e2020_052, e2020_053, e2020_054, e2020_055, e2020_056, e2020_057, e2020_058, e2020_059, e2020_060, e2020_061, e2020_062, e2020_063, e2020_064, e2020_065, e2020_066, e2020_067, e2020_068, e2020_069, e2020_070, e2020_071, e2020_072, e2020_073, e2020_074, e2020_075, e2020_076, e2020_077, e2020_078, e2020_079, e2020_080, e2020_081, e2020_082, e2020_083, e2020_084, e2020_085, e2020_086, e2020_087, e2020_088, e2020_089, e2020_090, e2020_091, e2020_092, e2020_093, e2020_094, e2020_095, e2020_096, e2020_097, e2020_098, e2020_099, e2020_100, e2020_101, e2020_102, e2020_103, e2020_104, e2020_105, e2020_106, e2020_107, e2020_108, e2020_109, e2020_110, e2020_111, e2020_112, e2020_113, e2020_114, e2020_115, e2020_116, e2020_117, e2020_118, e2020_119, e2020_120, e2020_121, e2020_122, e2020_123, e2020_124, e2020_125, e2020_126, e2020_127, e2021_000, e2021_001, e2021_002, e2021_003, e2021_004, e2021_005, e2021_006, e2021_007, e2021_008, e2021_009, e2021_010, e2021_011, e2021_012, e2021_013, e2021_014, e2021_015, e2021_016, e2021_017, e2021_018, e2021_019, e2021_020, e2021_021, e2021_022, e2021_023, e2021_024, e2021_025, e2021_026, e2021_027, e2021_028, e2021_029, e2021_030, e2021_031, e2021_032, e2021_033, e2021_034, e2021_035, e2021_036, e2021_037, e2021_038, e2021_039, e2021_040, e2021_041, e2021_042, e2021_043, e2021_044, e2021_045, e2021_046, e2021_047, e2021_048, e2021_049, e2021_050, e2021_051, e2021_052, e2021_053, e2021_054, e2021_055, e2021_056, e2021_057, e2021_058, e2021_059, e2021_060, e2021_061, e2021_062, e2021_063, e2021_064, e2021_065, e2021_066, e2021_067, e2021_068, e2021_069, e2021_070, e2021_071, e2021_072, e2021_073, e2021_074, e2021_075, e2021_076, e2021_077, e2021_078, e2021_079, e2021_080, e2021_081, e2021_082, e2021_083, e2021_084, e2021_085, e2021_086, e2021_087, e2021_088, e2021_089, e2021_090, e2021_091, e2021_092, e2021_093, e2021_094, e2021_095, e2021_096, e2021_097, e2021_098, e2021_099, e2021_100, e2021_101, e2021_102, e2021_103, e2021_104, e2021_105, e2021_106, e2021_107, e2021_108, e2021_109, e2021_110, e2021_111, e2021_112, e2021_113, e2021_114, e2021_115, e2021_116, e2021_117, e2021_118, e2021_119, e2021_120, e2021_121, e2021_122, e2021_123, e2021_124, e2021_125, e2021_126, e2021_127, e2022_000, e2022_001, e2022_002, e2022_003, e2022_004, e2022_005, e2022_006, e2022_007, e2022_008, e2022_009, e2022_010, e2022_011, e2022_012, e2022_013, e2022_014, e2022_015, e2022_016, e2022_017, e2022_018, e2022_019, e2022_020, e2022_021, e2022_022, e2022_023, e2022_024, e2022_025, e2022_026, e2022_027, e2022_028, e2022_029, e2022_030, e2022_031, e2022_032, e2022_033, e2022_034, e2022_035, e2022_036, e2022_037, e2022_038, e2022_039, e2022_040, e2022_041, e2022_042, e2022_043, e2022_044, e2022_045, e2022_046, e2022_047, e2022_048, e2022_049, e2022_050, e2022_051, e2022_052, e2022_053, e2022_054, e2022_055, e2022_056, e2022_057, e2022_058, e2022_059, e2022_060, e2022_061, e2022_062, e2022_063, e2022_064, e2022_065, e2022_066, e2022_067, e2022_068, e2022_069, e2022_070, e2022_071, e2022_072, e2022_073, e2022_074, e2022_075, e2022_076, e2022_077, e2022_078, e2022_079, e2022_080, e2022_081, e2022_082, e2022_083, e2022_084, e2022_085, e2022_086, e2022_087, e2022_088, e2022_089, e2022_090, e2022_091, e2022_092, e2022_093, e2022_094, e2022_095, e2022_096, e2022_097, e2022_098, e2022_099, e2022_100, e2022_101, e2022_102, e2022_103, e2022_104, e2022_105, e2022_106, e2022_107, e2022_108, e2022_109, e2022_110, e2022_111, e2022_112, e2022_113, e2022_114, e2022_115, e2022_116, e2022_117, e2022_118, e2022_119, e2022_120, e2022_121, e2022_122, e2022_123, e2022_124, e2022_125, e2022_126, e2022_127, e2023_000, e2023_001, e2023_002, e2023_003, e2023_004, e2023_005, e2023_006, e2023_007, e2023_008, e2023_009, e2023_010, e2023_011, e2023_012, e2023_013, e2023_014, e2023_015, e2023_016, e2023_017, e2023_018, e2023_019, e2023_020, e2023_021, e2023_022, e2023_023, e2023_024, e2023_025, e2023_026, e2023_027, e2023_028, e2023_029, e2023_030, e2023_031, e2023_032, e2023_033, e2023_034, e2023_035, e2023_036, e2023_037, e2023_038, e2023_039, e2023_040, e2023_041, e2023_042, e2023_043, e2023_044, e2023_045, e2023_046, e2023_047, e2023_048, e2023_049, e2023_050, e2023_051, e2023_052, e2023_053, e2023_054, e2023_055, e2023_056, e2023_057, e2023_058, e2023_059, e2023_060, e2023_061, e2023_062, e2023_063, e2023_064, e2023_065, e2023_066, e2023_067, e2023_068, e2023_069, e2023_070, e2023_071, e2023_072, e2023_073, e2023_074, e2023_075, e2023_076, e2023_077, e2023_078, e2023_079, e2023_080, e2023_081, e2023_082, e2023_083, e2023_084, e2023_085, e2023_086, e2023_087, e2023_088, e2023_089, e2023_090, e2023_091, e2023_092, e2023_093, e2023_094, e2023_095, e2023_096, e2023_097, e2023_098, e2023_099, e2023_100, e2023_101, e2023_102, e2023_103, e2023_104, e2023_105, e2023_106, e2023_107, e2023_108, e2023_109, e2023_110, e2023_111, e2023_112, e2023_113, e2023_114, e2023_115, e2023_116, e2023_117, e2023_118, e2023_119, e2023_120, e2023_121, e2023_122, e2023_123, e2023_124, e2023_125, e2023_126, e2023_127, e2024_000, e2024_001, e2024_002, e2024_003, e2024_004, e2024_005, e2024_006, e2024_007, e2024_008, e2024_009, e2024_010, e2024_011, e2024_012, e2024_013, e2024_014, e2024_015, e2024_016, e2024_017, e2024_018, e2024_019, e2024_020, e2024_021, e2024_022, e2024_023, e2024_024, e2024_025, e2024_026, e2024_027, e2024_028, e2024_029, e2024_030, e2024_031, e2024_032, e2024_033, e2024_034, e2024_035, e2024_036, e2024_037, e2024_038, e2024_039, e2024_040, e2024_041, e2024_042, e2024_043, e2024_044, e2024_045, e2024_046, e2024_047, e2024_048, e2024_049, e2024_050, e2024_051, e2024_052, e2024_053, e2024_054, e2024_055, e2024_056, e2024_057, e2024_058, e2024_059, e2024_060, e2024_061, e2024_062, e2024_063, e2024_064, e2024_065, e2024_066, e2024_067, e2024_068, e2024_069, e2024_070, e2024_071, e2024_072, e2024_073, e2024_074, e2024_075, e2024_076, e2024_077, e2024_078, e2024_079, e2024_080, e2024_081, e2024_082, e2024_083, e2024_084, e2024_085, e2024_086, e2024_087, e2024_088, e2024_089, e2024_090, e2024_091, e2024_092, e2024_093, e2024_094, e2024_095, e2024_096, e2024_097, e2024_098, e2024_099, e2024_100, e2024_101, e2024_102, e2024_103, e2024_104, e2024_105, e2024_106, e2024_107, e2024_108, e2024_109, e2024_110, e2024_111, e2024_112, e2024_113, e2024_114, e2024_115, e2024_116, e2024_117, e2024_118, e2024_119, e2024_120, e2024_121, e2024_122, e2024_123, e2024_124, e2024_125, e2024_126, e2024_127, e2025_000, e2025_001, e2025_002, e2025_003, e2025_004, e2025_005, e2025_006, e2025_007, e2025_008, e2025_009, e2025_010, e2025_011, e2025_012, e2025_013, e2025_014, e2025_015, e2025_016, e2025_017, e2025_018, e2025_019, e2025_020, e2025_021, e2025_022, e2025_023, e2025_024, e2025_025, e2025_026, e2025_027, e2025_028, e2025_029, e2025_030, e2025_031, e2025_032, e2025_033, e2025_034, e2025_035, e2025_036, e2025_037, e2025_038, e2025_039, e2025_040, e2025_041, e2025_042, e2025_043, e2025_044, e2025_045, e2025_046, e2025_047, e2025_048, e2025_049, e2025_050, e2025_051, e2025_052, e2025_053, e2025_054, e2025_055, e2025_056, e2025_057, e2025_058, e2025_059, e2025_060, e2025_061, e2025_062, e2025_063, e2025_064, e2025_065, e2025_066, e2025_067, e2025_068, e2025_069, e2025_070, e2025_071, e2025_072, e2025_073, e2025_074, e2025_075, e2025_076, e2025_077, e2025_078, e2025_079, e2025_080, e2025_081, e2025_082, e2025_083, e2025_084, e2025_085, e2025_086, e2025_087, e2025_088, e2025_089, e2025_090, e2025_091, e2025_092, e2025_093, e2025_094, e2025_095, e2025_096, e2025_097, e2025_098, e2025_099, e2025_100, e2025_101, e2025_102, e2025_103, e2025_104, e2025_105, e2025_106, e2025_107, e2025_108, e2025_109, e2025_110, e2025_111, e2025_112, e2025_113, e2025_114, e2025_115, e2025_116, e2025_117, e2025_118, e2025_119, e2025_120, e2025_121, e2025_122, e2025_123, e2025_124, e2025_125, e2025_126, e2025_127]
+        passthrough: true
+        dtype: FLOAT32
+        required: false
+    task:
+      class_path: rslp.olmoearth_lcc.lcc_model.tasks.LCCMultiTask
+      init_args:
+        annotations_path: /weka/dfive-default/rslearn-eai/datasets/change_finder/lcc_model_dataset_20261005/lcc_annotations.json
+        input_mapping:
+          binary:
+            label_binary: targets
+          src:
+            label_src: targets
+          dst:
+            label_dst: targets
+          pre_change:
+            label_pre_change: targets
+          post_change:
+            label_post_change: targets
+          ts_start:
+            label_binary: targets
+          ts_end:
+            label_binary: targets
+        tasks:
+          binary:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 3
+              nodata_value: 0
+              enable_confusion_matrix: true
+              enable_f1_metric: true
+              report_metric_per_class: true
+              f1_metric_thresholds:
+              - - 0.01
+              - - 0.02
+              - - 0.05
+              - - 0.1
+              - - 0.2
+              - - 0.3
+              - - 0.4
+              - - 0.5
+              - - 0.6
+              - - 0.7
+              - - 0.8
+              - - 0.9
+              - - 0.95
+              - - 0.98
+              - - 0.99
+              class_names:
+              - nodata
+              - no_change
+              - change
+              enable_accuracy_metric: false
+              metric_kwargs:
+                average: micro
+              other_metrics:
+                accuracy:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.BalancedBinaryMetric
+                  init_args:
+                    metric: accuracy
+                auroc:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.BalancedBinaryMetric
+                  init_args:
+                    metric: auroc
+                prauc:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.BalancedBinaryMetric
+                  init_args:
+                    metric: prauc
+                neg_max_score:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.NegativeWindowMaxScore
+          src:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 14
+              nodata_value: 0
+              enable_confusion_matrix: true
+              class_names:
+              - nodata
+              - bare
+              - burnt
+              - crops
+              - fallow/shifting cultivation
+              - grassland
+              - Lichen and moss
+              - shrub
+              - snow and ice
+              - tree
+              - urban/built-up
+              - water
+              - wetland (herbaceous)
+              - mangrove
+              metric_kwargs:
+                average: micro
+          dst:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 14
+              nodata_value: 0
+              enable_confusion_matrix: true
+              class_names:
+              - nodata
+              - bare
+              - burnt
+              - crops
+              - fallow/shifting cultivation
+              - grassland
+              - Lichen and moss
+              - shrub
+              - snow and ice
+              - tree
+              - urban/built-up
+              - water
+              - wetland (herbaceous)
+              - mangrove
+              metric_kwargs:
+                average: micro
+          pre_change:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 8
+              nodata_value: 0
+              enable_confusion_matrix: true
+              enable_f1_metric: true
+              report_metric_per_class: true
+              f1_metric_thresholds:
+              - - 0.01
+                - 0.05
+                - 0.1
+                - 0.2
+                - 0.3
+                - 0.4
+                - 0.5
+                - 0.6
+                - 0.7
+                - 0.8
+                - 0.9
+                - 0.95
+                - 0.99
+              class_names:
+              - nodata
+              - none
+              - deforestation
+              - urban_erosion
+              - wetland_loss
+              - water_contract
+              - removed_crop_structure
+              - mangrove_loss
+              metric_kwargs:
+                average: micro
+          post_change:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 21
+              nodata_value: 0
+              enable_confusion_matrix: true
+              enable_f1_metric: true
+              report_metric_per_class: true
+              f1_metric_thresholds:
+              - - 0.01
+                - 0.05
+                - 0.1
+                - 0.2
+                - 0.3
+                - 0.4
+                - 0.5
+                - 0.6
+                - 0.7
+                - 0.8
+                - 0.9
+                - 0.95
+                - 0.99
+              class_names:
+              - nodata
+              - none
+              - vegetation_growth
+              - new_building
+              - new_road
+              - new_infrastructure
+              - new_crop_field
+              - new_aquafarm
+              - site_clearing
+              - water_expand
+              - mining
+              - new_crop_structure
+              - selective_logging
+              - landslide
+              - settlement
+              - agricultural_activity
+              - wildfire
+              - ice_motion
+              - flooding
+              - storm_damage
+              - vegetation_dieback
+              metric_kwargs:
+                average: micro
+          ts_start:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 22
+              metric_kwargs:
+                average: micro
+              other_metrics:
+                within1:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.TimestepToleranceAccuracy
+                  init_args:
+                    tolerance: 1
+                within2:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.TimestepToleranceAccuracy
+                  init_args:
+                    tolerance: 2
+          ts_end:
+            class_path: rslearn.train.tasks.segmentation.SegmentationTask
+            init_args:
+              num_classes: 22
+              metric_kwargs:
+                average: micro
+              other_metrics:
+                within1:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.TimestepToleranceAccuracy
+                  init_args:
+                    tolerance: 1
+                within2:
+                  class_path: rslp.olmoearth_lcc.lcc_model.tasks.TimestepToleranceAccuracy
+                  init_args:
+                    tolerance: 2
+    batch_size: 4
+    num_workers: 16
+    use_in_memory_dataset: false
+    default_config:
+      crop_size: 64
+      transforms:
+      - class_path: rslp.olmoearth_lcc.lcc_model.transforms.StackSampler
+        init_args:
+          deterministic: true
+          num_quarterly: 16
+          embedding_years: 4
+      - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+        init_args:
+          band_names:
+            sentinel2_l2a:
+            - B02
+            - B03
+            - B04
+            - B08
+            - B05
+            - B06
+            - B07
+            - B8A
+            - B11
+            - B12
+            - B01
+            - B09
+    train_config:
+      transforms:
+      - class_path: rslp.olmoearth_lcc.lcc_model.transforms.StackSampler
+        init_args:
+          deterministic: false
+          quarterly_dropout: 0.25
+          num_quarterly: 16
+          embedding_years: 4
+          embedding_lag_drop_prob: 0.5
+      - class_path: rslearn.train.transforms.flip.Flip
+        init_args:
+          image_selectors:
+          - sentinel2_l2a
+          - target/binary/classes
+          - target/binary/valid
+          - target/src/classes
+          - target/src/valid
+          - target/dst/classes
+          - target/dst/valid
+          - target/pre_change/classes
+          - target/pre_change/valid
+          - target/post_change/classes
+          - target/post_change/valid
+          - target/ts_start/classes
+          - target/ts_start/valid
+          - target/ts_end/classes
+          - target/ts_end/valid
+          - v13_embeddings
+      - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+        init_args:
+          band_names:
+            sentinel2_l2a:
+            - B02
+            - B03
+            - B04
+            - B08
+            - B05
+            - B06
+            - B07
+            - B8A
+            - B11
+            - B12
+            - B01
+            - B09
+      tags:
+        split: train
+    val_config:
+      tags:
+        split: val
+    test_config:
+      tags:
+        split: val
+trainer:
+  max_epochs: 100
+  callbacks:
+  - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    init_args:
+      logging_interval: epoch
+  - class_path: rslearn.train.callbacks.checkpointing.ManagedBestLastCheckpoint
+    init_args:
+      monitor: val_post_change/accuracy
+      mode: max
+project_name: 2026_11_09_lcc_emb
+run_name: s16_ctx
+management_dir: ${RSLP_PREFIX}/projects
+seed_everything: 0
