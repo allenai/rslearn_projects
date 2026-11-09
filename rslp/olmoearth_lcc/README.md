@@ -268,7 +268,7 @@ The prepare script:
   min(cutoff, stop_date), where cutoff is the annotation imagery cutoff and
   stop_date is the earliest optional per-point stop date. The cutoff is
   2026-01-01, except for groups listed in `GROUP_IMAGE_CUTOFFS` in `prepare.py`
-  (phase23 and phase24, annotated with imagery up to 2026-11-08). It is recorded in the
+  (phase23, annotated with imagery up to 2026-11-08). It is recorded in the
   sidecar, so changing a group's cutoff recreates its windows. Options whose
   block ends coincide after clamping are kept once, so e.g. a negative anchored
   two weeks before the cutoff gets two options (anchor + 6 days and the cutoff)

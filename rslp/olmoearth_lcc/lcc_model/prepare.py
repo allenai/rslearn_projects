@@ -97,7 +97,6 @@ IMAGE_CUTOFF = datetime(2026, 1, 1, tzinfo=timezone.utc)
 # Groups annotated with imagery past IMAGE_CUTOFF, mapped to their own cutoff.
 GROUP_IMAGE_CUTOFFS = {
     "phase23": datetime(2026, 11, 8, tzinfo=timezone.utc),
-    "phase24": datetime(2026, 11, 8, tzinfo=timezone.utc),
 }
 
 WINDOW_SIZE = 128
