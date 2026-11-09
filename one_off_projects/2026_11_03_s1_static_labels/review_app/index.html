@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S1 Label Review</title>
+<style>
+  :root { --bg:#16181c; --panel:#20232a; --fg:#e6e6e6; --dim:#9aa0a6; --acc:#4fa3ff; --infra:#f28b30; --vessel:#3ec47e; --unsure:#c9b13b; --none:#a0a0a0; --derelict:#c46bff; --moored:#3fb8d6; --island:#b08850; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.4 system-ui, sans-serif; }
+  header { display:flex; gap:16px; align-items:center; padding:8px 16px; background:var(--panel); flex-wrap:wrap; }
+  header select { background:#2b2f37; color:var(--fg); border:1px solid #3a3f49; padding:4px 8px; border-radius:4px; max-width:100%; font:inherit; }
+  #gdesc { color:var(--dim); font-size:12px; flex-basis:100%; }
+  header input { width:70px; background:#2b2f37; color:var(--fg); border:1px solid #3a3f49; padding:3px 6px; border-radius:4px; }
+  main { display:flex; gap:20px; padding:16px; flex-wrap:wrap; }
+  .imgs { display:flex; gap:12px; }
+  .imgbox { position:relative; background:#000; }
+  .imgbox img { image-rendering:pixelated; display:block; }
+  .imgbox svg { position:absolute; left:0; top:0; pointer-events:none; }
+  .imgbox .cap { position:absolute; left:6px; top:4px; color:#ff0; font-weight:600; text-shadow:0 0 3px #000; }
+  .times { display:flex; gap:8px; margin-top:10px; }
+  .times div { padding:4px 10px; border-radius:4px; background:#2b2f37; color:var(--dim); }
+  .times div.on { background:var(--acc); color:#000; font-weight:600; }
+  .side { min-width:300px; max-width:420px; }
+  .side table { border-collapse:collapse; width:100%; }
+  .side td { padding:2px 6px; vertical-align:top; }
+  .side td:first-child { color:var(--dim); white-space:nowrap; }
+  .lab { display:inline-block; padding:3px 10px; border-radius:4px; font-weight:600; color:#000; }
+  .keys { color:var(--dim); margin-top:12px; font-size:13px; }
+  .keys b { color:var(--fg); }
+  .strip { display:flex; flex-wrap:wrap; gap:2px; padding:0 16px 16px; }
+  .strip span { width:10px; height:10px; background:#333; cursor:pointer; }
+  .strip span.cur { outline:2px solid var(--acc); }
+  a { color:var(--acc); }
+  .score { font-variant-numeric: tabular-nums; }
+  button.copy { background:#2b2f37; color:var(--fg); border:1px solid #3a3f49; border-radius:4px; padding:1px 8px; cursor:copy; font:inherit; font-variant-numeric:tabular-nums; }
+  button.copy:hover { border-color:var(--acc); }
+</style>
+</head>
+<body>
+<header>
+  <strong>S1 vessel label review</strong>
+  <select id="grp" aria-label="Group"></select>
+  <span>#<input id="goto" type="number" min="0"></span>
+  <span id="prog"></span>
+  <label><input type="checkbox" id="skipdone"> skip labeled</label>
+  <span id="gdesc"></span>
+</header>
+<main>
+  <div>
+    <div class="imgs">
+      <div class="imgbox"><img id="vv"><svg id="cvv"></svg><span class="cap">VV</span></div>
+      <div class="imgbox"><img id="vh"><svg id="cvh"></svg><span class="cap">VH</span></div>
+    </div>
+    <div class="times" id="times"></div>
+  </div>
+  <div class="side">
+    <div id="cur"></div>
+    <table id="info"></table>
+    <div class="keys">
+      <b>←/→</b> current / hist1–hist4 (same track) &nbsp; <b>p/n</b> (or <b>↑/↓</b>) prev / next item<br>
+      <b>i</b> infrastructure (delete label) &nbsp; <b>s</b> island (delete label) &nbsp; <b>d</b> derelict ship (delete label) &nbsp; <b>m</b> moored vessel &nbsp; <b>v</b> vessel (keep)<br>
+      not sure: just skip with <b>n</b><br>
+      <b>0</b> clear label &nbsp; <b>c</b> toggle circle &nbsp; <b>f</b> auto-flicker &nbsp; <b>t</b> note (on a labeled item) &nbsp; <b>z</b> zoom out / in<br>
+      Chips are 96×96 px (960 m) at 10 m, or 256×256 (2.56 km) zoomed out (dashed box = the 96×96 area; black = outside the window). VV/VH in dB, same stretch for all dates and both zooms.
+    </div>
+  </div>
+</main>
+<div class="strip" id="strip"></div>
+<script>
+const LABELS = {i:["infra","var(--infra)"], s:["island","var(--island)"], d:["derelict","var(--derelict)"], m:["moored","var(--moored)"], v:["vessel","var(--vessel)"]};
+const COLOR = {...Object.fromEntries(Object.values(LABELS)), unsure:"var(--unsure)", none:"var(--none)"};
+const TIMES = [["t","current"],["h1","hist1"],["h2","hist2"],["h3","hist3"],["h4","hist4"]];
+let D, group = "", idx = 0, ti = 0, circle = true, flick = null, zoom = false;
+const $ = id => document.getElementById(id);
+function list() { return D.items.filter(x => x.group === group); }
+// Display names + one-line descriptions per group key, from groups.json (optional).
+let GROUP_INFO = {};
+let GROUPS = [];
+function updateGroupOptions() {
+  $("grp").innerHTML = GROUPS.map(g => {
+    const its = D.items.filter(x => x.group === g), n = its.filter(x => D.labels[x.id]).length;
+    const name = (GROUP_INFO[g] || [g])[0];
+    return `<option value="${g}"${g === group ? " selected" : ""}>${name} — ${n}/${its.length} labeled</option>`;
+  }).join("");
+  $("gdesc").textContent = (GROUP_INFO[group] || ["", ""])[1] + `  [group key: ${group}]`;
+}
+function fmt(v, d=2) { return v === undefined || v === null ? "–" : (typeof v === "number" ? v.toFixed(d) : v); }
+// normal: 96x96 chip at 4x (384 px); zoomed out (z): 256x256 chip at 2x (512 px), with the 96x96 extent outlined
+function circ(svg) {
+  const n = zoom ? 512 : 384, h = n / 2;
+  svg.setAttribute("width", n); svg.setAttribute("height", n);
+  svg.innerHTML = !circle ? "" : (zoom
+    ? `<circle cx="${h}" cy="${h}" r="10" fill="none" stroke="#f33" stroke-width="1"/><rect x="${h - 96}" y="${h - 96}" width="192" height="192" fill="none" stroke="#4fa3ff" stroke-opacity="0.85" stroke-dasharray="4 4"/>`
+    : `<circle cx="${h}" cy="${h}" r="18" fill="none" stroke="#f33" stroke-width="1"/>`);
+}
+function render() {
+  const L = list(); if (!L.length) return;
+  idx = Math.max(0, Math.min(idx, L.length - 1));
+  const it = L[idx];
+  const have = TIMES.filter(t => it.have.includes(t[0]));
+  ti = Math.min(ti, have.length - 1);
+  const k = have[ti][0];
+  const zp = zoom ? "z/" : "", px = zoom ? 512 : 384;
+  for (const b of ["vv", "vh"]) { const im = $(b); im.src = `chips/${zp}${it.id}_${k}_${b}.png`; im.width = px; im.height = px; }
+  circ($("cvv")); circ($("cvh"));
+  const trk = k => relorb(it.scenes[k]), t0 = trk("t");
+  $("times").innerHTML = have.map((t, i) => {
+    const r = trk(t[0]), diff = r !== null && t0 !== null && r !== t0;
+    return `<div class="${i === ti ? "on" : ""}" title="relative orbit ${r}">${t[1]} ${it.dates[t[0]] || ""}` +
+      ` <span style="${diff ? "color:#f55;font-weight:700" : "opacity:0.7"}">trk ${r}${diff ? " ≠" : ""}</span></div>`;
+  }).join("");
+  const lab = D.labels[it.id];
+  $("cur").innerHTML = `<h3 style="margin:0 0 6px">${(GROUP_INFO[group] || [group])[0]} #${idx} <span style="color:var(--dim);font-weight:400">(${it.id})</span></h3>` +
+    (lab ? `<span class="lab" style="background:${COLOR[lab.label]}">${lab.label}</span> ${lab.note ? "— " + lab.note : ""}` : `<span style="color:var(--dim)">unlabeled</span>`);
+  const s = D.scores[it.id], g = D.gemini[it.id];
+  const rows = [
+    ["location", `<button class="copy" data-copy="${it.lat.toFixed(5)}, ${it.lon.toFixed(5)}" title="click to copy">${it.lat.toFixed(5)}, ${it.lon.toFixed(5)}</button> <span id="copied" style="color:var(--vessel)"></span>`],
+    ["", `<a target="_blank" href="https://www.google.com/maps/@${it.lat},${it.lon},2000m/data=!3m1!1e3">Google Maps (satellite)</a>`],
+    ["split", it.split],
+    ["in historical?", ["h1", "h2", "h3", "h4"].filter(k => k in it.present).map(k => { const p = it.present[k];
+      return p ? `${k}: ${p.present ? "<b style='color:var(--infra)'>yes</b>" : "no"} (NCC ${p.ncc}, ${p.con} dB)` : `${k}: –`; }).join("<br>")],
+    ["window", `<span style="font-size:12px">${it.win}</span>`],
+  ];
+  if (s) {
+    const TN = {t: "current", h1: "hist1", h2: "hist2"};
+    for (const [name, v] of Object.entries(s)) {
+      rows.push([name, `<span class="score">${typeof v === "object" ? Object.entries(v).sort((x, y) => Object.keys(TN).indexOf(x[0]) - Object.keys(TN).indexOf(y[0])).map(([a, b]) => `${TN[a] || a}: ${fmt(b)}`).join(" · ") : fmt(v)}</span>`]);
+    }
+  }
+  if (g) rows.push(["gemini", Object.entries(g).map(([a, b]) => `${a}: ${b}`).join("<br>")]);
+  $("info").innerHTML = rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("");
+  const n = L.filter(x => D.labels[x.id]).length;
+  $("prog").textContent = `${n} / ${L.length} labeled in ${group}`;
+  $("goto").value = idx;
+  $("strip").innerHTML = L.slice(0, Math.max(200, idx + 50)).map((x, i) => {
+    const l = D.labels[x.id];
+    return `<span title="#${i}" class="${i === idx ? "cur" : ""}" style="${l ? "background:" + COLOR[l.label] : ""}" data-i="${i}"></span>`;
+  }).join("");
+  location.hash = `${group}/${idx}`;
+  updateGroupOptions();
+  // prefetch next item
+  const nx = L[idx + 1]; if (nx) for (const t of TIMES) if (nx.have.includes(t[0])) for (const b of ["vv", "vh"]) new Image().src = `chips/${zp}${nx.id}_${t[0]}_${b}.png`;
+}
+// Sentinel-1 relative orbit from the absolute orbit in the scene name: (abs - offset) % 175 + 1.
+// S1A 73, S1B 27; S1C 99 and S1D 42 fitted to the Copernicus relativeOrbitNumber attribute.
+const ORBIT_OFFSET = {S1A: 73, S1B: 27, S1C: 99, S1D: 42};
+function relorb(name) {
+  if (!name) return null;
+  const off = ORBIT_OFFSET[name.slice(0, 3)];
+  if (off === undefined) return null;
+  const ab = parseInt(name.split("_")[6], 10);
+  return ((ab - off) % 175 + 175) % 175 + 1;
+}
+function move(d) {
+  const L = list(); let i = idx + d;
+  if ($("skipdone").checked) while (i >= 0 && i < L.length && D.labels[L[i].id]) i += d;
+  if (i >= 0 && i < L.length) { idx = i; ti = 0; render(); }
+}
+async function setLabel(label, note) {
+  const it = list()[idx];
+  if (label === null) delete D.labels[it.id];
+  else D.labels[it.id] = {label, note: note ?? (D.labels[it.id]?.note || "")};
+  render();
+  await fetch("api/label", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({id: it.id, label, note: D.labels[it.id]?.note || ""})});
+}
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const L = list(), it = L[idx];
+  const nh = TIMES.filter(t => it.have.includes(t[0])).length;
+  if (e.key === "ArrowRight") { ti = (ti + 1) % nh; render(); }
+  else if (e.key === "ArrowLeft") { ti = (ti + nh - 1) % nh; render(); }
+  else if (e.key === "ArrowDown" || e.key === "n") move(1);
+  else if (e.key === "ArrowUp" || e.key === "p") move(-1);
+  else if (LABELS[e.key]) { setLabel(LABELS[e.key][0]); move(1); }
+  else if (e.key === "0") setLabel(null);
+  else if (e.key === "c") { circle = !circle; render(); }
+  else if (e.key === "z") { zoom = !zoom; render(); }
+  else if (e.key === "f") {
+    if (flick) { clearInterval(flick); flick = null; }
+    else flick = setInterval(() => { ti = (ti + 1) % nh; render(); }, 600);
+  }
+  else if (e.key === "t") {
+    if (!D.labels[it.id]) { alert("label the item first (i / s / d / m / v), then add a note"); return; }
+    const v = prompt("note", D.labels[it.id].note || ""); if (v !== null) setLabel(D.labels[it.id].label, v);
+  }
+  else return;
+  e.preventDefault();
+});
+// http (not https) page: navigator.clipboard is unavailable, so fall back to execCommand
+function copyText(t) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t);
+  const ta = document.createElement("textarea"); ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); return Promise.resolve();
+}
+$("info").addEventListener("click", e => {
+  const t = e.target.dataset.copy; if (!t) return;
+  copyText(t).then(() => { $("copied").textContent = "copied"; setTimeout(() => { const c = $("copied"); if (c) c.textContent = ""; }, 1200); });
+  e.target.blur();
+});
+$("goto").addEventListener("change", e => { idx = +e.target.value; ti = 0; render(); });
+$("strip").addEventListener("click", e => { if (e.target.dataset.i) { idx = +e.target.dataset.i; ti = 0; render(); } });
+fetch("api/items").then(r => r.json()).then(d => {
+  D = d;
+  GROUP_INFO = D.groups || {};
+  const present = new Set(D.items.map(x => x.group));
+  GROUPS = Object.keys(GROUP_INFO).filter(g => present.has(g)).concat([...present].filter(g => !(g in GROUP_INFO)));
+  const h = location.hash.slice(1).split("/");
+  group = GROUPS[0];
+  if (GROUPS.includes(h[0])) { group = h[0]; idx = +h[1] || 0; }
+  $("grp").addEventListener("change", e => { group = e.target.value; idx = 0; ti = 0; render(); });
+  render();
+});
+</script>
+</body>
+</html>

@@ -38,13 +38,14 @@ Dataset Versions
   It corresponds to the first subset of annotations which are included in 20250521. These
   annotations may be higher quality but we seem to get better performance from 20250521, so
   this dataset should not be used.
-- 20261103: 20250521 with new historical images and static labels removed. See
-  `one_off_projects/2026_11_03_s1_static_labels/README.md`.
+- 20261103: 20250521 with same-track historical images and cleaned-up labels. The current
+  model (`config.yaml`) was retrained on it with
+  `20261103_static_labels/config_1hist_randhist.yaml`; see the README there for results.
   - `sentinel1_historical` has up to 4 item groups from the target's relative orbit (same
     track, not just same orbit direction), one random pass per 30-day period from 5 to 155
-    days before the target, most recent first (group 0 = `sentinel1_historical`).
-  - 2,590 train and 293 val labels on static objects (platforms, turbines, islands,
-    permanently anchored vessels) are deleted; their windows stay as hard negatives.
-  - Training configs: `20261103_static_labels/config_1hist.yaml` and `config_2hist.yaml`.
-    The prediction pipeline still selects historicals the old way, so a model trained on
-    this dataset should not be deployed until it is updated to match.
+    days before the target, most recent first. rslearn's prepare can't express this, so
+    run `python -m rslp.main sentinel1_vessels prepare --ds_path ...` after preparing the
+    `sentinel1` layer.
+  - Labels on static objects (platforms, turbines, islands) and other wrong labels were
+    removed: 61,655 -> 52,577 labels. Their windows stay as hard negatives. See
+    `one_off_projects/2026_11_03_s1_static_labels/README.md`.

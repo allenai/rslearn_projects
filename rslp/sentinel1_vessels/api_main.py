@@ -99,7 +99,7 @@ class Sentinel1Request(BaseModel):
         crop_path: Optional; Path to save the cropped images.
         scratch_path: Optional; Scratch path to save the rslearn dataset.
         score_threshold: Optional; override the detector's score threshold for this
-            request. Defaults to the SENTINEL1_SCORE_THRESHOLD env var (0.7 if unset).
+            request. Defaults to the SENTINEL1_SCORE_THRESHOLD env var (0.8 if unset).
     """
 
     scene_id: str | None = None

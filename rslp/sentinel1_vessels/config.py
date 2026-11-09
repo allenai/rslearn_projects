@@ -16,8 +16,9 @@ load_dotenv()
 SENTINEL1_HOST = os.getenv("SENTINEL1_HOST", "0.0.0.0")
 SENTINEL1_PORT = int(os.getenv("SENTINEL1_PORT", 5555))
 
-# Default detector score threshold, overridable per request via the API.
-SENTINEL1_SCORE_THRESHOLD = float(os.getenv("SENTINEL1_SCORE_THRESHOLD", "0.7"))
+# Default detector score threshold, overridable per request via the API. 0.8 with the
+# 20261103 model has about the val recall of 0.7 with the previous model.
+SENTINEL1_SCORE_THRESHOLD = float(os.getenv("SENTINEL1_SCORE_THRESHOLD", "0.8"))
 
 # Distance threshold for the near marine infrastructure filter in km
 # (0.2 km = 200 m if unset).

@@ -13,8 +13,8 @@ Inference
 First, download the model checkpoints to the `RSLP_PREFIX` directory.
 
     cd rslearn_projects
-    mkdir -p project_data/projects/20260626_num_historical/data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist/
-    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/20260626_num_historical/data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist/best.ckpt -O project_data/projects/20260626_num_historical/data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist/best.ckpt
+    mkdir -p project_data/projects/20261103_static_labels/data_20261103c3_model_20261107_satlaspretrain_unfreeze4_13_1hist_randhist/
+    wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/20261103_static_labels/data_20261103c3_model_20261107_satlaspretrain_unfreeze4_13_1hist_randhist/best.ckpt -O project_data/projects/20261103_static_labels/data_20261103c3_model_20261107_satlaspretrain_unfreeze4_13_1hist_randhist/best.ckpt
 
     mkdir -p project_data/projects/2026_09_17_vessel_attribute_l1/sentinel1_l1/
     wget https://storage.googleapis.com/ai2-rslearn-projects-data/projects/2026_09_17_vessel_attribute_l1/sentinel1_l1/best.ckpt -O project_data/projects/2026_09_17_vessel_attribute_l1/sentinel1_l1/best.ckpt
@@ -48,9 +48,17 @@ with the features from the historical scene. The concatenated features are then 
 to a feature pyramid network and Faster R-CNN detection head. The historical scene helps
 to differentiate between vessels and fixed infrastructure.
 
-Use the command below to train the model:
+Use the command below to train the model. The training config differs from
+`data/sentinel1_vessels/config.yaml` only in using a random same-track historical per
+example (see `data/sentinel1_vessels/20261103_static_labels/README.md`):
 
-    rslearn model fit --config data/sentinel1_vessels/config.yaml --data.init_args.path /path/to/sentinel1_vessels_dataset/
+    rslearn model fit --config data/sentinel1_vessels/20261103_static_labels/config_1hist_randhist.yaml --data.init_args.path /path/to/sentinel1_vessels_dataset/
+
+The historical layer of the training dataset is filled in by a custom prepare step that
+picks same-track passes (`rslp/sentinel1_vessels/prepare.py`). Run it after `rslearn
+dataset prepare` and before `rslearn dataset materialize`:
+
+    python -m rslp.main sentinel1_vessels prepare --ds_path /path/to/sentinel1_vessels_dataset/
 
 To visualize outputs on the validation set:
 

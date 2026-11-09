@@ -1,7 +1,7 @@
 """Unit tests for how the Sentinel-1 API resolves the detector score threshold.
 
 The API uses the request's score_threshold when provided, otherwise the
-SENTINEL1_SCORE_THRESHOLD module default (from the env var, 0.7 if unset), and hands
+SENTINEL1_SCORE_THRESHOLD module default (from the env var, 0.8 if unset), and hands
 that to predict_pipeline, which overrides the detector's score threshold. predict_pipeline
 is mocked here to capture the value it receives.
 """

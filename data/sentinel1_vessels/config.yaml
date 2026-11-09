@@ -44,7 +44,7 @@ data:
     # the whole window into memory, so prediction memory stays bounded on large
     # scenes (one window can span an entire Sentinel-1 scene).
     use_map_all_crops_dataset: true
-    path: /weka/dfive-default/rslearn-eai/datasets/sentinel1_vessels/dataset_v1/20250521/
+    path: /weka/dfive-default/rslearn-eai/datasets/sentinel1_vessels/dataset_v1/20261103/
     inputs:
       image_0:
         data_type: "raster"
@@ -54,6 +54,8 @@ data:
         dtype: FLOAT32
       image_1:
         data_type: "raster"
+        # Trained on one of up to 4 same-track historicals picked at random per example
+        # (see 20261103_static_labels/config_1hist_randhist.yaml); prediction uses one.
         layers: ["sentinel1_historical"]
         bands: ["vv", "vh"]
         passthrough: true
@@ -83,8 +85,8 @@ data:
               image_bands: [1, 1, 1]
               exclude_by_center: true
 
-              # Overridden in S1 Predict Pipeline
-              score_threshold: 0.7
+              # Overridden in S1 Predict Pipeline (SENTINEL1_SCORE_THRESHOLD, default 0.8).
+              score_threshold: 0.8
               enable_map_metric: true
               enable_f1_metric: true
               enable_precision_recall: true
@@ -211,6 +213,6 @@ trainer:
       init_args:
         monitor: val_detect/mAP
         mode: max
-project_name: 20260626_num_historical
-run_name: data_20250521_model_20250530_satlaspretrain_unfreeze4_13_1hist
+project_name: 20261103_static_labels
+run_name: data_20261103c3_model_20261107_satlaspretrain_unfreeze4_13_1hist_randhist
 management_dir: ${RSLP_PREFIX}/projects
