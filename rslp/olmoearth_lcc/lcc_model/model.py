@@ -50,6 +50,15 @@ Downstream heads all operate on the per-timestep tokens:
   to full resolution, trained with cross-entropy at change pixels. These are
   segmentation-style outputs/targets (T classes = timestep indices), matching the
   ``SegmentationTask`` entries of the same names in the task config.
+- ``ts_input``: ``"token"`` (default) uses the per-token linear heads above.
+  ``"breakpoint"`` derives the timestep logits from the breakpoint scan instead:
+  the start/end logit of split t (between images t and t+1) is the scan's split
+  score plus a learned offset from the split's scorer hidden feature and the two
+  tokens either side of it. ts_start index t (last image before the change)
+  maps to split t, ts_end index t (first image after it) to split t-1; the one
+  index without a split (start = last image, end = first image) gets a logit
+  from that edge token. The timestep labels then supervise the same split
+  attention that picks the src/dst and change-category aggregates.
 
 Annual embedding history (``history_years`` K > 0): the ``v13_embeddings`` input
 holds K annual OlmoEarth v1.3 embeddings (built by the stack transforms). Each year
@@ -193,6 +202,7 @@ class ChangeModel(nn.Module):
         history_in_scan: bool = False,
         history_input_dim: int = 128,
         history_hidden: int = 256,
+        ts_input: str = "token",
     ):
         """Initialize the LCC change model.
 
@@ -245,6 +255,8 @@ class ChangeModel(nn.Module):
                 timestep heads. Requires ``history_memory``.
             history_input_dim: dimensions of each annual embedding (128).
             history_hidden: width of the year features and history vector.
+            ts_input: ``"token"`` or ``"breakpoint"`` (see module docstring).
+                ``"breakpoint"`` requires ``binary_mode="breakpoint"``.
         """
         super().__init__()
         if decoder_stages is None:
@@ -287,6 +299,10 @@ class ChangeModel(nn.Module):
             raise ValueError("history_memory requires temporal_depth > 0")
         if history_in_scan and not history_memory:
             raise ValueError("history_in_scan requires history_memory")
+        if ts_input not in ("token", "breakpoint"):
+            raise ValueError(f"unknown ts_input {ts_input!r}")
+        if ts_input == "breakpoint" and binary_mode != "breakpoint":
+            raise ValueError("ts_input='breakpoint' requires binary_mode='breakpoint'")
 
         self.encoder = encoder
         self.embedding_dim = embedding_dim
@@ -298,6 +314,7 @@ class ChangeModel(nn.Module):
         self.season_embed = season_embed
         self.src_dst_input = src_dst_input
         self.change_category_input = change_category_input
+        self.ts_input = ts_input
         self.temporal_time_enc = temporal_time_enc
         self.history_years = history_years
         self.history_context = history_context
@@ -423,9 +440,20 @@ class ChangeModel(nn.Module):
             category_in_dim, decoder_stages, num_classes_post_change
         )
 
-        # Per-token timestamp heads producing one logit per timestep.
-        self.start_head = nn.Linear(embedding_dim, 1)
-        self.end_head = nn.Linear(embedding_dim, 1)
+        if ts_input == "token":
+            # Per-token timestamp heads producing one logit per timestep.
+            self.start_head = nn.Linear(embedding_dim, 1)
+            self.end_head = nn.Linear(embedding_dim, 1)
+        else:
+            # Start/end offsets added to each split's score, from the split's scorer
+            # hidden feature and the tokens either side of it.
+            self.ts_split_offset = nn.Conv2d(
+                BREAKPOINT_HIDDEN + 2 * embedding_dim, 2, kernel_size=1
+            )
+            # Logits of the index without a split: start at the last image, end at
+            # the first image.
+            self.ts_start_last = nn.Linear(embedding_dim, 1)
+            self.ts_end_first = nn.Linear(embedding_dim, 1)
 
     # ------------------------------------------------------------------
     # Feature extraction
@@ -636,8 +664,11 @@ class ChangeModel(nn.Module):
         return feature.mean(dim=-1)
 
     def _breakpoint_features(
-        self, feature: torch.Tensor, ctx: torch.Tensor | None = None
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self,
+        feature: torch.Tensor,
+        ctx: torch.Tensor | None = None,
+        return_splits: bool = False,
+    ) -> tuple[torch.Tensor, ...]:
         """Changepoint scan over the T timesteps.
 
         Args:
@@ -645,10 +676,14 @@ class ChangeModel(nn.Module):
             ctx: optional (B, ctx_dim, H, W) history vector, concatenated onto the
                 split scorer input at every split.
 
+            return_splits: also return the per-split scores (B, S, H, W) and
+                hidden features (B, S, hidden, H, W).
+
         Returns:
             (evidence_feat, src_feat, dst_feat): max-pooled per-split hidden
             features (B, hidden, H, W) and the split-attention-weighted
-            before/after aggregates (B, C, H, W).
+            before/after aggregates (B, C, H, W), plus (scores, hidden) when
+            return_splits.
         """
         B, C, H, W, T = feature.shape
         S = T - 1
@@ -673,7 +708,36 @@ class ChangeModel(nn.Module):
         w = w.permute(0, 2, 3, 1).unsqueeze(1)  # (B, 1, H, W, S)
         src_feat = (before * w).sum(dim=-1)
         dst_feat = (after * w).sum(dim=-1)
+        if return_splits:
+            return evidence_feat, src_feat, dst_feat, scores, hidden
         return evidence_feat, src_feat, dst_feat
+
+    def _breakpoint_ts_logits(
+        self, feature: torch.Tensor, scores: torch.Tensor, hidden: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Timestep logits from the breakpoint scan (ts_input="breakpoint").
+
+        Args:
+            feature: (B, C, H, W, T) per-timestep tokens.
+            scores: (B, S, H, W) split scores, S = T - 1.
+            hidden: (B, S, hidden, H, W) split scorer features.
+
+        Returns:
+            (start_logits, end_logits), each (B, T, H, W) at token resolution.
+        """
+        B, C, H, W, T = feature.shape
+        S = T - 1
+        x = feature.permute(0, 4, 1, 2, 3)  # (B, T, C, H, W)
+        con = torch.cat([hidden, x[:, :-1].to(hidden.dtype), x[:, 1:].to(hidden.dtype)], dim=2)
+        offset = self.ts_split_offset(con.reshape(B * S, -1, H, W)).reshape(B, S, 2, H, W)
+        start_split = scores + offset[:, :, 0]
+        end_split = scores + offset[:, :, 1]
+        tokens = feature.permute(0, 2, 3, 4, 1)  # (B, H, W, T, C)
+        start_last = self.ts_start_last(tokens[:, :, :, -1]).permute(0, 3, 1, 2)
+        end_first = self.ts_end_first(tokens[:, :, :, 0]).permute(0, 3, 1, 2)
+        start_logits = torch.cat([start_split, start_last.to(start_split.dtype)], dim=1)
+        end_logits = torch.cat([end_first.to(end_split.dtype), end_split], dim=1)
+        return start_logits, end_logits
 
     # ------------------------------------------------------------------
     # Forward
@@ -714,8 +778,11 @@ class ChangeModel(nn.Module):
         if self.binary_mode == "mean":
             logits_binary = self.decoder_binary(pooled)
             before_feat = after_feat = None
+            split_scores = split_hidden = None
         else:
-            bp_feat, before_feat, after_feat = self._breakpoint_features(feature, ctx)
+            bp_feat, before_feat, after_feat, split_scores, split_hidden = (
+                self._breakpoint_features(feature, ctx, return_splits=True)
+            )
             evidence = self.evidence_decoder(bp_feat)  # (B, 1, H', W')
             logits_binary = torch.cat(
                 [
@@ -749,10 +816,16 @@ class ChangeModel(nn.Module):
             "post_change": self.decoder_post_change(category_in),
         }
 
-        # Per-token timestamp logits over T, upsampled to full resolution.
-        xt = feature.permute(0, 2, 3, 4, 1)  # (B, H, W, T, C)
-        start_logits = self.start_head(xt).squeeze(-1).permute(0, 3, 1, 2)  # (B,T,H,W)
-        end_logits = self.end_head(xt).squeeze(-1).permute(0, 3, 1, 2)
+        # Timestamp logits over T, upsampled to full resolution.
+        if self.ts_input == "breakpoint":
+            assert split_scores is not None and split_hidden is not None
+            start_logits, end_logits = self._breakpoint_ts_logits(
+                feature, split_scores, split_hidden
+            )
+        else:
+            xt = feature.permute(0, 2, 3, 4, 1)  # (B, H, W, T, C)
+            start_logits = self.start_head(xt).squeeze(-1).permute(0, 3, 1, 2)
+            end_logits = self.end_head(xt).squeeze(-1).permute(0, 3, 1, 2)
         scale = self.encoder.patch_size
         start_logits = F.interpolate(
             start_logits, scale_factor=scale, mode="bilinear", align_corners=False

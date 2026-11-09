@@ -222,6 +222,20 @@ def test_rejects_wrong_timestep_count(num_pass1: int | None) -> None:
             "binary_mode": "breakpoint",
             "change_category_input": "breakpoint",
         },
+        # bpts: timestep heads from the breakpoint scan.
+        {
+            "binary_mode": "breakpoint",
+            "change_category_input": "breakpoint",
+            "ts_input": "breakpoint",
+        },
+        {
+            "binary_mode": "breakpoint",
+            "change_category_input": "breakpoint",
+            "ts_input": "breakpoint",
+            "temporal_depth": 1,
+            "temporal_heads": 2,
+            "temporal_time_enc": True,
+        },
     ],
 )
 def test_forward_shapes_and_losses(kwargs: dict) -> None:
@@ -279,6 +293,10 @@ def test_invalid_options() -> None:
     # Breakpoint features only exist in breakpoint mode.
     with pytest.raises(ValueError, match="src_dst_input"):
         _model(src_dst_input="breakpoint")
+    with pytest.raises(ValueError, match="ts_input"):
+        _model(ts_input="breakpoint")
+    with pytest.raises(ValueError, match="ts_input"):
+        _model(binary_mode="breakpoint", ts_input="split")
     with pytest.raises(ValueError, match="change_category_input"):
         _model(change_category_input="breakpoint")
 
@@ -335,6 +353,15 @@ HISTORY = dict(
             temporal_heads=2,
             temporal_time_enc=True,
         ),
+        dict(
+            history_memory=True,
+            history_in_scan=True,
+            temporal_depth=1,
+            temporal_heads=2,
+            temporal_time_enc=True,
+            binary_mode="breakpoint",
+            ts_input="breakpoint",
+        ),
     ],
 )
 def test_history_forward(kwargs: dict) -> None:
@@ -384,3 +411,22 @@ def test_history_invalid_options() -> None:
         _model(**HISTORY, history_context=True, history_in_scan=True)
     with pytest.raises(ValueError):
         _model(temporal_depth=1, temporal_heads=2, temporal_pos_enc=True, temporal_time_enc=True)
+
+
+def test_breakpoint_ts_logits_index_mapping() -> None:
+    """With zero offsets, ts_start index t is split t and ts_end index t is split t-1."""
+    model = _model(binary_mode="breakpoint", ts_input="breakpoint")
+    assert not hasattr(model, "start_head")
+    nn.init.zeros_(model.ts_split_offset.weight)
+    nn.init.zeros_(model.ts_split_offset.bias)
+    B, H, W = 2, 3, 3
+    feature = torch.randn(B, DIM, H, W, T)
+    _, _, _, scores, hidden = model._breakpoint_features(feature, return_splits=True)
+    assert scores.shape == (B, T - 1, H, W)
+    assert hidden.shape[:2] == (B, T - 1)
+    start, end = model._breakpoint_ts_logits(feature, scores, hidden)
+    assert start.shape == end.shape == (B, T, H, W)
+    torch.testing.assert_close(start[:, : T - 1], scores)
+    torch.testing.assert_close(end[:, 1:], scores)
+    last = model.ts_start_last(feature[..., -1].permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+    torch.testing.assert_close(start[:, T - 1 :], last)
