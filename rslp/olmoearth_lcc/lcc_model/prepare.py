@@ -112,7 +112,7 @@ PRE_CHANGE_CATEGORY_ALIASES = {
 }
 POST_CHANGE_CATEGORY_ALIASES = {
     "river_channel_migration": "water_expand",
-    "river_flooding": "water_expand",
+    "river_flooding": "flooding",
     "lake_level_rise": "water_expand",
     "reservoir_level_rise": "water_expand",
     "coastal_erosion": "water_expand",

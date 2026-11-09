@@ -101,18 +101,8 @@ trained on these classes:
   agricultural_activity, wildfire, ice_motion, flooding, storm_damage,
   vegetation_dieback.
 
-The finer lab labels are mapped onto those classes by `prepare.py`:
+The finer lab labels are mapped onto those classes by `prepare.py`.
 
-| Annotation value | Field | Trained as |
-| --- | --- | --- |
-| river_channel_migration, river_contract, lake_level_drop, reservoir_level_drop, water_contract_other | pre | water_contract |
-| river_channel_migration, river_flooding, lake_level_rise, reservoir_level_rise, coastal_erosion | post | water_expand |
-| borrow_pit | post | new_road |
-| land_reclamation | post | pre-change water_contract (post-change none), unless the point has a pre-change category |
-
-Older annotations had a separate `same_change_category` field (agricultural_activity,
-wildfire, ice_motion, flooding); those categories are now post-change categories
-and prepare ignores the old field.
 ### Ten-Year Dataset
 
 The ten-year dataset has 128x128 windows (10 m/pixel, UTM) with ten `sentinel2_yN`
