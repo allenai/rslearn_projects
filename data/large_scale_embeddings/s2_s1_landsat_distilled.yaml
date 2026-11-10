@@ -25,7 +25,7 @@ model:
                 # One embedding per 10 m pixel.
                 location_query_patch_size: 1
                 searchlight:
-                  class_path: olmoearth_pretrain.nn.searchlight.SearchlightSettings
+                  class_path: olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.searchlight.SearchlightSettings
                   init_args:
                     compile: true
         decoder:

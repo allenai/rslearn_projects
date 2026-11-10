@@ -20,7 +20,9 @@ queue job. All of them change the embeddings, so a store and its `completed_path
 be computed with one fixed set:
 
 - `--checkpoint_path` (required): an OlmoEarth training checkpoint, or a released
-  model bundle (a directory with `config.json` and `weights.pth`).
+  model bundle (a directory with `config.json` and `weights.pth`), such as
+  `allenai/OlmoEarth-v1_3-Base` from Hugging Face. The bundle's `config.json` must
+  include the `train_module` section.
 - `--patch_size` (default `2`): the encoder's token patch size.
 - `--location_query_patch_size` (default `1`): input pixels per output embedding.
 - `--window_size` (default `480`): the size of the crops the model operates on. Lower
@@ -101,6 +103,8 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
    `--build-arg CODE_VERSION=...` to record the commits in every marker.
 
 2. Create the store with `init_store` (see above), listing every year it will hold.
+   `--zstd_level` (default `3`) sets the compression level for every shard written
+   to it.
 
 3. Write jobs to a Beaker queue, one per uncompleted block:
 
@@ -125,7 +129,8 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
    - `--count 10`: randomly sample this many blocks.
 
 4. Launch GPU workers. The OlmoEarth Datasets data source needs `OEDATASETS_API_URL`
-   and a `DATASETS_API_TOKEN` secret:
+   and a `DATASETS_API_TOKEN` secret, and `GS_USER_PROJECT` names the project billed
+   for requester-pays Landsat reads:
 
         python -m rslp.main common launch \
             --image_name USER/IMAGE \
@@ -134,7 +139,7 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
             --gpus 1 \
             --cluster '["ai2/jupiter"]' \
             --weka_mounts+='{"bucket_name": "dfive-default", "mount_path": "/weka/dfive-default"}' \
-            --extra_env_vars '{"OEDATASETS_API_URL": "https://datasets.olmoearth.allenai.org"}' \
+            --extra_env_vars '{"OEDATASETS_API_URL": "https://datasets.olmoearth.allenai.org", "GS_USER_PROJECT": "PROJECT"}' \
             --extra_env_secrets '{"DATASETS_API_TOKEN": "LCC_DATASETS_API_TOKEN"}' \
             --shared_memory 256GiB
 

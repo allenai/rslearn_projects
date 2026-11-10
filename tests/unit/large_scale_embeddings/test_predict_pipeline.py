@@ -222,7 +222,9 @@ def test_the_model_config_always_runs_searchlight_compiled() -> None:
     init_args = encoder[0]["init_args"]
     assert init_args["compile_model"] is True
     searchlight = init_args["forward_kwargs"]["searchlight"]
-    assert searchlight["class_path"].endswith(".SearchlightSettings")
+    assert searchlight["class_path"] == (
+        "olmoearth_pretrain_minimal.olmoearth_pretrain_v1.nn.searchlight.SearchlightSettings"
+    )
     assert searchlight["init_args"] == {"compile": True}
 
 

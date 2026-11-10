@@ -335,6 +335,7 @@ def launch_workers(
     extra_env_vars: dict[str, str] | None = None,
     extra_env_secrets: dict[str, str] | None = None,
     min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
+    gcp_credentials_secret: str | None = None,
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -354,6 +355,8 @@ def launch_workers(
             secret (in the target workspace) to read its value from.
         min_runtime: how long to protect each (preemptible) worker job from
             preemption.
+        gcp_credentials_secret: Beaker secret holding the GCP service account key, or
+            None for the default.
     """
     if extra_env_vars is None:
         extra_env_vars = {}
@@ -372,7 +375,11 @@ def launch_workers(
             env_vars = get_base_env_vars(use_weka_prefix=False)
             env_vars += extra_beaker_env_vars
 
-            datasets = [create_gcp_credentials_mount()]
+            datasets = [
+                create_gcp_credentials_mount(gcp_credentials_secret)
+                if gcp_credentials_secret
+                else create_gcp_credentials_mount()
+            ]
             datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
 
             spec = BeakerExperimentSpec.new(
