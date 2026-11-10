@@ -26,6 +26,7 @@ from rslp.large_scale_embeddings import zarr_store
 from rslp.large_scale_embeddings.predict_pipeline import (
     EMBEDDING_DIM,
     PATCH_SIZE,
+    PREFETCH,
     RESOLUTION,
     EmbeddingInputs,
     get_marker_fname,
@@ -523,7 +524,9 @@ def write_jobs(
     )
     # Shuffled so output appears across the world rather than zone by zone.
     random.shuffle(jobs)
-    rslp.common.worker.write_jobs(queue_name, "large_scale_embeddings", "predict", jobs)
+    rslp.common.worker.write_jobs(
+        queue_name, "large_scale_embeddings", "predict", jobs, prefetch=PREFETCH
+    )
 
 
 def init_store(

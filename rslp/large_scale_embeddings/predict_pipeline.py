@@ -69,6 +69,14 @@ PROVENANCE_DIR_PREFIX = "provenance"
 
 SENTINEL2_LAYER = "sentinel2_l2a"
 OUTPUT_LAYER = "output"
+
+# Written once a scratch dataset is materialized, so a later run goes straight to
+# inference.
+MATERIALIZED_SENTINEL = "materialized"
+
+# Lets a worker materialize the next block in a subprocess while the GPU runs the
+# current one (see rslp.common.worker).
+PREFETCH = {"args": ["--materialize_only", "true"], "scratch_arg": "--scratch_path"}
 # Band count of the store's embedding array, which is fixed when the store is created.
 EMBEDDING_DIM = 128
 
@@ -480,6 +488,7 @@ def predict_pipeline(
     num_workers: int | None = None,
     scratch_path: str | None = None,
     upload_workers: int = 16,
+    materialize_only: bool = False,
 ) -> None:
     """Compute quantized OlmoEarth embeddings over one block.
 
@@ -508,7 +517,11 @@ def predict_pipeline(
         scratch_path: directory for the scratch rslearn dataset, kept afterward. By
             default a temporary directory is used and deleted.
         upload_workers: processes writing windows to the store.
+        materialize_only: only materialize imagery into scratch_path, for a later
+            call with the same scratch_path to run inference on.
     """
+    if materialize_only and scratch_path is None:
+        raise ValueError("materialize_only requires scratch_path")
     for name, value in (
         ("window_size", window_size),
         ("overlap_size", overlap_size),
@@ -559,6 +572,7 @@ def predict_pipeline(
         batch_size=batch_size,
         num_workers=num_workers,
         upload_workers=upload_workers,
+        materialize_only=materialize_only,
     )
     if scratch_path is None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -585,6 +599,7 @@ def _process_block(
     batch_size: int | None,
     num_workers: int | None,
     upload_workers: int,
+    materialize_only: bool,
 ) -> None:
     """Process one block using the given scratch dataset path.
 
@@ -593,8 +608,10 @@ def _process_block(
     """
     dataset_config_fname = DATASET_CONFIG_FNAME.format(inputs=inputs.value)
     model_config_fname = MODEL_CONFIG_FNAME.format(inputs=inputs.value)
-    ds_path.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(dataset_config_fname, ds_path / "config.json")
+    materialized = (ds_path / MATERIALIZED_SENTINEL).exists()
+    if not materialized:
+        ds_path.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(dataset_config_fname, ds_path / "config.json")
 
     wedge = get_zone_wedge(projection.crs, projection.x_resolution)
     kept_crops = list_kept_crops(projection, bounds, PATCH_SIZE, wedge=wedge)
@@ -624,16 +641,36 @@ def _process_block(
             time_range=window_time_range,
             data_factory=dataset.window_data_storage_factory,
         )
-        window.save()
+        if not materialized:
+            window.save()
         windows.append(window)
 
-    written: list[list[int]] = []
-    skipped_no_data: list[list[int]] = []
-    if len(windows) > 0:
+    if materialized:
+        # A scratch prepared with another margin would be cropped wrongly on write.
+        saved = {
+            w.name: tuple(w.bounds)
+            for w in dataset.load_windows(groups=[PREDICTION_GROUP])
+        }
+        for window in windows:
+            if saved.get(window.name) != tuple(window.bounds):
+                raise ValueError(
+                    f"prefetched window {window.name} has bounds "
+                    f"{saved.get(window.name)} but context_pixels {context_pixels} "
+                    f"needs {tuple(window.bounds)}"
+                )
+    elif len(windows) > 0:
         logger.info("materialize dataset")
         materialize_dataset(
             ds_path, materialize_pipeline_args=MATERIALIZE_PIPELINE_ARGS
         )
+    if materialize_only:
+        (ds_path / MATERIALIZED_SENTINEL).touch()
+        logger.info("materialized %d windows into %s", len(windows), ds_path)
+        return
+
+    written: list[list[int]] = []
+    skipped_no_data: list[list[int]] = []
+    if len(windows) > 0:
         if not any(window.is_layer_completed(SENTINEL2_LAYER) for window in windows):
             logger.info("skipping prediction since no windows have data")
         else:

@@ -138,6 +138,10 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
             --extra_env_secrets '{"DATASETS_API_TOKEN": "LCC_DATASETS_API_TOKEN"}' \
             --shared_memory 256GiB
 
+Each worker materializes its next block in a subprocess while the GPU runs the current
+one. This needs the queue created with `max_claimed_entries=2`; with 1, blocks run
+serially.
+
 Progress can be monitored by counting markers in `completed_path`. To retry failed
 blocks, run `write_jobs` again: completed blocks are excluded.
 

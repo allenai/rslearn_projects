@@ -15,10 +15,15 @@ from upath import UPath
 
 from rslp.large_scale_embeddings.model import NODATA_VALUE
 from rslp.large_scale_embeddings.predict_pipeline import (
+    MATERIALIZED_SENTINEL,
+    PREDICTION_GROUP,
+    SENTINEL2_LAYER,
     AllZeroEmbeddingError,
+    EmbeddingInputs,
     _collect_provenance,
     _mask_invalid_pixels,
     get_provenance_fname,
+    predict_pipeline,
 )
 
 MARKER_NAME = "EPSG:32628_45056_-720896.json"
@@ -243,6 +248,84 @@ def test_predict_writes_a_marker_when_no_crop_has_output(
     assert marker["skipped_no_data"] == [[0, 0]]
     assert marker["window_size"] == 384
     assert marker["context_pixels"] == 48
+
+
+def _patch_block(monkeypatch: pytest.MonkeyPatch, calls: list[str]) -> None:
+    pp = sys.modules["rslp.large_scale_embeddings.predict_pipeline"]
+
+    def fake_materialize(ds_path: UPath, materialize_pipeline_args: object) -> None:
+        calls.append("materialize")
+        for window in Dataset(ds_path).load_windows(groups=[PREDICTION_GROUP]):
+            window.mark_layer_completed(SENTINEL2_LAYER)
+
+    monkeypatch.setattr(pp, "materialize_dataset", fake_materialize)
+    monkeypatch.setattr(
+        pp, "run_model_predict", lambda *a, **k: calls.append("predict")
+    )
+    monkeypatch.setattr(pp, "get_zone_wedge", lambda crs, res: None)
+    monkeypatch.setattr(
+        pp, "list_kept_crops", lambda proj, bounds, size, wedge: [(0, 0, 2048, 2048)]
+    )
+    monkeypatch.setattr(pp, "_crop_crosses_bad_longitude", lambda proj, b: False)
+
+
+def _predict_block(
+    tmp_path: pathlib.Path,
+    scratch_path: str | None,
+    materialize_only: bool = False,
+    context_pixels: int = 48,
+) -> None:
+    projection = Projection(CRS.from_epsg(32610), 10, -10)
+    predict_pipeline(
+        inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
+        projection_json=json.dumps(projection.serialize()),
+        bounds=(0, 0, 2048, 2048),
+        time_range=(datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 1, 1, tzinfo=UTC)),
+        store_path=str(tmp_path / "store.zarr"),
+        completed_path=str(tmp_path / "completed"),
+        checkpoint_path=str(tmp_path / "ckpt"),
+        time_index=0,
+        context_pixels=context_pixels,
+        scratch_path=scratch_path,
+        materialize_only=materialize_only,
+    )
+
+
+def test_materialize_only_then_predict_reuses_the_scratch(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first call only materializes, the second only predicts and marks."""
+    calls: list[str] = []
+    _patch_block(monkeypatch, calls)
+    scratch = tmp_path / "scratch"
+
+    _predict_block(tmp_path, str(scratch), materialize_only=True)
+    assert calls == ["materialize"]
+    assert (scratch / MATERIALIZED_SENTINEL).exists()
+    assert not (tmp_path / "completed").exists()
+
+    _predict_block(tmp_path, str(scratch))
+    assert calls == ["materialize", "predict"]
+    assert len(list((tmp_path / "completed").iterdir())) == 1
+
+
+def test_materialize_only_needs_a_scratch_path(tmp_path: pathlib.Path) -> None:
+    """Without scratch_path the materialized data would be deleted on return."""
+    with pytest.raises(ValueError, match="scratch_path"):
+        _predict_block(tmp_path, None, materialize_only=True)
+
+
+def test_a_scratch_prefetched_with_another_margin_is_refused(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Predicting with a different context_pixels than was materialized fails."""
+    _patch_block(monkeypatch, [])
+    scratch = str(tmp_path / "scratch")
+    _predict_block(tmp_path, scratch, materialize_only=True, context_pixels=0)
+
+    with pytest.raises(ValueError, match="prefetched window 0_0"):
+        _predict_block(tmp_path, scratch, context_pixels=48)
+    assert not (tmp_path / "completed").exists()
 
 
 def test_context_pixels_pad_the_windows_but_not_what_is_written(
