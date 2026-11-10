@@ -1,6 +1,6 @@
 """Coverage mask deciding which ground the pipeline computes embeddings for.
 
-A global EPSG:4326 raster at 1/120 degree, rasterised with ALL_TOUCHED so small
+A global EPSG:4326 raster at 1/120 degree, rasterized with ALL_TOUCHED so small
 islands are kept. Loaded once per process and bit-packed.
 """
 

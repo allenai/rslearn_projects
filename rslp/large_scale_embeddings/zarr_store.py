@@ -361,7 +361,7 @@ def build_license_attrs(license_url: str) -> dict:
     """Build the license convention attribute.
 
     Args:
-        license_url: URL of the full licence text.
+        license_url: URL of the full license text.
 
     Returns:
         a dict holding the license attribute.
@@ -445,7 +445,7 @@ def init_store(
         resolution: the projection resolution in m/pixel.
         tile_size: the tile size in pixels (must be a multiple of shard_size).
         dimensions: the embedding vector dimensionality (the band dimension size).
-        license_url: URL of the licence text, recorded under the license convention.
+        license_url: URL of the license text, recorded under the license convention.
         gsd: ground sample distance in meters; defaults to resolution.
         build_version: version of the software that built the store; defaults to
             get_build_version().

@@ -551,7 +551,7 @@ def init_store(
         years: the annual reference years, defining the time axis.
         model_url: what produced the embeddings, recorded as geoemb:model: a
             HuggingFace URL for a release, or the checkpoint path.
-        license_url: URL of the licence text.
+        license_url: URL of the license text.
         matryoshka_dims: prefix widths the encoder is trained to emit.
         inputs: the input variant, used to record the source datasets.
         source_data: URLs of the source datasets. Derived from `inputs` if unset.
