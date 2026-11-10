@@ -55,8 +55,6 @@ class EmbeddingInputs(Enum):
 DATASET_CONFIG_FNAME = "data/large_scale_embeddings/{inputs}.json"
 MODEL_CONFIG_FNAME = "data/large_scale_embeddings/{inputs}.yaml"
 
-SEARCHLIGHT_CLASS = "olmoearth_pretrain.nn.searchlight.SearchlightSettings"
-
 # Window size in pixels. Block bounds must be multiples of this.
 PATCH_SIZE = 2048
 RESOLUTION = 10
@@ -172,15 +170,9 @@ def _get_model_extra_args(
         encoder_args.pop(name, None)
     encoder_args[_checkpoint_arg(checkpoint_path)] = checkpoint_path
     encoder_args["patch_size"] = patch_size
-    encoder_args["compile_model"] = True
-    encoder_args["forward_kwargs"] = {
-        **encoder_args.get("forward_kwargs", {}),
-        "location_query_patch_size": location_query_patch_size,
-        "searchlight": {
-            "class_path": SEARCHLIGHT_CLASS,
-            "init_args": {"compile": True},
-        },
-    }
+    encoder_args["forward_kwargs"]["location_query_patch_size"] = (
+        location_query_patch_size
+    )
 
     # The merger works at the output resolution.
     callbacks = model_config["trainer"]["callbacks"]

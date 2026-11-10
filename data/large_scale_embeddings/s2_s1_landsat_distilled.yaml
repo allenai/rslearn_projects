@@ -22,8 +22,12 @@ model:
               compile_model: true
               sdpa_backends: ["cudnn", "flash", "efficient", "math"]
               forward_kwargs:
-                # One embedding per 10 m pixel. Searchlight is added by the pipeline.
+                # One embedding per 10 m pixel.
                 location_query_patch_size: 1
+                searchlight:
+                  class_path: olmoearth_pretrain.nn.searchlight.SearchlightSettings
+                  init_args:
+                    compile: true
         decoder:
           - class_path: rslp.large_scale_embeddings.model.QuantizedEmbeddingHead
             init_args:

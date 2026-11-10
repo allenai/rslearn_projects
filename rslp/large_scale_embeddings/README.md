@@ -13,7 +13,7 @@ writes them to a GeoZarr store. The embeddings are:
 The configuration files are in `data/large_scale_embeddings/`:
 `s2_s1_landsat_distilled.json` is the rslearn dataset config (imagery comes from the
 OlmoEarth Datasets sources) and `s2_s1_landsat_distilled.yaml` is the model config.
-Inference always uses Searchlight and `torch.compile`.
+The model config always runs inference with Searchlight and `torch.compile`.
 
 The model settings are arguments to `write_jobs`/`predict` and are recorded in each
 queue job. All of them change the embeddings, so a store and its `completed_path` must

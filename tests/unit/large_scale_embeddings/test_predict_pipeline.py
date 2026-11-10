@@ -137,7 +137,7 @@ def test_a_training_checkpoint_is_loaded_as_checkpoint_path(
 
 
 def test_only_one_loader_argument_survives(tmp_path: pathlib.Path) -> None:
-    """Exactly one loader argument reaches the encoder, with Searchlight always on."""
+    """Exactly one loader argument reaches the encoder."""
     import json as _json
 
     import yaml as _yaml
@@ -160,6 +160,7 @@ def test_only_one_loader_argument_survives(tmp_path: pathlib.Path) -> None:
                                 "init_args": {
                                     "projected_location_token_dim": 128,
                                     "checkpoint_path": "placeholder",
+                                    "forward_kwargs": {},
                                 },
                             }
                         ]
@@ -195,10 +196,34 @@ def test_only_one_loader_argument_survives(tmp_path: pathlib.Path) -> None:
     assert present == ["model_path"], f"expected only model_path, got {present}"
     assert init_args["model_path"] == str(bundle)
     assert init_args["projected_location_token_dim"] == 128
+    assert init_args["forward_kwargs"] == {"location_query_patch_size": 1}
+
+
+def test_the_model_config_always_runs_searchlight_compiled() -> None:
+    """Searchlight and compilation come from the config and survive the overrides."""
+    from rslp.large_scale_embeddings.predict_pipeline import (
+        MODEL_CONFIG_FNAME,
+        _get_model_extra_args,
+    )
+
+    args = _get_model_extra_args(
+        model_config_fname=MODEL_CONFIG_FNAME.format(
+            inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED.value
+        ),
+        checkpoint_path="/checkpoint",
+        patch_size=2,
+        location_query_patch_size=1,
+        window_size=480,
+        overlap_size=32,
+    )
+    encoder = json.loads(
+        args[args.index("--model.init_args.model.init_args.encoder") + 1]
+    )
+    init_args = encoder[0]["init_args"]
     assert init_args["compile_model"] is True
-    forward_kwargs = init_args["forward_kwargs"]
-    assert forward_kwargs["location_query_patch_size"] == 1
-    assert forward_kwargs["searchlight"]["init_args"] == {"compile": True}
+    searchlight = init_args["forward_kwargs"]["searchlight"]
+    assert searchlight["class_path"].endswith(".SearchlightSettings")
+    assert searchlight["init_args"] == {"compile": True}
 
 
 def test_predict_writes_a_marker_when_no_crop_has_output(
