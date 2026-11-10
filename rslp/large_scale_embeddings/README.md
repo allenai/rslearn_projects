@@ -1,97 +1,94 @@
 Large-Scale Embeddings
 ======================
 
-This project computes OlmoEarth embeddings over large areas (up to global scale). The
-embeddings are:
+This project computes OlmoEarth embeddings over large areas (up to global scale) and
+writes them to a GeoZarr store. The embeddings are:
 
-- 10 m/pixel (at the default `--patch_size 1`; in general patch_size x 10 m/pixel),
-  in the appropriate UTM projection for each location.
-- 128-dimensional, L2-normalized, and quantized to int8 (see Quantization below).
-- Computed from one year of input imagery starting at a user-provided reference
-  timestamp.
+- 10 m/pixel, in the UTM zone for each location.
+- 128-dimensional and quantized to int8 (see Quantization below). The first 64
+  dimensions are a trained Matryoshka prefix and can be used on their own.
+- Computed from one year of Sentinel-2 L2A imagery starting at a reference timestamp,
+  plus Sentinel-1 RTC and Landsat 8/9 where available.
 
-There are two input variants (`EmbeddingInputs`), which produce different embeddings
-and so must be written to different output paths:
+The configuration files are in `data/large_scale_embeddings/`:
+`s2_s1_landsat_distilled.json` is the rslearn dataset config (imagery comes from the
+OlmoEarth Datasets sources) and `s2_s1_landsat_distilled.yaml` is the model config.
+Inference always uses Searchlight and `torch.compile`.
 
-- `S2`: twelve monthly Sentinel-2 L2A mosaics.
-- `S2_S1`: the above, plus twelve monthly Sentinel-1 RTC mosaics (converted from
-  linear intensities to dB). Sentinel-1 is best-effort: where it is unavailable, the
-  embeddings are computed from Sentinel-2 alone. Sentinel-2 coverage is required.
+The model settings are arguments to `write_jobs`/`predict` and are recorded in each
+queue job. All of them change the embeddings, so a store and its `completed_path` must
+be computed with one fixed set:
 
-The configuration files are in `data/large_scale_embeddings/`: `s2.json`/`s2_s1.json`
-are the rslearn dataset configs (imagery comes from the OlmoEarth Datasets sources)
-and `s2.yaml`/`s2_s1.yaml` are the model configs.
-
-The model settings are provided as arguments to `write_jobs`/`predict` and override
-the defaults in the model configs (they are recorded in each queue job, so workers
-can process jobs with differing settings):
-
-- `--checkpoint_path` (required): the OlmoEarth checkpoint to compute embeddings
-  with, e.g.
-  `/weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000`.
-- `--patch_size` (default `1`): the encoder patch size, yielding one embedding per
-  patch_size x patch_size pixels; the output rasters are at 1/patch_size of the
-  10 m/pixel window resolution.
-- `--window_size` (default `16`): the size of the crops the model operates on (much
-  bigger fails with the 12 monthly inputs at patch_size=1 due to GPU memory
-  constraints).
-- `--overlap_size` (default `4`): overlap in pixels between adjacent crops, to
-  mitigate embedding seams at crop boundaries. Must be a multiple of patch_size.
-- `--compile_model` (default `true`): whether to compile the encoder transformer
-  blocks.
-
-Note that the checkpoint and the patch/window/overlap sizes all affect the resulting
-embeddings, so each combination must use its own `out_path`/`completed_path` (like
-the input variants).
+- `--checkpoint_path` (required): an OlmoEarth training checkpoint, or a released
+  model bundle (a directory with `config.json` and `weights.pth`).
+- `--patch_size` (default `2`): the encoder's token patch size.
+- `--location_query_patch_size` (default `1`): input pixels per output embedding.
+- `--window_size` (default `480`): the size of the crops the model operates on. Lower
+  it on GPUs with less memory (384 fits a 40 GB A100).
+- `--overlap_size` (default `32`): overlap in pixels between adjacent crops.
+- `--context_pixels` (default `48`): imagery margin around each 2048 px window that
+  the model sees but that is not written, so pixels at window edges get context.
 
 
 How It Works
 ------------
 
-The world is divided into 32768x32768-pixel tiles in each UTM zone, and each tile is
-one unit of work (one queue job). The prediction pipeline for a tile creates
-2048x2048-pixel windows in a scratch rslearn dataset, materializes the input mosaics,
-runs the model, and uploads one GeoTIFF per window to `out_path`, named
-`{crs}_{x}_{y}.tif` (x/y are the pixel offsets of the window in the UTM projection at
-10 m/pixel, regardless of patch_size; the GeoTIFF itself is at patch_size x
-10 m/pixel). GeoTIFFs are uncompressed (the int8 embeddings are high-entropy, so
-compression only slows down writes) and tiled with 512x512 blocks, with nodata
-value -128.
+Each UTM zone is processed in its northern CRS (EPSG:326NN), with northing going
+negative south of the equator, so one grid covers both hemispheres. The zone is divided
+into blocks of `--job_size` pixels (default 8192), and each block is one queue job.
 
-To limit duplicated work where UTM zones overlap, tiles and windows are skipped unless
-they intersect their zone's canonical 6-degree wedge (see `tiling.py`). Windows that
-are entirely ocean (per `global_land_mask`) or too close to 0/180 longitude (where
-mosaics are unreliable) are also skipped.
+The prediction pipeline for a block creates 2048x2048-pixel windows in a scratch
+rslearn dataset, materializes the input mosaics, runs the model, and writes each
+window into the store as exactly one shard. Windows are skipped unless they intersect
+their zone's canonical 6-degree wedge (see `tiling.py`) and the coverage mask in
+`coverage_mask.tif` (land plus coastal water). Windows touching the antimeridian are
+also skipped, since mosaics there are unreliable.
 
-When a tile finishes, a marker file `{crs}_{x}_{y}.json` is written to
-`completed_path` recording the tile's projection, bounds, and time range, plus which
-windows were written and which were skipped (`written`, `skipped_no_data` for windows
-without Sentinel-2 coverage, `skipped_longitude`, and `num_filtered_crops` for
-wedge/ocean-filtered windows). Tiles with existing markers are excluded when writing
-jobs and skipped by the prediction pipeline, so the pipeline is idempotent and jobs
-can safely be re-enqueued to retry failures.
+The store follows the
+[geoemb embeddings-zarr-convention](https://github.com/geo-embeddings/embeddings-zarr-convention)
+with one `utm{NN}` group per zone, each holding an `embeddings` array with dimensions
+`(time, band, y, x)`. Shards are 2048x2048 pixels by 128 bands, with 256x256x64 inner
+chunks.
+
+When a block finishes, a marker `{crs}_{x}_{y}.json` is written to `completed_path`,
+recording which windows were written and which were skipped (`skipped_no_data` for
+windows without Sentinel-2, `skipped_longitude`, and `num_filtered_crops` for
+wedge or coverage filtered windows). A provenance file with the same name, listing
+the source scenes behind each window's mosaics, is written to a sibling directory
+(`completed_2025/` becomes `provenance_2025/`). Blocks with markers are skipped, so
+jobs can safely be re-enqueued to retry failures.
+
+A block whose model output contains a non-finite value fails rather than being
+written, so that retrying it recovers the pixels.
 
 
-Running One Tile Locally
-------------------------
+Running One Block Locally
+-------------------------
 
-This requires a GPU and access to the OlmoEarth checkpoint (e.g. run on a machine with
-WEKA mounted). From the rslearn_projects root:
+This requires a GPU and access to the checkpoint. First create the store (once):
+
+    python -m rslp.main large_scale_embeddings init_store \
+        --store_path gs://BUCKET/embeddings.zarr \
+        --years '[2024, 2025]' \
+        --model_url https://huggingface.co/allenai/MODEL \
+        --license_url https://example.com/LICENSE.txt
+
+Then, from the rslearn_projects root:
 
     python -m rslp.main large_scale_embeddings predict \
-        --inputs S2 \
+        --inputs S2_S1_LANDSAT_DISTILLED \
         --projection_json '{"crs": "EPSG:32610", "x_resolution": 10, "y_resolution": -10}' \
-        --bounds '[32768, -557056, 65536, -524288]' \
+        --bounds '[32768, -557056, 40960, -548864]' \
         --time_range '["2024-01-01T00:00:00+00:00", "2024-01-01T00:00:00+00:00"]' \
-        --out_path gs://BUCKET/embeddings/s2/2024/ \
-        --completed_path gs://BUCKET/embeddings/s2/2024_completed/ \
-        --checkpoint_path /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000
+        --store_path gs://BUCKET/embeddings.zarr \
+        --completed_path gs://BUCKET/completed_2024/ \
+        --time_index 0 \
+        --checkpoint_path /path/to/checkpoint
 
-`bounds` can be any box whose extents are multiples of 2048 (it does not have to be a
-32768x32768 tile). `time_range` is `(T, T)` where T is the reference timestamp; the
-dataset config derives the twelve monthly mosaics over the year following T. By
-default the scratch rslearn dataset is placed in a temporary directory and deleted;
-pass `--scratch_path /path/to/scratch/` to keep it for debugging.
+`bounds` can be any box whose extents are multiples of 2048. `time_range` is `(T, T)`
+where T is the reference timestamp; the dataset config derives the monthly mosaics
+over the year following T. `time_index` is T's year's position in the store's time
+axis. Pass `--scratch_path` to keep the scratch dataset for debugging.
 
 
 Running at Scale
@@ -99,63 +96,59 @@ Running at Scale
 
 Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
 
-1. Build and push a Beaker image containing rslearn_projects (with the
-   `global-land-mask` dependency included).
+1. Build and push an image with `olmoearth_pretrain.Dockerfile`. On H100s, pass
+   `--build-arg NATTEN_VERSION=...` matching the installed torch, and pass
+   `--build-arg CODE_VERSION=...` to record the commits in every marker.
 
-2. Write jobs to a Beaker queue, one per uncompleted tile:
+2. Create the store with `init_store` (see above), listing every year it will hold.
+
+3. Write jobs to a Beaker queue, one per uncompleted block:
 
         python -m rslp.main large_scale_embeddings write_jobs \
-            --inputs S2 \
+            --inputs S2_S1_LANDSAT_DISTILLED \
             --timestamp '2025-01-01T00:00:00+00:00' \
-            --out_path gs://ai2-olmoearth-embeddings-us-central1/large_scale_embeddings/20270721/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/ps1_ws16_s2/2025/ \
-            --completed_path gs://ai2-olmoearth-embeddings-us-central1/large_scale_embeddings/20270721/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/ps1_ws16_s2/2025_completed/ \
-            --checkpoint_path /weka/dfive-default/helios/checkpoints/gabrielt/regbtl_v1_2_gdyn_d128_wideread_regsup_latlon_w0p1/step560000 \
-            --queue_name favyen/rslp-large-scale-embeddings-queue
+            --store_path gs://BUCKET/embeddings.zarr \
+            --completed_path gs://BUCKET/completed_2025/ \
+            --checkpoint_path /path/to/checkpoint \
+            --queue_name USER/embeddings-queue
 
-   The model settings (`--checkpoint_path`, `--patch_size`, `--window_size`,
-   `--overlap_size`, `--compile_model`; see above) are recorded in each job.
-   Without additional arguments this enumerates all land tiles globally (~8,700).
-   Options to limit the extent:
+   Without further arguments this enumerates every covered block globally. To limit
+   the extent:
 
    - `--epsg_code 32610`: only one UTM zone.
-   - `--wgs84_bounds '[-125.0, 45.0, -116.0, 49.0]'`: only tiles intersecting these
+   - `--wgs84_bounds '[-125.0, 45.0, -116.0, 49.0]'`: only blocks intersecting these
      WGS84 bounds.
-   - `--geojson_fname data/large_scale_embeddings/initial_regions.geojson`: only
-     tiles intersecting a feature in the given WGS84 GeoJSON file (the included
-     `initial_regions.geojson` covers Washington, Montana, Ukraine, Thailand, and
-     points in Greenland and coastal Antarctica; 88 tiles).
-   - `--count 10`: randomly sample this many tiles.
+   - `--geojson_fname aoi.geojson`: only blocks intersecting a feature in the given
+     WGS84 GeoJSON file.
+   - `--blocks_fname blocks.json`: exactly the blocks named in a JSON list of
+     `{crs}_{x}_{y}` ids.
+   - `--count 10`: randomly sample this many blocks.
 
-3. Launch workers on Beaker (WEKA must be mounted for the checkpoint). The
-   OlmoEarth Datasets data source needs `OEDATASETS_API_URL` (plain env var) and
-   `DATASETS_API_TOKEN` (bearer token, read from the `LCC_DATASETS_API_TOKEN`
-   Beaker secret which must exist in the `ai2/earth-systems` workspace):
+4. Launch GPU workers. The OlmoEarth Datasets data source needs `OEDATASETS_API_URL`
+   and a `DATASETS_API_TOKEN` secret:
 
         python -m rslp.main common launch \
-            --image_name favyen/rslpomp20260721b \
-            --queue_name favyen/rslp-large-scale-embeddings-queue \
+            --image_name USER/IMAGE \
+            --queue_name USER/embeddings-queue \
             --num_workers 4 \
             --gpus 1 \
-            --priority urgent \
-            --cluster '["ai2/jupiter","ai2/ceres"]' \
+            --cluster '["ai2/jupiter"]' \
             --weka_mounts+='{"bucket_name": "dfive-default", "mount_path": "/weka/dfive-default"}' \
             --extra_env_vars '{"OEDATASETS_API_URL": "https://datasets.olmoearth.allenai.org"}' \
             --extra_env_secrets '{"DATASETS_API_TOKEN": "LCC_DATASETS_API_TOKEN"}' \
             --shared_memory 256GiB
 
-Progress can be monitored by counting marker files in `completed_path`. To retry
-failed tiles, simply run `write_jobs` again: completed tiles are excluded.
-
-Remember to use different `out_path`/`completed_path` per input variant, model
-settings (checkpoint and patch/window/overlap sizes), and reference timestamp.
+Progress can be monitored by counting markers in `completed_path`. To retry failed
+blocks, run `write_jobs` again: completed blocks are excluded.
 
 
 Quantization
 ------------
 
-Embeddings are L2-normalized and then quantized following the AlphaEarth scheme (see
-`model.py`): `quantized = round(sign(x) * |x|^0.5 * 127.5)` clipped to [-127, 127],
-with -128 reserved for nodata. To recover approximate float embeddings:
+Embeddings are quantized following the AlphaEarth scheme (see `model.py`):
+`quantized = round(sign(x) * |x|^0.5 * 127.5)` clipped to [-127, 127], with -128
+reserved for nodata. They are not L2-normalized. To recover approximate float
+embeddings:
 
 ```python
 import numpy as np

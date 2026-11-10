@@ -21,7 +21,7 @@ repos:
       - id: check-case-conflict
       - id: check-docstring-first
       - id: check-added-large-files
-        exclude: wheels/*
+        exclude: (wheels/.*|data/large_scale_embeddings/coverage_mask\.tif)$
       - id: check-ast
       - id: check-byte-order-marker
       - id: check-executables-have-shebangs
