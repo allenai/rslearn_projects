@@ -646,7 +646,7 @@ data:
       tags:
         split: val
 trainer:
-  max_epochs: 100
+  max_epochs: 75
   callbacks:
   - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     init_args:
@@ -655,6 +655,6 @@ trainer:
     init_args:
       monitor: val_post_change/accuracy
       mode: max
-project_name: 2026_11_08_lcc
+project_name: 2026_11_10_lcc
 run_name: bp_abs_bpcat_1pass
 management_dir: ${RSLP_PREFIX}/projects
