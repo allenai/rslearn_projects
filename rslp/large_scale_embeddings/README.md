@@ -26,7 +26,9 @@ be computed with one fixed set:
 - `--patch_size` (default `2`): the encoder's token patch size.
 - `--location_query_patch_size` (default `1`): input pixels per output embedding.
 - `--window_size` (default `480`): the size of the crops the model operates on. Lower
-  it on GPUs with less memory (384 fits a 40 GB A100).
+  it on GPUs with less memory (384 fits a 40 GB A100). Unlike the others, this may
+  vary between workers (see Running at Scale): the v1.3 store mixes 480 on H100s and
+  384 on A100s. Each marker records the value used.
 - `--overlap_size` (default `32`): overlap in pixels between adjacent crops.
 - `--context_pixels` (default `48`): imagery margin around each 2048 px window that
   the model sees but that is not written, so pixels at window edges get context.
@@ -142,6 +144,10 @@ Jobs are distributed via a Beaker queue and processed by `rslp.common` workers.
             --extra_env_vars '{"OEDATASETS_API_URL": "https://datasets.olmoearth.allenai.org", "GS_USER_PROJECT": "PROJECT"}' \
             --extra_env_secrets '{"DATASETS_API_TOKEN": "LCC_DATASETS_API_TOKEN"}' \
             --shared_memory 256GiB
+
+To share one queue between H100s and 40 GB A100s, launch the A100 pool separately
+with `--worker_args '["--window_size", "384"]'`. Each worker appends these to every
+job it runs, overriding the job's own values.
 
 Each worker materializes its next block in a subprocess while the GPU runs the current
 one. This needs the queue created with `max_claimed_entries=2`; with 1, blocks run

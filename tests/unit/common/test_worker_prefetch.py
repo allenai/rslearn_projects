@@ -4,9 +4,11 @@ import contextlib
 import os
 import pathlib
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from queue import SimpleQueue
+from typing import Protocol
 
+import jsonargparse
 import pytest
 
 from rslp.common import worker as worker_mod
@@ -53,6 +55,7 @@ class _Run:
         self.lock = threading.Lock()
         self.events: list[tuple[str, str]] = []
         self.run_args: dict[str, list[str]] = {}
+        self.prefetch_cmds: dict[str, list[str]] = {}
         self.prefetched = {e: threading.Event() for e in entry_ids}
 
     def record(self, kind: str, entry_id: str) -> None:
@@ -60,7 +63,13 @@ class _Run:
             self.events.append((kind, entry_id))
 
 
-Harness = Callable[[list[list[_Input]], frozenset[str]], tuple[_Tx, _Run]]
+class Harness(Protocol):
+    def __call__(
+        self,
+        batches: list[list[_Input]],
+        prefetch_fails: frozenset[str] = frozenset(),
+        worker_args: list[str] | None = None,
+    ) -> tuple[_Tx, _Run]: ...
 
 
 @pytest.fixture
@@ -68,7 +77,9 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     """Run worker_pipeline against a faked queue and prefetch subprocess."""
 
     def go(
-        batches: list[list[_Input]], prefetch_fails: frozenset[str] = frozenset()
+        batches: list[list[_Input]],
+        prefetch_fails: frozenset[str] = frozenset(),
+        worker_args: list[str] | None = None,
     ) -> tuple[_Tx, _Run]:
         tx, rx = _Tx(), _Rx(batches)
         run = _Run([e.metadata.entry_id for batch in batches for e in batch])
@@ -99,6 +110,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
             entry_id = cmd[cmd.index("noop") + 1]
             scratch = cmd[cmd.index("--scratch_path") + 1]
             assert "--materialize_only" in cmd
+            run.prefetch_cmds[entry_id] = list(cmd)
             if entry_id in prefetch_fails:
                 raise RuntimeError(f"prefetch boom {entry_id}")
             os.mkdir(scratch)
@@ -121,7 +133,9 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
         monkeypatch.setattr(worker_mod, "PREFETCH_POLL_SECONDS", 0.05)
         monkeypatch.setattr(worker_mod, "_run_prefetch_subprocess", fake_prefetch)
         monkeypatch.setattr(worker_mod, "run_workflow", fake_run_workflow)
-        worker_mod.worker_pipeline(queue_name="test/queue", idle_timeout=1)
+        worker_mod.worker_pipeline(
+            queue_name="test/queue", idle_timeout=1, worker_args=worker_args
+        )
         return tx, run
 
     return go
@@ -149,6 +163,28 @@ def test_an_entry_without_prefetch_runs_unchanged(harness: Harness) -> None:
     tx, run = harness([[_Input("e1", None)]], frozenset())
     assert run.run_args["e1"] == ["e1"]
     assert tx.sent == [("e1", True)]
+
+
+def test_worker_args_reach_the_prefetch_and_the_run(harness: Harness) -> None:
+    """A worker's own args follow the entry's in both steps, so they win."""
+    _, run = harness(
+        [[_Input("e1", PREFETCH), _Input("e2", None)]],
+        worker_args=["--window_size", "384"],
+    )
+    cmd = run.prefetch_cmds["e1"]
+    assert cmd[cmd.index("e1") + 1 :][:2] == ["--window_size", "384"]
+    assert run.run_args["e1"][1:3] == ["--window_size", "384"]
+    assert run.run_args["e2"] == ["e2", "--window_size", "384"]
+
+
+def test_a_repeated_arg_takes_the_last_value() -> None:
+    """Workflows parse args with jsonargparse, where the worker's later value wins."""
+
+    def workflow(window_size: int = 480) -> int:
+        return window_size
+
+    args = ["--window_size", "480", "--window_size", "384"]
+    assert jsonargparse.CLI(workflow, args=args, as_positional=False) == 384
 
 
 def test_a_failed_prefetch_fails_the_entry_without_running_it(

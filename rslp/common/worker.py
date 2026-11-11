@@ -1,6 +1,7 @@
 """Worker to process jobs in a list of jobs."""
 
 import glob
+import json
 import os
 import shutil
 import subprocess  # nosec
@@ -121,7 +122,11 @@ class _Prefetcher(threading.Thread):
     """
 
     def __init__(
-        self, rx: BeakerEntryReceiver, scratch_root: str, flush_messages: bool
+        self,
+        rx: BeakerEntryReceiver,
+        scratch_root: str,
+        flush_messages: bool,
+        worker_args: list[str],
     ) -> None:
         """Set up the prefetcher.
 
@@ -129,11 +134,13 @@ class _Prefetcher(threading.Thread):
             rx: the queue channel's receiver.
             scratch_root: directory to create each entry's prefetch directory in.
             flush_messages: skip prefetching, since nothing will run.
+            worker_args: the worker's own args, appended as for the real run.
         """
         super().__init__(name="prefetcher", daemon=True)
         self.rx = rx
         self.scratch_root = scratch_root
         self.flush_messages = flush_messages
+        self.worker_args = worker_args
         # At most one entry is prefetched ahead of the running one.
         self.ready: Queue[_Claimed] = Queue(maxsize=1)
         # Set while an entry is taken off the channel but not yet handed over.
@@ -197,6 +204,7 @@ class _Prefetcher(threading.Thread):
             claimed.entry_input["project"],
             claimed.entry_input["workflow"],
             *claimed.entry_input["args"],
+            *self.worker_args,
             *prefetch["args"],
             *scratch_args,
         ]
@@ -223,6 +231,7 @@ def worker_pipeline(
     retry_sleep: int = 60,
     idle_timeout: int = 10,
     flush_messages: bool = False,
+    worker_args: list[str] | None = None,
 ) -> None:
     """Start a worker to run jobs from a Pub/Sub subscription.
 
@@ -240,14 +249,18 @@ def worker_pipeline(
         idle_timeout: seconds before we terminate if there is no activity.
         flush_messages: whether to just flesh messages without actually running the
             requested workflows. This is to just delete all the messages in a topic.
+        worker_args: args appended to every entry this worker runs, overriding the
+            entry's own, e.g. a smaller --window_size on GPUs with less memory.
     """
+    if worker_args is None:
+        worker_args = []
 
     # Callback to run the workflow indicated in the message.
     def process_message(json_data: dict[str, Any], extra_args: list[str]) -> None:
         logger.debug("worker received message %s", json_data)
         rslp_project = json_data["project"]
         rslp_workflow = json_data["workflow"]
-        workflow_args = json_data["args"] + extra_args
+        workflow_args = json_data["args"] + worker_args + extra_args
         run_workflow(rslp_project, rslp_workflow, workflow_args)
 
     def next_ready(prefetcher: _Prefetcher) -> _Claimed | None:
@@ -281,7 +294,7 @@ def worker_pipeline(
         consecutive_errors = 0
         try:
             with beaker.queue.worker_channel(queue, worker) as (tx, rx):
-                prefetcher = _Prefetcher(rx, scratch_root, flush_messages)
+                prefetcher = _Prefetcher(rx, scratch_root, flush_messages, worker_args)
                 prefetcher.start()
                 try:
                     while True:
@@ -336,6 +349,7 @@ def launch_workers(
     extra_env_secrets: dict[str, str] | None = None,
     min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
     gcp_credentials_secret: str | None = None,
+    worker_args: list[str] | None = None,
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -357,6 +371,8 @@ def launch_workers(
             preemption.
         gcp_credentials_secret: Beaker secret holding the GCP service account key, or
             None for the default.
+        worker_args: args each worker appends to every entry it runs (see
+            worker_pipeline).
     """
     if extra_env_vars is None:
         extra_env_vars = {}
@@ -393,6 +409,11 @@ def launch_workers(
                     "worker",
                     "--queue_name",
                     queue_name,
+                    *(
+                        ["--worker_args", json.dumps(worker_args)]
+                        if worker_args
+                        else []
+                    ),
                 ],
                 constraints=BeakerConstraints(
                     cluster=cluster,
