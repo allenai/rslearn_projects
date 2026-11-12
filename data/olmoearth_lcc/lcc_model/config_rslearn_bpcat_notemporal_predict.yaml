@@ -78,7 +78,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 128
-              out_channels: 14
+              out_channels: 11
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -101,7 +101,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 128
-              out_channels: 14
+              out_channels: 11
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -147,7 +147,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 128
-              out_channels: 21
+              out_channels: 20
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -213,13 +213,13 @@ data:
           src:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 14
+              num_classes: 11
               output_probs: true
               prob_scales: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
           dst:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 14
+              num_classes: 11
               output_probs: true
               prob_scales: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
           pre_change:
@@ -231,7 +231,7 @@ data:
           post_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 21
+              num_classes: 20
               output_probs: true
               prob_scales: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255]
           # Date (days since 1970-01-01) of the argmax timestep of the predicted change

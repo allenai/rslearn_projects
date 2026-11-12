@@ -24,6 +24,7 @@ from rslp.olmoearth_lcc.lcc_model import worker as worker_module
 from rslp.olmoearth_lcc.lcc_model.output_bands import (
     BINARY_CHANGE_BAND,
     DST_BAND_OFFSET,
+    LC_CLASS_NAMES,
     NONE_CATEGORY_IDX,
     OUTPUT_BANDS,
     OUTPUT_LAYER,
@@ -44,6 +45,8 @@ from rslp.olmoearth_lcc.lcc_model.tiling import (
 
 TIMESTAMP = datetime(2025, 6, 1, tzinfo=timezone.utc)
 NEW_BUILDING = POST_CHANGE_CATEGORY_NAMES.index("new_building")
+TREE = LC_CLASS_NAMES.index("tree")
+URBAN = LC_CLASS_NAMES.index("urban/built-up")
 
 
 def _fake_output() -> np.ndarray:
@@ -51,8 +54,8 @@ def _fake_output() -> np.ndarray:
     arr = np.zeros((len(OUTPUT_BANDS), PATCH_SIZE, PATCH_SIZE), dtype=np.uint16)
     arr[BINARY_CHANGE_BAND - 1] = 230
     arr[BINARY_CHANGE_BAND] = 25
-    arr[SRC_BAND_OFFSET + 9] = 200
-    arr[DST_BAND_OFFSET + 9] = 200
+    arr[SRC_BAND_OFFSET + TREE] = 200
+    arr[DST_BAND_OFFSET + TREE] = 200
     arr[PRE_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 250
     arr[POST_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 250
     arr[TS_PRE_DAYS_BAND] = 3000
@@ -62,8 +65,8 @@ def _fake_output() -> np.ndarray:
     change = arr[patch]
     change[BINARY_CHANGE_BAND - 1] = 25
     change[BINARY_CHANGE_BAND] = 230
-    change[DST_BAND_OFFSET + 9] = 0
-    change[DST_BAND_OFFSET + 10] = 220
+    change[DST_BAND_OFFSET + TREE] = 0
+    change[DST_BAND_OFFSET + URBAN] = 220
     change[POST_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 0
     change[POST_CHANGE_BAND_OFFSET + NEW_BUILDING] = 240
     return arr
@@ -201,7 +204,7 @@ def test_predict_pipeline_geozarr(
     assert not second.any()
     # The change patch keeps its details; the rest has them zeroed.
     np.testing.assert_array_equal(
-        first[:, 550, 550], [230, 9, 10, NONE_CATEGORY_IDX, NEW_BUILDING, 240]
+        first[:, 550, 550], [230, TREE, URBAN, NONE_CATEGORY_IDX, NEW_BUILDING, 240]
     )
     np.testing.assert_array_equal(
         first[:, 0, 0], [25, 0, 0, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 0]
@@ -306,7 +309,7 @@ def test_predict_pipeline_full_store_with_pyramid(
         assert (block[3] == NONE_CATEGORY_IDX).all()
         np.testing.assert_array_equal(
             block[:, 550 // scale, 550 // scale],
-            [230, 9, 10, NONE_CATEGORY_IDX, NEW_BUILDING, 240],
+            [230, TREE, URBAN, NONE_CATEGORY_IDX, NEW_BUILDING, 240],
         )
 
 

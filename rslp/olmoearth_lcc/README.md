@@ -76,14 +76,15 @@ one 128x128 spatial window:
   blocks that end on/before the earliest `stop_date` among the entry's points.
 - `transition_date`, `transition_category`, `transition_change_category` (optional,
   positive points only): an intermediate stage of a multi-stage change (e.g.
-  mangrove -> bare -> crops): the date it appears, its land cover category, and its
+  mangrove -> bare -> agriculture): the date it appears, its land cover category, and its
   change category (one of the post-change categories, from the same Studio
   labelset as `post_change_category`). `transition_date` must satisfy
   `first_date_change_noticeable <= transition_date < post_change`.
 
-Land cover categories (`pre_category` / `post_category`): nodata, bare, burnt, crops,
-fallow/shifting cultivation, grassland, Lichen and moss, shrub, snow and ice, tree,
-urban/built-up, water, wetland (herbaceous), mangrove.
+Land cover categories (`pre_category` / `post_category`): nodata, bare, agriculture,
+grassland, shrub, snow/ice, tree, urban/built-up, water, wetland, mangrove. (Renamed
+2026-11-12 from crops, snow and ice, wetland (herbaceous); burnt, fallow/shifting
+cultivation and Lichen and moss were removed. `prepare.py` still maps the old names.)
 
 Positive points may also carry change-category fields: one `pre_change_category`
 (what was removed or lost) and/or one `post_change_category` (what appeared or
@@ -93,15 +94,19 @@ points that have at least one of these fields. The annotation lab's labels are
 documented in `olmoearth_studio/ui/labs/lcc-annotator/FIELDS.md`. The model is
 trained on these classes:
 
-- Pre-change: deforestation, urban_erosion, wetland_loss, water_contract,
+- Pre-change: forest_loss, removed_building, wetland_loss, water_to_land,
   removed_crop_structure, mangrove_loss.
 - Post-change: vegetation_growth, new_building, new_road, new_infrastructure,
-  new_crop_field, new_aquafarm, site_clearing, water_expand, mining,
+  new_agriculture, new_aquafarm, site_clearing, land_to_water, new_mining_or_quarry,
   new_crop_structure, selective_logging, landslide, settlement,
-  agricultural_activity, wildfire, ice_motion, flooding, storm_damage,
-  vegetation_dieback.
+  agricultural_activity, burned, flooding, storm_damage, vegetation_dieback.
 
-The finer lab labels are mapped onto those classes by `prepare.py`.
+The finer lab labels are mapped onto those classes by `prepare.py` (e.g. new_solar
+and the other new_* infrastructure labels -> new_infrastructure, tree_crop_growth ->
+vegetation_growth, tree_crop_harvest -> agricultural_activity, borrow_pit ->
+new_mining_or_quarry); ice_loss has no class yet and is masked like any unknown
+category. Names from before the 2026-11-12 renames (deforestation, mining, wildfire,
+water_expand, ...) still map to their new classes.
 
 ### Ten-Year Dataset
 

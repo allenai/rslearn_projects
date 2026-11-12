@@ -64,6 +64,11 @@ from rslearn.models.olmoearth_pretrain.model import OlmoEarth
 from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 
 from .components import balanced_loss
+from .output_bands import (
+    NUM_LC_CLASSES,
+    POST_CHANGE_CATEGORY_NAMES,
+    PRE_CHANGE_CATEGORY_NAMES,
+)
 from .timestamp_encoding import timestamps_to_days
 from .transforms import INPUT_KEY, TS_END_KEY, TS_START_KEY
 
@@ -114,10 +119,10 @@ class ChangeModel(nn.Module):
         self,
         encoder: OlmoEarth,
         num_classes_binary: int = 3,
-        num_classes_src: int = 14,
-        num_classes_dst: int = 14,
-        num_classes_pre_change: int = 8,
-        num_classes_post_change: int = 21,
+        num_classes_src: int = NUM_LC_CLASSES,
+        num_classes_dst: int = NUM_LC_CLASSES,
+        num_classes_pre_change: int = len(PRE_CHANGE_CATEGORY_NAMES),
+        num_classes_post_change: int = len(POST_CHANGE_CATEGORY_NAMES),
         num_timesteps: int = 22,
         num_pass1: int | None = 11,
         embedding_dim: int = 768,

@@ -105,4 +105,4 @@ def test_predict_rslearn_config_output_bands() -> None:
 
 
 def test_output_band_count() -> None:
-    assert len(output_bands.OUTPUT_BANDS) == 62
+    assert len(output_bands.OUTPUT_BANDS) == 55

@@ -348,7 +348,7 @@ class LCCMultiTask(MultiTask):
     def process_output(
         self, raw_output: Any, metadata: SampleMetadata
     ) -> npt.NDArray[np.uint16]:
-        """Stack per-task outputs into a 62-band uint16 CHW array.
+        """Stack per-task outputs into a 55-band uint16 CHW array.
 
         The two timestamp bands hold the predicted pre-change and post-change
         dates as integer days since ``TIMESTAMP_EPOCH``, derived from the per-pixel

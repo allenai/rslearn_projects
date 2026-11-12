@@ -222,10 +222,10 @@ def test_full_store(tmp_path: pathlib.Path) -> None:
     change, dates = geozarr.geozarr_window_arrays(arr)
     prob_arrays = geozarr.prob_window_arrays(arr)
     assert {name: a.shape[0] for name, a in prob_arrays.items()} == {
-        "src_probs": 13,
-        "dst_probs": 13,
+        "src_probs": 10,
+        "dst_probs": 10,
         "pre_change_probs": 7,
-        "post_change_probs": 20,
+        "post_change_probs": 19,
     }
     projection, bounds = _first_window(10)
     geozarr.write_window(

@@ -104,27 +104,64 @@ WINDOW_SIZE = 128
 BIN_NO_CHANGE = 1
 BIN_CHANGE = 2
 
-# Annotation categories that train as another class of the same field.
+# Annotation categories that train as another class of the same field: the
+# finer-grained annotation categories, and the pre-2026-11-12 names of renamed
+# categories (so older annotation exports still map). Categories in neither the
+# training classes nor these maps (e.g. ice_loss) rasterize as nodata.
+LEGACY_LAND_COVER_ALIASES = {
+    "crops": "agriculture",
+    "snow and ice": "snow/ice",
+    "wetland (herbaceous)": "wetland",
+}
 PRE_CHANGE_CATEGORY_ALIASES = {
-    "river_channel_migration": "water_contract",
-    "river_contract": "water_contract",
-    "lake_level_drop": "water_contract",
-    "reservoir_level_drop": "water_contract",
-    "water_contract_other": "water_contract",
+    "river_channel_migration": "water_to_land",
+    "river_contract": "water_to_land",
+    "large_water_body_level_drop": "water_to_land",
+    "small_water_body_level_drop": "water_to_land",
+    "other_water_to_land": "water_to_land",
+    # Renamed 2026-11-12.
+    "deforestation": "forest_loss",
+    "urban_erosion": "removed_building",
+    "water_contract": "water_to_land",
+    "lake_level_drop": "water_to_land",
+    "reservoir_level_drop": "water_to_land",
+    "water_contract_other": "water_to_land",
 }
 POST_CHANGE_CATEGORY_ALIASES = {
-    "river_channel_migration": "water_expand",
+    "tree_growth": "vegetation_growth",
+    "wetland_growth": "vegetation_growth",
+    "tree_crop_growth": "vegetation_growth",
+    "new_reservoir": "new_infrastructure",
+    "new_solar": "new_infrastructure",
+    "new_wind": "new_infrastructure",
+    "new_dam": "new_infrastructure",
+    "new_industrial_infrastructure": "new_infrastructure",
+    "new_offshore_wind": "new_infrastructure",
+    "new_offshore_platform": "new_infrastructure",
+    "new_paved_area": "new_infrastructure",
+    "new_canal": "new_infrastructure",
+    "new_other_infrastructure": "new_infrastructure",
+    "other_land_to_water": "land_to_water",
+    "river_channel_migration": "land_to_water",
     "river_flooding": "flooding",
-    "lake_level_rise": "water_expand",
-    "reservoir_level_rise": "water_expand",
-    "coastal_erosion": "water_expand",
-    "borrow_pit": "new_road",
+    "large_water_body_level_rise": "land_to_water",
+    "small_water_body_level_rise": "land_to_water",
+    "coastal_erosion": "land_to_water",
+    "borrow_pit": "new_mining_or_quarry",
+    "tree_crop_harvest": "agricultural_activity",
+    # Renamed 2026-11-12.
+    "new_crop_field": "new_agriculture",
+    "mining": "new_mining_or_quarry",
+    "wildfire": "burned",
+    "water_expand": "land_to_water",
+    "lake_level_rise": "land_to_water",
+    "reservoir_level_rise": "land_to_water",
 }
 # Post-change annotation categories that train as a pre-change class instead (the
 # post field then counts as unset). A pre_change_category on the same point takes
 # precedence.
 POST_TO_PRE_CHANGE_CATEGORIES = {
-    "land_reclamation": "water_contract",
+    "land_reclamation": "water_to_land",
 }
 
 # Maps positive-point annotation field -> (label layer name, class-name list).
@@ -163,9 +200,12 @@ def _lonlat_to_pixel(
 
 
 def _category_to_id(category: str) -> int:
-    """Convert category name to class ID (1-indexed, 0 = nodata)."""
+    """Convert a land cover category name to class ID (1-indexed, 0 = nodata).
+
+    Pre-2026-11-12 names are mapped through LEGACY_LAND_COVER_ALIASES.
+    """
     try:
-        return LC_CLASS_NAMES.index(category)
+        return LC_CLASS_NAMES.index(LEGACY_LAND_COVER_ALIASES.get(category, category))
     except ValueError:
         return 0
 
@@ -233,7 +273,7 @@ def _get_unknown_categories(entries: list[dict[str, Any]]) -> Counter[str]:
         for pt in entry.get("positive_points", []):
             for field in ("pre_category", "post_category", TRANSITION_CATEGORY_FIELD):
                 value = pt.get(field)
-                if value and value not in LC_CLASS_NAMES[1:]:
+                if value and _category_to_id(value) == 0:
                     counts[f"{field}: {value}"] += 1
             for field, value in _get_change_categories(pt).items():
                 class_names = CHANGE_CATEGORY_FIELDS[field][1]

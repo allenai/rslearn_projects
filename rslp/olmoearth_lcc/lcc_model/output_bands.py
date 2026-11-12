@@ -1,13 +1,13 @@
 """Band layout of the LCC model output.
 
-The model's ``output_change`` layer has OUTPUT_BANDS: 62 uint16 bands with
+The model's ``output_change`` layer has OUTPUT_BANDS: 55 uint16 bands with
 probabilities scaled 0-255 and the predicted change dates as days since
 TIMESTAMP_EPOCH (see tasks.LCCMultiTask.process_output).
 """
 
 from .timestamp_encoding import TIMESTAMP_EPOCH, UNIX_EPOCH
 
-NUM_LC_CLASSES = 14
+NUM_LC_CLASSES = 11
 BINARY_CHANGE_BAND = 2
 SRC_BAND_OFFSET = 3
 DST_BAND_OFFSET = SRC_BAND_OFFSET + NUM_LC_CLASSES
@@ -21,17 +21,14 @@ TS_POST_DAYS_BAND = TS_PRE_DAYS_BAND + 1
 LC_CLASS_NAMES = [
     "nodata",
     "bare",
-    "burnt",
-    "crops",
-    "fallow/shifting cultivation",
+    "agriculture",
     "grassland",
-    "Lichen and moss",
     "shrub",
-    "snow and ice",
+    "snow/ice",
     "tree",
     "urban/built-up",
     "water",
-    "wetland (herbaceous)",
+    "wetland",
     "mangrove",
 ]
 
@@ -44,10 +41,10 @@ LC_CLASS_NAMES = [
 PRE_CHANGE_CATEGORY_NAMES = [
     "nodata",
     "none",
-    "deforestation",
-    "urban_erosion",
+    "forest_loss",
+    "removed_building",
     "wetland_loss",
-    "water_contract",
+    "water_to_land",
     "removed_crop_structure",
     "mangrove_loss",
 ]
@@ -58,18 +55,17 @@ POST_CHANGE_CATEGORY_NAMES = [
     "new_building",
     "new_road",
     "new_infrastructure",
-    "new_crop_field",
+    "new_agriculture",
     "new_aquafarm",
     "site_clearing",
-    "water_expand",
-    "mining",
+    "land_to_water",
+    "new_mining_or_quarry",
     "new_crop_structure",
     "selective_logging",
     "landslide",
     "settlement",
     "agricultural_activity",
-    "wildfire",
-    "ice_motion",
+    "burned",
     "flooding",
     "storm_damage",
     "vegetation_dieback",

@@ -85,7 +85,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 128
-              out_channels: 14
+              out_channels: 11
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -108,7 +108,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 128
-              out_channels: 14
+              out_channels: 11
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
           - class_path: rslearn.train.tasks.segmentation.SegmentationHead
@@ -154,7 +154,7 @@ model:
           - class_path: rslearn.models.conv.Conv
             init_args:
               in_channels: 128
-              out_channels: 21
+              out_channels: 20
               kernel_size: 1
               activation: {class_path: torch.nn.Identity}
           - class_path: rslp.olmoearth_lcc.lcc_model.components.BalancedSegmentationHead
@@ -460,30 +460,27 @@ data:
           src:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 14
+              num_classes: 11
               nodata_value: 0
               enable_confusion_matrix: true
               class_names: &lc_class_names
               - nodata
               - bare
-              - burnt
-              - crops
-              - fallow/shifting cultivation
+              - agriculture
               - grassland
-              - Lichen and moss
               - shrub
-              - snow and ice
+              - snow/ice
               - tree
               - urban/built-up
               - water
-              - wetland (herbaceous)
+              - wetland
               - mangrove
               metric_kwargs:
                 average: micro
           dst:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 14
+              num_classes: 11
               nodata_value: 0
               enable_confusion_matrix: true
               class_names: *lc_class_names
@@ -514,10 +511,10 @@ data:
               class_names:
               - nodata
               - none
-              - deforestation
-              - urban_erosion
+              - forest_loss
+              - removed_building
               - wetland_loss
-              - water_contract
+              - water_to_land
               - removed_crop_structure
               - mangrove_loss
               metric_kwargs:
@@ -525,7 +522,7 @@ data:
           post_change:
             class_path: rslearn.train.tasks.segmentation.SegmentationTask
             init_args:
-              num_classes: 21
+              num_classes: 20
               nodata_value: 0
               enable_confusion_matrix: true
               enable_f1_metric: true
@@ -538,18 +535,17 @@ data:
               - new_building
               - new_road
               - new_infrastructure
-              - new_crop_field
+              - new_agriculture
               - new_aquafarm
               - site_clearing
-              - water_expand
-              - mining
+              - land_to_water
+              - new_mining_or_quarry
               - new_crop_structure
               - selective_logging
               - landslide
               - settlement
               - agricultural_activity
-              - wildfire
-              - ice_motion
+              - burned
               - flooding
               - storm_damage
               - vegetation_dieback

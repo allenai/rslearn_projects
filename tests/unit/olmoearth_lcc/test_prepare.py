@@ -51,9 +51,9 @@ DATED_POINT = {
     "first_date_change_noticeable": "2020-02-01",
     "post_change": "2020-09-01",
     "pre_category": "mangrove",
-    "post_category": "crops",
+    "post_category": "agriculture",
     "pre_change_category": "mangrove_loss",
-    "post_change_category": "new_crop_field",
+    "post_change_category": "new_agriculture",
 }
 
 
@@ -69,22 +69,48 @@ def _change_labels(point: dict[str, Any]) -> tuple[str, str]:
 @pytest.mark.parametrize(
     "point,expected",
     [
-        ({"pre_change_category": "deforestation"}, ("deforestation", "none")),
-        ({"post_change_category": "wildfire"}, ("none", "wildfire")),
+        ({"pre_change_category": "forest_loss"}, ("forest_loss", "none")),
+        ({"post_change_category": "burned"}, ("none", "burned")),
         ({"post_change_category": "storm_damage"}, ("none", "storm_damage")),
         ({"pre_change_category": "mangrove_loss"}, ("mangrove_loss", "none")),
-        ({"pre_change_category": "river_contract"}, ("water_contract", "none")),
+        ({"pre_change_category": "river_contract"}, ("water_to_land", "none")),
         (
             {"pre_change_category": "river_channel_migration"},
-            ("water_contract", "none"),
+            ("water_to_land", "none"),
         ),
         (
             {"post_change_category": "river_channel_migration"},
-            ("none", "water_expand"),
+            ("none", "land_to_water"),
         ),
-        ({"post_change_category": "coastal_erosion"}, ("none", "water_expand")),
-        ({"post_change_category": "borrow_pit"}, ("none", "new_road")),
-        ({"post_change_category": "land_reclamation"}, ("water_contract", "none")),
+        ({"post_change_category": "coastal_erosion"}, ("none", "land_to_water")),
+        ({"post_change_category": "borrow_pit"}, ("none", "new_mining_or_quarry")),
+        ({"post_change_category": "land_reclamation"}, ("water_to_land", "none")),
+        # Finer-grained categories train as their coarse class.
+        ({"post_change_category": "new_solar"}, ("none", "new_infrastructure")),
+        (
+            {"post_change_category": "new_other_infrastructure"},
+            ("none", "new_infrastructure"),
+        ),
+        ({"post_change_category": "tree_crop_growth"}, ("none", "vegetation_growth")),
+        ({"post_change_category": "wetland_growth"}, ("none", "vegetation_growth")),
+        (
+            {"post_change_category": "tree_crop_harvest"},
+            ("none", "agricultural_activity"),
+        ),
+        ({"post_change_category": "other_land_to_water"}, ("none", "land_to_water")),
+        (
+            {"pre_change_category": "small_water_body_level_drop"},
+            ("water_to_land", "none"),
+        ),
+        # ice_loss has no training class: unknown, like any unknown category.
+        ({"post_change_category": "ice_loss"}, ("nodata", "nodata")),
+        # Names from before the 2026-11-12 renames still map.
+        ({"pre_change_category": "deforestation"}, ("forest_loss", "none")),
+        ({"pre_change_category": "urban_erosion"}, ("removed_building", "none")),
+        ({"post_change_category": "mining"}, ("none", "new_mining_or_quarry")),
+        ({"post_change_category": "wildfire"}, ("none", "burned")),
+        ({"post_change_category": "water_expand"}, ("none", "land_to_water")),
+        ({"post_change_category": "lake_level_rise"}, ("none", "land_to_water")),
         (
             {
                 "pre_change_category": "wetland_loss",
@@ -94,10 +120,10 @@ def _change_labels(point: dict[str, Any]) -> tuple[str, str]:
         ),
         (
             {
-                "pre_change_category": "lake_level_drop",
-                "post_change_category": "new_crop_field",
+                "pre_change_category": "large_water_body_level_drop",
+                "post_change_category": "new_agriculture",
             },
-            ("water_contract", "new_crop_field"),
+            ("water_to_land", "new_agriculture"),
         ),
         # The legacy same_change_category field is ignored.
         ({"same_change_category": "wildfire"}, ("nodata", "nodata")),
@@ -171,7 +197,7 @@ def test_transition_label_arrays() -> None:
     "transition,expected",
     [
         # Aliases apply as for post_change_category.
-        ({"transition_change_category": "borrow_pit"}, "new_road"),
+        ({"transition_change_category": "borrow_pit"}, "new_mining_or_quarry"),
         # land_reclamation is not moved to the pre-change head; it is nodata.
         ({"transition_change_category": "land_reclamation"}, "nodata"),
         # A missing transition change category is nodata (masked).
@@ -186,7 +212,23 @@ def test_transition_change_category(transition: dict[str, Any], expected: str) -
         expected
     )
     # The regular post change category is unaffected.
-    assert POST_CHANGE_CATEGORY_NAMES[labels["label_post_change"]] == "new_crop_field"
+    assert POST_CHANGE_CATEGORY_NAMES[labels["label_post_change"]] == "new_agriculture"
+
+
+@pytest.mark.parametrize(
+    "old,new",
+    [
+        ("crops", "agriculture"),
+        ("snow and ice", "snow/ice"),
+        ("wetland (herbaceous)", "wetland"),
+    ],
+)
+def test_legacy_land_cover_names(old: str, new: str) -> None:
+    labels = _labels_at_point(
+        {**DATED_POINT, "pre_category": old, "post_category": old}
+    )
+    assert LC_CLASS_NAMES[labels["label_src"]] == new
+    assert LC_CLASS_NAMES[labels["label_dst"]] == new
 
 
 def test_no_transition_labels_without_transition() -> None:

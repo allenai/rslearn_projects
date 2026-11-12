@@ -52,7 +52,7 @@ def make_entry(**overrides: Any) -> dict[str, Any]:
                 "post_category": "urban/built-up",
                 "post_change_category": "new_building",
             },
-            {"lon": 121.502, "lat": 14.602, "pre_category": "crops"},
+            {"lon": 121.502, "lat": 14.602, "pre_category": "agriculture"},
         ],
         "negative_points": [{"lon": 121.51, "lat": 14.61}],
     }
@@ -317,9 +317,9 @@ def test_transition_fields_round_trip() -> None:
         "post_change": "2020-09-01",
         "pre_category": "mangrove",
         "transition_category": "bare",
-        "post_category": "crops",
+        "post_category": "agriculture",
         "pre_change_category": "mangrove_loss",
-        "post_change_category": "new_crop_field",
+        "post_change_category": "new_agriculture",
         "transition_change_category": "site_clearing",
     }
     entry = make_entry(positive_points=[point])

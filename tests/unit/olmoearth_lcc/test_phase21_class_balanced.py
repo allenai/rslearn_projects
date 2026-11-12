@@ -13,6 +13,7 @@ from rslp.olmoearth_lcc.lcc_model import geozarr
 from rslp.olmoearth_lcc.lcc_model.output_bands import (
     BINARY_CHANGE_BAND,
     DST_BAND_OFFSET,
+    LC_CLASS_NAMES,
     NONE_CATEGORY_IDX,
     OUTPUT_BANDS,
     POST_CHANGE_BAND_OFFSET,
@@ -34,16 +35,19 @@ from rslp.olmoearth_lcc.lcc_model.tiling import (
 
 TIMESTAMP = datetime(2025, 6, 1, tzinfo=timezone.utc)
 NEW_BUILDING = POST_CHANGE_CATEGORY_NAMES.index("new_building")
-DEFORESTATION = PRE_CHANGE_CATEGORY_NAMES.index("deforestation")
+FOREST_LOSS = PRE_CHANGE_CATEGORY_NAMES.index("forest_loss")
+BARE = LC_CLASS_NAMES.index("bare")
+TREE = LC_CLASS_NAMES.index("tree")
+URBAN = LC_CLASS_NAMES.index("urban/built-up")
 
 
 def _window_output() -> np.ndarray:
-    """No change except a new building patch and a deforestation-only patch."""
+    """No change except a new building patch and a forest-loss-only patch."""
     arr = np.zeros((len(OUTPUT_BANDS), PATCH_SIZE, PATCH_SIZE), dtype=np.uint16)
     arr[BINARY_CHANGE_BAND - 1] = 230
     arr[BINARY_CHANGE_BAND] = 25
-    arr[SRC_BAND_OFFSET + 9] = 200
-    arr[DST_BAND_OFFSET + 9] = 200
+    arr[SRC_BAND_OFFSET + TREE] = 200
+    arr[DST_BAND_OFFSET + TREE] = 200
     arr[PRE_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 250
     arr[POST_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 250
     arr[TS_PRE_DAYS_BAND] = 3000
@@ -51,17 +55,17 @@ def _window_output() -> np.ndarray:
 
     building = arr[:, 500:600, 500:600]
     building[BINARY_CHANGE_BAND] = 230
-    building[DST_BAND_OFFSET + 9] = 0
-    building[DST_BAND_OFFSET + 10] = 220
+    building[DST_BAND_OFFSET + TREE] = 0
+    building[DST_BAND_OFFSET + URBAN] = 220
     building[POST_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 0
     building[POST_CHANGE_BAND_OFFSET + NEW_BUILDING] = 240
 
-    deforestation = arr[:, 1000:1100, 1000:1100]
-    deforestation[BINARY_CHANGE_BAND] = 220
-    deforestation[DST_BAND_OFFSET + 9] = 0
-    deforestation[DST_BAND_OFFSET + 1] = 210
-    deforestation[PRE_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 0
-    deforestation[PRE_CHANGE_BAND_OFFSET + DEFORESTATION] = 200
+    forest_loss = arr[:, 1000:1100, 1000:1100]
+    forest_loss[BINARY_CHANGE_BAND] = 220
+    forest_loss[DST_BAND_OFFSET + TREE] = 0
+    forest_loss[DST_BAND_OFFSET + BARE] = 210
+    forest_loss[PRE_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 0
+    forest_loss[PRE_CHANGE_BAND_OFFSET + FOREST_LOSS] = 200
     return arr
 
 
@@ -129,7 +133,7 @@ def test_phase21_reads_store(tmp_path: pathlib.Path, detail: str) -> None:
     )
     assert {cand["class_key"] for cand in candidates} == {
         "post:new_building",
-        "pre:deforestation",
+        "pre:forest_loss",
     }
     for cand in candidates:
         entry = phase21.candidate_to_entry(cand, "phase21", 128)

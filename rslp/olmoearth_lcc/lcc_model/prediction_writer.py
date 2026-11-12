@@ -1,6 +1,6 @@
 """Prediction writer that writes LCC window outputs into a GeoZarr store.
 
-The standard RslearnWriter encodes each window's 62-band uint16 output as a GeoTIFF
+The standard RslearnWriter encodes each window's 55-band uint16 output as a GeoTIFF
 in the main loop, which the prediction pipeline then had to read back. LCCTileWriter
 instead merges each window's crops in memory and hands the merged array to a thread
 pool (zstd and numpy release the GIL, and threads avoid pickling ~0.5 GB arrays)
