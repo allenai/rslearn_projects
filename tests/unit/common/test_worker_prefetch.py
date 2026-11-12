@@ -17,7 +17,7 @@ from rslp.large_scale_embeddings.predict_pipeline import PREFETCH
 class _Input:
     """One entry as the worker sees it off the channel."""
 
-    def __init__(self, entry_id: str, prefetch: dict | None) -> None:
+    def __init__(self, entry_id: str, prefetch: worker_mod.PrefetchSpec | None) -> None:
         self.metadata = type("M", (), {"entry_id": entry_id})()
         self.input: dict[str, object] = {
             "project": "test",

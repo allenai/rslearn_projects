@@ -199,7 +199,10 @@ def test_the_idle_clock_is_not_reset_by_reconnecting(
     assert rx.channels <= 3, f"reopened {rx.channels} times despite a zero idle timeout"
 
 
-PREFETCH = {"workflow": "prefetch", "scratch_arg": "--scratch_path"}
+PREFETCH: worker_mod.PrefetchSpec = {
+    "workflow": "prefetch",
+    "scratch_arg": "--scratch_path",
+}
 
 
 def test_a_reconnect_clears_prefetched_data_left_on_disk(

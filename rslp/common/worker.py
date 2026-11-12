@@ -17,7 +17,7 @@ from queue import Empty as QueueEmpty
 from queue import Full as QueueFull
 from queue import Queue
 from types import FrameType
-from typing import Any
+from typing import TypedDict, cast
 
 import tqdm
 from beaker import (
@@ -190,12 +190,31 @@ def _empty_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
+class PrefetchSpec(TypedDict):
+    """How a worker prefetches an entry ahead of its turn (see _Prefetcher)."""
+
+    workflow: str
+    scratch_arg: str
+
+
+class _RequiredEntryInput(TypedDict):
+    project: str
+    workflow: str
+    args: list[str]
+
+
+class _EntryInput(_RequiredEntryInput, total=False):
+    """A queue entry's input, as written by write_jobs."""
+
+    prefetch: PrefetchSpec
+
+
 @dataclass
 class _Claimed:
     """One claimed entry, handed from the prefetch thread to the main thread."""
 
     entry_id: str
-    entry_input: dict[str, Any]
+    entry_input: _EntryInput
     # Appended to the entry's args when it runs, pointing it at its prefetched data.
     extra_args: list[str] = field(default_factory=list)
     entry_dir: str | None = None
@@ -308,7 +327,7 @@ class _Prefetcher(threading.Thread):
                     return
                 claimed = _Claimed(
                     entry_id=worker_input.metadata.entry_id,
-                    entry_input=pb2_to_dict(worker_input.input),
+                    entry_input=cast(_EntryInput, pb2_to_dict(worker_input.input)),
                 )
                 self.in_flight.add(claimed.entry_id)
                 if not self.flush_messages:
@@ -721,7 +740,7 @@ def write_jobs(
     rslp_workflow: str,
     args_list: list[list[str]],
     expires_in_sec: int = 7 * 24 * 3600,
-    prefetch: dict[str, Any] | None = None,
+    prefetch: PrefetchSpec | None = None,
 ) -> None:
     """Write tasks to the Beaker queue.
 
@@ -738,13 +757,13 @@ def write_jobs(
         queue = beaker.queue.get(queue_name)
 
         for args in tqdm.tqdm(args_list, desc="Writing jobs to Beaker queue"):
-            json_data = dict(
-                project=rslp_project,
-                workflow=rslp_workflow,
-                args=args,
-            )
+            json_data: _EntryInput = {
+                "project": rslp_project,
+                "workflow": rslp_workflow,
+                "args": args,
+            }
             if prefetch is not None:
                 json_data["prefetch"] = prefetch
             beaker.queue.create_entry_async(
-                queue, input=json_data, expires_in_sec=expires_in_sec
+                queue, input=dict(json_data), expires_in_sec=expires_in_sec
             )
