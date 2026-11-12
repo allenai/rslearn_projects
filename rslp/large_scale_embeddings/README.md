@@ -167,9 +167,11 @@ probes, and leave-one-region-out transfer. The checks are inspired by
 It writes the results as JSON:
 
     python -m rslp.large_scale_embeddings.tools.sanity_checks \
-        --store_path gs://BUCKET/embeddings.zarr \
         --year 2025 \
         --output results.json
+
+By default it reads the public v1.3 store on Source Cooperative anonymously. Pass
+`--store_path` (and `--storage_options` if needed) to check another store.
 
 `--s2_tiles N` also probes how well the embeddings reconstruct Sentinel-2 reflectance
 on N tiles. That materializes imagery through the workers' Sentinel-2 layer, so it

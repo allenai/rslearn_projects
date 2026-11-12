@@ -80,9 +80,12 @@ from rslp.utils.rslearn import materialize_dataset
 
 logger = get_logger(__name__)
 
-DEFAULT_STORE = (
-    "gs://olmoearth-embeddings-us-central1/olmoearth-v1-3-embeddings/embeddings.zarr"
-)
+# The public v1.3 store on Source Cooperative, read anonymously through its S3 API.
+DEFAULT_STORE = "s3://olmoearth/olmoearth-v1-3-embeddings/embeddings.zarr"
+DEFAULT_STORAGE_OPTIONS = {
+    "anon": True,
+    "client_kwargs": {"endpoint_url": "https://data.source.coop"},
+}
 TILE = 256
 SHARD = 2048
 PREFIX_DIMS = 64
@@ -433,9 +436,11 @@ class Store:
         return z.to_lonlat.transform(xx, yy)
 
 
-def list_shards(store_path: str, time_index: int) -> list[tuple[str, int, int]]:
+def list_shards(
+    store_path: str, time_index: int, storage_options: dict[str, Any]
+) -> list[tuple[str, int, int]]:
     """Every written shard for one time index, as (zone, shard row, shard col)."""
-    fs, root = url_to_fs(store_path)
+    fs, root = url_to_fs(store_path, **storage_options)
     zones = [
         p.rsplit("/", 1)[-1]
         for p in fs.ls(root)
@@ -712,7 +717,17 @@ def evaluate_gates(flat: dict) -> dict:
 
 def run(args: argparse.Namespace) -> dict:
     """Run every stage and return the results document."""
-    store = Store(path=args.store_path, root=zarr.open_group(args.store_path, mode="r"))
+    storage_options = args.storage_options
+    if storage_options is None:
+        storage_options = (
+            DEFAULT_STORAGE_OPTIONS if args.store_path == DEFAULT_STORE else {}
+        )
+    store = Store(
+        path=args.store_path,
+        root=zarr.open_group(
+            args.store_path, mode="r", storage_options=storage_options or None
+        ),
+    )
     probe_zone = store.zone("utm31")
     years = probe_zone.years
     t_main = years.index(args.year)
@@ -720,7 +735,7 @@ def run(args: argparse.Namespace) -> dict:
     np_rng = np.random.default_rng(args.seed)
 
     logger.info("listing %d shards", args.year)
-    shards = list_shards(args.store_path, t_main)
+    shards = list_shards(args.store_path, t_main, storage_options)
     logger.info("%d shards written for %d", len(shards), args.year)
     picks = rng.sample(shards, min(args.tiles, len(shards)))
     with ThreadPoolExecutor(args.workers) as ex:
@@ -764,7 +779,7 @@ def run(args: argparse.Namespace) -> dict:
 
     # Years: tiles written in every year.
     logger.info("listing %d shards for the year check", years[0])
-    every_year = set(list_shards(args.store_path, 0)) & set(shards)
+    every_year = set(list_shards(args.store_path, 0, storage_options)) & set(shards)
     year_picks = rng.sample(sorted(every_year), min(args.year_tiles, len(every_year)))
     with ThreadPoolExecutor(args.workers) as ex:
         year_results = list(ex.map(lambda s: year_tile(store, s, 256), year_picks))
@@ -977,6 +992,12 @@ def main() -> None:
     """Parse arguments, run the checks, write the results."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--store_path", default=DEFAULT_STORE)
+    parser.add_argument(
+        "--storage_options",
+        type=json.loads,
+        default=None,
+        help="fsspec options as JSON; defaults to anonymous access for the default store.",
+    )
     parser.add_argument("--year", type=int, default=2025)
     parser.add_argument("--tiles", type=int, default=1500)
     parser.add_argument("--year_tiles", type=int, default=80)
