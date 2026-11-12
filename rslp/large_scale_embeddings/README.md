@@ -157,6 +157,25 @@ Progress can be monitored by counting markers in `completed_path`. To retry fail
 blocks, run `write_jobs` again: completed blocks are excluded.
 
 
+Sanity Checks
+-------------
+
+`tools/sanity_checks.py` samples tiles worldwide from a finished store and runs
+[LGND's sanity checks for geospatial embeddings](https://lgnd.ai/resources/sanity-checks-for-geospatial-embeddings),
+adapted to a pixel store: valid values and duplicates, embedding geometry, land cover,
+elevation, and climate probes, and leave-one-region-out transfer. It writes the
+results as JSON:
+
+    python -m rslp.large_scale_embeddings.tools.sanity_checks \
+        --store_path gs://BUCKET/embeddings.zarr \
+        --year 2025 \
+        --output results.json
+
+`--s2_tiles N` also probes how well the embeddings reconstruct Sentinel-2 reflectance
+on N tiles. That materializes imagery through the workers' Sentinel-2 layer, so it
+needs the worker image and a `DATASETS_API_TOKEN`.
+
+
 Quantization
 ------------
 
