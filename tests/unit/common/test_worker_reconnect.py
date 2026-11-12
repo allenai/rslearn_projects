@@ -1,7 +1,7 @@
 """What a worker does when the queue ends its entry stream.
 
 Beaker's ProcessQueueEntries stream is closed by the server whenever it has nothing
-to hand out, which the SDK reports as a closed channel rather than an error. Treating
+to hand out, which beaker-py reports as a closed channel rather than an error. Treating
 that as the end of the worker made every idle worker exit within seconds; under a
 container that restarts immediately it became a hot loop that claimed nothing, which
 is how 198 GPUs spent a day restarting 1,200 times an hour. These pin the behavior
@@ -75,7 +75,7 @@ class _ClosingRx:
                 return outer._batches.pop(0)
             if not outer._closed:
                 outer._closed = True
-            # None is how the SDK signals that the server ended the stream.
+            # None is how beaker-py signals that the server ended the stream.
             real_sleep(timeout or 0)
             return None
 
@@ -148,7 +148,7 @@ def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
         monkeypatch.setattr(worker_mod, "Beaker", FakeBeaker)
         monkeypatch.setattr(worker_mod, "pb2_to_dict", lambda d: d)
         monkeypatch.setattr(worker_mod.time, "sleep", lambda s: None)
-        monkeypatch.setattr(worker_mod, "PREFETCH_POLL_SECONDS", 0.02)
+        monkeypatch.setattr(worker_mod, "_PREFETCH_POLL_SECONDS", 0.02)
         monkeypatch.setattr(worker_mod, "_run_prefetch_subprocess", fake_prefetch)
         monkeypatch.setattr(worker_mod, "run_workflow", fake_run_workflow)
         kwargs.setdefault("idle_timeout", 0.3)
@@ -158,31 +158,19 @@ def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
     return go
 
 
-def test_a_closed_stream_reopens_instead_of_ending_the_worker(
+def test_a_closed_stream_reopens_on_the_same_registration(
     reconnecting: Any,
 ) -> None:
     """A stream closed with nothing to hand out must not end the worker.
 
-    This is the whole bug: the worker exited on the first close, so a worker that
-    arrived while the queue was momentarily empty never did any work at all.
+    Reopening reuses the worker's one registration, since registrations are never
+    removed from a queue and one per reconnect would pile up.
     """
     entry = _Input("e1", None)
-    rx, ran, _ = reconnecting([None, [[entry]], None])
+    rx, ran, created = reconnecting([None, [[entry]], None])
 
     assert ran == ["e1"], f"the entry on the second channel never ran: {ran}"
     assert rx.channels >= 2, "the worker did not reopen the stream"
-
-
-def test_reconnecting_reuses_one_registration(reconnecting: Any) -> None:
-    """Reopening must not register a new worker each time.
-
-    Registrations are never removed from a queue, and the supervisor counts the fresh
-    ones to report the fleet size. A registration per reconnect both inflates that
-    count and accumulates: one queue reached 11,336 of them.
-    """
-    rx, _, created = reconnecting([None, None, None])
-
-    assert rx.channels >= 2, "no reconnect happened, so this proves nothing"
     assert created == 1, f"expected one registration across reconnects, got {created}"
 
 

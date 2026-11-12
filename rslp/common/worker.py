@@ -16,6 +16,7 @@ from datetime import timedelta
 from queue import Empty as QueueEmpty
 from queue import Full as QueueFull
 from queue import Queue
+from types import FrameType
 from typing import Any
 
 import tqdm
@@ -23,9 +24,12 @@ from beaker import (
     Beaker,
     BeakerConstraints,
     BeakerEntryReceiver,
+    BeakerEntrySender,
     BeakerEnvVar,
     BeakerExperimentSpec,
     BeakerJobPriority,
+    BeakerQueue,
+    BeakerQueueWorker,
     BeakerTaskResources,
 )
 from beaker.utils import pb2_to_dict
@@ -49,33 +53,35 @@ logger = get_logger(__name__)
 MAX_JOB_HOURS = 4
 
 # How often the prefetch thread and the main loop recheck their state.
-PREFETCH_POLL_SECONDS = 1
+_PREFETCH_POLL_SECONDS = 1
 
 # How long to wait for the prefetch thread to stop on exit.
-PREFETCH_JOIN_SECONDS = 60
+_PREFETCH_JOIN_SECONDS = 60
 
 # How much of a failure's text to keep in an entry's rejection reason.
-REJECTION_CHARS = 500
+_REJECTION_CHARS = 500
 
 # How long to allow the queue channel to shut down before forcing the process out.
-# The SDK closes the channel by joining its streaming thread with no timeout, and that
+# beaker-py closes the channel by joining its streaming thread with no timeout, and that
 # thread can get stuck, leaving a worker that holds its GPU but never claims again.
-SHUTDOWN_GRACE_SECONDS = 120
+_SHUTDOWN_GRACE_SECONDS = 120
 
 # Environment variable carrying a worker's own experiment name, set at launch, so the
 # worker can tell whether the drain list names it.
-WORKER_NAME_ENV_VAR = "RSLP_WORKER_NAME"
+_WORKER_NAME_ENV_VAR = "RSLP_WORKER_NAME"
 
 # Ignore a drain list older than this. Its publisher rewrites it regularly, so a stale
 # one means nothing is maintaining it, and it would otherwise retire every worker.
-DRAIN_STALE_SECONDS = 1800
+_DRAIN_STALE_SECONDS = 1800
 
 # Backoff between reopening a closed entry stream, and its ceiling.
-RECONNECT_BACKOFF_SECONDS = 2
-MAX_RECONNECT_SLEEP = 30
+_RECONNECT_BACKOFF_SECONDS = 2
+_MAX_RECONNECT_SLEEP = 30
 
 
-def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
+def get_cleanup_signal_handler(
+    tmp_dir: str,
+) -> Callable[[int, FrameType | None], None]:
     """Make a signal handler that cleans up the specified directory before exiting.
 
     This should be passed as the handler to signal.signal.
@@ -84,7 +90,7 @@ def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
         tmp_dir: the directory to delete when the signal is received.
     """
 
-    def cleanup_signal_handler(signo: int, stack_frame: Any) -> None:
+    def cleanup_signal_handler(signo: int, stack_frame: FrameType | None) -> None:
         logger.error(f"cleanup_signal_handler: caught signal {signo}")
         shutil.rmtree(tmp_dir)
         sys.exit(1)
@@ -94,7 +100,7 @@ def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
 
 def _stop_on_termination(
     stop: threading.Event, in_flight: set[str]
-) -> Callable[[int, Any], None]:
+) -> Callable[[int, FrameType | None], None]:
     """Make a SIGTERM handler that stops claiming entries and exits.
 
     Beaker sends SIGTERM a few minutes before it kills a preempted job. Held entries
@@ -109,7 +115,7 @@ def _stop_on_termination(
         a handler to pass to signal.signal.
     """
 
-    def handler(signo: int, stack_frame: Any) -> None:
+    def handler(signo: int, stack_frame: FrameType | None) -> None:
         stop.set()
         logger.error(
             "caught signal %d; exiting and leaving entries %s claimed",
@@ -169,7 +175,7 @@ def _should_drain(drain_path: str, worker_name: str | None) -> bool:
         with upath.open() as f:
             published = json.load(f)
         age = time.time() - float(published["written"])
-        if age > DRAIN_STALE_SECONDS:
+        if age > _DRAIN_STALE_SECONDS:
             logger.warning("ignoring drain list written %.0fs ago", age)
             return False
         return worker_name in published["workers"]
@@ -212,7 +218,7 @@ def _run_prefetch_subprocess(cmd: list[str], stop: threading.Event) -> None:
     """
     proc = subprocess.Popen(cmd)  # nosec
     while proc.poll() is None:
-        if stop.wait(PREFETCH_POLL_SECONDS):
+        if stop.wait(_PREFETCH_POLL_SECONDS):
             proc.terminate()
             proc.wait()
             raise RuntimeError("prefetch stopped because the worker is exiting")
@@ -283,7 +289,7 @@ class _Prefetcher(threading.Thread):
     def _run(self) -> None:
         while not self.stop.is_set():
             try:
-                batch = self.rx.rx.get(block=True, timeout=PREFETCH_POLL_SECONDS)
+                batch = self.rx.rx.get(block=True, timeout=_PREFETCH_POLL_SECONDS)
             except QueueEmpty:
                 if self.running.is_set() or not self.ready.empty():
                     self.idle_since = time.monotonic()
@@ -291,7 +297,7 @@ class _Prefetcher(threading.Thread):
                     logger.info("no entries for %s seconds", self.idle_timeout)
                     return
                 continue
-            # The SDK sends None when the server ends the stream, which happens
+            # beaker-py sends None when the server ends the stream, which happens
             # routinely, so the worker reconnects rather than exiting.
             if batch is None:
                 self.channel_closed.set()
@@ -309,7 +315,7 @@ class _Prefetcher(threading.Thread):
                     self._prefetch(claimed)
                 while not self.stop.is_set():
                     try:
-                        self.ready.put(claimed, timeout=PREFETCH_POLL_SECONDS)
+                        self.ready.put(claimed, timeout=_PREFETCH_POLL_SECONDS)
                         break
                     except QueueFull:
                         continue
@@ -371,14 +377,16 @@ class _QueueWorker:
         self.worker_args = worker_args
         self.drain_path = drain_path
         self.scratch_root = scratch_root
-        self.worker_name = os.environ.get(WORKER_NAME_ENV_VAR)
+        self.worker_name = os.environ.get(_WORKER_NAME_ENV_VAR)
         self.on_main_thread = threading.current_thread() is threading.main_thread()
         # Ids of the entries this worker holds, shared with the prefetch thread.
         self.in_flight: set[str] = set()
         self.consecutive_errors = 0
         self.idle_since = time.monotonic()
 
-    def run(self, beaker: Beaker, queue: Any, worker: Any) -> None:
+    def run(
+        self, beaker: Beaker, queue: BeakerQueue, worker: BeakerQueueWorker
+    ) -> None:
         """Process entries until idle, drained, or failing, reconnecting as needed."""
         reconnects = 0
         while self._run_channel(beaker, queue, worker):
@@ -392,9 +400,13 @@ class _QueueWorker:
             )
             if idle_for >= self.idle_timeout:
                 return
-            time.sleep(min(RECONNECT_BACKOFF_SECONDS * reconnects, MAX_RECONNECT_SLEEP))
+            time.sleep(
+                min(_RECONNECT_BACKOFF_SECONDS * reconnects, _MAX_RECONNECT_SLEEP)
+            )
 
-    def _run_channel(self, beaker: Beaker, queue: Any, worker: Any) -> bool:
+    def _run_channel(
+        self, beaker: Beaker, queue: BeakerQueue, worker: BeakerQueueWorker
+    ) -> bool:
         """Process entries on one channel.
 
         Returns:
@@ -423,7 +435,7 @@ class _QueueWorker:
                     reconnect = self._process_entries(prefetcher, tx)
                 finally:
                     prefetcher.stop.set()
-                    prefetcher.join(timeout=PREFETCH_JOIN_SECONDS)
+                    prefetcher.join(timeout=_PREFETCH_JOIN_SECONDS)
                     self.idle_since = prefetcher.idle_since
                     if reconnect:
                         # Drop data prefetched for entries that never ran.
@@ -435,14 +447,14 @@ class _QueueWorker:
                                 "exiting; leaving entries %s claimed",
                                 sorted(self.in_flight),
                             )
-                        watchdog = _force_exit_after(SHUTDOWN_GRACE_SECONDS)
+                        watchdog = _force_exit_after(_SHUTDOWN_GRACE_SECONDS)
             return reconnect
         finally:
             # Reached only once the channel's shutdown returned.
             if watchdog is not None:
                 watchdog.cancel()
 
-    def _process_entries(self, prefetcher: _Prefetcher, tx: Any) -> bool:
+    def _process_entries(self, prefetcher: _Prefetcher, tx: BeakerEntrySender) -> bool:
         """Run entries as the prefetcher hands them over.
 
         Returns:
@@ -472,7 +484,7 @@ class _QueueWorker:
         """The next entry, or None once the prefetch thread stops."""
         while True:
             try:
-                return prefetcher.ready.get(timeout=PREFETCH_POLL_SECONDS)
+                return prefetcher.ready.get(timeout=_PREFETCH_POLL_SECONDS)
             except QueueEmpty:
                 pass
             if not prefetcher.is_alive():
@@ -488,7 +500,7 @@ class _QueueWorker:
                     raise RuntimeError("prefetch thread failed") from prefetcher.error
                 return None
 
-    def _run_entry(self, claimed: _Claimed, tx: Any) -> None:
+    def _run_entry(self, claimed: _Claimed, tx: BeakerEntrySender) -> None:
         """Run one entry and answer it: done on success, rejected on failure."""
         logger.info("processing entry %s", claimed.entry_id)
         try:
@@ -517,7 +529,7 @@ class _QueueWorker:
             try:
                 tx.send(
                     claimed.entry_id,
-                    rejection=f"{type(e).__name__}: {e}"[:REJECTION_CHARS],
+                    rejection=f"{type(e).__name__}: {e}"[:_REJECTION_CHARS],
                 )
             except Exception:
                 logger.exception("could not reject entry %s", claimed.entry_id)
@@ -657,7 +669,7 @@ def launch_workers(
             worker_name = f"{name_prefix}_{str(uuid.uuid4())[0:8]}"
             env_vars = get_base_env_vars(use_weka_prefix=False)
             env_vars += extra_beaker_env_vars
-            env_vars.append(BeakerEnvVar(name=WORKER_NAME_ENV_VAR, value=worker_name))
+            env_vars.append(BeakerEnvVar(name=_WORKER_NAME_ENV_VAR, value=worker_name))
 
             datasets = [
                 create_gcp_credentials_mount(gcp_credentials_secret)

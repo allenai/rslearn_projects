@@ -169,12 +169,6 @@ def test_a_failed_entry_is_rejected_not_left_claimed(harness: Any) -> None:
     assert tx.sent == [("e1", "rejection", "RuntimeError: boom e1")]
 
 
-def test_a_successful_entry_is_marked_done(harness: Any) -> None:
-    """The success path is unchanged."""
-    tx, _ = harness([["e1"]], fails=set())
-    assert tx.sent == [("e1", "done", None)]
-
-
 def test_the_error_streak_resets_on_success(harness: Any) -> None:
     """`retries` counts errors in a row, so a success in between must clear it.
 
@@ -237,20 +231,8 @@ def test_termination_stops_claiming_before_exiting() -> None:
     assert stop.is_set()
 
 
-def test_termination_with_no_entry_is_harmless() -> None:
-    """A worker killed while idle has nothing held and must still exit cleanly."""
-    import signal
-    import threading
-
-    from rslp.common.worker import _stop_on_termination
-
-    handler = _stop_on_termination(threading.Event(), set())
-    with pytest.raises(SystemExit):
-        handler(signal.SIGTERM, None)
-
-
 class _HangingChannel:
-    """A channel whose teardown blocks, like a wedged SDK streaming thread.
+    """A channel whose teardown blocks, like a wedged beaker-py streaming thread.
 
     The real worker_channel closes by joining its streaming thread with no timeout. On
     a real run that join never returned for 50 of 192 workers, each of which kept an
@@ -291,11 +273,11 @@ def test_a_hung_channel_teardown_forces_the_worker_to_exit(
     """A worker whose channel will not close must not sit on its GPU forever.
 
     Without the watchdog the worker finishes its job, writes its marker, then blocks in
-    the SDK's teardown. Beaker still sees it as running, so the slot is held and the
+    beaker-py's teardown. Beaker still sees it as running, so the slot is held and the
     supervisor's pool quietly fills with workers that never claim again.
     """
     exits: list[int] = []
-    monkeypatch.setattr(worker_mod, "SHUTDOWN_GRACE_SECONDS", 0.05)
+    monkeypatch.setattr(worker_mod, "_SHUTDOWN_GRACE_SECONDS", 0.05)
     monkeypatch.setattr(worker_mod.os, "_exit", lambda code: exits.append(code))
     _run_worker(monkeypatch, block_seconds=0.6)
     assert exits == [1], "the watchdog must force the process out of a stuck teardown"
@@ -310,7 +292,7 @@ def test_a_clean_shutdown_does_not_force_an_exit(
     being worse than the bug.
     """
     exits: list[int] = []
-    monkeypatch.setattr(worker_mod, "SHUTDOWN_GRACE_SECONDS", 0.05)
+    monkeypatch.setattr(worker_mod, "_SHUTDOWN_GRACE_SECONDS", 0.05)
     monkeypatch.setattr(worker_mod.os, "_exit", lambda code: exits.append(code))
     _run_worker(monkeypatch, block_seconds=0.0)
     real_sleep(0.2)

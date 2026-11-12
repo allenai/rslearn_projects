@@ -141,7 +141,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
         monkeypatch.setattr(worker_mod, "Beaker", FakeBeaker)
         monkeypatch.setattr(worker_mod, "pb2_to_dict", lambda d: d)
         monkeypatch.setattr(worker_mod.time, "sleep", lambda s: None)
-        monkeypatch.setattr(worker_mod, "PREFETCH_POLL_SECONDS", 0.05)
+        monkeypatch.setattr(worker_mod, "_PREFETCH_POLL_SECONDS", 0.05)
         monkeypatch.setattr(worker_mod, "_run_prefetch_subprocess", fake_prefetch)
         monkeypatch.setattr(worker_mod, "run_workflow", fake_run_workflow)
         worker_mod.worker_pipeline(
