@@ -649,7 +649,7 @@ data:
       tags:
         split: val
 trainer:
-  max_epochs: 75
+  max_epochs: 100
   callbacks:
   - class_path: lightning.pytorch.callbacks.LearningRateMonitor
     init_args:
