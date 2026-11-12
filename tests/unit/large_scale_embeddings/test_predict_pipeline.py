@@ -1,5 +1,6 @@
 """Unit tests for rslp.large_scale_embeddings.predict_pipeline."""
 
+import inspect
 import json
 import pathlib
 import sys
@@ -13,16 +14,19 @@ from rslearn.dataset.window import WindowLayerData
 from rslearn.utils.geometry import Projection
 from upath import UPath
 
+from rslp.large_scale_embeddings import workflows
 from rslp.large_scale_embeddings.model import NODATA_VALUE
 from rslp.large_scale_embeddings.predict_pipeline import (
     MATERIALIZED_SENTINEL,
     PREDICTION_GROUP,
+    PREFETCH,
     SENTINEL2_LAYER,
     AllZeroEmbeddingError,
     EmbeddingInputs,
     _collect_provenance,
     _mask_invalid_pixels,
     get_provenance_fname,
+    materialize_pipeline,
     predict_pipeline,
 )
 
@@ -303,7 +307,7 @@ def _predict_block(
     context_pixels: int = 48,
 ) -> None:
     projection = Projection(CRS.from_epsg(32610), 10, -10)
-    predict_pipeline(
+    common = dict(
         inputs=EmbeddingInputs.S2_S1_LANDSAT_DISTILLED,
         projection_json=json.dumps(projection.serialize()),
         bounds=(0, 0, 2048, 2048),
@@ -313,9 +317,12 @@ def _predict_block(
         checkpoint_path=str(tmp_path / "ckpt"),
         time_index=0,
         context_pixels=context_pixels,
-        scratch_path=scratch_path,
-        materialize_only=materialize_only,
     )
+    if materialize_only:
+        assert scratch_path is not None
+        materialize_pipeline(scratch_path=scratch_path, **common)  # type: ignore[arg-type]
+    else:
+        predict_pipeline(scratch_path=scratch_path, **common)  # type: ignore[arg-type]
 
 
 def test_materialize_only_then_predict_reuses_the_scratch(
@@ -336,10 +343,13 @@ def test_materialize_only_then_predict_reuses_the_scratch(
     assert len(list((tmp_path / "completed").iterdir())) == 1
 
 
-def test_materialize_only_needs_a_scratch_path(tmp_path: pathlib.Path) -> None:
-    """Without scratch_path the materialized data would be deleted on return."""
-    with pytest.raises(ValueError, match="scratch_path"):
-        _predict_block(tmp_path, None, materialize_only=True)
+def test_the_prefetch_workflow_takes_the_predict_args() -> None:
+    """One queue entry's args drive both workflows, and materialize needs scratch."""
+    assert workflows[PREFETCH["workflow"]] is materialize_pipeline
+    predict_params = inspect.signature(predict_pipeline).parameters
+    materialize_params = inspect.signature(materialize_pipeline).parameters
+    assert set(materialize_params) == set(predict_params)
+    assert materialize_params["scratch_path"].default is inspect.Parameter.empty
 
 
 def test_a_scratch_prefetched_with_another_margin_is_refused(

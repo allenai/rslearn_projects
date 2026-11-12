@@ -1,6 +1,5 @@
 """Worker to process jobs in a list of jobs."""
 
-import glob
 import json
 import os
 import shutil
@@ -52,9 +51,6 @@ PREFETCH_POLL_SECONDS = 1
 
 # How long to wait for the prefetch thread to stop on exit.
 PREFETCH_JOIN_SECONDS = 60
-
-# Prefix of the temp directory a worker keeps prefetched data in.
-PREFETCH_ROOT_PREFIX = "rslp-prefetch-"
 
 
 def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
@@ -113,12 +109,13 @@ def _run_prefetch_subprocess(cmd: list[str], stop: threading.Event) -> None:
 class _Prefetcher(threading.Thread):
     """Takes entries off the channel and prefetches each one ahead of its turn.
 
-    An entry opts in with a "prefetch" field, {"args": [...], "scratch_arg": "--x"}.
-    Its workflow first runs in a subprocess with `args` and `scratch_arg <dir>`
-    appended, then runs for real with only `scratch_arg <dir>` appended.
+    An entry opts in with a "prefetch" key in its queue input, set by write_jobs:
+    {"workflow": "...", "scratch_arg": "--x"}. That workflow runs first, in a
+    subprocess, with the entry's args plus `scratch_arg <dir>`, and writes what the
+    main workflow needs to `<dir>`. The main workflow then gets `scratch_arg <dir>` too.
 
-    Overlap needs the queue's max_claimed_entries at 2, so the next entry arrives while
-    the current one runs. Otherwise the worker runs entries serially as before.
+    Prefetching needs max_claimed_entries at 2; with 1, entries run serially. The
+    thread stops after idle_timeout with no entry arriving, waiting, or running.
     """
 
     def __init__(
@@ -127,6 +124,7 @@ class _Prefetcher(threading.Thread):
         scratch_root: str,
         flush_messages: bool,
         worker_args: list[str],
+        idle_timeout: float,
     ) -> None:
         """Set up the prefetcher.
 
@@ -135,16 +133,18 @@ class _Prefetcher(threading.Thread):
             scratch_root: directory to create each entry's prefetch directory in.
             flush_messages: skip prefetching, since nothing will run.
             worker_args: the worker's own args, appended as for the real run.
+            idle_timeout: seconds of idleness before the thread stops.
         """
         super().__init__(name="prefetcher", daemon=True)
         self.rx = rx
         self.scratch_root = scratch_root
         self.flush_messages = flush_messages
         self.worker_args = worker_args
+        self.idle_timeout = idle_timeout
         # At most one entry is prefetched ahead of the running one.
         self.ready: Queue[_Claimed] = Queue(maxsize=1)
-        # Set while an entry is taken off the channel but not yet handed over.
-        self.busy = threading.Event()
+        # Set by the main thread while it processes an entry.
+        self.running = threading.Event()
         self.stop = threading.Event()
         self.error: BaseException | None = None
 
@@ -157,10 +157,16 @@ class _Prefetcher(threading.Thread):
             self.error = e
 
     def _run(self) -> None:
+        idle_since = time.monotonic()
         while not self.stop.is_set():
             try:
                 batch = self.rx.rx.get(block=True, timeout=PREFETCH_POLL_SECONDS)
             except QueueEmpty:
+                if self.running.is_set() or not self.ready.empty():
+                    idle_since = time.monotonic()
+                elif time.monotonic() - idle_since >= self.idle_timeout:
+                    logger.info("no entries for %s seconds", self.idle_timeout)
+                    return
                 continue
             if batch is None:
                 return
@@ -168,7 +174,6 @@ class _Prefetcher(threading.Thread):
                 if self.stop.is_set():
                     # Left claimed; the queue re-offers it once the claim goes stale.
                     return
-                self.busy.set()
                 claimed = _Claimed(
                     entry_id=worker_input.metadata.entry_id,
                     entry_input=pb2_to_dict(worker_input.input),
@@ -181,7 +186,7 @@ class _Prefetcher(threading.Thread):
                         break
                     except QueueFull:
                         continue
-                self.busy.clear()
+            idle_since = time.monotonic()
 
     def _prefetch(self, claimed: _Claimed) -> None:
         """Run the entry's prefetch step, if it has one.
@@ -202,10 +207,9 @@ class _Prefetcher(threading.Thread):
             "-m",
             "rslp.main",
             claimed.entry_input["project"],
-            claimed.entry_input["workflow"],
+            prefetch["workflow"],
             *claimed.entry_input["args"],
             *self.worker_args,
-            *prefetch["args"],
             *scratch_args,
         ]
         logger.info("prefetching entry %s", claimed.entry_id)
@@ -215,14 +219,6 @@ class _Prefetcher(threading.Thread):
         except Exception as e:
             logger.exception("prefetch failed for entry %s", claimed.entry_id)
             claimed.error = e
-
-
-def _remove_stale_scratch_roots() -> None:
-    """Delete prefetch directories left by an earlier worker in this container."""
-    pattern = os.path.join(tempfile.gettempdir(), PREFETCH_ROOT_PREFIX + "*")
-    for root in glob.glob(pattern):
-        logger.info("removing stale prefetch directory %s", root)
-        shutil.rmtree(root, ignore_errors=True)
 
 
 def worker_pipeline(
@@ -236,7 +232,7 @@ def worker_pipeline(
     """Start a worker to run jobs from a Pub/Sub subscription.
 
     The job dict including rslp project, workflow, and arguments to pass must be
-    written to the topic. It may also carry a "prefetch" field, see _Prefetcher.
+    written to the topic. It may also carry a "prefetch" key, see _Prefetcher.
 
     Args:
         queue_name: the name of the Beaker queue.
@@ -264,8 +260,7 @@ def worker_pipeline(
         run_workflow(rslp_project, rslp_workflow, workflow_args)
 
     def next_ready(prefetcher: _Prefetcher) -> _Claimed | None:
-        """The next entry, or None once idle. Time spent prefetching is not idle."""
-        idle_since = time.monotonic()
+        """The next entry, or None once the prefetch thread stops."""
         while True:
             try:
                 return prefetcher.ready.get(timeout=PREFETCH_POLL_SECONDS)
@@ -279,22 +274,19 @@ def worker_pipeline(
                 if prefetcher.error is not None:
                     raise RuntimeError("prefetch thread failed") from prefetcher.error
                 return None
-            if prefetcher.busy.is_set():
-                idle_since = time.monotonic()
-            elif time.monotonic() - idle_since >= idle_timeout:
-                return None
 
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         queue = beaker.queue.get(queue_name)
         worker = beaker.queue.create_worker(queue)
         logger.info("listening for messages on %s", queue_name)
 
-        _remove_stale_scratch_roots()
-        scratch_root = tempfile.mkdtemp(prefix=PREFETCH_ROOT_PREFIX)
+        scratch_root = tempfile.mkdtemp(prefix="rslp-prefetch-")
         consecutive_errors = 0
         try:
             with beaker.queue.worker_channel(queue, worker) as (tx, rx):
-                prefetcher = _Prefetcher(rx, scratch_root, flush_messages, worker_args)
+                prefetcher = _Prefetcher(
+                    rx, scratch_root, flush_messages, worker_args, idle_timeout
+                )
                 prefetcher.start()
                 try:
                     while True:
@@ -305,6 +297,7 @@ def worker_pipeline(
                         entry_input = claimed.entry_input
                         logger.info("processing entry %s", entry_id)
 
+                        prefetcher.running.set()
                         try:
                             if claimed.error is not None:
                                 raise claimed.error
@@ -327,6 +320,7 @@ def worker_pipeline(
                                 raise
                             time.sleep(retry_sleep)
                         finally:
+                            prefetcher.running.clear()
                             if claimed.entry_dir is not None:
                                 shutil.rmtree(claimed.entry_dir, ignore_errors=True)
                 finally:

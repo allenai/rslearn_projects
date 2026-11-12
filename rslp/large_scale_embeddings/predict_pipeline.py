@@ -74,7 +74,7 @@ MATERIALIZED_SENTINEL = "materialized"
 
 # Lets a worker materialize the next block in a subprocess while the GPU runs the
 # current one (see rslp.common.worker).
-PREFETCH = {"args": ["--materialize_only", "true"], "scratch_arg": "--scratch_path"}
+PREFETCH = {"workflow": "materialize", "scratch_arg": "--scratch_path"}
 # Band count of the store's embedding array, which is fixed when the store is created.
 EMBEDDING_DIM = 128
 
@@ -480,7 +480,6 @@ def predict_pipeline(
     num_workers: int | None = None,
     scratch_path: str | None = None,
     upload_workers: int = 16,
-    materialize_only: bool = False,
 ) -> None:
     """Compute quantized OlmoEarth embeddings over one block.
 
@@ -508,12 +507,61 @@ def predict_pipeline(
         num_workers: data loader processes, or None to keep the config's value.
         scratch_path: directory for the scratch rslearn dataset, kept afterward. By
             default a temporary directory is used and deleted.
-        upload_workers: processes writing windows to the store.
-        materialize_only: only materialize imagery into scratch_path, for a later
-            call with the same scratch_path to run inference on.
+        upload_workers: processes writing windows to the store. If scratch_path was
+            already filled by the materialize workflow, inference runs on it directly.
     """
-    if materialize_only and scratch_path is None:
-        raise ValueError("materialize_only requires scratch_path")
+    _run_block(materialize_only=False, **locals())
+
+
+def materialize_pipeline(
+    *,
+    inputs: EmbeddingInputs,
+    projection_json: str,
+    bounds: PixelBounds,
+    time_range: tuple[datetime, datetime],
+    store_path: str,
+    completed_path: str,
+    checkpoint_path: str,
+    time_index: int,
+    scratch_path: str,
+    patch_size: int = 2,
+    location_query_patch_size: int = 1,
+    window_size: int = 480,
+    overlap_size: int = 32,
+    context_pixels: int = 48,
+    batch_size: int | None = None,
+    num_workers: int | None = None,
+    upload_workers: int = 16,
+) -> None:
+    """Only materialize one block's imagery into scratch_path.
+
+    A later predict call with the same arguments runs inference on it. Takes the
+    same arguments as predict_pipeline so one queue entry can drive both.
+    """
+    _run_block(materialize_only=True, **locals())
+
+
+def _run_block(
+    inputs: EmbeddingInputs,
+    projection_json: str,
+    bounds: PixelBounds,
+    time_range: tuple[datetime, datetime],
+    store_path: str,
+    completed_path: str,
+    checkpoint_path: str,
+    time_index: int,
+    patch_size: int,
+    location_query_patch_size: int,
+    window_size: int,
+    overlap_size: int,
+    context_pixels: int,
+    batch_size: int | None,
+    num_workers: int | None,
+    scratch_path: str | None,
+    upload_workers: int,
+    materialize_only: bool,
+) -> None:
+    """Validate the arguments and process the block, see predict_pipeline."""
     for name, value in (
         ("window_size", window_size),
         ("overlap_size", overlap_size),

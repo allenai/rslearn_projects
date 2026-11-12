@@ -2,9 +2,8 @@
 
 import contextlib
 import os
-import pathlib
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from queue import SimpleQueue
 from typing import Protocol
 
@@ -41,11 +40,13 @@ class _Rx:
 class _Tx:
     """Records what the worker answers."""
 
-    def __init__(self) -> None:
+    def __init__(self, on_send: Callable[[], None] = lambda: None) -> None:
         self.sent: list[tuple[str, bool]] = []
+        self.on_send = on_send
 
     def send(self, entry_id: str, done: bool = False) -> None:
         self.sent.append((entry_id, done))
+        self.on_send()
 
 
 class _Run:
@@ -69,6 +70,8 @@ class Harness(Protocol):
         batches: list[list[_Input]],
         prefetch_fails: frozenset[str] = frozenset(),
         worker_args: list[str] | None = None,
+        serial: bool = False,
+        run_seconds: float = 0,
     ) -> tuple[_Tx, _Run]: ...
 
 
@@ -80,8 +83,14 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
         batches: list[list[_Input]],
         prefetch_fails: frozenset[str] = frozenset(),
         worker_args: list[str] | None = None,
+        serial: bool = False,
+        run_seconds: float = 0,
     ) -> tuple[_Tx, _Run]:
-        tx, rx = _Tx(), _Rx(batches)
+        # Serial mimics max_claimed_entries 1: the next batch arrives only after the
+        # current entry is answered.
+        pending = list(batches[1:]) if serial else []
+        rx = _Rx(batches[:1] if serial else batches)
+        tx = _Tx(lambda: rx.rx.put(pending.pop(0)) if pending else None)
         run = _Run([e.metadata.entry_id for batch in batches for e in batch])
 
         class FakeQueueClient:
@@ -107,9 +116,8 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
                 yield cls()
 
         def fake_prefetch(cmd: list[str], stop: threading.Event) -> None:
-            entry_id = cmd[cmd.index("noop") + 1]
+            entry_id = cmd[cmd.index(PREFETCH["workflow"]) + 1]
             scratch = cmd[cmd.index("--scratch_path") + 1]
-            assert "--materialize_only" in cmd
             run.prefetch_cmds[entry_id] = list(cmd)
             if entry_id in prefetch_fails:
                 raise RuntimeError(f"prefetch boom {entry_id}")
@@ -121,6 +129,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
             entry_id = args[0]
             run.run_args[entry_id] = list(args)
             run.record("start", entry_id)
+            threading.Event().wait(run_seconds)
             # Stands in for a long inference; the next entry's prefetch should land.
             later = [e for e in run.prefetched if e > entry_id]
             if later:
@@ -187,6 +196,16 @@ def test_a_repeated_arg_takes_the_last_value() -> None:
     assert jsonargparse.CLI(workflow, args=args, as_positional=False) == 384
 
 
+def test_a_serial_queue_is_not_idle_while_an_entry_runs(harness: Harness) -> None:
+    """With max_claimed_entries 1, a run longer than idle_timeout keeps the worker."""
+    tx, _ = harness(
+        [[_Input("e1", PREFETCH)], [_Input("e2", PREFETCH)]],
+        serial=True,
+        run_seconds=1.5,
+    )
+    assert tx.sent == [("e1", True), ("e2", True)]
+
+
 def test_a_failed_prefetch_fails_the_entry_without_running_it(
     harness: Harness,
 ) -> None:
@@ -210,17 +229,3 @@ def test_a_crashed_prefetch_thread_fails_the_worker(
     monkeypatch.setattr(worker_mod._Prefetcher, "_prefetch", boom)
     with pytest.raises(RuntimeError, match="prefetch thread failed"):
         harness([[_Input("e1", PREFETCH)]], frozenset())
-
-
-def test_stale_prefetch_roots_are_removed(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Directories left by an earlier worker in the container are deleted."""
-    monkeypatch.setattr(worker_mod.tempfile, "gettempdir", lambda: str(tmp_path))
-    stale = tmp_path / f"{worker_mod.PREFETCH_ROOT_PREFIX}old"
-    stale.mkdir()
-    unrelated = tmp_path / "other"
-    unrelated.mkdir()
-    worker_mod._remove_stale_scratch_roots()
-    assert not stale.exists()
-    assert unrelated.exists()
