@@ -27,6 +27,7 @@ from rslearn.utils.raster_format import GeotiffRasterFormat
 from shapely import box as shapely_box
 from upath import UPath
 
+from rslp.common.worker import PrefetchSpec
 from rslp.large_scale_embeddings.model import NODATA_VALUE
 from rslp.large_scale_embeddings.tiling import get_zone_wedge, list_kept_crops
 from rslp.large_scale_embeddings.zarr_store import write_window_region
@@ -74,7 +75,7 @@ MATERIALIZED_SENTINEL = "materialized"
 
 # Lets a worker materialize the next block in a subprocess while the GPU runs the
 # current one (see rslp.common.worker).
-PREFETCH = {"workflow": "materialize", "scratch_arg": "--scratch_path"}
+PREFETCH: PrefetchSpec = {"workflow": "materialize", "scratch_arg": "--scratch_path"}
 # Band count of the store's embedding array, which is fixed when the store is created.
 EMBEDDING_DIM = 128
 

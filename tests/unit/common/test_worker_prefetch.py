@@ -17,7 +17,7 @@ from rslp.large_scale_embeddings.predict_pipeline import PREFETCH
 class _Input:
     """One entry as the worker sees it off the channel."""
 
-    def __init__(self, entry_id: str, prefetch: dict | None) -> None:
+    def __init__(self, entry_id: str, prefetch: worker_mod.PrefetchSpec | None) -> None:
         self.metadata = type("M", (), {"entry_id": entry_id})()
         self.input: dict[str, object] = {
             "project": "test",
@@ -44,7 +44,9 @@ class _Tx:
         self.sent: list[tuple[str, bool]] = []
         self.on_send = on_send
 
-    def send(self, entry_id: str, done: bool = False) -> None:
+    def send(
+        self, entry_id: str, done: bool = False, rejection: str | None = None
+    ) -> None:
         self.sent.append((entry_id, done))
         self.on_send()
 
@@ -139,7 +141,7 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
         monkeypatch.setattr(worker_mod, "Beaker", FakeBeaker)
         monkeypatch.setattr(worker_mod, "pb2_to_dict", lambda d: d)
         monkeypatch.setattr(worker_mod.time, "sleep", lambda s: None)
-        monkeypatch.setattr(worker_mod, "PREFETCH_POLL_SECONDS", 0.05)
+        monkeypatch.setattr(worker_mod, "_PREFETCH_POLL_SECONDS", 0.05)
         monkeypatch.setattr(worker_mod, "_run_prefetch_subprocess", fake_prefetch)
         monkeypatch.setattr(worker_mod, "run_workflow", fake_run_workflow)
         worker_mod.worker_pipeline(
@@ -209,13 +211,13 @@ def test_a_serial_queue_is_not_idle_while_an_entry_runs(harness: Harness) -> Non
 def test_a_failed_prefetch_fails_the_entry_without_running_it(
     harness: Harness,
 ) -> None:
-    """A prefetch failure counts as a job failure and the next entry still runs."""
+    """A prefetch failure rejects the entry and the next entry still runs."""
     tx, run = harness(
         [[_Input("e1", PREFETCH), _Input("e2", PREFETCH), _Input("e3", PREFETCH)]],
         frozenset({"e2"}),
     )
     assert "e2" not in run.run_args
-    assert tx.sent == [("e1", True), ("e3", True)]
+    assert tx.sent == [("e1", True), ("e2", False), ("e3", True)]
 
 
 def test_a_crashed_prefetch_thread_fails_the_worker(
