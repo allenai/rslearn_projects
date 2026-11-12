@@ -157,6 +157,30 @@ Progress can be monitored by counting markers in `completed_path`. To retry fail
 blocks, run `write_jobs` again: completed blocks are excluded.
 
 
+Exporting Provenance
+--------------------
+
+`export_provenance` turns one year's provenance files into three GeoParquet tables
+for release, each written as `<table>/<year>.parquet`:
+
+- `windows`: one row per 2048 px window, keyed by its shard in the store, with its
+  WGS84 footprint and whether it was written.
+- `window_scenes`: the scenes behind each window's monthly mosaics, in mosaic order.
+- `scenes`: one row per scene, with its WGS84 footprint and the public STAC item it
+  came from.
+
+Only blocks with a completion marker are exported:
+
+    python -m rslp.main large_scale_embeddings export_provenance \
+        --run_path gs://BUCKET/ \
+        --year 2025 \
+        --out_dir gs://BUCKET/provenance_tables/
+
+`run_path` is the directory holding `completed_2025/` and `provenance_2025/`. Looking
+scenes up in the datasets service needs `DATASETS_API_TOKEN`; pass
+`--resolve_sources false` to skip it and leave the source columns empty.
+
+
 Quantization
 ------------
 

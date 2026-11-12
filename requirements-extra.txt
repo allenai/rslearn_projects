@@ -5,6 +5,7 @@ google-cloud-bigtable>=2.18
 google-cloud-pubsub>=2.18
 h5py>=3.11
 mapbox_vector_tile>=2.0
+pyarrow>=15
 pydantic>=2.8
 scikit-image>=0.23
 typing-extensions>=4.11
