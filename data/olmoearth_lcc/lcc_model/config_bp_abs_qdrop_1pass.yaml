@@ -639,6 +639,6 @@ trainer:
     init_args:
       monitor: val_post_change/accuracy
       mode: max
-project_name: 2026_11_10_lcc
+project_name: 2026_11_12_lcc
 run_name: bp_abs_qdrop_1pass
 management_dir: ${RSLP_PREFIX}/projects
