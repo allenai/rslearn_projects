@@ -194,7 +194,8 @@ treats them the same as missing ones).
 
 #### Architecture
 
-The production model (`config_bp_abs_qdrop_bpcat_1pass.yaml`) is
+The production model (`config_bp_abs_bpcat_1pass.yaml`, the 1-pass breakpoint model
+without quarterly dropout) is
 `rslp.olmoearth_lcc.lcc_model.model.ChangeModel` (its module docstring describes the
 options the other configs use):
 
@@ -362,7 +363,7 @@ Training details:
 - crop_size: 64, batch_size: 4, 100 epochs max.
 
 The other `config_*.yaml` files in `data/olmoearth_lcc/lcc_model/` are variants that
-were tried along the way; `config_bp_abs_qdrop_bpcat_1pass.yaml` (and its `_predict`
+were tried along the way; `config_bp_abs_bpcat_1pass.yaml` (and its `_predict`
 counterpart) is the one used by the prediction pipeline.
 
 `config_rslearn_bpcat_notemporal.yaml` expresses the model with generic rslearn
@@ -489,7 +490,7 @@ rslearn dataset materialize --root "$PREDICT_DS" --workers 128
 
 ```bash
 rslearn model predict \
-    --config data/olmoearth_lcc/lcc_model/config_bp_abs_qdrop_bpcat_1pass_predict.yaml \
+    --config data/olmoearth_lcc/lcc_model/config_bp_abs_bpcat_1pass_predict.yaml \
     --data.init_args.path="$PREDICT_DS"
 ```
 

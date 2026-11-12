@@ -74,7 +74,7 @@ logger = get_logger(__name__)
 
 DATASET_CONFIG_FNAME = "data/olmoearth_lcc/lcc_model/config_predict.json"
 MODEL_CONFIG_FNAME = (
-    "data/olmoearth_lcc/lcc_model/config_bp_abs_qdrop_bpcat_1pass_predict.yaml"
+    "data/olmoearth_lcc/lcc_model/config_bp_abs_bpcat_1pass_predict.yaml"
 )
 
 PREDICTION_GROUP = "predict"
