@@ -80,6 +80,12 @@ one 128x128 spatial window:
   change category (one of the post-change categories, from the same Studio
   labelset as `post_change_category`). `transition_date` must satisfy
   `first_date_change_noticeable <= transition_date < post_change`.
+- `transition_stop_date` (optional, positive points with a `transition_date`): the
+  date the intermediate stage ends; `transition_date < transition_stop_date <
+  post_change`. Unset means `post_change`.
+- `terminal_state` (optional, positive and negative points): what the location is
+  at the end of the series (a land cover category or a structure type such as
+  building, road, reservoir or mining). For annotation only: training ignores it.
 
 Land cover categories (`pre_category` / `post_category`): nodata, bare, agriculture,
 grassland, shrub, snow/ice, tree, urban/built-up, water, wetland, mangrove. (Renamed
@@ -300,7 +306,9 @@ The prepare script:
 - Rasterizes each positive point's transition into the label_transition_date
   (uint16 days like label_ts_end, plus `--gap_days`), label_transition_dst (land
   cover class like label_dst) and label_transition_post_change (post-change class
-  like label_post_change) layers. A missing transition category is nodata.
+  like label_post_change) layers, and its optional transition_stop_date into
+  label_transition_stop_date (like label_transition_date; 65535 = unset = the
+  point's post_change). A missing transition category is nodata.
   `transition_change_category` goes through the post-change aliases, but
   land_reclamation is not moved to the pre-change head: it is nodata for now.
   These layers are new in `config.json`, so copy their entries into the
@@ -335,14 +343,16 @@ Training details:
 - The dst and post_change heads are only trained on what the sampled images can
   show. Per positive point, with `end` the end of the latest frequent image: if
   `end >= post_change` they use post_category / post_change_category; else if the
-  point has a transition and `end >= transition_date` they use
-  transition_category / transition_change_category (each masked if unset);
-  otherwise (the change is still in progress) they are masked. The `ts_end` target
-  is post_change, or transition_date between the transition and post_change. While
+  point has a transition and `transition_date <= end <= transition_stop_date`
+  (default post_change) they use transition_category / transition_change_category
+  (each masked if unset); otherwise (the change is still in progress) they are
+  masked. The `ts_end` target is post_change, or transition_date until the
+  transition stop date. While
   the change is in progress it is the next of those dates, after the stack, so it
   maps to the last timestep. The `ts_start` target is each point's own pre_change.
   Negative points still train the change-category heads as "none". The per-point
-  dates come from the label_ts_start, label_ts_end and label_transition_* layers,
+  dates come from the label_ts_start, label_ts_end and label_transition_* layers
+  (including label_transition_stop_date),
   which the training configs pass through to `StackSampler` (as optional inputs, so
   older datasets without the transition layers still load); without label_ts_start
   or label_ts_end, the window's sidecar pre_change or post_change is used. Which
@@ -676,13 +686,14 @@ coordinate arrays (pixel centers). Each zone group holds two arrays:
   4. `pre_change_category`: 0 = no prediction, 1 = none, otherwise an index into
      `pre_change_category_names`.
   5. `post_change_category`: same, indexing `post_change_category_names`.
-  6. `post_change_score`: probability (0-255) of the post change category.
+  6. `pre_change_score`: probability (0-255) of the pre change category.
+  7. `post_change_score`: probability (0-255) of the post change category.
 - `change_dates`: uint16, dimensions `(change_dates_band, y, x)`:
   1. `change_start`: predicted change start, days since 1970-01-01 (0 = nodata).
   2. `change_end`: predicted change end, same encoding.
 
 Pixels with no prediction are 0 in every band. Where both change categories are
-none and `binary_change < 128`, `pre_lc`, `post_lc`, `post_change_score` and both
+none and `binary_change < 128`, `pre_lc`, `post_lc`, both change scores and both
 dates are also 0, and `binary_change < 16` is stored as 0 everywhere (these low
 probabilities were most of the compressed size). The class-name lists, detail mode
 and model config are stored in the root attributes.

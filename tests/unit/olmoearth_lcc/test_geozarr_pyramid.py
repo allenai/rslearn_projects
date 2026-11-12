@@ -16,7 +16,7 @@ from rslp.olmoearth_lcc.lcc_model.tiling import (
     get_zone_projection,
 )
 
-BINARY, PRE_LC, POST_LC, PRE_CAT, POST_CAT, POST_SCORE = range(6)
+BINARY, PRE_LC, POST_LC, PRE_CAT, POST_CAT, PRE_SCORE, POST_SCORE = range(7)
 
 
 def _pixel_block(pixels: list[list[int]]) -> tuple[np.ndarray, np.ndarray]:
@@ -28,7 +28,7 @@ def _pixel_block(pixels: list[list[int]]) -> tuple[np.ndarray, np.ndarray]:
     dates = np.zeros((len(geozarr.CHANGE_DATES_BANDS), 2, 2), dtype=np.uint16)
     for i, (binary, pre_cat, post_cat) in enumerate(pixels):
         row, col = divmod(i, 2)
-        change[:, row, col] = [binary, i, i, pre_cat, post_cat, i]
+        change[:, row, col] = [binary, i, i, pre_cat, post_cat, i, i]
         dates[:, row, col] = [1000 + i, 2000 + i]
     return change, dates
 
@@ -178,7 +178,7 @@ def test_write_tile_pyramid(tmp_path: pathlib.Path) -> None:
     change[PRE_CAT] = NONE_CATEGORY_IDX
     change[POST_CAT] = NONE_CATEGORY_IDX
     # One change pixel in the tile's level-1 array.
-    change[:, 100, 200] = [230, 9, 10, NONE_CATEGORY_IDX, 3, 240]
+    change[:, 100, 200] = [230, 9, 10, NONE_CATEGORY_IDX, 3, 235, 240]
     dates = np.zeros((2, half, half), dtype=np.uint16)
     dates[:, 100, 200] = [19000, 19100]
     geozarr_pyramid.write_tile_pyramid(
@@ -198,7 +198,7 @@ def test_write_tile_pyramid(tmp_path: pathlib.Path) -> None:
         factor = scale // 2
         np.testing.assert_array_equal(
             block[:, 100 // factor, 200 // factor],
-            [230, 9, 10, NONE_CATEGORY_IDX, 3, 240],
+            [230, 9, 10, NONE_CATEGORY_IDX, 3, 235, 240],
         )
         assert (block[POST_CAT] == 3).sum() == 1
         assert (block[PRE_CAT] == NONE_CATEGORY_IDX).all()

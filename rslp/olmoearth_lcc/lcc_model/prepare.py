@@ -18,6 +18,10 @@ This script takes one or more v2 annotation JSONs and creates an rslearn dataset
   and its change category (transition_change_category, a post-change category)
   like label_post_change. StackSampler trains the dst and post_change heads on these
   when the sampled images end between the transition and post_change.
+- label_transition_stop_date: the optional end of that intermediate stage
+  (transition_stop_date, uint16 days like label_transition_date; nodata = unset,
+  which means post_change). Between it and post_change the dst and post_change heads
+  are masked.
 
 The time range for each window covers all annotation-derived frequent blocks and
 QUARTERLY_LOOKBACK of preceding quarterly history. The 90-day quarterly periods are
@@ -182,8 +186,10 @@ ANNOTATIONS_SIDECAR_FNAME = "lcc_annotations.json"
 
 # Optional transition fields of a positive point: an intermediate stage between pre
 # and post (e.g. mangrove -> bare -> crops) with its date, land cover category, and
-# change category (one of the post-change categories).
+# change category (one of the post-change categories), and optionally the date the
+# stage ends (default: post_change).
 TRANSITION_DATE_FIELD = "transition_date"
+TRANSITION_STOP_DATE_FIELD = "transition_stop_date"
 TRANSITION_CATEGORY_FIELD = "transition_category"
 TRANSITION_CHANGE_CATEGORY_FIELD = "transition_change_category"
 
@@ -585,7 +591,7 @@ def _compute_label_arrays(
 
     gap is added to each point's post_change for the label_ts_end raster, matching
     the post_change written to the annotations sidecar, and likewise to the
-    transition_date for the label_transition_date raster.
+    transition_date and transition_stop_date for their rasters.
     """
     h = bounds[3] - bounds[1]
     w = bounds[2] - bounds[0]
@@ -608,6 +614,7 @@ def _compute_label_arrays(
     # is nodata, so StackSampler masks that head between the transition and
     # post_change.
     transition_date = np.full((h, w), DAYS_NODATA, dtype=np.uint16)
+    transition_stop_date = np.full((h, w), DAYS_NODATA, dtype=np.uint16)
     transition_dst = np.zeros((h, w), dtype=np.uint8)
     transition_post_change = np.zeros((h, w), dtype=np.uint8)
 
@@ -642,6 +649,10 @@ def _compute_label_arrays(
                         _get_transition_change_category(pt),
                         POST_CHANGE_CATEGORY_NAMES,
                     )
+                    if pt.get(TRANSITION_STOP_DATE_FIELD):
+                        transition_stop_date[row, col] = _date_to_unix_days(
+                            parse_date(pt[TRANSITION_STOP_DATE_FIELD]) + gap
+                        )
 
             # Only train the change-category heads when at least one field is set;
             # otherwise leave nodata (masked) for both.
@@ -662,6 +673,7 @@ def _compute_label_arrays(
         "label_ts_start": ts_start,
         "label_ts_end": ts_end,
         "label_transition_date": transition_date,
+        "label_transition_stop_date": transition_stop_date,
         "label_transition_dst": transition_dst,
         "label_transition_post_change": transition_post_change,
     }
@@ -709,8 +721,10 @@ def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
     Expected ordering is pre_change < first_observable <= post_change < stop_date,
     where first_observable is the first_date_change_noticeable field and
     stop_date is optional. The optional transition_date must satisfy
-    first_observable <= transition_date < post_change. Raises ValueError on any
-    positive point that violates this.
+    first_observable <= transition_date < post_change, and the optional
+    transition_stop_date (which needs a transition_date) transition_date <
+    transition_stop_date < post_change. Raises ValueError on any positive point
+    that violates this.
     """
     for pt in entry.get("positive_points", []):
         if not (
@@ -747,6 +761,23 @@ def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
                     f"expected first_observable <= transition_date < post_change, "
                     f"got first_observable={pt['first_date_change_noticeable']}, "
                     f"transition_date={pt[TRANSITION_DATE_FIELD]}, "
+                    f"post_change={pt['post_change']}"
+                )
+        if pt.get(TRANSITION_STOP_DATE_FIELD):
+            transition_stop_date = parse_date(pt[TRANSITION_STOP_DATE_FIELD])
+            if not (
+                pt.get(TRANSITION_DATE_FIELD)
+                and parse_date(pt[TRANSITION_DATE_FIELD])
+                < transition_stop_date
+                < post_change
+            ):
+                raise ValueError(
+                    f"Invalid transition_stop_date for positive point in window "
+                    f"{entry.get('group')}/{entry.get('window_name')}: "
+                    f"expected transition_date < transition_stop_date < "
+                    f"post_change, got transition_date="
+                    f"{pt.get(TRANSITION_DATE_FIELD)}, transition_stop_date="
+                    f"{pt[TRANSITION_STOP_DATE_FIELD]}, "
                     f"post_change={pt['post_change']}"
                 )
 

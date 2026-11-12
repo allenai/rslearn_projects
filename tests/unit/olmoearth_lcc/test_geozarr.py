@@ -79,23 +79,23 @@ def test_geozarr_window_arrays_encoding() -> None:
         ]
     )
     change, dates = geozarr.geozarr_window_arrays(arr)
-    assert change.dtype == np.uint8 and change.shape == (6, 1, 6)
+    assert change.dtype == np.uint8 and change.shape == (7, 1, 6)
     assert dates.dtype == np.uint16 and dates.shape == (2, 1, 6)
 
     np.testing.assert_array_equal(
-        change[:, 0, 0], [200, 9, 10, NONE_CATEGORY_IDX, new_building, 170]
+        change[:, 0, 0], [200, 9, 10, NONE_CATEGORY_IDX, new_building, 180, 170]
     )
     np.testing.assert_array_equal(
         dates[:, 0, 0], [3000 + EPOCH_2015_UNIX_DAYS, 3100 + EPOCH_2015_UNIX_DAYS]
     )
 
     np.testing.assert_array_equal(
-        change[:, 0, 1], [50, 0, 0, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 0]
+        change[:, 0, 1], [50, 0, 0, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 0, 0]
     )
     np.testing.assert_array_equal(dates[:, 0, 1], [0, 0])
 
     np.testing.assert_array_equal(
-        change[:, 0, 2], [200, 9, 10, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 170]
+        change[:, 0, 2], [200, 9, 10, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 180, 170]
     )
     assert (dates[:, 0, 2] > 0).all()
 
@@ -103,12 +103,12 @@ def test_geozarr_window_arrays_encoding() -> None:
     assert not dates[:, 0, 3].any()
 
     np.testing.assert_array_equal(
-        change[:, 0, 4], [0, 0, 0, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 0]
+        change[:, 0, 4], [0, 0, 0, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 0, 0]
     )
     np.testing.assert_array_equal(dates[:, 0, 4], [0, 0])
 
     np.testing.assert_array_equal(
-        change[:, 0, 5], [0, 9, 10, NONE_CATEGORY_IDX, new_building, 170]
+        change[:, 0, 5], [0, 9, 10, NONE_CATEGORY_IDX, new_building, 180, 170]
     )
     assert (dates[:, 0, 5] > 0).all()
 
@@ -151,7 +151,9 @@ def test_store_round_trip(tmp_path: pathlib.Path) -> None:
 
     projection, bounds = _first_window(10)
     rng = np.random.default_rng(0)
-    change = rng.integers(0, 255, (6, PATCH_SIZE, PATCH_SIZE), dtype=np.uint8)
+    change = rng.integers(
+        0, 255, (len(geozarr.CHANGE_BANDS), PATCH_SIZE, PATCH_SIZE), dtype=np.uint8
+    )
     dates = rng.integers(0, 65535, (2, PATCH_SIZE, PATCH_SIZE), dtype=np.uint16)
     geozarr.write_window(store_path, projection, bounds, change, dates)
 
@@ -250,7 +252,9 @@ def test_write_window_rejects_southern_crs(tmp_path: pathlib.Path) -> None:
     store_path = str(tmp_path / "lcc.zarr")
     geozarr.init_store(store_path, zone_numbers=[10])
     projection = Projection(CRS.from_epsg(32710), RESOLUTION, -RESOLUTION)
-    change = np.zeros((6, PATCH_SIZE, PATCH_SIZE), dtype=np.uint8)
+    change = np.zeros(
+        (len(geozarr.CHANGE_BANDS), PATCH_SIZE, PATCH_SIZE), dtype=np.uint8
+    )
     dates = np.zeros((2, PATCH_SIZE, PATCH_SIZE), dtype=np.uint16)
     with pytest.raises(ValueError):
         geozarr.write_window(

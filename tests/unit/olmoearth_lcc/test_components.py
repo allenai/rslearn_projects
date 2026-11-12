@@ -163,6 +163,7 @@ def _gating_inputs(
     transition: datetime | None,
     transition_classes: tuple[int, int] = (TRANSITION_DST, TRANSITION_POST_CHANGE),
     with_rasters: bool = True,
+    transition_stop: datetime | None = None,
 ) -> tuple[dict, dict]:
     """Stack inputs with dst/post_change targets and the per-pixel date rasters.
 
@@ -184,6 +185,8 @@ def _gating_inputs(
             input_dict["label_transition_date"] = _label(_days(transition), fill=65535)
             input_dict["label_transition_dst"] = _label(transition_classes[0])
             input_dict["label_transition_post_change"] = _label(transition_classes[1])
+            stop_days = 65535 if transition_stop is None else _days(transition_stop)
+            input_dict["label_transition_stop_date"] = _label(stop_days, fill=65535)
         else:
             input_dict["label_transition_date"] = _label(65535, fill=65535)
             input_dict["label_transition_dst"] = _label(0)
@@ -259,6 +262,30 @@ def test_stack_sampler_date_gating(
     neg_classes = target_dict["post_change"]["classes"].get_hw_tensor()
     neg_valid = target_dict["post_change"]["valid"].get_hw_tensor()
     assert neg_classes[NEGATIVE] == 1 and neg_valid[NEGATIVE] == 1
+
+
+@pytest.mark.parametrize("stop_after_end", [True, False])
+def test_stack_sampler_transition_stop_date(stop_after_end: bool) -> None:
+    """Transition labels apply until the transition stop date, then are masked."""
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    end = f_ts[-1][1]
+    stop = end + timedelta(days=5) if stop_after_end else f_ts[3][1]
+    input_dict, target_dict = _gating_inputs(
+        end + timedelta(days=30), f_ts[3][0], transition_stop=stop
+    )
+    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    classes = target_dict[TS_END_KEY]["classes"].get_hw_tensor()
+    if stop_after_end:
+        assert _at_point(target_dict, "dst") == (TRANSITION_DST, 1.0)
+        assert _at_point(target_dict, "post_change") == (TRANSITION_POST_CHANGE, 1.0)
+        assert classes[POINT] == NUM_QUARTERLY + 3
+    else:
+        # After the transition stage but before post_change: masked, and ts_end
+        # targets post_change (after the stack, so the last timestep).
+        assert _at_point(target_dict, "dst")[1] == 0.0
+        assert _at_point(target_dict, "post_change")[1] == 0.0
+        assert classes[POINT] == NUM_QUARTERLY + NUM_FREQUENT - 1
 
 
 def test_stack_sampler_masks_unset_transition_categories() -> None:

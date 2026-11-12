@@ -286,9 +286,9 @@ data:
         - label
         is_target: true
         dtype: INT32
-      # Per-point pre_change, post_change and transition dates and classes, consumed
-      # by StackSampler for the ts_start/ts_end targets and to gate the dst and
-      # post_change targets (see prepare.py).
+      # Per-point pre_change, post_change, transition and transition stop dates and
+      # transition classes, consumed by StackSampler for the ts_start/ts_end targets
+      # and to gate the dst and post_change targets (see prepare.py).
       label_ts_end:
         data_type: raster
         layers:
@@ -313,6 +313,16 @@ data:
         data_type: raster
         layers:
         - label_transition_date
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_transition_stop_date:
+        data_type: raster
+        layers:
+        - label_transition_stop_date
         bands:
         - label
         is_target: true

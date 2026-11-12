@@ -226,7 +226,7 @@ def test_entry_with_no_points_and_no_time_range() -> None:
     assert_entries_equal(FakeStudio([entry]).round_trip(7, entry), entry)
 
 
-def test_negative_points_carry_only_point_type() -> None:
+def test_negative_points_carry_only_point_type_and_terminal_state() -> None:
     studio = FakeStudio([])
     payload = point_to_annotation_payload(
         {"lon": 1.0, "lat": 2.0},
@@ -246,6 +246,28 @@ def test_negative_points_carry_only_point_type() -> None:
     assert unmapped_point_keys({"lon": 1, "lat": 2, "pre_change": "x"}, NEGATIVE) == [
         "pre_change"
     ]
+    assert not unmapped_point_keys(
+        {"lon": 1, "lat": 2, "terminal_state": "road"}, NEGATIVE
+    )
+
+
+def test_terminal_state_round_trips_on_both_kinds() -> None:
+    entry = make_entry(
+        positive_points=[
+            {
+                "lon": 1.0,
+                "lat": 2.0,
+                "post_change_category": "new_road",
+                "terminal_state": "road",
+            }
+        ],
+        negative_points=[
+            {"lon": 3.0, "lat": 4.0, "terminal_state": "tree"},
+            {"lon": 5.0, "lat": 6.0},
+        ],
+    )
+    studio = FakeStudio([entry])
+    assert_entries_equal(studio.round_trip(0, entry), entry)
 
 
 def test_points_keep_creation_order_within_kind() -> None:
@@ -302,6 +324,7 @@ def test_every_field_is_labelset_or_date() -> None:
         "pre_change",
         "first_date_change_noticeable",
         "transition_date",
+        "transition_stop_date",
         "post_change",
         "stop_date",
     ]
@@ -314,6 +337,7 @@ def test_transition_fields_round_trip() -> None:
         "pre_change": "2020-01-15",
         "first_date_change_noticeable": "2020-02-01",
         "transition_date": "2020-04-01",
+        "transition_stop_date": "2020-06-01",
         "post_change": "2020-09-01",
         "pre_category": "mangrove",
         "transition_category": "bare",

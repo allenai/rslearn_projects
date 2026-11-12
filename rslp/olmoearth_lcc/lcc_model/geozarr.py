@@ -11,13 +11,13 @@ dimensions ``(<array>_band, y, x)`` plus band-name and x/y coordinate arrays:
 - ``change`` (uint8, CHANGE_BANDS): binary change probability (0-255), pre/post land
   cover class (0 = nodata, otherwise an index into LC_CLASS_NAMES), pre/post change
   category (0 = no prediction, 1 = none, otherwise an index into
-  PRE/POST_CHANGE_CATEGORY_NAMES), and the post change category's probability
-  (0-255).
+  PRE/POST_CHANGE_CATEGORY_NAMES), and the pre/post change categories'
+  probabilities (0-255).
 - ``change_dates`` (uint16, CHANGE_DATES_BANDS): predicted change start and end in
   days since 1970-01-01 (0 = nodata).
 
 Where both change categories are "none" and the binary change probability is below
-128, the land cover classes, post change score, and dates are zeroed, and binary
+128, the land cover classes, change scores, and dates are zeroed, and binary
 change probabilities below 16 are stored as 0 (see
 geozarr_window_arrays).
 
@@ -89,6 +89,7 @@ CHANGE_BANDS = [
     "post_lc",
     "pre_change_category",
     "post_change_category",
+    "pre_change_score",
     "post_change_score",
 ]
 CHANGE_DATES_ARRAY = "change_dates"
@@ -429,12 +430,13 @@ def init_store(
     zones = list(range(1, 61)) if zone_numbers is None else zone_numbers
 
     description = (
-        "OlmoEarth Land Change predictions. binary_change and post_change_score "
-        "are probabilities scaled 0-255; pre_lc/post_lc index lc_class_names (0 = nodata); "
+        "OlmoEarth Land Change predictions. binary_change, pre_change_score and "
+        "post_change_score are probabilities scaled 0-255; pre_lc/post_lc index lc_class_names (0 = nodata); "
         "pre/post_change_category index pre/post_change_category_names (0 = no prediction, 1 = none). "
         "change_dates: days since 1970-01-01 (0 = nodata). Where both change "
         "categories are none and binary_change < no_change_threshold, "
-        "pre_lc, post_lc, post_change_score and change_dates are 0. "
+        "pre_lc, post_lc, pre_change_score, post_change_score and change_dates "
+        "are 0. "
         "binary_change < binary_change_zero_threshold is stored as 0."
     )
     if detail == DETAIL_FULL:
@@ -548,7 +550,7 @@ def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     See CHANGE_BANDS and CHANGE_DATES_BANDS for the layout. Each head is reduced to
     its argmax class (skipping nodata). Pixels with no prediction are all zero.
     Where both change categories are "none" and the binary change probability is
-    below GEOZARR_CHANGE_THRESHOLD, the land cover classes, post change score, and
+    below GEOZARR_CHANGE_THRESHOLD, the land cover classes, change scores, and
     change dates are zeroed too. binary_change values below
     GEOZARR_BINARY_ZERO_THRESHOLD are set to 0.
 
@@ -556,7 +558,7 @@ def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         arr: (len(OUTPUT_BANDS), H, W) array with probabilities scaled 0-255.
 
     Returns:
-        tuple of the (6, H, W) uint8 change array and the (2, H, W) uint16
+        tuple of the (len(CHANGE_BANDS), H, W) uint8 change array and the (2, H, W) uint16
         change_dates array (days since 1970-01-01, 0 = nodata).
     """
     # Pixels with no prediction were left all-zero; use the binary head to detect
@@ -565,14 +567,14 @@ def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     binary_change = np.clip(arr[BINARY_CHANGE_BAND], 0, 255).astype(np.uint8)
     src, _ = _head_argmax(arr[SRC_BAND_OFFSET : SRC_BAND_OFFSET + NUM_LC_CLASSES])
     dst, _ = _head_argmax(arr[DST_BAND_OFFSET : DST_BAND_OFFSET + NUM_LC_CLASSES])
-    pre, _ = _head_argmax(
+    pre, pre_score = _head_argmax(
         arr[PRE_CHANGE_BAND_OFFSET : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)]
     )
     post, post_score = _head_argmax(
         arr[POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)]
     )
 
-    change = np.stack([binary_change, src, dst, pre, post, post_score])
+    change = np.stack([binary_change, src, dst, pre, post, pre_score, post_score])
     change[:, ~valid] = 0
 
     dates = np.stack(
@@ -589,9 +591,9 @@ def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         & (post == NONE_CATEGORY_IDX)
         & (binary_change < GEOZARR_CHANGE_THRESHOLD)
     )
-    # Land cover classes (bands 1, 2) and the post change score (band 5).
+    # Land cover classes (bands 1, 2) and the change scores (bands 5, 6).
     change[1:3, no_change] = 0
-    change[5, no_change] = 0
+    change[5:7, no_change] = 0
     dates[:, no_change] = 0
     # Binary change (band 0); valid pixels stay distinguishable from nodata through
     # the change category bands.

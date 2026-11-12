@@ -19,8 +19,8 @@ from rslp.olmoearth_lcc.studio.schema import (
     NEGATIVE,
     POINT_TYPE_FIELD,
     POSITIVE,
-    POSITIVE_POINT_FIELDS,
     is_labelset_field,
+    point_fields,
 )
 
 # Entry keys with a home of their own on the task; anything else goes in
@@ -101,7 +101,8 @@ def point_to_annotation_payload(
 
     Args:
         point: the v2 point dict.
-        kind: POSITIVE or NEGATIVE. Negative points carry no other fields.
+        kind: POSITIVE or NEGATIVE. Negative points carry only
+            NEGATIVE_POINT_FIELDS (terminal_state).
         field_ids: {field name: metadata field id}.
         label_ids: {field name: {label name: label id}}.
         task_id: the entry's task.
@@ -114,21 +115,20 @@ def point_to_annotation_payload(
             "label_id": label_ids[POINT_TYPE_FIELD][kind],
         }
     ]
-    if kind == POSITIVE:
-        for name in POSITIVE_POINT_FIELDS:
-            value = point.get(name)
-            if not value:
-                continue
-            if is_labelset_field(name):
-                values.append(
-                    {
-                        "metadata_field_id": field_ids[name],
-                        "value": None,
-                        "label_id": label_ids[name][value],
-                    }
-                )
-            else:
-                values.append({"metadata_field_id": field_ids[name], "value": value})
+    for name in point_fields(kind):
+        value = point.get(name)
+        if not value:
+            continue
+        if is_labelset_field(name):
+            values.append(
+                {
+                    "metadata_field_id": field_ids[name],
+                    "value": None,
+                    "label_id": label_ids[name][value],
+                }
+            )
+        else:
+            values.append({"metadata_field_id": field_ids[name], "value": value})
 
     payload: dict[str, Any] = {
         "geom": point_wkt(point["lon"], point["lat"]),
@@ -144,7 +144,7 @@ def point_to_annotation_payload(
 
 def unmapped_point_keys(point: dict[str, Any], kind: str) -> list[str]:
     """Point keys that have no Studio field and would be lost on upload."""
-    allowed = POINT_KEYS + (POSITIVE_POINT_FIELDS if kind == POSITIVE else ())
+    allowed = POINT_KEYS + point_fields(kind)
     return [key for key in point if key not in allowed]
 
 
@@ -169,10 +169,9 @@ def annotation_to_point(
             fields[name] = value["value"]
 
     kind = fields.get(POINT_TYPE_FIELD, POSITIVE)
-    if kind == POSITIVE:
-        for name in POSITIVE_POINT_FIELDS:
-            if name in fields:
-                point[name] = fields[name]
+    for name in point_fields(kind):
+        if name in fields:
+            point[name] = fields[name]
     return kind, point
 
 

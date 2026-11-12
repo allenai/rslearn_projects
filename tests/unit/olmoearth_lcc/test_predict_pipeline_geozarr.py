@@ -198,16 +198,17 @@ def test_predict_pipeline_geozarr(
     assert [p.name for p in out_path.iterdir()] == [meta_fname.name]
 
     change = _read_region(store_path, bounds)["change"]
-    assert change.shape == (6, PATCH_SIZE, 2 * PATCH_SIZE)
+    assert change.shape == (7, PATCH_SIZE, 2 * PATCH_SIZE)
     first, second = change[:, :, :PATCH_SIZE].values, change[:, :, PATCH_SIZE:].values
     # The window without a prediction is nodata.
     assert not second.any()
     # The change patch keeps its details; the rest has them zeroed.
     np.testing.assert_array_equal(
-        first[:, 550, 550], [230, TREE, URBAN, NONE_CATEGORY_IDX, NEW_BUILDING, 240]
+        first[:, 550, 550],
+        [230, TREE, URBAN, NONE_CATEGORY_IDX, NEW_BUILDING, 250, 240],
     )
     np.testing.assert_array_equal(
-        first[:, 0, 0], [25, 0, 0, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 0]
+        first[:, 0, 0], [25, 0, 0, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 0, 0]
     )
     dates = _read_region(store_path, bounds, decode_times=False)["change_dates"]
     np.testing.assert_array_equal(
@@ -309,7 +310,7 @@ def test_predict_pipeline_full_store_with_pyramid(
         assert (block[3] == NONE_CATEGORY_IDX).all()
         np.testing.assert_array_equal(
             block[:, 550 // scale, 550 // scale],
-            [230, TREE, URBAN, NONE_CATEGORY_IDX, NEW_BUILDING, 240],
+            [230, TREE, URBAN, NONE_CATEGORY_IDX, NEW_BUILDING, 250, 240],
         )
 
 

@@ -211,6 +211,21 @@
       ],
       "type": "raster"
     },
+    "label_transition_stop_date": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
+      "type": "raster"
+    },
     "label_ts_end": {
       "band_sets": [
         {

@@ -24,6 +24,7 @@ DATE_FIELDS = (
     "pre_change",
     "first_date_change_noticeable",
     "transition_date",
+    "transition_stop_date",
     "post_change",
     "stop_date",
 )
@@ -87,6 +88,29 @@ POST_CHANGE_CATEGORIES = (
     "river_channel_migration",
 )
 
+# What the location is at the end of the series. For annotation only (training
+# ignores it); unlike the other fields, negative points may carry it too.
+TERMINAL_STATE_FIELD = "terminal_state"
+TERMINAL_STATES = LAND_COVER_CATEGORIES + (
+    "building",
+    "road",
+    "reservoir",
+    "solar",
+    "wind",
+    "dam",
+    "industrial_infrastructure",
+    "offshore_wind",
+    "offshore_platform",
+    "paved_area",
+    "canal",
+    "other_infrastructure",
+    "aquafarm",
+    "mining",
+    "borrow_pit",
+    "crop_structure",
+    "settlement",
+)
+
 # Legacy: these are now post-change categories and the lab ignores this field, but
 # it is kept so old values still round-trip.
 SAME_CHANGE_CATEGORIES = (
@@ -125,6 +149,7 @@ CATEGORY_FIELDS: dict[str, tuple[str, ...]] = {
     "post_category": LAND_COVER_CATEGORIES,
     "pre_change_category": PRE_CHANGE_CATEGORIES,
     "post_change_category": POST_CHANGE_CATEGORIES,
+    TERMINAL_STATE_FIELD: TERMINAL_STATES,
     "transition_change_category": POST_CHANGE_CATEGORIES,
     "same_change_category": SAME_CHANGE_CATEGORIES,
     "fine_change_category": FINE_CHANGE_CATEGORIES,
@@ -136,12 +161,21 @@ SHARED_LABELSETS = {"transition_change_category": "post_change_category"}
 
 # Positive point fields in v2 JSON order.
 POSITIVE_POINT_FIELDS = DATE_FIELDS + tuple(CATEGORY_FIELDS)
+# The only fields a negative point carries besides point_type.
+NEGATIVE_POINT_FIELDS = (TERMINAL_STATE_FIELD,)
+
+
+def point_fields(kind: str) -> tuple[str, ...]:
+    """The fields a point of this kind (POSITIVE or NEGATIVE) carries."""
+    return POSITIVE_POINT_FIELDS if kind == POSITIVE else NEGATIVE_POINT_FIELDS
+
 
 FIELD_DISPLAY_NAMES = {
     POINT_TYPE_FIELD: "Point type",
     "pre_change": "Pre-change date",
     "first_date_change_noticeable": "First date change noticeable",
     "transition_date": "Transition date (optional)",
+    "transition_stop_date": "Transition stop date (optional)",
     "post_change": "Post-change date",
     "stop_date": "Stop date",
     "pre_category": "Pre land cover",
@@ -149,6 +183,7 @@ FIELD_DISPLAY_NAMES = {
     "post_category": "Post land cover",
     "pre_change_category": "Pre-change category",
     "post_change_category": "Post-change category",
+    TERMINAL_STATE_FIELD: "Terminal state (optional)",
     "transition_change_category": "Transition change category (optional)",
     "same_change_category": "Same-change category (legacy)",
     "fine_change_category": "Fine change category (legacy)",
@@ -220,8 +255,13 @@ def required_labels(entries: list[dict[str, Any]]) -> dict[str, list[str]]:
         if is_labelset_field(name) and labelset_owner(name) == name
     }
     for entry in entries:
-        for point in entry.get("positive_points", []):
-            for field_name in CATEGORY_FIELDS:
+        points = [(POSITIVE, p) for p in entry.get("positive_points", [])] + [
+            (NEGATIVE, p) for p in entry.get("negative_points", [])
+        ]
+        for kind, point in points:
+            for field_name in point_fields(kind):
+                if field_name not in CATEGORY_FIELDS:
+                    continue
                 value = point.get(field_name)
                 owner_labels = labels[labelset_owner(field_name)]
                 if value and value not in owner_labels:

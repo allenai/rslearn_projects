@@ -191,6 +191,18 @@ def test_transition_label_arrays() -> None:
         POST_CHANGE_CATEGORY_NAMES[labels["label_transition_post_change"]]
         == "site_clearing"
     )
+    # Without a transition stop date the raster is nodata (= post_change).
+    assert labels["label_transition_stop_date"] == DAYS_NODATA
+    labels = _labels_at_point(
+        {
+            **DATED_POINT,
+            "transition_date": "2020-04-01",
+            "transition_stop_date": "2020-06-01",
+            "transition_category": "bare",
+        },
+        gap=gap,
+    )
+    assert labels["label_transition_stop_date"] == _days("2020-06-01") + 10
 
 
 @pytest.mark.parametrize(
@@ -234,6 +246,7 @@ def test_legacy_land_cover_names(old: str, new: str) -> None:
 def test_no_transition_labels_without_transition() -> None:
     labels = _labels_at_point(DATED_POINT)
     assert labels["label_transition_date"] == DAYS_NODATA
+    assert labels["label_transition_stop_date"] == DAYS_NODATA
     assert labels["label_transition_dst"] == 0
     assert labels["label_transition_post_change"] == 0
     # A transition on a point without dates is not rasterized either.
@@ -265,6 +278,34 @@ def test_validate_transition_date(transition_date: str, valid: bool) -> None:
         with pytest.raises(ValueError, match="transition_date"):
             _validate_positive_point_dates(entry)
     # filter_v2_jsons omits the entries that would raise.
+    assert positive_point_dates_valid(entry) == valid
+
+
+@pytest.mark.parametrize(
+    "transition,valid",
+    [
+        ({"transition_date": "2020-04-01", "transition_stop_date": "2020-04-02"}, True),
+        ({"transition_date": "2020-04-01", "transition_stop_date": "2020-08-31"}, True),
+        # Strictly between transition_date and post_change.
+        (
+            {"transition_date": "2020-04-01", "transition_stop_date": "2020-04-01"},
+            False,
+        ),
+        (
+            {"transition_date": "2020-04-01", "transition_stop_date": "2020-09-01"},
+            False,
+        ),
+        # A transition stop date needs a transition date.
+        ({"transition_stop_date": "2020-06-01"}, False),
+    ],
+)
+def test_validate_transition_stop_date(transition: dict[str, str], valid: bool) -> None:
+    entry = {"positive_points": [{"lon": LON, "lat": LAT, **DATED_POINT, **transition}]}
+    if valid:
+        _validate_positive_point_dates(entry)
+    else:
+        with pytest.raises(ValueError, match="transition_stop_date"):
+            _validate_positive_point_dates(entry)
     assert positive_point_dates_valid(entry) == valid
 
 
