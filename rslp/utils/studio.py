@@ -5,11 +5,16 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Iterator
 from typing import Any
 
 import requests
 
 BASE_URL = "https://olmoearth.allenai.org/api/v1"
+# Retried along with 5xx responses: Studio rate limits heavy concurrent writes.
+TOO_MANY_REQUESTS = 429
+# Studio search endpoints cap limit (and offset) at 10000.
+MAX_PAGE_SIZE = 10000
 
 
 class StudioClient:
@@ -34,10 +39,12 @@ class StudioClient:
             session: Optional requests session, primarily for tests.
             page_size: Number of records requested per search page.
             timeout: HTTP request timeout in seconds.
-            max_retries: Maximum number of attempts per request. Connection errors
-                and 5xx responses are retried with exponential backoff.
+            max_retries: Maximum number of attempts per request. Connection errors,
+                5xx responses and 429 (rate limited) responses are retried with
+                exponential backoff.
             retry_backoff: Base delay in seconds between attempts; attempt ``i``
-                waits ``retry_backoff * 2**i``.
+                waits ``retry_backoff * 2**i``, or longer if a 429 response's
+                Retry-After header asks for it.
         """
         self.api_key = api_key or os.environ["STUDIO_API_KEY"]
         self.base_url = base_url.rstrip("/")
@@ -56,7 +63,7 @@ class StudioClient:
         }
 
     def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
-        """Send a request, retrying connection errors and 5xx responses.
+        """Send a request, retrying connection errors, 5xx and 429 responses.
 
         Args:
             method: HTTP method.
@@ -72,6 +79,7 @@ class StudioClient:
         """
         url = f"{self.base_url}/{path.lstrip('/')}"
         for attempt in range(self.max_retries):
+            delay = self.retry_backoff * (2**attempt)
             try:
                 response = self.session.request(
                     method, url, headers=self.headers, timeout=self.timeout, **kwargs
@@ -79,11 +87,17 @@ class StudioClient:
             except requests.RequestException:
                 if attempt == self.max_retries - 1:
                     raise
-                time.sleep(self.retry_backoff * (2**attempt))
+                time.sleep(delay)
                 continue
-            if response.status_code < 500 or attempt == self.max_retries - 1:
+            retryable = (
+                response.status_code >= 500 or response.status_code == TOO_MANY_REQUESTS
+            )
+            if not retryable or attempt == self.max_retries - 1:
                 break
-            time.sleep(self.retry_backoff * (2**attempt))
+            retry_after = response.headers.get("Retry-After", "")
+            if retry_after.isdigit():
+                delay = max(delay, float(retry_after))
+            time.sleep(delay)
 
         if response.status_code >= 400:
             raise requests.HTTPError(
@@ -95,6 +109,65 @@ class StudioClient:
 
     def _first_record(self, response: requests.Response) -> dict[str, Any]:
         return response.json()["records"][0]
+
+    def request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+        """Send a request (with retries) and return the decoded JSON body.
+
+        Args:
+            method: HTTP method.
+            path: Path relative to the base URL, e.g. ``project_settings/<id>``.
+            kwargs: Additional arguments passed to ``requests.Session.request``.
+
+        Returns:
+            The decoded JSON body.
+        """
+        return self._request(method, path, **kwargs).json()
+
+    def create(self, resource: str, body: Any) -> dict[str, Any]:
+        """POST a create request for a resource and return the created record."""
+        return self._first_record(self._request("POST", resource, json=body))
+
+    def iter_search(
+        self, resource: str, query: dict[str, Any]
+    ) -> Iterator[dict[str, Any]]:
+        """Yield every record matching a search query, oldest first.
+
+        Unlike search_all, this pages with a creation_time cursor rather than
+        offsets, since Studio caps the offset at 10000.
+
+        Args:
+            resource: The resource to search, e.g. ``tasks`` or ``annotations``.
+            query: The search body, e.g. ``{"project_id": {"eq": project_id}}``.
+
+        Yields:
+            The matching records.
+        """
+        seen: set[str] = set()
+        cursor: str | None = None
+        limit = min(self.page_size, MAX_PAGE_SIZE)
+        while True:
+            body = {
+                **query,
+                "sort_by": "creation_time",
+                "sort_direction": "asc",
+                "limit": limit,
+            }
+            if cursor is not None:
+                body["creation_time"] = {"gte": cursor}
+            records = self._request("POST", f"{resource}/search", json=body).json()[
+                "records"
+            ]
+            new = [record for record in records if record["id"] not in seen]
+            for record in new:
+                seen.add(record["id"])
+                yield record
+            if len(records) < limit:
+                return
+            if not new:
+                raise RuntimeError(
+                    f"more than {limit} records share creation_time {cursor}"
+                )
+            cursor = records[-1]["creation_time"]
 
     def get_project(self, project_id: str) -> dict[str, Any]:
         """Fetch one project definition, including its annotation template."""

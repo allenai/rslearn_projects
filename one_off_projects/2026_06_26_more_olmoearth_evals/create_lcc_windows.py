@@ -1,7 +1,7 @@
 """Create rslearn windows + binary labels for the LCC olmoearth_evals tasks.
 
-This builds a small classification dataset from one or more change_finder_v2 v2
-annotation JSONs (the same format used by ``rslp.change_finder_v2.lcc_model_seg``).
+This builds a small classification dataset from one or more OlmoEarth LCC v2
+annotation JSONs (the same format used by ``rslp.olmoearth_lcc.lcc_model``).
 
 Two transition variants are supported, selected with ``--transition``:
 - ``deforestation``: a point is positive iff it is a fully-annotated positive point
