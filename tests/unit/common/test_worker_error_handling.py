@@ -12,7 +12,7 @@ import contextlib
 import time
 from collections.abc import Iterator
 from queue import Empty as QueueEmpty
-from typing import Any
+from typing import Protocol
 
 import pytest
 
@@ -62,7 +62,9 @@ class FakeRx:
         self._batches = list(batches)
         self.rx = self
 
-    def get(self, block: bool = True, timeout: float | None = None) -> Any:
+    def get(
+        self, block: bool = True, timeout: float | None = None
+    ) -> list["_FakeInput"]:
         """Deliver the next batch, or signal idleness.
 
         Args:
@@ -98,8 +100,30 @@ class _FakeInput:
         self.input = {"project": "test", "workflow": "noop", "args": [entry_id]}
 
 
+class Harness(Protocol):
+    def __call__(
+        self,
+        batches: list[list[str]],
+        fails: set[str],
+        retries: int = 3,
+        retry_sleep: int = 60,
+        max_retry_sleep: int = 600,
+    ) -> tuple[FakeTx, list[float]]: ...
+
+
+class _FakeBeaker:
+    """Stands in for beaker.Beaker, handing out the given queue client."""
+
+    queue: object
+
+    @classmethod
+    @contextlib.contextmanager
+    def from_env(cls, **_: str) -> Iterator["_FakeBeaker"]:
+        yield cls()
+
+
 @pytest.fixture
-def harness(monkeypatch: pytest.MonkeyPatch) -> Any:
+def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     """Run worker_pipeline against a faked queue.
 
     Args:
@@ -112,52 +136,52 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Any:
     def run(
         batches: list[list[str]],
         fails: set[str],
-        **kwargs: Any,
+        retries: int = 3,
+        retry_sleep: int = 60,
+        max_retry_sleep: int = 600,
     ) -> tuple[FakeTx, list[float]]:
         tx, rx = FakeTx(), FakeRx(batches)
         slept: list[float] = []
 
         @contextlib.contextmanager
-        def fake_channel(queue: Any, w: Any) -> Iterator[tuple[FakeTx, FakeRx]]:
+        def fake_channel(queue: object, w: object) -> Iterator[tuple[FakeTx, FakeRx]]:
             yield tx, rx
 
         class FakeQueueClient:
             def get(self, name: str) -> object:
                 return object()
 
-            def create_worker(self, queue: Any) -> object:
+            def create_worker(self, queue: object) -> object:
                 return object()
 
             worker_channel = staticmethod(fake_channel)
 
-        class FakeBeaker:
+        class FakeBeaker(_FakeBeaker):
             queue = FakeQueueClient()
-
-            @classmethod
-            def from_env(cls, **_: Any) -> Any:
-                @contextlib.contextmanager
-                def cm() -> Iterator[Any]:
-                    yield cls()
-
-                return cm()
 
         monkeypatch.setattr(worker_mod, "Beaker", FakeBeaker)
         monkeypatch.setattr(worker_mod, "pb2_to_dict", lambda d: d)
         monkeypatch.setattr(worker_mod.time, "sleep", lambda s: slept.append(s))
 
-        def fake_run_workflow(project: str, workflow: str, args: Any) -> None:
+        def fake_run_workflow(project: str, workflow: str, args: list[str]) -> None:
             entry = args[0]
             if entry in fails:
                 raise RuntimeError(f"boom {entry}")
 
         monkeypatch.setattr(worker_mod, "run_workflow", fake_run_workflow)
-        worker_mod.worker_pipeline(queue_name="test/queue", idle_timeout=1, **kwargs)
+        worker_mod.worker_pipeline(
+            queue_name="test/queue",
+            idle_timeout=1,
+            retries=retries,
+            retry_sleep=retry_sleep,
+            max_retry_sleep=max_retry_sleep,
+        )
         return tx, slept
 
     return run
 
 
-def test_a_failed_entry_is_rejected_not_left_claimed(harness: Any) -> None:
+def test_a_failed_entry_is_rejected_not_left_claimed(harness: Harness) -> None:
     """A failure must answer the entry, or the job is stuck for claim_stale_seconds.
 
     Beaker never releases a claim on its own. An entry the worker never replies to sits
@@ -169,7 +193,7 @@ def test_a_failed_entry_is_rejected_not_left_claimed(harness: Any) -> None:
     assert tx.sent == [("e1", "rejection", "RuntimeError: boom e1")]
 
 
-def test_the_error_streak_resets_on_success(harness: Any) -> None:
+def test_the_error_streak_resets_on_success(harness: Harness) -> None:
     """`retries` counts errors in a row, so a success in between must clear it.
 
     Without the reset the counter was a lifetime total, and a worker that did many jobs
@@ -185,7 +209,7 @@ def test_the_error_streak_resets_on_success(harness: Any) -> None:
     assert kinds == [("f1", "rejection"), ("ok", "done"), ("f2", "rejection")]
 
 
-def test_consecutive_failures_terminate_the_worker(harness: Any) -> None:
+def test_consecutive_failures_terminate_the_worker(harness: Harness) -> None:
     """At `retries` in a row the worker gives up, and does so loudly.
 
     Raising is what makes the process exit non-zero, which is the only reason Beaker
@@ -196,7 +220,7 @@ def test_consecutive_failures_terminate_the_worker(harness: Any) -> None:
         harness([["f1", "f2", "f3"]], fails={"f1", "f2", "f3"}, retries=3)
 
 
-def test_the_backoff_doubles_and_is_capped(harness: Any) -> None:
+def test_the_backoff_doubles_and_is_capped(harness: Harness) -> None:
     """A worker failing repeatedly should slow down, since the entry cannot hold a delay.
 
     The queue API has no per-entry delay, so the only place to back off is the worker.
@@ -239,7 +263,7 @@ class _HangingChannel:
     H100 while unable to claim any further work.
     """
 
-    def __init__(self, tx: Any, rx: Any, block_seconds: float) -> None:
+    def __init__(self, tx: FakeTx, rx: FakeRx, block_seconds: float) -> None:
         """Set up the channel.
 
         Args:
@@ -250,7 +274,7 @@ class _HangingChannel:
         self._tx, self._rx = tx, rx
         self._block_seconds = block_seconds
 
-    def __enter__(self) -> tuple[Any, Any]:
+    def __enter__(self) -> tuple[FakeTx, FakeRx]:
         """Hand back the sender and receiver.
 
         Returns:
@@ -315,22 +339,14 @@ def _run_worker(monkeypatch: pytest.MonkeyPatch, block_seconds: float) -> FakeTx
         def get(self, name: str) -> object:
             return object()
 
-        def create_worker(self, queue: Any) -> object:
+        def create_worker(self, queue: object) -> object:
             return object()
 
-        def worker_channel(self, queue: Any, w: Any) -> _HangingChannel:
+        def worker_channel(self, queue: object, w: object) -> _HangingChannel:
             return _HangingChannel(tx, rx, block_seconds)
 
-    class FakeBeaker:
+    class FakeBeaker(_FakeBeaker):
         queue = FakeQueueClient()
-
-        @classmethod
-        def from_env(cls, **_: Any) -> Any:
-            @contextlib.contextmanager
-            def cm() -> Iterator[Any]:
-                yield cls()
-
-            return cm()
 
     monkeypatch.setattr(worker_mod, "Beaker", FakeBeaker)
     monkeypatch.setattr(worker_mod, "pb2_to_dict", lambda d: d)

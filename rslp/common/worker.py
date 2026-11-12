@@ -362,7 +362,7 @@ class _QueueWorker:
         retries: int,
         retry_sleep: int,
         max_retry_sleep: int,
-        idle_timeout: int,
+        idle_timeout: float,
         flush_messages: bool,
         worker_args: list[str],
         drain_path: str | None,
@@ -393,7 +393,7 @@ class _QueueWorker:
             reconnects += 1
             idle_for = time.monotonic() - self.idle_since
             logger.info(
-                "queue closed the entry stream (reconnect %d, idle %.0fs of %ds)",
+                "queue closed the entry stream (reconnect %d, idle %.0fs of %.0fs)",
                 reconnects,
                 idle_for,
                 self.idle_timeout,
@@ -548,7 +548,7 @@ def worker_pipeline(
     retries: int = 3,
     retry_sleep: int = 60,
     max_retry_sleep: int = 600,
-    idle_timeout: int = 10,
+    idle_timeout: float = 10,
     flush_messages: bool = False,
     worker_args: list[str] | None = None,
     drain_path: str | None = None,

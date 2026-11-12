@@ -13,13 +13,17 @@ import os
 import pathlib
 import tempfile
 import threading
-from collections.abc import Iterator
-from typing import Any
+from collections.abc import Callable, Iterator
+from typing import Protocol
 
 import pytest
 
 from rslp.common import worker as worker_mod
-from tests.unit.common.test_worker_error_handling import FakeTx, real_sleep
+from tests.unit.common.test_worker_error_handling import (
+    FakeTx,
+    _FakeBeaker,
+    real_sleep,
+)
 from tests.unit.common.test_worker_prefetch import _Input
 
 
@@ -68,7 +72,9 @@ class _ClosingRx:
         def __init__(self, outer: "_ClosingRx") -> None:
             self.outer = outer
 
-        def get(self, block: bool = True, timeout: float | None = None) -> Any:
+        def get(
+            self, block: bool = True, timeout: float | None = None
+        ) -> list[_Input] | None:
             """The next batch, or None once this channel's script is spent."""
             outer = self.outer
             if outer._batches:
@@ -85,8 +91,19 @@ class _ClosingRx:
         return _ClosingRx._Inner(self)
 
 
+class Reconnecting(Protocol):
+    def __call__(
+        self,
+        scripts: list[list[list[_Input]] | None],
+        on_open: Callable[[int], None] | None = None,
+        prefetch_hook: Callable[[list[str]], None] | None = None,
+        run_hook: Callable[[list[str]], None] | None = None,
+        idle_timeout: float = 0.3,
+    ) -> tuple[_ClosingRx, list[str], int]: ...
+
+
 @pytest.fixture
-def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
+def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Reconnecting:
     """Run worker_pipeline against a queue that closes the stream on cue.
 
     Args:
@@ -98,18 +115,20 @@ def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
 
     def go(
         scripts: list[list[list[_Input]] | None],
-        on_open: Any = None,
-        prefetch_hook: Any = None,
-        run_hook: Any = None,
-        **kwargs: Any,
-    ) -> tuple[Any, list, int]:
+        on_open: Callable[[int], None] | None = None,
+        prefetch_hook: Callable[[list[str]], None] | None = None,
+        run_hook: Callable[[list[str]], None] | None = None,
+        idle_timeout: float = 0.3,
+    ) -> tuple[_ClosingRx, list[str], int]:
         rx = _ClosingRx(scripts)
         tx = FakeTx()
         ran: list[str] = []
         created = {"n": 0}
 
         @contextlib.contextmanager
-        def fake_channel(queue: Any, w: Any) -> Iterator[tuple[FakeTx, Any]]:
+        def fake_channel(
+            queue: object, w: object
+        ) -> Iterator[tuple[FakeTx, _ClosingRx]]:
             rx.open()
             if on_open is not None:
                 on_open(rx.channels)
@@ -119,22 +138,14 @@ def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
             def get(self, name: str) -> object:
                 return object()
 
-            def create_worker(self, queue: Any) -> object:
+            def create_worker(self, queue: object) -> object:
                 created["n"] += 1
                 return object()
 
             worker_channel = staticmethod(fake_channel)
 
-        class FakeBeaker:
+        class FakeBeaker(_FakeBeaker):
             queue = FakeQueueClient()
-
-            @classmethod
-            def from_env(cls, **_: Any) -> Any:
-                @contextlib.contextmanager
-                def cm() -> Iterator[Any]:
-                    yield cls()
-
-                return cm()
 
         def fake_prefetch(cmd: list[str], stop: threading.Event) -> None:
             if prefetch_hook is not None:
@@ -151,15 +162,14 @@ def reconnecting(monkeypatch: pytest.MonkeyPatch) -> Any:
         monkeypatch.setattr(worker_mod, "_PREFETCH_POLL_SECONDS", 0.02)
         monkeypatch.setattr(worker_mod, "_run_prefetch_subprocess", fake_prefetch)
         monkeypatch.setattr(worker_mod, "run_workflow", fake_run_workflow)
-        kwargs.setdefault("idle_timeout", 0.3)
-        worker_mod.worker_pipeline(queue_name="test/queue", **kwargs)
+        worker_mod.worker_pipeline(queue_name="test/queue", idle_timeout=idle_timeout)
         return rx, ran, created["n"]
 
     return go
 
 
 def test_a_closed_stream_reopens_on_the_same_registration(
-    reconnecting: Any,
+    reconnecting: Reconnecting,
 ) -> None:
     """A stream closed with nothing to hand out must not end the worker.
 
@@ -174,7 +184,9 @@ def test_a_closed_stream_reopens_on_the_same_registration(
     assert created == 1, f"expected one registration across reconnects, got {created}"
 
 
-def test_the_idle_clock_is_not_reset_by_reconnecting(reconnecting: Any) -> None:
+def test_the_idle_clock_is_not_reset_by_reconnecting(
+    reconnecting: Reconnecting,
+) -> None:
     """A stream that keeps closing must still let idle_timeout end the worker.
 
     Restarting the clock on each reconnect would make idle_timeout unreachable, and
@@ -191,7 +203,7 @@ PREFETCH = {"workflow": "prefetch", "scratch_arg": "--scratch_path"}
 
 
 def test_a_reconnect_clears_prefetched_data_left_on_disk(
-    reconnecting: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    reconnecting: Reconnecting, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> None:
     """Prefetch data from a closed channel must not survive into the next one.
 
@@ -222,7 +234,7 @@ def test_a_reconnect_clears_prefetched_data_left_on_disk(
 
 
 def test_a_failed_prefetch_leaves_nothing_on_disk(
-    reconnecting: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    reconnecting: Reconnecting, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> None:
     """A prefetch that fails after downloading most of a block must not keep it.
 
