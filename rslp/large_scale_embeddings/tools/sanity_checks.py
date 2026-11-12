@@ -1,8 +1,8 @@
-"""Sanity checks for the embeddings store, following LGND's checklist.
+"""Sanity checks for the embeddings store.
 
-https://lgnd.ai/resources/sanity-checks-for-geospatial-embeddings
-
-The checklist is written for chip embeddings. This adapts it to a pixel store:
+Inspired by LGND's sanity checks for geospatial embeddings
+(https://lgnd.ai/resources/sanity-checks-for-geospatial-embeddings), which are
+written for chip embeddings. This adapts them to a pixel store:
 
 - Neighboring pixels are near-identical by construction, so duplicates are only
   sought between different 256 px tiles.
