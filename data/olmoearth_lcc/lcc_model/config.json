@@ -226,6 +226,45 @@
       ],
       "type": "raster"
     },
+    "label_post_transition_pre_change": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "none",
+        "forest_loss",
+        "removed_building",
+        "wetland_loss",
+        "water_to_land",
+        "removed_crop_structure",
+        "mangrove_loss"
+      ],
+      "type": "raster"
+    },
+    "label_post_transition_ts_start": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
+      "type": "raster"
+    },
     "label_ts_end": {
       "band_sets": [
         {

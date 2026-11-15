@@ -325,6 +325,7 @@ def test_every_field_is_labelset_or_date() -> None:
         "first_date_change_noticeable",
         "transition_date",
         "transition_stop_date",
+        "post_transition_pre_change",
         "post_change",
         "stop_date",
     ]
@@ -338,6 +339,7 @@ def test_transition_fields_round_trip() -> None:
         "first_date_change_noticeable": "2020-02-01",
         "transition_date": "2020-04-01",
         "transition_stop_date": "2020-06-01",
+        "post_transition_pre_change": "2020-07-01",
         "post_change": "2020-09-01",
         "pre_category": "mangrove",
         "transition_category": "bare",
@@ -345,12 +347,20 @@ def test_transition_fields_round_trip() -> None:
         "pre_change_category": "mangrove_loss",
         "post_change_category": "new_agriculture",
         "transition_change_category": "site_clearing",
+        "transition_terminal_state": "bare",
+        "post_transition_pre_change_category": "forest_loss",
     }
     entry = make_entry(positive_points=[point])
     studio = FakeStudio([entry])
-    # transition_change_category labels come from post_change_category's labelset.
+    # The transition fields use the labelsets of their main counterparts.
     assert studio.label_ids["transition_change_category"]["site_clearing"] == (
         "label-post_change_category-site_clearing"
+    )
+    assert studio.label_ids["transition_terminal_state"]["bare"] == (
+        "label-terminal_state-bare"
+    )
+    assert studio.label_ids["post_transition_pre_change_category"]["forest_loss"] == (
+        "label-pre_change_category-forest_loss"
     )
     assert_entries_equal(studio.round_trip(0, entry), entry)
     assert not unmapped_point_keys(point, POSITIVE)

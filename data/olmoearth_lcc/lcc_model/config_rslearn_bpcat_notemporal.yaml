@@ -381,6 +381,26 @@ data:
         passthrough: true
         required: false
         dtype: INT32
+      label_post_transition_pre_change:
+        data_type: raster
+        layers:
+        - label_post_transition_pre_change
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
+      label_post_transition_ts_start:
+        data_type: raster
+        layers:
+        - label_post_transition_ts_start
+        bands:
+        - label
+        is_target: true
+        passthrough: true
+        required: false
+        dtype: INT32
       label_transition_dst:
         data_type: raster
         layers:
