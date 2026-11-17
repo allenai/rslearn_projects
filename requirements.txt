@@ -1,6 +1,9 @@
+# gcsfs 2026.8.0 returns wrong bytes for ranged reads, which breaks sharded zarr reads.
+gcsfs>=2026.8.1
 prometheus-client>=0.21.1
 python-dotenv>=1.0
 PyYAML>=6
 rslearn>=0.1.16
 s3fs>=2025.2.0
 wandb>=0.21
+zarr>=3

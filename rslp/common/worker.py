@@ -1,18 +1,27 @@
 """Worker to process jobs in a list of jobs."""
 
+import json
+import os
 import shutil
+import subprocess  # nosec
 import sys
+import tempfile
+import threading
 import time
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import timedelta
 from queue import Empty as QueueEmpty
+from queue import Full as QueueFull
+from queue import Queue
 from typing import Any
 
 import tqdm
 from beaker import (
     Beaker,
     BeakerConstraints,
+    BeakerEntryReceiver,
     BeakerEnvVar,
     BeakerExperimentSpec,
     BeakerJobPriority,
@@ -37,6 +46,12 @@ logger = get_logger(__name__)
 # about a pending claim that hasn't completed yet.
 MAX_JOB_HOURS = 4
 
+# How often the prefetch thread and the main loop recheck their state.
+PREFETCH_POLL_SECONDS = 1
+
+# How long to wait for the prefetch thread to stop on exit.
+PREFETCH_JOIN_SECONDS = 60
+
 
 def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
     """Make a signal handler that cleans up the specified directory before exiting.
@@ -55,17 +70,169 @@ def get_cleanup_signal_handler(tmp_dir: str) -> Callable[[int, Any], None]:
     return cleanup_signal_handler
 
 
+@dataclass
+class _Claimed:
+    """One claimed entry, handed from the prefetch thread to the main thread."""
+
+    entry_id: str
+    entry_input: dict[str, Any]
+    # Appended to the entry's args when it runs, pointing it at its prefetched data.
+    extra_args: list[str] = field(default_factory=list)
+    entry_dir: str | None = None
+    # Set when prefetching failed, so the main thread fails the entry.
+    error: Exception | None = None
+
+
+def _run_prefetch_subprocess(cmd: list[str], stop: threading.Event) -> None:
+    """Run a prefetch command, terminating it early if `stop` is set.
+
+    A subprocess because the main process holds a CUDA context after its first job,
+    and the data pipelines fork, which is unsafe once CUDA is initialized.
+
+    Args:
+        cmd: the command to run.
+        stop: set when the worker is exiting.
+
+    Raises:
+        RuntimeError: if the command fails or is stopped.
+    """
+    proc = subprocess.Popen(cmd)  # nosec
+    while proc.poll() is None:
+        if stop.wait(PREFETCH_POLL_SECONDS):
+            proc.terminate()
+            proc.wait()
+            raise RuntimeError("prefetch stopped because the worker is exiting")
+    if proc.returncode != 0:
+        raise RuntimeError(f"prefetch exited with code {proc.returncode}")
+
+
+class _Prefetcher(threading.Thread):
+    """Takes entries off the channel and prefetches each one ahead of its turn.
+
+    An entry opts in with a "prefetch" key in its queue input, set by write_jobs:
+    {"workflow": "...", "scratch_arg": "--x"}. That workflow runs first, in a
+    subprocess, with the entry's args plus `scratch_arg <dir>`, and writes what the
+    main workflow needs to `<dir>`. The main workflow then gets `scratch_arg <dir>` too.
+
+    Prefetching needs max_claimed_entries at 2; with 1, entries run serially. The
+    thread stops after idle_timeout with no entry arriving, waiting, or running.
+    """
+
+    def __init__(
+        self,
+        rx: BeakerEntryReceiver,
+        scratch_root: str,
+        flush_messages: bool,
+        worker_args: list[str],
+        idle_timeout: float,
+    ) -> None:
+        """Set up the prefetcher.
+
+        Args:
+            rx: the queue channel's receiver.
+            scratch_root: directory to create each entry's prefetch directory in.
+            flush_messages: skip prefetching, since nothing will run.
+            worker_args: the worker's own args, appended as for the real run.
+            idle_timeout: seconds of idleness before the thread stops.
+        """
+        super().__init__(name="prefetcher", daemon=True)
+        self.rx = rx
+        self.scratch_root = scratch_root
+        self.flush_messages = flush_messages
+        self.worker_args = worker_args
+        self.idle_timeout = idle_timeout
+        # At most one entry is prefetched ahead of the running one.
+        self.ready: Queue[_Claimed] = Queue(maxsize=1)
+        # Set by the main thread while it processes an entry.
+        self.running = threading.Event()
+        self.stop = threading.Event()
+        self.error: BaseException | None = None
+
+    def run(self) -> None:
+        """Prefetch entries until stopped or the channel closes."""
+        try:
+            self._run()
+        except BaseException as e:
+            logger.exception("prefetch thread failed")
+            self.error = e
+
+    def _run(self) -> None:
+        idle_since = time.monotonic()
+        while not self.stop.is_set():
+            try:
+                batch = self.rx.rx.get(block=True, timeout=PREFETCH_POLL_SECONDS)
+            except QueueEmpty:
+                if self.running.is_set() or not self.ready.empty():
+                    idle_since = time.monotonic()
+                elif time.monotonic() - idle_since >= self.idle_timeout:
+                    logger.info("no entries for %s seconds", self.idle_timeout)
+                    return
+                continue
+            if batch is None:
+                return
+            for worker_input in batch:
+                if self.stop.is_set():
+                    # Left claimed; the queue re-offers it once the claim goes stale.
+                    return
+                claimed = _Claimed(
+                    entry_id=worker_input.metadata.entry_id,
+                    entry_input=pb2_to_dict(worker_input.input),
+                )
+                if not self.flush_messages:
+                    self._prefetch(claimed)
+                while not self.stop.is_set():
+                    try:
+                        self.ready.put(claimed, timeout=PREFETCH_POLL_SECONDS)
+                        break
+                    except QueueFull:
+                        continue
+            idle_since = time.monotonic()
+
+    def _prefetch(self, claimed: _Claimed) -> None:
+        """Run the entry's prefetch step, if it has one.
+
+        Args:
+            claimed: the entry, updated with the args to run it with or the error.
+        """
+        prefetch = claimed.entry_input.get("prefetch")
+        if prefetch is None:
+            return
+        claimed.entry_dir = tempfile.mkdtemp(dir=self.scratch_root)
+        scratch_args = [
+            prefetch["scratch_arg"],
+            os.path.join(claimed.entry_dir, "scratch"),
+        ]
+        cmd = [
+            sys.executable,
+            "-m",
+            "rslp.main",
+            claimed.entry_input["project"],
+            prefetch["workflow"],
+            *claimed.entry_input["args"],
+            *self.worker_args,
+            *scratch_args,
+        ]
+        logger.info("prefetching entry %s", claimed.entry_id)
+        try:
+            _run_prefetch_subprocess(cmd, self.stop)
+            claimed.extra_args = scratch_args
+        except Exception as e:
+            logger.exception("prefetch failed for entry %s", claimed.entry_id)
+            claimed.error = e
+
+
 def worker_pipeline(
     queue_name: str,
     retries: int = 3,
     retry_sleep: int = 60,
     idle_timeout: int = 10,
     flush_messages: bool = False,
+    worker_args: list[str] | None = None,
 ) -> None:
     """Start a worker to run jobs from a Pub/Sub subscription.
 
     The job dict including rslp project, workflow, and arguments to pass must be
-    written to the topic.
+    written to the topic. It may also carry a "prefetch" key, see _Prefetcher.
 
     Args:
         queue_name: the name of the Beaker queue.
@@ -78,53 +245,89 @@ def worker_pipeline(
         idle_timeout: seconds before we terminate if there is no activity.
         flush_messages: whether to just flesh messages without actually running the
             requested workflows. This is to just delete all the messages in a topic.
+        worker_args: args appended to every entry this worker runs, overriding the
+            entry's own, e.g. a smaller --window_size on GPUs with less memory.
     """
+    if worker_args is None:
+        worker_args = []
 
     # Callback to run the workflow indicated in the message.
-    def process_message(json_data: dict[str, Any]) -> None:
+    def process_message(json_data: dict[str, Any], extra_args: list[str]) -> None:
         logger.debug("worker received message %s", json_data)
         rslp_project = json_data["project"]
         rslp_workflow = json_data["workflow"]
-        workflow_args = json_data["args"]
+        workflow_args = json_data["args"] + worker_args + extra_args
         run_workflow(rslp_project, rslp_workflow, workflow_args)
+
+    def next_ready(prefetcher: _Prefetcher) -> _Claimed | None:
+        """The next entry, or None once the prefetch thread stops."""
+        while True:
+            try:
+                return prefetcher.ready.get(timeout=PREFETCH_POLL_SECONDS)
+            except QueueEmpty:
+                pass
+            if not prefetcher.is_alive():
+                try:
+                    return prefetcher.ready.get_nowait()
+                except QueueEmpty:
+                    pass
+                if prefetcher.error is not None:
+                    raise RuntimeError("prefetch thread failed") from prefetcher.error
+                return None
 
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         queue = beaker.queue.get(queue_name)
         worker = beaker.queue.create_worker(queue)
         logger.info("listening for messages on %s", queue_name)
 
+        scratch_root = tempfile.mkdtemp(prefix="rslp-prefetch-")
         consecutive_errors = 0
-        with beaker.queue.worker_channel(queue, worker) as (tx, rx):
-            while True:
+        try:
+            with beaker.queue.worker_channel(queue, worker) as (tx, rx):
+                prefetcher = _Prefetcher(
+                    rx, scratch_root, flush_messages, worker_args, idle_timeout
+                )
+                prefetcher.start()
                 try:
-                    batch = rx.rx.get(block=True, timeout=idle_timeout)
-                except QueueEmpty:
-                    break
+                    while True:
+                        claimed = next_ready(prefetcher)
+                        if claimed is None:
+                            break
+                        entry_id = claimed.entry_id
+                        entry_input = claimed.entry_input
+                        logger.info("processing entry %s", entry_id)
 
-                for worker_input in batch:
-                    entry_id = worker_input.metadata.entry_id
-                    entry_input = pb2_to_dict(worker_input.input)
-                    logger.info("processing entry %s", entry_id)
-
-                    try:
-                        if not flush_messages:
-                            process_message(entry_input)
-                        tx.send(entry_id, done=True)
-                    except Exception as e:
-                        # TODO: does the entry go back in queue if we didn't reply to it with tx.send?
-                        # This code below is pretty much copied from the Pub/Sub processing code.
-                        # Maybe it's fine if it goes away to be honest, some tasks just don't work.
-                        logger.error(
-                            "encountered error while processing message %s: %s (%d/%d consecutive errors)",
-                            entry_input,
-                            e,
-                            consecutive_errors,
-                            retries,
-                        )
-                        consecutive_errors += 1
-                        if consecutive_errors >= retries:
-                            raise
-                        time.sleep(retry_sleep)
+                        prefetcher.running.set()
+                        try:
+                            if claimed.error is not None:
+                                raise claimed.error
+                            if not flush_messages:
+                                process_message(entry_input, claimed.extra_args)
+                            tx.send(entry_id, done=True)
+                        except Exception as e:
+                            # TODO: does the entry go back in queue if we didn't reply to it with tx.send?
+                            # This code below is pretty much copied from the Pub/Sub processing code.
+                            # Maybe it's fine if it goes away to be honest, some tasks just don't work.
+                            logger.error(
+                                "encountered error while processing message %s: %s (%d/%d consecutive errors)",
+                                entry_input,
+                                e,
+                                consecutive_errors,
+                                retries,
+                            )
+                            consecutive_errors += 1
+                            if consecutive_errors >= retries:
+                                raise
+                            time.sleep(retry_sleep)
+                        finally:
+                            prefetcher.running.clear()
+                            if claimed.entry_dir is not None:
+                                shutil.rmtree(claimed.entry_dir, ignore_errors=True)
+                finally:
+                    prefetcher.stop.set()
+                    prefetcher.join(timeout=PREFETCH_JOIN_SECONDS)
+        finally:
+            shutil.rmtree(scratch_root, ignore_errors=True)
 
 
 def launch_workers(
@@ -139,6 +342,8 @@ def launch_workers(
     extra_env_vars: dict[str, str] | None = None,
     extra_env_secrets: dict[str, str] | None = None,
     min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
+    gcp_credentials_secret: str | None = None,
+    worker_args: list[str] | None = None,
 ) -> None:
     """Start workers for the prediction jobs.
 
@@ -158,6 +363,10 @@ def launch_workers(
             secret (in the target workspace) to read its value from.
         min_runtime: how long to protect each (preemptible) worker job from
             preemption.
+        gcp_credentials_secret: Beaker secret holding the GCP service account key, or
+            None for the default.
+        worker_args: args each worker appends to every entry it runs (see
+            worker_pipeline).
     """
     if extra_env_vars is None:
         extra_env_vars = {}
@@ -176,7 +385,11 @@ def launch_workers(
             env_vars = get_base_env_vars(use_weka_prefix=False)
             env_vars += extra_beaker_env_vars
 
-            datasets = [create_gcp_credentials_mount()]
+            datasets = [
+                create_gcp_credentials_mount(gcp_credentials_secret)
+                if gcp_credentials_secret
+                else create_gcp_credentials_mount()
+            ]
             datasets += [weka_mount.to_data_mount() for weka_mount in weka_mounts]
 
             spec = BeakerExperimentSpec.new(
@@ -190,6 +403,11 @@ def launch_workers(
                     "worker",
                     "--queue_name",
                     queue_name,
+                    *(
+                        ["--worker_args", json.dumps(worker_args)]
+                        if worker_args
+                        else []
+                    ),
                 ],
                 constraints=BeakerConstraints(
                     cluster=cluster,
@@ -211,6 +429,7 @@ def write_jobs(
     rslp_workflow: str,
     args_list: list[list[str]],
     expires_in_sec: int = 7 * 24 * 3600,
+    prefetch: dict[str, Any] | None = None,
 ) -> None:
     """Write tasks to the Beaker queue.
 
@@ -220,6 +439,8 @@ def write_jobs(
         rslp_workflow: the workflow in the project to run.
         args_list: list of arguments fo reach task.
         expires_in_sec: how long until the queue entries should expire
+        prefetch: how a worker may prefetch each task ahead of its turn (see
+            _Prefetcher), or None to run it in one step.
     """
     with Beaker.from_env(default_workspace=DEFAULT_WORKSPACE) as beaker:
         queue = beaker.queue.get(queue_name)
@@ -230,6 +451,8 @@ def write_jobs(
                 workflow=rslp_workflow,
                 args=args,
             )
+            if prefetch is not None:
+                json_data["prefetch"] = prefetch
             beaker.queue.create_entry_async(
                 queue, input=json_data, expires_in_sec=expires_in_sec
             )
