@@ -85,8 +85,8 @@ data:
               image_bands: [1, 1, 1]
               exclude_by_center: true
 
-              # Overridden in S1 Predict Pipeline (SENTINEL1_SCORE_THRESHOLD, default 0.8).
-              score_threshold: 0.8
+              # Overridden in S1 Predict Pipeline (SENTINEL1_SCORE_THRESHOLD, default 0.7).
+              score_threshold: 0.7
               enable_map_metric: true
               enable_f1_metric: true
               enable_precision_recall: true

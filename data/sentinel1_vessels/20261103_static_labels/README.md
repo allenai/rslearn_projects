@@ -93,6 +93,7 @@ needed. Results on the 34 wind-farm scenes:
 - The five false positives reported from Skylight (turbines and islands) all score below
   0.3.
 
-The prediction pipeline's default threshold is 0.8. That keeps recall near the old model
-at 0.7 (0.889 vs 0.919), gives zero persistent detections on the wind-farm scenes, and has
-the same AIS recall as 0.7.
+The prediction pipeline's default threshold stays at 0.7. There this model has the same
+val recall as the old model (0.919) with higher precision (0.826 vs 0.740). Its 3
+persistent detections on the wind-farm scenes are all at one Stavanger site and appear to
+be vessels moored at fishing infrastructure.

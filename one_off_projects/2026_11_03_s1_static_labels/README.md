@@ -141,15 +141,16 @@ The final model is the SatlasPretrain model with a random same-track historical,
 the round-3 labels. It was compared with the previous production model on the round-3 val
 set, using the most recent same-track historical.
 
-- At 0.8 both models have about 0.89 recall; precision is 0.864 vs 0.812.
+- At 0.7 both models have 0.919 recall; precision is 0.826 vs 0.740.
 - Val mAP is 0.538 vs 0.527.
-- On the 34 wind-farm scenes, it makes 265 detections at 0.8, none persistent. The old model
-  made 916 at 0.7, 474 of them persistent.
+- On the 34 wind-farm scenes, it makes 299 detections at 0.7, 3 of them persistent (one
+  Stavanger site that appears to be vessels moored at fishing infrastructure). The old model
+  made 916, 474 of them persistent.
 - The five false positives users reported all score below 0.3.
 - It detects 24 of 25 AIS-matched vessels; the old model detects 25. The miss is a vessel
   off SW Australia that this model scores 0.62.
 
-The prediction pipeline now defaults to 0.8. See
+The prediction pipeline's default threshold stays at 0.7. See
 `data/sentinel1_vessels/20261103_static_labels/README.md` for the per-threshold tables and
 the comparison of training variants.
 
