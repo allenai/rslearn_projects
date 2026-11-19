@@ -1,0 +1,56 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.singletask.SingleTaskModel
+      init_args:
+        encoder:
+          - class_path: rslearn.models.olmoearth_pretrain.model.OlmoEarth
+            init_args:
+              model_id: OLMOEARTH_V1_BASE
+              patch_size: 4
+              # Output BCHWN instead of pooling over timesteps/modalities.
+              token_pooling: false
+        decoder:
+          # Embedding will reshape BCHWN -> B(CN)HW
+          - class_path: rslearn.train.tasks.embedding.EmbeddingHead
+    optimizer:
+      class_path: rslearn.train.optimizer.AdamW
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: ${DATASET_PATH}
+    inputs:
+      sentinel2_l2a:
+        data_type: "raster"
+        layers: ["sentinel2_l2a"]
+        # This is the band order expected by OlmoEarth.
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+        load_all_layers: true
+        load_all_item_groups: true
+    task:
+      class_path: rslearn.train.tasks.embedding.EmbeddingTask
+    batch_size: 8
+    num_workers: 32
+    predict_config:
+      transforms:
+        - class_path: rslearn.models.olmoearth_pretrain.norm.OlmoEarthNormalize
+          init_args:
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+      load_all_crops: true
+      crop_size: 64
+      overlap_pixels: 8
+trainer:
+  callbacks:
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: placeholder
+        output_layer: embeddings
+        merger:
+          class_path: rslearn.train.prediction_writer.RasterMerger
+          init_args:
+            overlap_pixels: 2
+            downsample_factor: 4
