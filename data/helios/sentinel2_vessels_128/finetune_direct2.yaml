@@ -1,0 +1,133 @@
+model:
+  class_path: rslearn.train.lightning_module.RslearnLightningModule
+  init_args:
+    model:
+      class_path: rslearn.models.multitask.MultiTaskModel
+      init_args:
+        encoder:
+          - class_path: rslp.helios.model.Helios
+            init_args:
+              checkpoint_path: "{CHECKPOINT_PATH}"
+              selector: ["encoder"]
+              forward_kwargs:
+                patch_size: {PATCH_SIZE}
+        decoders:
+          detect:
+            - class_path: rslearn.models.faster_rcnn.FasterRCNN
+              init_args:
+                downsample_factors: [{PATCH_SIZE}]
+                num_channels: {ENCODER_EMBEDDING_SIZE}
+                num_classes: 3
+                anchor_sizes: [[32]]
+    lr: 0.0001
+    plateau: true
+    plateau_factor: 0.2
+    plateau_patience: 2
+    plateau_min_lr: 1e-6
+    plateau_cooldown: 10
+data:
+  class_path: rslearn.train.data_module.RslearnDataModule
+  init_args:
+    path: /weka/dfive-default/rslearn-eai/datasets/sentinel2_vessels/dataset_v1/20250213/
+    inputs:
+      image:
+        data_type: "raster"
+        layers: ["sentinel2"]
+        bands: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+        passthrough: true
+        dtype: FLOAT32
+      mask:
+        data_type: "raster"
+        layers: ["mask"]
+        bands: ["mask"]
+        passthrough: true
+        dtype: INT32
+        is_target: true
+      targets:
+        data_type: "vector"
+        layers: ["label"]
+        is_target: true
+    task:
+      class_path: rslearn.train.tasks.multi_task.MultiTask
+      init_args:
+        tasks:
+          detect:
+            class_path: rslearn.train.tasks.detection.DetectionTask
+            init_args:
+              property_name: "category"
+              classes: ["unknown", "vessel"]
+              box_size: 15
+              remap_values: [[0, 1], [0, 255]]
+              exclude_by_center: true
+              score_threshold: 0.8
+              enable_map_metric: true
+              enable_f1_metric: true
+              f1_metric_thresholds: [[0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95], [0.1], [0.2], [0.3], [0.4], [0.5], [0.6], [0.7], [0.8], [0.9]]
+              f1_metric_kwargs:
+                cmp_mode: "distance"
+                cmp_threshold: 15
+                flatten_classes: true
+        input_mapping:
+          detect:
+            targets: "targets"
+    batch_size: 8
+    num_workers: 32
+    default_config:
+      transforms:
+        - class_path: rslp.transforms.mask.Mask
+        - class_path: rslearn.train.transforms.concatenate.Concatenate
+          init_args:
+            selections:
+              image: []
+            output_selector: sentinel2_l2a
+        - class_path: rslp.helios.norm.HeliosNormalize
+          init_args:
+            config_fname: "/opt/helios/data/norm_configs/computed.json"
+            band_names:
+              sentinel2_l2a: ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12", "B01", "B09"]
+    train_config:
+      patch_size: 128
+      groups: ["sargassum_train", "split2", "split3", "split4", "split5", "split6", "train", "train-bg", "train2", "train3"]
+      sampler:
+        class_path: rslearn.train.dataset.RandomSamplerFactory
+        init_args:
+          replacement: true
+          num_samples: 131072
+    val_config:
+      patch_size: 128
+      load_all_patches: true
+      groups: ["sargassum_val", "split1", "split7"]
+    test_config:
+      patch_size: 128
+      load_all_patches: true
+      groups: ["sargassum_val", "split1", "split7"]
+trainer:
+  max_epochs: 500
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+      init_args:
+        logging_interval: "epoch"
+    - class_path: rslearn.train.prediction_writer.RslearnWriter
+      init_args:
+        path: placeholder
+        output_layer: output
+        selector: ["detect"]
+        merger:
+          class_path: rslp.utils.nms.NMSDistanceMerger
+          init_args:
+            grid_size: 64
+            distance_threshold: 10
+            property_name: "category"  # same as task.property_name
+            class_agnostic: false
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        save_top_k: 1
+        save_last: true
+        monitor: val_detect/mAP
+        mode: max
+    - class_path: rslearn.train.callbacks.freeze_unfreeze.FreezeUnfreeze
+      init_args:
+        module_selector: ["model", "encoder", 0]
+        unfreeze_at_epoch: 2
+rslp_project: 2025_05_23_helios_finetuning
+rslp_experiment: placeholder
