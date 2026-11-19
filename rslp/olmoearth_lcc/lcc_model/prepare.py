@@ -92,6 +92,11 @@ from .timestamp_encoding import DAYS_NODATA, UNIX_EPOCH, parse_date
 from .transforms import NUM_FREQUENT, NUM_FREQUENT_OPTIONS, QUARTERLY_PERIOD
 
 COLLECTION = "sentinel-2-l2a"
+# Only scenes this provider has are used. The dataset and prediction configs read
+# Sentinel-2 from Planetary Computer only (AWS is excluded: some of its
+# early-2022 baseline 04.00 scenes are not harmonized), so a scene only AWS has
+# would materialize as a blank image, while prediction never sees it.
+REQUIRED_PROVIDER = "planetary_computer"
 
 FREQUENT_BLOCK_DURATION = timedelta(days=90)
 FREQUENT_PERIOD = timedelta(days=7)
@@ -342,10 +347,14 @@ def _search_oedatasets(
     api_token: str,
     geometry_geojson: dict[str, Any],
     time_range: tuple[datetime, datetime],
+    required_provider: str | None = REQUIRED_PROVIDER,
 ) -> list[dict[str, Any]]:
     """Search OlmoEarth Datasets API for Sentinel-2 scenes.
 
-    Returns list of dicts with keys: id, collected_at, cloud_cover, geometry_geojson.
+    Scenes that required_provider (if set) does not have are dropped.
+
+    Returns list of dicts with keys: id, collected_at, cloud_cover,
+    geometry_geojson, data_providers.
     """
     url = f"{api_url}/api/v1/items/search"
     headers: dict[str, str] = {}
@@ -381,6 +390,9 @@ def _search_oedatasets(
             break
 
         for item in records:
+            data_providers = sorted(item.get("data_providers") or {})
+            if required_provider is not None and required_provider not in data_providers:
+                continue
             props = item["properties"]
             cloud_cover = props.get("cloud_cover")
             if cloud_cover is None:
@@ -391,6 +403,7 @@ def _search_oedatasets(
                     "collected_at": parse_date(props["collected_at"]),
                     "cloud_cover": cloud_cover,
                     "geometry_geojson": props["geometry"],
+                    "data_providers": data_providers,
                 }
             )
 
