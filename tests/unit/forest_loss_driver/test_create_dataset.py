@@ -8,11 +8,13 @@ import shapely
 from rslearn.dataset import Dataset
 from upath import UPath
 
+from rslp.forest_loss_driver import hierarchy
 from rslp.forest_loss_driver.create_dataset import (
     ACA_LABEL_MAP,
     CLASSES,
     FLAT_LABEL_MAP,
     LABEL_LAYER,
+    LABEL_VERSION,
     PERU_LEGACY_LABEL_MAP,
     PROJECTS,
     StudioProject,
@@ -22,6 +24,12 @@ from rslp.forest_loss_driver.create_dataset import (
     select_task,
     select_tasks,
 )
+from rslp.forest_loss_driver.monocrop_classifier.create_dataset import (
+    assign_split as assign_monocrop_split,
+)
+from rslp.forest_loss_driver.monocrop_classifier.create_dataset import (
+    source_identity as monocrop_source_identity,
+)
 
 POLYGON = "POLYGON ((-76 -8, -75.999 -8, -75.999 -8.001, -76 -8.001, -76 -8))"
 TASK_POLYGON = "POLYGON ((-76.005 -7.995, -75.994 -7.995, -75.994 -8.006, -76.005 -8.006, -76.005 -7.995))"
@@ -30,15 +38,26 @@ POINT = "POINT (-75.9995 -8.0005)"
 LEGACY_PROJECT = StudioProject(
     project_id="legacy",
     label_field="tag_name",
-    label_map=ACA_LABEL_MAP,
+    leaf_map=hierarchy.ACA_LABEL_LEAVES,
+    legacy_map=ACA_LABEL_MAP,
     group_map={"20250428_brazil_phase1": "20250428_brazil_phase1"},
 )
 FLAT_PROJECT = StudioProject(
     project_id="flat",
     label_field="validate",
-    label_map=FLAT_LABEL_MAP,
+    leaf_map=hierarchy.FLAT_LABEL_LEAVES,
+    legacy_map=FLAT_LABEL_MAP,
     fixed_group="20260821_validatetest",
     extra_fields=("category", "country"),
+)
+LEVELS_PROJECT = StudioProject(
+    project_id="levels",
+    label_field="validate",
+    leaf_map=hierarchy.FLAT_LABEL_LEAVES,
+    legacy_map=FLAT_LABEL_MAP,
+    use_levels=True,
+    required_task_status="reviewed",
+    fixed_group="20260929_validation",
 )
 
 
@@ -100,8 +119,14 @@ def test_label_maps_only_produce_known_classes() -> None:
     assert "unknown" not in PERU_LEGACY_LABEL_MAP
     assert ACA_LABEL_MAP["False_positives_not_forest_loss_an_alert_error"] == "none"
     assert ACA_LABEL_MAP["Logging_roads"] == "road"
-    assert "Mining_in_River" not in ACA_LABEL_MAP
-    assert "Natural_-_Unknown" not in ACA_LABEL_MAP
+
+
+def test_registered_projects_map_labels_to_leaves() -> None:
+    for project in PROJECTS:
+        assert set(project.legacy_map) <= set(project.leaf_map)
+        for leaves in project.leaf_map.values():
+            assert leaves
+            assert leaves <= set(hierarchy.LEAVES)
 
 
 def test_registered_projects_have_split_policy() -> None:
@@ -114,22 +139,34 @@ def test_registered_projects_have_split_policy() -> None:
         for group in groups:
             assert group is not None
             # Should not raise.
-            assign_split(group, "some_window")
+            assign_split(group, _task())
 
 
 def test_assign_split_hashes_legacy_window_name() -> None:
     for window_name in ["feat_x_1279385_2198383_98104_86556", "feat_276_1223626"]:
         prefix = hashlib.sha256(window_name.encode()).hexdigest()[0]
         expected = "val" if prefix in "0123" else "train"
-        assert assign_split("20250428_brazil_phase1", window_name) == expected
-        assert assign_split("peru_interesting", window_name) == expected
-        assert assign_split("peru3", window_name) == "train"
-        assert assign_split("20260821_validatetest", None) == "train"
+        task = _task(attributes={"group": "x", "window": window_name})
+        assert assign_split("20250428_brazil_phase1", task) == expected
+        assert assign_split("peru_interesting", task) == expected
+        assert assign_split("peru3", task) == "train"
+        assert assign_split("20260821_validatetest", _task(attributes={})) == "train"
 
     with pytest.raises(ValueError):
-        assign_split("20250428_brazil_phase1", None)
+        assign_split("20250428_brazil_phase1", _task(attributes={}))
     with pytest.raises(ValueError):
-        assign_split("not_a_group", "window")
+        assign_split("not_a_group", _task())
+
+
+def test_assign_split_other_policies() -> None:
+    for task_id in ["a", "b", "c", "d"]:
+        task = _task(task_id=task_id)
+        prefix = hashlib.sha256(task_id.encode()).hexdigest()[0]
+        expected = "val" if prefix in "0123" else "train"
+        assert assign_split("20260929_validation", task) == expected
+        assert assign_split("monocrop_peru", task) == assign_monocrop_split(
+            monocrop_source_identity(task)
+        )
 
 
 def test_select_task_maps_label_and_split() -> None:
@@ -137,10 +174,11 @@ def test_select_task_maps_label_and_split() -> None:
     assert reason == "selected"
     assert selected is not None
     assert selected.new_label == "mining"
+    assert selected.leaves == hierarchy.MINING
     assert selected.raw_label == "Mining"
     assert selected.group == "20250428_brazil_phase1"
     assert selected.legacy_window == "feat_x_1"
-    assert selected.split == assign_split("20250428_brazil_phase1", "feat_x_1")
+    assert selected.split == assign_split("20250428_brazil_phase1", _task())
     assert selected.time_range == (
         datetime(2024, 1, 1, tzinfo=timezone.utc),
         datetime(2024, 1, 2, tzinfo=timezone.utc),
@@ -163,9 +201,9 @@ def test_select_task_skips() -> None:
     assert selected is None and reason == "missing_label"
 
     selected, reason = select_task(
-        LEGACY_PROJECT, _task(), [_annotation(labels={"tag_name": "Mining_in_River"})]
+        LEGACY_PROJECT, _task(), [_annotation(labels={"tag_name": "unknown"})]
     )
-    assert selected is None and reason == "unmapped_label:Mining_in_River"
+    assert selected is None and reason == "unmapped_label:unknown"
 
     selected, reason = select_task(
         LEGACY_PROJECT,
@@ -224,8 +262,72 @@ def test_select_task_flat_project_copies_extra_fields() -> None:
     assert selected.group == "20260821_validatetest"
     assert selected.split == "train"
     assert selected.new_label == "burned"
+    assert selected.leaves == {"burned_area", "natural_other"}
     assert selected.extra_properties == {"category": "agriculture", "country": "br"}
     assert selected.legacy_window is None
+
+
+def test_select_task_labels_without_legacy_category() -> None:
+    selected, reason = select_task(
+        LEGACY_PROJECT, _task(), [_annotation(labels={"tag_name": "Mining_in_River"})]
+    )
+    assert reason == "selected"
+    assert selected is not None
+    assert selected.leaves == {"mining_riverine"}
+    assert selected.new_label is None
+
+
+def test_select_task_uses_levels() -> None:
+    task = _task(attributes={})
+    selected, reason = select_task(
+        LEVELS_PROJECT,
+        task,
+        [
+            _annotation(
+                labels={
+                    "validate": "road",
+                    "level1": "human_made",
+                    "level2": "forest_extraction",
+                    "level3": "logging_roads",
+                    "level4": "lvl4_other",
+                }
+            )
+        ],
+    )
+    assert reason == "selected"
+    assert selected is not None
+    assert selected.leaves == {"logging_road"}
+    assert selected.raw_label == "human_made/forest_extraction/logging_roads"
+    assert selected.new_label == "road"
+    assert selected.levels["level4"] == "lvl4_other"
+
+    # Level 2 only: all the leaves under the node, with no single legacy category.
+    selected, _ = select_task(
+        LEVELS_PROJECT,
+        task,
+        [_annotation(labels={"level1": "human_made", "level2": "infrastructures"})],
+    )
+    assert selected is not None
+    assert selected.leaves == {"airstrip", "road", "infrastructure_other"}
+    assert selected.new_label is None
+
+    # Without levels, the flat field is used.
+    selected, _ = select_task(
+        LEVELS_PROJECT, task, [_annotation(labels={"validate": "landslide"})]
+    )
+    assert selected is not None
+    assert selected.leaves == {"landslide"}
+
+    selected, reason = select_task(
+        LEVELS_PROJECT, task, [_annotation(labels={"level1": "unknown"})]
+    )
+    assert selected is None and reason == "unmapped_levels:unknown"
+
+    unreviewed = task | {"status": "pending"}
+    selected, reason = select_task(
+        LEVELS_PROJECT, unreviewed, [_annotation(labels={"validate": "landslide"})]
+    )
+    assert selected is None and reason == "task_status:pending"
 
 
 def test_get_window_geometry_is_utm_128() -> None:
@@ -241,7 +343,7 @@ def test_get_window_geometry_is_utm_128() -> None:
 
 
 def test_create_window_writes_label_and_updates(tmp_path: Path) -> None:
-    config_path = Path("data/forest_loss_driver/config.json")
+    config_path = Path("data/forest_loss_driver/20261120_hierarchy/config.json")
     (tmp_path / "config.json").write_bytes(config_path.read_bytes())
     dataset = Dataset(UPath(tmp_path))
 
@@ -263,6 +365,8 @@ def test_create_window_writes_label_and_updates(tmp_path: Path) -> None:
     assert len(features) == 1
     properties = features[0].properties
     assert properties["new_label"] == "mining"
+    assert properties["leaf_labels"] == ["mining_terrace", "mining_riverine"]
+    assert properties["hierarchy_nodes"] == ["human_made/mining"]
     assert properties["raw_label"] == "Mining"
     assert properties["studio_task_id"] == "task"
     assert properties["studio_annotation_id"] == "annotation"
@@ -271,6 +375,13 @@ def test_create_window_writes_label_and_updates(tmp_path: Path) -> None:
     reloaded = dataset.load_windows(groups=[window.group], names=[window.name])[0]
     _, outcome = create_window(selected, dataset, existing=reloaded)
     assert outcome == "existing"
+
+    # A window created with an older label format gets its label rewritten.
+    reloaded.options["label_version"] = LABEL_VERSION - 1
+    reloaded.save()
+    _, outcome = create_window(selected, dataset, existing=reloaded)
+    assert outcome == "updated"
+    assert reloaded.options["label_version"] == LABEL_VERSION
 
     # A newer annotation updates the label in place.
     updated, _ = select_task(

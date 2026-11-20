@@ -23,24 +23,59 @@ For a summary of the version history of dataset and model configuration files, s
 ## Build the Training Dataset from Studio
 
 The training dataset is built directly from the labels in OlmoEarth Studio. The Studio
-projects to include, along with their label hierarchies and the mapping to the flat set
-of categories the model predicts, are registered in `create_dataset.py`. The script
-creates one 128x128 window at 10 m/pixel (UTM) per labeled task, writes the `label`
-layer, and assigns the train/val split; the Sentinel-2 images are then materialized
-with the standard rslearn commands.
+projects to include are registered in `create_dataset.py`. The script creates one
+128x128 window at 10 m/pixel (UTM) per labeled task, writes the `label` layer, and
+assigns the train/val split; the Sentinel-2 images are then materialized with the
+standard rslearn commands.
 
 ```
-DS=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/20260924_utm/
+DS=/weka/dfive-default/rslearn-eai/datasets/forest_loss_driver/dataset_v1/20261120_hierarchy/
 python -m rslp.forest_loss_driver.create_dataset --ds-path $DS
 rslearn dataset prepare --root $DS --workers 64 --retry-max-attempts 5 --retry-backoff-seconds 5
 rslearn dataset materialize --root $DS --workers 64 --ignore-errors --retry-max-attempts 5 --retry-backoff-seconds 5
-rslearn model fit --config data/forest_loss_driver/config.yaml
+rslearn model fit --config data/forest_loss_driver/20261120_hierarchy/config.yaml
 ```
 
 Re-running the script after registering a new Studio project only creates the new
 windows, and prepare/materialize only fetch imagery for those. See
-`data/forest_loss_driver/20260924_utm/README.md` for details on the projects, label
-mapping, and split.
+`data/forest_loss_driver/20261120_hierarchy/README.md` for details on the projects and
+split, and `data/forest_loss_driver/20260924_utm/README.md` for the original Studio
+projects.
+
+## Label Hierarchy
+
+The labels follow ACA's three-level hierarchy (Level 1: human-made, natural, non-forest
+loss; Level 2: e.g. agriculture, mining, landslide; Level 3: e.g. soybean, roads),
+defined in `hierarchy.py`. The model (`HierarchicalForestLossTask` and
+`HierarchicalClassificationHead` in `train.py`) predicts only the 22 leaves.
+
+Each Studio label, from any of the annotation schemes used over time, maps to a set of
+allowed leaves. The loss is `-log(sum of the probabilities of the allowed leaves)`, so a
+label like the old "agriculture" (any agriculture leaf) or "road" (a road or a logging
+road) still trains the model without forcing a leaf. Annotations made with the new
+hierarchy use the `level1`-`level3` fields directly.
+
+The label feature also keeps the legacy flat category (`new_label`) where there is one,
+so the older flat configs (`ForestLossTask`, `CATEGORY_MAPPING`) still work.
+
+Decisions on mapping the old labels, made with ACA's mapping document:
+
+- Agriculture with no crop type maps to all agriculture leaves. Medium/large agriculture
+  and Mennonite colonies map to all agriculture leaves except small-scale. Coca maps to
+  small-scale.
+- Old "road" maps to road or logging road, and old "logging" maps to selective logging
+  or logging road.
+- Burned areas from the old schemes map to burned area (human-made) or natural other,
+  since the cause is unknown. Burned events annotated as natural with the new levels
+  stay natural other.
+- Flood / flooded rivers map to river dynamics or flooding.
+- "Unknown" labels are skipped. Anthropic/Natural Unknown, and the old human/natural
+  labels, map to the Level 2 "Other" leaves (`human_other`, `natural_other`), which are
+  real leaves rather than "unknown".
+- General clearing and clear-cut logging map to `human_other`; urbanization maps to
+  `infrastructure_other`; false positives map to `no_change`.
+- Level 4 (e.g. Mennonite colonies) is extra information and is not predicted.
+- The polygon area is not used to pick between small-scale and large agriculture.
 
 The sections below describe how earlier rounds of annotation were set up.
 

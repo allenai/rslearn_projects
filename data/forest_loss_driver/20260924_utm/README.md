@@ -19,6 +19,12 @@ The model configuration is updated from `20260401_peru_phase2/config.yaml`:
 Note that the deployed inference pipeline in `olmoearth_projects` still creates Web
 Mercator windows; it will need to be updated to UTM to match this dataset.
 
+Since `20261120_hierarchy`, `create_dataset.py` registers more projects and maps the
+labels to the new label hierarchy, so some of the labels skipped below now get windows
+(without `new_label`). The labels and windows described here are those of the dataset
+as created on 2026-09-24. Running the current script on that dataset would rewrite its
+labels and add windows.
+
 
 Source Studio Projects
 ----------------------

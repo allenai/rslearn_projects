@@ -22,6 +22,11 @@ Dataset Versions
   the old rslearn windows. Windows are 128x128 at 10 m/pixel in UTM rather than Web
   Mercator, and only the Sentinel-2 L2A layers are kept. Adds the "Validatetest"
   labels. See `20260924_utm/README.md`.
+- 20261120_hierarchy: same windows and dataset config as 20260924_utm, but the label
+  feature also contains the set of allowed leaves of ACA's new three-level label
+  hierarchy (`leaf_labels`), and the model predicts those 22 leaves using a loss that
+  supports labels that only identify a non-leaf node. Adds the Validation 2026-09 and
+  monocrop projects. See `20261120_hierarchy/README.md`.
 
 
 Current Configuration
@@ -33,6 +38,10 @@ Current Configuration
 OlmoEarth Datasets data source in olmoearth_run. The model is OlmoEarth-v1.2-Base
 fine-tuned with layer-wise learning rate decay. This is the model deployed in
 `olmoearth_projects/olmoearth_run_data/forest_loss_driver/`.
+
+`20261120_hierarchy/config.yaml` is the in-progress model on the new label hierarchy.
+It is not the default yet because the deployed inference pipeline expects the ten flat
+categories.
 
 The older top-level configs (`config_ms.json`, `config_multimodal.json`,
 `config_planet.json`, `config_studio_annotation.json`, and
