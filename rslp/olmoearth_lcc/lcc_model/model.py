@@ -645,6 +645,11 @@ class TemporalTokenChangeModel(ChangeModel):
       timestep t are the coarse ``Linear(C -> p*p)`` term on timestep token t plus
       a dot product between projections of pixel token i and timestep token t
       (a pixel-dependent additive term alone would cancel in the softmax over T).
+
+    With ``location_tokens=True`` (``num_tokens=p*p`` only), the pixel tokens start
+    from the encoder's per-pixel location tokens (OlmoEarth v1.3 AttentionPooler
+    with ``forward_kwargs: {location_query_patch_size: 1}``) plus the learned
+    per-pixel ``tokens`` embedding, instead of the learned embedding alone.
     """
 
     def __init__(
@@ -663,6 +668,7 @@ class TemporalTokenChangeModel(ChangeModel):
         temporal_depth: int = 2,
         temporal_heads: int = 8,
         dim_feedforward: int = 2048,
+        location_tokens: bool = False,
     ):
         """Initialize the model.
 
@@ -681,6 +687,9 @@ class TemporalTokenChangeModel(ChangeModel):
             temporal_depth: number of temporal transformer layers.
             temporal_heads: attention heads of the temporal transformer.
             dim_feedforward: FFN hidden size of the temporal transformer.
+            location_tokens: start the pixel tokens from the encoder's per-pixel
+                location tokens (requires num_tokens=patch_size**2, num_pass1=None
+                and an AttentionPooler encoder with location_query_patch_size 1).
         """
         nn.Module.__init__(self)
         patch_size = encoder.patch_size
@@ -693,6 +702,17 @@ class TemporalTokenChangeModel(ChangeModel):
             )
         if temporal_depth <= 0:
             raise ValueError("temporal_depth must be > 0")
+        if location_tokens:
+            if num_tokens != num_pixels or num_pass1 is not None:
+                raise ValueError(
+                    "location_tokens requires num_tokens=patch_size**2 and "
+                    "num_pass1=None"
+                )
+            if encoder.forward_kwargs.get("location_query_patch_size") != 1:
+                raise ValueError(
+                    "location_tokens requires encoder forward_kwargs "
+                    "{location_query_patch_size: 1}"
+                )
 
         self.encoder = encoder
         self.embedding_dim = embedding_dim
@@ -701,6 +721,13 @@ class TemporalTokenChangeModel(ChangeModel):
         self.binary_loss_weight = binary_loss_weight
         self.num_tokens = num_tokens
         self.patch_size = patch_size
+        self.location_tokens = location_tokens
+        # The OlmoEarth wrapper returns either the patch tokens or the location
+        # tokens, so the location tokens are taken from the wrapped model's output
+        # with a forward hook.
+        self._captured: dict[str, torch.Tensor] = {}
+        if location_tokens:
+            encoder.model.register_forward_hook(self._capture_location_tokens)
 
         self.tokens = nn.Parameter(torch.randn(1, num_tokens, embedding_dim) * 0.02)
         self.temporal_pos = nn.Parameter(
@@ -745,6 +772,11 @@ class TemporalTokenChangeModel(ChangeModel):
             self.end_q = nn.Linear(embedding_dim, embedding_dim)
             self.end_k = nn.Linear(embedding_dim, embedding_dim)
 
+    def _capture_location_tokens(
+        self, module: nn.Module, args: Any, output: dict[str, Any]
+    ) -> None:
+        self._captured["location_tokens"] = output["location_tokens"]
+
     def _unpatchify(self, x: torch.Tensor) -> torch.Tensor:
         """(B, H, W, p*p, K) per-pixel values (row-major) -> (B, K, H*p, W*p)."""
         b, h, w, _, k = x.shape
@@ -764,7 +796,19 @@ class TemporalTokenChangeModel(ChangeModel):
         num_pixels = self.patch_size * self.patch_size
 
         x = feature.permute(0, 2, 3, 4, 1).reshape(b * h * w, t, c)
-        x = torch.cat([self.tokens.expand(b * h * w, -1, -1), x + self.temporal_pos], 1)
+        tokens = self.tokens.expand(b * h * w, -1, -1)
+        if self.location_tokens:
+            p = self.patch_size
+            loc = self._captured.pop("location_tokens")  # (B, H*p, W*p, C)
+            if loc.shape != (b, h * p, w * p, c):
+                raise ValueError(
+                    f"location tokens {tuple(loc.shape)} do not match "
+                    f"patch tokens {(b, h, w, c)} at patch size {p}"
+                )
+            # Row-major pixel order within each patch, as in _unpatchify.
+            loc = loc.reshape(b, h, p, w, p, c).permute(0, 1, 3, 2, 4, 5)
+            tokens = tokens + loc.reshape(b * h * w, n, c).to(x.dtype)
+        x = torch.cat([tokens, x + self.temporal_pos], 1)
         x = self.temporal_encoder(x)
         summary = x[:, :n].reshape(b, h, w, n, c)
         steps = x[:, n:].reshape(b, h, w, t, c)
