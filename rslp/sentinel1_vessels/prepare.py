@@ -12,7 +12,8 @@ For each window:
   frames covers at least `min_coverage` of the region.
 - Time is split into periods counted back from the window start t0:
   [t0-35d, t0-5d), [t0-65d, t0-35d), ... (with the defaults). The periods are visited most
-  recent first, empty periods are skipped, and at most `max_groups` groups are kept.
+  recent first, empty periods are skipped, and at most `max_groups` groups are kept. A
+  pass belongs to the period containing its start time.
 - Within a period, one qualifying pass is chosen at random, with an RNG seeded by the
   window group and name, so the selection is reproducible. The group holds the frames of
   that pass needed to reach its full coverage of the region.
@@ -26,8 +27,6 @@ import random
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from functools import cache
-from typing import Any
 
 import shapely
 import tqdm
@@ -51,8 +50,10 @@ logger = get_logger(__name__)
 # Frames of one pass are acquired seconds apart; passes on the same track are days apart.
 PASS_GAP = timedelta(minutes=10)
 
+# (item groups, time range of each group's period) for one window.
+WindowSelection = tuple[list[list[CopernicusItem]], list[tuple[datetime, datetime]]]
 
-@cache
+
 def get_relative_orbit(scene_name: str) -> int:
     """Get the relative orbit number of a Sentinel-1 scene from the Copernicus API."""
     if not scene_name.endswith(".SAFE"):
@@ -154,7 +155,7 @@ def select_for_window(
     periods: list[tuple[timedelta, timedelta]],
     max_groups: int,
     min_coverage: float,
-) -> tuple[list[list[CopernicusItem]], list[tuple[datetime, datetime]]]:
+) -> WindowSelection:
     """Select the historical item groups for one window.
 
     Args:
@@ -187,7 +188,7 @@ def select_for_window(
         lo, hi = t0 - end_offset, t0 - start_offset
         options = []
         for frames in passes:
-            if not all(lo <= item.geometry.time_range[0] < hi for item in frames):
+            if not lo <= frames[0].geometry.time_range[0] < hi:
                 continue
             if not any(item.geometry.shp.intersects(region) for item in frames):
                 continue
@@ -231,7 +232,7 @@ def select_for_target(
     max_groups: int,
     min_coverage: float,
     exclude_scenes: set[str],
-) -> dict[str, Any]:
+) -> dict[str, WindowSelection]:
     """Select historical item groups for all windows sharing one target scene.
 
     One catalog search covers all of the windows.
@@ -313,32 +314,59 @@ def prepare(
         f"{num_skipped} windows without a prepared target"
     )
 
-    def process(target_name: str) -> int:
+    def process(target_name: str) -> int | None:
+        """Returns the number of windows with no groups, or None on failure."""
         target_windows = by_target[target_name]
-        selections = select_for_target(
-            target_items[target_name],
-            target_windows,
-            periods,
-            max_groups,
-            min_coverage,
-            exclude_scenes,
-        )
-        for window in target_windows:
-            item_groups, group_time_ranges = selections[window.name]
-            layer_datas = window.load_layer_datas()
-            layer_datas[historical_layer] = WindowLayerData(
-                layer_name=historical_layer,
-                serialized_item_groups=[
-                    [item.serialize() for item in group] for group in item_groups
-                ],
-                group_time_ranges=list(group_time_ranges),
+        num_empty = 0
+        try:
+            selections = select_for_target(
+                target_items[target_name],
+                target_windows,
+                periods,
+                max_groups,
+                min_coverage,
+                exclude_scenes,
             )
-            window.save_layer_datas(layer_datas)
-        return len(target_windows)
+            for window in target_windows:
+                item_groups, group_time_ranges = selections[window.name]
+                if not item_groups:
+                    num_empty += 1
+                layer_datas = window.load_layer_datas()
+                layer_datas[historical_layer] = WindowLayerData(
+                    layer_name=historical_layer,
+                    serialized_item_groups=[
+                        [item.serialize() for item in group] for group in item_groups
+                    ],
+                    group_time_ranges=list(group_time_ranges),
+                )
+                window.save_layer_datas(layer_datas)
+        except Exception:
+            logger.exception(
+                f"failed to process target scene {target_name} "
+                f"({len(target_windows)} windows)"
+            )
+            return None
+        return num_empty
 
+    target_names = list(by_target.keys())
     with ThreadPoolExecutor(workers) as executor:
-        list(
-            tqdm.tqdm(
-                executor.map(process, list(by_target.keys())), total=len(by_target)
-            )
+        results = list(
+            tqdm.tqdm(executor.map(process, target_names), total=len(target_names))
+        )
+    failed = [name for name, result in zip(target_names, results) if result is None]
+    num_processed_windows = sum(
+        len(by_target[name])
+        for name, result in zip(target_names, results)
+        if result is not None
+    )
+    num_empty_windows = sum(result for result in results if result is not None)
+    logger.info(
+        f"{num_empty_windows}/{num_processed_windows} processed windows got no "
+        "historical groups"
+    )
+    if failed:
+        num_failed_windows = sum(len(by_target[name]) for name in failed)
+        raise RuntimeError(
+            f"{len(failed)}/{len(target_names)} target scenes "
+            f"({num_failed_windows} windows) failed: {failed}"
         )
