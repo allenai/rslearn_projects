@@ -41,7 +41,11 @@ def balanced_loss(
         scalar loss.
     """
     if not valid.any():
-        return torch.tensor(0.0, device=logits.device, requires_grad=True)
+        # Zero loss that still depends on logits: under DDP, a rank whose
+        # batch has no valid pixels must still produce (zero) gradients for
+        # these parameters, or its gradient allreduces go missing and the
+        # ranks hang.
+        return logits.sum() * 0.0
 
     batch_size, num_classes = logits.shape[:2]
     loss = F.cross_entropy(logits, labels, reduction="none").flatten(1)  # (B, H*W)

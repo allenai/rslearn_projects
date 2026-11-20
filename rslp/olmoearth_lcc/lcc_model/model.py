@@ -582,7 +582,11 @@ class ChangeModel(nn.Module):
         labels, valid = self._stack_targets(targets, task_name)
 
         if not valid.any():
-            return torch.tensor(0.0, device=logits.device, requires_grad=True)
+            # Zero loss that still depends on logits: under DDP, a rank whose
+            # batch has no valid pixels must still produce (zero) gradients for
+            # these parameters, or its gradient allreduces go missing and the
+            # ranks hang.
+            return logits.sum() * 0.0
 
         loss = F.cross_entropy(logits, labels, reduction="none")
         return (loss * valid).sum() / valid.sum()
