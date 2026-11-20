@@ -46,6 +46,11 @@ Downstream heads all operate on the per-timestep tokens:
   heads see both sides of the transition (a category is a before->after
   transition, so a single side cannot separate e.g. "new_building" from "none"
   in an already built-up area).
+- ``scorer_location_token``: breakpoint mode with an AttentionPooler encoder
+  (OlmoEarth v1.3) only. The patch's location token (one per patch, pooled over
+  the whole stack) is concatenated to |B_t - A_t| at the input of the shared
+  split scorer, so what counts as change can depend on the place. Its half of
+  the scorer's first layer starts at zero (= the plain scan at step 0).
 - ``ts_start`` / ``ts_end``: a per-token linear logit over the T timesteps, upsampled
   to full resolution, trained with cross-entropy at change pixels. These are
   segmentation-style outputs/targets (T classes = timestep indices), matching the
@@ -137,6 +142,7 @@ class ChangeModel(nn.Module):
         temporal_pos_enc: bool = False,
         src_dst_input: str = "auto",
         change_category_input: str = "pooled",
+        scorer_location_token: bool = False,
     ):
         """Initialize the LCC change model.
 
@@ -177,6 +183,9 @@ class ChangeModel(nn.Module):
                 ``binary_mode="breakpoint"``.
             change_category_input: ``"pooled"`` or ``"breakpoint"`` (see module
                 docstring). ``"breakpoint"`` requires ``binary_mode="breakpoint"``.
+            scorer_location_token: concatenate the encoder's per-patch location
+                token to the split scorer input (see module docstring). Requires
+                ``binary_mode="breakpoint"`` and ``num_pass1=None``.
         """
         super().__init__()
         if decoder_stages is None:
@@ -205,6 +214,11 @@ class ChangeModel(nn.Module):
             raise ValueError(
                 "change_category_input='breakpoint' requires binary_mode='breakpoint'"
             )
+        if scorer_location_token and (binary_mode != "breakpoint" or num_pass1):
+            raise ValueError(
+                "scorer_location_token requires binary_mode='breakpoint' and "
+                "num_pass1=None"
+            )
 
         self.encoder = encoder
         self.embedding_dim = embedding_dim
@@ -216,6 +230,13 @@ class ChangeModel(nn.Module):
         self.season_embed = season_embed
         self.src_dst_input = src_dst_input
         self.change_category_input = change_category_input
+        self.scorer_location_token = scorer_location_token
+        # The OlmoEarth wrapper returns either the patch tokens or the location
+        # tokens, so the location tokens are taken from the wrapped model's output
+        # with a forward hook.
+        self._captured: dict[str, torch.Tensor] = {}
+        if scorer_location_token:
+            encoder.model.register_forward_hook(self._capture_location_tokens)
 
         self.num_classes_binary = num_classes_binary
         self.num_classes_src = num_classes_src
@@ -262,13 +283,18 @@ class ChangeModel(nn.Module):
                 embedding_dim, decoder_stages, num_classes_binary
             )
         else:
-            # Shared scorer applied to |after - before| at every split.
+            # Shared scorer applied to |after - before| (and optionally the
+            # location token) at every split.
+            scorer_in = 2 * embedding_dim if scorer_location_token else embedding_dim
             self.split_proj = nn.Sequential(
-                nn.Conv2d(embedding_dim, BREAKPOINT_HIDDEN, kernel_size=1),
+                nn.Conv2d(scorer_in, BREAKPOINT_HIDDEN, kernel_size=1),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(BREAKPOINT_HIDDEN, BREAKPOINT_HIDDEN, kernel_size=1),
                 nn.ReLU(inplace=True),
             )
+            if scorer_location_token:
+                with torch.no_grad():
+                    self.split_proj[0].weight[:, embedding_dim:].zero_()
             # Scalar per-split score for the split-attention over breakpoints
             # (used to pick the before/after aggregates for src/dst).
             self.split_score = nn.Conv2d(BREAKPOINT_HIDDEN, 1, kernel_size=1)
@@ -404,13 +430,20 @@ class ChangeModel(nn.Module):
             return pooled.reshape(b, h, w, c).permute(0, 3, 1, 2)
         return feature.mean(dim=-1)
 
+    def _capture_location_tokens(
+        self, module: nn.Module, args: Any, output: dict[str, Any]
+    ) -> None:
+        self._captured["location_tokens"] = output["location_tokens"]
+
     def _breakpoint_features(
-        self, feature: torch.Tensor
+        self, feature: torch.Tensor, location: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Changepoint scan over the T timesteps.
 
         Args:
             feature: (B, C, H, W, T) per-timestep tokens.
+            location: optional (B, C, H, W) location tokens, concatenated to the
+                scorer input at every split.
 
         Returns:
             (evidence_feat, src_feat, dst_feat): max-pooled per-split hidden
@@ -428,6 +461,9 @@ class ChangeModel(nn.Module):
 
         # Shared scorer over all splits: fold S into the batch dimension.
         con = con.permute(0, 4, 1, 2, 3).reshape(B * S, C, H, W)
+        if location is not None:
+            loc = location.unsqueeze(1).expand(B, S, -1, H, W)
+            con = torch.cat([con, loc.reshape(B * S, -1, H, W)], dim=1)
         hidden = self.split_proj(con)  # (B*S, hidden, H, W)
         scores = self.split_score(hidden)  # (B*S, 1, H, W)
         hidden = hidden.reshape(B, S, -1, H, W)
@@ -459,7 +495,9 @@ class ChangeModel(nn.Module):
         Returns:
             ModelOutput with per-task outputs and losses.
         """
-        feature = self._per_timestep_features(context)  # (B, C, H, W, T)
+        # OlmoEarth v1.3 returns bfloat16 tokens under the wrapper's autocast (v1.2
+        # returns float32); the heads run in float32.
+        feature = self._per_timestep_features(context).float()  # (B, C, H, W, T)
 
         if self.season_embed:
             feature = feature + self._month_embedding(
@@ -474,7 +512,18 @@ class ChangeModel(nn.Module):
             logits_binary = self.decoder_binary(pooled)
             before_feat = after_feat = None
         else:
-            bp_feat, before_feat, after_feat = self._breakpoint_features(feature)
+            location = None
+            if self.scorer_location_token:
+                loc = self._captured.pop("location_tokens")  # (B, H, W, C)
+                if loc.shape[1:3] != feature.shape[2:4]:
+                    raise ValueError(
+                        f"location tokens {tuple(loc.shape)} do not match the patch "
+                        f"grid of {tuple(feature.shape)}"
+                    )
+                location = loc.permute(0, 3, 1, 2).to(feature.dtype)
+            bp_feat, before_feat, after_feat = self._breakpoint_features(
+                feature, location
+            )
             evidence = self.evidence_decoder(bp_feat)  # (B, 1, H', W')
             logits_binary = torch.cat(
                 [
@@ -771,11 +820,6 @@ class TemporalTokenChangeModel(ChangeModel):
             self.start_k = nn.Linear(embedding_dim, embedding_dim)
             self.end_q = nn.Linear(embedding_dim, embedding_dim)
             self.end_k = nn.Linear(embedding_dim, embedding_dim)
-
-    def _capture_location_tokens(
-        self, module: nn.Module, args: Any, output: dict[str, Any]
-    ) -> None:
-        self._captured["location_tokens"] = output["location_tokens"]
 
     def _unpatchify(self, x: torch.Tensor) -> torch.Tensor:
         """(B, H, W, p*p, K) per-pixel values (row-major) -> (B, K, H*p, W*p)."""
