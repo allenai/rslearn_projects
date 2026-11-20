@@ -1,3 +1,6 @@
+# httpx2 >= 2.16.1 (used by huggingface_hub) passes output_buffer_limit to brotli,
+# which needs brotli >= 1.2; the pytorch base image ships an older one.
+brotli>=1.2.0
 # gcsfs 2026.8.0 returns wrong bytes for ranged reads, which breaks sharded zarr reads.
 gcsfs>=2026.8.1
 prometheus-client>=0.21.1
