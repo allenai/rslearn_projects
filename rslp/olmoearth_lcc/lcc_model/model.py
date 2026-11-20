@@ -69,6 +69,7 @@ from rslearn.models.olmoearth_pretrain.model import OlmoEarth
 from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 
 from .components import balanced_loss
+from .strata_encoder import StrataTemporalEncoder
 from .output_bands import (
     NUM_LC_CLASSES,
     POST_CHANGE_CATEGORY_NAMES,
@@ -122,7 +123,7 @@ class ChangeModel(nn.Module):
 
     def __init__(
         self,
-        encoder: OlmoEarth,
+        encoder: OlmoEarth | StrataTemporalEncoder,
         num_classes_binary: int = 3,
         num_classes_src: int = NUM_LC_CLASSES,
         num_classes_dst: int = NUM_LC_CLASSES,
@@ -147,8 +148,8 @@ class ChangeModel(nn.Module):
         """Initialize the LCC change model.
 
         Args:
-            encoder: the OlmoEarth encoder. Must be configured with
-                ``token_pooling=False`` so per-token features are returned.
+            encoder: the OlmoEarth encoder (configured with ``token_pooling=False``
+                so per-token features are returned), or a StrataTemporalEncoder.
             num_classes_binary: number of classes for the binary change task
                 (3: nodata/no_change/change).
             num_classes_src: number of source land cover classes.
