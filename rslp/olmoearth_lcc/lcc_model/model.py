@@ -46,11 +46,6 @@ Downstream heads all operate on the per-timestep tokens:
   heads see both sides of the transition (a category is a before->after
   transition, so a single side cannot separate e.g. "new_building" from "none"
   in an already built-up area).
-- ``scorer_location_token``: breakpoint mode with an AttentionPooler encoder
-  (OlmoEarth v1.3) only. The patch's location token (one per patch, pooled over
-  the whole stack) is concatenated to |B_t - A_t| at the input of the shared
-  split scorer, so what counts as change can depend on the place. Its half of
-  the scorer's first layer starts at zero (= the plain scan at step 0).
 - ``ts_start`` / ``ts_end``: a per-token linear logit over the T timesteps, upsampled
   to full resolution, trained with cross-entropy at change pixels. These are
   segmentation-style outputs/targets (T classes = timestep indices), matching the
@@ -69,7 +64,6 @@ from rslearn.models.olmoearth_pretrain.model import OlmoEarth
 from rslearn.train.model_context import ModelContext, ModelOutput, RasterImage
 
 from .components import balanced_loss
-from .strata_encoder import StrataTemporalEncoder
 from .output_bands import (
     NUM_LC_CLASSES,
     POST_CHANGE_CATEGORY_NAMES,
@@ -123,7 +117,7 @@ class ChangeModel(nn.Module):
 
     def __init__(
         self,
-        encoder: OlmoEarth | StrataTemporalEncoder,
+        encoder: OlmoEarth,
         num_classes_binary: int = 3,
         num_classes_src: int = NUM_LC_CLASSES,
         num_classes_dst: int = NUM_LC_CLASSES,
@@ -143,13 +137,12 @@ class ChangeModel(nn.Module):
         temporal_pos_enc: bool = False,
         src_dst_input: str = "auto",
         change_category_input: str = "pooled",
-        scorer_location_token: bool = False,
     ):
         """Initialize the LCC change model.
 
         Args:
-            encoder: the OlmoEarth encoder (configured with ``token_pooling=False``
-                so per-token features are returned), or a StrataTemporalEncoder.
+            encoder: the OlmoEarth encoder. Must be configured with
+                ``token_pooling=False`` so per-token features are returned.
             num_classes_binary: number of classes for the binary change task
                 (3: nodata/no_change/change).
             num_classes_src: number of source land cover classes.
@@ -184,9 +177,6 @@ class ChangeModel(nn.Module):
                 ``binary_mode="breakpoint"``.
             change_category_input: ``"pooled"`` or ``"breakpoint"`` (see module
                 docstring). ``"breakpoint"`` requires ``binary_mode="breakpoint"``.
-            scorer_location_token: concatenate the encoder's per-patch location
-                token to the split scorer input (see module docstring). Requires
-                ``binary_mode="breakpoint"`` and ``num_pass1=None``.
         """
         super().__init__()
         if decoder_stages is None:
@@ -215,11 +205,6 @@ class ChangeModel(nn.Module):
             raise ValueError(
                 "change_category_input='breakpoint' requires binary_mode='breakpoint'"
             )
-        if scorer_location_token and (binary_mode != "breakpoint" or num_pass1):
-            raise ValueError(
-                "scorer_location_token requires binary_mode='breakpoint' and "
-                "num_pass1=None"
-            )
 
         self.encoder = encoder
         self.embedding_dim = embedding_dim
@@ -231,13 +216,6 @@ class ChangeModel(nn.Module):
         self.season_embed = season_embed
         self.src_dst_input = src_dst_input
         self.change_category_input = change_category_input
-        self.scorer_location_token = scorer_location_token
-        # The OlmoEarth wrapper returns either the patch tokens or the location
-        # tokens, so the location tokens are taken from the wrapped model's output
-        # with a forward hook.
-        self._captured: dict[str, torch.Tensor] = {}
-        if scorer_location_token:
-            encoder.model.register_forward_hook(self._capture_location_tokens)
 
         self.num_classes_binary = num_classes_binary
         self.num_classes_src = num_classes_src
@@ -284,18 +262,13 @@ class ChangeModel(nn.Module):
                 embedding_dim, decoder_stages, num_classes_binary
             )
         else:
-            # Shared scorer applied to |after - before| (and optionally the
-            # location token) at every split.
-            scorer_in = 2 * embedding_dim if scorer_location_token else embedding_dim
+            # Shared scorer applied to |after - before| at every split.
             self.split_proj = nn.Sequential(
-                nn.Conv2d(scorer_in, BREAKPOINT_HIDDEN, kernel_size=1),
+                nn.Conv2d(embedding_dim, BREAKPOINT_HIDDEN, kernel_size=1),
                 nn.ReLU(inplace=True),
                 nn.Conv2d(BREAKPOINT_HIDDEN, BREAKPOINT_HIDDEN, kernel_size=1),
                 nn.ReLU(inplace=True),
             )
-            if scorer_location_token:
-                with torch.no_grad():
-                    self.split_proj[0].weight[:, embedding_dim:].zero_()
             # Scalar per-split score for the split-attention over breakpoints
             # (used to pick the before/after aggregates for src/dst).
             self.split_score = nn.Conv2d(BREAKPOINT_HIDDEN, 1, kernel_size=1)
@@ -431,20 +404,13 @@ class ChangeModel(nn.Module):
             return pooled.reshape(b, h, w, c).permute(0, 3, 1, 2)
         return feature.mean(dim=-1)
 
-    def _capture_location_tokens(
-        self, module: nn.Module, args: Any, output: dict[str, Any]
-    ) -> None:
-        self._captured["location_tokens"] = output["location_tokens"]
-
     def _breakpoint_features(
-        self, feature: torch.Tensor, location: torch.Tensor | None = None
+        self, feature: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Changepoint scan over the T timesteps.
 
         Args:
             feature: (B, C, H, W, T) per-timestep tokens.
-            location: optional (B, C, H, W) location tokens, concatenated to the
-                scorer input at every split.
 
         Returns:
             (evidence_feat, src_feat, dst_feat): max-pooled per-split hidden
@@ -462,9 +428,6 @@ class ChangeModel(nn.Module):
 
         # Shared scorer over all splits: fold S into the batch dimension.
         con = con.permute(0, 4, 1, 2, 3).reshape(B * S, C, H, W)
-        if location is not None:
-            loc = location.unsqueeze(1).expand(B, S, -1, H, W)
-            con = torch.cat([con, loc.reshape(B * S, -1, H, W)], dim=1)
         hidden = self.split_proj(con)  # (B*S, hidden, H, W)
         scores = self.split_score(hidden)  # (B*S, 1, H, W)
         hidden = hidden.reshape(B, S, -1, H, W)
@@ -496,9 +459,7 @@ class ChangeModel(nn.Module):
         Returns:
             ModelOutput with per-task outputs and losses.
         """
-        # OlmoEarth v1.3 returns bfloat16 tokens under the wrapper's autocast (v1.2
-        # returns float32); the heads run in float32.
-        feature = self._per_timestep_features(context).float()  # (B, C, H, W, T)
+        feature = self._per_timestep_features(context)  # (B, C, H, W, T)
 
         if self.season_embed:
             feature = feature + self._month_embedding(
@@ -513,18 +474,7 @@ class ChangeModel(nn.Module):
             logits_binary = self.decoder_binary(pooled)
             before_feat = after_feat = None
         else:
-            location = None
-            if self.scorer_location_token:
-                loc = self._captured.pop("location_tokens")  # (B, H, W, C)
-                if loc.shape[1:3] != feature.shape[2:4]:
-                    raise ValueError(
-                        f"location tokens {tuple(loc.shape)} do not match the patch "
-                        f"grid of {tuple(feature.shape)}"
-                    )
-                location = loc.permute(0, 3, 1, 2).to(feature.dtype)
-            bp_feat, before_feat, after_feat = self._breakpoint_features(
-                feature, location
-            )
+            bp_feat, before_feat, after_feat = self._breakpoint_features(feature)
             evidence = self.evidence_decoder(bp_feat)  # (B, 1, H', W')
             logits_binary = torch.cat(
                 [
@@ -566,29 +516,6 @@ class ChangeModel(nn.Module):
             end_logits, scale_factor=scale, mode="bilinear", align_corners=False
         )
 
-        return self._losses_and_outputs(
-            context,
-            targets,
-            logits_binary,
-            logits_src,
-            logits_dst,
-            change_logits,
-            start_logits,
-            end_logits,
-        )
-
-    def _losses_and_outputs(
-        self,
-        context: ModelContext,
-        targets: list[dict[str, Any]] | None,
-        logits_binary: torch.Tensor,
-        logits_src: torch.Tensor,
-        logits_dst: torch.Tensor,
-        change_logits: dict[str, torch.Tensor],
-        start_logits: torch.Tensor,
-        end_logits: torch.Tensor,
-    ) -> ModelOutput:
-        """Compute the losses and per-sample outputs from full-resolution logits."""
         losses: dict[str, torch.Tensor] = {}
         if targets is not None:
             losses["binary_cls"] = self.binary_loss_weight * self._balanced_loss(
@@ -673,217 +600,3 @@ class ChangeModel(nn.Module):
         """Per-sample class-balanced cross-entropy (see balanced_loss)."""
         labels, valid = self._stack_targets(targets, task_name)
         return balanced_loss(logits, labels, valid)
-
-
-class TemporalTokenChangeModel(ChangeModel):
-    """OlmoEarth encoder + temporal transformer with learned summary tokens.
-
-    No breakpoint scan and no conv decoders. At each patch, ``num_tokens`` learned
-    tokens are prepended to the T per-timestep encoder tokens (after a learned
-    positional embedding over the T slots), and ``temporal_depth`` pre-norm
-    transformer layers run over that sequence independently at every patch. All
-    heads are linear and predict every pixel of the ``p x p`` patch directly
-    (learned upsampling), so outputs are full resolution without interpolation:
-
-    - ``num_tokens=1`` (one summary token per patch): binary, src, dst,
-      pre_change and post_change are each ``Linear(C -> p*p*classes)`` on the
-      summary token; ts_start / ts_end are ``Linear(C -> p*p)`` on each timestep
-      token (one logit per pixel per timestep).
-    - ``num_tokens=p*p`` (one token per pixel): the category heads are
-      ``Linear(C -> classes)`` shared over the pixel tokens (pixel token i predicts
-      pixel i, row-major in the patch). ts_start / ts_end logits for pixel i and
-      timestep t are the coarse ``Linear(C -> p*p)`` term on timestep token t plus
-      a dot product between projections of pixel token i and timestep token t
-      (a pixel-dependent additive term alone would cancel in the softmax over T).
-
-    With ``location_tokens=True`` (``num_tokens=p*p`` only), the pixel tokens start
-    from the encoder's per-pixel location tokens (OlmoEarth v1.3 AttentionPooler
-    with ``forward_kwargs: {location_query_patch_size: 1}``) plus the learned
-    per-pixel ``tokens`` embedding, instead of the learned embedding alone.
-    """
-
-    def __init__(
-        self,
-        encoder: OlmoEarth,
-        num_classes_binary: int = 3,
-        num_classes_src: int = NUM_LC_CLASSES,
-        num_classes_dst: int = NUM_LC_CLASSES,
-        num_classes_pre_change: int = len(PRE_CHANGE_CATEGORY_NAMES),
-        num_classes_post_change: int = len(POST_CHANGE_CATEGORY_NAMES),
-        num_timesteps: int = 22,
-        num_pass1: int | None = None,
-        embedding_dim: int = 768,
-        binary_loss_weight: float = 2.0,
-        num_tokens: int = 1,
-        temporal_depth: int = 2,
-        temporal_heads: int = 8,
-        dim_feedforward: int = 2048,
-        location_tokens: bool = False,
-    ):
-        """Initialize the model.
-
-        Args:
-            encoder: the OlmoEarth encoder (``token_pooling=False``).
-            num_classes_binary: number of binary change classes (3).
-            num_classes_src: number of source land cover classes.
-            num_classes_dst: number of destination land cover classes.
-            num_classes_pre_change: number of pre_change_category classes.
-            num_classes_post_change: number of post_change_category classes.
-            num_timesteps: number of input timesteps in ``sentinel2_l2a`` (22).
-            num_pass1: see ChangeModel (``None`` = one encoder pass).
-            embedding_dim: per-token encoder embedding size (768 for BASE).
-            binary_loss_weight: multiplier applied to the binary change loss.
-            num_tokens: learned tokens per patch, 1 or patch_size**2.
-            temporal_depth: number of temporal transformer layers.
-            temporal_heads: attention heads of the temporal transformer.
-            dim_feedforward: FFN hidden size of the temporal transformer.
-            location_tokens: start the pixel tokens from the encoder's per-pixel
-                location tokens (requires num_tokens=patch_size**2, num_pass1=None
-                and an AttentionPooler encoder with location_query_patch_size 1).
-        """
-        nn.Module.__init__(self)
-        patch_size = encoder.patch_size
-        num_pixels = patch_size * patch_size
-        if num_tokens not in (1, num_pixels):
-            raise ValueError(f"num_tokens must be 1 or {num_pixels}, got {num_tokens}")
-        if num_pass1 is not None and not 0 < num_pass1 < num_timesteps:
-            raise ValueError(
-                f"num_pass1 must be None or in (0, {num_timesteps}), got {num_pass1}"
-            )
-        if temporal_depth <= 0:
-            raise ValueError("temporal_depth must be > 0")
-        if location_tokens:
-            if num_tokens != num_pixels or num_pass1 is not None:
-                raise ValueError(
-                    "location_tokens requires num_tokens=patch_size**2 and "
-                    "num_pass1=None"
-                )
-            if encoder.forward_kwargs.get("location_query_patch_size") != 1:
-                raise ValueError(
-                    "location_tokens requires encoder forward_kwargs "
-                    "{location_query_patch_size: 1}"
-                )
-
-        self.encoder = encoder
-        self.embedding_dim = embedding_dim
-        self.num_timesteps = num_timesteps
-        self.num_pass1 = num_pass1
-        self.binary_loss_weight = binary_loss_weight
-        self.num_tokens = num_tokens
-        self.patch_size = patch_size
-        self.location_tokens = location_tokens
-        # The OlmoEarth wrapper returns either the patch tokens or the location
-        # tokens, so the location tokens are taken from the wrapped model's output
-        # with a forward hook.
-        self._captured: dict[str, torch.Tensor] = {}
-        if location_tokens:
-            encoder.model.register_forward_hook(self._capture_location_tokens)
-
-        self.tokens = nn.Parameter(torch.randn(1, num_tokens, embedding_dim) * 0.02)
-        self.temporal_pos = nn.Parameter(
-            torch.randn(1, num_timesteps, embedding_dim) * 0.02
-        )
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=embedding_dim,
-            nhead=temporal_heads,
-            dim_feedforward=dim_feedforward,
-            batch_first=True,
-            norm_first=True,
-        )
-        self.temporal_encoder = nn.TransformerEncoder(
-            encoder_layer,
-            num_layers=temporal_depth,
-            norm=nn.LayerNorm(embedding_dim),
-            enable_nested_tensor=False,
-        )
-
-        # Per-pixel outputs per summary token: all p*p pixels from one token, or
-        # one pixel per token.
-        per_token = num_pixels if num_tokens == 1 else 1
-        self.num_classes = {
-            "binary": num_classes_binary,
-            "src": num_classes_src,
-            "dst": num_classes_dst,
-            "pre_change": num_classes_pre_change,
-            "post_change": num_classes_post_change,
-        }
-        self.heads = nn.ModuleDict(
-            {
-                name: nn.Linear(embedding_dim, per_token * k)
-                for name, k in self.num_classes.items()
-            }
-        )
-        # Coarse timestep logits: one per pixel of the patch per timestep token.
-        self.start_head = nn.Linear(embedding_dim, num_pixels)
-        self.end_head = nn.Linear(embedding_dim, num_pixels)
-        if num_tokens > 1:
-            self.start_q = nn.Linear(embedding_dim, embedding_dim)
-            self.start_k = nn.Linear(embedding_dim, embedding_dim)
-            self.end_q = nn.Linear(embedding_dim, embedding_dim)
-            self.end_k = nn.Linear(embedding_dim, embedding_dim)
-
-    def _unpatchify(self, x: torch.Tensor) -> torch.Tensor:
-        """(B, H, W, p*p, K) per-pixel values (row-major) -> (B, K, H*p, W*p)."""
-        b, h, w, _, k = x.shape
-        p = self.patch_size
-        x = x.reshape(b, h, w, p, p, k).permute(0, 5, 1, 3, 2, 4)
-        return x.reshape(b, k, h * p, w * p)
-
-    def forward(
-        self,
-        context: ModelContext,
-        targets: list[dict[str, Any]] | None = None,
-    ) -> ModelOutput:
-        """Forward pass (see class docstring)."""
-        feature = self._per_timestep_features(context)  # (B, C, H, W, T)
-        b, c, h, w, t = feature.shape
-        n = self.num_tokens
-        num_pixels = self.patch_size * self.patch_size
-
-        x = feature.permute(0, 2, 3, 4, 1).reshape(b * h * w, t, c)
-        tokens = self.tokens.expand(b * h * w, -1, -1)
-        if self.location_tokens:
-            p = self.patch_size
-            loc = self._captured.pop("location_tokens")  # (B, H*p, W*p, C)
-            if loc.shape != (b, h * p, w * p, c):
-                raise ValueError(
-                    f"location tokens {tuple(loc.shape)} do not match "
-                    f"patch tokens {(b, h, w, c)} at patch size {p}"
-                )
-            # Row-major pixel order within each patch, as in _unpatchify.
-            loc = loc.reshape(b, h, p, w, p, c).permute(0, 1, 3, 2, 4, 5)
-            tokens = tokens + loc.reshape(b * h * w, n, c).to(x.dtype)
-        x = torch.cat([tokens, x + self.temporal_pos], 1)
-        x = self.temporal_encoder(x)
-        summary = x[:, :n].reshape(b, h, w, n, c)
-        steps = x[:, n:].reshape(b, h, w, t, c)
-
-        logits: dict[str, torch.Tensor] = {}
-        for name, k in self.num_classes.items():
-            out = self.heads[name](summary)  # (B, H, W, n, per_token * k)
-            logits[name] = self._unpatchify(out.reshape(b, h, w, num_pixels, k))
-
-        ts_logits = []
-        for head, q_proj, k_proj in (
-            (self.start_head, "start_q", "start_k"),
-            (self.end_head, "end_q", "end_k"),
-        ):
-            coarse = head(steps).transpose(-1, -2)  # (B, H, W, p*p, T)
-            if n > 1:
-                q = getattr(self, q_proj)(summary)  # (B, H, W, p*p, C)
-                k = getattr(self, k_proj)(steps)  # (B, H, W, T, C)
-                coarse = coarse + torch.einsum("bhwpc,bhwtc->bhwpt", q, k) / math.sqrt(
-                    c
-                )
-            ts_logits.append(self._unpatchify(coarse))  # (B, T, H*p, W*p)
-
-        return self._losses_and_outputs(
-            context,
-            targets,
-            logits["binary"],
-            logits["src"],
-            logits["dst"],
-            {"pre_change": logits["pre_change"], "post_change": logits["post_change"]},
-            ts_logits[0],
-            ts_logits[1],
-        )
