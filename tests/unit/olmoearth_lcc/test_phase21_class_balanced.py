@@ -66,7 +66,7 @@ def _window_output() -> np.ndarray:
     forest_loss[DST_BAND_OFFSET + BARE] = 210
     forest_loss[PRE_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 0
     forest_loss[PRE_CHANGE_BAND_OFFSET + FOREST_LOSS] = 200
-    return arr
+    return geozarr.fill_raw_score_bands(arr)
 
 
 def _write_tile(tmp_path: pathlib.Path, detail: str) -> tuple[str, UPath]:

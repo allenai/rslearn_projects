@@ -57,7 +57,7 @@ def _pixel(
 
 def _window_array(pixels: list[np.ndarray]) -> np.ndarray:
     """Stack pixels into a (len(OUTPUT_BANDS), 1, N) window array."""
-    return np.stack(pixels, axis=1)[:, None, :]
+    return geozarr.fill_raw_score_bands(np.stack(pixels, axis=1)[:, None, :])
 
 
 def test_geozarr_window_arrays_encoding() -> None:
@@ -221,6 +221,7 @@ def test_full_store(tmp_path: pathlib.Path) -> None:
     arr = np.broadcast_to(
         pixel[:, None, None], (len(OUTPUT_BANDS), PATCH_SIZE, PATCH_SIZE)
     ).copy()
+    geozarr.fill_raw_score_bands(arr)
     change, dates = geozarr.geozarr_window_arrays(arr)
     prob_arrays = geozarr.prob_window_arrays(arr)
     assert {name: a.shape[0] for name, a in prob_arrays.items()} == {

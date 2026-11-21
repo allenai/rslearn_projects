@@ -69,7 +69,7 @@ def _fake_output() -> np.ndarray:
     change[DST_BAND_OFFSET + URBAN] = 220
     change[POST_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 0
     change[POST_CHANGE_BAND_OFFSET + NEW_BUILDING] = 240
-    return arr
+    return geozarr.fill_raw_score_bands(arr)
 
 
 def _fake_materialize(ds_path: UPath, **kwargs: Any) -> None:
