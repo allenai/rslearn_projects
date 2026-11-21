@@ -51,6 +51,23 @@ data:
       class_path: rslp.olmoearth_lcc.lcc_model.tasks.LCCMultiTask
       init_args:
         annotations_path: unused_in_predict_mode
+        score_calibration:
+          binary:
+            a: 0.681091364846318
+            b: 0.015229837904746746
+          pre:
+            a: 0.5116793690683725
+            b: -0.2674783829437806
+          post:
+            a: 0.6870401633235999
+            b: -0.37186198157007766
+          pre_margin:
+            a: 0.0
+            b: 4.5272086445183755
+          post_margin:
+            a: 0.8071120546425693
+            b: -0.8569625888504391
+          source: run 16 (2026_11_21_lcc bp_abs_bpcat_1pass best.ckpt) val e30, fit 2026-11-21
         input_mapping:
           binary:
             label_binary: targets
