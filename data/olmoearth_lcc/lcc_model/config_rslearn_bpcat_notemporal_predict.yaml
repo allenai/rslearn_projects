@@ -306,6 +306,6 @@ trainer:
       output_layer: output_ts_end
       selector: [ts_end]
       merger: *merger
-project_name: 2026_11_21_lcc
+project_name: 2026_11_22_lcc
 run_name: rslearn_bpcat_notemporal
 management_dir: ${RSLP_PREFIX}/projects
