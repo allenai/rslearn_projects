@@ -53,21 +53,21 @@ data:
         annotations_path: unused_in_predict_mode
         score_calibration:
           binary:
-            a: 0.681091364846318
-            b: 0.015229837904746746
+            a: 1.010961967891801
+            b: -0.2885926438527159
           pre:
-            a: 0.5116793690683725
-            b: -0.2674783829437806
+            a: 0.6758222546961952
+            b: -0.4364784422699236
           post:
-            a: 0.6870401633235999
-            b: -0.37186198157007766
+            a: 0.778144326119981
+            b: -0.22049676072402102
           pre_margin:
             a: 0.0
-            b: 4.5272086445183755
+            b: 5.099866427824192
           post_margin:
-            a: 0.8071120546425693
-            b: -0.8569625888504391
-          source: run 16 (2026_11_21_lcc bp_abs_bpcat_1pass best.ckpt) val e30, fit 2026-11-21
+            a: 0.8870597919360723
+            b: -0.7228560568493319
+          source: run 17 (2026_11_22_lcc bp_abs_bpcat_1pass best.ckpt) val e30, fit 2026-11-22
         input_mapping:
           binary:
             label_binary: targets
