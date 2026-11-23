@@ -22,6 +22,9 @@
 # Roughly doubles encoder attention memory vs the two-pass variant; drop batch_size to
 # 2 if it OOMs.
 #
+# No quarterly dropout (as in bp_abs_bpcat_1pass): the training StackSampler always
+# keeps all (up to 16) quarterly images, as at prediction time.
+#
 # Training-only pieces come from rslp (StackSampler, LCCMultiTask annotation
 # injection, BalancedSegmentationHead for binary/pre_change/post_change,
 # TimestepToleranceAccuracy); none of them carry parameters, so the checkpoint loads
@@ -632,7 +635,6 @@ data:
       - class_path: rslp.olmoearth_lcc.lcc_model.transforms.StackSampler
         init_args:
           deterministic: false
-          quarterly_dropout: 0.25
           emit_timestep_targets: false
       - class_path: rslearn.train.transforms.flip.Flip
         init_args:
