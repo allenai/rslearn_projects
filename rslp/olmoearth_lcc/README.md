@@ -83,9 +83,18 @@ one 128x128 spatial window:
 - `transition_stop_date` (optional, positive points with a `transition_date`): the
   date the intermediate stage ends; `transition_date < transition_stop_date <
   post_change`. Unset means `post_change`.
+- `post_transition_pre_change`, `post_transition_pre_change_category` (optional,
+  positive points with a `transition_date`): the pre-change date and category of
+  the change from the transition stage to the post-change state, used once the
+  sampled images reach `post_change`; unset, the point's `pre_change` /
+  `pre_change_category` continue. `pre_change < post_transition_pre_change <
+  post_change`. With either set, no training sample ends between the
+  `transition_stop_date` and `post_change`.
 - `terminal_state` (optional, positive and negative points): what the location is
   at the end of the series (a land cover category or a structure type such as
-  building, road, reservoir or mining). For annotation only: training ignores it.
+  building, road, reservoir or mining). `transition_terminal_state` (optional,
+  positive points) is the same for the transition stage. For annotation only:
+  training ignores them.
 
 Land cover categories (`pre_category` / `post_category`): nodata, bare, agriculture,
 grassland, shrub, snow/ice, tree, urban/built-up, water, wetland, mangrove. (Renamed
@@ -110,7 +119,7 @@ trained on these classes:
 The finer lab labels are mapped onto those classes by `prepare.py` (e.g. new_solar
 and the other new_* infrastructure labels -> new_infrastructure, tree_crop_growth ->
 vegetation_growth, tree_crop_harvest -> agricultural_activity, borrow_pit ->
-new_mining_or_quarry); ice_loss has no class yet and is masked like any unknown
+new_mining_or_quarry, resurfaced_road -> new_road); ice_loss has no class yet and is masked like any unknown
 category. Names from before the 2026-11-12 renames (deforestation, mining, wildfire,
 water_expand, ...) still map to their new classes.
 
@@ -276,7 +285,12 @@ The prepare script:
   point's transition_date (+6 days, if it has one), and random later
   post-change contexts up to post_change + 2 years. The transition option comes
   after the post_change option, so validation (option 2) is unchanged; it takes
-  the place of one random option. Every block ends on/before
+  the place of one random option. No block ends strictly between the
+  transition_stop_date and post_change of a positive point with post-transition
+  fields (any point of the window, not only the reference point): random ends are
+  drawn outside those ranges and other ends move back to the transition stop date.
+  The ranges are recorded in the sidecar (`excluded_end_ranges`), so adding one
+  recreates the window. Every block ends on/before
   min(cutoff, stop_date), where cutoff is the annotation imagery cutoff and
   stop_date is the earliest optional per-point stop date. The cutoff is
   2026-01-01, except for groups listed in `GROUP_IMAGE_CUTOFFS` in `prepare.py`
@@ -312,6 +326,10 @@ The prepare script:
   point's post_change). A missing transition category is nodata.
   `transition_change_category` goes through the post-change aliases, but
   land_reclamation is not moved to the pre-change head: it is nodata for now.
+  The optional post-transition pre-change category and date go into
+  label_post_transition_pre_change (pre-change class like label_pre_change, after
+  the pre-change aliases; 0 = unset) and label_post_transition_ts_start (uint16 days
+  like label_ts_start; 65535 = unset).
   These layers are new in `config.json`, so copy their entries into the
   `config.json` of an existing dataset before re-running prepare. Windows whose
   reference point has a transition_date are recreated (for the new frequent
@@ -351,9 +369,14 @@ Training details:
   transition stop date. While
   the change is in progress it is the next of those dates, after the stack, so it
   maps to the last timestep. The `ts_start` target is each point's own pre_change.
+  For a point with post-transition fields, once `end >= post_change` the src head
+  uses the transition_category (masked if unset), pre_change the post-transition
+  pre-change category and `ts_start` the post-transition pre-change date (each
+  falling back to the point's own when unset); between the transition stop date
+  and post_change, src, pre_change and `ts_start` are masked too.
   Negative points still train the change-category heads as "none". The per-point
-  dates come from the label_ts_start, label_ts_end and label_transition_* layers
-  (including label_transition_stop_date),
+  dates come from the label_ts_start, label_ts_end, label_transition_* and
+  label_post_transition_* layers (including label_transition_stop_date),
   which the training configs pass through to `StackSampler` (as optional inputs, so
   older datasets without the transition layers still load); without label_ts_start
   or label_ts_end, the window's sidecar pre_change or post_change is used. Which

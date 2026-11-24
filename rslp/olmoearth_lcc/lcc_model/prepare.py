@@ -22,6 +22,14 @@ This script takes one or more v2 annotation JSONs and creates an rslearn dataset
   (transition_stop_date, uint16 days like label_transition_date; nodata = unset,
   which means post_change). Between it and post_change the dst and post_change heads
   are masked.
+- label_post_transition_pre_change, label_post_transition_ts_start: the optional
+  post-transition pre-change category (class like label_pre_change, 0 = unset) and
+  date (uint16 days like label_ts_start) of a positive point with a transition: the
+  pre side of the change from the transition stage to the post-change state.
+  StackSampler uses them (and the transition land cover for src) once the sampled
+  images reach post_change, and masks the pre heads between the transition stop
+  date and post_change. No frequent option ends in that interval
+  (excluded_end_ranges in the annotations sidecar).
 
 The time range for each window covers all annotation-derived frequent blocks and
 QUARTERLY_LOOKBACK of preceding quarterly history. The 90-day quarterly periods are
@@ -84,6 +92,11 @@ from .timestamp_encoding import DAYS_NODATA, UNIX_EPOCH, parse_date
 from .transforms import NUM_FREQUENT, NUM_FREQUENT_OPTIONS, QUARTERLY_PERIOD
 
 COLLECTION = "sentinel-2-l2a"
+# Only scenes this provider has are used. The dataset and prediction configs read
+# Sentinel-2 from Planetary Computer only (AWS is excluded: some of its
+# early-2022 baseline 04.00 scenes are not harmonized), so a scene only AWS has
+# would materialize as a blank image, while prediction never sees it.
+REQUIRED_PROVIDER = "planetary_computer"
 
 FREQUENT_BLOCK_DURATION = timedelta(days=90)
 FREQUENT_PERIOD = timedelta(days=7)
@@ -153,6 +166,7 @@ POST_CHANGE_CATEGORY_ALIASES = {
     "coastal_erosion": "land_to_water",
     "borrow_pit": "new_mining_or_quarry",
     "tree_crop_harvest": "agricultural_activity",
+    "resurfaced_road": "new_road",
     # Renamed 2026-11-12.
     "new_crop_field": "new_agriculture",
     "mining": "new_mining_or_quarry",
@@ -192,6 +206,11 @@ TRANSITION_DATE_FIELD = "transition_date"
 TRANSITION_STOP_DATE_FIELD = "transition_stop_date"
 TRANSITION_CATEGORY_FIELD = "transition_category"
 TRANSITION_CHANGE_CATEGORY_FIELD = "transition_change_category"
+# Optional, for a point with a transition: the pre-change date and category of the
+# change from the transition stage to the post-change state (default: the point's
+# pre_change and pre_change_category).
+POST_TRANSITION_PRE_CHANGE_FIELD = "post_transition_pre_change"
+POST_TRANSITION_PRE_CHANGE_CATEGORY_FIELD = "post_transition_pre_change_category"
 
 
 def _lonlat_to_pixel(
@@ -263,11 +282,28 @@ def _get_transition_change_category(pt: dict[str, Any]) -> str:
     return POST_CHANGE_CATEGORY_ALIASES.get(value, value)
 
 
+def _get_post_transition_pre_change_category(pt: dict[str, Any]) -> str:
+    """Get a positive point's post-transition pre-change category as a class name.
+
+    Applies PRE_CHANGE_CATEGORY_ALIASES. Unset is "".
+    """
+    value = pt.get(POST_TRANSITION_PRE_CHANGE_CATEGORY_FIELD) or ""
+    return PRE_CHANGE_CATEGORY_ALIASES.get(value, value)
+
+
+def _has_post_transition_fields(pt: dict[str, Any]) -> bool:
+    """Whether a positive point has a transition and post-transition fields."""
+    return bool(pt.get(TRANSITION_DATE_FIELD)) and bool(
+        pt.get(POST_TRANSITION_PRE_CHANGE_FIELD)
+        or pt.get(POST_TRANSITION_PRE_CHANGE_CATEGORY_FIELD)
+    )
+
+
 def _get_unknown_categories(entries: list[dict[str, Any]]) -> Counter[str]:
     """Count category values of positive points that have no training class.
 
     These are unknown land cover or change categories (including the transition
-    fields), and any value in the legacy same_change_category field. Their field
+    and post-transition fields), and any value in the legacy same_change_category field. Their field
     rasterizes as nodata, or as "none" for a change field when the other change
     field is set.
 
@@ -290,6 +326,14 @@ def _get_unknown_categories(entries: list[dict[str, Any]]) -> Counter[str]:
                 transition_value not in POST_CHANGE_CATEGORY_NAMES[2:]
             ):
                 counts[f"{TRANSITION_CHANGE_CATEGORY_FIELD}: {transition_value}"] += 1
+            post_transition_value = _get_post_transition_pre_change_category(pt)
+            if post_transition_value and (
+                post_transition_value not in PRE_CHANGE_CATEGORY_NAMES[2:]
+            ):
+                counts[
+                    f"{POST_TRANSITION_PRE_CHANGE_CATEGORY_FIELD}: "
+                    f"{post_transition_value}"
+                ] += 1
             if pt.get(LEGACY_SAME_CHANGE_FIELD):
                 counts[
                     f"{LEGACY_SAME_CHANGE_FIELD}: {pt[LEGACY_SAME_CHANGE_FIELD]}"
@@ -303,10 +347,14 @@ def _search_oedatasets(
     api_token: str,
     geometry_geojson: dict[str, Any],
     time_range: tuple[datetime, datetime],
+    required_provider: str | None = REQUIRED_PROVIDER,
 ) -> list[dict[str, Any]]:
     """Search OlmoEarth Datasets API for Sentinel-2 scenes.
 
-    Returns list of dicts with keys: id, collected_at, cloud_cover, geometry_geojson.
+    Scenes that required_provider (if set) does not have are dropped.
+
+    Returns list of dicts with keys: id, collected_at, cloud_cover,
+    geometry_geojson, data_providers.
     """
     url = f"{api_url}/api/v1/items/search"
     headers: dict[str, str] = {}
@@ -342,6 +390,9 @@ def _search_oedatasets(
             break
 
         for item in records:
+            data_providers = sorted(item.get("data_providers") or {})
+            if required_provider is not None and required_provider not in data_providers:
+                continue
             props = item["properties"]
             cloud_cover = props.get("cloud_cover")
             if cloud_cover is None:
@@ -352,6 +403,7 @@ def _search_oedatasets(
                     "collected_at": parse_date(props["collected_at"]),
                     "cloud_cover": cloud_cover,
                     "geometry_geojson": props["geometry"],
+                    "data_providers": data_providers,
                 }
             )
 
@@ -480,6 +532,7 @@ def _compute_frequent_block_ends(
     window_name: str,
     cutoff: datetime,
     transition_date: datetime | None = None,
+    excluded_end_ranges: list[tuple[datetime, datetime]] | None = None,
 ) -> list[datetime]:
     """Compute 90-day frequent-image block ends for training options.
 
@@ -491,6 +544,10 @@ def _compute_frequent_block_ends(
     With a transition_date, an option ending right after it is added after the
     deterministic options, in place of one random option, so the option that
     validation uses (index 2) does not change.
+
+    No end falls strictly inside one of the excluded_end_ranges (start, end): the
+    random options are drawn outside them, and any other end inside one moves back
+    to its start. Without excluded ranges the options are unchanged.
 
     Randomness is derived from window_name so results are deterministic per window.
     """
@@ -517,15 +574,33 @@ def _compute_frequent_block_ends(
     random_end = min(post_change + timedelta(days=730), cutoff)
     num_random = NUM_FREQUENT_OPTIONS - len(block_ends)
 
+    excluded = excluded_end_ranges or []
+
+    def is_excluded(end: datetime) -> bool:
+        return any(start < end < stop for start, stop in excluded)
+
     for _ in range(num_random):
         if random_end > random_start:
             days_range = (random_end - random_start).days
-            random_offset = rng.randint(0, max(days_range, 1))
+            if excluded:
+                allowed = [
+                    offset
+                    for offset in range(days_range + 1)
+                    if not is_excluded(random_start + timedelta(days=offset))
+                ]
+                random_offset = rng.choice(allowed) if allowed else 0
+            else:
+                random_offset = rng.randint(0, max(days_range, 1))
             block_ends.append(random_start + timedelta(days=random_offset))
         else:
             block_ends.append(random_start)
 
     block_ends = [min(end, cutoff) for end in block_ends]
+    for i, end in enumerate(block_ends):
+        # Moving back to a range's start can land in another range.
+        while is_excluded(end):
+            end = max(start for start, stop in excluded if start < end < stop)
+        block_ends[i] = end
     block_ends = list(dict.fromkeys(block_ends))
 
     return block_ends[:NUM_FREQUENT_OPTIONS]
@@ -617,6 +692,11 @@ def _compute_label_arrays(
     transition_stop_date = np.full((h, w), DAYS_NODATA, dtype=np.uint16)
     transition_dst = np.zeros((h, w), dtype=np.uint8)
     transition_post_change = np.zeros((h, w), dtype=np.uint8)
+    # The optional post-transition pre-change category and date of each positive
+    # point with a transition (0 / nodata = unset: StackSampler keeps the point's
+    # pre_change_category / pre_change).
+    post_transition_pre_change = np.zeros((h, w), dtype=np.uint8)
+    post_transition_ts_start = np.full((h, w), DAYS_NODATA, dtype=np.uint16)
 
     for pt in entry.get("negative_points", []):
         col, row = _lonlat_to_pixel(pt["lon"], pt["lat"], projection, bounds)
@@ -653,6 +733,14 @@ def _compute_label_arrays(
                         transition_stop_date[row, col] = _date_to_unix_days(
                             parse_date(pt[TRANSITION_STOP_DATE_FIELD]) + gap
                         )
+                    post_transition_pre_change[row, col] = _change_category_to_id(
+                        _get_post_transition_pre_change_category(pt),
+                        PRE_CHANGE_CATEGORY_NAMES,
+                    )
+                    if pt.get(POST_TRANSITION_PRE_CHANGE_FIELD):
+                        post_transition_ts_start[row, col] = _date_to_unix_days(
+                            parse_date(pt[POST_TRANSITION_PRE_CHANGE_FIELD])
+                        )
 
             # Only train the change-category heads when at least one field is set;
             # otherwise leave nodata (masked) for both.
@@ -676,6 +764,8 @@ def _compute_label_arrays(
         "label_transition_stop_date": transition_stop_date,
         "label_transition_dst": transition_dst,
         "label_transition_post_change": transition_post_change,
+        "label_post_transition_pre_change": post_transition_pre_change,
+        "label_post_transition_ts_start": post_transition_ts_start,
     }
     label_arrays.update(change_labels)
     return label_arrays
@@ -723,8 +813,9 @@ def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
     stop_date is optional. The optional transition_date must satisfy
     first_observable <= transition_date < post_change, and the optional
     transition_stop_date (which needs a transition_date) transition_date <
-    transition_stop_date < post_change. Raises ValueError on any positive point
-    that violates this.
+    transition_stop_date < post_change. The optional post-transition fields need a
+    transition_date, and pre_change < post_transition_pre_change < post_change.
+    Raises ValueError on any positive point that violates this.
     """
     for pt in entry.get("positive_points", []):
         if not (
@@ -778,6 +869,28 @@ def _validate_positive_point_dates(entry: dict[str, Any]) -> None:
                     f"post_change, got transition_date="
                     f"{pt.get(TRANSITION_DATE_FIELD)}, transition_stop_date="
                     f"{pt[TRANSITION_STOP_DATE_FIELD]}, "
+                    f"post_change={pt['post_change']}"
+                )
+        if (
+            pt.get(POST_TRANSITION_PRE_CHANGE_FIELD)
+            or pt.get(POST_TRANSITION_PRE_CHANGE_CATEGORY_FIELD)
+        ) and not pt.get(TRANSITION_DATE_FIELD):
+            raise ValueError(
+                f"Post-transition fields without a transition_date for positive "
+                f"point in window {entry.get('group')}/{entry.get('window_name')}"
+            )
+        if pt.get(POST_TRANSITION_PRE_CHANGE_FIELD):
+            post_transition_pre_change = parse_date(
+                pt[POST_TRANSITION_PRE_CHANGE_FIELD]
+            )
+            if not pre_change < post_transition_pre_change < post_change:
+                raise ValueError(
+                    f"Invalid post_transition_pre_change for positive point in "
+                    f"window {entry.get('group')}/{entry.get('window_name')}: "
+                    f"expected pre_change < post_transition_pre_change < "
+                    f"post_change, got pre_change={pt['pre_change']}, "
+                    f"post_transition_pre_change="
+                    f"{pt[POST_TRANSITION_PRE_CHANGE_FIELD]}, "
                     f"post_change={pt['post_change']}"
                 )
 
@@ -894,10 +1007,10 @@ def _sidecar_dates_match(
     """
     if existing_value is None:
         return False
-    # Sidecars written before transition_date / image_cutoff existed lack them,
-    # which matches None.
+    # Sidecars written before transition_date / image_cutoff / excluded_end_ranges
+    # existed lack them, which matches None.
     return all(
-        existing_value.get(key) == new_value[key]
+        existing_value.get(key) == new_value.get(key)
         for key in (
             "pre_change",
             "post_change",
@@ -905,6 +1018,7 @@ def _sidecar_dates_match(
             "stop_date",
             "transition_date",
             "image_cutoff",
+            "excluded_end_ranges",
         )
     )
 
@@ -1010,6 +1124,24 @@ def _process_entry(
         None if image_cutoff == IMAGE_CUTOFF else image_cutoff.isoformat()
     )
 
+    # No frequent option may end between the transition stop date and post_change
+    # of a point with post-transition fields: which pre-change labels apply there
+    # is unclear.
+    excluded_end_ranges = [
+        (
+            parse_date(pt[TRANSITION_STOP_DATE_FIELD]) + gap,
+            parse_date(pt["post_change"]) + gap,
+        )
+        for pt in entry.get("positive_points", [])
+        if _has_post_transition_fields(pt)
+        and pt.get(TRANSITION_STOP_DATE_FIELD)
+        and pt.get("post_change")
+    ]
+    # None without ranges, so sidecars written before this key existed match.
+    sidecar_excluded_end_ranges = [
+        [start.isoformat(), end.isoformat()] for start, end in excluded_end_ranges
+    ] or None
+
     sidecar_key = f"{window_group}/{window_name}"
     sidecar_value: dict[str, Any]
     if ref_point is None:
@@ -1020,6 +1152,7 @@ def _process_entry(
             "stop_date": None,
             "transition_date": None,
             "image_cutoff": sidecar_image_cutoff,
+            "excluded_end_ranges": sidecar_excluded_end_ranges,
         }
     else:
         sidecar_value = {
@@ -1031,6 +1164,7 @@ def _process_entry(
                 transition_date.isoformat() if transition_date is not None else None
             ),
             "image_cutoff": sidecar_image_cutoff,
+            "excluded_end_ranges": sidecar_excluded_end_ranges,
         }
 
     # Decide what to do if the window already exists.
@@ -1063,6 +1197,7 @@ def _process_entry(
         window_name,
         cutoff,
         transition_date=transition_date,
+        excluded_end_ranges=excluded_end_ranges,
     )
     block_starts = [end - FREQUENT_BLOCK_DURATION for end in block_ends]
 

@@ -584,3 +584,102 @@ def test_timestep_tolerance_accuracy() -> None:
     within2 = TimestepToleranceAccuracy(tolerance=2)
     within2.update([pred], targets)
     assert torch.isclose(within2.compute(), torch.tensor(1.0))
+
+
+SRC, PRE_CHANGE = 6, 2
+POST_TRANSITION_PRE_CHANGE = 5
+
+
+def _post_transition_inputs(
+    post_change: datetime,
+    transition_stop: datetime | None,
+    pre_change_class: int = POST_TRANSITION_PRE_CHANGE,
+    start: datetime | None = None,
+) -> tuple[dict, dict]:
+    """Gating inputs plus src/pre_change targets and the post-transition rasters."""
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    input_dict, target_dict = _gating_inputs(
+        post_change, f_ts[0][0], transition_stop=transition_stop
+    )
+    for name, value in (("src", SRC), ("pre_change", PRE_CHANGE)):
+        classes = torch.zeros(CROP, CROP, dtype=torch.long)
+        classes[POINT] = value
+        target_dict[name] = {
+            "classes": RasterImage(image=classes[None, None]),
+            "valid": RasterImage(image=(classes > 0).float()[None, None]),
+        }
+    input_dict["label_post_transition_pre_change"] = _label(pre_change_class)
+    start_days = 65535 if start is None else _days(start)
+    input_dict["label_post_transition_ts_start"] = _label(start_days, fill=65535)
+    return input_dict, target_dict
+
+
+def test_stack_sampler_post_transition_after_post_change() -> None:
+    """Once the images reach post_change, the pre heads use the transition stage."""
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    input_dict, target_dict = _post_transition_inputs(
+        f_ts[1][0], None, start=f_ts[0][0]
+    )
+    input_dict, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _at_point(target_dict, "src") == (TRANSITION_DST, 1.0)
+    assert _at_point(target_dict, "pre_change") == (POST_TRANSITION_PRE_CHANGE, 1.0)
+    assert _at_point(target_dict, "dst") == (DST, 1.0)
+    # ts_start targets the post-transition pre-change date (the first frequent).
+    classes = target_dict[TS_START_KEY]["classes"].get_hw_tensor()
+    valid = target_dict[TS_START_KEY]["valid"].get_hw_tensor()
+    assert classes[POINT] == NUM_QUARTERLY - 1 and valid[POINT] == 1
+    assert not any(key.startswith("label_") for key in input_dict)
+
+
+def test_stack_sampler_post_transition_unset_category_keeps_pre_change() -> None:
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    input_dict, target_dict = _post_transition_inputs(
+        f_ts[1][0], None, pre_change_class=0, start=f_ts[0][0]
+    )
+    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _at_point(target_dict, "pre_change") == (PRE_CHANGE, 1.0)
+    assert _at_point(target_dict, "src") == (TRANSITION_DST, 1.0)
+
+
+def test_stack_sampler_post_transition_before_post_change() -> None:
+    """In the transition stage, the point's own pre labels still apply."""
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    end = f_ts[-1][1]
+    input_dict, target_dict = _post_transition_inputs(
+        end + timedelta(days=30), end + timedelta(days=5)
+    )
+    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _at_point(target_dict, "src") == (SRC, 1.0)
+    assert _at_point(target_dict, "pre_change") == (PRE_CHANGE, 1.0)
+    assert _at_point(target_dict, "dst") == (TRANSITION_DST, 1.0)
+    valid = target_dict[TS_START_KEY]["valid"].get_hw_tensor()
+    assert valid[POINT] == 1
+
+
+def test_stack_sampler_post_transition_gap_masked() -> None:
+    """Between the transition stop date and post_change, the pre heads are masked."""
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    end = f_ts[-1][1]
+    input_dict, target_dict = _post_transition_inputs(
+        end + timedelta(days=30), f_ts[3][1]
+    )
+    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    for name in ("src", "pre_change", "dst", "post_change"):
+        assert _at_point(target_dict, name)[1] == 0.0
+    start_valid = target_dict[TS_START_KEY]["valid"].get_hw_tensor()
+    end_valid = target_dict[TS_END_KEY]["valid"].get_hw_tensor()
+    assert start_valid[POINT] == 0 and end_valid[POINT] == 1
+
+    # Without post-transition fields the gap keeps the pre labels (as before).
+    input_dict, _ = _stack_inputs()
+    input_dict, target_dict = _post_transition_inputs(
+        end + timedelta(days=30), f_ts[3][1], pre_change_class=0
+    )
+    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _at_point(target_dict, "src") == (SRC, 1.0)
+    assert _at_point(target_dict, "pre_change") == (PRE_CHANGE, 1.0)

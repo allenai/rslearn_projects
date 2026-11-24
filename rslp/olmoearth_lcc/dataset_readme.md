@@ -144,7 +144,8 @@ instead of `create_v2_annotations`: it selects pixels where the post-change-cate
 head predicts `mining` (argmax, or `post_change_mining` probability above
 `--threshold`) and samples one qualifying pixel per tile. Some of these phases also
 used `write_jobs_random_2048` with `--region africa` to focus on sub-Saharan
-Africa.
+Africa (at the time `--region africa` was a rough sub-Saharan polygon; since
+2026-11-17 it is the whole continent).
 
 ### Phase 16: Mining annotations seeded from external datasets
 
