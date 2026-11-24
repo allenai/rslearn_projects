@@ -1,5 +1,6 @@
 """OlmoEarth LCC: land cover change detection from Sentinel-2 time series."""
 
+from .lcc_model.geozarr_pyramid_full import finalize_pyramid_full, pyramid_full_zone
 from .lcc_model.job_dir import job_status
 from .lcc_model.predict_pipeline import predict_pipeline
 from .lcc_model.worker import launch_workers, worker
@@ -13,9 +14,11 @@ workflows = {
     "create_windows": create_windows,
     "create_windows_africa": create_windows_africa,
     "create_windows_urban": create_windows_urban,
+    "finalize_pyramid_full": finalize_pyramid_full,
     "job_status": job_status,
     "launch_workers": launch_workers,
     "predict": predict_pipeline,
+    "pyramid_full_zone": pyramid_full_zone,
     "worker": worker,
     "write_jobs": write_jobs,
     "write_jobs_random_2048": write_jobs_random_2048,
