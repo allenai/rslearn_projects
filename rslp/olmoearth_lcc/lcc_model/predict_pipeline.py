@@ -363,26 +363,22 @@ def prepare_tile(
 
 
 def get_writer_config(
-    zarr_store_path: str,
-    pyramid: bool,
-    writer_workers: int,
-    model_config: str = MODEL_CONFIG_FNAME,
+    zarr_store_path: str, pyramid: bool, writer_workers: int
 ) -> dict[str, Any]:
     """Get the trainer callback config for the LCCTileWriter.
 
-    The callback replaces the RslearnWriter of the model config, whose merger it
+    The callback replaces the RslearnWriter of MODEL_CONFIG_FNAME, whose merger it
     copies.
 
     Args:
         zarr_store_path: the GeoZarr store to write windows into.
         pyramid: whether the writer computes the level-1 pyramid reductions.
         writer_workers: writer threads of the LCCTileWriter.
-        model_config: the model config with the RslearnWriter callback.
 
     Returns:
         the callback config (class_path and init_args).
     """
-    with open(model_config) as f:
+    with open(MODEL_CONFIG_FNAME) as f:
         callbacks = yaml.safe_load(f)["trainer"]["callbacks"]
     (rslearn_writer,) = (
         callback

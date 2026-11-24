@@ -10,14 +10,13 @@ from rslp.olmoearth_lcc.lcc_model.tiling import (
     RESOLUTION,
     TILE_SIZE,
     enumerate_zone_tiles,
-    get_zone_grid,
     get_zone_projection,
-    get_zone_wedge,
     window_has_land,
     window_in_zone_wedge,
     zone_number_from_epsg,
 )
 from rslp.olmoearth_lcc.lcc_model.write_jobs import get_tasks
+from rslp.utils.tiling import get_zone_grid, get_zone_wedge
 
 
 def _lonlat_to_pixel(zone_number: int, lon: float, lat: float) -> tuple[int, int]:

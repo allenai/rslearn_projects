@@ -89,7 +89,6 @@ class ChangeModel(nn.Module):
     def __init__(
         self,
         encoder: OlmoEarth,
-        num_classes_binary: int = 3,
         num_classes_src: int = NUM_LC_CLASSES,
         num_classes_dst: int = NUM_LC_CLASSES,
         num_classes_pre_change: int = len(PRE_CHANGE_CATEGORY_NAMES),
@@ -104,9 +103,6 @@ class ChangeModel(nn.Module):
         Args:
             encoder: the OlmoEarth encoder. Must be configured with
                 ``token_pooling=False`` so per-token features are returned.
-            num_classes_binary: number of classes for the binary change task. Must
-                be 3 (nodata/no_change/change), the classes the breakpoint head
-                produces.
             num_classes_src: number of source land cover classes.
             num_classes_dst: number of destination land cover classes.
             num_classes_pre_change: number of pre_change_category classes
@@ -129,8 +125,6 @@ class ChangeModel(nn.Module):
                 f"decoder_stages must have {len(BREAKPOINT_EVIDENCE_STAGES)} stages, "
                 f"got {len(decoder_stages)}"
             )
-        if num_classes_binary != 3:
-            raise ValueError(f"num_classes_binary must be 3, got {num_classes_binary}")
 
         self.encoder = encoder
         self.embedding_dim = embedding_dim
@@ -285,12 +279,10 @@ class ChangeModel(nn.Module):
 
         outputs: list[dict[str, Any]] = []
         for i in range(len(context.inputs)):
-            ts_image = context.inputs[i].get(INPUT_KEY)
-            timestep_days = (
-                timestamps_to_days(ts_image.timestamps)
-                if isinstance(ts_image, RasterImage) and ts_image.timestamps is not None
-                else None
-            )
+            timestamps = context.inputs[i][INPUT_KEY].timestamps
+            if timestamps is None:
+                raise ValueError(f"{INPUT_KEY} must have timestamps")
+            timestep_days = timestamps_to_days(timestamps)
             outputs.append(
                 {
                     "binary": F.softmax(logits_binary[i], dim=0),

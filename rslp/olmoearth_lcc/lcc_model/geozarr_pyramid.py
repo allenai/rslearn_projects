@@ -18,7 +18,7 @@ copies all bands from one input pixel of its 2x2 block, preferring changes with 
 or post category, then higher binary change probabilities, then valid pixels over nodata.
 The bands stay mutually consistent and small changes stay visible at coarse levels.
 
-Zone grids are snapped to multiples of TILE_SIZE (tiling.get_zone_grid), so every
+Zone grids are snapped to multiples of TILE_SIZE (rslp.utils.tiling.get_zone_grid), so every
 tile maps to an aligned, disjoint block at every level, and the shard size at level k
 is ``min(2048, TILE_SIZE >> k)``. Each tile's job therefore writes its own pyramid
 blocks (write_tile_pyramid) without touching shards of other tiles, so there is no
@@ -35,6 +35,7 @@ import zarr
 from rslearn.utils.geometry import PixelBounds, Projection
 
 from rslp.log_utils import get_logger
+from rslp.utils.tiling import get_zone_grid
 
 from . import geozarr
 from .output_bands import (
@@ -43,7 +44,7 @@ from .output_bands import (
     POST_CHANGE_CATEGORY_NAMES,
     PRE_CHANGE_CATEGORY_NAMES,
 )
-from .tiling import RESOLUTION, TILE_SIZE, check_bounds_aligned, get_zone_grid
+from .tiling import RESOLUTION, TILE_SIZE, check_bounds_aligned
 
 logger = get_logger(__name__)
 

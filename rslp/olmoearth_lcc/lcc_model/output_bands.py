@@ -1,19 +1,17 @@
 """Band layout of the LCC model output.
 
 The model's ``output_change`` layer has OUTPUT_BANDS: 58 uint16 bands with
-probabilities scaled 0-255, the predicted change dates as days since
-TIMESTAMP_EPOCH, and the three (optionally calibrated, see calibration.py) score
-bands scaled 0-255 (see tasks.LCCMultiTask.process_output).
+probabilities scaled 0-255, the predicted change dates as days since 1970-01-01,
+and the three (optionally calibrated, see calibration.py) score bands scaled 0-255
+(see tasks.LCCMultiTask.process_output).
 """
-
-from .timestamp_encoding import TIMESTAMP_EPOCH, UNIX_EPOCH
 
 NUM_LC_CLASSES = 11
 BINARY_CHANGE_BAND = 2
 SRC_BAND_OFFSET = 3
 DST_BAND_OFFSET = SRC_BAND_OFFSET + NUM_LC_CLASSES
 # The timestamp section is two bands holding the predicted pre/post change dates
-# encoded as integer days since TIMESTAMP_EPOCH (see timestamp_encoding.py).
+# encoded as integer days since 1970-01-01 (see timestamp_encoding.py).
 TS_PRE_DAYS_BAND = DST_BAND_OFFSET + NUM_LC_CLASSES
 TS_POST_DAYS_BAND = TS_PRE_DAYS_BAND + 1
 
@@ -109,6 +107,3 @@ OUTPUT_BANDS = [
 # Class index of the "none" category in both change category heads (index 0 is
 # nodata).
 NONE_CATEGORY_IDX = 1
-
-# Add to a day value since TIMESTAMP_EPOCH to get days since 1970-01-01.
-UNIX_EPOCH_DAY_OFFSET = (TIMESTAMP_EPOCH - UNIX_EPOCH).days

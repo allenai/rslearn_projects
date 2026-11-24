@@ -61,8 +61,8 @@ def _fake_output() -> np.ndarray:
     arr[DST_BAND_OFFSET + TREE] = 200
     arr[PRE_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 250
     arr[POST_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 250
-    arr[TS_PRE_DAYS_BAND] = 3000
-    arr[TS_POST_DAYS_BAND] = 3100
+    arr[TS_PRE_DAYS_BAND] = 19436
+    arr[TS_POST_DAYS_BAND] = 19536
 
     patch = (slice(None), slice(500, 600), slice(500, 600))
     change = arr[patch]
@@ -223,11 +223,9 @@ def test_predict_pipeline_geozarr(
         first[:, 0, 0], [25, 0, 0, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 0, 0]
     )
     dates = _read_region(store_path, bounds, decode_times=False)["change_dates"]
-    np.testing.assert_array_equal(
-        dates[:, 550, 550].values, [3000 + 16436, 3100 + 16436]
-    )
+    np.testing.assert_array_equal(dates[:, 550, 550].values, [19436, 19536])
     assert not np.nan_to_num(dates[:, 0, 0].values).any()
-    # The units attribute lets xarray decode the dates (3000 days after 2015-01-01).
+    # The units attribute lets xarray decode the dates.
     decoded = _read_region(store_path, bounds)["change_dates"]
     assert decoded[0, 550, 550].values == np.datetime64("2023-03-20")
 

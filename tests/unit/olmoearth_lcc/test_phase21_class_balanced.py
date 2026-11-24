@@ -53,8 +53,8 @@ def _window_output() -> np.ndarray:
     arr[DST_BAND_OFFSET + TREE] = 200
     arr[PRE_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 250
     arr[POST_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 250
-    arr[TS_PRE_DAYS_BAND] = 3000
-    arr[TS_POST_DAYS_BAND] = 3100
+    arr[TS_PRE_DAYS_BAND] = 19436
+    arr[TS_POST_DAYS_BAND] = 19536
 
     building = arr[:, 500:600, 500:600]
     building[BINARY_CHANGE_BAND] = 230
@@ -156,7 +156,7 @@ def test_phase21_reads_store(tmp_path: pathlib.Path, detail: str) -> None:
             point = entry["positive_points"][0]
             assert point["post_change_category"] == "new_building"
             assert point["post_category"] == "urban/built-up"
-            # The predicted change start day (3000 days after 2015-01-01).
+            # The predicted change start day (19436 days after 1970-01-01).
             assert point["pre_change"] == "2023-03-20"
         else:
             assert entry["pred"]["binary_change_score"] == 220

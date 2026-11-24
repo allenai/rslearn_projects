@@ -31,15 +31,9 @@ from rslp.large_scale_embeddings.predict_pipeline import (
     EmbeddingInputs,
     get_marker_fname,
 )
-from rslp.large_scale_embeddings.tiling import (
-    UTM_MAX_LAT,
-    UTM_MIN_LAT,
-    bounds_intersect_wedge,
-    get_zone_grid,
-    get_zone_wedge,
-    list_kept_crops,
-)
+from rslp.large_scale_embeddings.tiling import bounds_intersect_wedge, list_kept_crops
 from rslp.log_utils import get_logger
+from rslp.utils.tiling import UTM_MAX_LAT, UTM_MIN_LAT, get_zone_grid, get_zone_wedge
 
 logger = get_logger(__name__)
 

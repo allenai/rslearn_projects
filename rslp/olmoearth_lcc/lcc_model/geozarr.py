@@ -5,7 +5,7 @@ store name), but random-tile runs write tiles with different timestamps into one
 store. Each tile's reference timestamp is recorded in its ``_meta.json``. The store
 uses the ``utm_zones`` layout: one group per UTM zone number named ``utm{NN}``, each in
 its northern CRS (EPSG:326NN) with a continuous northing axis spanning both
-hemispheres (see tiling.get_zone_grid). Each zone group holds two arrays with
+hemispheres (see rslp.utils.tiling.get_zone_grid). Each zone group holds two arrays with
 dimensions ``(<array>_band, y, x)`` plus band-name and x/y coordinate arrays:
 
 - ``change`` (uint8, CHANGE_BANDS): binary change score (0-255), pre/post land
@@ -54,6 +54,7 @@ from zarr.core.buffer import Buffer
 from zarr.storage import MemoryStore
 
 from rslp.log_utils import get_logger
+from rslp.utils.tiling import NORTH_EPSG_BASE, get_zone_grid
 
 from .output_bands import (
     BINARY_CHANGE_BAND,
@@ -71,16 +72,8 @@ from .output_bands import (
     SRC_BAND_OFFSET,
     TS_POST_DAYS_BAND,
     TS_PRE_DAYS_BAND,
-    UNIX_EPOCH_DAY_OFFSET,
 )
-from .tiling import (
-    NORTH_EPSG_BASE,
-    PATCH_SIZE,
-    RESOLUTION,
-    TILE_SIZE,
-    check_bounds_aligned,
-    get_zone_grid,
-)
+from .tiling import PATCH_SIZE, RESOLUTION, TILE_SIZE, check_bounds_aligned
 
 logger = get_logger(__name__)
 
@@ -582,13 +575,7 @@ def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     change = np.stack([binary_change, src, dst, pre, post, pre_score, post_score])
     change[:, ~valid] = 0
 
-    dates = np.stack(
-        [
-            arr[TS_PRE_DAYS_BAND].astype(np.int64) + UNIX_EPOCH_DAY_OFFSET,
-            arr[TS_POST_DAYS_BAND].astype(np.int64) + UNIX_EPOCH_DAY_OFFSET,
-        ]
-    )
-    dates = np.clip(dates, 0, np.iinfo(np.uint16).max).astype(np.uint16)
+    dates = arr[[TS_PRE_DAYS_BAND, TS_POST_DAYS_BAND]].astype(np.uint16)
     dates[:, ~valid] = 0
 
     no_change = (

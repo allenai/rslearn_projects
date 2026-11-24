@@ -11,7 +11,6 @@ model:
             patch_size: 4
             token_pooling: false
             use_legacy_timestamps: false
-        num_classes_binary: 3
         num_classes_src: 11
         num_classes_dst: 11
         num_classes_pre_change: 8

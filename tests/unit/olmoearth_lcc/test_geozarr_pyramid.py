@@ -12,9 +12,9 @@ from rslp.olmoearth_lcc.lcc_model.tiling import (
     RESOLUTION,
     TILE_SIZE,
     enumerate_zone_tiles,
-    get_zone_grid,
     get_zone_projection,
 )
+from rslp.utils.tiling import get_zone_grid
 
 BINARY, PRE_LC, POST_LC, PRE_CAT, POST_CAT, PRE_SCORE, POST_SCORE = range(7)
 

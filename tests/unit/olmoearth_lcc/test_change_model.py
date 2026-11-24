@@ -176,8 +176,6 @@ def test_invalid_options() -> None:
     """Option validation."""
     with pytest.raises(ValueError, match="decoder_stages"):
         _model(decoder_stages=[[(DIM, 3)]])
-    with pytest.raises(ValueError, match="num_classes_binary"):
-        _model(num_classes_binary=2)
 
 
 def test_decoder_input_widths() -> None:

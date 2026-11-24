@@ -20,14 +20,15 @@ Sentinel-2 mosaics. The phases differ in how the candidate points were proposed:
   tiles with known changes, or public mining datasets).
 
 Many phases were created with `rslp.olmoearth_lcc.lcc_model.write_jobs_random_2048`
-(compute LCC model outputs on random 2048x2048 tiles around the world, with
-`--write_raster true`) followed by
-`rslp.olmoearth_lcc.annotation_scripts.phase02_output_sampling.create_v2_annotations`
+(compute LCC model outputs on random 2048x2048 tiles around the world; at the time
+it also wrote a per-tile GeoTIFF of the outputs) followed by `create_v2_annotations`
 (sample up to one pixel predicted as change per output tile and write a v2 annotation
 entry with one positive point centered on it). Below this is called the
-**output-based pipeline**. Its annotation scripts (`create_v2_annotations` and the
-phase 12 `create_mining_annotations`) read per-tile GeoTIFF outputs that the
-prediction pipeline no longer writes, so they have been removed; the phase 21 script
+**output-based pipeline**. Its annotation scripts (`create_v2_annotations` in
+`annotation_scripts/phase02_output_sampling` and the phase 12
+`create_mining_annotations` in `annotation_scripts/phase12_mining_predictions`) read
+per-tile GeoTIFF outputs that the prediction pipeline no longer writes, so they were
+removed (see git history before commit `eb31f2c9`); the phase 21 script
 (`annotation_scripts/phase21_class_balanced`) samples from the GeoZarr store
 instead.
 
@@ -138,11 +139,10 @@ transition. Windows were added to the ten-year dataset with the
 
 ### Phases 11-15: Output-based labeling focused on mining predictions
 
-Output-based pipeline, but using
-`rslp.olmoearth_lcc.annotation_scripts.phase12_mining_predictions.create_mining_annotations`
-instead of `create_v2_annotations`: it selects pixels where the post-change-category
-head predicts `mining` (argmax, or `post_change_mining` probability above
-`--threshold`) and samples one qualifying pixel per tile. Some of these phases also
+Output-based pipeline, but using the (since removed) `create_mining_annotations`
+script instead of `create_v2_annotations`: it selected pixels where the
+post-change-category head predicted `mining` (argmax, or `post_change_mining`
+probability above `--threshold`) and sampled one qualifying pixel per tile. Some of these phases also
 used `write_jobs_random_2048` with `--region africa` to focus on sub-Saharan
 Africa (at the time `--region africa` was a rough sub-Saharan polygon; since
 2026-11-17 it is the whole continent).

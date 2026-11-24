@@ -28,7 +28,7 @@ from shapely import box as shapely_box
 from upath import UPath
 
 from rslp.large_scale_embeddings.model import NODATA_VALUE
-from rslp.large_scale_embeddings.tiling import get_zone_wedge, list_kept_crops
+from rslp.large_scale_embeddings.tiling import list_kept_crops
 from rslp.large_scale_embeddings.zarr_store import write_window_region
 from rslp.log_utils import get_logger
 from rslp.utils.rslearn import (
@@ -40,6 +40,7 @@ from rslp.utils.rslearn import (
     materialize_dataset,
     run_model_predict,
 )
+from rslp.utils.tiling import get_zone_wedge
 
 logger = get_logger(__name__)
 

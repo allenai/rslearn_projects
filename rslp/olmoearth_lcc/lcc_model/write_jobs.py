@@ -21,6 +21,7 @@ from rslearn.utils.geometry import PixelBounds, Projection, STGeometry
 from rslearn.utils.get_utm_ups_crs import get_wgs84_bounds
 
 from rslp.log_utils import get_logger
+from rslp.utils.tiling import UTM_MAX_LAT, UTM_MIN_LAT
 
 from . import geozarr, geozarr_pyramid
 from .job_dir import JobConfig, PredictTaskArgs, check_local_path, write_job_dir
@@ -28,8 +29,6 @@ from .predict_pipeline import MODEL_CONFIG_FNAME
 from .tiling import (
     RESOLUTION,
     TILE_SIZE,
-    UTM_MAX_LAT,
-    UTM_MIN_LAT,
     enumerate_zone_tiles,
     get_zone_projection,
     zone_number_from_epsg,

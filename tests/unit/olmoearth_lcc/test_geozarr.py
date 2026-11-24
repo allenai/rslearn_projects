@@ -32,9 +32,6 @@ from rslp.olmoearth_lcc.lcc_model.tiling import (
     get_zone_projection,
 )
 
-# 2015-01-01 (the model timestamp epoch) in days since 1970-01-01.
-EPOCH_2015_UNIX_DAYS = 16436
-
 
 def _pixel(
     binary_change: int,
@@ -42,8 +39,8 @@ def _pixel(
     post_category: int,
     src: int = 9,
     dst: int = 10,
-    ts_pre: int = 3000,
-    ts_post: int = 3100,
+    ts_pre: int = 19436,
+    ts_post: int = 19536,
 ) -> np.ndarray:
     """Build one pixel of the full output_change raster."""
     arr = np.zeros(len(OUTPUT_BANDS), dtype=np.uint16)
@@ -96,9 +93,7 @@ def test_geozarr_window_arrays_encoding() -> None:
     np.testing.assert_array_equal(
         change[:, 0, 0], [200, 9, 10, NONE_CATEGORY_IDX, new_building, 180, 170]
     )
-    np.testing.assert_array_equal(
-        dates[:, 0, 0], [3000 + EPOCH_2015_UNIX_DAYS, 3100 + EPOCH_2015_UNIX_DAYS]
-    )
+    np.testing.assert_array_equal(dates[:, 0, 0], [19436, 19536])
 
     np.testing.assert_array_equal(
         change[:, 0, 1], [50, 0, 0, NONE_CATEGORY_IDX, NONE_CATEGORY_IDX, 0, 0]

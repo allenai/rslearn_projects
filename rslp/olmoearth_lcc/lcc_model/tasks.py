@@ -51,7 +51,7 @@ def start_end_day_bands(
     Args:
         start_probs: (T, H, W) softmax over timesteps for the change-start boundary.
         end_probs: (T, H, W) softmax over timesteps for the change-end boundary.
-        timestep_days: per-timestep day-values (days since TIMESTAMP_EPOCH, length T).
+        timestep_days: per-timestep day-values (days since 1970-01-01, length T).
 
     Returns:
         (2, H, W) tensor of clamped day-values (pre, post).
@@ -362,7 +362,7 @@ class LCCMultiTask(MultiTask):
         """Stack per-task outputs into a 58-band uint16 CHW array.
 
         The two timestamp bands hold the predicted pre-change and post-change
-        dates as integer days since ``TIMESTAMP_EPOCH``, derived from the per-pixel
+        dates as integer days since 1970-01-01, derived from the per-pixel
         argmax of the start/end distributions over the input timesteps (mapped to
         real dates via ``raw_output["timestep_days"]``). Probability and score
         bands are stored as 0..255 within the uint16 raster. The score bands are
@@ -372,8 +372,8 @@ class LCCMultiTask(MultiTask):
         0..2   = binary (softmax probs)
         3..13  = src (softmax probs)
         14..24 = dst (softmax probs)
-        25     = ts_pre_days (days since epoch)
-        26     = ts_post_days (days since epoch)
+        25     = ts_pre_days (days since 1970-01-01)
+        26     = ts_post_days (days since 1970-01-01)
         27..34 = pre_change (softmax probs)
         35..54 = post_change (softmax probs)
         55..57 = binary_change / pre_change / post_change scores
@@ -383,15 +383,12 @@ class LCCMultiTask(MultiTask):
             probs = raw_output[task_name].float()
             parts.append(quantize(probs).cpu().numpy().astype(np.uint16))
 
-        start_probs = raw_output[TS_START_KEY]
-        end_probs = raw_output[TS_END_KEY]
-        timestep_days = raw_output.get("timestep_days")
-        if timestep_days is not None:
-            day_bands = start_end_day_bands(start_probs, end_probs, timestep_days)
-            parts.append(day_bands.cpu().numpy().astype(np.uint16))
-        else:
-            h, w = start_probs.shape[-2:]
-            parts.append(np.zeros((2, h, w), dtype=np.uint16))
+        day_bands = start_end_day_bands(
+            raw_output[TS_START_KEY],
+            raw_output[TS_END_KEY],
+            raw_output["timestep_days"],
+        )
+        parts.append(day_bands.cpu().numpy().astype(np.uint16))
 
         for task_name in ("pre_change", "post_change"):
             probs = raw_output[task_name].float()

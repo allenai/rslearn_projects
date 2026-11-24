@@ -222,9 +222,9 @@ The production model (`config_bp_abs_bpcat_1pass.yaml`) is
 Tasks (all per-pixel, loss masked to annotated points only):
 - `binary`: change classification (3 cls: nodata / no_change / change; loss weight
   2)
-- `src`: source land cover category (14 cls, including nodata)
-- `dst`: destination land cover category (14 cls)
-- `pre_change` / `post_change`: change-category classification (8 / 21 cls,
+- `src`: source land cover category (11 cls, including nodata)
+- `dst`: destination land cover category (11 cls)
+- `pre_change` / `post_change`: change-category classification (8 / 20 cls,
   including nodata and none)
 - `ts_start` / `ts_end`: index of the input timestep at which the change starts /
   ends (22 cls, one per input image; supervised only at change points)
@@ -518,14 +518,20 @@ builds the 22-image stack without needing annotations or multiple frequent optio
 
 #### Output
 
-Per-window output at `<window>/layers/output_change/<bandset>/geotiff.tif` (62 bands):
+Per-window output at `<window>/layers/output_change/<bandset>/geotiff.tif` (58 uint16
+bands):
 - `binary`: 3-channel probability map (nodata / no_change / change)
-- `src`: 14-channel source category probabilities
-- `dst`: 14-channel destination category probabilities
+- `src`: 11-channel source category probabilities
+- `dst`: 11-channel destination category probabilities
 - `ts_pre_days` / `ts_post_days`: predicted pre/post change dates as integer days
-  since the timestamp epoch
-- `pre_change` / `post_change`: 8/21-channel change-category probabilities (class
+  since 1970-01-01
+- `pre_change` / `post_change`: 8/20-channel change-category probabilities (class
   layout [nodata, none, <options...>])
+- `score_binary_change` / `score_pre_change` / `score_post_change`: the binary
+  change and change-category scores (optionally calibrated, see
+  `lcc_model/calibration.py`)
+
+Probabilities and scores are scaled to 0-255.
 
 The band layout is defined in `lcc_model/output_bands.py`.
 
@@ -692,7 +698,7 @@ path (e.g. a new store per month for monthly prediction); the random-tile job
 writers instead put tiles with different timestamps into one store. It is a Zarr v3
 store with one group per UTM zone,
 `utm01` to `utm60`, each in EPSG:326NN at 10 m/pixel using the grid from
-`tiling.get_zone_grid`. Group attributes follow the
+`rslp.utils.tiling.get_zone_grid`. Group attributes follow the
 [spatial](https://github.com/zarr-conventions/spatial) and
 [proj](https://github.com/zarr-conventions/proj) conventions (`proj:code`,
 `spatial:transform`, `spatial:shape`, `spatial:bbox`). Each group also has x/y

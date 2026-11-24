@@ -28,8 +28,8 @@ from rslp.large_scale_embeddings.model import (
     QUANTIZE_POWER,
     QUANTIZE_SCALE,
 )
-from rslp.large_scale_embeddings.tiling import get_zone_grid
 from rslp.log_utils import get_logger
+from rslp.utils.tiling import get_zone_grid
 
 logger = get_logger(__name__)
 
