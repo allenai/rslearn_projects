@@ -203,17 +203,14 @@ treats them the same as missing ones).
 
 #### Architecture
 
-The production model (`config_bp_abs_bpcat_1pass.yaml`, the 1-pass breakpoint model
-without quarterly dropout) is
-`rslp.olmoearth_lcc.lcc_model.model.ChangeModel` (its module docstring describes the
-options the other configs use):
+The production model (`config_bp_abs_bpcat_1pass.yaml`) is
+`rslp.olmoearth_lcc.lcc_model.model.ChangeModel`:
 
 - **Input**: 22 images: 16 quarterly mosaics followed by 6 frequent images (the
   least-cloudy mosaic of each of the 6 most recent 7-day periods with imagery in
   a 90-day block).
 - **Encoder**: OlmoEarth-v1.2-Base (patch_size=4, no token pooling) over all 22
-  images in a single pass (`num_pass1: null`), giving one token per timestep at
-  1/4 resolution.
+  images in a single pass, giving one token per timestep at 1/4 resolution.
 - **Binary head**: a learned breakpoint scan. For every split of the time series it
   compares the before and after means of the tokens, and change evidence is
   max-pooled over the splits.
@@ -345,7 +342,7 @@ The copies omit the `description` and `fld` entry fields.
 #### Training
 
 ```bash
-rslearn model fit --config data/olmoearth_lcc/lcc_model/config_bp_abs_qdrop_bpcat_1pass.yaml
+rslearn model fit --config data/olmoearth_lcc/lcc_model/config_bp_abs_bpcat_1pass.yaml
 ```
 
 Training details:
@@ -355,9 +352,7 @@ Training details:
   chosen by `val_post_change/accuracy`.
 - At each training step, one of the (up to 8) frequent-image options is randomly
   sampled, and the 16 quarterly images preceding that option's earliest frequent
-  image are selected. At train time each quarterly image is also dropped with
-  probability 0.25 (keeping at least 8), so the model sees different mosaic
-  compositions of the same window.
+  image are selected.
 - Val/test uses option 2 deterministically.
 - The dst and post_change heads are only trained on what the sampled images can
   show. Per positive point, with `end` the end of the latest frequent image: if
@@ -385,9 +380,10 @@ Training details:
 - Augmentation: random horizontal/vertical flips.
 - crop_size: 64, batch_size: 4, 100 epochs max.
 
-The other `config_*.yaml` files in `data/olmoearth_lcc/lcc_model/` are variants that
-were tried along the way; `config_bp_abs_bpcat_1pass.yaml` (and its `_predict`
-counterpart) is the one used by the prediction pipeline.
+There are two model configs in `data/olmoearth_lcc/lcc_model/`, each with a
+`_predict` counterpart: `config_bp_abs_bpcat_1pass.yaml` (`ChangeModel`), used by the
+prediction pipeline, and `config_rslearn_bpcat_notemporal.yaml`, used for OlmoEarth
+Studio (see below).
 
 `config_rslearn_bpcat_notemporal.yaml` expresses the model with generic rslearn
 components (`BreakpointScan`, `TokensToChannels`) instead of

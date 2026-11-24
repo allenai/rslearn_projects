@@ -278,19 +278,21 @@ class LCCMultiTask(MultiTask):
     The ``ts_start`` / ``ts_end`` tasks (with ``TimestepToleranceAccuracy`` in
     ``other_metrics``) can be configured in two ways:
 
-    - As ``SegmentationTask`` over the input timesteps, with StackSampler computing
-      the timestep-index targets from the window's sidecar dates. Their
+    - As ``SegmentationTask`` over the input timesteps (``ChangeModel``, in
+      ``config_bp_abs_bpcat_1pass.yaml``), with StackSampler computing the
+      timestep-index targets from the window's sidecar dates. Their
       ``input_mapping`` entries only need a placeholder label since StackSampler
       overwrites the targets.
-    - As rslearn's ``PerPixelTimestepTask``, reading the per-point dates from the
-      ``label_ts_start`` / ``label_ts_end`` layers, with StackSampler's
-      ``emit_timestep_targets`` disabled. ``PerPixelTimestepHead`` maps the dates
-      to timestep indices of the sampled stack.
+    - As rslearn's ``PerPixelTimestepTask`` (``config_rslearn_bpcat_notemporal.yaml``),
+      reading the per-point dates from the ``label_ts_start`` / ``label_ts_end``
+      layers, with StackSampler's ``emit_timestep_targets`` disabled.
+      ``PerPixelTimestepHead`` maps the dates to timestep indices of the sampled
+      stack.
 
     ``process_output`` only supports ``ChangeModel`` outputs. With
-    ``PerPixelTimestepHead`` the per-task outputs are dicts, so models built from
-      rslearn components predict with the ``config_rslearn_*_predict.yaml`` configs,
-      which use a plain ``MultiTask``.
+    ``PerPixelTimestepHead`` the per-task outputs are dicts, so the rslearn-native
+    model predicts with ``config_rslearn_bpcat_notemporal_predict.yaml``, which uses
+    a plain ``MultiTask``.
     """
 
     def __init__(

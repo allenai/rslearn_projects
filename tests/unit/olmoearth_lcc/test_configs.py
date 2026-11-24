@@ -5,9 +5,11 @@ import pathlib
 from typing import Any
 
 import pytest
+import torch.nn as nn
 import yaml
 
 from rslp.olmoearth_lcc.lcc_model import output_bands
+from rslp.olmoearth_lcc.lcc_model.model import ChangeModel
 from rslp.olmoearth_lcc.lcc_model.output_bands import (
     LC_CLASS_NAMES,
     POST_CHANGE_CATEGORY_NAMES,
@@ -69,6 +71,28 @@ def test_model_config_class_layout(path: pathlib.Path) -> None:
         assert task_args["num_classes"] == len(class_names)
         if "class_names" in task_args:
             assert task_args["class_names"] == class_names
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        path
+        for path in MODEL_CONFIGS
+        if yaml.safe_load(path.read_text())["model"]["init_args"]["model"][
+            "class_path"
+        ].endswith("ChangeModel")
+    ],
+    ids=lambda p: p.name,
+)
+def test_change_model_config_init_args(path: pathlib.Path) -> None:
+    class StubEncoder(nn.Module):
+        patch_size = 4
+
+    model_args = dict(
+        yaml.safe_load(path.read_text())["model"]["init_args"]["model"]["init_args"]
+    )
+    model_args.pop("encoder")
+    ChangeModel(encoder=StubEncoder(), **model_args)
 
 
 def test_dataset_config_layers() -> None:

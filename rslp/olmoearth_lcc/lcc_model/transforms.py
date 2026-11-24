@@ -8,9 +8,8 @@ imagery in a 90-day block.
   takes the 16 most recent quarterly mosaics before it, and emits the 22-image
   ``sentinel2_l2a`` stack plus per-pixel start/end timestep-index targets (the
   ``TS_START_KEY`` / ``TS_END_KEY`` segmentation-style tasks, unless
-  ``emit_timestep_targets=False``). It can optionally drop quarterly mosaics at
-  train time as augmentation. It also gates the post-change targets on the dates
-  of each positive point (see ``StackSampler``).
+  ``emit_timestep_targets=False``). It also gates the post-change targets on the
+  dates of each positive point (see ``StackSampler``).
 - ``PredictStackBuilder`` (predict): same stack from the single
   ``sentinel2_frequent_0`` layer, with no annotation or targets.
 - ``mark_negative_points_none``: labels negative (no-change) points as "none" for
@@ -337,11 +336,6 @@ class StackSampler(Transform):
     and emits the per-pixel start/end timestep-index targets consumed by the
     start/end heads.
 
-    With ``quarterly_dropout > 0`` (train only), each available quarterly image is
-    independently dropped before sampling (keeping at least ``min_keep``), so
-    across epochs the model sees different mosaic compositions of the same
-    window and learns invariance to composition.
-
     With ``emit_timestep_targets=False``, the start/end targets come from rslearn's
     ``PerPixelTimestepTask``, which reads them from the ``label_ts_start`` /
     ``label_ts_end`` day rasters; only the ``ts_end`` days are rewritten per pixel.
@@ -359,45 +353,20 @@ class StackSampler(Transform):
     def __init__(
         self,
         deterministic: bool = False,
-        quarterly_dropout: float = 0.0,
-        min_keep: int = 8,
         emit_timestep_targets: bool = True,
     ) -> None:
         """Initialize the transform.
 
         Args:
-            deterministic: if True, always pick option 2 (for val/test) and
-                disable quarterly dropout. Option 2 is a mid-range temporal
-                context rather than the hardest immediate-detection case.
-            quarterly_dropout: probability of dropping each quarterly image.
-            min_keep: minimum number of quarterly images to keep under dropout.
+            deterministic: if True, always pick option 2 (for val/test). Option 2 is
+                a mid-range temporal context rather than the hardest
+                immediate-detection case.
             emit_timestep_targets: whether to compute the ``ts_start`` / ``ts_end``
                 timestep-index targets from the window's annotation dates.
         """
         super().__init__()
         self.deterministic = deterministic
-        self.quarterly_dropout = quarterly_dropout
-        self.min_keep = min_keep
         self.emit_timestep_targets = emit_timestep_targets
-
-    def _drop_quarterly(self, quarterly: RasterImage) -> RasterImage:
-        """Randomly drop quarterly images (train-time augmentation)."""
-        if (
-            self.deterministic
-            or self.quarterly_dropout <= 0
-            or quarterly.timestamps is None
-        ):
-            return quarterly
-        T = quarterly.image.shape[1]
-        keep = [i for i in range(T) if random.random() >= self.quarterly_dropout]
-        if len(keep) < min(self.min_keep, T):
-            keep = sorted(random.sample(range(T), min(self.min_keep, T)))
-        if len(keep) == T:
-            return quarterly
-        return RasterImage(
-            image=quarterly.image[:, keep, :, :],
-            timestamps=[quarterly.timestamps[i] for i in keep],
-        )
 
     def _set_timestep_targets(
         self,
@@ -467,7 +436,6 @@ class StackSampler(Transform):
         quarterly: RasterImage = input_dict.pop(QUARTERLY_KEY)
         if quarterly.timestamps is None:
             raise ValueError("sentinel2_quarterly must have timestamps")
-        quarterly = self._drop_quarterly(quarterly)
 
         # Collect available frequent options.
         frequent_options: list[RasterImage] = []

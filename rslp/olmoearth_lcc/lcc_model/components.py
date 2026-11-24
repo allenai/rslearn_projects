@@ -1,9 +1,9 @@
 """Training-only components for the rslearn MultiTaskModel version of the LCC model.
 
-The rslearn-native LCC configs (``config_rslearn_*.yaml``) express the change model
-as an ``rslearn.models.multitask.MultiTaskModel`` built from generic rslearn
-components (OlmoEarth, TemporalTransformer, BreakpointScan, TokensToChannels, Conv,
-Upsample, SegmentationHead). ``BalancedSegmentationHead`` is a drop-in replacement
+The rslearn-native LCC config (``config_rslearn_bpcat_notemporal.yaml``) expresses the
+change model as an ``rslearn.models.multitask.MultiTaskModel`` built from generic
+rslearn components (OlmoEarth, BreakpointScan, TokensToChannels, Conv, Upsample,
+SegmentationHead). ``BalancedSegmentationHead`` is a drop-in replacement
 for ``rslearn.train.tasks.segmentation.SegmentationHead`` that uses the per-sample
 class-balanced cross-entropy (``balanced_loss``, which ChangeModel also uses for the
 binary and pre/post change-category tasks). It is only needed at training time and

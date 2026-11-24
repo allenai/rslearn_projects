@@ -18,12 +18,7 @@
 # Unlike ChangeModel, each decoder has its own BreakpointScan (own scorer weights)
 # rather than one shared scan feeding binary/src/dst/pre/post.
 #
-# The encoder runs a single pass over all 22 images (num_pass1: null equivalent).
-# Roughly doubles encoder attention memory vs the two-pass variant; drop batch_size to
-# 2 if it OOMs.
-#
-# No quarterly dropout (as in bp_abs_bpcat_1pass): the training StackSampler always
-# keeps all (up to 16) quarterly images, as at prediction time.
+# The encoder runs a single pass over all 22 images.
 #
 # Training-only pieces come from rslp (StackSampler, LCCMultiTask annotation
 # injection, BalancedSegmentationHead for binary/pre_change/post_change,

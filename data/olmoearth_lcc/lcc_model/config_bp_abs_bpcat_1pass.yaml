@@ -1,15 +1,12 @@
-# bp_abs_qdrop_bpcat_1pass without quarterly dropout: the training StackSampler
-# always keeps all (up to 16) quarterly images, as at prediction time.
+# The production LCC model (its _predict counterpart is used by the prediction
+# pipeline). See model.py for the architecture.
 #
-# Like bp_abs_qdrop_bpcat_1pass, it runs a single encoder pass over all 22 images
-# (num_pass1: null) instead of two 11-image passes, so every token attends to every
-# other inside the encoder. Roughly doubles encoder attention memory; drop batch_size
-# to 2 if it OOMs.
+# The encoder runs a single pass over all 22 images, so every token attends to every
+# other inside the encoder.
 #
-# As in bp_abs_qdrop_bpcat, change_category_input=breakpoint makes the pre/post
-# change-category decoders read concat(before, after) of the split-attention-weighted
-# breakpoint aggregates (the same features src/dst decode from) instead of the
-# temporal mean.
+# The binary head is a breakpoint scan over the per-timestep tokens; src/dst decode
+# the split-attention-weighted before/after aggregates and the pre/post
+# change-category heads decode concat(before, after).
 model:
   class_path: rslearn.train.lightning_module.RslearnLightningModule
   init_args:
@@ -29,7 +26,6 @@ model:
         num_classes_pre_change: 8
         num_classes_post_change: 20
         num_timesteps: 22
-        num_pass1: null
         embedding_dim: 768
         decoder_stages:
         - - - 768
@@ -39,8 +35,6 @@ model:
         - - - 128
             - 3
         binary_loss_weight: 2.0
-        binary_mode: breakpoint
-        change_category_input: breakpoint
     optimizer:
       class_path: rslearn.models.olmoearth_pretrain.optimizer.LayerDecayAdamW
       init_args:
