@@ -29,8 +29,11 @@ from rslp.olmoearth_lcc.lcc_model.output_bands import (
     OUTPUT_BANDS,
     OUTPUT_LAYER,
     POST_CHANGE_BAND_OFFSET,
+    POST_CHANGE_BANDS,
     POST_CHANGE_CATEGORY_NAMES,
     PRE_CHANGE_BAND_OFFSET,
+    PRE_CHANGE_BANDS,
+    SCORE_BAND_OFFSET,
     SRC_BAND_OFFSET,
     TS_POST_DAYS_BAND,
     TS_PRE_DAYS_BAND,
@@ -69,7 +72,16 @@ def _fake_output() -> np.ndarray:
     change[DST_BAND_OFFSET + URBAN] = 220
     change[POST_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 0
     change[POST_CHANGE_BAND_OFFSET + NEW_BUILDING] = 240
-    return geozarr.fill_raw_score_bands(arr)
+
+    # Raw scores: binary change probability and each head's argmax probability.
+    arr[SCORE_BAND_OFFSET] = arr[BINARY_CHANGE_BAND]
+    arr[SCORE_BAND_OFFSET + 1] = arr[
+        PRE_CHANGE_BAND_OFFSET + 1 : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)
+    ].max(axis=0)
+    arr[SCORE_BAND_OFFSET + 2] = arr[
+        POST_CHANGE_BAND_OFFSET + 1 : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)
+    ].max(axis=0)
+    return arr
 
 
 def _fake_materialize(ds_path: UPath, **kwargs: Any) -> None:

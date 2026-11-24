@@ -1,10 +1,8 @@
 import math
-import pathlib
 
 import numpy as np
 import pytest
 import torch
-import yaml
 
 from rslp.olmoearth_lcc.lcc_model import calibration, geozarr
 from rslp.olmoearth_lcc.lcc_model.calibration import Curve, ScoreCalibration
@@ -137,22 +135,6 @@ def test_score_bands_match_geozarr_categories() -> None:
         change[geozarr.CHANGE_BANDS.index("post_change_score")][kept],
         arr[SCORE_BAND_OFFSET + 2][kept],
     )
-
-
-def test_read_score_calibration(tmp_path: pathlib.Path) -> None:
-    cfg = {
-        "data": {
-            "init_args": {"task": {"init_args": {"score_calibration": CAL.to_dict()}}}
-        }
-    }
-    path = tmp_path / "config.yaml"
-    path.write_text(yaml.safe_dump(cfg))
-    read = calibration.read_score_calibration(str(path))
-    assert read is not None
-    assert ScoreCalibration.from_dict(read) == CAL
-    cfg["data"]["init_args"]["task"]["init_args"] = {}
-    path.write_text(yaml.safe_dump(cfg))
-    assert calibration.read_score_calibration(str(path)) is None
 
 
 def test_fit_score_calibration_shift() -> None:

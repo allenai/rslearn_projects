@@ -12,11 +12,8 @@ dimensions ``(<array>_band, y, x)`` plus band-name and x/y coordinate arrays:
   cover class (0 = nodata, otherwise an index into LC_CLASS_NAMES), pre/post change
   category (0 = no prediction, 1 = none, otherwise an index into
   PRE/POST_CHANGE_CATEGORY_NAMES), and the pre/post change category scores
-  (0-255). The scores come from the model output's score bands: with a score
-  calibration (the ``score_calibration`` root attribute, see calibration.py) the
-  binary score is P(any change) and each category score is P(exact category), or
-  P(none is correct) where the category is none; without one they are the raw
-  binary change probability and each head's argmax probability.
+  (0-255). The scores come from the model output's score bands (see
+  calibration.py).
 - ``change_dates`` (uint16, CHANGE_DATES_BANDS): predicted change start and end in
   days since 1970-01-01 (0 = nodata).
 
@@ -416,7 +413,6 @@ def init_store(
     detail: str = DETAIL_COMPACT,
     zone_numbers: list[int] | None = None,
     overwrite: bool = False,
-    score_calibration: dict[str, Any] | None = None,
 ) -> None:
     """Create the GeoZarr store skeleton (root, zone groups, arrays, metadata).
 
@@ -431,21 +427,13 @@ def init_store(
         detail: the detail mode, one of DETAILS.
         zone_numbers: the UTM zone numbers to create groups for (default all 60).
         overwrite: whether to overwrite an existing store.
-        score_calibration: the score calibration of the model config (the dict form
-            of calibration.ScoreCalibration), recorded in the attributes; None
-            means the scores are raw probabilities.
     """
     array_specs = get_array_specs(detail)
     zones = list(range(1, 61)) if zone_numbers is None else zone_numbers
 
     description = (
         "OlmoEarth Land Change predictions. binary_change, pre_change_score and "
-        "post_change_score are scores scaled 0-255: with score_calibration set, "
-        "binary_change is the calibrated P(any change) and each change score is the "
-        "calibrated P(exact category), or P(none is correct) where the category is "
-        "none; with score_calibration null they are the raw binary change probability "
-        "and each head's argmax probability. "
-        "pre_lc/post_lc index lc_class_names (0 = nodata); "
+        "post_change_score are probabilities scaled 0-255; pre_lc/post_lc index lc_class_names (0 = nodata); "
         "pre/post_change_category index pre/post_change_category_names (0 = no prediction, 1 = none). "
         "change_dates: days since 1970-01-01 (0 = nodata). Where both change "
         "categories are none and binary_change < no_change_threshold, "
@@ -472,7 +460,6 @@ def init_store(
                 "post_change_category_names": POST_CHANGE_CATEGORY_NAMES,
                 "no_change_threshold": GEOZARR_CHANGE_THRESHOLD,
                 "binary_change_zero_threshold": GEOZARR_BINARY_ZERO_THRESHOLD,
-                "score_calibration": score_calibration,
                 "description": description,
             }
         )
@@ -521,7 +508,6 @@ def ensure_store(
     store_path: str,
     model_config: str | None = None,
     detail: str = DETAIL_COMPACT,
-    score_calibration: dict[str, Any] | None = None,
 ) -> None:
     """Create the store unless it already exists.
 
@@ -529,7 +515,6 @@ def ensure_store(
         store_path: the Zarr store path or URL.
         model_config: the model config used for prediction.
         detail: the detail mode, one of DETAILS.
-        score_calibration: the model config's score calibration (see init_store).
 
     Raises:
         ValueError: if the store exists but was created with a different detail
@@ -537,12 +522,7 @@ def ensure_store(
     """
     existing_detail = read_store_detail(store_path)
     if existing_detail is None:
-        init_store(
-            store_path,
-            model_config=model_config,
-            detail=detail,
-            score_calibration=score_calibration,
-        )
+        init_store(store_path, model_config=model_config, detail=detail)
         return
     if existing_detail != detail:
         raise ValueError(
@@ -564,32 +544,6 @@ def _head_argmax(probs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     classes = probs[1:].argmax(axis=0) + 1
     scores = np.take_along_axis(probs, classes[None], axis=0)[0]
     return classes.astype(np.uint8), np.clip(scores, 0, 255).astype(np.uint8)
-
-
-def fill_raw_score_bands(arr: np.ndarray) -> np.ndarray:
-    """Set the score bands of a window array to the raw (uncalibrated) scores.
-
-    The raw scores are the binary change probability and each change category
-    head's argmax probability, as LCCMultiTask stores without a score calibration.
-    For output arrays written before the score bands existed (and tests).
-
-    Args:
-        arr: (len(OUTPUT_BANDS), H, W) array with probabilities scaled 0-255,
-            modified in place.
-
-    Returns:
-        arr.
-    """
-    _, pre_score = _head_argmax(
-        arr[PRE_CHANGE_BAND_OFFSET : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)]
-    )
-    _, post_score = _head_argmax(
-        arr[POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)]
-    )
-    arr[SCORE_BAND_OFFSET] = arr[BINARY_CHANGE_BAND]
-    arr[SCORE_BAND_OFFSET + 1] = pre_score
-    arr[SCORE_BAND_OFFSET + 2] = post_score
-    return arr
 
 
 def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

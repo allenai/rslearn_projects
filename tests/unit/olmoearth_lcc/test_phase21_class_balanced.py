@@ -17,9 +17,12 @@ from rslp.olmoearth_lcc.lcc_model.output_bands import (
     NONE_CATEGORY_IDX,
     OUTPUT_BANDS,
     POST_CHANGE_BAND_OFFSET,
+    POST_CHANGE_BANDS,
     POST_CHANGE_CATEGORY_NAMES,
     PRE_CHANGE_BAND_OFFSET,
+    PRE_CHANGE_BANDS,
     PRE_CHANGE_CATEGORY_NAMES,
+    SCORE_BAND_OFFSET,
     SRC_BAND_OFFSET,
     TS_POST_DAYS_BAND,
     TS_PRE_DAYS_BAND,
@@ -66,7 +69,16 @@ def _window_output() -> np.ndarray:
     forest_loss[DST_BAND_OFFSET + BARE] = 210
     forest_loss[PRE_CHANGE_BAND_OFFSET + NONE_CATEGORY_IDX] = 0
     forest_loss[PRE_CHANGE_BAND_OFFSET + FOREST_LOSS] = 200
-    return geozarr.fill_raw_score_bands(arr)
+
+    # Raw scores: binary change probability and each head's argmax probability.
+    arr[SCORE_BAND_OFFSET] = arr[BINARY_CHANGE_BAND]
+    arr[SCORE_BAND_OFFSET + 1] = arr[
+        PRE_CHANGE_BAND_OFFSET + 1 : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)
+    ].max(axis=0)
+    arr[SCORE_BAND_OFFSET + 2] = arr[
+        POST_CHANGE_BAND_OFFSET + 1 : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)
+    ].max(axis=0)
+    return arr
 
 
 def _write_tile(tmp_path: pathlib.Path, detail: str) -> tuple[str, UPath]:

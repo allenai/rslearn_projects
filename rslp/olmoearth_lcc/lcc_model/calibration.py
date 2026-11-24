@@ -194,23 +194,6 @@ def score_bands(
     )
 
 
-def read_score_calibration(model_config: str) -> dict[str, Any] | None:
-    """Read the score calibration of a predict model config.
-
-    Args:
-        model_config: path of the model config (LCCMultiTask task).
-
-    Returns:
-        the task's score_calibration init arg, or None if it has none.
-    """
-    import yaml
-
-    with open(model_config) as f:
-        cfg = yaml.safe_load(f)
-    task_args = cfg["data"]["init_args"]["task"].get("init_args", {})
-    return task_args.get("score_calibration")
-
-
 def _platt(x: npt.NDArray, y: npt.NDArray) -> Curve:
     """Fit P(y | x) = sigmoid(a * x + b) by (effectively unregularized) logistic regression."""
     from sklearn.linear_model import LogisticRegression

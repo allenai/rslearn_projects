@@ -15,8 +15,11 @@ from rslp.olmoearth_lcc.lcc_model.output_bands import (
     NONE_CATEGORY_IDX,
     OUTPUT_BANDS,
     POST_CHANGE_BAND_OFFSET,
+    POST_CHANGE_BANDS,
     POST_CHANGE_CATEGORY_NAMES,
     PRE_CHANGE_BAND_OFFSET,
+    PRE_CHANGE_BANDS,
+    SCORE_BAND_OFFSET,
     SRC_BAND_OFFSET,
     TS_POST_DAYS_BAND,
     TS_PRE_DAYS_BAND,
@@ -52,12 +55,20 @@ def _pixel(
     arr[POST_CHANGE_BAND_OFFSET + post_category] = 170
     arr[TS_PRE_DAYS_BAND] = ts_pre
     arr[TS_POST_DAYS_BAND] = ts_post
+    # Raw scores: binary change probability and each head's argmax probability.
+    arr[SCORE_BAND_OFFSET] = arr[BINARY_CHANGE_BAND]
+    arr[SCORE_BAND_OFFSET + 1] = arr[
+        PRE_CHANGE_BAND_OFFSET + 1 : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)
+    ].max()
+    arr[SCORE_BAND_OFFSET + 2] = arr[
+        POST_CHANGE_BAND_OFFSET + 1 : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)
+    ].max()
     return arr
 
 
 def _window_array(pixels: list[np.ndarray]) -> np.ndarray:
     """Stack pixels into a (len(OUTPUT_BANDS), 1, N) window array."""
-    return geozarr.fill_raw_score_bands(np.stack(pixels, axis=1)[:, None, :])
+    return np.stack(pixels, axis=1)[:, None, :]
 
 
 def test_geozarr_window_arrays_encoding() -> None:
@@ -221,7 +232,6 @@ def test_full_store(tmp_path: pathlib.Path) -> None:
     arr = np.broadcast_to(
         pixel[:, None, None], (len(OUTPUT_BANDS), PATCH_SIZE, PATCH_SIZE)
     ).copy()
-    geozarr.fill_raw_score_bands(arr)
     change, dates = geozarr.geozarr_window_arrays(arr)
     prob_arrays = geozarr.prob_window_arrays(arr)
     assert {name: a.shape[0] for name, a in prob_arrays.items()} == {

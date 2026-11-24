@@ -23,7 +23,6 @@ from rslearn.utils.get_utm_ups_crs import get_wgs84_bounds
 from rslp.log_utils import get_logger
 
 from . import geozarr, geozarr_pyramid
-from .calibration import read_score_calibration
 from .job_dir import JobConfig, PredictTaskArgs, check_local_path, write_job_dir
 from .predict_pipeline import MODEL_CONFIG_FNAME
 from .tiling import (
@@ -160,7 +159,6 @@ def write_tasks(
         zarr_store_path,
         model_config=MODEL_CONFIG_FNAME,
         detail=zarr_detail,
-        score_calibration=read_score_calibration(MODEL_CONFIG_FNAME),
     )
     if zarr_pyramid_path is not None:
         geozarr_pyramid.ensure_pyramid_store(zarr_pyramid_path, zarr_store_path)
