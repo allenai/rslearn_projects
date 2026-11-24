@@ -543,7 +543,7 @@ def test_balanced_head_multiclass() -> None:
 
 def test_balanced_head_no_valid_points() -> None:
     """With no valid points the loss is a differentiable zero."""
-    logits = torch.randn(2, 4, CROP, CROP)
+    logits = torch.randn(2, 4, CROP, CROP, requires_grad=True)
     labels = torch.ones(2, CROP, CROP, dtype=torch.long)
     valid = torch.zeros(2, CROP, CROP, dtype=torch.bool)
     context = ModelContext(inputs=[], metadatas=[])

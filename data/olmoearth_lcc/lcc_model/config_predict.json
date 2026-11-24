@@ -58,7 +58,10 @@
             "post_change_burned",
             "post_change_flooding",
             "post_change_storm_damage",
-            "post_change_vegetation_dieback"
+            "post_change_vegetation_dieback",
+            "score_binary_change",
+            "score_pre_change",
+            "score_post_change"
           ],
           "dtype": "uint16"
         }

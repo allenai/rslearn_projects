@@ -15,8 +15,11 @@ from rslp.olmoearth_lcc.lcc_model.output_bands import (
     NONE_CATEGORY_IDX,
     OUTPUT_BANDS,
     POST_CHANGE_BAND_OFFSET,
+    POST_CHANGE_BANDS,
     POST_CHANGE_CATEGORY_NAMES,
     PRE_CHANGE_BAND_OFFSET,
+    PRE_CHANGE_BANDS,
+    SCORE_BAND_OFFSET,
     SRC_BAND_OFFSET,
     TS_POST_DAYS_BAND,
     TS_PRE_DAYS_BAND,
@@ -52,6 +55,14 @@ def _pixel(
     arr[POST_CHANGE_BAND_OFFSET + post_category] = 170
     arr[TS_PRE_DAYS_BAND] = ts_pre
     arr[TS_POST_DAYS_BAND] = ts_post
+    # Raw scores: binary change probability and each head's argmax probability.
+    arr[SCORE_BAND_OFFSET] = arr[BINARY_CHANGE_BAND]
+    arr[SCORE_BAND_OFFSET + 1] = arr[
+        PRE_CHANGE_BAND_OFFSET + 1 : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)
+    ].max()
+    arr[SCORE_BAND_OFFSET + 2] = arr[
+        POST_CHANGE_BAND_OFFSET + 1 : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)
+    ].max()
     return arr
 
 

@@ -156,7 +156,9 @@ def write_tasks(
     """
     check_local_path(job_dir)
     geozarr.ensure_store(
-        zarr_store_path, model_config=MODEL_CONFIG_FNAME, detail=zarr_detail
+        zarr_store_path,
+        model_config=MODEL_CONFIG_FNAME,
+        detail=zarr_detail,
     )
     if zarr_pyramid_path is not None:
         geozarr_pyramid.ensure_pyramid_store(zarr_pyramid_path, zarr_store_path)

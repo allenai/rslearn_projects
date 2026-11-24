@@ -8,17 +8,18 @@ its northern CRS (EPSG:326NN) with a continuous northing axis spanning both
 hemispheres (see tiling.get_zone_grid). Each zone group holds two arrays with
 dimensions ``(<array>_band, y, x)`` plus band-name and x/y coordinate arrays:
 
-- ``change`` (uint8, CHANGE_BANDS): binary change probability (0-255), pre/post land
+- ``change`` (uint8, CHANGE_BANDS): binary change score (0-255), pre/post land
   cover class (0 = nodata, otherwise an index into LC_CLASS_NAMES), pre/post change
   category (0 = no prediction, 1 = none, otherwise an index into
-  PRE/POST_CHANGE_CATEGORY_NAMES), and the pre/post change categories'
-  probabilities (0-255).
+  PRE/POST_CHANGE_CATEGORY_NAMES), and the pre/post change category scores
+  (0-255). The scores come from the model output's score bands (see
+  calibration.py).
 - ``change_dates`` (uint16, CHANGE_DATES_BANDS): predicted change start and end in
   days since 1970-01-01 (0 = nodata).
 
-Where both change categories are "none" and the binary change probability is below
+Where both change categories are "none" and the binary change score is below
 128, the land cover classes, change scores, and dates are zeroed, and binary
-change probabilities below 16 are stored as 0 (see
+change scores below 16 are stored as 0 (see
 geozarr_window_arrays).
 
 Stores have a detail mode (the ``detail`` root attribute). Compact stores hold only the
@@ -66,6 +67,7 @@ from .output_bands import (
     PRE_CHANGE_BAND_OFFSET,
     PRE_CHANGE_BANDS,
     PRE_CHANGE_CATEGORY_NAMES,
+    SCORE_BAND_OFFSET,
     SRC_BAND_OFFSET,
     TS_POST_DAYS_BAND,
     TS_PRE_DAYS_BAND,
@@ -133,11 +135,11 @@ PROB_ARRAYS = [
     ),
 ]
 
-# Binary change probability (0-255) below which pixels with no change category get
-# their land cover classes, post change score, and dates zeroed in the GeoZarr output.
+# Binary change score (0-255) below which pixels with no change category get
+# their land cover classes, change scores, and dates zeroed in the GeoZarr output.
 GEOZARR_CHANGE_THRESHOLD = 128
 
-# Binary change probability (0-255) below which the GeoZarr binary_change band itself
+# Binary change score (0-255) below which the GeoZarr binary_change band itself
 # is zeroed (in any pixel). Low probabilities carry little information but are most
 # of the compressed output size; values at or above this keep full 0-255 resolution.
 GEOZARR_BINARY_ZERO_THRESHOLD = 16
@@ -549,9 +551,10 @@ def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
     See CHANGE_BANDS and CHANGE_DATES_BANDS for the layout. Each head is reduced to
     its argmax class (skipping nodata). Pixels with no prediction are all zero.
-    Where both change categories are "none" and the binary change probability is
-    below GEOZARR_CHANGE_THRESHOLD, the land cover classes, change scores, and
-    change dates are zeroed too. binary_change values below
+    The binary change and change category scores come from the score bands
+    (output_bands.SCORE_BANDS). Where both change categories are "none" and the
+    binary change score is below GEOZARR_CHANGE_THRESHOLD, the land cover classes,
+    change scores, and change dates are zeroed too. binary_change values below
     GEOZARR_BINARY_ZERO_THRESHOLD are set to 0.
 
     Args:
@@ -564,13 +567,15 @@ def geozarr_window_arrays(arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     # Pixels with no prediction were left all-zero; use the binary head to detect
     # them.
     valid = arr[0 : BINARY_CHANGE_BAND + 1].max(axis=0) > 0
-    binary_change = np.clip(arr[BINARY_CHANGE_BAND], 0, 255).astype(np.uint8)
+    binary_change, pre_score, post_score = np.clip(
+        arr[SCORE_BAND_OFFSET : SCORE_BAND_OFFSET + 3], 0, 255
+    ).astype(np.uint8)
     src, _ = _head_argmax(arr[SRC_BAND_OFFSET : SRC_BAND_OFFSET + NUM_LC_CLASSES])
     dst, _ = _head_argmax(arr[DST_BAND_OFFSET : DST_BAND_OFFSET + NUM_LC_CLASSES])
-    pre, pre_score = _head_argmax(
+    pre, _ = _head_argmax(
         arr[PRE_CHANGE_BAND_OFFSET : PRE_CHANGE_BAND_OFFSET + len(PRE_CHANGE_BANDS)]
     )
-    post, post_score = _head_argmax(
+    post, _ = _head_argmax(
         arr[POST_CHANGE_BAND_OFFSET : POST_CHANGE_BAND_OFFSET + len(POST_CHANGE_BANDS)]
     )
 

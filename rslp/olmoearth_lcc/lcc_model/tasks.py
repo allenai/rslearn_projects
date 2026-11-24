@@ -30,6 +30,7 @@ from torchmetrics.utilities import dim_zero_cat
 from typing_extensions import override
 from upath import UPath
 
+from .calibration import ScoreCalibration, quantize, score_bands
 from .output_bands import OUTPUT_BANDS
 from .timestamp_encoding import MAX_DAY_VALUE, parse_date
 from .transforms import ANNOTATION_KEY, TS_END_KEY, TS_START_KEY
@@ -297,6 +298,7 @@ class LCCMultiTask(MultiTask):
         tasks: dict[str, Task],
         input_mapping: dict[str, dict[str, str]],
         annotations_path: str,
+        score_calibration: dict[str, Any] | None = None,
     ):
         """Create a new LCCMultiTask.
 
@@ -305,9 +307,16 @@ class LCCMultiTask(MultiTask):
                 pre_change, post_change, ts_start, ts_end).
             input_mapping: per-task raw-input remapping.
             annotations_path: path to lcc_annotations.json sidecar.
+            score_calibration: calibration of the score bands, in the dict form of
+                calibration.ScoreCalibration; None stores the raw probabilities.
         """
         super().__init__(tasks=tasks, input_mapping=input_mapping)
         self.annotations_path = annotations_path
+        self.score_calibration = (
+            ScoreCalibration.from_dict(score_calibration)
+            if score_calibration is not None
+            else None
+        )
         self._annotations: dict[str, dict[str, Any]] | None = None
 
     def _load_annotations(self) -> dict[str, dict[str, Any]]:
@@ -348,29 +357,29 @@ class LCCMultiTask(MultiTask):
     def process_output(
         self, raw_output: Any, metadata: SampleMetadata
     ) -> npt.NDArray[np.uint16]:
-        """Stack per-task outputs into a 55-band uint16 CHW array.
+        """Stack per-task outputs into a 58-band uint16 CHW array.
 
         The two timestamp bands hold the predicted pre-change and post-change
         dates as integer days since ``TIMESTAMP_EPOCH``, derived from the per-pixel
         argmax of the start/end distributions over the input timesteps (mapped to
-        real dates via ``raw_output["timestep_days"]``). Probability bands are
-        stored as 0..255 within the uint16 raster.
+        real dates via ``raw_output["timestep_days"]``). Probability and score
+        bands are stored as 0..255 within the uint16 raster. The score bands are
+        computed from the float softmax before quantization (see calibration.py).
 
         Band layout (see ``output_bands.OUTPUT_BANDS``):
         0..2   = binary (softmax probs)
-        3..16  = src (softmax probs)
-        17..30 = dst (softmax probs)
-        31     = ts_pre_days (days since epoch)
-        32     = ts_post_days (days since epoch)
-        33..40 = pre_change (softmax probs)
-        41..61 = post_change (softmax probs)
+        3..13  = src (softmax probs)
+        14..24 = dst (softmax probs)
+        25     = ts_pre_days (days since epoch)
+        26     = ts_post_days (days since epoch)
+        27..34 = pre_change (softmax probs)
+        35..54 = post_change (softmax probs)
+        55..57 = binary_change / pre_change / post_change scores
         """
         parts: list[npt.NDArray[np.uint16]] = []
         for task_name in ("binary", "src", "dst"):
             probs = raw_output[task_name].float()
-            parts.append(
-                (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
-            )
+            parts.append(quantize(probs).cpu().numpy().astype(np.uint16))
 
         start_probs = raw_output[TS_START_KEY]
         end_probs = raw_output[TS_END_KEY]
@@ -384,9 +393,15 @@ class LCCMultiTask(MultiTask):
 
         for task_name in ("pre_change", "post_change"):
             probs = raw_output[task_name].float()
-            parts.append(
-                (probs * 255).clamp(0, 255).round().cpu().numpy().astype(np.uint16)
-            )
+            parts.append(quantize(probs).cpu().numpy().astype(np.uint16))
+
+        scores = score_bands(
+            raw_output["binary"].float(),
+            raw_output["pre_change"].float(),
+            raw_output["post_change"].float(),
+            self.score_calibration,
+        )
+        parts.append(quantize(scores).cpu().numpy().astype(np.uint16))
 
         output = np.concatenate(parts, axis=0)
         if output.shape[0] != len(OUTPUT_BANDS):
