@@ -1,7 +1,8 @@
 FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime
 
 RUN apt update
-RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget
+# g++ is needed at runtime by torch.compile to build CPU kernels.
+RUN apt install -y libpq-dev ffmpeg libsm6 libxext6 git wget g++
 
 # Use uv to install everything.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -25,4 +26,16 @@ COPY . /opt/rslearn_projects/
 
 RUN --mount=type=cache,target=/root/.cache/uv uv pip install --system --break-system-packages /opt/rslearn[extra] /opt/olmoearth_pretrain /opt/rslearn_projects[extra,olmoearth_run]
 
+# Optional NATTEN wheel for Searchlight's attention kernel on H100, e.g.
+# --build-arg NATTEN_VERSION=0.21.5+torch290cu128. It must match the installed torch.
+ARG NATTEN_VERSION=
+RUN if [ -n "$NATTEN_VERSION" ]; then \
+      uv pip install --system --break-system-packages \
+        --find-links https://whl.natten.org "natten==$NATTEN_VERSION"; \
+    fi
+
 WORKDIR /opt/rslearn_projects
+
+# Recorded in large_scale_embeddings completion markers and provenance.
+ARG CODE_VERSION=unknown
+ENV RSLP_CODE_VERSION=${CODE_VERSION}

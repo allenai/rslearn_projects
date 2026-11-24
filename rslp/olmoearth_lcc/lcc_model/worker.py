@@ -274,5 +274,5 @@ def launch_workers(
         extra_env_vars=extra_env_vars,
         extra_env_secrets=extra_env_secrets,
         min_runtime=min_runtime,
-        worker_args=["olmoearth_lcc", "worker", "--job_dir", job_dir],
+        worker_command=["olmoearth_lcc", "worker", "--job_dir", job_dir],
     )
