@@ -1,4 +1,3 @@
-from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -6,6 +5,11 @@ import pytest
 from rasterio.crs import CRS
 from rslearn.utils.geometry import Projection
 
+from rslp.olmoearth_lcc.lcc_model.label_changes import (
+    legacy_transition_to_change2,
+    missing_date_fields,
+    point_date_errors,
+)
 from rslp.olmoearth_lcc.lcc_model.output_bands import (
     LC_CLASS_NAMES,
     POST_CHANGE_CATEGORY_NAMES,
@@ -18,6 +22,8 @@ from rslp.olmoearth_lcc.lcc_model.prepare import (
     _compute_frequent_block_ends,
     _compute_label_arrays,
     _compute_window_time_range,
+    _entry_has_complete_annotations,
+    _get_positive_points_missing_dates,
     _get_unknown_categories,
     _lonlat_to_pixel,
     _sidecar_dates_match,
@@ -173,61 +179,6 @@ def test_label_arrays_have_no_change_labels_without_categories() -> None:
     assert labels["label_post_change"] == 0
 
 
-def test_transition_label_arrays() -> None:
-    gap = timedelta(days=10)
-    labels = _labels_at_point(
-        {
-            **DATED_POINT,
-            "transition_date": "2020-04-01",
-            "transition_category": "bare",
-            "transition_change_category": "site_clearing",
-        },
-        gap=gap,
-    )
-    # The transition date gets the gap, like label_ts_end.
-    assert labels["label_transition_date"] == _days("2020-04-01") + 10
-    assert labels["label_ts_end"] == _days("2020-09-01") + 10
-    assert LC_CLASS_NAMES[labels["label_transition_dst"]] == "bare"
-    assert (
-        POST_CHANGE_CATEGORY_NAMES[labels["label_transition_post_change"]]
-        == "site_clearing"
-    )
-    # Without a transition stop date the raster is nodata (= post_change).
-    assert labels["label_transition_stop_date"] == DAYS_NODATA
-    labels = _labels_at_point(
-        {
-            **DATED_POINT,
-            "transition_date": "2020-04-01",
-            "transition_stop_date": "2020-06-01",
-            "transition_category": "bare",
-        },
-        gap=gap,
-    )
-    assert labels["label_transition_stop_date"] == _days("2020-06-01") + 10
-
-
-@pytest.mark.parametrize(
-    "transition,expected",
-    [
-        # Aliases apply as for post_change_category.
-        ({"transition_change_category": "borrow_pit"}, "new_mining_or_quarry"),
-        # land_reclamation is not moved to the pre-change head; it is nodata.
-        ({"transition_change_category": "land_reclamation"}, "nodata"),
-        # A missing transition change category is nodata (masked).
-        ({"transition_category": "bare"}, "nodata"),
-    ],
-)
-def test_transition_change_category(transition: dict[str, Any], expected: str) -> None:
-    labels = _labels_at_point(
-        {**DATED_POINT, "transition_date": "2020-04-01", **transition}
-    )
-    assert POST_CHANGE_CATEGORY_NAMES[labels["label_transition_post_change"]] == (
-        expected
-    )
-    # The regular post change category is unaffected.
-    assert POST_CHANGE_CATEGORY_NAMES[labels["label_post_change"]] == "new_agriculture"
-
-
 @pytest.mark.parametrize(
     "old,new",
     [
@@ -242,89 +193,6 @@ def test_legacy_land_cover_names(old: str, new: str) -> None:
     )
     assert LC_CLASS_NAMES[labels["label_src"]] == new
     assert LC_CLASS_NAMES[labels["label_dst"]] == new
-
-
-def test_no_transition_labels_without_transition() -> None:
-    labels = _labels_at_point(DATED_POINT)
-    assert labels["label_transition_date"] == DAYS_NODATA
-    assert labels["label_transition_stop_date"] == DAYS_NODATA
-    assert labels["label_transition_dst"] == 0
-    assert labels["label_transition_post_change"] == 0
-    # A transition on a point without dates is not rasterized either.
-    labels = _labels_at_point(
-        {"transition_date": "2020-04-01", "transition_category": "bare"}
-    )
-    assert labels["label_transition_date"] == DAYS_NODATA
-    assert labels["label_transition_dst"] == 0
-
-
-@pytest.mark.parametrize(
-    "transition_date,valid",
-    [
-        ("2020-02-01", True),
-        ("2020-08-31", True),
-        ("2020-01-31", False),
-        ("2020-09-01", False),
-    ],
-)
-def test_validate_transition_date(transition_date: str, valid: bool) -> None:
-    entry = {
-        "positive_points": [
-            {"lon": LON, "lat": LAT, **DATED_POINT, "transition_date": transition_date}
-        ]
-    }
-    if valid:
-        _validate_positive_point_dates(entry)
-    else:
-        with pytest.raises(ValueError, match="transition_date"):
-            _validate_positive_point_dates(entry)
-    # filter_v2_jsons omits the entries that would raise.
-    assert positive_point_dates_valid(entry) == valid
-
-
-@pytest.mark.parametrize(
-    "transition,valid",
-    [
-        ({"transition_date": "2020-04-01", "transition_stop_date": "2020-04-02"}, True),
-        ({"transition_date": "2020-04-01", "transition_stop_date": "2020-08-31"}, True),
-        # Strictly between transition_date and post_change.
-        (
-            {"transition_date": "2020-04-01", "transition_stop_date": "2020-04-01"},
-            False,
-        ),
-        (
-            {"transition_date": "2020-04-01", "transition_stop_date": "2020-09-01"},
-            False,
-        ),
-        # A transition stop date needs a transition date.
-        ({"transition_stop_date": "2020-06-01"}, False),
-    ],
-)
-def test_validate_transition_stop_date(transition: dict[str, str], valid: bool) -> None:
-    entry = {"positive_points": [{"lon": LON, "lat": LAT, **DATED_POINT, **transition}]}
-    if valid:
-        _validate_positive_point_dates(entry)
-    else:
-        with pytest.raises(ValueError, match="transition_stop_date"):
-            _validate_positive_point_dates(entry)
-    assert positive_point_dates_valid(entry) == valid
-
-
-def test_transition_frequent_option() -> None:
-    first = datetime(2020, 2, 1, tzinfo=timezone.utc)
-    post = datetime(2020, 9, 1, tzinfo=timezone.utc)
-    transition = datetime(2020, 4, 1, tzinfo=timezone.utc)
-    cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    without = _compute_frequent_block_ends(first, post, "w", cutoff)
-    with_transition = _compute_frequent_block_ends(
-        first, post, "w", cutoff, transition_date=transition
-    )
-    assert len(with_transition) == len(without)
-    # The deterministic options (including option 2, used for validation) stay,
-    # the transition option comes next, and it replaces the last random option.
-    assert with_transition[:3] == without[:3]
-    assert with_transition[3] == transition + OPTION_MARGIN
-    assert with_transition[4:] == without[3:-1]
 
 
 def test_sidecar_dates_match_transition() -> None:
@@ -372,27 +240,6 @@ def test_recent_negative_frequent_options_deduplicated() -> None:
     assert block_ends == [anchor + OPTION_MARGIN, cutoff]
 
 
-def test_unknown_transition_categories() -> None:
-    entries = [
-        {
-            "positive_points": [
-                {
-                    "transition_category": "lava",
-                    "transition_change_category": "land_reclamation",
-                },
-                {
-                    "transition_category": "bare",
-                    "transition_change_category": "borrow_pit",
-                },
-            ]
-        }
-    ]
-    assert dict(_get_unknown_categories(entries)) == {
-        "transition_category: lava": 1,
-        "transition_change_category: land_reclamation": 1,
-    }
-
-
 def test_window_time_range_aligns_quarterly_with_prediction() -> None:
     """Option 0 of an entry anchored at T - OPTION_MARGIN matches prediction at T.
 
@@ -420,104 +267,11 @@ def test_window_time_range_aligns_quarterly_with_prediction() -> None:
     assert (end - start) % QUARTERLY_PERIOD == timedelta(0)
 
 
-POST_TRANSITION_POINT = {
-    **DATED_POINT,
-    "transition_date": "2020-04-01",
-    "transition_stop_date": "2020-05-01",
-    "transition_category": "bare",
-    "post_transition_pre_change": "2020-06-15",
-    "post_transition_pre_change_category": "river_contract",
-}
-
-
-def test_post_transition_label_arrays() -> None:
-    labels = _labels_at_point(POST_TRANSITION_POINT)
-    # Aliases apply like pre_change_category (river_contract -> water_to_land).
-    pre_change_class = labels["label_post_transition_pre_change"]
-    assert PRE_CHANGE_CATEGORY_NAMES[pre_change_class] == "water_to_land"
-    assert labels["label_post_transition_ts_start"] == _days("2020-06-15")
-    # The point's own pre labels are unchanged.
-    assert labels["label_ts_start"] == _days("2020-01-15")
-    assert PRE_CHANGE_CATEGORY_NAMES[labels["label_pre_change"]] == "mangrove_loss"
-
-    unset = _labels_at_point({**DATED_POINT, "transition_date": "2020-04-01"})
-    assert unset["label_post_transition_pre_change"] == 0
-    assert unset["label_post_transition_ts_start"] == DAYS_NODATA
-
-
-@pytest.mark.parametrize(
-    "fields,match",
-    [
-        ({}, None),
-        ({"post_transition_pre_change": "2020-01-15"}, "post_transition_pre_change"),
-        ({"post_transition_pre_change": "2020-09-01"}, "post_transition_pre_change"),
-        # Anywhere between pre_change and post_change, even before the transition.
-        ({"post_transition_pre_change": "2020-01-16"}, None),
-        ({"transition_date": None}, "without a transition_date"),
-        (
-            {"transition_date": None, "post_transition_pre_change": None},
-            "without a transition_date",
-        ),
-    ],
-)
-def test_validate_post_transition_fields(
-    fields: dict[str, str | None], match: str | None
-) -> None:
-    point = {**POST_TRANSITION_POINT, "transition_stop_date": None, **fields}
-    entry = {"positive_points": [{"lon": LON, "lat": LAT, **point}]}
-    if match is None:
-        _validate_positive_point_dates(entry)
-    else:
-        with pytest.raises(ValueError, match=match):
-            _validate_positive_point_dates(entry)
-
-
 def test_resurfaced_road_trains_as_new_road() -> None:
     assert _change_labels({"post_change_category": "resurfaced_road"}) == (
         "none",
         "new_road",
     )
-
-
-def test_frequent_options_avoid_excluded_end_ranges() -> None:
-    first = datetime(2020, 2, 1, tzinfo=timezone.utc)
-    post = datetime(2020, 9, 1, tzinfo=timezone.utc)
-    transition = datetime(2020, 4, 1, tzinfo=timezone.utc)
-    stop = datetime(2020, 5, 1, tzinfo=timezone.utc)
-    cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    without = _compute_frequent_block_ends(
-        first, post, "w", cutoff, transition_date=transition
-    )
-    # No ranges: the options are unchanged.
-    assert (
-        _compute_frequent_block_ends(
-            first, post, "w", cutoff, transition_date=transition, excluded_end_ranges=[]
-        )
-        == without
-    )
-    for name in ("w", "x", "y", "z"):
-        ends = _compute_frequent_block_ends(
-            first,
-            post,
-            name,
-            cutoff,
-            transition_date=transition,
-            excluded_end_ranges=[(stop, post)],
-        )
-        assert not any(stop < end < post for end in ends)
-        # Option 2 (validation) still ends right after post_change.
-        assert ends[2] == post + OPTION_MARGIN
-
-    # A deterministic end inside a range moves back to its start.
-    ends = _compute_frequent_block_ends(
-        first,
-        post,
-        "w",
-        cutoff,
-        excluded_end_ranges=[(first, post)],
-    )
-    assert ends[0] == first
-    assert not any(first < end < post for end in ends)
 
 
 def test_sidecar_dates_match_excluded_end_ranges() -> None:
@@ -538,12 +292,268 @@ def test_sidecar_dates_match_excluded_end_ranges() -> None:
     )
 
 
-def test_unknown_post_transition_category() -> None:
-    entry = {
-        "positive_points": [
-            {**POST_TRANSITION_POINT, "post_transition_pre_change_category": "nope"}
-        ]
-    }
-    assert _get_unknown_categories([entry]) == Counter(
-        {"post_transition_pre_change_category: nope": 1}
+CHANGE2_POINT = {
+    **DATED_POINT,
+    "change2_pre_change": "2021-03-01",
+    "change2_first_date_change_noticeable": "2021-04-01",
+    "change2_post_change": "2021-06-01",
+    "change2_pre_category": "agriculture",
+    "change2_post_category": "water",
+    "change2_post_change_category": "flooding",
+    "change2_stop_date": "2022-01-01",
+}
+
+
+def test_change2_label_arrays() -> None:
+    labels = _labels_at_point(
+        {**CHANGE2_POINT, "stop_date": "2021-01-01"}, gap=timedelta(days=10)
     )
+    # The first change, with first-noticeable and stop date rasters (first
+    # noticeable and post-change get the gap; pre-change and stop dates don't).
+    assert labels["label_ts_start"] == _days("2020-01-15")
+    assert labels["label_ts_end"] == _days("2020-09-01") + 10
+    assert labels["label_first_noticeable"] == _days("2020-02-01") + 10
+    assert labels["label_stop_date"] == _days("2021-01-01")
+    assert LC_CLASS_NAMES[labels["label_dst"]] == "agriculture"
+    # The second change.
+    assert labels["label_change2_ts_start"] == _days("2021-03-01")
+    assert labels["label_change2_ts_end"] == _days("2021-06-01") + 10
+    assert labels["label_change2_first_noticeable"] == _days("2021-04-01") + 10
+    assert labels["label_change2_stop_date"] == _days("2022-01-01")
+    assert LC_CLASS_NAMES[labels["label_change2_src"]] == "agriculture"
+    assert LC_CLASS_NAMES[labels["label_change2_dst"]] == "water"
+    # An unset pre-change category next to a set post one is "none".
+    assert PRE_CHANGE_CATEGORY_NAMES[labels["label_change2_pre_change"]] == "none"
+    assert POST_CHANGE_CATEGORY_NAMES[labels["label_change2_post_change"]] == (
+        "flooding"
+    )
+
+
+def test_no_change2_labels_without_second_change() -> None:
+    labels = _labels_at_point(DATED_POINT)
+    for name, value in labels.items():
+        if name.startswith("label_change2_"):
+            assert value in (0, DAYS_NODATA), name
+    assert labels["label_stop_date"] == DAYS_NODATA
+
+
+LEGACY_TRANSITION_POINT = {
+    **DATED_POINT,
+    "transition_date": "2020-04-01",
+    "transition_category": "bare",
+    "transition_change_category": "site_clearing",
+    "transition_terminal_state": "bare",
+    "terminal_state": "agriculture",
+    "stop_date": "2021-01-01",
+}
+
+
+def test_legacy_transition_to_change2() -> None:
+    converted = legacy_transition_to_change2(LEGACY_TRANSITION_POINT)
+    assert converted == {
+        "pre_change": "2020-01-15",
+        "first_date_change_noticeable": "2020-02-01",
+        "post_change": "2020-04-01",
+        "pre_category": "mangrove",
+        "post_category": "bare",
+        "pre_change_category": "mangrove_loss",
+        "post_change_category": "site_clearing",
+        "terminal_state": "bare",
+        "change2_pre_change": "2020-01-15",
+        "change2_first_date_change_noticeable": "2020-09-01",
+        "change2_post_change": "2020-09-01",
+        "change2_pre_category": "mangrove",
+        "change2_post_category": "agriculture",
+        "change2_pre_change_category": "mangrove_loss",
+        "change2_post_change_category": "new_agriculture",
+        "change2_stop_date": "2021-01-01",
+        "change2_terminal_state": "agriculture",
+    }
+    # Converted points rasterize like the legacy ones (and are valid).
+    assert _labels_at_point(converted) == _labels_at_point(LEGACY_TRANSITION_POINT)
+    assert point_date_errors(converted) == []
+    # Points without a transition are unchanged.
+    assert legacy_transition_to_change2(DATED_POINT) == DATED_POINT
+    with pytest.raises(ValueError, match="transition_stop_date"):
+        legacy_transition_to_change2(
+            {**LEGACY_TRANSITION_POINT, "transition_stop_date": "2020-05-01"}
+        )
+    with pytest.raises(ValueError, match="both"):
+        legacy_transition_to_change2({**CHANGE2_POINT, "transition_date": "2020-04-01"})
+
+
+def test_legacy_transition_label_arrays() -> None:
+    """A transition trains as the first change's end, then the second change."""
+    labels = _labels_at_point(LEGACY_TRANSITION_POINT, gap=timedelta(days=10))
+    assert labels["label_ts_end"] == _days("2020-04-01") + 10
+    assert LC_CLASS_NAMES[labels["label_src"]] == "mangrove"
+    assert LC_CLASS_NAMES[labels["label_dst"]] == "bare"
+    assert POST_CHANGE_CATEGORY_NAMES[labels["label_post_change"]] == "site_clearing"
+    assert labels["label_stop_date"] == DAYS_NODATA
+    assert labels["label_change2_ts_start"] == _days("2020-01-15")
+    assert labels["label_change2_ts_end"] == _days("2020-09-01") + 10
+    assert labels["label_change2_first_noticeable"] == _days("2020-09-01") + 10
+    assert labels["label_change2_stop_date"] == _days("2021-01-01")
+    assert LC_CLASS_NAMES[labels["label_change2_src"]] == "mangrove"
+    assert LC_CLASS_NAMES[labels["label_change2_dst"]] == "agriculture"
+    assert PRE_CHANGE_CATEGORY_NAMES[labels["label_change2_pre_change"]] == (
+        "mangrove_loss"
+    )
+    # A transition without a land cover leaves the first change's dst nodata.
+    labels = _labels_at_point({**DATED_POINT, "transition_date": "2020-04-01"})
+    assert labels["label_dst"] == 0
+
+
+@pytest.mark.parametrize(
+    "fields,match",
+    [
+        ({}, None),
+        # First-noticeable after post-change is allowed.
+        ({"first_date_change_noticeable": "2020-10-01"}, None),
+        ({"first_date_change_noticeable": "2020-01-15"}, "pre_change must be before"),
+        ({"post_change": "2020-01-10"}, "pre_change must be before post_change"),
+        ({"stop_date": "2020-09-01"}, "stop_date must be after"),
+        ({"stop_date": "2020-09-02"}, None),
+        # Second change.
+        ({**CHANGE2_POINT, "change2_post_category": None}, "missing change2_post_cat"),
+        ({**CHANGE2_POINT, "change2_pre_change": "2021-04-01"}, "change2_pre_change"),
+        (
+            {**CHANGE2_POINT, "change2_first_date_change_noticeable": "2020-02-01"},
+            "after first_date_change_noticeable",
+        ),
+        # The second change's first-noticeable may be after its post-change.
+        ({**CHANGE2_POINT, "change2_first_date_change_noticeable": "2021-07-01"}, None),
+        ({**CHANGE2_POINT, "change2_stop_date": "2021-05-01"}, "change2_stop_date"),
+        ({**CHANGE2_POINT, "stop_date": "2020-12-01"}, None),
+        (
+            {**CHANGE2_POINT, "stop_date": "2021-04-01"},
+            "stop_date must be before change2_first",
+        ),
+        (
+            {"transition_date": "2020-04-01", "transition_stop_date": "2020-05-01"},
+            "legacy",
+        ),
+    ],
+)
+def test_validate_point_dates(fields: dict[str, Any], match: str | None) -> None:
+    point = {k: v for k, v in {**DATED_POINT, **fields}.items() if v is not None}
+    entry = {"positive_points": [{"lon": LON, "lat": LAT, **point}]}
+    if match is None:
+        _validate_positive_point_dates(entry)
+    else:
+        with pytest.raises(ValueError, match=match):
+            _validate_positive_point_dates(entry)
+    # filter_v2_jsons omits the entries that would raise.
+    assert positive_point_dates_valid(entry) == (match is None)
+
+
+def test_validate_skips_incomplete_points() -> None:
+    """Points without all their dates are left to the incomplete path.
+
+    A legacy transition point without post_change converts to a dated first change
+    (ending at the transition date) and a second change without dates, so it stays
+    incomplete, as before the conversion.
+    """
+    point = {**LEGACY_TRANSITION_POINT, "post_change": None}
+    assert missing_date_fields(point) == [
+        "change2_first_date_change_noticeable",
+        "change2_post_change",
+    ]
+    _validate_positive_point_dates({"positive_points": [point]})
+    assert not _entry_has_complete_annotations({"positive_points": [point]})
+    mixed = {"positive_points": [{"lon": LON, "lat": LAT, **DATED_POINT}, point]}
+    assert _get_positive_points_missing_dates(mixed) == [point]
+
+
+@pytest.mark.parametrize(
+    "window_stop,valid", [("2020-09-02", True), ("2020-09-01", False)]
+)
+def test_validate_window_stop_date(window_stop: str, valid: bool) -> None:
+    entry = {
+        "window_stop_date": window_stop,
+        "positive_points": [{"lon": LON, "lat": LAT, **DATED_POINT}],
+    }
+    assert positive_point_dates_valid(entry) == valid
+
+
+def test_extra_frequent_options() -> None:
+    first = datetime(2020, 2, 1, tzinfo=timezone.utc)
+    post = datetime(2020, 9, 1, tzinfo=timezone.utc)
+    extra = [datetime(2020, 4, 1, tzinfo=timezone.utc)]
+    cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    without = _compute_frequent_block_ends(first, post, "w", cutoff)
+    with_extra = _compute_frequent_block_ends(
+        first, post, "w", cutoff, extra_dates=extra
+    )
+    assert len(with_extra) == len(without)
+    # The deterministic options (including option 2, used for validation) stay,
+    # the extra option comes next, and it replaces the last random option.
+    assert with_extra[:3] == without[:3]
+    assert with_extra[3] == extra[0] + OPTION_MARGIN
+    assert with_extra[4:] == without[3:-1]
+
+
+def test_frequent_options_first_noticeable_after_post_change() -> None:
+    """Option 2 (right after post-change) is skipped; no option ends before fo."""
+    post = datetime(2020, 2, 1, tzinfo=timezone.utc)
+    first = datetime(2020, 4, 1, tzinfo=timezone.utc)
+    cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    ends = _compute_frequent_block_ends(first, post, "w", cutoff)
+    assert ends[0] == first + OPTION_MARGIN
+    assert all(end > first for end in ends)
+    # Random options reach two years after the later date.
+    assert max(ends) <= first + timedelta(days=730)
+
+
+def test_frequent_options_avoid_excluded_end_ranges() -> None:
+    first = datetime(2020, 2, 1, tzinfo=timezone.utc)
+    post = datetime(2020, 9, 1, tzinfo=timezone.utc)
+    extra = [datetime(2020, 4, 1, tzinfo=timezone.utc)]
+    stop = datetime(2020, 5, 1, tzinfo=timezone.utc)
+    cutoff = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    without = _compute_frequent_block_ends(first, post, "w", cutoff, extra_dates=extra)
+    # No ranges: the options are unchanged.
+    assert (
+        _compute_frequent_block_ends(
+            first, post, "w", cutoff, extra_dates=extra, excluded_end_ranges=[]
+        )
+        == without
+    )
+    for name in ("w", "x", "y", "z"):
+        ends = _compute_frequent_block_ends(
+            first,
+            post,
+            name,
+            cutoff,
+            extra_dates=extra,
+            excluded_end_ranges=[(stop, post)],
+        )
+        assert not any(stop < end < post for end in ends)
+        # Option 2 (validation) still ends right after post_change.
+        assert ends[2] == post + OPTION_MARGIN
+
+    # A deterministic end inside a range moves back to its start.
+    ends = _compute_frequent_block_ends(
+        first,
+        post,
+        "w",
+        cutoff,
+        excluded_end_ranges=[(first, post)],
+    )
+    assert ends[0] == first
+    assert not any(first < end < post for end in ends)
+
+
+def test_unknown_change2_categories() -> None:
+    entries = [
+        {
+            "positive_points": [
+                {**CHANGE2_POINT, "change2_post_category": "lava"},
+                {**LEGACY_TRANSITION_POINT, "transition_category": "rock"},
+            ]
+        }
+    ]
+    assert dict(_get_unknown_categories(entries)) == {
+        "change2_post_category: lava": 1,
+        "post_category: rock": 1,
+    }

@@ -133,138 +133,6 @@
       ],
       "type": "raster"
     },
-    "label_transition_date": {
-      "band_sets": [
-        {
-          "bands": [
-            "label"
-          ],
-          "dtype": "uint16",
-          "format": {
-            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
-          },
-          "nodata_value": 65535
-        }
-      ],
-      "type": "raster"
-    },
-    "label_transition_dst": {
-      "band_sets": [
-        {
-          "bands": [
-            "label"
-          ],
-          "dtype": "uint8",
-          "format": {
-            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
-          }
-        }
-      ],
-      "class_names": [
-        "nodata",
-        "bare",
-        "agriculture",
-        "grassland",
-        "shrub",
-        "snow/ice",
-        "tree",
-        "urban/built-up",
-        "water",
-        "wetland",
-        "mangrove"
-      ],
-      "type": "raster"
-    },
-    "label_transition_post_change": {
-      "band_sets": [
-        {
-          "bands": [
-            "label"
-          ],
-          "dtype": "uint8",
-          "format": {
-            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
-          }
-        }
-      ],
-      "class_names": [
-        "nodata",
-        "none",
-        "vegetation_growth",
-        "new_building",
-        "new_road",
-        "new_infrastructure",
-        "new_agriculture",
-        "new_aquafarm",
-        "site_clearing",
-        "land_to_water",
-        "new_mining_or_quarry",
-        "new_crop_structure",
-        "selective_logging",
-        "landslide",
-        "settlement",
-        "agricultural_activity",
-        "burned",
-        "flooding",
-        "storm_damage",
-        "vegetation_dieback"
-      ],
-      "type": "raster"
-    },
-    "label_transition_stop_date": {
-      "band_sets": [
-        {
-          "bands": [
-            "label"
-          ],
-          "dtype": "uint16",
-          "format": {
-            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
-          },
-          "nodata_value": 65535
-        }
-      ],
-      "type": "raster"
-    },
-    "label_post_transition_pre_change": {
-      "band_sets": [
-        {
-          "bands": [
-            "label"
-          ],
-          "dtype": "uint8",
-          "format": {
-            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
-          }
-        }
-      ],
-      "class_names": [
-        "nodata",
-        "none",
-        "forest_loss",
-        "removed_building",
-        "wetland_loss",
-        "water_to_land",
-        "removed_crop_structure",
-        "mangrove_loss"
-      ],
-      "type": "raster"
-    },
-    "label_post_transition_ts_start": {
-      "band_sets": [
-        {
-          "bands": [
-            "label"
-          ],
-          "dtype": "uint16",
-          "format": {
-            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
-          },
-          "nodata_value": 65535
-        }
-      ],
-      "type": "raster"
-    },
     "label_ts_end": {
       "band_sets": [
         {
@@ -808,6 +676,210 @@
           "space_mode": "MOSAIC"
         }
       },
+      "type": "raster"
+    },
+    "label_first_noticeable": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
+      "type": "raster"
+    },
+    "label_stop_date": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
+      "type": "raster"
+    },
+    "label_change2_src": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "bare",
+        "agriculture",
+        "grassland",
+        "shrub",
+        "snow/ice",
+        "tree",
+        "urban/built-up",
+        "water",
+        "wetland",
+        "mangrove"
+      ],
+      "type": "raster"
+    },
+    "label_change2_dst": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "bare",
+        "agriculture",
+        "grassland",
+        "shrub",
+        "snow/ice",
+        "tree",
+        "urban/built-up",
+        "water",
+        "wetland",
+        "mangrove"
+      ],
+      "type": "raster"
+    },
+    "label_change2_pre_change": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "none",
+        "forest_loss",
+        "removed_building",
+        "wetland_loss",
+        "water_to_land",
+        "removed_crop_structure",
+        "mangrove_loss"
+      ],
+      "type": "raster"
+    },
+    "label_change2_post_change": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint8",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          }
+        }
+      ],
+      "class_names": [
+        "nodata",
+        "none",
+        "vegetation_growth",
+        "new_building",
+        "new_road",
+        "new_infrastructure",
+        "new_agriculture",
+        "new_aquafarm",
+        "site_clearing",
+        "land_to_water",
+        "new_mining_or_quarry",
+        "new_crop_structure",
+        "selective_logging",
+        "landslide",
+        "settlement",
+        "agricultural_activity",
+        "burned",
+        "flooding",
+        "storm_damage",
+        "vegetation_dieback"
+      ],
+      "type": "raster"
+    },
+    "label_change2_ts_start": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
+      "type": "raster"
+    },
+    "label_change2_ts_end": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
+      "type": "raster"
+    },
+    "label_change2_first_noticeable": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
+      "type": "raster"
+    },
+    "label_change2_stop_date": {
+      "band_sets": [
+        {
+          "bands": [
+            "label"
+          ],
+          "dtype": "uint16",
+          "format": {
+            "class_path": "rslearn.utils.raster_format.NumpyRasterFormat"
+          },
+          "nodata_value": 65535
+        }
+      ],
       "type": "raster"
     }
   },

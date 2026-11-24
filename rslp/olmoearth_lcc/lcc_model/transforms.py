@@ -53,19 +53,19 @@ QUARTERLY_PERIOD = timedelta(days=90)
 CHANGE_CATEGORY_TASKS = ("pre_change", "post_change")
 
 # Optional per-pixel label rasters that the training configs pass through to
-# StackSampler (see prepare.py): each positive point's pre_change, post_change,
-# transition, transition stop and post-transition pre-change dates (uint16 days
-# since 1970-01-01, DAYS_NODATA where unset), and its transition land cover,
-# transition change category and post-transition pre-change category classes (0 =
-# nodata).
+# StackSampler (see prepare.py): each positive point's first change dates
+# (pre_change, post_change, first-noticeable and stop dates, uint16 days since
+# 1970-01-01, DAYS_NODATA where unset), and its optional second change's (the same
+# dates plus its src / dst / pre_change / post_change classes, 0 = nodata).
 LABEL_TS_START_KEY = "label_ts_start"
 LABEL_TS_END_KEY = "label_ts_end"
-LABEL_TRANSITION_DATE_KEY = "label_transition_date"
-LABEL_TRANSITION_STOP_DATE_KEY = "label_transition_stop_date"
-LABEL_TRANSITION_DST_KEY = "label_transition_dst"
-LABEL_TRANSITION_POST_CHANGE_KEY = "label_transition_post_change"
-LABEL_POST_TRANSITION_PRE_CHANGE_KEY = "label_post_transition_pre_change"
-LABEL_POST_TRANSITION_TS_START_KEY = "label_post_transition_ts_start"
+LABEL_FIRST_NOTICEABLE_KEY = "label_first_noticeable"
+LABEL_STOP_DATE_KEY = "label_stop_date"
+CHANGE2_PREFIX = "label_change2_"
+# Second-change class rasters, keyed by the target they replace.
+CHANGE2_CLASS_TARGETS = ("src", "dst", "pre_change", "post_change")
+# Targets gated on the post-change date (masked while the change is in progress).
+POST_TARGETS = ("dst", "post_change")
 
 
 def _change_index(centers: list[datetime], target: datetime, is_start: bool) -> int:
@@ -159,174 +159,133 @@ def _pop_label(input_dict: dict[str, Any], key: str) -> torch.Tensor | None:
     return None if raster is None else raster.get_hw_tensor().long()
 
 
-def gate_post_change_targets(
+def _mask_targets(target_dict: dict[str, Any], masked: torch.Tensor) -> None:
+    """Set valid = 0 at the masked pixels of every target with a valid raster."""
+    if not masked.any():
+        return
+    for target in target_dict.values():
+        if not isinstance(target, dict) or "valid" not in target:
+            continue
+        valid = target["valid"].get_hw_tensor().clone().float()
+        valid[masked] = 0.0
+        target["valid"] = RasterImage(image=valid[None, None, :, :])
+
+
+def gate_change_targets(
     input_dict: dict[str, Any],
     target_dict: dict[str, Any],
     end: datetime,
+    pre_change: datetime,
     post_change: datetime,
     shape: tuple[int, int],
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Gate the change targets on each positive point's dates.
 
     With ``end`` the end of the latest frequent image, per pixel:
+    - which change applies: the second change if the point has one and end >= its
+      first-noticeable date, else the first. For the second change, src / dst /
+      pre_change / post_change use its classes (masked where 0) and ts_start /
+      ts_end its dates.
+    - dst and post_change are masked while end < the applying change's post_change
+      (the change is still in progress), and ts_end then targets that date, which is
+      after end, i.e. the last timestep.
+    - everything (every target with a valid raster, binary included) is masked when
+      end < the first change's first-noticeable date, or end > the applying
+      change's stop date.
 
-    - end >= post_change: dst and post_change keep their labels.
-    - else, if the point has a transition and transition_date <= end <=
-      transition_stop_date (default: post_change): dst and post_change use the
-      transition's land cover and change category (each masked if unset).
-    - otherwise (the change is still in progress): dst and post_change are masked.
-
-    A point with a transition may also have post-transition pre-change fields: the
-    pre-change date and category of the change from the transition stage to the
-    post-change state. For such a point:
-
-    - end >= post_change: src uses the transition land cover (masked if unset),
-      pre_change the post-transition pre-change category and ts_start the
-      post-transition pre-change date (each falling back to the point's own pre
-      label when unset).
-    - transition_stop_date < end < post_change: it is unclear which pre-change
-      labels apply, so src, pre_change and ts_start are masked as well (prepare.py
-      does not sample these ends, but a block's latest image can fall before
-      post_change).
-
-    The per-pixel dates come from the passthrough label_ts_end, label_transition_*
-    and label_post_transition_* rasters, which are removed from input_dict. Without
-    label_ts_end, the post_change dates come from the ts_end days target if present
-    (PerPixelTimestepTask configs), else the window's post_change. Without the
-    transition rasters, no point has a transition, and without the post-transition
-    rasters no point has post-transition fields.
-
-    ts_end and ts_start days targets (PerPixelTimestepTask configs) are rewritten to
+    The per-pixel dates come from the passthrough label rasters (removed from
+    input_dict). Without label_ts_start / label_ts_end, the dates come from the
+    ts_start / ts_end days targets if present (PerPixelTimestepTask configs), else
+    the window's pre_change / post_change. Without the first-noticeable, stop-date or
+    change2 rasters, nothing is masked by them and no point has a second change.
+    ts_start / ts_end days targets (PerPixelTimestepTask configs) are rewritten to
     the per-pixel dates.
 
     Args:
         input_dict: the input dict, holding the optional label rasters.
-        target_dict: the target dict whose dst/post_change targets are rewritten.
+        target_dict: the target dict whose targets are rewritten.
         end: the end of the latest frequent image of the sampled stack.
+        pre_change: the window's pre_change (from the annotations sidecar).
         post_change: the window's post_change (from the annotations sidecar).
         shape: the (height, width) of the targets.
 
     Returns:
-        (ts_end_days, ts_start_days, ts_start_masked), HW tensors:
-        ts_end_days is the per-pixel ts_end target date in days since 1970-01-01:
-        the transition date if the point has a transition, end < post_change and
-        end <= transition_stop_date, else the post_change date. While a change is in
-        progress this date is after end, so it maps to the last timestep.
-        ts_start_days is the post-transition pre-change date where it replaces the
-        point's pre_change, else DAYS_NODATA. ts_start_masked is True where the
-        ts_start target is masked.
+        (ts_start_days, ts_end_days, masked), HW tensors: the per-pixel ts_start and
+        ts_end target dates in days since 1970-01-01, and where all targets are
+        masked.
     """
-    post_days = _pop_label(input_dict, LABEL_TS_END_KEY)
-    trans_days = _pop_label(input_dict, LABEL_TRANSITION_DATE_KEY)
-    trans_stop_days = _pop_label(input_dict, LABEL_TRANSITION_STOP_DATE_KEY)
-    trans_dst = _pop_label(input_dict, LABEL_TRANSITION_DST_KEY)
-    trans_post_change = _pop_label(input_dict, LABEL_TRANSITION_POST_CHANGE_KEY)
-    post_trans_pre_change = _pop_label(input_dict, LABEL_POST_TRANSITION_PRE_CHANGE_KEY)
-    post_trans_start_days = _pop_label(input_dict, LABEL_POST_TRANSITION_TS_START_KEY)
 
-    if post_days is None and "days" in target_dict.get(TS_END_KEY, {}):
-        ts_end = target_dict[TS_END_KEY]
-        post_days = torch.where(
-            ts_end["valid"].get_hw_tensor() > 0,
-            ts_end["days"].get_hw_tensor().long(),
-            DAYS_NODATA,
+    def days_label(key: str, target_key: str | None, window: datetime) -> torch.Tensor:
+        days = _pop_label(input_dict, key)
+        if days is None and target_key and "days" in target_dict.get(target_key, {}):
+            target = target_dict[target_key]
+            days = torch.where(
+                target["valid"].get_hw_tensor() > 0,
+                target["days"].get_hw_tensor().long(),
+                DAYS_NODATA,
+            )
+        window_days = int(_days_since_epoch(window) // 1)
+        if days is None:
+            return torch.full(shape, window_days, dtype=torch.long)
+        return torch.where(days == DAYS_NODATA, window_days, days)
+
+    def optional_days(key: str) -> torch.Tensor:
+        days = _pop_label(input_dict, key)
+        return (
+            torch.full(shape, DAYS_NODATA, dtype=torch.long) if days is None else days
         )
-    window_days = int(_days_since_epoch(post_change) // 1)
-    if post_days is None:
-        post_days = torch.full(shape, window_days, dtype=torch.long)
-    else:
-        post_days = torch.where(post_days == DAYS_NODATA, window_days, post_days)
+
+    start_days = days_label(LABEL_TS_START_KEY, TS_START_KEY, pre_change)
+    post_days = days_label(LABEL_TS_END_KEY, TS_END_KEY, post_change)
+    first_noticeable = optional_days(LABEL_FIRST_NOTICEABLE_KEY)
+    stop = optional_days(LABEL_STOP_DATE_KEY)
+    change2_start = optional_days(f"{CHANGE2_PREFIX}ts_start")
+    change2_post = optional_days(f"{CHANGE2_PREFIX}ts_end")
+    change2_noticeable = optional_days(f"{CHANGE2_PREFIX}first_noticeable")
+    change2_stop = optional_days(f"{CHANGE2_PREFIX}stop_date")
+    change2_classes = {
+        name: _pop_label(input_dict, f"{CHANGE2_PREFIX}{name}")
+        for name in CHANGE2_CLASS_TARGETS
+    }
 
     end_days = _days_since_epoch(end)
-    post_ok = end_days >= post_days
-    if trans_days is None:
-        has_transition = torch.zeros_like(post_ok)
-        trans_days = torch.full_like(post_days, DAYS_NODATA)
-    else:
-        has_transition = trans_days != DAYS_NODATA
-    # An unset transition stop date is the point's post_change.
-    if trans_stop_days is None:
-        has_stop = torch.zeros_like(post_ok)
-        trans_stop_days = post_days
-    else:
-        has_stop = trans_stop_days != DAYS_NODATA
-        trans_stop_days = torch.where(has_stop, trans_stop_days, post_days)
-    in_transition = ~post_ok & has_transition & (end_days <= trans_stop_days)
-    trans_ok = in_transition & (end_days >= trans_days)
-
-    if post_trans_pre_change is None:
-        post_trans_pre_change = torch.zeros_like(post_days)
-    if post_trans_start_days is None:
-        post_trans_start_days = torch.full_like(post_days, DAYS_NODATA)
-    has_post_transition = has_transition & (
-        (post_trans_pre_change > 0) | (post_trans_start_days != DAYS_NODATA)
+    second = (change2_noticeable != DAYS_NODATA) & (end_days >= change2_noticeable)
+    applying_stop = torch.where(second, change2_stop, stop)
+    masked = ((first_noticeable != DAYS_NODATA) & (end_days < first_noticeable)) | (
+        (applying_stop != DAYS_NODATA) & (end_days > applying_stop)
     )
-    post_transition_ok = post_ok & has_post_transition
-    in_gap = has_post_transition & has_stop & ~post_ok & (end_days > trans_stop_days)
+    ts_start_days = torch.where(second, change2_start, start_days)
+    ts_end_days = torch.where(second, change2_post, post_days)
+    post_ok = end_days >= ts_end_days
 
-    for name, trans_classes in (
-        ("dst", trans_dst),
-        ("post_change", trans_post_change),
-    ):
+    for name in CHANGE2_CLASS_TARGETS:
         if name not in target_dict:
             continue
         classes = target_dict[name]["classes"].get_hw_tensor().clone()
         valid = target_dict[name]["valid"].get_hw_tensor().clone().float()
-        if trans_classes is not None:
-            classes = torch.where(trans_ok, trans_classes.to(classes.dtype), classes)
-            valid = torch.where(trans_ok, (trans_classes > 0).float(), valid)
+        second_classes = change2_classes[name]
+        if second_classes is None:
+            valid = torch.where(second, 0.0, valid)
         else:
-            valid = torch.where(trans_ok, 0.0, valid)
-        valid = torch.where(post_ok | trans_ok, valid, 0.0)
+            classes = torch.where(second, second_classes.to(classes.dtype), classes)
+            valid = torch.where(second, (second_classes > 0).float(), valid)
+        if name in POST_TARGETS:
+            valid = torch.where(post_ok, valid, 0.0)
         target_dict[name]["classes"] = RasterImage(image=classes[None, None, :, :])
         target_dict[name]["valid"] = RasterImage(image=valid[None, None, :, :])
 
-    # The pre side of the change from the transition stage to the post-change state.
-    for name, post_trans_classes in (
-        ("src", trans_dst),
-        ("pre_change", post_trans_pre_change),
-    ):
-        if name not in target_dict:
+    for key, days in ((TS_START_KEY, ts_start_days), (TS_END_KEY, ts_end_days)):
+        if "days" not in target_dict.get(key, {}):
             continue
-        classes = target_dict[name]["classes"].get_hw_tensor().clone()
-        valid = target_dict[name]["valid"].get_hw_tensor().clone().float()
-        if post_trans_classes is not None:
-            override = post_transition_ok
-            if name == "pre_change":
-                # An unset post-transition pre-change category keeps the point's.
-                override = override & (post_trans_classes > 0)
-            classes = torch.where(
-                override, post_trans_classes.to(classes.dtype), classes
-            )
-            valid = torch.where(override, (post_trans_classes > 0).float(), valid)
-        valid = torch.where(in_gap, 0.0, valid)
-        target_dict[name]["classes"] = RasterImage(image=classes[None, None, :, :])
-        target_dict[name]["valid"] = RasterImage(image=valid[None, None, :, :])
+        target = target_dict[key]
+        valid = target["valid"].get_hw_tensor().float()
+        new_days = torch.where(valid > 0, days, target["days"].get_hw_tensor().long())
+        valid = valid * (new_days != DAYS_NODATA).float()
+        target["days"] = RasterImage(image=new_days[None, None, :, :])
+        target["valid"] = RasterImage(image=valid[None, None, :, :])
 
-    ts_start_days = torch.where(post_transition_ok, post_trans_start_days, DAYS_NODATA)
-    if "days" in target_dict.get(TS_START_KEY, {}):
-        ts_start = target_dict[TS_START_KEY]
-        valid = ts_start["valid"].get_hw_tensor().float()
-        days = torch.where(
-            (valid > 0) & (ts_start_days != DAYS_NODATA),
-            ts_start_days,
-            ts_start["days"].get_hw_tensor().long(),
-        )
-        valid = torch.where(in_gap, 0.0, valid)
-        ts_start["days"] = RasterImage(image=days[None, None, :, :])
-        ts_start["valid"] = RasterImage(image=valid[None, None, :, :])
-
-    ts_end_days = torch.where(in_transition, trans_days, post_days)
-    if "days" in target_dict.get(TS_END_KEY, {}):
-        ts_end = target_dict[TS_END_KEY]
-        valid = ts_end["valid"].get_hw_tensor().float()
-        days = torch.where(
-            valid > 0, ts_end_days, ts_end["days"].get_hw_tensor().long()
-        )
-        valid = valid * (days != DAYS_NODATA).float()
-        ts_end["days"] = RasterImage(image=days[None, None, :, :])
-        ts_end["valid"] = RasterImage(image=valid[None, None, :, :])
-    return ts_end_days, ts_start_days, in_gap
+    _mask_targets(target_dict, masked)
+    return ts_start_days, ts_end_days, masked
 
 
 class StackSampler(Transform):
@@ -340,14 +299,12 @@ class StackSampler(Transform):
     ``PerPixelTimestepTask``, which reads them from the ``label_ts_start`` /
     ``label_ts_end`` day rasters; only the ``ts_end`` days are rewritten per pixel.
 
-    The dst and post_change targets are gated on each positive point's dates (see
-    gate_post_change_targets): they are only trained once the sampled images reach
-    post_change, or the point's transition, whose labels they then use. ts_end
-    targets the transition date in that interval, and while the change is still in
-    progress it targets the next date (transition or post_change), i.e. the last
-    timestep. With post-transition pre-change fields, the src, pre_change and
-    ts_start targets switch to the transition stage once the images reach
-    post_change, and are masked between the transition stop date and post_change.
+    The targets are gated on each positive point's dates (see gate_change_targets):
+    the point's second change applies once the sampled images reach its
+    first-noticeable date; dst and post_change are only trained once the images
+    reach the applying change's post_change (until then ts_end targets the last
+    timestep); and nothing is trained at a point for images ending before its
+    first-noticeable date or after the applying change's stop date.
     """
 
     def __init__(
@@ -375,14 +332,13 @@ class StackSampler(Transform):
         ts_start_days: torch.Tensor,
         ts_end_days: torch.Tensor,
         quarterly: RasterImage,
-        ts_start_masked: torch.Tensor | None = None,
+        masked: torch.Tensor | None = None,
     ) -> None:
         """Compute start/end timestamp index targets over the chronological steps.
 
-        The start uses the per-pixel ts_start_days (each point's pre_change, or its
-        post-transition pre-change date), and the end the per-pixel ts_end_days
-        (see gate_post_change_targets). The start target is masked where
-        ts_start_masked is True.
+        The start uses the per-pixel ts_start_days and the end the per-pixel
+        ts_end_days of the applying change (see gate_change_targets). Both are masked
+        where masked is True.
         """
         centers = [ts[0] + (ts[1] - ts[0]) / 2 for ts in combined_ts]
 
@@ -407,11 +363,10 @@ class StackSampler(Transform):
                 )
                 idx_map[change_mask & (days_map == days)] = idx
 
-        start_valid = valid_mask.clone()
-        if ts_start_masked is not None:
-            start_valid[ts_start_masked] = 0.0
+        if masked is not None:
+            valid_mask[masked] = 0.0
         for key, idx_map, valid in (
-            (TS_START_KEY, start_map, start_valid),
+            (TS_START_KEY, start_map, valid_mask.clone()),
             (TS_END_KEY, end_map, valid_mask.clone()),
         ):
             target_dict[key] = {
@@ -477,30 +432,18 @@ class StackSampler(Transform):
         combined_ts = q_ts + chosen_frequent.timestamps
         input_dict[INPUT_KEY] = RasterImage(image=combined_img, timestamps=combined_ts)
 
-        # The model can't predict the destination land cover or post-change category
-        # before the imagery shows them, so gate those targets on the dates.
+        # Gate the targets on each point's dates: which change applies, whether it is
+        # complete (dst / post_change are only predictable once the imagery shows
+        # them), and whether the point is masked (before first noticeable, after a
+        # stop date).
         latest_freq_ts = max(ts[1] for ts in chosen_frequent.timestamps)
-        ts_end_days, post_trans_start_days, ts_start_masked = gate_post_change_targets(
+        ts_start_days, ts_end_days, masked = gate_change_targets(
             input_dict,
             target_dict,
             latest_freq_ts,
+            pre_change,
             post_change,
             (combined_img.shape[2], combined_img.shape[3]),
-        )
-
-        # Each point's pre_change, falling back to the window's where unset (and for
-        # datasets without the label_ts_start raster), or its post-transition
-        # pre-change date once the images reach post_change.
-        window_start_days = int(_days_since_epoch(pre_change) // 1)
-        ts_start_days = _pop_label(input_dict, LABEL_TS_START_KEY)
-        if ts_start_days is None:
-            ts_start_days = torch.full_like(ts_end_days, window_start_days)
-        else:
-            ts_start_days = torch.where(
-                ts_start_days == DAYS_NODATA, window_start_days, ts_start_days
-            )
-        ts_start_days = torch.where(
-            post_trans_start_days != DAYS_NODATA, post_trans_start_days, ts_start_days
         )
 
         if self.emit_timestep_targets:
@@ -510,7 +453,7 @@ class StackSampler(Transform):
                 ts_start_days,
                 ts_end_days,
                 quarterly,
-                ts_start_masked,
+                masked,
             )
 
         # Train the change-category heads to predict "none" at negative points.

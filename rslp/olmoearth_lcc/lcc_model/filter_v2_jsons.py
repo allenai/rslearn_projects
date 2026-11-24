@@ -1,16 +1,12 @@
 """Filter v2 annotation JSONs to the entries that prepare.py would accept.
 
 Applies the same window-level rules as ``rslp.olmoearth_lcc.lcc_model.prepare``:
-- Entries with invalid positive-point date ordering (expected
-  pre_change < first_date_change_noticeable <= post_change < stop_date, with
-  stop_date optional, first_date_change_noticeable <= transition_date <
-  post_change for the optional transition_date, transition_date <
-  transition_stop_date < post_change for the optional transition_stop_date, and
-  pre_change < post_transition_pre_change < post_change for the optional
-  post-transition fields, which need a transition_date) are omitted (prepare.py
-  raises on these).
-- "Mixed" entries where some positive points have all three date fields and
-  some don't are omitted.
+- Entries with invalid positive-point dates (label_changes.point_date_errors, e.g.
+  pre_change before first_date_change_noticeable and post_change, stop dates after
+  them, the second change's rules, and window_stop_date after every point's
+  first-noticeable and post-change dates) are omitted (prepare.py raises on these).
+- "Mixed" entries where some positive points have all their date fields
+  (label_changes.missing_date_fields) and some don't are omitted.
 - Entries without complete annotations (no fully-annotated positive point, and
   not a negative-only entry with an anchor_date or time_range) are omitted.
 - Duplicate group/window_name keys across all inputs are omitted (first

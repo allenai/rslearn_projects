@@ -26,7 +26,7 @@ from rslp.olmoearth_lcc.studio.schema import (
 # Entry keys with a home of their own on the task; anything else goes in
 # attributes["extra"].
 WINDOW_KEYS = ("projection", "bounds", "window_name", "group")
-SAMPLE_KEYS = ("description", "anchor_date")
+SAMPLE_KEYS = ("description", "anchor_date", "window_stop_date")
 KNOWN_ENTRY_KEYS = (
     WINDOW_KEYS + ("time_range",) + SAMPLE_KEYS + ("positive_points", "negative_points")
 )

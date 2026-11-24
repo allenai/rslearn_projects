@@ -323,12 +323,56 @@ def test_every_field_is_labelset_or_date() -> None:
     assert [name for name in ALL_FIELDS if not is_labelset_field(name)] == [
         "pre_change",
         "first_date_change_noticeable",
+        "post_change",
+        "stop_date",
+        "change2_pre_change",
+        "change2_first_date_change_noticeable",
+        "change2_post_change",
+        "change2_stop_date",
         "transition_date",
         "transition_stop_date",
         "post_transition_pre_change",
-        "post_change",
-        "stop_date",
     ]
+
+
+def test_change2_fields_and_window_stop_date_round_trip() -> None:
+    point = {
+        "lon": 1.0,
+        "lat": 2.0,
+        "pre_change": "2020-01-15",
+        "first_date_change_noticeable": "2020-02-01",
+        "post_change": "2020-04-01",
+        "stop_date": "2020-05-01",
+        "change2_pre_change": "2020-06-01",
+        "change2_first_date_change_noticeable": "2020-08-01",
+        "change2_post_change": "2020-09-01",
+        "change2_stop_date": "2021-01-01",
+        "pre_category": "tree",
+        "post_category": "bare",
+        "pre_change_category": "forest_loss",
+        "post_change_category": "site_clearing",
+        "terminal_state": "bare",
+        "change2_pre_category": "bare",
+        "change2_post_category": "tree",
+        "change2_post_change_category": "ice_gain",
+        "change2_terminal_state": "tree",
+    }
+    entry = make_entry(positive_points=[point], window_stop_date="2021-06-01")
+    studio = FakeStudio([entry])
+    # The second change's category fields use the labelsets of the first change's.
+    for field, owner, label in (
+        ("change2_pre_category", "pre_category", "bare"),
+        ("change2_post_category", "post_category", "tree"),
+        ("change2_pre_change_category", "pre_change_category", "forest_loss"),
+        ("change2_post_change_category", "post_change_category", "ice_gain"),
+        ("change2_terminal_state", "terminal_state", "tree"),
+    ):
+        assert studio.label_ids[field][label] == f"label-{owner}-{label}"
+    task = studio.task_record(0, entry)
+    assert task["attributes"]["window_stop_date"] == "2021-06-01"
+    assert "extra" not in task["attributes"]
+    assert_entries_equal(studio.round_trip(0, entry), entry)
+    assert not unmapped_point_keys(point, POSITIVE)
 
 
 def test_transition_fields_round_trip() -> None:

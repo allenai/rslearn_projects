@@ -20,14 +20,23 @@ POSITIVE = "positive"
 NEGATIVE = "negative"
 POINT_TYPE_COLORS = {POSITIVE: "#2ca02c", NEGATIVE: "#d62728"}
 
+# A positive point labels a change and optionally a second change after it (the
+# change2_* fields; see lcc_model/label_changes.py). The transition fields are
+# legacy: the second change replaced them on 2026-11-24 and the lab no longer shows
+# them, but they stay in the projects so old values still round-trip (prepare.py
+# converts them).
 DATE_FIELDS = (
     "pre_change",
     "first_date_change_noticeable",
+    "post_change",
+    "stop_date",
+    "change2_pre_change",
+    "change2_first_date_change_noticeable",
+    "change2_post_change",
+    "change2_stop_date",
     "transition_date",
     "transition_stop_date",
     "post_transition_pre_change",
-    "post_change",
-    "stop_date",
 )
 
 # The training land cover classes without nodata.
@@ -87,12 +96,13 @@ POST_CHANGE_CATEGORIES = (
     "tree_crop_harvest",
     "burned",
     "ice_loss",
+    "ice_gain",
     "river_channel_migration",
 )
 
 # What the location is at the end of the series. For annotation only (training
 # ignores it); unlike the other fields, negative points may carry it too.
-# transition_terminal_state is the same for the transition stage of a positive point.
+# change2_terminal_state is the same at the end of a positive point's second change.
 TERMINAL_STATE_FIELD = "terminal_state"
 TERMINAL_STATES = LAND_COVER_CATEGORIES + (
     "building",
@@ -148,11 +158,16 @@ FINE_CHANGE_CATEGORIES = (
 
 CATEGORY_FIELDS: dict[str, tuple[str, ...]] = {
     "pre_category": LAND_COVER_CATEGORIES,
-    "transition_category": LAND_COVER_CATEGORIES,
     "post_category": LAND_COVER_CATEGORIES,
     "pre_change_category": PRE_CHANGE_CATEGORIES,
     "post_change_category": POST_CHANGE_CATEGORIES,
     TERMINAL_STATE_FIELD: TERMINAL_STATES,
+    "change2_pre_category": LAND_COVER_CATEGORIES,
+    "change2_post_category": LAND_COVER_CATEGORIES,
+    "change2_pre_change_category": PRE_CHANGE_CATEGORIES,
+    "change2_post_change_category": POST_CHANGE_CATEGORIES,
+    "change2_terminal_state": TERMINAL_STATES,
+    "transition_category": LAND_COVER_CATEGORIES,
     "transition_change_category": POST_CHANGE_CATEGORIES,
     "transition_terminal_state": TERMINAL_STATES,
     "post_transition_pre_change_category": PRE_CHANGE_CATEGORIES,
@@ -163,6 +178,11 @@ CATEGORY_FIELDS: dict[str, tuple[str, ...]] = {
 # Fields that use another field's labelset instead of their own: {field: owner}.
 # The owner must come earlier in ALL_FIELDS.
 SHARED_LABELSETS = {
+    "change2_pre_category": "pre_category",
+    "change2_post_category": "post_category",
+    "change2_pre_change_category": "pre_change_category",
+    "change2_post_change_category": "post_change_category",
+    "change2_terminal_state": TERMINAL_STATE_FIELD,
     "transition_change_category": "post_change_category",
     "transition_terminal_state": TERMINAL_STATE_FIELD,
     "post_transition_pre_change_category": "pre_change_category",
@@ -183,20 +203,31 @@ FIELD_DISPLAY_NAMES = {
     POINT_TYPE_FIELD: "Point type",
     "pre_change": "Pre-change date",
     "first_date_change_noticeable": "First date change noticeable",
-    "transition_date": "Transition date",
-    "transition_stop_date": "Transition stop date",
-    "post_transition_pre_change": "Post-transition pre-change date",
     "post_change": "Post-change date",
     "stop_date": "Stop date",
+    "change2_pre_change": "Second change: pre-change date",
+    "change2_first_date_change_noticeable": "Second change: first date noticeable",
+    "change2_post_change": "Second change: post-change date",
+    "change2_stop_date": "Second change: stop date",
+    "transition_date": "Transition date (legacy)",
+    "transition_stop_date": "Transition stop date (legacy)",
+    "post_transition_pre_change": "Post-transition pre-change date (legacy)",
     "pre_category": "Pre land cover",
-    "transition_category": "Transition category",
     "post_category": "Post land cover",
     "pre_change_category": "Pre-change category",
     "post_change_category": "Post-change category",
     TERMINAL_STATE_FIELD: "Terminal state (optional)",
-    "transition_change_category": "Transition change category",
-    "transition_terminal_state": "Transition terminal state",
-    "post_transition_pre_change_category": "Post-transition pre-change category",
+    "change2_pre_category": "Second change: pre land cover",
+    "change2_post_category": "Second change: post land cover",
+    "change2_pre_change_category": "Second change: pre-change category",
+    "change2_post_change_category": "Second change: post-change category",
+    "change2_terminal_state": "Second change: terminal state (optional)",
+    "transition_category": "Transition category (legacy)",
+    "transition_change_category": "Transition change category (legacy)",
+    "transition_terminal_state": "Transition terminal state (legacy)",
+    "post_transition_pre_change_category": (
+        "Post-transition pre-change category (legacy)"
+    ),
     "same_change_category": "Same-change category (legacy)",
     "fine_change_category": "Fine change category (legacy)",
 }

@@ -143,8 +143,12 @@ def test_stack_sampler_without_timestep_targets() -> None:
 
 POINT = (2, 3)
 NEGATIVE = (0, 0)
+SRC, PRE_CHANGE = 6, 2
 DST, POST_CHANGE = 10, 3
-TRANSITION_DST, TRANSITION_POST_CHANGE = 1, 8
+# The first change's dst / post_change classes when the point has a second change.
+FIRST_DST, FIRST_POST_CHANGE = 1, 8
+# The second change's src / pre_change classes.
+SRC2, PRE_CHANGE2 = 3, 4
 
 
 def _days(date: datetime) -> int:
@@ -158,39 +162,69 @@ def _label(value: int, fill: int = 0) -> RasterImage:
     return RasterImage(image=image[None, None])
 
 
+def _date_label(date: datetime | None) -> RasterImage:
+    return _label(65535 if date is None else _days(date), fill=65535)
+
+
 def _gating_inputs(
     post_change: datetime,
-    transition: datetime | None,
-    transition_classes: tuple[int, int] = (TRANSITION_DST, TRANSITION_POST_CHANGE),
+    first_end: datetime | None = None,
+    first_classes: tuple[int, int] = (FIRST_DST, FIRST_POST_CHANGE),
     with_rasters: bool = True,
-    transition_stop: datetime | None = None,
+    first_noticeable: datetime | None = None,
+    stop: datetime | None = None,
+    second_noticeable: datetime | None = None,
+    second_stop: datetime | None = None,
+    second_start: datetime | None = None,
 ) -> tuple[dict, dict]:
-    """Stack inputs with dst/post_change targets and the per-pixel date rasters.
+    """Stack inputs with change targets and the per-pixel date rasters.
+
+    Without first_end, the point has one change ending at post_change, with the
+    SRC / PRE_CHANGE / DST / POST_CHANGE classes. With first_end, its first change
+    ends there with first_classes as dst / post_change, and its second change
+    (noticeable at second_noticeable, default post_change; pre-change date
+    second_start, default the window's) ends at post_change with SRC2 / PRE_CHANGE2
+    / DST / POST_CHANGE, like a converted legacy transition.
 
     The window's sidecar post_change is left as in _stack_inputs (before the end of
     the frequent images), so the rasters decide the gating unless absent.
     """
     input_dict, target_dict = _stack_inputs()
     target_dict["binary"]["classes"].image[0, 0][NEGATIVE] = 1
-    for name, value in (("dst", DST), ("post_change", POST_CHANGE)):
+    dst, post = (DST, POST_CHANGE) if first_end is None else first_classes
+    for name, value in (
+        ("src", SRC),
+        ("pre_change", PRE_CHANGE),
+        ("dst", dst),
+        ("post_change", post),
+    ):
         classes = torch.zeros(CROP, CROP, dtype=torch.long)
         classes[POINT] = value
         target_dict[name] = {
             "classes": RasterImage(image=classes[None, None]),
             "valid": RasterImage(image=(classes > 0).float()[None, None]),
         }
-    if with_rasters:
-        input_dict["label_ts_end"] = _label(_days(post_change), fill=65535)
-        if transition is not None:
-            input_dict["label_transition_date"] = _label(_days(transition), fill=65535)
-            input_dict["label_transition_dst"] = _label(transition_classes[0])
-            input_dict["label_transition_post_change"] = _label(transition_classes[1])
-            stop_days = 65535 if transition_stop is None else _days(transition_stop)
-            input_dict["label_transition_stop_date"] = _label(stop_days, fill=65535)
-        else:
-            input_dict["label_transition_date"] = _label(65535, fill=65535)
-            input_dict["label_transition_dst"] = _label(0)
-            input_dict["label_transition_post_change"] = _label(0)
+    if not with_rasters:
+        return input_dict, target_dict
+    input_dict["label_ts_end"] = _date_label(first_end or post_change)
+    input_dict["label_first_noticeable"] = _date_label(first_noticeable)
+    input_dict["label_stop_date"] = _date_label(stop)
+    if first_end is not None:
+        window_pre = input_dict[ANNOTATION_KEY]["pre_change"]
+        for name, value in (
+            ("src", SRC2),
+            ("pre_change", PRE_CHANGE2),
+            ("dst", DST),
+            ("post_change", POST_CHANGE),
+        ):
+            input_dict[f"label_change2_{name}"] = _label(value)
+        for name, date in (
+            ("ts_start", second_start or window_pre),
+            ("ts_end", post_change),
+            ("first_noticeable", second_noticeable or post_change),
+            ("stop_date", second_stop),
+        ):
+            input_dict[f"label_change2_{name}"] = _date_label(date)
     return input_dict, target_dict
 
 
@@ -209,24 +243,25 @@ def _at_point(target_dict: dict, name: str) -> tuple[int, float]:
     [
         # The images reach post_change: the post labels are trained.
         ("post", (DST, 1.0), (POST_CHANGE, 1.0), NUM_QUARTERLY + 1),
-        # Between the transition and post_change: the transition labels.
+        # After the first change's end, before the second change is noticeable: the
+        # first change's labels.
         (
-            "transition",
-            (TRANSITION_DST, 1.0),
-            (TRANSITION_POST_CHANGE, 1.0),
+            "first_change",
+            (FIRST_DST, 1.0),
+            (FIRST_POST_CHANGE, 1.0),
             NUM_QUARTERLY + 3,
         ),
-        # Before the transition (still in progress): masked, and ts_end targets the
-        # transition date, which maps to the last timestep.
+        # Before the first change's end (still in progress): masked, and ts_end
+        # targets its end, which maps to the last timestep.
         (
             "in_progress",
-            (DST, 0.0),
-            (POST_CHANGE, 0.0),
+            (FIRST_DST, 0.0),
+            (FIRST_POST_CHANGE, 0.0),
             NUM_QUARTERLY + NUM_FREQUENT - 1,
         ),
-        # No transition and before post_change: masked, ts_end at the last timestep.
+        # One change, before post_change: masked, ts_end at the last timestep.
         (
-            "no_transition",
+            "single_in_progress",
             (DST, 0.0),
             (POST_CHANGE, 0.0),
             NUM_QUARTERLY + NUM_FREQUENT - 1,
@@ -243,17 +278,20 @@ def test_stack_sampler_date_gating(
     f_ts = _frequent_ts(input_dict)
     end = f_ts[-1][1]
     later = end + timedelta(days=30)
-    post_change, transition = {
+    post_change, first_end = {
         "post": (f_ts[1][0], None),
-        "transition": (later, f_ts[3][0]),
+        "first_change": (later, f_ts[3][0]),
         "in_progress": (later, end + timedelta(days=10)),
-        "no_transition": (later, None),
+        "single_in_progress": (later, None),
     }[regime]
-    input_dict, target_dict = _gating_inputs(post_change, transition)
+    input_dict, target_dict = _gating_inputs(post_change, first_end)
 
     input_dict, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
     assert _at_point(target_dict, "dst") == expected_dst
     assert _at_point(target_dict, "post_change") == expected_post_change
+    # The pre side is the first change's in every regime.
+    assert _at_point(target_dict, "src") == (SRC, 1.0)
+    assert _at_point(target_dict, "pre_change") == (PRE_CHANGE, 1.0)
     classes = target_dict[TS_END_KEY]["classes"].get_hw_tensor()
     assert classes[POINT] == expected_end_idx
     # The label rasters are consumed, so they don't reach the model.
@@ -264,54 +302,147 @@ def test_stack_sampler_date_gating(
     assert neg_classes[NEGATIVE] == 1 and neg_valid[NEGATIVE] == 1
 
 
-@pytest.mark.parametrize("stop_after_end", [True, False])
-def test_stack_sampler_transition_stop_date(stop_after_end: bool) -> None:
-    """Transition labels apply until the transition stop date, then are masked."""
+def test_stack_sampler_second_change() -> None:
+    """Once the images reach the second change's first-noticeable date, it applies."""
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    input_dict, target_dict = _gating_inputs(
+        f_ts[1][0], first_end=f_ts[0][0], second_start=f_ts[0][0]
+    )
+    input_dict, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _at_point(target_dict, "src") == (SRC2, 1.0)
+    assert _at_point(target_dict, "pre_change") == (PRE_CHANGE2, 1.0)
+    assert _at_point(target_dict, "dst") == (DST, 1.0)
+    assert _at_point(target_dict, "post_change") == (POST_CHANGE, 1.0)
+    # ts_start targets the second change's pre-change date (the first frequent), and
+    # ts_end its post_change.
+    start = target_dict[TS_START_KEY]["classes"].get_hw_tensor()
+    end = target_dict[TS_END_KEY]["classes"].get_hw_tensor()
+    assert start[POINT] == NUM_QUARTERLY - 1 and end[POINT] == NUM_QUARTERLY + 1
+    assert not any(key.startswith("label_") for key in input_dict)
+
+
+def test_stack_sampler_second_change_in_progress() -> None:
+    """A second change noticeable before its post_change: dst / post masked."""
     input_dict, _ = _stack_inputs()
     f_ts = _frequent_ts(input_dict)
     end = f_ts[-1][1]
-    stop = end + timedelta(days=5) if stop_after_end else f_ts[3][1]
     input_dict, target_dict = _gating_inputs(
-        end + timedelta(days=30), f_ts[3][0], transition_stop=stop
+        end + timedelta(days=30), first_end=f_ts[0][0], second_noticeable=f_ts[2][0]
     )
     _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _at_point(target_dict, "src") == (SRC2, 1.0)
+    assert _at_point(target_dict, "pre_change") == (PRE_CHANGE2, 1.0)
+    assert _at_point(target_dict, "dst")[1] == 0.0
+    assert _at_point(target_dict, "post_change")[1] == 0.0
     classes = target_dict[TS_END_KEY]["classes"].get_hw_tensor()
-    if stop_after_end:
-        assert _at_point(target_dict, "dst") == (TRANSITION_DST, 1.0)
-        assert _at_point(target_dict, "post_change") == (TRANSITION_POST_CHANGE, 1.0)
-        assert classes[POINT] == NUM_QUARTERLY + 3
-    else:
-        # After the transition stage but before post_change: masked, and ts_end
-        # targets post_change (after the stack, so the last timestep).
-        assert _at_point(target_dict, "dst")[1] == 0.0
-        assert _at_point(target_dict, "post_change")[1] == 0.0
-        assert classes[POINT] == NUM_QUARTERLY + NUM_FREQUENT - 1
+    assert classes[POINT] == NUM_QUARTERLY + NUM_FREQUENT - 1
 
 
-def test_stack_sampler_masks_unset_transition_categories() -> None:
+def test_stack_sampler_masks_unset_first_change_categories() -> None:
     input_dict, _ = _stack_inputs()
     f_ts = _frequent_ts(input_dict)
     input_dict, target_dict = _gating_inputs(
-        f_ts[-1][1] + timedelta(days=30), f_ts[3][0], transition_classes=(0, 0)
+        f_ts[-1][1] + timedelta(days=30), f_ts[3][0], first_classes=(0, 0)
     )
     _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
     assert _at_point(target_dict, "dst")[1] == 0.0
     assert _at_point(target_dict, "post_change")[1] == 0.0
-    # ts_end still targets the transition date.
+    # ts_end still targets the first change's end.
     classes = target_dict[TS_END_KEY]["classes"].get_hw_tensor()
     assert classes[POINT] == NUM_QUARTERLY + 3
+
+
+def _all_masked(target_dict: dict) -> bool:
+    names = ("binary", "src", "pre_change", "dst", "post_change", TS_START_KEY)
+    return all(_at_point(target_dict, name)[1] == 0.0 for name in names + (TS_END_KEY,))
+
+
+def _negative_trained(target_dict: dict) -> bool:
+    valid = target_dict["binary"]["valid"].get_hw_tensor()
+    return bool(valid[NEGATIVE] == 1)
+
+
+@pytest.mark.parametrize("noticeable_after_end", [True, False])
+def test_stack_sampler_first_noticeable_masks_point(noticeable_after_end: bool) -> None:
+    """Images ending before a point's first-noticeable date train nothing there."""
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    end = f_ts[-1][1]
+    first_noticeable = end + timedelta(days=1) if noticeable_after_end else f_ts[0][0]
+    input_dict, target_dict = _gating_inputs(
+        f_ts[1][0], first_noticeable=first_noticeable
+    )
+    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _all_masked(target_dict) == noticeable_after_end
+    if not noticeable_after_end:
+        assert _at_point(target_dict, "binary") == (2, 1.0)
+    assert _negative_trained(target_dict)
+
+
+@pytest.mark.parametrize("stop_before_end", [True, False])
+def test_stack_sampler_stop_date_masks_point(stop_before_end: bool) -> None:
+    """Images ending after a point's stop date train nothing there."""
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    end = f_ts[-1][1]
+    stop = f_ts[3][1] if stop_before_end else end + timedelta(days=1)
+    input_dict, target_dict = _gating_inputs(f_ts[1][0], stop=stop)
+    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _all_masked(target_dict) == stop_before_end
+    assert _negative_trained(target_dict)
+
+
+@pytest.mark.parametrize(
+    "second_noticeable_idx,second_stop_before_end,expected_masked",
+    [
+        # The first change's stop date is before the end, and the second change is
+        # not noticeable yet: masked.
+        (None, False, True),
+        # The second change is noticeable: it applies, so the first stop date no
+        # longer matters.
+        (4, False, False),
+        # ... unless its own stop date is before the end.
+        (4, True, True),
+    ],
+)
+def test_stack_sampler_stop_dates_with_second_change(
+    second_noticeable_idx: int | None,
+    second_stop_before_end: bool,
+    expected_masked: bool,
+) -> None:
+    input_dict, _ = _stack_inputs()
+    f_ts = _frequent_ts(input_dict)
+    end = f_ts[-1][1]
+    second_noticeable = (
+        end + timedelta(days=10)
+        if second_noticeable_idx is None
+        else f_ts[second_noticeable_idx][0]
+    )
+    input_dict, target_dict = _gating_inputs(
+        end + timedelta(days=30),
+        first_end=f_ts[0][0],
+        stop=f_ts[2][1],
+        second_noticeable=second_noticeable,
+        second_stop=f_ts[5][0] if second_stop_before_end else None,
+    )
+    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
+    assert _all_masked(target_dict) == expected_masked
+    if not expected_masked:
+        assert _at_point(target_dict, "src") == (SRC2, 1.0)
+    assert _negative_trained(target_dict)
 
 
 def test_stack_sampler_falls_back_to_sidecar_post_change() -> None:
     """Without the label rasters, the window's post_change gates the targets."""
     input_dict, _ = _stack_inputs()
     f_ts = _frequent_ts(input_dict)
-    input_dict, target_dict = _gating_inputs(f_ts[1][0], None, with_rasters=False)
+    input_dict, target_dict = _gating_inputs(f_ts[1][0], with_rasters=False)
     _, kept = StackSampler(deterministic=True)(input_dict, target_dict)
     assert _at_point(kept, "dst") == (DST, 1.0)
     assert _at_point(kept, "post_change") == (POST_CHANGE, 1.0)
 
-    input_dict, target_dict = _gating_inputs(f_ts[1][0], None, with_rasters=False)
+    input_dict, target_dict = _gating_inputs(f_ts[1][0], with_rasters=False)
     input_dict[ANNOTATION_KEY]["post_change"] = f_ts[-1][1] + timedelta(days=30)
     _, masked = StackSampler(deterministic=True)(input_dict, target_dict)
     assert _at_point(masked, "dst")[1] == 0.0
@@ -320,20 +451,21 @@ def test_stack_sampler_falls_back_to_sidecar_post_change() -> None:
 
 @pytest.mark.parametrize("use_label_raster", [True, False])
 def test_stack_sampler_rewrites_per_pixel_ts_end_days(use_label_raster: bool) -> None:
-    """With PerPixelTimestepTask targets, ts_end days move to the transition date.
+    """With PerPixelTimestepTask targets, ts_end days are the applying change's.
 
-    The post_change dates come from the label_ts_end passthrough raster, or from
-    the ts_end days target itself when the raster is not passed through.
+    The first change's post_change dates come from the label_ts_end passthrough
+    raster, or from the ts_end days target itself when the raster is not passed
+    through.
     """
     input_dict, _ = _stack_inputs()
     f_ts = _frequent_ts(input_dict)
     post_change = f_ts[-1][1] + timedelta(days=30)
-    transition = f_ts[3][0]
-    input_dict, target_dict = _gating_inputs(post_change, transition)
+    first_end = f_ts[3][0]
+    input_dict, target_dict = _gating_inputs(post_change, first_end)
     if not use_label_raster:
         del input_dict["label_ts_end"]
     days = torch.full((CROP, CROP), 65535, dtype=torch.long)
-    days[POINT] = _days(post_change)
+    days[POINT] = _days(first_end)
     target_dict[TS_END_KEY] = {
         "days": RasterImage(image=days[None, None]),
         "valid": RasterImage(image=(days != 65535).float()[None, None]),
@@ -342,13 +474,13 @@ def test_stack_sampler_rewrites_per_pixel_ts_end_days(use_label_raster: bool) ->
     input_dict, target_dict = StackSampler(
         deterministic=True, emit_timestep_targets=False
     )(input_dict, target_dict)
-    assert _at_point(target_dict, "dst") == (TRANSITION_DST, 1.0)
+    assert _at_point(target_dict, "dst") == (FIRST_DST, 1.0)
     ts_end = target_dict[TS_END_KEY]
-    assert ts_end["days"].get_hw_tensor()[POINT] == _days(transition)
+    assert ts_end["days"].get_hw_tensor()[POINT] == _days(first_end)
     valid = ts_end["valid"].get_hw_tensor()
     assert valid.sum() == 1 and valid[POINT] == 1
 
-    # PerPixelTimestepHead maps it to the transition's timestep.
+    # PerPixelTimestepHead maps it to the first change's end timestep.
     num_timesteps = NUM_QUARTERLY + NUM_FREQUENT
     context = ModelContext(inputs=[input_dict], metadatas=[])
     logits = FeatureMaps([torch.zeros(1, num_timesteps, CROP, CROP)])
@@ -362,7 +494,7 @@ def test_per_pixel_ts_end_in_progress_maps_to_last_timestep() -> None:
     input_dict, _ = _stack_inputs()
     f_ts = _frequent_ts(input_dict)
     post_change = f_ts[-1][1] + timedelta(days=30)
-    input_dict, target_dict = _gating_inputs(post_change, None)
+    input_dict, target_dict = _gating_inputs(post_change)
     days = torch.full((CROP, CROP), 65535, dtype=torch.long)
     days[POINT] = _days(post_change)
     target_dict[TS_END_KEY] = {
@@ -584,102 +716,3 @@ def test_timestep_tolerance_accuracy() -> None:
     within2 = TimestepToleranceAccuracy(tolerance=2)
     within2.update([pred], targets)
     assert torch.isclose(within2.compute(), torch.tensor(1.0))
-
-
-SRC, PRE_CHANGE = 6, 2
-POST_TRANSITION_PRE_CHANGE = 5
-
-
-def _post_transition_inputs(
-    post_change: datetime,
-    transition_stop: datetime | None,
-    pre_change_class: int = POST_TRANSITION_PRE_CHANGE,
-    start: datetime | None = None,
-) -> tuple[dict, dict]:
-    """Gating inputs plus src/pre_change targets and the post-transition rasters."""
-    input_dict, _ = _stack_inputs()
-    f_ts = _frequent_ts(input_dict)
-    input_dict, target_dict = _gating_inputs(
-        post_change, f_ts[0][0], transition_stop=transition_stop
-    )
-    for name, value in (("src", SRC), ("pre_change", PRE_CHANGE)):
-        classes = torch.zeros(CROP, CROP, dtype=torch.long)
-        classes[POINT] = value
-        target_dict[name] = {
-            "classes": RasterImage(image=classes[None, None]),
-            "valid": RasterImage(image=(classes > 0).float()[None, None]),
-        }
-    input_dict["label_post_transition_pre_change"] = _label(pre_change_class)
-    start_days = 65535 if start is None else _days(start)
-    input_dict["label_post_transition_ts_start"] = _label(start_days, fill=65535)
-    return input_dict, target_dict
-
-
-def test_stack_sampler_post_transition_after_post_change() -> None:
-    """Once the images reach post_change, the pre heads use the transition stage."""
-    input_dict, _ = _stack_inputs()
-    f_ts = _frequent_ts(input_dict)
-    input_dict, target_dict = _post_transition_inputs(
-        f_ts[1][0], None, start=f_ts[0][0]
-    )
-    input_dict, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
-    assert _at_point(target_dict, "src") == (TRANSITION_DST, 1.0)
-    assert _at_point(target_dict, "pre_change") == (POST_TRANSITION_PRE_CHANGE, 1.0)
-    assert _at_point(target_dict, "dst") == (DST, 1.0)
-    # ts_start targets the post-transition pre-change date (the first frequent).
-    classes = target_dict[TS_START_KEY]["classes"].get_hw_tensor()
-    valid = target_dict[TS_START_KEY]["valid"].get_hw_tensor()
-    assert classes[POINT] == NUM_QUARTERLY - 1 and valid[POINT] == 1
-    assert not any(key.startswith("label_") for key in input_dict)
-
-
-def test_stack_sampler_post_transition_unset_category_keeps_pre_change() -> None:
-    input_dict, _ = _stack_inputs()
-    f_ts = _frequent_ts(input_dict)
-    input_dict, target_dict = _post_transition_inputs(
-        f_ts[1][0], None, pre_change_class=0, start=f_ts[0][0]
-    )
-    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
-    assert _at_point(target_dict, "pre_change") == (PRE_CHANGE, 1.0)
-    assert _at_point(target_dict, "src") == (TRANSITION_DST, 1.0)
-
-
-def test_stack_sampler_post_transition_before_post_change() -> None:
-    """In the transition stage, the point's own pre labels still apply."""
-    input_dict, _ = _stack_inputs()
-    f_ts = _frequent_ts(input_dict)
-    end = f_ts[-1][1]
-    input_dict, target_dict = _post_transition_inputs(
-        end + timedelta(days=30), end + timedelta(days=5)
-    )
-    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
-    assert _at_point(target_dict, "src") == (SRC, 1.0)
-    assert _at_point(target_dict, "pre_change") == (PRE_CHANGE, 1.0)
-    assert _at_point(target_dict, "dst") == (TRANSITION_DST, 1.0)
-    valid = target_dict[TS_START_KEY]["valid"].get_hw_tensor()
-    assert valid[POINT] == 1
-
-
-def test_stack_sampler_post_transition_gap_masked() -> None:
-    """Between the transition stop date and post_change, the pre heads are masked."""
-    input_dict, _ = _stack_inputs()
-    f_ts = _frequent_ts(input_dict)
-    end = f_ts[-1][1]
-    input_dict, target_dict = _post_transition_inputs(
-        end + timedelta(days=30), f_ts[3][1]
-    )
-    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
-    for name in ("src", "pre_change", "dst", "post_change"):
-        assert _at_point(target_dict, name)[1] == 0.0
-    start_valid = target_dict[TS_START_KEY]["valid"].get_hw_tensor()
-    end_valid = target_dict[TS_END_KEY]["valid"].get_hw_tensor()
-    assert start_valid[POINT] == 0 and end_valid[POINT] == 1
-
-    # Without post-transition fields the gap keeps the pre labels (as before).
-    input_dict, _ = _stack_inputs()
-    input_dict, target_dict = _post_transition_inputs(
-        end + timedelta(days=30), f_ts[3][1], pre_change_class=0
-    )
-    _, target_dict = StackSampler(deterministic=True)(input_dict, target_dict)
-    assert _at_point(target_dict, "src") == (SRC, 1.0)
-    assert _at_point(target_dict, "pre_change") == (PRE_CHANGE, 1.0)
