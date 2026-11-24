@@ -374,9 +374,18 @@ def test_legacy_transition_to_change2() -> None:
     assert point_date_errors(converted) == []
     # Points without a transition are unchanged.
     assert legacy_transition_to_change2(DATED_POINT) == DATED_POINT
-    with pytest.raises(ValueError, match="transition_stop_date"):
+    # The second change is noticeable once the transition stage ends.
+    with_stop = legacy_transition_to_change2(
+        {**LEGACY_TRANSITION_POINT, "transition_stop_date": "2020-05-01"}
+    )
+    assert with_stop == {
+        **converted,
+        "change2_first_date_change_noticeable": "2020-05-01",
+    }
+    assert point_date_errors(with_stop) == []
+    with pytest.raises(ValueError, match="post_transition_pre_change"):
         legacy_transition_to_change2(
-            {**LEGACY_TRANSITION_POINT, "transition_stop_date": "2020-05-01"}
+            {**LEGACY_TRANSITION_POINT, "post_transition_pre_change": "2020-05-01"}
         )
     with pytest.raises(ValueError, match="both"):
         legacy_transition_to_change2({**CHANGE2_POINT, "transition_date": "2020-04-01"})
@@ -430,7 +439,10 @@ def test_legacy_transition_label_arrays() -> None:
             "stop_date must be before change2_first",
         ),
         (
-            {"transition_date": "2020-04-01", "transition_stop_date": "2020-05-01"},
+            {
+                "transition_date": "2020-04-01",
+                "post_transition_pre_change": "2020-05-01",
+            },
             "legacy",
         ),
     ],

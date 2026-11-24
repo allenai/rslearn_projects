@@ -69,9 +69,9 @@ TRANSITION_DATE = "transition_date"
 TRANSITION_CATEGORY = "transition_category"
 TRANSITION_CHANGE_CATEGORY = "transition_change_category"
 TRANSITION_TERMINAL_STATE = "transition_terminal_state"
+TRANSITION_STOP_DATE = "transition_stop_date"
 # Legacy fields that were never used: points carrying them are rejected.
 UNSUPPORTED_LEGACY_FIELDS = (
-    "transition_stop_date",
     "post_transition_pre_change",
     "post_transition_pre_change_category",
 )
@@ -80,6 +80,7 @@ LEGACY_TRANSITION_FIELDS = (
     TRANSITION_CATEGORY,
     TRANSITION_CHANGE_CATEGORY,
     TRANSITION_TERMINAL_STATE,
+    TRANSITION_STOP_DATE,
 ) + UNSUPPORTED_LEGACY_FIELDS
 
 # The window-level stop date (an entry key and Studio task attribute): no training
@@ -137,14 +138,18 @@ def legacy_transition_to_change2(pt: dict[str, Any]) -> dict[str, Any]:
     at the transition stage (post_change = transition_date, post land cover and
     change category = the transition's, terminal state = the transition's). The
     second change keeps the point's pre side (pre_change, pre_category,
-    pre_change_category), is noticeable at the point's post_change, and ends in the
-    point's post side, stop date and terminal state. Fields the point doesn't have
-    stay unset. Points without a transition are returned unchanged (a copy).
+    pre_change_category), is noticeable at the end of the transition stage (the
+    transition_stop_date, or else the point's post_change), and ends in the point's
+    post side, stop date and terminal state. Fields the point doesn't have stay
+    unset. Points without a transition are returned unchanged (a copy).
+
+    This trains like the transition did: the transition stage's labels from the
+    transition date until its stop date (default post_change), then the change to
+    the post side, in progress until post_change.
 
     Raises:
         ValueError: if the point uses a legacy field that was never supported here
-            (transition_stop_date, post-transition fields) or already has change2
-            fields.
+            (post-transition fields) or already has change2 fields.
     """
     out = dict(pt)
     if not has_legacy_transition(pt):
@@ -158,7 +163,7 @@ def legacy_transition_to_change2(pt: dict[str, Any]) -> dict[str, Any]:
         out.pop(field, None)
     second = {
         CHANGE2_PRE_CHANGE: pt.get("pre_change"),
-        CHANGE2_FIRST_NOTICEABLE: pt.get("post_change"),
+        CHANGE2_FIRST_NOTICEABLE: pt.get(TRANSITION_STOP_DATE) or pt.get("post_change"),
         CHANGE2_POST_CHANGE: pt.get("post_change"),
         CHANGE2_PRE_CATEGORY: pt.get("pre_category"),
         CHANGE2_POST_CATEGORY: pt.get("post_category"),

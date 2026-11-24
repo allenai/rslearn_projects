@@ -95,17 +95,18 @@ one 128x128 spatial window:
   the second change for series ending on/after its first-noticeable date (see
   Training).
 - Legacy transition fields (`transition_date`, `transition_category`,
-  `transition_change_category`, `transition_terminal_state`): an intermediate stage
-  of a multi-stage change (e.g. mangrove -> bare -> agriculture), replaced by the
-  second change on 2026-11-24 (the Studio projects were migrated; the fields stay in
-  them, unused). `prepare.py` converts points that still carry them
-  (`label_changes.legacy_transition_to_change2`), so they train as before: the first
-  change ends at the transition stage (post_change = transition_date, post land
-  cover / change category / terminal state = the transition's, no stop date), and
-  the second change keeps the point's pre side (pre_change, pre_category,
-  pre_change_category), is noticeable at the old post_change, and ends in the old
-  post side, stop_date and terminal state. The never-used `transition_stop_date`
-  and `post_transition_*` fields are rejected.
+  `transition_change_category`, `transition_terminal_state`, `transition_stop_date`):
+  an intermediate stage of a multi-stage change (e.g. mangrove -> bare ->
+  agriculture), replaced by the second change on 2026-11-24 (the Studio projects
+  were migrated; the fields stay in them, unused). `prepare.py` converts points that
+  still carry them (`label_changes.legacy_transition_to_change2`), so they train as
+  before: the first change ends at the transition stage (post_change =
+  transition_date, post land cover / change category / terminal state = the
+  transition's, no stop date), and the second change keeps the point's pre side
+  (pre_change, pre_category, pre_change_category), is noticeable when the
+  transition stage ends (transition_stop_date, else the old post_change), and ends
+  in the old post side, stop_date and terminal state. The never-used
+  `post_transition_*` fields are rejected.
 - `terminal_state` (optional, positive and negative points): what the location is
   at the end of the series (a land cover category or a structure type such as
   building, road, reservoir or mining). `change2_terminal_state` is the same at the
