@@ -80,7 +80,11 @@ one 128x128 spatial window:
   change is noticeable, if it has one).
 - `window_stop_date` (optional, entry-level; a Studio task attribute): no training
   series of the window ends after it. It must be after every positive point's
-  first-noticeable and post-change dates.
+  first-noticeable and post-change dates. Before 2026-11-24 the window cutoff was
+  the earliest point `stop_date`; the Studio migration set `window_stop_date` to
+  that, but JSONs exported before it don't have it, so set it the same way before
+  running prepare on them (otherwise their windows' dates change and prepare
+  recreates them).
 - Second change (optional, positive points only), a change after the first one,
   e.g. tree -> bare (logging) and then bare -> tree (regrowth): `change2_pre_change`,
   `change2_first_date_change_noticeable`, `change2_post_change`,
