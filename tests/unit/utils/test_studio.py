@@ -7,10 +7,17 @@ from rslp.utils.studio import StudioClient
 
 
 class FakeResponse:
-    def __init__(self, status_code: int, payload: Any = None, text: str = "") -> None:
+    def __init__(
+        self,
+        status_code: int,
+        payload: Any = None,
+        text: str = "",
+        headers: dict[str, str] | None = None,
+    ) -> None:
         self.status_code = status_code
         self.payload = payload
         self.text = text
+        self.headers = headers or {}
 
     def json(self) -> Any:
         return self.payload
@@ -126,3 +133,54 @@ def test_upload_image_sends_multipart() -> None:
     assert call["data"]["attributes"] == '{"group_idx": 1}'
     assert call["files"] == {"image_file": ("a.tif", b"tiff", "image/tiff")}
     assert "json" not in call
+
+
+def test_retries_rate_limited_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    sleeps: list[float] = []
+    monkeypatch.setattr("rslp.utils.studio.time.sleep", sleeps.append)
+    session = FakeSession(
+        [
+            FakeResponse(429, text="slow down", headers={"Retry-After": "7"}),
+            FakeResponse(200, {"records": [{"id": "t"}]}),
+        ]
+    )
+    client = make_client(session)
+
+    assert client.create("tasks", {"name": "t"}) == {"id": "t"}
+    assert len(session.calls) == 2
+    assert sleeps == [7.0]
+
+
+def test_iter_search_pages_by_creation_time() -> None:
+    session = FakeSession(
+        [
+            FakeResponse(
+                200,
+                {
+                    "records": [
+                        {"id": "a", "creation_time": "t1"},
+                        {"id": "b", "creation_time": "t2"},
+                    ]
+                },
+            ),
+            # The cursor is inclusive, so the last record of a page comes again.
+            FakeResponse(
+                200,
+                {
+                    "records": [
+                        {"id": "b", "creation_time": "t2"},
+                        {"id": "c", "creation_time": "t3"},
+                    ]
+                },
+            ),
+            FakeResponse(200, {"records": [{"id": "c", "creation_time": "t3"}]}),
+        ]
+    )
+    client = make_client(session)
+
+    records = list(client.iter_search("annotations", {"project_id": {"eq": "p"}}))
+
+    assert [record["id"] for record in records] == ["a", "b", "c"]
+    assert "creation_time" not in session.calls[0]["json"]
+    assert session.calls[1]["json"]["creation_time"] == {"gte": "t2"}
+    assert session.calls[1]["url"] == "https://studio.test/api/v1/annotations/search"

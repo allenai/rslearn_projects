@@ -332,9 +332,9 @@ def worker_pipeline(
 
 def launch_workers(
     image_name: str,
-    queue_name: str,
     num_workers: int,
     cluster: list[str],
+    queue_name: str | None = None,
     gpus: int = 0,
     shared_memory: str | None = None,
     priority: BeakerJobPriority = BeakerJobPriority.low,
@@ -344,14 +344,15 @@ def launch_workers(
     min_runtime: timedelta = DEFAULT_MIN_RUNTIME,
     gcp_credentials_secret: str | None = None,
     worker_args: list[str] | None = None,
+    worker_command: list[str] | None = None,
 ) -> None:
     """Start workers for the prediction jobs.
 
     Args:
         image_name: the Beaker image name to use for the jobs.
-        queue_name: the Beaker queue name.
         num_workers: number of workers to launch
         cluster: clusters to target.
+        queue_name: the Beaker queue to run worker_pipeline on.
         gpus: number of GPUs to request per worker.
         shared_memory: shared memory string like "256GiB".
         priority: priority to assign the Beaker jobs.
@@ -366,8 +367,24 @@ def launch_workers(
         gcp_credentials_secret: Beaker secret holding the GCP service account key, or
             None for the default.
         worker_args: args each worker appends to every entry it runs (see
-            worker_pipeline).
+            worker_pipeline). Only applies to queue workers.
+        worker_command: the rslp.main arguments each worker runs, instead of the
+            Beaker queue worker (exactly one of queue_name and worker_command must
+            be set).
     """
+    if (queue_name is None) == (worker_command is None):
+        raise ValueError("exactly one of queue_name and worker_command must be set")
+    if worker_command is None:
+        assert queue_name is not None
+        worker_command = [
+            "common",
+            "worker",
+            "--queue_name",
+            queue_name,
+            *(["--worker_args", json.dumps(worker_args)] if worker_args else []),
+        ]
+    elif worker_args:
+        raise ValueError("worker_args only applies to queue workers")
     if extra_env_vars is None:
         extra_env_vars = {}
     if extra_env_secrets is None:
@@ -398,17 +415,7 @@ def launch_workers(
                 beaker_image=image_name,
                 priority=priority,
                 command=["python", "-m", "rslp.main"],
-                arguments=[
-                    "common",
-                    "worker",
-                    "--queue_name",
-                    queue_name,
-                    *(
-                        ["--worker_args", json.dumps(worker_args)]
-                        if worker_args
-                        else []
-                    ),
-                ],
+                arguments=worker_command,
                 constraints=BeakerConstraints(
                     cluster=cluster,
                 ),

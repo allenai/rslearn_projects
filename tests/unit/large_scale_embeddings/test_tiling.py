@@ -11,10 +11,9 @@ from rslp.large_scale_embeddings import tiling
 from rslp.large_scale_embeddings.tiling import (
     LAND_STEP_SIZE,
     bounds_intersect_wedge,
-    get_zone_grid,
-    get_zone_wedge,
     list_kept_crops,
 )
+from rslp.utils.tiling import get_zone_grid, get_zone_wedge
 
 RESOLUTION = 10
 TILE_SIZE = 32768

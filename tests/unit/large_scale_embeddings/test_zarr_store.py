@@ -7,7 +7,7 @@ import pytest
 import zarr
 
 from rslp.large_scale_embeddings import zarr_store as zs
-from rslp.large_scale_embeddings.tiling import get_zone_grid
+from rslp.utils.tiling import get_zone_grid
 
 RESOLUTION = 10
 TILE_SIZE = 32768
