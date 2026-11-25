@@ -139,8 +139,8 @@ trained on these classes:
 The finer lab labels are mapped onto those classes by `prepare.py` (e.g. new_solar
 and the other new_* infrastructure labels -> new_infrastructure, tree_crop_growth ->
 vegetation_growth, tree_crop_harvest -> agricultural_activity, borrow_pit ->
-new_mining_or_quarry, resurfaced_road -> new_road); ice_loss and ice_gain have no class yet and are masked
-like any unknown category. Names from before the 2026-11-12 renames (deforestation, mining, wildfire,
+new_mining_or_quarry, resurfaced_road -> new_road); ice_loss (a pre-change category since 2026-11-25) and
+ice_gain have no class yet and are masked like any unknown category. Names from before the 2026-11-12 renames (deforestation, mining, wildfire,
 water_expand, ...) still map to their new classes.
 
 ### Ten-Year Dataset

@@ -53,6 +53,8 @@ PRE_CHANGE_CATEGORIES = (
     "large_water_body_level_drop",
     "other_water_to_land",
     "removed_crop_structure",
+    # A post-change category until 2026-11-25.
+    "ice_loss",
 )
 POST_CHANGE_CATEGORIES = (
     "vegetation_growth",
@@ -95,7 +97,6 @@ POST_CHANGE_CATEGORIES = (
     "agricultural_activity",
     "tree_crop_harvest",
     "burned",
-    "ice_loss",
     "ice_gain",
     "river_channel_migration",
 )

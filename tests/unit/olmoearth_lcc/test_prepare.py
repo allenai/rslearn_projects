@@ -111,6 +111,7 @@ def _change_labels(point: dict[str, Any]) -> tuple[str, str]:
         ),
         # ice_loss has no training class: unknown, like any unknown category.
         ({"post_change_category": "ice_loss"}, ("nodata", "nodata")),
+        ({"pre_change_category": "ice_loss"}, ("nodata", "nodata")),
         # Names from before the 2026-11-12 renames still map.
         ({"pre_change_category": "deforestation"}, ("forest_loss", "none")),
         ({"pre_change_category": "urban_erosion"}, ("removed_building", "none")),
